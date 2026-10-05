@@ -23,11 +23,12 @@ vi.mock('../../lib/query-client', () => ({ QueryClientProvider: ({ children }: {
 vi.mock('../../globals.css', () => ({}));
 
 import RootLayout from '../../layout';
-import { DoNotSellLink } from '../DoNotSellLink';
+import { DoNotSellLink, DO_NOT_SELL_HREF, DO_NOT_SELL_ROUTES, DO_NOT_SELL_TEXT } from '../DoNotSellLink';
 
 const TEXT = 'Do Not Sell or Share My Personal Information';
 const HREF = 'https://otterquote.com/privacy.html#do-not-sell-or-share';
-const ROUTES = ['/', '/login', '/refer', '/trade-selector', '/partner/dashboard'];
+// CEO ruling #2304 5973477617: /contractor/login (signed-out route) carries the same link as every other route.
+const ROUTES = ['/', '/login', '/refer', '/trade-selector', '/partner/dashboard', '/contractor/login'];
 
 // RootLayout returns <html><body>...</body></html>; render the body's children so the layout's own mounts are exercised.
 function renderLayout(p: string) {
@@ -61,6 +62,15 @@ describe('gh-1925: Do Not Sell link on the consumer React routes (root layout)',
   // per-route RootLayout renders above: removing the mount from layout.tsx fails both (observed
   // when the PR was built). A render of a hand-built tree without the component cannot fail and
   // would prove nothing, so none is kept here.
+  // Guard against deletion: the five routes shipped by the earlier PRs must stay in the allowlist, and the strings must not drift.
+  it('keeps every previously allowlisted route and the ruled strings (nothing removed)', () => {
+    for (const r of ['/', '/login', '/refer', '/trade-selector', '/partner/dashboard']) {
+      expect(DO_NOT_SELL_ROUTES as readonly string[]).toContain(r);
+    }
+    expect(DO_NOT_SELL_ROUTES as readonly string[]).toContain('/contractor/login');
+    expect(DO_NOT_SELL_TEXT).toBe(TEXT);
+    expect(DO_NOT_SELL_HREF).toBe(HREF);
+  });
   it('the layout source mounts DoNotSellLink', () => {
     const src = fs.readFileSync(path.join(__dirname, '../../layout.tsx'), 'utf8');
     expect(src).toContain('<DoNotSellLink />');

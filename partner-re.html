@@ -1123,7 +1123,7 @@
         <span class="faq-toggle">▼</span>
       </div>
       <div class="faq-answer">
-        <p>They pay $15 upfront for a Complete Property Report (3D model + full exterior measurements). If they end up using one of the Otter Quotes contractors for the work, that cost is rebated in full. The bidding, comparison, contract management, and payment processing are 100% free for Homeowners.</p>
+        <p>They pay $15 upfront for a Complete Property Report (3D model + full exterior measurements). If they complete a job on the platform, that cost is rebated in full. The bidding, comparison, contract management, and payment processing are 100% free for Homeowners.</p>
       </div>
     </div>
 
@@ -1415,19 +1415,17 @@
    */
   async function detectRecruitCode() {
     const urlParams = new URLSearchParams(window.location.search);
-    const recruitCode = urlParams.get('recruit') || localStorage.getItem('cs_recruit_code'); // gh-2060 item 4: a ?recruit= on THIS load wins over a stale stored code
-    if (!recruitCode) return;
+    // gh-2471: the URL code and the stored code are normalised (trim, upper-case, R- -> r-) and looked up in ONE shared place,
+    // CONFIG.lookupRecruiter (js/config.js). gh-2060 item 4 still holds: a ?recruit= on THIS load is tried first; a URL code that
+    // resolves to no active recruiter falls back to the stored code instead of recording no recruiter.
 
     try {
-      const { data: recruiter, error } = await sb
-        .rpc('get_referral_agents_public')
-        .select('id, first_name, last_name, company')
-        .eq('recruit_code', recruitCode)
-        .eq('status', 'active')
-        .maybeSingle();
+      const { data: recruiter, error, recruitCode, candidateCode } = await CONFIG.lookupRecruiter(sb, urlParams.get('recruit'), localStorage.getItem('cs_recruit_code'));
 
       if (error) {
         console.warn('Recruit code lookup failed:', error.message);
+        // gh-2471 (ruling 5973362277): an ERRORED lookup keeps a canonical URL code as the candidate; it never falls back to the stored one.
+        if (candidateCode) recruitContext = { recruitCode: candidateCode, recruiterId: null };
         return;
       }
       if (!recruiter) return;

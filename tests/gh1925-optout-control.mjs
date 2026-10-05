@@ -214,7 +214,7 @@ for (const [p, cls] of [['react-app/app/(homeowner)/_shell/HomeownerShell.tsx', 
   const comp = read('react-app/app/components/DoNotSellLink.tsx');
   const layout = read('react-app/app/layout.tsx');
   ok(comp.includes("export const DO_NOT_SELL_TEXT = '" + LINK_TEXT + "'") && comp.includes("export const DO_NOT_SELL_HREF = '" + RHREF + "'"), 'react-app DoNotSellLink.tsx carries the exact string + absolute href');
-  ok(comp.includes("['/', '/login', '/refer', '/trade-selector', '/partner/dashboard'] as const"), 'react-app DoNotSellLink.tsx: route allowlist is exactly the five ruled routes (no admin, no auth-callback)');
+  ok(comp.includes("['/', '/login', '/refer', '/trade-selector', '/partner/dashboard', '/contractor/login'] as const"), 'react-app DoNotSellLink.tsx: route allowlist is exactly the five consumer routes + /contractor/login (CEO ruling #2304 5973477617; no admin, no auth-callback)');
   ok(/<DoNotSellLink \/>/.test(layout) && /import \{ DoNotSellLink \} from '\.\/components\/DoNotSellLink'/.test(layout), 'react-app layout.tsx mounts <DoNotSellLink />');
 }
 {

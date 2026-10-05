@@ -91,6 +91,8 @@ on:
       - 'tests/gh2150-gh2151-s05-perf-structure.mjs'
       - 'tests/gh2192-s05-must-fix.mjs'
       - 'index.html'
+      - 'help-measurements.html'
+      - 'tests/gh2078-static-measurement-purchase.mjs'
       - 'partner-other.html'
       - 'partners.html'
       - 'partner-profile.html'
@@ -180,6 +182,8 @@ on:
       - 'tests/gh2150-gh2151-s05-perf-structure.mjs'
       - 'tests/gh2192-s05-must-fix.mjs'
       - 'index.html'
+      - 'help-measurements.html'
+      - 'tests/gh2078-static-measurement-purchase.mjs'
       - 'partner-other.html'
       - 'partners.html'
       - 'partner-profile.html'
@@ -217,6 +221,8 @@ jobs:
         run: node tests/gh1925-gpc-optout.mjs
       - name: Section 12 opt-out follows the signed-in person (gh1925-optout-crossdevice)
         run: node tests/gh1925-optout-crossdevice.mjs
+      - name: Static measurement checkout fires measurement_purchase + Purchase once, deduped, suppression honoured (gh2078-static-measurement-purchase)
+        run: node tests/gh2078-static-measurement-purchase.mjs
       - name: GPC capture on the create-payment-intent call (gh2107-gpc-client)
         run: node tests/gh2107-gpc-client.mjs
       - name: Partner dashboard activation RPC, per-user flag (gh2154-p2-app-activation)

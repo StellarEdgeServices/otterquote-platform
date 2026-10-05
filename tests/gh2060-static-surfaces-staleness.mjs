@@ -357,8 +357,10 @@ for (const page of variantPages) {
       assert.match(src, /localStorage\.removeItem\('cs_recruit_code'\)/);
     });
     await check(`${page}: a ?recruit= on THIS load takes precedence over a stale stored recruit code`, () => {
-      const m = src.match(/const recruitCode = ([^;]+);/);
-      assert.ok(m, 'recruitCode assignment not found');
+      // gh-2471: the precedence now lives in the argument order of the shared CONFIG.lookupRecruiter(sb, urlRaw, storedRaw)
+      // (js/config.js), which normalises both and tries the URL code first; behaviour is driven in tests/gh2471-recruit-case.mjs.
+      const m = src.match(/CONFIG\.lookupRecruiter\(sb, ([^;]+)\);/);
+      assert.ok(m, 'CONFIG.lookupRecruiter call not found');
       assert.ok(
         m[1].indexOf("urlParams.get('recruit')") !== -1 &&
           m[1].indexOf("urlParams.get('recruit')") < m[1].indexOf("localStorage.getItem('cs_recruit_code')"),

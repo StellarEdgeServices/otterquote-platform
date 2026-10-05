@@ -257,7 +257,8 @@ async function handleRecruit() {
     // gh-1648: mail and SMS clients case-fold URLs, and generate_recruit_code() emits
     // 'r-' + 6 UPPERCASE alphanumerics, so a case-folded link 406'd at PostgREST and was
     // silently voided. Normalise to the stored shape before lookup, storage and forwarding.
-    const code = (params.get('code') || '').trim().toUpperCase().replace(/^R-/, 'r-');
+    // gh-2471: CONFIG.normRecruitCode returns a canonical r-[A-Z0-9]{1,6} code or ''; anything else is no code.
+    const code = CONFIG.normRecruitCode(params.get('code'));
 
     // No code &mdash; nothing to route on. Ask the visitor explicitly rather
     // than guessing (gh-865 AC1).
@@ -266,16 +267,9 @@ async function handleRecruit() {
         return;
     }
 
-    // Persist the code so the partner signup page can attribute this recruit.
-    try {
-        localStorage.setItem('cs_recruit_code', code);
-    } catch (_) {
-        // localStorage disabled (private browsing / storage quota) &mdash; non-fatal.
-        // The signup page will still fall back to the ?recruit= URL param.
-    }
-
     let agentType = null;
     let resolved = false;
+    let recruiterFound = false;
     let lookupError = null;
     try {
         if (typeof sb !== 'undefined' && sb) {
@@ -290,15 +284,30 @@ async function handleRecruit() {
                 lookupError = error;
                 console.warn('Recruit lookup failed:', error.message);
             } else if (recruiter) {
+                recruiterFound = true;
                 agentType = recruiter.agent_type;
                 resolved = !!DESTINATIONS[agentType];
             }
         } else {
             console.warn('Supabase client not initialized &mdash; skipping recruit lookup');
+            lookupError = new Error('client unavailable'); // gh-2471: no lookup could run -- treated like an errored lookup
         }
     } catch (err) {
         lookupError = err;
         console.warn('Recruit lookup threw:', err);
+    }
+
+    // gh-2471 (CTO ruling 5973362277): cs_recruit_code is written only AFTER the lookup, never before.
+    //   resolved to an active recruiter -> store it (the latest valid touch wins);
+    //   did not resolve (typo, inactive) -> leave any stored code alone, so a mistyped link cannot erase a valid one;
+    //   errored -> this canonical code stays the candidate (no fall-back to the stored one), so it is stored.
+    if (recruiterFound || lookupError) {
+        try {
+            localStorage.setItem('cs_recruit_code', code);
+        } catch (_) {
+            // localStorage disabled (private browsing / storage quota) -- non-fatal.
+            // The signup page will still fall back to the ?recruit= URL param.
+        }
     }
 
     // Unknown code, inactive recruiter, RPC error, or an agent_type we don't

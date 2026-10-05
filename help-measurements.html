@@ -51,6 +51,9 @@
     <!-- Stripe.js &mdash; required for card payment on measurement report purchase -->
     <script src="https://js.stripe.com/v3/"></script>
     <script src="/js/ga-gate.js"></script>
+    <!-- gh-2078 / D-330: the measurement checkout is the one authenticated page the Meta Pixel may load on, Purchase only (no PageView). -->
+    <script>window.OQ_META_PURCHASE_ONLY = true;</script>
+    <script src="/js/meta-pixel-gate.js"></script>
     <script>gtag('config', 'G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
@@ -577,13 +580,13 @@
                     <div class="path-card-badge">Recommended for Most</div>
                     <div class="path-card-icon">📐</div>
                     <h3>Roof Measurement Report</h3>
-                    <div class="path-card-price">$15 (rebated if you use an Otter Quotes contractor)</div>
+                    <div class="path-card-price">$15 (rebated if you complete a job on the platform)</div>
                     <p>We order a professional aerial measurement report of your roof &mdash; squares, pitch, facets, ridge, hip, valley and eave lengths. Nothing for you to do: no photos, no ladder, no appointment. It is enough for a contractor to bid most roofing jobs.</p>
                     <ul class="path-card-features">
                         <li>Professional-grade roof measurements</li>
                         <li>Nothing for you to photograph or upload</li>
                         <li>Usually ready within one business day</li>
-                        <li>Cost rebated when using an Otter Quotes contractor</li>
+                        <li>Cost rebated when you complete a job on the platform</li>
                     </ul>
                     <button class="select-btn">Choose This Option</button>
                 </div>
@@ -969,6 +972,73 @@
             }
         }
 
+        // ── gh-2078: measurement_purchase (GA4) + Purchase (Meta pixel), parity with the React page ──────────────────
+        // Same event name and params as react-app/app/(homeowner)/help-measurements/page.tsx (value and currency from the confirmed payment, variant), same once-only
+        // marker key as its charge-storage module (keyed on the charged PaymentIntent id), and the Meta eventID is the SAME
+        // `measurement_purchase:<paymentIntentId>` string supabase/functions/stripe-webhook/meta-capi.ts sends as the CAPI event_id,
+        // so Meta dedups the two. Suppression: js/ga-gate.js drops gtag() on an internal/QA visit (gh-2356) and does not load for the cookie /
+        // Global Privacy Control; js/meta-pixel-gate.js makes fbq() a no-op on an internal visit and never loads fbevents.js for those or for a stored
+        // opt-out (gh-1925, gh-2107). The GA4 library does NOT read the account-stored opt-out when it loads, so the purchase call itself resolves
+        // cookie + GPC + the account-stored flag at fire time (fireMeasurementPurchase below) and sends nothing for either vendor when opted out.
+        function getMeasurementVariant() {
+            var VARIANT_RE = /^[a-z0-9]{1,8}$/;
+            try {
+                var v = String(window.localStorage.getItem('oq_variant_v3') || '').trim().toLowerCase();
+                if (VARIANT_RE.test(v)) return v;
+            } catch (e) {}
+            try {
+                var m = document.cookie.match(/(?:^|; )oq_variant_v3=([^;]*)/);
+                var c = m ? decodeURIComponent(m[1]).trim().toLowerCase() : '';
+                if (VARIANT_RE.test(c)) return c;
+            } catch (e) {}
+            return 'unknown';
+        }
+
+        // gh-2078 / LEGAL-READ: FAIL 5973374792 point 3: the value and currency of the event are what Stripe CONFIRMED, never a constant
+        // (the price lives server-side in platform_settings.hover_measurement_price). Same reading as the server-side Purchase in
+        // stripe-webhook (amount_received, else amount; whole cents) so the browser and server events for one PaymentIntent agree.
+        // Returns null when the confirmed payment carries no positive whole-cent amount or no 3-letter currency: no event, never a wrong value.
+        function measurementPurchaseFromPayment(paymentIntent) {
+            if (!paymentIntent || typeof paymentIntent !== 'object') return null;
+            var cents = (paymentIntent.amount_received !== undefined && paymentIntent.amount_received !== null) ? paymentIntent.amount_received : paymentIntent.amount;
+            if (typeof cents !== 'number' || !isFinite(cents) || Math.floor(cents) !== cents || cents <= 0) return null;
+            if (typeof paymentIntent.currency !== 'string' || !/^[A-Za-z]{3}$/.test(paymentIntent.currency)) return null;
+            return { value: cents / 100, currency: paymentIntent.currency.toUpperCase() };
+        }
+
+        // LEGAL-READ: FAIL 5973345257 / 5973374792 fix: the opt-out is resolved HERE, at fire time. Blocked (no GA4 event, so no Google
+        // conversion ping, and no Meta event) when ANY of: the oq_ad_optout cookie, Global Privacy Control, the account's stored
+        // ad_sharing_opt_out (the shared js/meta-pixel-gate.js helper re-reads profiles.ad_sharing_opt_out), this page's own loaded profile
+        // (currentProfile.ad_sharing_opt_out === true), or a signed-in page whose profile could not be read (fail closed). The helper
+        // missing counts as unreadable. A visitor with no confirmed amount gets no event at all.
+        function fireMeasurementPurchase(paymentIntent) {
+            var paymentIntentId = paymentIntent && paymentIntent.id;
+            if (!paymentIntentId) return Promise.resolve(false);
+            var purchase = measurementPurchaseFromPayment(paymentIntent);
+            if (!purchase) return Promise.resolve(false);
+            var FIRED_KEY = 'oq_ga4_measurement_purchase_fired_v1:' + paymentIntentId;
+            try { if (window.localStorage.getItem(FIRED_KEY) === '1') return Promise.resolve(false); } catch (e) {}
+            try {
+                if (typeof currentUser !== 'undefined' && currentUser &&
+                    (typeof currentProfile === 'undefined' || !currentProfile || currentProfile.ad_sharing_opt_out === true)) return Promise.resolve(false);
+            } catch (e) { return Promise.resolve(false); }
+            var blockedP;
+            try {
+                blockedP = (typeof window.OQ_adSharingBlocked === 'function') ? window.OQ_adSharingBlocked() : Promise.resolve(true);
+            } catch (e) { blockedP = Promise.resolve(true); }
+            return Promise.resolve(blockedP).then(function (blocked) {
+                if (blocked !== false) return false;
+                var variant = getMeasurementVariant();
+                try { gtag('event', 'measurement_purchase', { value: purchase.value, currency: purchase.currency, variant: variant }); } catch (e) {}
+                try {
+                    fbq('track', 'Purchase', { value: purchase.value, currency: purchase.currency, variant: variant },
+                        { eventID: 'measurement_purchase:' + paymentIntentId });
+                } catch (e) {}
+                try { window.localStorage.setItem(FIRED_KEY, '1'); } catch (e) {}
+                return true;
+            }, function () { return false; });
+        }
+
         // Step 2 — Confirm card payment, then (and only then) create the measurement order
         async function confirmHoverPayment() {
             const payBtn = document.getElementById('payHoverBtn');
@@ -1016,6 +1086,10 @@
                     payment_intent_id: paymentIntent.id, // D-181: verified server-side against the catalog price
                     buyer_role: 'homeowner',
                 });
+
+                // gh-2078: the homeowner conversion event, once per charged PaymentIntent, only after the order step resolved.
+                // not awaited: the success screen never waits on the opt-out read; the function never rejects.
+                fireMeasurementPurchase(paymentIntent);
 
                 // Show success state
                 document.getElementById('hoverSection').querySelector('.section-card').style.display = 'none';

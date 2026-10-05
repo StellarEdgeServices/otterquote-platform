@@ -1,0 +1,45 @@
+name: Static gh-2479 Update-Payload Tests
+
+# gh-2479 (companion to PR #2502): trade-selector.html must not send
+# claims.referral_id on the UPDATE of an existing claim (the INSERT of a new
+# claim still carries it). `pull_request` (never `pull_request_target`), no
+# secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'trade-selector.html'
+      - 'tests/gh2479-static-trade-selector-update-payload.mjs'
+      - '.github/workflows/static-gh2479-update-payload-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'trade-selector.html'
+      - 'tests/gh2479-static-trade-selector-update-payload.mjs'
+      - '.github/workflows/static-gh2479-update-payload-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh2479-update-payload-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-gh2479-update-payload-tests:
+    name: No referral_id on existing-claim UPDATE (trade-selector.html)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Existing-claim UPDATE has no referral_id; INSERT keeps it (gh2479)
+        run: node tests/gh2479-static-trade-selector-update-payload.mjs
