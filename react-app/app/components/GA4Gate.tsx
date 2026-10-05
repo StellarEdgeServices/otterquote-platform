@@ -4,7 +4,7 @@ import Script from "next/script";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { isInternalTraffic } from "../lib/internal-traffic";
-import { isAdSharingOptedOut } from "../lib/ad-optout";
+import { isAdSharingOptedOut, readStoredOptOut, type ProfileReader, type StoredOptOut } from "../lib/ad-optout";
 
 /**
  * GA4 host gate — gh-1619
@@ -86,6 +86,15 @@ const CLARITY_PROJECT_ID = "wwr7qlk8g5";
 // /help-estimate, /help-materials, /color-selection, /project-confirmation and /contract-signing (the signing ceremony, excluded by the ruling).
 // clarity-react-funnel-gate.test.tsx enumerates every real page.tsx route and fails if Clarity loads on anything but this set.
 const CLARITY_ALLOWED_PATHS = ["/get-started", "/trade-selector", "/dashboard", "/bids", "/repair-intake"];
+
+// gh-1925 (CEO, #2304 comment 5974043923 item 7: "`/auth-callback` must not load GA4"; 5973957454: the route carries no Do Not Sell link,
+// "therefore no GA4 load there"): the GA4 library is never requested on the sign-in landing route. Clarity was already off it (default-deny above).
+const GA4_DENIED_PATHS = ["/auth-callback"];
+
+export function isGa4DeniedPath(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return GA4_DENIED_PATHS.some(p => pathname === p || pathname.startsWith(p + "/"));
+}
 
 function isClarityAllowedPath(pathname: string | null): boolean {
   if (!pathname) return false;
@@ -182,56 +191,50 @@ export function GA4Gate() {
   const [clarityAllowed, setClarityAllowed] = useState(false);
   const clarityWasAllowedRef = useRef(false);
   const clarityStopPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // The last advertising-sharing decision reached with all three signals read. Starts closed; see the effect below.
+  const sharingAllowedRef = useRef(false);
 
   useEffect(() => {
     // gh-2064: internal-traffic opt-out, checked first -- our own
     // walks/probes must never load GA4 or Clarity, regardless of host or
     // path allowlist below.
     if (isInternalTraffic()) return;
-    if (typeof window !== "undefined" && ALLOWED_HOSTS.includes(window.location.hostname)) {
-      setAllowed(true);
+    if (typeof window === "undefined" || !ALLOWED_HOSTS.includes(window.location.hostname)) return;
+    setAllowed(true);
 
-      // gh-1925 (REVIEW FAIL 5850307606 on PR #2234 round 1: gating `allowed` itself also hid Clarity behind
-      // `if (!allowed) return null;` below, contradicting this file's own claim and the static stack's actual
-      // behaviour): an opted-out visitor (GPC, or the oq_ad_optout cookie GPC and js/ga-gate.js/MetaPixelGate.tsx
-      // leave -- see lib/ad-optout.ts) never loads the GA4 library, which carries Google Ads/Signals once linked.
-      // `ga4Allowed` is a SEPARATE flag from `allowed` for exactly this reason -- it gates only the two GA4
-      // <Script>s below, never the Clarity block. Clarity is a separate vendor and is NOT gated by this flag --
-      // #1925 asks only about the "ad-tech tags" (Meta Pixel, Google Ads/Signals); whether Clarity's
-      // session-replay data also counts as a CPRA "share" is an open legal question this change does not decide
-      // (LEGAL-READ PASS 5850309589 on #2234: the privacy.html Section 12 GPC promise is scoped to "advertising
-      // purposes", and Clarity is disclosed elsewhere as behavioural analytics/session replay, not advertising).
-      setGa4Allowed(!isAdSharingOptedOut());
+    // gh-1931/gh-1939: Clarity must never see a live Supabase
+    // credential in the URL fragment. Ported from js/ga-gate.js's
+    // fragment check (PR #1947) -- access_token, refresh_token and
+    // provider_token are Supabase's own implicit-flow parameter
+    // names and never appear outside the fragment, so a raw
+    // substring check on window.location.hash carries no
+    // collateral risk (a URL fragment is never a marketing/
+    // referral parameter). This app calls detectSessionInUrl, so
+    // it can receive this fragment on the same surface as the
+    // marketing site -- this guard is load-bearing here too.
+    // Only Clarity is suppressed by it.
+    const hash = window.location.hash;
+    const hasAuthTokenInFragment =
+      hash.indexOf("access_token") !== -1 ||
+      hash.indexOf("refresh_token") !== -1 ||
+      hash.indexOf("provider_token") !== -1;
+    // gh-1939 REWORK: Clarity requires BOTH the host allowlist above AND the
+    // pathname allowlist -- a ruled funnel route that also does not carry a
+    // Supabase auth-fragment token.
+    const clarityRouteOk = !hasAuthTokenInFragment && isClarityAllowedPath(pathname);
+    const ga4RouteOk = !isGa4DeniedPath(pathname);
 
-      // gh-1931/gh-1939: Clarity must never see a live Supabase
-      // credential in the URL fragment. Ported from js/ga-gate.js's
-      // fragment check (PR #1947) -- access_token, refresh_token and
-      // provider_token are Supabase's own implicit-flow parameter
-      // names and never appear outside the fragment, so a raw
-      // substring check on window.location.hash carries no
-      // collateral risk (a URL fragment is never a marketing/
-      // referral parameter). This app calls detectSessionInUrl, so
-      // it can receive this fragment on the same surface as the
-      // marketing site -- this guard is load-bearing here too.
-      // Only Clarity is suppressed; gtag behaviour is unchanged.
-      const hash = window.location.hash;
-      const hasAuthTokenInFragment =
-        hash.indexOf("access_token") !== -1 ||
-        hash.indexOf("refresh_token") !== -1 ||
-        hash.indexOf("provider_token") !== -1;
-      // gh-1939 REWORK: Clarity now requires BOTH the host allowlist above
-      // AND the pathname allowlist -- an unauthenticated-funnel route that
-      // also does not carry a Supabase auth-fragment token. gtag behaviour
-      // (above/below) is completely unaffected by this path check.
-      const nextClarityAllowed = !hasAuthTokenInFragment && isClarityAllowedPath(pathname);
+    // Applies one decision for this route. `sharingAllowed` is the advertising-sharing opt-out answer (below); Clarity additionally
+    // needs its route to be allowed. gh-1939 R-1: stop Clarity (and keep it stopped) the moment it stops being allowed -- a client-side
+    // navigation out of CLARITY_ALLOWED_PATHS, or (D-354) an opt-out seen after it had loaded -- instead of relying on a page reload.
+    // Only fires on an allowed->disallowed transition, so a first render that is already disallowed does nothing.
+    const apply = (sharingAllowed: boolean) => {
+      // gtag.js cannot be unloaded once requested, so GA4 is only ever switched on from here: by the time `sharingAllowed` is true
+      // all three signals have been read. A false decision switches it off for the next render (nothing loads on a first load).
+      setGa4Allowed(sharingAllowed && ga4RouteOk);
+      const nextClarityAllowed = sharingAllowed && clarityRouteOk;
       if (nextClarityAllowed) startClarityInputExclusion();
       setClarityAllowed(nextClarityAllowed);
-
-      // gh-1939 R-1 fix: stop Clarity (and keep it stopped) the moment a
-      // client-side navigation carries it out of CLARITY_ALLOWED_PATHS,
-      // instead of relying on the page happening to reload. Only fires on
-      // an allowed->disallowed transition, so the first render (already
-      // disallowed) does nothing.
       if (nextClarityAllowed) {
         clarityWasAllowedRef.current = true;
         if (clarityStopPollRef.current !== null) {
@@ -245,14 +248,47 @@ export function GA4Gate() {
         // (see stopClarity's docstring) resurrects tracking on its own
         // ~250ms after the route changes even though we just called
         // stop() -- so keep calling stop() on an interval for as long as
-        // the current route is outside CLARITY_ALLOWED_PATHS, cleared the
-        // moment the route re-enters the allowlist or this component
-        // unmounts.
+        // Clarity is not allowed here, cleared the moment it is allowed
+        // again or this component unmounts.
         if (clarityStopPollRef.current === null) {
           clarityStopPollRef.current = setInterval(stopClarity, CLARITY_STOP_POLL_MS);
         }
       }
+    };
+
+    // gh-1925 / D-354 (Dustin's ruling on #1925, comment 5973764305: "Yes, gate Clarity (Recommended)"): Microsoft Clarity is treated as a
+    // "share" for the Do Not Sell or Share opt-out, so BOTH vendors this component loads -- the GA4 library (which carries Google
+    // Ads/Signals once linked) and Clarity -- are gated on the same three signals as MetaPixelGate.tsx and js/ga-gate.js:
+    //   1. the oq_ad_optout cookie and 2. Global Privacy Control: synchronous (lib/ad-optout.ts), checked first, no read needed;
+    //   3. the signed-in account's stored profiles.ad_sharing_opt_out, read BEFORE anything loads whenever a session exists (the gap the
+    //      LEGAL-READ on #2509 found: an opt-out recorded in another browser, or by an admin from a support email, never set the cookie
+    //      on this device, and this gate read only cookie + GPC). Only a definite `false`, or no session at all (nothing is knowable:
+    //      cookie + GPC were the whole answer), loads anything. A flag that cannot be read loads nothing: an unknown opt-out is not shared.
+    // An earlier version gated only GA4, on cookie + GPC, and deliberately left Clarity loading for an opted-out visitor.
+    if (isAdSharingOptedOut()) {
+      sharingAllowedRef.current = false;
+      apply(false);
+      return;
     }
+    // While the stored flag is being read: on a first load nothing has been decided, so this is closed and nothing loads until the read
+    // returns. On a client-side navigation the ROUTE part is applied at once (leaving a Clarity route stops Clarity immediately) with the
+    // decision the previous read reached, and the flag is then read again for this route -- so two ruled routes in a row do not tear
+    // Clarity down and restart it, and an opt-out that appears mid-visit (a sign-in, another tab) switches both off on the next read.
+    apply(sharingAllowedRef.current);
+    let cancelled = false;
+    // Loaded lazily, as MetaPixelGate does, so the auth client is not pulled in before this check runs.
+    import("../lib/supabase")
+      .then((m) => readStoredOptOut(m.supabase as unknown as ProfileReader))
+      .catch(() => "unknown" as StoredOptOut)
+      .then((stored) => {
+        if (cancelled) return;
+        // Re-check the synchronous signals: readStoredOptOut leaves the cookie on `true`, and GPC/cookie may have changed meanwhile.
+        sharingAllowedRef.current = (stored === false || stored === "no_session") && !isAdSharingOptedOut();
+        apply(sharingAllowedRef.current);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [pathname]);
 
   useEffect(
