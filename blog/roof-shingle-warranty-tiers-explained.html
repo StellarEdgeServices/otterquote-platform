@@ -71,8 +71,31 @@
 .faq-item.active h3::before { transform: rotate(90deg); }
 .faq-answer { color: var(--slate); line-height: 1.8; display: none; padding-left: var(--sp-6); }
 .faq-item.active .faq-answer { display: block; }
-.back-link { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--amber); font-size: 0.9rem; font-weight: 500; margin-bottom: var(--sp-8); transition: color var(--duration) var(--ease); }
-.back-link:hover { color: var(--amber-2); text-decoration: none; }
+.back-link { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--link-on-light); font-size: 0.9rem; font-weight: 500; margin-bottom: var(--sp-8); transition: color var(--duration) var(--ease); }
+.back-link:hover { color: var(--link-on-light-deep); text-decoration: none; }
+.warranty-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+  font-size: 0.9rem;
+}
+.warranty-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--amber);
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.warranty-table td {
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--dark-gray);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  line-height: 1.5;
+  vertical-align: top;
+}
+.warranty-table tr:last-child td { border-bottom: none; }
+.warranty-table td:first-child { font-weight: 600; color: var(--navy); }
 @media (max-width: 768px) { .article-body { padding: 0 var(--sp-4); } .cta-box { padding: var(--sp-6) var(--sp-4); } .faq-section { padding: var(--sp-6) var(--sp-4); } }
 </style>
 </head>
