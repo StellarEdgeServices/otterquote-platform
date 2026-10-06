@@ -599,7 +599,13 @@
                     fundingType: claim.funding_type || (claim.job_type?.startsWith('insurance') ? 'insurance' : 'cash'),
                     releasedTrades: releasedTrades,
                     bidWindowExpiresAt: claim.bid_window_expires_at || null,  // D-150 / 86e10t2bh
-                    estimateFilename: claim.estimate_filename || null,         // 86e10t26y
+                    // gh-2559 / D-368: before selection a bidding contractor sees only the parsed
+                    // summary of the uploaded estimate (contractorScopeSummary above), not the file;
+                    // the storage policy refuses it. Only the selected contractor gets the path.
+                    estimateFilename: (claim.estimate_filename && currentContractor && currentContractor.id
+                        && claim.selected_contractor_id === currentContractor.id)
+                      ? claim.estimate_filename
+                      : null,                                                  // 86e10t26y
                     // gh-484: only expose a real storage path — never the
                     // completion sentinel (`hover_{job}_measurements.json`, written by
                     // hover-webhook, matches no storage object).

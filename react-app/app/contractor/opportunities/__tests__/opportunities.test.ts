@@ -105,6 +105,31 @@ describe('mapClaimToOpportunity', () => {
   });
 });
 
+// gh-2559 / D-368: a bidding contractor gets the parsed summary, never the estimate file's path.
+describe('mapClaimToOpportunity estimate file (gh-2559, D-368)', () => {
+  const claim: RawClaim = {
+    id: 'CL2', property_address: '123 Main St, Carmel, IN 46032',
+    estimate_filename: 'uid-1/CL2/1785930673843-estimate.pdf',
+    contractor_scope_summary: 'Carrier: Example',
+  };
+  it('withholds the estimate path from a bidder and keeps the summary and the availability badge', () => {
+    for (const o of [
+      mapClaimToOpportunity(claim, null),
+      mapClaimToOpportunity(claim, null, 'K-BIDDER'),
+      mapClaimToOpportunity({ ...claim, selected_contractor_id: 'K-OTHER' }, null, 'K-BIDDER'),
+      mapClaimToOpportunity({ ...claim, selected_contractor_id: 'K-OTHER' }, null, null),
+    ]) {
+      expect(o.estimateFilename).toBeNull();
+      expect(o.estimateAvailable).toBe(true);
+      expect(o.contractorScopeSummary).toBe('Carrier: Example');
+    }
+  });
+  it('gives the path to the contractor the homeowner selected', () => {
+    const o = mapClaimToOpportunity({ ...claim, selected_contractor_id: 'K-SEL' }, null, 'K-SEL');
+    expect(o.estimateFilename).toBe('uid-1/CL2/1785930673843-estimate.pdf');
+  });
+});
+
 describe('isHoverMeasurementsSentinel', () => {
   it('matches the hover-webhook completion marker and nothing else', () => {
     expect(isHoverMeasurementsSentinel('hover_123456_measurements.json')).toBe(true);

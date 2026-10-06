@@ -206,6 +206,7 @@ export interface RawClaim {
   existing_shingle_brand?: string | null;
   existing_shingle_color?: string | null;
   estimate_filename?: string | null;
+  selected_contractor_id?: string | null;
   has_estimate?: boolean | null;
   measurements_filename?: string | null;
   has_measurements?: boolean | null;
@@ -282,6 +283,7 @@ export function isHoverMeasurementsSentinel(filename: string | null | undefined)
 export function mapClaimToOpportunity(
   claim: RawClaim,
   contractorZip: string | null | undefined,
+  contractorId?: string | null,
 ): Opportunity {
   const addressParts = (claim.property_address || '').split(',');
   const city =
@@ -333,7 +335,13 @@ export function mapClaimToOpportunity(
       claim.funding_type || (claim.job_type?.startsWith('insurance') ? 'insurance' : 'cash'),
     releasedTrades,
     bidWindowExpiresAt: claim.bid_window_expires_at || null,
-    estimateFilename: claim.estimate_filename || null,
+    // gh-2559 / D-368: before selection a bidding contractor sees only the parsed summary of
+    // the uploaded estimate (contractorScopeSummary), not the file; the storage policy refuses
+    // it. Only the contractor the homeowner selected gets the path.
+    estimateFilename:
+      claim.estimate_filename && !!contractorId && claim.selected_contractor_id === contractorId
+        ? claim.estimate_filename
+        : null,
     // gh-484: only expose a real storage path — never the Hover completion sentinel.
     measurementsFilename:
       claim.measurements_filename && !isHoverMeasurementsSentinel(claim.measurements_filename)

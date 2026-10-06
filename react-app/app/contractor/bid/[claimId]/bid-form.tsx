@@ -418,7 +418,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
       {mode === 'change' && <div className="oqb-banner oqb-banner-change">You are editing your existing bid for this project.</div>}
       {mode === 'renew' && <div className="oqb-banner oqb-banner-renew">Your previous bid expired — renewing resets the 14-day window.</div>}
 
-      <ProjectSummary claim={claim} flags={flags} claimRcv={claimRcv} />
+      <ProjectSummary claim={claim} flags={flags} claimRcv={claimRcv} contractorId={contractor.id} />
 
       {!!claim.id && <HomePhotosCard claimId={String(claim.id)} isSiding={claimTrades.includes('siding')} />}
 
@@ -517,7 +517,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
 
 // ── Presentational sub-cards ──
 
-function ProjectSummary({ claim, flags, claimRcv }: { claim: Record<string, unknown>; flags: TradeFlags; claimRcv: number | null }) {
+function ProjectSummary({ claim, flags, claimRcv, contractorId }: { claim: Record<string, unknown>; flags: TradeFlags; claimRcv: number | null; contractorId: string }) {
   const carrier = (claim.carrier_profiles as { carrier_name?: string } | null)?.carrier_name;
   return (
     <Card title="Project Summary">
@@ -528,14 +528,18 @@ function ProjectSummary({ claim, flags, claimRcv }: { claim: Record<string, unkn
         <span className="oqb-summary-k">Damage</span><span className="oqb-summary-v">{strOf(claim.damage_type) || '—'}</span>
         {claimRcv != null && !flags.isRetailJob && (<><span className="oqb-summary-k">RCV</span><span className="oqb-summary-v">{formatCurrency(claimRcv)}</span></>)}
       </div>
-      <DocLinks claim={claim} />
+      <DocLinks claim={claim} contractorId={contractorId} />
     </Card>
   );
 }
 
-function DocLinks({ claim }: { claim: Record<string, unknown> }) {
+function DocLinks({ claim, contractorId }: { claim: Record<string, unknown>; contractorId: string }) {
+  // gh-2559 / D-368: before selection a bidding contractor sees only the parsed summary of the
+  // uploaded estimate, not the file; the storage policy refuses it. Only the selected contractor
+  // is offered the Loss Sheet button.
+  const canOpenRawEstimate = !!claim.estimate_filename && !!contractorId && claim.selected_contractor_id === contractorId;
   async function openLossSheet() {
-    if (!claim.estimate_filename) return;
+    if (!canOpenRawEstimate) return;
     const { data, error } = await supabase.storage.from('claim-documents').createSignedUrl(String(claim.estimate_filename), 3600);
     if (error || !data?.signedUrl) { alert('Unable to open the loss sheet. Please try again.'); return; }
     window.open(data.signedUrl, '_blank');
@@ -548,7 +552,7 @@ function DocLinks({ claim }: { claim: Record<string, unknown> }) {
   }
   return (
     <div className="oqb-doclinks">
-      {!!claim.estimate_filename && <button type="button" className="oqb-doclink" onClick={openLossSheet}>📄 View Loss Sheet</button>}
+      {canOpenRawEstimate && <button type="button" className="oqb-doclink" onClick={openLossSheet}>📄 View Loss Sheet</button>}
       {!!claim.id && <button type="button" className="oqb-doclink" onClick={openHoverPdf}>📏 View Measurement PDF</button>}
     </div>
   );
