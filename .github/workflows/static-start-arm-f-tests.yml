@@ -17,6 +17,7 @@ on:
       - 'tests/cro47-trust-start.mjs'
       - 'tests/cro47-trust-start-playwright.mjs'
       - 'tests/gh1980-landing-fragment-playwright.mjs'
+      - 'tests/gh-dashboard-customer-referral-reload.mjs'
       - 'tests/e2e/package.json'
       - 'tests/e2e/package-lock.json'
       - 'js/auth.js'
@@ -85,3 +86,6 @@ jobs:
       # this job's Chromium install (#1731 Actions-minutes); the ledger checker already runs in e2e-tests.yml.
       - name: oq_router_lead_id stale-state harness (gh2060-oq-router-lead-id-stale)
         run: node tests/gh2060-oq-router-lead-id-stale.mjs
+      # Customer-type referral homeowner: dashboard.html must not reload-loop (found in the #2478 walk).
+      - name: dashboard.html no-reload for a homeowner who is also a customer-type referral partner (gh-dashboard-customer-referral-reload)
+        run: node tests/gh-dashboard-customer-referral-reload.mjs

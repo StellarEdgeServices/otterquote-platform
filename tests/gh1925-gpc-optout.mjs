@@ -1,7 +1,7 @@
 /**
  * gh-1925 -- CCPA/CPRA "Do Not Sell or Share" via Global Privacy Control, extended to the STATIC gates that did not yet
- * honour it: js/ga-gate.js (GA4, which carries Google Ads/Signals once linked; Clarity is deliberately left ungated -- see
- * PR body), js/linkedin-insight-gate.js and js/reddit-pixel-gate.js (both shipped dark by #2102). js/meta-pixel-gate.js
+ * honour it: js/ga-gate.js (GA4, which carries Google Ads/Signals once linked; and, since D-354 -- Dustin's ruling on #1925,
+ * comment 5973764305, "Yes, gate Clarity (Recommended)" -- Microsoft Clarity too), js/linkedin-insight-gate.js and js/reddit-pixel-gate.js (both shipped dark by #2102). js/meta-pixel-gate.js
  * already honours this (gh-2107 / D-330); this proves the other three now do too, using the SAME oq_ad_optout cookie.
  *
  * Runs the REAL js/ files in a vm context with a fake window, document, navigator and cookie jar, and asserts whether the
@@ -56,7 +56,8 @@ function appendedCount(appended, urlSubstr) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// js/ga-gate.js -- GA4 honours the opt-out; Clarity does not (by design, see PR body).
+// js/ga-gate.js -- GA4 and Clarity both honour the opt-out (D-354). The stored-flag and /auth-callback cases live in
+// tests/gh1925-clarity-ga4-stored-flag.mjs.
 // ---------------------------------------------------------------------------------------------------------------------
 {
   const src = fs.readFileSync(path.join(JS_DIR, 'ga-gate.js'), 'utf8');
@@ -95,11 +96,15 @@ function appendedCount(appended, urlSubstr) {
   }
   ok(!run({ host: 'staging--jade-alpaca-b82b5e.netlify.app' }).ga4Loaded, 'a non-production host still never loads GA4');
   ok(!run({ search: '?oq_internal=1' }).ga4Loaded, 'internal traffic still never loads GA4');
-  // The point of this PR: Clarity is a SEPARATE vendor and is deliberately left out of the opt-out (see PR body / #1925 Q comment).
+  // D-354 (Dustin, #1925 comment 5973764305: "Yes, gate Clarity (Recommended)"): Clarity is a "share" and is switched off by the
+  // same opt-out. This block used to assert the OPPOSITE ("DELIBERATE SCOPE: GPC on does NOT stop Clarity from loading"), which
+  // was the behaviour while the question was open; the ruling reverses it.
   {
-    const r = run({ gpc: true, host: 'otterquote.com', search: '' });
     // Clarity additionally requires an allowlisted path; '/' is on CLARITY_ALLOWED_PATHS.
-    ok(r.clarityLoaded, 'DELIBERATE SCOPE: GPC on does NOT stop Clarity from loading (Clarity is not named as an "ad-tech tag" in #1925; see PR body for the open legal question)');
+    ok(run({ host: 'otterquote.com', search: '' }).clarityLoaded, 'CONTROL: an ordinary visitor on / loads Clarity exactly once');
+    ok(!run({ gpc: true, host: 'otterquote.com', search: '' }).clarityLoaded, 'D-354: GPC on -> Clarity is NOT loaded');
+    ok(!run({ cookie: 'oq_ad_optout=1' }).clarityLoaded, 'D-354: the oq_ad_optout cookie alone (no GPC) -> Clarity is NOT loaded');
+    ok(run({ gpc: false }).clarityLoaded, 'CONTROL: GPC false is not an opt-out, Clarity loads');
   }
   // a broken environment must not break the page or wrongly opt anyone out
   {

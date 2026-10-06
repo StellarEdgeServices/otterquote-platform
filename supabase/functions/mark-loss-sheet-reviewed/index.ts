@@ -195,6 +195,21 @@ serve(async (req: Request) => {
       }, 200, corsHeaders);
     }
 
+    // ── No loss sheet, nothing to review (gh-1796) ───────────────────────────
+    // Marking reviewed is refused unless the claim has a loss-sheet file on
+    // record (estimate_filename non-empty — the same signal get-homeowner-list
+    // uses for loss_sheet = uploaded_unreviewed). Clearing a marker is never
+    // blocked: Undo must always work. Reached only when `already` is null, so a
+    // legacy marker on a file-less claim stays idempotent and removable.
+    if (reviewed && !String(claim.estimate_filename ?? "").trim()) {
+      console.warn(`[${FUNCTION_NAME}] refused — claim ${claimId} has no loss sheet on file`);
+      return jsonResponse({
+        ok: false,
+        code: "no_loss_sheet",
+        error: "This claim has no loss sheet uploaded, so there is nothing to mark reviewed.",
+      }, 409, corsHeaders);
+    }
+
     const nowIso = new Date().toISOString();
     const nextValue = reviewed ? nowIso : null;
 

@@ -252,14 +252,14 @@
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
-  color: var(--amber);
+  color: var(--link-on-light);
   font-size: 0.9rem;
   font-weight: 500;
   margin-bottom: var(--sp-8);
   transition: color var(--duration) var(--ease);
 }
 .back-link:hover {
-  color: var(--amber-2);
+  color: var(--link-on-light-deep);
   text-decoration: none;
 }
 
@@ -286,7 +286,8 @@
   border-radius: var(--radius-md);
 }
 .step blockquote p { margin-bottom: 0; }
-.step a { color: var(--amber); }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
 .table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -295,13 +296,15 @@
 .table-wrap .definition-table { margin: 0; min-width: 480px; }
 .table-wrap .definition-table td:first-child { white-space: normal; }
 .article-intro p + p { margin-top: var(--sp-4); }
-.article-intro a { color: var(--amber); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.article-intro a:not(.btn):hover { color: var(--link-on-light-deep); }
 .cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
 .faq-item h3 { cursor: default; }
 .faq-item h3:hover { color: var(--white); }
 .faq-item h3::before { content: none; }
 .faq-item .faq-answer { display: block; padding-left: 0; }
 </style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
 </head>
 <body>
 
@@ -591,6 +594,16 @@
 
     </section>
 
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/guides/how-to-choose-contractor.html">How to Choose a Contractor for Insurance Repairs</a></li>
+        <li><a href="/guides/how-to-read-contractor-estimate.html">How to Read a Roofing Contractor Estimate</a></li>
+        <li><a href="/blog/why-roofers-quote-different-prices.html">Why Two Roofers Quote Different Prices for the Same Job</a></li>
+        <li><a href="/blog/storm-chaser-roofing-scams.html">Storm Chaser Roofing Scams: How to Spot One</a></li>
+      </ul>
+    </div>
+
   </div>
 </section>
 
@@ -603,11 +616,8 @@
   "@type": "Article",
   "headline": "Siding Replacement Bids: What a Quote Should Include and How to Compare",
   "description": "How to compare siding replacement quotes: a copyable table covering measurements, removal, what is behind the siding, trim, flashing and warranties.",
-  "image": "https://otterquote.com/img/otter-logo.svg",
-  "author": {
-    "@type": "Organization",
-    "name": "Otter Quotes"
-  },
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {"@type": "Organization", "name": "Otter Quotes", "url": "https://otterquote.com/"},
   "datePublished": "2026-10-03",
   "dateModified": "2026-10-03",
   "publisher": {
@@ -615,7 +625,7 @@
     "name": "Otter Quotes",
     "logo": {
       "@type": "ImageObject",
-      "url": "https://otterquote.com/img/otter-logo.svg"
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
     }
   },
   "mainEntityOfPage": {
