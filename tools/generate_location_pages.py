@@ -408,10 +408,13 @@ def render_county_text(text: str) -> str:
     return "\n    ".join(f"<p>{html.escape(chunk)}</p>" for chunk in paragraphs if chunk)
 
 
+_SOURCE_URL = re.compile(r"^https://[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}(?::\d+)?(?:[/?#][A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]*)?$")
+
+
 def load_profile(state: str, profiles_dir=None) -> dict:
     """Load and validate data/location-state-profiles/<state>.json.
 
-    Returns {"name", "county_region", "region_label", "region_climate"}.
+    Returns {"name", "county_region", "region_label", "region_climate", "county_content", "county_sources"}.
     A missing or malformed profile raises StateConfigError (never a silent
     skip, never a traceback from deep inside page building).
     """
@@ -493,9 +496,42 @@ def load_profile(state: str, profiles_dir=None) -> dict:
             county_content[county] = dict(value)
         else:
             raise bad(f'county_content["{county}"] must be a string or an object keyed by trade')
+
+    county_sources = {}
+    raw_cs = data.get("county_sources", {})
+    if not isinstance(raw_cs, dict):
+        raise bad('"county_sources" must be an object mapping county -> {trade: [{"label", "url"}, ...]}')
+    for county, by_trade in raw_cs.items():
+        if county not in county_region:
+            raise bad(f'county_sources: "{county}" is not a county listed in any region')
+        if not isinstance(by_trade, dict):
+            raise bad(f'county_sources["{county}"] must be an object keyed by trade')
+        county_sources[county] = {}
+        for trade, items in by_trade.items():
+            where = f'county_sources["{county}"]["{trade}"]'
+            if trade not in ELIGIBLE_TRADES:
+                raise bad(f'county_sources["{county}"]: unknown trade "{trade}" (use {list(ELIGIBLE_TRADES)})')
+            if not (isinstance(items, list) and items):
+                raise bad(f"{where} must be a non-empty list of {{label, url}} objects")
+            seen, clean = set(), []
+            for i, item in enumerate(items):
+                if not (isinstance(item, dict) and set(item) == {"label", "url"}
+                        and all(isinstance(item[k], str) for k in item)):
+                    raise bad(f'{where}[{i}] must be an object with exactly "label" and "url" strings')
+                label, url = item["label"].strip(), item["url"]
+                if not label:
+                    raise bad(f"{where}[{i}] has an empty label")
+                _require_plain_text(label, bad, f"{where}[{i}] label")
+                if not _SOURCE_URL.match(url):
+                    raise bad(f"{where}[{i}] url must be an absolute https URL with no spaces, quotes or markup: {url!r}")
+                if url in seen:
+                    raise bad(f"{where}[{i}] repeats the url {url}")
+                seen.add(url)
+                clean.append({"label": label, "url": url})
+            county_sources[county][trade] = clean
     return {"name": name, "county_region": county_region,
             "region_label": region_label, "region_climate": region_climate,
-            "county_content": county_content}
+            "county_content": county_content, "county_sources": county_sources}
 
 
 def validate_states(states: list, counties_path=None, profiles_dir=None) -> dict:
@@ -1423,6 +1459,16 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     county_notes = (f"<h2>{county_esc} County notes</h2>\n    {render_county_text(county_text)}"
                     if county_text.strip() else "")
 
+    sources = (profile.get("county_sources") or {}).get(county, {}).get(trade, [])
+    sources_block = ""
+    if sources:
+        items = "\n".join(
+            f'      <li><a href="{html.escape(src["url"], quote=True)}" rel="noopener" target="_blank">'
+            f'{html.escape(src["label"])}</a></li>'
+            for src in sources
+        )
+        sources_block = f"<h2>Sources</h2>\n    <ul>\n{items}\n    </ul>\n\n    "
+
     faq_selected = shuffle_items(seed, 8, FAQ[trade])[:FAQ_PER_PAGE]
     faq_pairs = [(q.format(county=county_esc), a) for q, a in faq_selected]
     faq_html = "".join(
@@ -1581,7 +1627,7 @@ footer a:hover {{ color: var(--link-on-light-deep) !important; }}
     <h2>Frequently asked questions</h2>
     {faq_html}
 
-    <div data-boilerplate>
+    {sources_block}<div data-boilerplate>
     <h2>Homeowner guides</h2>
     <ul>
 {guide_links}
@@ -1758,8 +1804,21 @@ def template_baseline_words(states, profiles: dict, generated_on: str, masks: di
     return out
 
 
+def require_sources_list(page_html: str, page_id: str) -> None:
+    """A page with county notes cites sources in its prose, so it must list them
+    (gh-2423): a "Sources" section with at least one external https link."""
+    if " County notes</h2>" not in page_html:
+        return
+    m = re.search(r"<h2>Sources</h2>\s*<ul>(.*?)</ul>", page_html, re.S)
+    if not (m and re.search(r'<a href="https://[^"]+"', m.group(1))):
+        raise ComplianceError(
+            f"{page_id}: the page has county notes but no Sources list with links; add the sources "
+            f"its prose cites to county_sources in the state profile")
+
+
 def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
-             dry_run=False, build_fn=None, generated_on=None, profiles_dir=None) -> dict:
+             dry_run=False, build_fn=None, generated_on=None, profiles_dir=None,
+             require_sources=False) -> dict:
     """Generate pages for the given allow-listed states.
 
     Every page of the run is built first; the strict unique-content gate
@@ -1767,7 +1826,9 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
     text. Pages under MIN_WORDS are skipped; the rest are linted and written.
 
     build_fn(county, trade, generated_on, state) -> html lets tests inject
-    thin or non-compliant content. Returns a summary dict.
+    thin or non-compliant content. require_sources=True (the CLI sets it) refuses
+    any passing page that carries county notes but no Sources list. Returns a
+    summary dict.
     """
     refuse_blocked_states(states)
     out_dir = pathlib.Path(out_dir or LOCATIONS_DIR)
@@ -1816,6 +1877,8 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
     for c_slug, trade, page_html, _wc in passing:
         page_id = f"{c_slug}/{trade}"
         compliance_lint(page_html, page_id)
+        if require_sources:
+            require_sources_list(page_html, page_id)
         if not page_html.rstrip().endswith("</html>"):
             raise RuntimeError(f"INTEGRITY FAIL [{page_id}]: generated HTML does not end with </html>")
     for c_slug, trade, page_html, wc in passing:
@@ -1865,7 +1928,8 @@ def main():
 
     try:
         states = load_allowlist(args.allowlist)
-        summary = generate(states, out_dir=args.out_dir, sitemap_path=args.sitemap, dry_run=args.dry_run)
+        summary = generate(states, out_dir=args.out_dir, sitemap_path=args.sitemap, dry_run=args.dry_run,
+                           require_sources=True)
     except (StateConfigError, ComplianceError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
