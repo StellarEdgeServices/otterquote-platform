@@ -1,5 +1,5 @@
 -- gh-2443 ROLLBACK: restore the production body of contractors_freeze_privileged_columns() byte for byte
--- (pg_get_functiondef md5 ba1ec8b8f887b0f7de9ac8c57b51bb33, read from production 2026-10-06; it equals the gh1425 body).
+-- (pg_get_functiondef md5 starting ba1ec8b8…, read from production 2026-10-06; it equals the gh1425 body).
 -- Run manually only if the gh-2443 forward change must be reverted. Never move into supabase/migrations/ (the CLI would replay it forward).
 -- After it runs, contractors can no longer clear their own flag (the pre-fix behaviour, see gh-2443).
 

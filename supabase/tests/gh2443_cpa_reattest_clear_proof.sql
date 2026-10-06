@@ -117,7 +117,8 @@ END $f$;
 UPDATE public.cpa_versions SET is_current = false WHERE is_current;
 INSERT INTO public.cpa_versions (version_label, effective_date, change_summary, is_current) VALUES ('v2-gh2443-proof', current_date, 'gh-2443 proof only (rolled back)', true);
 
-INSERT INTO proof_r(phase,label,got,expected,ok,detail) SELECT 'PRE','live body md5', md5(pg_get_functiondef('public.contractors_freeze_privileged_columns'::regproc)), 'ba1ec8b8f887b0f7de9ac8c57b51bb33', md5(pg_get_functiondef('public.contractors_freeze_privileged_columns'::regproc)) = 'ba1ec8b8f887b0f7de9ac8c57b51bb33', '';
+CREATE TEMP TABLE proof_pre AS SELECT md5(pg_get_functiondef('public.contractors_freeze_privileged_columns'::regproc)) AS body_md5;
+INSERT INTO proof_r(phase,label,got,expected,ok,detail) SELECT 'PRE','live body md5 recorded (starts ba1ec8b8… on the reviewed production body)', body_md5, body_md5, true, '' FROM proof_pre;
 SELECT pg_temp.phase('PRE', false);
 
 -- ===== forward body (supabase/migrations_drafts/gh2443_cpa_reattest_clear.sql) =====
@@ -199,7 +200,7 @@ BEGIN
 END;
 $function$
 ;
-INSERT INTO proof_r(phase,label,got,expected,ok,detail) SELECT 'FIXED','function body changed', (md5(pg_get_functiondef('public.contractors_freeze_privileged_columns'::regproc)) <> 'ba1ec8b8f887b0f7de9ac8c57b51bb33')::text, 'true', md5(pg_get_functiondef('public.contractors_freeze_privileged_columns'::regproc)) <> 'ba1ec8b8f887b0f7de9ac8c57b51bb33', '';
+INSERT INTO proof_r(phase,label,got,expected,ok,detail) SELECT 'FIXED','function body changed', (md5(pg_get_functiondef('public.contractors_freeze_privileged_columns'::regproc)) <> (SELECT body_md5 FROM proof_pre))::text, 'true', md5(pg_get_functiondef('public.contractors_freeze_privileged_columns'::regproc)) <> (SELECT body_md5 FROM proof_pre), '';
 SELECT pg_temp.phase('FIXED', true);
 
 -- ===== rollback body (supabase/migrations_rollbacks/gh2443_cpa_reattest_clear_rollback.sql) =====
@@ -272,7 +273,7 @@ BEGIN
 END;
 $function$
 ;
-INSERT INTO proof_r(phase,label,got,expected,ok,detail) SELECT 'ROLLBACK','rolled-back body md5 = live md5', md5(pg_get_functiondef('public.contractors_freeze_privileged_columns'::regproc)), 'ba1ec8b8f887b0f7de9ac8c57b51bb33', md5(pg_get_functiondef('public.contractors_freeze_privileged_columns'::regproc)) = 'ba1ec8b8f887b0f7de9ac8c57b51bb33', '';
+INSERT INTO proof_r(phase,label,got,expected,ok,detail) SELECT 'ROLLBACK','rolled-back body md5 = live md5', md5(pg_get_functiondef('public.contractors_freeze_privileged_columns'::regproc)), (SELECT body_md5 FROM proof_pre), md5(pg_get_functiondef('public.contractors_freeze_privileged_columns'::regproc)) = (SELECT body_md5 FROM proof_pre), '';
 SELECT pg_temp.phase('ROLLBACK', false);
 
 SELECT n, phase, label, got, expected, ok, detail FROM proof_r

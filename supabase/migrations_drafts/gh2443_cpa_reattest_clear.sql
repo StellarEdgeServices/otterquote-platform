@@ -1,6 +1,6 @@
 -- gh-2443: contractors_freeze_privileged_columns: let a contractor clear ONLY their own CPA re-attestation flag.
 -- STATUS (gh-1438, as of 2026-10-06): NOT APPLIED. Tier 3B (loosens a privileged-column pin), R-097 24-hour notice, apply after the window and before any CPA version publish.
--- EVIDENCE: production function body md5 ba1ec8b8f887b0f7de9ac8c57b51bb33 (pg_get_functiondef, 2026-10-06, read-only) is the gh1425 body; this file differs in the one needs_cpa_reattestation line only.
+-- EVIDENCE: production function body md5 (first 8 characters ba1ec8b8…, read at run time by the proof; pg_get_functiondef, 2026-10-06, read-only) is the gh1425 body; this file differs in the one needs_cpa_reattestation line only.
 -- REPO COPY: none. After apply, file this forward SQL under its ledger version in supabase/migrations/ and keep the rollback and pre-flight in supabase/migrations_rollbacks/.
 -- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3B path. Rollback: supabase/migrations_rollbacks/gh2443_cpa_reattest_clear_rollback.sql
 -- Pre-flight: supabase/migrations_rollbacks/gh2443_cpa_reattest_clear_pre-flight.md  Proof (rolled back, is_test rows only): supabase/tests/gh2443_cpa_reattest_clear_proof.sql

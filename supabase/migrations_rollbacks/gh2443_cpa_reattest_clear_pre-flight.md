@@ -11,7 +11,7 @@ CASE WHEN OLD.needs_cpa_reattestation = true
       AND NEW.cpa_version = (SELECT cv.version_label FROM public.cpa_versions cv WHERE cv.is_current LIMIT 1)
      THEN false ELSE OLD.needs_cpa_reattestation END
 ```
-Everything else in the function (including the INSERT branch and the admin / service_role exemptions) is byte for byte the production body (md5 `ba1ec8b8f887b0f7de9ac8c57b51bb33`); the diff adds the CASE and a 3-line comment. `enforce_contractor_privileged_columns()` is not touched (it never mentioned the flag).
+Everything else in the function (including the INSERT branch and the admin / service_role exemptions) is byte for byte the production body (md5 `ba1ec8b8…`, first 8 characters); the diff adds the CASE and a 3-line comment. `enforce_contractor_privileged_columns()` is not touched (it never mentioned the flag).
 
 ## How far the guard loosens
 A contractor session (role authenticated, non-admin) can now turn OFF only its own flag (RLS `Contractors can update own profile` limits the row to user_id = auth.uid()), only when the flag is currently true, only in a write whose `cpa_version` equals the one current agreement version (a stored version that is already current also qualifies, which heals the stuck state). It cannot set the flag true, cannot clear it with a stale, invented or NULL value, cannot clear it when no version is current (the subquery is NULL: the safe failure), and cannot change any other guarded column in the same write (proof C8). `cpa_versions` is readable by authenticated (`cpa_versions_read_authenticated`, USING true, read live 2026-10-06); at most one is_current row (unique partial index `cpa_versions_single_current`).
@@ -35,4 +35,4 @@ Three phases in one BEGIN ... ROLLBACK on production with role-switched writes o
 2. Apply the forward SQL (strip nothing; it has no BEGIN/COMMIT) through the Tier 3B apply path, record the ledger version, file it under `supabase/migrations/<version>_gh2443_cpa_reattest_clear.sql`, move the draft per `supabase/migrations_drafts/README.md`.
 3. Verify: `select md5(pg_get_functiondef('public.contractors_freeze_privileged_columns'::regproc))` differs from ba1ec8b8..., and the closes-on test (flag one is_test row, re-accept through the page, list before and after) per the ruling.
 ## Rollback
-Run `supabase/migrations_rollbacks/gh2443_cpa_reattest_clear_rollback.sql` (one CREATE OR REPLACE FUNCTION). Verify the md5 returns to ba1ec8b8f887b0f7de9ac8c57b51bb33.
+Run `supabase/migrations_rollbacks/gh2443_cpa_reattest_clear_rollback.sql` (one CREATE OR REPLACE FUNCTION). Verify the md5 returns to the value the proof's PRE step recorded before the change (it starts `ba1ec8b8…`).
