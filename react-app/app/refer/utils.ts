@@ -6,7 +6,7 @@
  *
  * Port of refer-a-friend.html @ main behavior 1:1 (fetchOrCreateReferralCode /
  * loadReferrals / populateReferralsTable / calculateSummary / the share
- * message builders / renderW9Banner gate).
+ * message builders).
  *
  * #576: this file previously targeted an older static-page shape (a phantom
  * `referral_agents.code` column, `referrals.referrer_id`, client-side code
@@ -181,16 +181,6 @@ export function summarizeReferrals(referrals: CustomerReferral[]): ReferralSumma
 /** Summary line — byte-for-byte format from the static (`N referral(s) · M completed · $E earned`). */
 export function referralSummaryLine(s: ReferralSummary): string {
   return `${s.total} referral${s.total !== 1 ? 's' : ''} · ${s.completed} completed · $${s.earned} earned`;
-}
-
-// ── W-9 banner gate (renderW9Banner) — D-172 ──────────────────────────────────
-
-/** Show the W-9 banner iff payments_blocked && notified && not-yet-submitted. */
-export function shouldShowW9Banner(
-  a: Pick<CustomerReferralAgent, 'payments_blocked' | 'w9_notification_sent_at' | 'w9_submitted_at'> | null | undefined,
-): boolean {
-  if (!a) return false;
-  return Boolean(a.payments_blocked && a.w9_notification_sent_at && !a.w9_submitted_at);
 }
 
 // ── Homeowner coming-soon launch gate ─────────────────────────────────────────

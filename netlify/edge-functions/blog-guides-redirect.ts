@@ -97,8 +97,18 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/siding-bid-comparison.html',
   '/guides/gutter-bid-comparison':
     '/guides/gutter-bid-comparison.html',
+  '/guides/roof-replacement-cost-breakdown':
+    '/guides/roof-replacement-cost-breakdown.html',
   '/guides/after-adjuster-estimate-next-steps':
     '/guides/after-adjuster-estimate-next-steps.html',
+  '/guides/contractor-bid-higher-than-insurance-estimate':
+    '/guides/contractor-bid-higher-than-insurance-estimate.html',
+  '/guides/prove-date-of-loss-hail':
+    '/guides/prove-date-of-loss-hail.html',
+  '/guides/show-contractor-insurance-estimate':
+    '/guides/show-contractor-insurance-estimate.html',
+  '/guides/window-replacement-bid-comparison':
+    '/guides/window-replacement-bid-comparison.html',
 
   // CRO RUN 52 / #2423: generated /locations/ pages -- the index.html twin 301s to the
   // trailing-slash URL (same class as /blog/index.html above).
@@ -112,18 +122,30 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/franklin-county-oh/roofing/',
   '/locations/hamilton-county-oh/roofing/index.html':
     '/locations/hamilton-county-oh/roofing/',
+  '/locations/hamilton-county-tn/roofing/index.html':
+    '/locations/hamilton-county-tn/roofing/',
   '/locations/jackson-county-mo/roofing/index.html':
     '/locations/jackson-county-mo/roofing/',
   '/locations/knox-county-tn/roofing/index.html':
     '/locations/knox-county-tn/roofing/',
   '/locations/lake-county-in/roofing/index.html':
     '/locations/lake-county-in/roofing/',
+  '/locations/lucas-county-oh/roofing/index.html':
+    '/locations/lucas-county-oh/roofing/',
   '/locations/marion-county-in/roofing/index.html':
     '/locations/marion-county-in/roofing/',
+  '/locations/montgomery-county-oh/roofing/index.html':
+    '/locations/montgomery-county-oh/roofing/',
+  '/locations/rutherford-county-tn/roofing/index.html':
+    '/locations/rutherford-county-tn/roofing/',
   '/locations/shelby-county-tn/roofing/index.html':
     '/locations/shelby-county-tn/roofing/',
   '/locations/st-louis-county-mo/roofing/index.html':
     '/locations/st-louis-county-mo/roofing/',
+  '/locations/summit-county-oh/roofing/index.html':
+    '/locations/summit-county-oh/roofing/',
+  '/locations/williamson-county-tn/roofing/index.html':
+    '/locations/williamson-county-tn/roofing/',
 };
 
 export default async (req: Request, context: any) => {

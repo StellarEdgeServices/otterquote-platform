@@ -1,3 +1,8 @@
+-- gh-1438 reconciliation part 4 (2026-10-05T20:57:39Z): renamed from 20260927170000_gh1883_auth_uniform_rate_limit.sql to the REAL
+-- applied version. Live ledger row: supabase_migrations.schema_migrations version=20260928170147
+-- name=gh1883_auth_uniform_rate_limit (SELECT-only verified: normalized-statement text of this file's body
+-- equals the ledger's recorded statements for this version). Executable SQL body
+-- byte-for-byte unchanged; only the filename's version prefix and this banner changed.
 -- gh-1883 [SECURITY]: auth-uniform (the EF fronting /auth/v1/otp and
 -- /auth/v1/recover, added in the same PR) calls check_rate_limit() keyed on
 -- a synthetic per-IP UUID, same pattern as gh-1724's check-email-exists

@@ -53,7 +53,7 @@ INTERNAL_SEGMENTS = {
     ".gitignore", ".gitattributes", "_site",
 }
 INTERNAL_SUFFIXES = (".md", ".py", ".sh", ".toml", ".ts", ".tsx")
-SERVED_TOP_LEVEL_DIRS = {"assets", "blog", "contractors", "css", "data", "guides", "img", "js", "locations", "twiml"}
+SERVED_TOP_LEVEL_DIRS = {"assets", "blog", "contractors", "css", "data", "guides", "img", "js", "locations", "partners", "twiml"}
 # Root-level *.html pages are served by design (and item 3 proves every one is copied);
 # every OTHER root file the build publishes is pinned here. A new root file that is not
 # internal must be added deliberately; an internal one belongs in the netlify.toml denylist.

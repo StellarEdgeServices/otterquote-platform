@@ -10,10 +10,9 @@
  * ⚠️ Tier-3 VERBATIM copy lives here and is ported BYTE-FOR-BYTE from the static
  * page (refer-a-friend.html @ main). It is pinned in refer.test.ts so any
  * reword / re-case / re-punctuation fails the build. This covers:
- *   - the 1099-MISC Tax Reporting Notice (disclosure version 1099-misc-v1-2026-04)
- *   - the FAQ tax answer (1099-MISC / $600 / Jan 31)
+ *   - the Tax Reporting Notice (disclosure version 1099-misc-v1-2026-04; the 1099 filing sentence
+ *     was removed under D-319 -- the taxes-are-yours / no-withholding sentences are kept)
  *   - the D-180 commission-approval disclosure
- *   - the D-172 W-9 "required before payment" banner
  *   - the $200 / $10,000 commission representations (hero, How-It-Works, FAQ)
  * Any wording change to these strings is Tier-3 -> STOP and gate to Dustin.
  *
@@ -24,8 +23,6 @@
 // ── Cross-stack destinations ──────────────────────────────────────────────────
 /** User-less bounce target — the migrated React login route. */
 export const LOGIN_ROUTE = '/login';
-/** D-172 banner deep-link — the STATIC partner dashboard W-9 upload anchor. */
-export const W9_UPLOAD_LINK = '/partner-dashboard.html#w9Upload';
 
 /** #576/renderReferralCodeError() verbatim: shown when the
  *  get_or_create_customer_referral_code() RPC fails — never fabricate a fake
@@ -114,11 +111,6 @@ export const FAQ = [
     q: 'What if the job is under $10,000?',
     a: "Your referred friend still gets the full Otter Quotes experience for free — multiple competing bids, easy comparison, and quality assurance. You won't receive a cash commission for jobs under $10K, but you're still helping them get great bids.",
   },
-  {
-    // ⚠️ Tier-3 — tax/legal (1099-MISC). VERBATIM.
-    q: 'Will I receive a tax form for my referral bonuses?',
-    a: 'Yes — referral bonuses are taxable income. If you receive $600 or more in bonuses from Otter Quotes in a calendar year, we are required to report those payments to the IRS and will issue you a Form 1099-MISC. You will receive a copy no later than January 31 of the following year. You are responsible for all applicable federal, state, and local taxes on referral income. We recommend consulting a tax professional regarding your specific situation.',
-  },
 ] as const;
 
 // ── 1099-MISC Tax Reporting Notice — ⚠️ Tier-3 VERBATIM (1099-misc-v1-2026-04) ──
@@ -126,7 +118,7 @@ export const TAX_NOTICE = {
   label: 'Tax Reporting Notice',
   version: '1099-misc-v1-2026-04',
   body:
-    'Your $200 referral bonus is taxable income. If you receive $600 or more in referral bonuses from Otter Quotes in a calendar year, we are required by federal law to file a Form 1099-MISC with the IRS reporting those payments, and to provide you a copy no later than January 31 of the following year. You are responsible for all applicable federal, state, and local taxes on referral income. Otter Quotes does not withhold taxes from bonus payments. We recommend consulting a qualified tax professional if you have questions about your tax obligations.',
+    'Your $200 referral bonus is taxable income. You are responsible for all applicable federal, state, and local taxes on referral income. Otter Quotes does not withhold taxes from bonus payments. We recommend consulting a qualified tax professional if you have questions about your tax obligations.',
 } as const;
 
 // ── D-180 Commission Approval Disclosure — ⚠️ Tier-3 VERBATIM ──
@@ -145,13 +137,6 @@ export const COMMISSION_APPROVAL_DISCLOSURE =
 // the same name. Any wording change is Tier-3 -> STOP and gate to Dustin.
 export const REFERRAL_FEE_DISCLAIMER =
   'Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.';
-
-// ── D-172 W-9 banner — ⚠️ Tier-3 VERBATIM ──
-export const W9_BANNER = {
-  title: 'W-9 Required Before Payment',
-  body: "Your referral generated a commission, but it's on hold until we receive your W-9.",
-  link: 'Upload your W-9 in your partner dashboard →',
-} as const;
 
 // ── Referrals dashboard ───────────────────────────────────────────────────────
 export const REFERRALS = {

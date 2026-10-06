@@ -30,6 +30,8 @@ on:
       - 'supabase/migrations-reconciliation-baseline.json'
       - 'scripts/migrations-reconciliation-check.py'
       - 'scripts/migrations-reconciliation-check.test.py'
+      - 'scripts/migrations-ledger-versions.test.py'
+      - 'supabase/migrations_drafts/**'
       - '.github/workflows/migrations-reconciliation-ratchet.yml'
 
 env:
@@ -73,6 +75,11 @@ jobs:
       # self-test-before-real-check pattern as edge-function-drift.yml.
       - name: Self-test the ratchet's verdict logic
         run: python3 scripts/migrations-reconciliation-check.test.py
+
+      # gh-1438 part 4: pins the renames and filed copies to the ledger versions production recorded, and fails if the
+      # baseline manifest drifts from the tree. Negative control (run on origin/main before part 4): 35 checks fail.
+      - name: Part-4 ledger-version pins (renames, filed copies, headers, manifest vs tree)
+        run: python3 scripts/migrations-ledger-versions.test.py
 
       # FAIL-HARD only on a WIDENING of the applied-vs-repo gap beyond the
       # checked-in baseline manifest. Passes cleanly on the pre-existing

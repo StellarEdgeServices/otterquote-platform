@@ -1,0 +1,83 @@
+name: Static Born State Guard Tests
+
+# gh-2479 -- a client cannot create a claim past its initial state (or move its own claim to
+# contract_signed), and a contractor cannot create a quote born selected, as an auto-bid or as a renewal.
+# Static check of the LATEST definition of the two guard functions across supabase/migrations (a later
+# migration that re-creates either one must keep every rule, and must not add a second guard trigger on
+# quotes), of the rollback, and of the client payloads that INSERT claims and quotes or write
+# claims.status. The live proof is supabase/tests/gh2479_born_state_guard_proof.sql, a rolled-back run a
+# human does against production; CI never touches the database.
+# `pull_request` + `push` to main, no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/migrations_rollbacks/**'
+      - 'tests/gh2479-static-born-state-guard.mjs'
+      - 'supabase/tests/gh2479_born_state_guard_proof.sql'
+      - 'trade-selector.html'
+      - 'dashboard.html'
+      - 'repair-intake.html'
+      - 'bids.html'
+      - 'project-confirmation.html'
+      - 'contract-signing.html'
+      - 'contractor-bid-form.html'
+      - 'react-app/app/trade-selector/page.tsx'
+      - 'react-app/app/(homeowner)/dashboard/actions.ts'
+      - 'react-app/app/(homeowner)/bids/actions.ts'
+      - 'react-app/app/(homeowner)/repair-intake/use-repair-intake-data.ts'
+      - 'react-app/app/contractor/bid/*/utils.ts'
+      - '.github/workflows/static-born-state-guard-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/migrations_rollbacks/**'
+      - 'tests/gh2479-static-born-state-guard.mjs'
+      - 'supabase/tests/gh2479_born_state_guard_proof.sql'
+      - 'trade-selector.html'
+      - 'dashboard.html'
+      - 'repair-intake.html'
+      - 'bids.html'
+      - 'project-confirmation.html'
+      - 'contract-signing.html'
+      - 'contractor-bid-form.html'
+      - 'react-app/app/trade-selector/page.tsx'
+      - 'react-app/app/(homeowner)/dashboard/actions.ts'
+      - 'react-app/app/(homeowner)/bids/actions.ts'
+      - 'react-app/app/(homeowner)/repair-intake/use-repair-intake-data.ts'
+      - 'react-app/app/contractor/bid/*/utils.ts'
+      - '.github/workflows/static-born-state-guard-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-born-state-guard-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-born-state-guard-tests:
+    name: Born-state guard (gh2479)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Born-state rules stay in the latest guard definitions (gh2479)
+        run: node tests/gh2479-static-born-state-guard.mjs
+      - name: Negative control - the previous quotes guard alone must fail this check
+        run: |
+          if node tests/gh2479-static-born-state-guard.mjs supabase/migrations/20261005170000_gh2479_quotes_homeowner_guard.sql > /tmp/nc.out; then
+            echo "The check passed against a migration that has no born-state rule: it asserts nothing."; exit 1
+          fi
+          grep -c '^FAIL' /tmp/nc.out
