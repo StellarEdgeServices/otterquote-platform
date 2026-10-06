@@ -1,3 +1,8 @@
+-- gh-1438 reconciliation part 4 (2026-10-05T20:57:39Z): renamed from 20260925012956_gh2155_hi0b_agreement_v3.sql to the REAL
+-- applied version. Live ledger row: supabase_migrations.schema_migrations version=20260925140409
+-- name=gh2155_hi0b_agreement_v3 (SELECT-only verified: normalized-statement text of this file's body
+-- equals the ledger's recorded statements for this version). Executable SQL body
+-- byte-for-byte unchanged; only the filename's version prefix and this banner changed.
 -- gh-2155 HI-0b: partner-agreement.html bumps to v3-2026-09 (D-333 close-review
 -- fix, Ben comment 5824245098 -- 878 IAC 1-2-2 no-referral-fee-for-home-
 -- inspectors is already decided; this is the register_partner half).

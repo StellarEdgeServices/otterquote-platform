@@ -10,7 +10,7 @@
 /**
  * NAP (Name / Address / Phone) — single source of truth.
  * Locked values: D-237 (address, 2026-05-23), D-240 (phone, 2026-05-25).
- * Both the footer NAP block (renderFooter, below) and the RoofingContractor
+ * Both the footer NAP block (renderFooter, below) and the Organization
  * JSON-LD (renderLocalBusinessSchema, below) render from this object —
  * do not hand-type these values anywhere else. (#757)
  */
@@ -62,7 +62,7 @@ const Nav = {
    */
   _isPartnerPage() {
     const file = this._currentFile();
-    return file === 'partners.html' || file.startsWith('partner-');
+    return file === 'partners.html' || file.startsWith('partner-') || window.location.pathname.indexOf('/partners/') === 0;
   },
 
   /**
@@ -1255,7 +1255,7 @@ const Nav = {
   },
 
   /**
-   * Inject RoofingContractor JSON-LD (D-237/D-240 NAP) into an opt-in mount
+   * Inject Organization JSON-LD (D-237/D-240 NAP) into an opt-in mount
    * point. Pages opt in with <script type="application/ld+json"
    * id="nap-schema-mount"></script> — absent on most pages by design, so this
    * only renders on pages that deliberately host the business entity schema
@@ -1267,7 +1267,7 @@ const Nav = {
     if (!mount) return;
     const schema = {
       '@context': 'https://schema.org',
-      '@type': 'RoofingContractor',
+      '@type': 'Organization',
       name: NAP.name,
       url: NAP.url,
       telephone: NAP.phoneE164,
