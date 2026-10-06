@@ -690,6 +690,83 @@ def main():
           (r["verdict"], r["age_days"]), (nd.CONTENT_VERIFIED, None))
 
     # -------------------------------------------------------------------------------
+    print("\ngh-2289: verified_at -- a human re-verification date resets the PUBLISH_STALE age")
+    # -------------------------------------------------------------------------------
+    NG_VERIFIED = NG_NOW - datetime.timedelta(days=4)
+    # NEGATIVE CONTROL: the same 138-day-old deploy WITHOUT verified_at is still PUBLISH_STALE.
+    r = nd.evaluate_non_git_site(NG_SITE, NG_BASELINE, NG_BASELINE, NG_STALE, NG_NOW, 90)
+    check("gh-2289 control: 138-day-old deploy, no verified_at -> PUBLISH_STALE",
+          r["verdict"], nd.PUBLISH_STALE)
+    r = nd.evaluate_non_git_site(NG_SITE, NG_BASELINE, NG_BASELINE, NG_STALE, NG_NOW, 90,
+                                  verified_at=NG_VERIFIED)
+    check("gh-2289: same deploy, verified 4 days ago -> CONTENT_VERIFIED", r["verdict"], nd.CONTENT_VERIFIED)
+    check("gh-2289: age runs from verified_at (4 days), row keeps the honest published date",
+          (r["age_days"], r["since"], r["verified_at"]), (4, NG_STALE.date().isoformat(),
+                                                           NG_VERIFIED.date().isoformat()))
+    check("gh-2289: detail names the verification date", "last verified" in r["detail"], True)
+    r = nd.evaluate_non_git_site(NG_SITE, NG_BASELINE, NG_BASELINE, NG_STALE, NG_NOW, 90,
+                                  verified_at=NG_NOW - datetime.timedelta(days=91))
+    check("gh-2289: verification itself ages out (91 days ago, threshold 90) -> PUBLISH_STALE again",
+          r["verdict"], nd.PUBLISH_STALE)
+    check("gh-2289: re-stale detail still names the verification date",
+          "last verified" in r["detail"], True)
+    # REVIEW: FAIL 2026-10-06: the re-stale text must state the true basis (verification age),
+    # never call the PUBLISHED deploy "91 days old" -- it is 138 days old.
+    check("gh-2289: re-stale detail does not misstate the published deploy age",
+          "published deploy is 91 days old" in r["detail"], False)
+    check("gh-2289: re-stale detail reports the verification age and the true published date",
+          ("last verified %s, 91 days ago" % (NG_NOW - datetime.timedelta(days=91)).date().isoformat() in r["detail"])
+          and ("published deploy since %s" % NG_STALE.date().isoformat() in r["detail"]), True)
+    r = nd.evaluate_non_git_site(NG_SITE, "c" * 64, NG_BASELINE, NG_STALE, NG_NOW, 90,
+                                  verified_at=NG_NOW - datetime.timedelta(days=91))
+    check("gh-2289: changed content + verification aged out -> CONTENT_CHANGED",
+          r["verdict"], nd.CONTENT_CHANGED)
+    check("gh-2289: changed+stale detail does not misstate the published deploy age",
+          "published deploy is 91 days old" in r["detail"], False)
+    check("gh-2289: changed+stale detail reports the verification age",
+          "last verified %s, 91 days ago" % (NG_NOW - datetime.timedelta(days=91)).date().isoformat() in r["detail"], True)
+    r = nd.evaluate_non_git_site(NG_SITE, "c" * 64, NG_BASELINE, NG_STALE, NG_NOW, 90)
+    check("gh-2289 control: changed+stale without verified_at keeps the published-deploy age text",
+          "the published deploy is 138 days old" in r["detail"], True)
+    r = nd.evaluate_non_git_site(NG_SITE, "c" * 64, NG_BASELINE, NG_STALE, NG_NOW, 90,
+                                  verified_at=NG_VERIFIED)
+    check("gh-2289: verified_at never hides a content change -> CONTENT_CHANGED",
+          r["verdict"], nd.CONTENT_CHANGED)
+    r = nd.evaluate_non_git_site(NG_SITE, NG_BASELINE, NG_BASELINE, NG_FRESH, NG_NOW, 90,
+                                  verified_at=NG_NOW - datetime.timedelta(days=60))
+    check("gh-2289: a verified_at OLDER than published_at is ignored (age from published, 10 days)",
+          r["age_days"], 10)
+    # The real table entry: stohlerroof-bridge carries verified_at, nothing else does.
+    check("gh-2289: SITE_CLASSIFICATION stohlerroof-bridge has verified_at 2026-10-03",
+          nd.SITE_CLASSIFICATION["stohlerroof-bridge"].get("verified_at"), "2026-10-03")
+    check("gh-2289: the 30-day ClaimShield sites carry no verified_at",
+          [k for k, v in nd.SITE_CLASSIFICATION.items() if k.startswith("fantastic-") and v.get("verified_at")], [])
+    ng_cls = [s for s in nd.filter_org_sites([{"id": "i", "name": "stohlerroof-bridge", "custom_domain": "stohlerroof.com",
+                                              "build_settings": {}}]) if s["key"] == "stohlerroof-bridge"]
+    check("gh-2289: filter_org_sites threads verified_at into the site dict",
+          [s.get("verified_at") for s in ng_cls], ["2026-10-03"])
+    # check_non_git_site end to end: real table entry, published 2026-04-21, now 2026-10-03.
+    e2e_now = datetime.datetime(2026, 10, 3, 12, tzinfo=datetime.timezone.utc)
+    def _e2e(verified):
+        site = dict(ng_cls[0], verified_at=verified, content_url="https://stohlerroof.example/")
+        orig = (nd.fetch_netlify_site, nd.fetch_url_content, nd._load_content_baseline)
+        try:
+            nd.fetch_netlify_site = lambda sid, tok: ({"published_deploy": {"published_at": "2026-04-21T15:00:00Z"}}, None)
+            nd.fetch_url_content = lambda url, timeout=0: (b"page", None)
+            nd._load_content_baseline = lambda fx, fixtures_dir=None: (hashlib.sha256(b"page").hexdigest(), None)
+            return nd.check_non_git_site(site, "tok", now=e2e_now)
+        finally:
+            nd.fetch_netlify_site, nd.fetch_url_content, nd._load_content_baseline = orig
+    check("gh-2289 e2e control: stohlerroof-bridge without verified_at (published 2026-04-21) -> PUBLISH_STALE 164 d",
+          (_e2e(None)["verdict"], _e2e(None)["age_days"]), (nd.PUBLISH_STALE, 164))
+    row = _e2e("2026-10-03")
+    check("gh-2289 e2e: with verified_at 2026-10-03 -> CONTENT_VERIFIED, age 0, in no failing set",
+          (row["verdict"], row["age_days"], row["verdict"] in nd.FAILING_VERDICTS),
+          (nd.CONTENT_VERIFIED, 0, False))
+    check("gh-2289 e2e: malformed verified_at fails loud -> UNMEASURED", _e2e("not-a-date")["verdict"], nd.UNMEASURED)
+    check("gh-2289 e2e: future verified_at fails loud -> UNMEASURED", _e2e("2027-01-01")["verdict"], nd.UNMEASURED)
+
+    # -------------------------------------------------------------------------------
     print("\ngh-1734: fetch_url_content / _load_content_baseline -- fetch-layer helpers for")
     print("a non-git site, same fail-loud discipline as every other fetch in this script")
     # -------------------------------------------------------------------------------
