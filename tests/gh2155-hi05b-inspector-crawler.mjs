@@ -587,5 +587,15 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspector
     'NEGATIVE CONTROL: the same crawler, started from partner-re.html (a realtor, not inspector context), still finds the $200 and $50 fee amounts -- proves the crawl is not vacuous');
 }
 
+// ── cro55 fix-2555: any path under /partners/ is a partner page for nav purposes ──
+{
+  ok(pageRole('partners/roof-damage-found-before-closing.html') === 'partner',
+    'nav.js: /partners/roof-damage-found-before-closing.html is a partner page (_roleFromUrl() === partner)');
+  ok(pageRole('partner-re.html') === 'partner' && pageRole('partners.html') === 'partner',
+    'nav.js: partner-re.html and partners.html are still partner pages');
+  ok(pageRole('guides/roof-bid-comparison-worksheet.html') !== 'partner',
+    'nav.js: a /guides/ page is not a partner page');
+}
+
 console.log(`\n${pass} passed, ${fail} failed.`);
 process.exit(fail === 0 ? 0 : 1);

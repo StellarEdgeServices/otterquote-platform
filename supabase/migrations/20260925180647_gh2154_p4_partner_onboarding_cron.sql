@@ -1,3 +1,8 @@
+-- gh-1438 reconciliation part 4 (2026-10-05T20:57:39Z): renamed from 20260924211500_gh2154_p4_partner_onboarding_cron.sql to the REAL
+-- applied version. Live ledger row: supabase_migrations.schema_migrations version=20260925180647
+-- name=gh2154_p4_partner_onboarding_cron (SELECT-only verified: normalized-statement text of this file's body
+-- equals the ledger's recorded statements for this version). Executable SQL body
+-- byte-for-byte unchanged; only the filename's version prefix and this banner changed.
 -- gh-2154 P-4: register the partner onboarding sweep on pg_cron.
 --
 -- Same pg_cron -> net.http_post -> vault secret pattern as this repo's other
