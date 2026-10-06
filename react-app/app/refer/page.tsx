@@ -55,7 +55,6 @@ import {
   referralRowCells,
   summarizeReferrals,
   referralSummaryLine,
-  shouldShowW9Banner,
   isHomeownerLaunchEnabled,
   FACEBOOK_SHARE_MESSAGE,
   smsShareMessage,
@@ -67,7 +66,6 @@ import {
 } from './utils';
 import {
   LOGIN_ROUTE,
-  W9_UPLOAD_LINK,
   REFERRAL_CODE_ERROR_TEXT,
   HERO,
   REFERRAL_LINK_LABEL,
@@ -84,7 +82,6 @@ import {
   TAX_NOTICE,
   COMMISSION_APPROVAL_DISCLOSURE,
   REFERRAL_FEE_DISCLAIMER,
-  W9_BANNER,
   REFERRALS,
 } from './copy';
 
@@ -122,7 +119,7 @@ export default function ReferAFriendPage() {
   const [gated, setGated] = useState(false);
   const [ready, setReady] = useState(false);
   const [code, setCode] = useState<string | null>(null);
-  const [agent, setAgent] = useState<CustomerReferralAgent | null>(null);
+  const [, setAgent] = useState<CustomerReferralAgent | null>(null);
   const [referrals, setReferrals] = useState<CustomerReferral[]>([]);
 
   // 1. Homeowner coming-soon gate — runs once on mount (mirrors the static <head> guard).
@@ -222,7 +219,7 @@ export default function ReferAFriendPage() {
   return (
     <div className="orf-root">
       <style>{STYLES}</style>
-      <ReferView code={code} agent={agent} referrals={referrals} />
+      <ReferView code={code} referrals={referrals} />
     </div>
   );
 }
@@ -230,33 +227,15 @@ export default function ReferAFriendPage() {
 // ─────────────────────────────────────────────────────────────────────────────
 function ReferView({
   code,
-  agent,
   referrals,
 }: {
   code: string;
-  agent: CustomerReferralAgent | null;
   referrals: CustomerReferral[];
 }) {
   const link = referralUrl(code);
-  const showW9 = shouldShowW9Banner(agent);
 
   return (
     <main className="orf-main">
-      {showW9 && (
-        <div className="w9-banner">
-          <span className="w9-icon">⚠️</span>
-          <div>
-            <strong className="w9-title">{W9_BANNER.title}</strong>
-            <p className="w9-body">
-              {W9_BANNER.body}{' '}
-              <a href={W9_UPLOAD_LINK} className="w9-link">
-                {W9_BANNER.link}
-              </a>
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Hero */}
       <section className="hero-section">
         <h1>{HERO.heading}</h1>
@@ -821,11 +800,6 @@ const STYLES = `
   .refer-section { margin-bottom: var(--sp-20); }
   .section-h2 { margin-bottom: var(--sp-8); font-size: 1.75rem; font-weight: 700; color: var(--white); }
 
-  .w9-banner { background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:16px 20px;margin-bottom:1.5rem;display:flex;align-items:flex-start;gap:12px; }
-  .w9-icon { font-size:1.25rem;flex-shrink:0; }
-  .w9-title { color:#92400e;font-size:0.95rem; }
-  .w9-body { margin:4px 0 0;color:#78350f;font-size:0.875rem;line-height:1.5; }
-  .w9-link { color:#d97706;font-weight:600; }
 
   .hero-section { background: linear-gradient(135deg, var(--navy-2) 0%, var(--navy-3) 100%); padding: var(--sp-16) var(--sp-8); text-align:center; margin-bottom: var(--sp-20); border-bottom:1px solid rgba(224,123,0,0.1); border-radius: var(--radius-lg); }
   .hero-section h1 { font-size: clamp(2rem,5vw,3.5rem); margin-bottom: var(--sp-4); color: var(--white); }
