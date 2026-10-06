@@ -1,3 +1,8 @@
+-- gh-1438 reconciliation part 4 (2026-10-05T20:57:39Z): renamed from 20260924160000_gh2154_p2_partner_attribution_activation.sql to the REAL
+-- applied version. Live ledger row: supabase_migrations.schema_migrations version=20260924195135
+-- name=gh2154_p2_partner_attribution_activation (SELECT-only verified: normalized-statement text of this file's body
+-- equals the ledger's recorded statements for this version). Executable SQL body
+-- byte-for-byte unchanged; only the filename's version prefix and this banner changed.
 -- gh-2154 P-2: partner attribution columns + first signed-in standalone app launch.
 --
 -- Parent: #2154 (D-333 shared partner foundation, build item P-2, Marty's

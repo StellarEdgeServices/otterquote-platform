@@ -48,6 +48,7 @@ on:
       - '!locations/**'
       - '!netlify/**'
       - '!otterquote-deploy/**'
+      - '!partners/**'
       - '!react-app/**'
       - '!runbooks/**'
       - '!scripts/**'

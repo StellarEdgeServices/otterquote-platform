@@ -1,3 +1,8 @@
+-- gh-1438 reconciliation part 4 (2026-10-05T20:57:39Z): renamed from 20260914195746_gh1932_notify_admin_new_homeowner_triggers.sql to the REAL
+-- applied version. Live ledger row: supabase_migrations.schema_migrations version=20260914200612
+-- name=gh1932_notify_admin_new_homeowner_triggers (SELECT-only verified: normalized-statement text of this file's body
+-- equals the ledger's recorded statements for this version). Executable SQL body
+-- byte-for-byte unchanged; only the filename's version prefix and this banner changed.
 -- gh-1932: admin push alert on real homeowner signup + real claim created.
 -- Filed by CEO RUN 42 (claim ceo-2026-09-14T18:27:56Z); Dustin's GO recorded
 -- verbatim on issue #1932 ("I want to make sure that I know when someone is

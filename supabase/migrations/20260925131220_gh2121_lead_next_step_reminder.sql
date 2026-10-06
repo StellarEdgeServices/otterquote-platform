@@ -1,3 +1,8 @@
+-- gh-1438 reconciliation part 4 (2026-10-05T20:57:39Z): renamed from 20260925020000_gh2121_lead_next_step_reminder.sql to the REAL
+-- applied version. Live ledger row: supabase_migrations.schema_migrations version=20260925131220
+-- name=gh2121_lead_next_step_reminder (SELECT-only verified: normalized-statement text of this file's body
+-- equals the ledger's recorded statements for this version). Executable SQL body
+-- byte-for-byte unchanged; only the filename's version prefix and this banner changed.
 -- gh-2121 (LRS HO-1 S21): next-step reminder email for a router lead that
 -- has not yet reached a goal (a $15 measurement purchase or a loss-sheet
 -- upload) one day after it was captured.
