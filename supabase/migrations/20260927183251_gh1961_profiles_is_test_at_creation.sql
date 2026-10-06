@@ -1,8 +1,9 @@
--- STATUS (gh-1438, as of 2026-10-05T20:57:39Z): APPLIED
--- FILE ROLE: forward file of set gh1961_profiles_is_test_at_creation (the STATUS is the set's; it describes the forward migration)
--- EVIDENCE: applied as ledger version 20260927183251 (name gh1961_profiles_is_test_at_creation); triggers profiles_set_is_test_for_internal_domain and contractors_zz_inherit_profile_is_test are live (pg_trigger, 2 rows, 2026-10-05T20:57Z); normalized statements equal this file's body: gh-1438 part 4. The 2026-09-26 NOT APPLIED measurement is superseded.
--- REPO COPY: supabase/migrations/20260927183251_gh1961_profiles_is_test_at_creation.sql (same statements); rollback and pre-flight already in supabase/migrations_rollbacks/
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- gh-1438 reconciliation part 4 (2026-10-05T20:57:39Z): filed copy of supabase/migrations_drafts/gh1961_profiles_is_test_at_creation.sql under its REAL
+-- applied ledger version 20260927183251 (supabase_migrations.schema_migrations, name=gh1961_profiles_is_test_at_creation).
+-- SELECT-only verified: normalized-statement text of this file's body equals the ledger's recorded statements
+-- for that version.
+-- The draft in migrations_drafts/ is left untouched except for its STATUS header (a test or doc may read it).
+-- Executable SQL is the draft's, unchanged.
 --
 -- gh-1961: auto-flag internal test accounts is_test at creation
 --

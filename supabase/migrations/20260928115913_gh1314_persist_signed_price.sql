@@ -1,9 +1,9 @@
--- STATUS (gh-1438, as of 2026-10-05T20:57:39Z): APPLIED
--- FILE ROLE: forward file of set gh1314_persist_signed_price (the STATUS is the set's; it describes the forward migration)
--- EVIDENCE: applied as ledger version 20260928115913 (name gh1314_persist_signed_price); the five claims.signed_* columns are live (information_schema.columns, 5 rows, 2026-10-05T20:57Z); normalized statements equal this file's body: gh-1438 part 4, issue #1438 comment (this run). The 2026-09-26 NOT APPLIED measurement is superseded.
--- REPO COPY: supabase/migrations/20260928115913_gh1314_persist_signed_price.sql (same statements); rollback and pre-flight already in supabase/migrations_rollbacks/. This draft stays here because supabase/functions/docusign-webhook/price-verify.test.ts reads it.
--- NOTE: supabase/functions/docusign-webhook/price-verify.test.ts reads this file (Deno test on CI); do not move or rename it without updating that test.
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- gh-1438 reconciliation part 4 (2026-10-05T20:57:39Z): filed copy of supabase/migrations_drafts/gh1314_persist_signed_price.sql under its REAL
+-- applied ledger version 20260928115913 (supabase_migrations.schema_migrations, name=gh1314_persist_signed_price).
+-- SELECT-only verified: normalized-statement text of this file's body equals the ledger's recorded statements
+-- for that version.
+-- The draft in migrations_drafts/ is left untouched except for its STATUS header (a test or doc may read it).
+-- Executable SQL is the draft's, unchanged.
 --
 -- gh-1314 step 4 — persist what the signed-price reconciliation actually read.
 --
