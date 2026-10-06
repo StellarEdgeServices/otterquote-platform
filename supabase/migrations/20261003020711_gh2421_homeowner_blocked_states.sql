@@ -1,3 +1,6 @@
+-- gh-1438 reconciliation (cto61, 2026-10-06T19:47:53Z): renamed from 20261003010000_gh2421_homeowner_blocked_states.sql to the REAL applied ledger version.
+-- Ledger row: supabase_migrations.schema_migrations version=20261003020711 (SELECT-only read 2026-10-06). Content check: statements normalized md5 83d1c8d8 = file.
+-- Executable SQL body unchanged; only the filename version prefix and this banner changed.
 -- gh-2421 (D-344): homeowner state gate flips from "Indiana only" (D-178) to
 -- "every state except a blocked list". The blocked list is configuration so a
 -- statute search can add a state the same day with no deploy.

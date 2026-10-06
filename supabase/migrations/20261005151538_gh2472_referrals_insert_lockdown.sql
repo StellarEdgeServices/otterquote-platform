@@ -1,3 +1,6 @@
+-- gh-1438 reconciliation (cto61, 2026-10-06T19:47:53Z): renamed from 20261003141000_gh2472_referrals_insert_lockdown.sql to the REAL applied ledger version.
+-- Ledger row: supabase_migrations.schema_migrations version=20261005151538 (SELECT-only read 2026-10-06). Content check: live: no INSERT policy on referrals, no anon/authenticated INSERT grant.
+-- Executable SQL body unchanged; only the filename version prefix and this banner changed.
 -- Migration: 20261003141000_gh2472_referrals_insert_lockdown
 -- GitHub: #2472 (sideways finding from the #2345 close-review). Referral/commission path (D-301).
 -- Tier: 3B (DROP POLICY + REVOKE on a table: RLS/grant change). Protective only (R-134).
