@@ -11,7 +11,7 @@ on:
     paths:
       - 'dashboard.html'
       - 'react-app/app/(homeowner)/dashboard/utils.ts'
-      - 'supabase/migrations/20261003010000_gh2421_homeowner_blocked_states.sql'
+      - 'supabase/migrations/20261003020711_gh2421_homeowner_blocked_states.sql'
       - 'tests/gh2421-static-homeowner-blocked-states.mjs'
       - '.github/workflows/static-homeowner-blocked-states-tests.yml'
   push:
@@ -19,7 +19,7 @@ on:
     paths:
       - 'dashboard.html'
       - 'react-app/app/(homeowner)/dashboard/utils.ts'
-      - 'supabase/migrations/20261003010000_gh2421_homeowner_blocked_states.sql'
+      - 'supabase/migrations/20261003020711_gh2421_homeowner_blocked_states.sql'
       - 'tests/gh2421-static-homeowner-blocked-states.mjs'
       - '.github/workflows/static-homeowner-blocked-states-tests.yml'
 

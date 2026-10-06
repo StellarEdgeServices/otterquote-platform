@@ -1,3 +1,6 @@
+-- gh-1438 reconciliation (cto61, 2026-10-06T19:47:53Z): renamed from 20261003011500_gh1925_ad_sharing_opt_out_source_in_page_button.sql to the REAL applied ledger version.
+-- Ledger row: supabase_migrations.schema_migrations version=20261003020713 (SELECT-only read 2026-10-06). Content check: statements normalized md5 6943b341 = file.
+-- Executable SQL body unchanged; only the filename version prefix and this banner changed.
 -- gh-1925 (CEO ruling #2304 comment 5963898698, item 2): widen the profiles.ad_sharing_opt_out_source CHECK to also allow
 -- 'in_page_button' (the privacy.html section 12 "Opt out of sale/sharing" button), so that opt-out is recorded with its real
 -- source instead of NULL. No wording involved. CEO classified this tier 3A; see the PR body for the 3A/3B note
