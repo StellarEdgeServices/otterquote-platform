@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Find the Date Hail Hit Your House | Otter Quotes</title>
+<meta name="description" content="Look up hail reports by county and date in the NOAA Storm Events Database, see what the record shows and omits, and list the dated records you hold.">
+<link rel="canonical" href="https://otterquote.com/guides/prove-date-of-loss-hail.html">
+<meta property="og:title" content="Find the Date Hail Hit Your House | Otter Quotes">
+<meta property="og:description" content="Look up hail reports by county and date in the NOAA Storm Events Database, see what the record shows and omits, and list the dated records you hold.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/prove-date-of-loss-hail.html">
+<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Otter Quotes logo">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-10-06">
+<meta property="article:author" content="Otter Quotes">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+
+/* Cost table: readable body text on the light page, and stacked rows on narrow screens */
+.definition-table td { color: var(--dark-gray); }
+.definition-table td a { color: var(--link-on-light); }
+@media (max-width: 640px) {
+  .table-wrap .definition-table { min-width: 0; }
+  .definition-table.stack thead { display: none; }
+  .definition-table.stack tr { display: block; padding: var(--sp-4) 0; border-bottom: 1px solid rgba(0,0,0,0.12); }
+  .definition-table.stack td { display: block; padding: var(--sp-1) var(--sp-2); border-bottom: none; }
+  .definition-table.stack td[data-label]::before { content: attr(data-label); display: block; font-size: 0.8rem; font-weight: 600; color: var(--link-on-light-deep); }
+}
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>How to Find the Date Hail Hit Your House</h1>
+    <p class="meta">Otter Quotes &middot; Updated October 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>You can look up hail reports for your county and a range of dates in NOAA&rsquo;s Storm Events Database, which is built from National Weather Service storm data. It lists reported events by county with a date, a time and an approximate hail size. It does not show what happened to your roof, so records you already hold, such as dated photos, repair invoices and a contractor&rsquo;s note, can add dates of their own.</p>
+    </div>
+
+    <section class="step">
+      <h2>How do I look up hail reports for my county?</h2>
+      <p>Open the <a href="https://www.ncei.noaa.gov/access/storm-events-database/" target="_blank" rel="noopener">Storm Events Database</a>, choose your county, pick Hail as the event type, enter a start date and an end date, and select Search. The results table lists each report with its town, date, time and approximate hail size. Select a row to open the full event page. (NOAA&rsquo;s older address, ncdc.noaa.gov/stormevents, forwards to this site.)</p>
+      <ol>
+        <li>On the database home page, select <strong>Start Search</strong>. This opens the <a href="https://www.ncei.noaa.gov/access/storm-events-database/search" target="_blank" rel="noopener">search page</a>.</li>
+        <li>Choose your county. On the <strong>Search by Map</strong> tab, type a zip code, city or address into the box above the map and pick a suggestion; the county appears under <strong>Selected Areas</strong>. Or open the <strong>Search by State/County</strong> tab, pick your state under <strong>States/Areas</strong>, then your county under <strong>Counties</strong>.</li>
+        <li>Under <strong>Event Types</strong>, type <strong>Hail</strong> and select it. A <strong>Hail Filter</strong> menu then lets you set a minimum size, from 0.50 in. and larger up to 4.00 in. and larger. Leave it on All the first time.</li>
+        <li>Enter a <strong>Start Date</strong> and an <strong>End Date</strong> as MM/DD/YYYY. Both are required. Cover every date the storm could have been, such as the whole season.</li>
+        <li>Select <strong>Search</strong>. The page shows a results summary and a table with these columns: Location, County/Zone, State/Region, Start Date/Time, Type, Magnitude, Fatalities, Injuries, Property Damage and Crop Damage. For hail, Magnitude is the reported size in inches.</li>
+        <li>Select any row to open its event page. It shows the start and end location with latitude and longitude, the report source, the National Weather Service office, and the event and episode narratives.</li>
+        <li>To keep a copy of the table, use <strong>Download Table CSV</strong>. NOAA says that to obtain a certified report you contact ncei.orders@noaa.gov with the search results you want certified.</li>
+      </ol>
+      <p>For example, one row of a search for hail in a county in Indiana reads: CARMEL, HAMILTON CO., INDIANA, 03/28/2020 13:27 EST-5, Hail, 1.00 in. Its <a href="https://www.ncei.noaa.gov/access/storm-events-database/event-details/874526" target="_blank" rel="noopener">event page</a> gives the start location as 0.53W CARMEL at 39.98/-86.14, the report source as Public, and the National Weather Service office as IND. The time ends in a time-zone code, and NOAA&rsquo;s <a href="https://www.ncei.noaa.gov/access/storm-events-database/faq" target="_blank" rel="noopener">FAQ</a> says storm data from 1993 onward use the time zone where the event occurred. Events take about 3 months to appear, and the FAQ says the database is updated within 75 to 90 days after the end of a data month.</p>
+    </section>
+
+    <section class="step">
+      <h2>What does the NOAA record show, and what does it leave out?</h2>
+      <p>The record shows reports the National Weather Service received and entered: a county, a nearby place and coordinates, a date and time, and an approximate hail size. It does not show whether hail fell on your street or your roof, or what damage it did there.</p>
+      <h3>What it shows</h3>
+      <ul>
+        <li><strong>A county.</strong> The search page says smaller events, including hail, are collected by county, and each event page is limited to one county or zone.</li>
+        <li><strong>A point.</strong> The FAQ says a location is entered either as a distance and direction from a known town or as a latitude and longitude pair.</li>
+        <li><strong>A date and time.</strong> Each row carries a start date, a time and a time-zone code.</li>
+        <li><strong>An approximate size.</strong> The FAQ has a section titled Approximate Hail Size. It matches inches to everyday objects, for example 0.75 inch to a penny and 1.00 inch to a quarter.</li>
+      </ul>
+      <h3>What it leaves out</h3>
+      <ul>
+        <li><strong>Your roof.</strong> A report describes a place and a time, not your house. The Property Damage column is described on the search page as a broad estimate.</li>
+        <li><strong>Every storm.</strong> The FAQ says only weather intense enough to cause injuries, significant property damage or disruption to commerce, or that is otherwise unusual and rare, is included. A date with no row does not by itself show that no hail fell near your home.</li>
+        <li><strong>Confirmed facts.</strong> The FAQ says reports come from sources such as emergency management officials, law enforcement, trained storm spotters, National Weather Service damage surveys and the general public, among others. Its disclaimer states: &ldquo;An effort is made to use the best available information, but because of time and resource constraints, information from these sources may be unverified by the NWS.&rdquo; It adds that the NWS does not guarantee the accuracy or validity of the information.</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>What are National Weather Service local storm reports?</h2>
+      <p>A local storm report is a short message from a National Weather Service office saying what was reported and where, such as hail of a stated size near a town. The Storm Prediction Center collects them into one page for each day, and you can open the page for any date you enter.</p>
+      <ol>
+        <li>Open the Storm Prediction Center&rsquo;s <a href="https://www.spc.noaa.gov/climo/online/" target="_blank" rel="noopener">storm reports page</a>.</li>
+        <li>Under <strong>Past Storm Reports</strong>, enter the date as YYMMDD. March 28, 2020 is 200328.</li>
+        <li>Find the <strong>Hail Reports</strong> table. Each row gives a time, a size, a place, a county, a state, coordinates and a comment that ends with the three letters of the reporting NWS office. A CSV link is beside the table.</li>
+      </ol>
+      <p>Each daily page covers a window that does not match the calendar day. The SPC FAQ says: &ldquo;The Storm Reports page is organized based on reports received from 1200 UTC to 1159 UTC the next day.&rdquo; A storm in the early hours of the morning, local time, is therefore listed under the previous date. The same FAQ says the list is automatically collected from reports sent by local NWS offices, that a report which was never sent or arrived more than 10 days after the event does not appear, and: &ldquo;Our storm reports list is preliminary and likely does not contain all severe weather reports for any particular event.&rdquo; It points to the Storm Events Database for final data.</p>
+      <p>Each NWS office also posts the reports it issued recently on its page of the National Weather Service website. For older dates, use the daily pages or the Storm Events Database. The <a href="https://www.spc.noaa.gov/faq/" target="_blank" rel="noopener">SPC FAQ</a> explains the latitude and longitude format and the three-letter office codes.</p>
+    </section>
+
+    <section class="step">
+      <h2>What other dated records might I already have?</h2>
+      <p>Photos, messages, invoices and notes all carry dates. Each is a record of when someone looked or acted, which may differ from the day the hail fell.</p>
+      <ul>
+        <li><strong>Photos.</strong> Look at the date and time your photo app lists for each picture, and keep the original files.</li>
+        <li><strong>Neighbors&rsquo; repairs.</strong> A neighbor who had work done after the same storm may have a dated invoice or permit.</li>
+        <li><strong>A contractor&rsquo;s inspection note.</strong> If a contractor has looked at your roof, ask for a dated written note of what they saw. It records what they saw on the day they looked. Otter Quotes does not offer inspections.</li>
+        <li><strong>Your insurer&rsquo;s file.</strong> If you have already contacted your insurer, ask which date it has on file.</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>What if I noticed the damage weeks or months later?</h2>
+      <p>Then more than one storm date may be possible. List the hail reports for your county across the whole window, then set your dated records beside them. You end up with a timeline of storm dates and record dates that you can keep with your other papers.</p>
+      <p>Policies set their own notice and filing rules, and which date a claim uses is a question for your policy and your insurer. This guide states no deadline. Read your policy or ask your insurer.</p>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>Otter Quotes does not find or confirm a date of loss, and we do not work with your insurance company. Once you have a scope of work, we send it to multiple contractors. Every contractor bids on the same scope and the same measurements. You compare the bids online, next to reviews and licensing information, and sign online without a salesperson in your home. We are not a contractor, we do not sell upgrades, and we do not offer inspections. Contractors pay Otter Quotes a fee on the accepted bid.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>How do I find out when hail hit my house?</h3>
+        <div class="faq-answer">
+          <p>Search NOAA’s Storm Events Database for your county, Hail as the event type and a range of dates. It lists reported hail with a date, a time and an approximate size. Then set your own dated records, such as photos, invoices and a contractor’s note, beside those dates.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Is NOAA’s Storm Events Database public?</h3>
+        <div class="faq-answer">
+          <p>Yes. NOAA describes it as a publicly accessible source of National Weather Service storm data. You can search by map or by state and county, open each event, and download the results table as a CSV file. NOAA says events take about three months to appear.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does a NOAA hail report show that hail damaged my roof?</h3>
+        <div class="faq-answer">
+          <p>No. It is a record of a report for a county, with a place, a date, a time and an approximate size. It does not describe your roof. NOAA’s disclaimer says information from outside sources may be unverified and that the National Weather Service does not guarantee its accuracy.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Why can I not find a hail report for my date?</h3>
+        <div class="faq-answer">
+          <p>The database may not have caught up yet, since events take about three months to appear. It also includes only weather intense enough to cause injuries, significant property damage or disruption to commerce, or that is unusual and rare. A missing row does not by itself show that no hail fell near your home.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What are local storm reports and where do I find them?</h3>
+        <div class="faq-answer">
+          <p>Local storm reports are short messages from National Weather Service offices about what was reported and where. The Storm Prediction Center lists them by date, and you enter the date as YYMMDD. The list is preliminary, so it may not contain every report for an event.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/blog/what-to-do-after-storm-damages-roof.html">What to Do After a Storm Damages Your Roof: A Step-by-Step Guide</a></li>
+        <li><a href="/guides/multiple-bids-roof-insurance-claim.html">Can You Get Multiple Bids on a Roof Insurance Claim?</a></li>
+        <li><a href="/guides/roof-bid-comparison-worksheet.html">How to Compare Roofing Bids: A Side-by-Side Worksheet</a></li>
+        <li><a href="/guides/how-to-choose-contractor.html">How to Choose a Contractor for Insurance Repairs</a></li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "How to Find the Date Hail Hit Your House",
+  "description": "Look up hail reports by county and date in the NOAA Storm Events Database, see what the record shows and omits, and list the dated records you hold.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-10-06",
+  "dateModified": "2026-10-06",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/prove-date-of-loss-hail.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "How do I find out when hail hit my house?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Search NOAA’s Storm Events Database for your county, Hail as the event type and a range of dates. It lists reported hail with a date, a time and an approximate size. Then set your own dated records, such as photos, invoices and a contractor’s note, beside those dates."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is NOAA’s Storm Events Database public?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. NOAA describes it as a publicly accessible source of National Weather Service storm data. You can search by map or by state and county, open each event, and download the results table as a CSV file. NOAA says events take about three months to appear."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does a NOAA hail report show that hail damaged my roof?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. It is a record of a report for a county, with a place, a date, a time and an approximate size. It does not describe your roof. NOAA’s disclaimer says information from outside sources may be unverified and that the National Weather Service does not guarantee its accuracy."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Why can I not find a hail report for my date?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The database may not have caught up yet, since events take about three months to appear. It also includes only weather intense enough to cause injuries, significant property damage or disruption to commerce, or that is unusual and rare. A missing row does not by itself show that no hail fell near your home."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What are local storm reports and where do I find them?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Local storm reports are short messages from National Weather Service offices about what was reported and where. The Storm Prediction Center lists them by date, and you enter the date as YYMMDD. The list is preliminary, so it may not contain every report for an event."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "How to Find the Date Hail Hit Your House",
+      "item": "https://otterquote.com/guides/prove-date-of-loss-hail.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>
