@@ -28,7 +28,7 @@ Claim A `4d764e19` (is_test, platform_fee_charged = false, 1 message), claim B `
 - After the proof: `SELECT proname FROM pg_proc WHERE proname IN ('get_message_counterpart','zz_broken_counterpart')` returned `[]`.
 
 ## Delta proof: the homeowner branch answers only for a contractor with a quote on the claim (2026-10-06, production, one BEGIN ... ROLLBACK, role-switched)
-Function body installed in the transaction has md5 `a31889ad12bc14ccefd4c65bdce0c3ca` = the md5 of the text between the `$fn$` markers in the forward file. Claim A `4d764e19` (is_test). The owner's `full_name` was set to a sentinel inside the transaction (rolled back).
+Function body installed in the transaction has md5 beginning `a31889ad` (first 8 hex characters, ellipsis) = the md5 of the text between the `$fn$` markers in the forward file. Claim A `4d764e19` (is_test). The owner's `full_name` was set to a sentinel inside the transaction (rolled back).
 - homeowner of A (selected contractor has a quote): 1 row, role `contractor`, the contractor's company_name, `counterpart_user_id` = the selected contractor's user.
 - selected contractor of A, fee false: 1 row, `the homeowner` (the sentinel name is not returned).
 - selected contractor of A, fee true (set in the transaction): 1 row, label = the sentinel full_name. A contractor with no quote on A, fee true: 0 rows.
