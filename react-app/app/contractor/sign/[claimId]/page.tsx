@@ -266,7 +266,6 @@ function SignContent() {
           <strong>{C.legalPara1Emphasis}</strong>
           {C.legalPara1Tail}
         </p>
-        <p className="oqs-legal-p2">{C.legalPara2}</p>
       </section>
 
       {phase === 'review' && (
@@ -353,7 +352,6 @@ const STYLES = `
   .oqs-legal { background:#FFFBEB; border:2px solid #E07B00; border-radius:12px; padding:1.5rem; margin-bottom:1.5rem; }
   .oqs-legal-head { color:#0B1929; margin:0 0 .75rem; font-size:1.15rem; }
   .oqs-legal-p1 { color:#374151; font-size:.95rem; line-height:1.6; margin:0 0 .75rem; }
-  .oqs-legal-p2 { color:#6B7280; font-size:.85rem; margin:0; }
   .oqs-actions { display:flex; align-items:center; gap:1.25rem; flex-wrap:wrap; }
   .oqs-back { color:var(--slate,#94a3b8); text-decoration:none; font-weight:600; font-size:.9rem; }
   .oqs-back:hover { color:var(--white,#fff); }

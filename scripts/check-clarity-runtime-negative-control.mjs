@@ -58,8 +58,10 @@ function makeElement(tag) {
 }
 
 // Runs js/ga-gate.js, as-is, against a simulated hostname+pathname, and
-// returns every <script> src the file inserted into <head>.
-function runGateFor(hostname, pathname) {
+// returns every <script> src the file inserted into <head>. `opts.cookie`
+// seeds document.cookie and `opts.gpc` sets navigator.globalPrivacyControl
+// (gh-1925 / D-354: the Do Not Sell or Share opt-out cases below).
+function runGateFor(hostname, pathname, opts = {}) {
   const headEl = makeElement('head');
   const firstScript = makeElement('script');
   headEl.appendChild(firstScript);
@@ -71,7 +73,7 @@ function runGateFor(hostname, pathname) {
   }
   function dispatch(type) { (listeners[type] || []).slice().forEach((fn) => fn()); }
 
-  let cookieStr = '';
+  let cookieStr = opts.cookie || '';
   const documentStub = {
     head: headEl,
     documentElement: makeElement('html'),
@@ -89,6 +91,7 @@ function runGateFor(hostname, pathname) {
     clearTimeout,
     console,
   };
+  if (opts.gpc !== undefined) sandbox.navigator = { globalPrivacyControl: opts.gpc };
   sandbox.window = sandbox; // a real browser's `window` is its own global object
   sandbox.window.location = { hostname, pathname, hash: '', search: '' };
   sandbox.window.addEventListener = addEventListener;
@@ -142,12 +145,23 @@ const cases = [
   // RULED_AUTHENTICATED_ALLOWED check on the page's own markup, not by
   // this runtime control).
   { name: 'AUTH-RULED /contractor-about.html (masked)', hostname: 'otterquote.com', pathname: '/contractor-about.html', expectClarity: true },
+  // gh-1925 / D-354 (Dustin, #1925 comment 5973764305: "Yes, gate Clarity
+  // (Recommended)"): Clarity is a "share" for the Do Not Sell or Share
+  // opt-out. On a PUBLIC, allowlisted page -- where the first case above
+  // shows it loads -- it must NOT be requested for a visitor carrying the
+  // oq_ad_optout cookie or sending Global Privacy Control. The two
+  // not-an-opt-out cases beside them keep the control honest.
+  { name: 'OPT-OUT /  oq_ad_optout=1 cookie', hostname: 'otterquote.com', pathname: '/', opts: { cookie: 'oq_ad_optout=1' }, expectClarity: false },
+  { name: 'OPT-OUT /  Global Privacy Control on', hostname: 'otterquote.com', pathname: '/', opts: { gpc: true }, expectClarity: false },
+  { name: 'OPT-OUT /start  Global Privacy Control on', hostname: 'otterquote.com', pathname: '/start', opts: { gpc: true }, expectClarity: false },
+  { name: 'NO-OPT-OUT /  oq_ad_optout=0 cookie', hostname: 'otterquote.com', pathname: '/', opts: { cookie: 'oq_ad_optout=0' }, expectClarity: true },
+  { name: 'NO-OPT-OUT /  Global Privacy Control false', hostname: 'otterquote.com', pathname: '/', opts: { gpc: false }, expectClarity: true },
 ];
 
 let failures = 0;
 const lines = [];
 for (const c of cases) {
-  const srcs = runGateFor(c.hostname, c.pathname);
+  const srcs = runGateFor(c.hostname, c.pathname, c.opts);
   const gotClarity = srcs.some((s) => s.indexOf(CLARITY_HOST) !== -1);
   const ok = gotClarity === c.expectClarity;
   if (!ok) failures++;
@@ -161,6 +175,6 @@ if (failures > 0) {
   console.log(`\ncheck-clarity-runtime-negative-control: FAIL -- ${failures} case(s) did not match the expected clarity.ms request behaviour`);
   process.exit(1);
 } else {
-  console.log('\ncheck-clarity-runtime-negative-control: OK -- executed js/ga-gate.js unmodified; clarity.ms is requested on public pages and not on authenticated pages');
+  console.log('\ncheck-clarity-runtime-negative-control: OK -- executed js/ga-gate.js unmodified; clarity.ms is requested on public pages, not on authenticated pages, and not for an opted-out visitor (cookie or GPC)');
   process.exit(0);
 }

@@ -741,7 +741,16 @@ window.Auth = {
 
     // Enforce role if specified — prevent homeowners on contractor pages and vice versa
     if (requiredRole) {
-      const role = await this.getRole();
+      const rawRole = await this.getRole();
+      // A 'customer' referral_agents row is a HOMEOWNER who also refers (the
+      // customer referral program), not a partner: resolved_user_role ranks an
+      // active referral_agents row above owns_claim, so such a user resolves to
+      // 'customer'. 'customer' is not in PARTNER_ROLES, so the mismatch branch
+      // below sent every requireAuth('homeowner') page to '/dashboard.html' -
+      // which is the page already open - on every load: an endless reload.
+      // Compare it as 'homeowner' here; their referral view keeps its own link
+      // and every other role resolves exactly as before.
+      const role = rawRole === 'customer' ? 'homeowner' : rawRole;
       if (role && role !== requiredRole) {
         // Redirect to the correct dashboard for this user's actual role.
         // gh-817/#643: getRole() can now return a partnerRoles value (see

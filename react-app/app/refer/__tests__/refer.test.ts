@@ -27,7 +27,6 @@ import {
   referralRowCells,
   summarizeReferrals,
   referralSummaryLine,
-  shouldShowW9Banner,
   isHomeownerLaunchEnabled,
   FACEBOOK_SHARE_MESSAGE,
   smsShareMessage,
@@ -44,10 +43,8 @@ import {
   TAX_NOTICE,
   COMMISSION_APPROVAL_DISCLOSURE,
   REFERRAL_FEE_DISCLAIMER,
-  W9_BANNER,
   REFERRALS,
   LOGIN_ROUTE,
-  W9_UPLOAD_LINK,
 } from '../copy';
 
 const mkRef = (over: Partial<CustomerReferral> = {}): CustomerReferral => ({ id: over.id ?? 'r-1', ...over });
@@ -145,16 +142,9 @@ describe('summarizeReferrals — paid/pending split', () => {
 });
 
 // ============================================================
-// W-9 banner gate (renderW9Banner) + homeowner launch gate
+// homeowner launch gate (the D-172 W-9 banner gate was removed under D-319)
 // ============================================================
 describe('gates', () => {
-  it('shouldShowW9Banner: blocked && notified && not-submitted', () => {
-    expect(shouldShowW9Banner({ payments_blocked: true, w9_notification_sent_at: '2026-01-01', w9_submitted_at: null })).toBe(true);
-    expect(shouldShowW9Banner({ payments_blocked: false, w9_notification_sent_at: '2026-01-01', w9_submitted_at: null })).toBe(false);
-    expect(shouldShowW9Banner({ payments_blocked: true, w9_notification_sent_at: null, w9_submitted_at: null })).toBe(false);
-    expect(shouldShowW9Banner({ payments_blocked: true, w9_notification_sent_at: '2026-01-01', w9_submitted_at: '2026-02-01' })).toBe(false);
-    expect(shouldShowW9Banner(null)).toBe(false);
-  });
   it('isHomeownerLaunchEnabled: only the literal "false" re-gates', () => {
     expect(isHomeownerLaunchEnabled(undefined)).toBe(true);
     expect(isHomeownerLaunchEnabled('true')).toBe(true);
@@ -204,18 +194,17 @@ describe('share builders', () => {
 // VERBATIM Tier-3 tax/legal copy (byte-for-byte) + $200 representations
 // ============================================================
 describe('verbatim Tier-3 tax/legal copy', () => {
-  it('1099-MISC Tax Reporting Notice (disclosure 1099-misc-v1-2026-04)', () => {
+  it('Tax Reporting Notice keeps taxes-are-yours + no-withholding, drops the 1099 filing promise (D-319, ruling 5973838853)', () => {
     expect(TAX_NOTICE.version).toBe('1099-misc-v1-2026-04');
     expect(TAX_NOTICE.label).toBe('Tax Reporting Notice');
     expect(TAX_NOTICE.body).toBe(
-      'Your $200 referral bonus is taxable income. If you receive $600 or more in referral bonuses from Otter Quotes in a calendar year, we are required by federal law to file a Form 1099-MISC with the IRS reporting those payments, and to provide you a copy no later than January 31 of the following year. You are responsible for all applicable federal, state, and local taxes on referral income. Otter Quotes does not withhold taxes from bonus payments. We recommend consulting a qualified tax professional if you have questions about your tax obligations.',
+      'Your $200 referral bonus is taxable income. You are responsible for all applicable federal, state, and local taxes on referral income. Otter Quotes does not withhold taxes from bonus payments. We recommend consulting a qualified tax professional if you have questions about your tax obligations.',
     );
+    expect(TAX_NOTICE.body).not.toMatch(/1099|W-9|\$600|January 31/);
   });
-  it('FAQ tax answer (1099-MISC / $600 / Jan 31)', () => {
-    expect(FAQ[3].q).toBe('Will I receive a tax form for my referral bonuses?');
-    expect(FAQ[3].a).toBe(
-      'Yes — referral bonuses are taxable income. If you receive $600 or more in bonuses from Otter Quotes in a calendar year, we are required to report those payments to the IRS and will issue you a Form 1099-MISC. You will receive a copy no later than January 31 of the following year. You are responsible for all applicable federal, state, and local taxes on referral income. We recommend consulting a tax professional regarding your specific situation.',
-    );
+  it('the FAQ no longer carries the tax-form question or any 1099 / W-9 promise (D-319)', () => {
+    expect(FAQ.map((f) => f.q)).not.toContain('Will I receive a tax form for my referral bonuses?');
+    for (const f of FAQ) expect(`${f.q} ${f.a}`).not.toMatch(/1099|W-9|W9/);
   });
   it('D-180 commission-approval disclosure', () => {
     expect(COMMISSION_APPROVAL_DISCLOSURE).toBe(
@@ -230,12 +219,6 @@ describe('verbatim Tier-3 tax/legal copy', () => {
     expect(REFERRAL_FEE_DISCLAIMER).toBe(
       'Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.',
     );
-  });
-  it('D-172 W-9 banner copy', () => {
-    expect(W9_BANNER.title).toBe('W-9 Required Before Payment');
-    expect(W9_BANNER.body).toBe("Your referral generated a commission, but it's on hold until we receive your W-9.");
-    expect(W9_BANNER.link).toBe('Upload your W-9 in your partner dashboard →');
-    expect(W9_UPLOAD_LINK).toBe('/partner-dashboard.html#w9Upload');
   });
   it('the $200 / $10,000 representations are intact (hero, How-It-Works, FAQ)', () => {
     expect(HERO.heading).toBe('Love Your Project Results? Share the Love — and Earn $200');

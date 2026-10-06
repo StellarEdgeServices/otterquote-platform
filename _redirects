@@ -127,16 +127,27 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 /locations/davidson-county-tn/roofing/index.html /locations/davidson-county-tn/roofing/ 301
 /locations/franklin-county-oh/roofing/index.html /locations/franklin-county-oh/roofing/ 301
 /locations/hamilton-county-oh/roofing/index.html /locations/hamilton-county-oh/roofing/ 301
+/locations/hamilton-county-tn/roofing/index.html /locations/hamilton-county-tn/roofing/ 301
 /locations/jackson-county-mo/roofing/index.html /locations/jackson-county-mo/roofing/ 301
 /locations/knox-county-tn/roofing/index.html /locations/knox-county-tn/roofing/ 301
 /locations/lake-county-in/roofing/index.html /locations/lake-county-in/roofing/ 301
+/locations/lucas-county-oh/roofing/index.html /locations/lucas-county-oh/roofing/ 301
 /locations/marion-county-in/roofing/index.html /locations/marion-county-in/roofing/ 301
+/locations/montgomery-county-oh/roofing/index.html /locations/montgomery-county-oh/roofing/ 301
+/locations/rutherford-county-tn/roofing/index.html /locations/rutherford-county-tn/roofing/ 301
 /locations/shelby-county-tn/roofing/index.html /locations/shelby-county-tn/roofing/ 301
 /locations/st-louis-county-mo/roofing/index.html /locations/st-louis-county-mo/roofing/ 301
+/locations/summit-county-oh/roofing/index.html /locations/summit-county-oh/roofing/ 301
+/locations/williamson-county-tn/roofing/index.html /locations/williamson-county-tn/roofing/ 301
 /guides/roof-bid-comparison-worksheet /guides/roof-bid-comparison-worksheet.html 301
 /guides/siding-bid-comparison /guides/siding-bid-comparison.html 301
 /guides/gutter-bid-comparison /guides/gutter-bid-comparison.html 301
+/guides/roof-replacement-cost-breakdown /guides/roof-replacement-cost-breakdown.html 301
 /guides/after-adjuster-estimate-next-steps /guides/after-adjuster-estimate-next-steps.html 301
+/guides/contractor-bid-higher-than-insurance-estimate /guides/contractor-bid-higher-than-insurance-estimate.html 301
+/guides/prove-date-of-loss-hail /guides/prove-date-of-loss-hail.html 301
+/guides/show-contractor-insurance-estimate /guides/show-contractor-insurance-estimate.html 301
+/guides/window-replacement-bid-comparison /guides/window-replacement-bid-comparison.html 301
 
 # gh-1795: twelve blog articles promoted from otterquote-deploy/blog/ (a committed
 # May-2026 working-directory mirror, unstyled, canonicalising to a 404) to the real
