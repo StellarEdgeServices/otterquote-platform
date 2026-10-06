@@ -191,6 +191,22 @@
   // gh-2096 item 4: step_index attached here, from STEP_INDEX above.
   function emitView(token) { bridge.trackRouter('router_step_view', { step: token, step_index: STEP_INDEX[token] }); }
   function emitComplete(token) { bridge.trackRouter('router_step_complete', { step: token, step_index: STEP_INDEX[token] }); }
+
+  // gh-1940: GA4 router_contact_submitted + Meta Lead, once per page life,
+  // the first time this arm's first commitment (the d-email submit that
+  // creates the leads row) succeeds. Arms C/E/F already fire the GA4 event at
+  // their equivalent point (gh-2096 item 1); arm D, a live random arm, fired
+  // only the Meta Lead, so the funnel's contact count by variant read 0 for D
+  // (GA4 2026-09-21 -> 2026-10-05: router_contact_submitted c 13, e 28, f 4,
+  // d 0 beside 193 d step views). Shares the existing leadEventFired guard, so
+  // a typo-correction resubmit never fires a second event. Params are the
+  // closed step/step_index pair only -- no field value reaches GA4.
+  function fireContactSubmitted() {
+    if (leadEventFired) return;
+    leadEventFired = true;
+    bridge.trackRouter('router_contact_submitted', { step: 'd-email', step_index: STEP_INDEX['d-email'] });
+    try { fbq('track', 'Lead'); } catch (e) {}
+  }
   function emitDisqualified(sourceToken) { bridge.trackRouter('router_disqualified', { step: sourceToken, step_index: STEP_INDEX[sourceToken] }); }
 
   var RENDERERS = {};
@@ -356,10 +372,7 @@
         email = value;
         bridge.sb.rpc('set_lead_role', { p_lead_id: leadId, p_role: role }).then(null, function () {});
         if (role === 'contractor') {
-          if (!leadEventFired) {
-            leadEventFired = true;
-            try { fbq('track', 'Lead'); } catch (e) {}
-          }
+          fireContactSubmitted();
           redirectWithLeadId(bridge.ROLE_DESTINATIONS.contractor, leadId);
           return;
         }
@@ -381,10 +394,7 @@
           // 2) -- the resubmit branch above already returns before
           // reaching here, but this also covers a bfcache restore or any
           // other path that could otherwise reach `proceed()` twice.
-          if (!leadEventFired) {
-            leadEventFired = true;
-            try { fbq('track', 'Lead'); } catch (e) {}
-          }
+          fireContactSubmitted();
 
           if (role === 'contractor') {
             // #2075: "Contractor role routes to the existing

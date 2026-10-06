@@ -101,6 +101,10 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/roof-replacement-cost-breakdown.html',
   '/guides/after-adjuster-estimate-next-steps':
     '/guides/after-adjuster-estimate-next-steps.html',
+  '/guides/contractor-bid-higher-than-insurance-estimate':
+    '/guides/contractor-bid-higher-than-insurance-estimate.html',
+  '/guides/prove-date-of-loss-hail':
+    '/guides/prove-date-of-loss-hail.html',
   '/guides/show-contractor-insurance-estimate':
     '/guides/show-contractor-insurance-estimate.html',
 
