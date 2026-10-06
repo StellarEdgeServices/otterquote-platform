@@ -146,6 +146,10 @@ ok(!/(CREATE|ALTER|DROP)\s+POLICY/i.test(code), 'migration: no RLS policy is cre
 ok(code.indexOf('FROM public.profiles') > code.indexOf('v_fee_charged THEN') && count(code, /FROM public\.profiles/g) === 1, 'migration: the homeowner\'s name is selected only inside the fee-collected branch');
 ok(/claims c/.test(code) && /platform_fee_charged/.test(code) && /v_selected IS NOT DISTINCT FROM v_my_ctr/.test(code), 'migration: name branch requires the selected contractor AND claims.platform_fee_charged');
 ok(!/\bemail\b|\bphone\b|property_address/i.test(code), 'migration: the function never touches email, phone or address');
+// Hole closed in the delta commit (Marty, A: on PR #2545): a claim owner who points selected_contractor_id at a
+// contractor with NO quote on the claim must get zero rows, not that contractor's account id.
+const homeownerBranch = code.slice(code.indexOf('IF v_owner = v_uid THEN'), code.indexOf('-- Caller is a contractor') > 0 ? code.indexOf('SELECT k.id INTO v_my_ctr') : undefined);
+ok(/FROM public\.contractors k[\s\S]*WHERE k\.id = v_selected[\s\S]*AND EXISTS \(\s*SELECT 1 FROM public\.quotes q\s*WHERE q\.claim_id = p_claim_id AND q\.contractor_id = v_selected\s*\)/.test(homeownerBranch), 'migration: the homeowner branch answers only for a selected contractor who has a quote on this claim (non-party gets no row)');
 ok(/DROP FUNCTION IF EXISTS public\.get_message_counterpart\(uuid\)/.test(rb), 'rollback: drops the function');
 
 console.log(`\n${passed} passed, ${failed} failed`);

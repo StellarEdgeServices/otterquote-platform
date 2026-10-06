@@ -69,7 +69,11 @@ BEGIN
              'contractor'::text,
              COALESCE(NULLIF(btrim(k.company_name), ''), 'your contractor')
         FROM public.contractors k
-       WHERE k.id = v_selected;
+       WHERE k.id = v_selected
+         AND EXISTS (
+           SELECT 1 FROM public.quotes q
+            WHERE q.claim_id = p_claim_id AND q.contractor_id = v_selected
+         );
     RETURN;
   END IF;
 
