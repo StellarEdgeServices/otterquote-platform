@@ -62,7 +62,7 @@ const Nav = {
    */
   _isPartnerPage() {
     const file = this._currentFile();
-    return file === 'partners.html' || file.startsWith('partner-');
+    return file === 'partners.html' || file.startsWith('partner-') || window.location.pathname.indexOf('/partners/') === 0;
   },
 
   /**
