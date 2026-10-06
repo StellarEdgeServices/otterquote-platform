@@ -1,3 +1,8 @@
+-- gh-1438 reconciliation part 4 (2026-10-05T20:57:39Z): renamed from 20260904132600_gh1532_claims_status_check.sql to the REAL
+-- applied version. Live ledger row: supabase_migrations.schema_migrations version=20260908175940
+-- name=gh1532_claims_status_check (SELECT-only verified: normalized-statement text of this file's body
+-- equals the ledger's recorded statements for this version). Executable SQL body
+-- byte-for-byte unchanged; only the filename's version prefix and this banner changed.
 -- gh-1532: claims.status on the money-path table has NO CHECK constraint at
 -- all today -- any text is accepted. Sources: hazard-register-data-integrity.md:19
 -- + hazard-register-security.md:59 ("claims.status has NO CHECK constraint at

@@ -217,10 +217,13 @@
   // self-contained check, reading/writing the SAME oq_ad_optout cookie (1 year, Domain=.otterquote.com) so an
   // opt-out recorded by any gate on this device -- GPC here, GPC or the stored profile flag on the Meta Pixel
   // gate, GPC on the LinkedIn/Reddit gates -- is honoured by every other gate without asking again. Wrapped in
-  // try/catch so it can never break tag loading for a real visitor. Only the GA4 library load below is gated by
-  // this flag -- Microsoft Clarity (further down) is a separate vendor and #1925 asks only about the
-  // "ad-tech tags" (Meta Pixel, Google Ads/Signals); whether Clarity's session-replay data also counts as a
-  // CPRA "share" is an open legal question this PR does not decide (see the PR body).
+  // try/catch so it can never break tag loading for a real visitor.
+  //
+  // D-354 (Dustin's ruling on #1925, comment 5973764305: "Yes, gate Clarity (Recommended)"): Microsoft Clarity is
+  // treated as a "share" too. BOTH vendor loads in this file -- the GA4 library and the Clarity tag -- are gated on
+  // the same three signals as the Meta Pixel: the oq_ad_optout cookie, Global Privacy Control, and the signed-in
+  // account's stored profiles.ad_sharing_opt_out (oqWhenSharingAllowed below). An earlier version of this file
+  // gated only GA4 on cookie + GPC and left Clarity loading for an opted-out visitor.
   function oqWriteAdOptOutCookie() {
     try {
       var domainAttr = '';
@@ -246,6 +249,84 @@
   }
 
   var OQ_AD_OPTOUT_FLAG = oqAdOptOut();
+
+  // D-354 / gh-1925 (the gap LEGAL-READ on #2509 found in this gate): the STORED opt-out (profiles.ad_sharing_opt_out = true)
+  // must follow the known person to every page. An opt-out recorded by GPC in another browser, by the Section 12 button on
+  // another device, or by an admin from a support email never sets the cookie on THIS device, so cookie + GPC alone miss it.
+  // Same rule and same read as js/meta-pixel-gate.js (gh-2107; the two files intentionally do not share a module, see the
+  // "single point" docstring at the top): whenever the SSO session cookie is present (the access token js/cookie-storage.js
+  // writes at Domain=.otterquote.com), the signed-in user's own profile flag is read BEFORE the GA4 library or the Clarity
+  // tag loads, and they load only on a definite `false`. With no session cookie nothing is knowable and both load as before.
+  // A session whose flag cannot be read (an expired token, an error, no js/config.js on the page, an unreadable token) loads
+  // neither: an unknown opt-out is not shared. The read is a plain REST GET with the user's own token, so row-level security
+  // limits it to their own row and it does not depend on supabase-js having loaded yet.
+  function oqSessionToken() {
+    try {
+      var m = document.cookie.match(/(?:^|; )sb-otterquote-at=([^;]*)/);
+      return m ? decodeURIComponent(m[1]) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function oqTokenUserId(token) {
+    try {
+      var parts = String(token).split('.');
+      if (parts.length !== 3) return null;
+      var payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+      // A plain UUID only: the id goes into a URL, so anything else is refused rather than interpolated.
+      return (payload && typeof payload.sub === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.sub)) ? payload.sub : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Resolves true (opted out), false (definitely not), or 'unknown'. Waits up to 5 s for js/config.js (loaded later on the page).
+  function oqReadStoredOptOut(token) {
+    return new Promise(function (resolve) {
+      var uid = oqTokenUserId(token);
+      if (!uid || typeof fetch !== 'function') { resolve('unknown'); return; }
+      var waited = 0;
+      (function attempt() {
+        var cfg = null;
+        try { cfg = (typeof CONFIG !== 'undefined') ? CONFIG : null; } catch (e) { cfg = null; }
+        if (!cfg || !cfg.SUPABASE_URL || !cfg.SUPABASE_ANON) {
+          if (waited >= 5000) { resolve('unknown'); return; }
+          waited += 100;
+          setTimeout(attempt, 100);
+          return;
+        }
+        try {
+          fetch(String(cfg.SUPABASE_URL).replace(/\/+$/, '') + '/rest/v1/profiles?select=ad_sharing_opt_out&id=eq.' + encodeURIComponent(uid), {
+            method: 'GET',
+            headers: { apikey: cfg.SUPABASE_ANON, Authorization: 'Bearer ' + token, Accept: 'application/json' }
+          }).then(function (r) {
+            return r && r.ok ? r.json() : null;
+          }).then(function (rows) {
+            if (!Array.isArray(rows)) { resolve('unknown'); return; }
+            resolve(rows.length > 0 && rows[0] && rows[0].ad_sharing_opt_out === true);
+          }).catch(function () { resolve('unknown'); });
+        } catch (e) {
+          resolve('unknown');
+        }
+      })();
+    });
+  }
+
+  // Runs `load` (a vendor <script> insertion) only if sharing is allowed for this visitor: no session cookie -> yes, at once
+  // (the cookie + GPC check above was the whole answer); a session -> only when the stored flag reads as a definite `false`.
+  // A `true` also leaves the cookie for every later page. ONE read per page load, shared by the GA4 and the Clarity insertion.
+  var oqStoredOptOutRead = null;
+  function oqWhenSharingAllowed(load) {
+    var token = oqSessionToken();
+    if (!token) { load(); return; }
+    if (typeof Promise === 'undefined') { return; } // cannot read the flag: unknown is not shared
+    if (!oqStoredOptOutRead) { oqStoredOptOutRead = oqReadStoredOptOut(token); }
+    oqStoredOptOutRead.then(function (v) {
+      if (v === false) { load(); }
+      else if (v === true) { oqWriteAdOptOutCookie(); }
+    });
+  }
 
   // Runs immediately, before the gtag stub below, so window.OQ_INTERNAL is
   // already correct by the time any gtag('js'|'config'|'event', ...) call
@@ -469,14 +550,28 @@
   // recorded as 0-click bounces before this fix) would not have generated
   // one previously fired at parse time either -- see the PR for the open
   // question this raises for Sloane/D-322 on attribution completeness.
-  // gh-1925: an opted-out visitor never loads the GA4 library (see oqAdOptOut above) -- Clarity's own load,
-  // further down, is unaffected by this flag.
-  if (!OQ_AD_OPTOUT_FLAG) {
-    _oqLoadOnIdleOrInteraction(function () {
-      var s = document.createElement('script');
-      s.async = true;
-      s.src = 'https://www.googletagmanager.com/gtag/js?id=' + MEASUREMENT_ID;
-      document.head.appendChild(s);
+  // gh-1925 / D-354: an opted-out visitor (the oq_ad_optout cookie or Global Privacy Control, see oqAdOptOut above) loads
+  // NEITHER vendor: this return sits above both the GA4 insertion and the Clarity block further down. The gtag stub above is
+  // already defined, so every page's gtag(...) call stays a harmless queued-but-never-sent push; window.clarity is simply
+  // never defined, exactly as on an off-allowlist page (every clarity(...) call site already checks for it).
+  if (OQ_AD_OPTOUT_FLAG) {
+    return;
+  }
+
+  // gh-1925 (CEO, #2304 comment 5974043923 item 7: "`/auth-callback` must not load GA4"; 5973957454: the page carries no
+  // Do Not Sell link, "therefore no GA4 load there"): the GA4 library is never requested on the sign-in landing page, by
+  // normalised path so the Pretty-URL twin (/auth-callback) and /auth-callback.html are both covered. Clarity was already
+  // off this page (it is not on CLARITY_ALLOWED_PATHS).
+  var GA4_DENIED_PATHS = ['/auth-callback'];
+  if (GA4_DENIED_PATHS.indexOf(normalizeClarityPath(window.location.pathname)) === -1) {
+    // D-354 / gh-1925: with a session, the stored profile flag is read first (oqWhenSharingAllowed above).
+    oqWhenSharingAllowed(function () {
+      _oqLoadOnIdleOrInteraction(function () {
+        var s = document.createElement('script');
+        s.async = true;
+        s.src = 'https://www.googletagmanager.com/gtag/js?id=' + MEASUREMENT_ID;
+        document.head.appendChild(s);
+      });
     });
   }
 
@@ -632,9 +727,14 @@
   // insertion is now wrapped.
   (function (c, l, a, r, i, t, y) {
     c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
-    _oqLoadOnIdleOrInteraction(function () {
-      t = l.createElement(r); t.async = 1; t.src = 'https://www.clarity.ms/tag/' + i;
-      y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+    // D-354 / gh-1925: the Clarity tag itself is requested only when sharing is allowed -- cookie and GPC were checked above
+    // (OQ_AD_OPTOUT_FLAG return); with a session, the stored profile flag is read first. Calls queued on the stub above are
+    // simply never drained for a visitor whose stored flag says opted out.
+    oqWhenSharingAllowed(function () {
+      _oqLoadOnIdleOrInteraction(function () {
+        t = l.createElement(r); t.async = 1; t.src = 'https://www.clarity.ms/tag/' + i;
+        y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+      });
     });
   })(window, document, 'clarity', 'script', CLARITY_PROJECT_ID);
 })();

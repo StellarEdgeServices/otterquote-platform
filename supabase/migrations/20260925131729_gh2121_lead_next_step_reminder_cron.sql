@@ -1,3 +1,8 @@
+-- gh-1438 reconciliation part 4 (2026-10-05T20:57:39Z): renamed from 20260925090000_gh2121_lead_next_step_reminder_cron.sql to the REAL
+-- applied version. Live ledger row: supabase_migrations.schema_migrations version=20260925131729
+-- name=gh2121_lead_next_step_reminder_cron (SELECT-only verified: normalized-statement text of this file's body
+-- equals the ledger's recorded statements for this version). Executable SQL body
+-- byte-for-byte unchanged; only the filename's version prefix and this banner changed.
 -- gh-2121 (LRS HO-1 S21) fix round 1 (CEO RUN 68 REVIEW: FAIL, comment
 -- 5825698253, go-live order item 3): the pg_cron schedule for
 -- send-lead-next-step-reminder. Deliberately a SEPARATE migration file from
