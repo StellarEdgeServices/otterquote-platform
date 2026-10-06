@@ -453,6 +453,15 @@ SITE_CLASSIFICATION = {
         # domain move (like jade-alpaca-b82b5e's) is picked up automatically.
         "baseline_fixture": "stohlerroof-bridge.json",
         "max_age_days": DEFAULT_NON_GIT_MAX_AGE_DAYS,
+        # gh-2289 (CTO ruling 5914074821, "re-verify and reset"): the date a human last
+        # re-verified this page. The published deploy (2026-04-21) cannot be re-dated from
+        # here, so PUBLISH_STALE ages from max(published_at, verified_at). Re-verified
+        # 2026-10-03 per CTO RUN 57's read-only check (issue comment 5965005397): live
+        # sha256 == the pinned baseline, and the D-174 disclosure text is on the page.
+        # This does NOT suppress the site: PUBLISH_STALE fires again 90 days after this
+        # date unless someone re-verifies and bumps it. A CONTENT_CHANGED hash mismatch
+        # still wins whatever this says.
+        "verified_at": "2026-10-03",
     },
     "fantastic-cactus-db1344": {
         # gh-1734 fix-1 (2026-09-07): REVERSED from the first pass at this table, which
@@ -904,7 +913,8 @@ def evaluate_site(
     return row
 
 
-def evaluate_non_git_site(site, content_sha256, expected_sha256, published_at, now, max_age_days):
+def evaluate_non_git_site(site, content_sha256, expected_sha256, published_at, now, max_age_days,
+                          verified_at=None):
     """Pure verdict logic for a non-git-connected site (gh-1734: stohlerroof-bridge, the
     D-174 bridge domain). No `main` exists for a site with no repo_url, so the two
     independent signals (see the module docstring's NON-GIT SITE CHECK section) are:
@@ -918,6 +928,12 @@ def evaluate_non_git_site(site, content_sha256, expected_sha256, published_at, n
     BUILD_FAILING vs BEHIND for git sites). No network, no real clock -- content_sha256 /
     published_at / now are all passed in so this is fully testable without hitting the
     live site or the real clock.
+
+    gh-2289: `verified_at` (optional datetime, from SITE_CLASSIFICATION) records the last
+    time a human re-verified the page. The age signal then runs from the LATER of
+    published_at and verified_at; row["since"] keeps the honest published date and
+    row["verified_at"] names the verification date. It never touches the content
+    signal: a hash mismatch is CONTENT_CHANGED whatever verified_at says.
     """
     row = {
         "key": site["key"],
@@ -938,6 +954,7 @@ def evaluate_non_git_site(site, content_sha256, expected_sha256, published_at, n
         "content_sha256": content_sha256,
         "expected_sha256": expected_sha256,
         "age_days": None,
+        "verified_at": verified_at.date().isoformat() if verified_at else None,
         # gh-1549 errored_since_publish: this signal is git-deploy-specific (it counts
         # error-state PRODUCTION DEPLOY attempts against a `main` publish); a content-hash
         # site has no such compare, so None here -- not 0, which would misread as
@@ -946,19 +963,38 @@ def evaluate_non_git_site(site, content_sha256, expected_sha256, published_at, n
     }
 
     age_days = None
-    if published_at is not None and now is not None:
-        age_days = (now - published_at).days
+    age_from = published_at
+    if verified_at is not None and (age_from is None or verified_at > age_from):
+        age_from = verified_at
+    if age_from is not None and now is not None:
+        age_days = (now - age_from).days
         row["age_days"] = age_days
 
     content_changed = bool(expected_sha256) and bool(content_sha256) and content_sha256 != expected_sha256
     stale = age_days is not None and max_age_days is not None and age_days > max_age_days
 
+    # The age is measured from the later of published_at and verified_at. When the
+    # verification is the later date, the stale text must name THAT basis, not call
+    # the published deploy "N days old" (it is older than that).
+    age_basis_verified = (
+        verified_at is not None and age_from is verified_at and age_days is not None
+    )
+
     if content_changed and stale:
         row["verdict"] = CONTENT_CHANGED
+        if age_basis_verified:
+            age_text = (
+                "last verified %s, %d days ago (exceeds the %d-day threshold; published "
+                "deploy since %s)" % (row["verified_at"], age_days, max_age_days, row["since"])
+            )
+        else:
+            age_text = (
+                "the published deploy is %d days old (exceeds the %d-day threshold)"
+                % (age_days, max_age_days)
+            )
         row["detail"] = (
-            "published content hash %s does not match baseline %s, AND the published "
-            "deploy is %d days old (exceeds the %d-day threshold)"
-            % ((content_sha256 or "?")[:12], (expected_sha256 or "?")[:12], age_days, max_age_days)
+            "published content hash %s does not match baseline %s, AND %s"
+            % ((content_sha256 or "?")[:12], (expected_sha256 or "?")[:12], age_text)
         )
         return row
 
@@ -973,18 +1009,32 @@ def evaluate_non_git_site(site, content_sha256, expected_sha256, published_at, n
 
     if stale:
         row["verdict"] = PUBLISH_STALE
-        row["detail"] = (
-            "published deploy is %d days old (since %s), exceeds the %d-day review "
-            "threshold -- content hash still matches baseline, but nobody has verified "
-            "that in that long"
-            % (age_days, row["since"], max_age_days)
-        )
+        if age_basis_verified:
+            row["detail"] = (
+                "last verified %s, %d days ago, exceeds the %d-day review threshold "
+                "(published deploy since %s) -- content hash still matches baseline, but "
+                "nobody has re-verified that in that long"
+                % (row["verified_at"], age_days, max_age_days, row["since"])
+            )
+        else:
+            row["detail"] = (
+                "published deploy is %d days old (since %s), exceeds the %d-day review "
+                "threshold -- content hash still matches baseline, but nobody has verified "
+                "that in that long"
+                % (age_days, row["since"], max_age_days)
+            )
+            if verified_at is not None:
+                row["detail"] = row["detail"] + "; last verified %s" % row["verified_at"]
         return row
 
     row["verdict"] = CONTENT_VERIFIED
     detail = "published content hash matches baseline %s" % (expected_sha256 or "?")[:12]
     if age_days is not None:
-        detail += "; published deploy is %d days old (threshold %d)" % (age_days, max_age_days)
+        if verified_at is not None and published_at is not None and verified_at > published_at:
+            detail += "; last verified %s, %d days ago (threshold %d; published deploy since %s)" % (
+                row["verified_at"], age_days, max_age_days, row["since"])
+        else:
+            detail += "; published deploy is %d days old (threshold %d)" % (age_days, max_age_days)
     row["detail"] = detail
     return row
 
@@ -1168,6 +1218,7 @@ def filter_org_sites(raw_sites, owner_prefix=REPO_OWNER_FILTER, classification=N
                     "content_url": content_url,
                     "baseline_fixture": entry.get("baseline_fixture"),
                     "max_age_days": entry.get("max_age_days") or DEFAULT_NON_GIT_MAX_AGE_DAYS,
+                    "verified_at": entry.get("verified_at"),  # gh-2289
                 }
             )
             continue
@@ -2047,6 +2098,17 @@ def check_non_git_site(site, netlify_token, now=None, timeout=TIMEOUT_SECONDS,
 
     max_age_days = site.get("max_age_days") or DEFAULT_NON_GIT_MAX_AGE_DAYS
 
+    # gh-2289: optional human re-verification date. Fail loud on a malformed or future
+    # value: a typo must never silently disable (or fabricate) the staleness alarm.
+    verified_at = None
+    if site.get("verified_at"):
+        verified_at = _parse_iso8601(str(site["verified_at"]))
+        if verified_at is None or verified_at > now:
+            return unmeasured_row(
+                site,
+                "verified_at %r in SITE_CLASSIFICATION is not a past ISO date" % (site["verified_at"],),
+            )
+
     return evaluate_non_git_site(
         site=site,
         content_sha256=content_sha256,
@@ -2054,6 +2116,7 @@ def check_non_git_site(site, netlify_token, now=None, timeout=TIMEOUT_SECONDS,
         published_at=published_at,
         now=now,
         max_age_days=max_age_days,
+        verified_at=verified_at,
     )
 
 
