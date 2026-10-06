@@ -345,6 +345,12 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://otterquote.com/locations/hamilton-county-tn/roofing/</loc>
+    <lastmod>2026-10-06</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://otterquote.com/locations/jackson-county-mo/roofing/</loc>
     <lastmod>2026-10-05</lastmod>
     <changefreq>monthly</changefreq>
@@ -369,6 +375,12 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://otterquote.com/locations/rutherford-county-tn/roofing/</loc>
+    <lastmod>2026-10-06</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://otterquote.com/locations/shelby-county-tn/roofing/</loc>
     <lastmod>2026-10-03</lastmod>
     <changefreq>monthly</changefreq>
@@ -377,6 +389,12 @@
   <url>
     <loc>https://otterquote.com/locations/st-louis-county-mo/roofing/</loc>
     <lastmod>2026-10-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/locations/williamson-county-tn/roofing/</loc>
+    <lastmod>2026-10-06</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
