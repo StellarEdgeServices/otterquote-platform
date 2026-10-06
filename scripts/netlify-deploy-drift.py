@@ -973,12 +973,28 @@ def evaluate_non_git_site(site, content_sha256, expected_sha256, published_at, n
     content_changed = bool(expected_sha256) and bool(content_sha256) and content_sha256 != expected_sha256
     stale = age_days is not None and max_age_days is not None and age_days > max_age_days
 
+    # The age is measured from the later of published_at and verified_at. When the
+    # verification is the later date, the stale text must name THAT basis, not call
+    # the published deploy "N days old" (it is older than that).
+    age_basis_verified = (
+        verified_at is not None and age_from is verified_at and age_days is not None
+    )
+
     if content_changed and stale:
         row["verdict"] = CONTENT_CHANGED
+        if age_basis_verified:
+            age_text = (
+                "last verified %s, %d days ago (exceeds the %d-day threshold; published "
+                "deploy since %s)" % (row["verified_at"], age_days, max_age_days, row["since"])
+            )
+        else:
+            age_text = (
+                "the published deploy is %d days old (exceeds the %d-day threshold)"
+                % (age_days, max_age_days)
+            )
         row["detail"] = (
-            "published content hash %s does not match baseline %s, AND the published "
-            "deploy is %d days old (exceeds the %d-day threshold)"
-            % ((content_sha256 or "?")[:12], (expected_sha256 or "?")[:12], age_days, max_age_days)
+            "published content hash %s does not match baseline %s, AND %s"
+            % ((content_sha256 or "?")[:12], (expected_sha256 or "?")[:12], age_text)
         )
         return row
 
@@ -993,15 +1009,22 @@ def evaluate_non_git_site(site, content_sha256, expected_sha256, published_at, n
 
     if stale:
         row["verdict"] = PUBLISH_STALE
-        row["detail"] = (
-            "published deploy is %d days old (since %s), exceeds the %d-day review "
-            "threshold -- content hash still matches baseline, but nobody has verified "
-            "that in that long"
-            % (age_days, row["since"], max_age_days)
-        )
-        if verified_at is not None:
-            detail_note = "; last verified %s" % row["verified_at"]
-            row["detail"] = row["detail"] + detail_note
+        if age_basis_verified:
+            row["detail"] = (
+                "last verified %s, %d days ago, exceeds the %d-day review threshold "
+                "(published deploy since %s) -- content hash still matches baseline, but "
+                "nobody has re-verified that in that long"
+                % (row["verified_at"], age_days, max_age_days, row["since"])
+            )
+        else:
+            row["detail"] = (
+                "published deploy is %d days old (since %s), exceeds the %d-day review "
+                "threshold -- content hash still matches baseline, but nobody has verified "
+                "that in that long"
+                % (age_days, row["since"], max_age_days)
+            )
+            if verified_at is not None:
+                row["detail"] = row["detail"] + "; last verified %s" % row["verified_at"]
         return row
 
     row["verdict"] = CONTENT_VERIFIED

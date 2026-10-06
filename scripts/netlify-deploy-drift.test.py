@@ -710,6 +710,24 @@ def main():
           r["verdict"], nd.PUBLISH_STALE)
     check("gh-2289: re-stale detail still names the verification date",
           "last verified" in r["detail"], True)
+    # REVIEW: FAIL 2026-10-06: the re-stale text must state the true basis (verification age),
+    # never call the PUBLISHED deploy "91 days old" -- it is 138 days old.
+    check("gh-2289: re-stale detail does not misstate the published deploy age",
+          "published deploy is 91 days old" in r["detail"], False)
+    check("gh-2289: re-stale detail reports the verification age and the true published date",
+          ("last verified %s, 91 days ago" % (NG_NOW - datetime.timedelta(days=91)).date().isoformat() in r["detail"])
+          and ("published deploy since %s" % NG_STALE.date().isoformat() in r["detail"]), True)
+    r = nd.evaluate_non_git_site(NG_SITE, "c" * 64, NG_BASELINE, NG_STALE, NG_NOW, 90,
+                                  verified_at=NG_NOW - datetime.timedelta(days=91))
+    check("gh-2289: changed content + verification aged out -> CONTENT_CHANGED",
+          r["verdict"], nd.CONTENT_CHANGED)
+    check("gh-2289: changed+stale detail does not misstate the published deploy age",
+          "published deploy is 91 days old" in r["detail"], False)
+    check("gh-2289: changed+stale detail reports the verification age",
+          "last verified %s, 91 days ago" % (NG_NOW - datetime.timedelta(days=91)).date().isoformat() in r["detail"], True)
+    r = nd.evaluate_non_git_site(NG_SITE, "c" * 64, NG_BASELINE, NG_STALE, NG_NOW, 90)
+    check("gh-2289 control: changed+stale without verified_at keeps the published-deploy age text",
+          "the published deploy is 138 days old" in r["detail"], True)
     r = nd.evaluate_non_git_site(NG_SITE, "c" * 64, NG_BASELINE, NG_STALE, NG_NOW, 90,
                                   verified_at=NG_VERIFIED)
     check("gh-2289: verified_at never hides a content change -> CONTENT_CHANGED",
