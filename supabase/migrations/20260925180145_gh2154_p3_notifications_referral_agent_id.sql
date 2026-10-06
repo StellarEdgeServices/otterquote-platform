@@ -1,3 +1,8 @@
+-- gh-1438 reconciliation part 5 (2026-10-06T15:55:01Z): renamed from 20260925131429_gh2154_p3_notifications_referral_agent_id.sql to the REAL
+-- applied version. Live ledger row: supabase_migrations.schema_migrations version=20260925180145
+-- name=gh2154_p3_notifications_referral_agent_id (SELECT-only verified in part 3/4: normalized-statement text of this file's body
+-- equals the ledger's recorded statements for this version). Executable SQL body
+-- byte-for-byte unchanged; only the filename's version prefix and this banner changed.
 -- gh-2154 P-3 review round 2 (REVIEW FAIL 5832785581, must-fix 1): the
 -- notify-admin-new-partner dedupe check was keyed on notifications.user_id,
 -- which is NULL for every partner row at signup time (register_partner never
