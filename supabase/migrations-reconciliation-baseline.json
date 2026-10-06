@@ -9,7 +9,7 @@
     "repo_migrations_scan": "filesystem scan of supabase/migrations/ on this branch, 14-digit prefix per filename via scan_repo_versions() (excludes _rollback.sql and _pre-flight.md), de-duplicated -- 189 distinct version prefixes"
   },
   "counts": {
-    "applied_versions_total": 211,
+    "applied_versions_total": 212,
     "applied_no_repo_file": 58,
     "repo_file_no_applied": 36
   },
@@ -224,7 +224,8 @@
     "20261005151842",
     "20261005154758",
     "20261005173827",
-    "20261005203540"
+    "20261005203540",
+    "20261006171747"
   ],
   "applied_no_repo_file_versions": [
     "20260423184557",
