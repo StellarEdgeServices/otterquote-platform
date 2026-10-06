@@ -3,7 +3,7 @@
 -- Tier: 3B on the R-134 fast path. Protective only: it only removes read access. It grants nothing.
 -- APPLIED to production (yeszghaspzwwstvsrioa) under R-134 by CTO RUN 61 (claim cto-2026-10-06T15:13:52Z):
 --   supabase_migrations.schema_migrations version 20261006171747, name
---   '20261006171024_gh2559_claim_docs_world_fence'. NEVER RE-RUN by hand. These three comment lines were
+--   '20261006171024_gh2559_claim_docs_world_fence'. NEVER RE-RUN by hand. These four comment lines were
 --   added after the apply; every statement below is byte for byte what ran.
 -- Rollback: supabase/migrations_rollbacks/20261006171024_gh2559_claim_docs_world_fence_rollback.sql
 -- Pre-flight: supabase/migrations/20261006171024_gh2559_claim_docs_world_fence_pre-flight.md
