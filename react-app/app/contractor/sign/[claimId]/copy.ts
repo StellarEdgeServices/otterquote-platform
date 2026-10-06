@@ -27,8 +27,12 @@ export const SIGN_COPY = {
   legalPara1Emphasis: 'before',
   legalPara1Tail:
     ' the homeowner. Your contract template has been pre-filled with the project details. Please review and sign below.',
-  legalPara2:
-    'An IC 24-5-11 compliance addendum (Statement of Right to Cancel + Notice of Cancellation) has been automatically attached.',
+  // gh-1315 / D-351: legalPara2 ("An IC 24-5-11 compliance addendum ... has been automatically
+  // attached.") is REMOVED. It was true only while create-docusign-envelope appended the
+  // platform-generated Document 3; that document was retired 2026-08-27 and is deleted in code
+  // (see the "[C1 2026-08-27] IC 24-5-11 COMPLIANCE ADDENDUM RETIRED" tombstone in
+  // supabase/functions/create-docusign-envelope/index.ts), so the sentence told the contractor an
+  // attachment exists that no envelope carries. Do not re-add it unless that document comes back.
 
   // ── TIER-3 success state — verbatim: contract-signing.html #docusignSigned ──
   signedTitle: 'Contract Signed Successfully',

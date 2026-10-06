@@ -97,6 +97,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/siding-bid-comparison.html',
   '/guides/gutter-bid-comparison':
     '/guides/gutter-bid-comparison.html',
+  '/guides/roof-replacement-cost-breakdown':
+    '/guides/roof-replacement-cost-breakdown.html',
   '/guides/after-adjuster-estimate-next-steps':
     '/guides/after-adjuster-estimate-next-steps.html',
 
@@ -120,14 +122,20 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/knox-county-tn/roofing/',
   '/locations/lake-county-in/roofing/index.html':
     '/locations/lake-county-in/roofing/',
+  '/locations/lucas-county-oh/roofing/index.html':
+    '/locations/lucas-county-oh/roofing/',
   '/locations/marion-county-in/roofing/index.html':
     '/locations/marion-county-in/roofing/',
+  '/locations/montgomery-county-oh/roofing/index.html':
+    '/locations/montgomery-county-oh/roofing/',
   '/locations/rutherford-county-tn/roofing/index.html':
     '/locations/rutherford-county-tn/roofing/',
   '/locations/shelby-county-tn/roofing/index.html':
     '/locations/shelby-county-tn/roofing/',
   '/locations/st-louis-county-mo/roofing/index.html':
     '/locations/st-louis-county-mo/roofing/',
+  '/locations/summit-county-oh/roofing/index.html':
+    '/locations/summit-county-oh/roofing/',
   '/locations/williamson-county-tn/roofing/index.html':
     '/locations/williamson-county-tn/roofing/',
 };

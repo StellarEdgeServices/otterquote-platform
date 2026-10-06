@@ -12,6 +12,8 @@
  *     completion-event check (cancel must NOT read as complete).
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { SIGN_COPY } from '../copy';
 import {
@@ -29,8 +31,8 @@ const STATIC_LEGAL = {
   heading: '⚖️ Sign Your Contract — Required by Indiana Law',
   para1:
     'Indiana law (IC 24-5-11) requires that you, as the contractor, sign the contract before the homeowner. Your contract template has been pre-filled with the project details. Please review and sign below.',
-  para2:
-    'An IC 24-5-11 compliance addendum (Statement of Right to Cancel + Notice of Cancellation) has been automatically attached.',
+  // gh-1315 / D-351: the old para2 ("... compliance addendum ... has been automatically attached.")
+  // is gone on purpose -- see the 'no addendum claim' block below.
 };
 // Success + bridge: contract-signing.html (#docusignSigned + iframe-detection block).
 const STATIC_REF = {
@@ -46,13 +48,45 @@ describe('TIER-3 verbatim legal copy (byte-for-byte)', () => {
     expect(
       SIGN_COPY.legalPara1Lead + SIGN_COPY.legalPara1Emphasis + SIGN_COPY.legalPara1Tail,
     ).toBe(STATIC_LEGAL.para1);
-    expect(SIGN_COPY.legalPara2).toBe(STATIC_LEGAL.para2);
   });
 
   it('signed-confirmation + bridge copy matches contract-signing.html exactly', () => {
     expect(SIGN_COPY.signedTitle).toBe(STATIC_REF.signedTitle);
     expect(SIGN_COPY.signedBody).toBe(STATIC_REF.signedBody);
     expect(SIGN_COPY.returningText).toBe(STATIC_REF.returningText);
+  });
+});
+
+// gh-1315 / D-351: the contractor sign page must not tell the contractor that an IC 24-5-11 compliance
+// addendum "has been automatically attached" -- create-docusign-envelope no longer builds that document
+// (Document 3, retired 2026-08-27; D-351 ratified the retirement on 2026-10-03). The sentence is checked in
+// BOTH places the page exists (the React route's copy and the static contractor-bid-form.html), and tied to the
+// Edge Function source so the claim cannot come back while the document stays gone.
+const REPO_ROOT = path.resolve(__dirname, '../../../../../..');
+const read = (rel: string) => fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
+const CLAIM_RE = /compliance addendum|automatically attached/i;
+
+describe('gh-1315 / D-351: no claim that a compliance addendum is attached', () => {
+  it('the React sign route copy carries no addendum sentence', () => {
+    expect(Object.keys(SIGN_COPY)).not.toContain('legalPara2');
+    for (const v of Object.values(SIGN_COPY)) {
+      if (typeof v === 'string') expect(v).not.toMatch(CLAIM_RE);
+    }
+  });
+
+  it('the static contractor-bid-form.html #contractSigningStep carries no addendum sentence', () => {
+    const html = read('contractor-bid-form.html');
+    const start = html.indexOf('id="contractSigningStep"');
+    expect(start).toBeGreaterThan(-1);
+    const block = html.slice(start, start + 2500);
+    expect(block).toContain('Sign Your Contract'); // the block under test is the right one
+    expect(block).not.toMatch(CLAIM_RE);
+  });
+
+  it('the premise holds: the envelope function does not build the addendum, and the D-269 acknowledgment field is still there', () => {
+    const ef = read('supabase/functions/create-docusign-envelope/index.ts');
+    expect(ef).not.toMatch(/function\s+generateComplianceAddendumPdf/);
+    expect(ef).toContain('otterquote_acknowledgment');
   });
 });
 

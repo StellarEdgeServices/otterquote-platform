@@ -109,7 +109,10 @@ BEGIN
 
   -- V: the refuter's attack (#2479 comment 5998207363, V1-V3), statement for statement.
   BEGIN
-    v := v || E'\nV1 OWNER INSERT new claim c3 with referral_id=rx, status=contract_signed: ' || pg_temp.try_as('authenticated', o, format('INSERT INTO public.claims (id,user_id,is_test,status,referral_id) VALUES (%L,%L,true,''contract_signed'',%L)', c3, o, rx));
+    -- gh-2479 born-state guard (20261005200000): a client can no longer create a claim born contract_signed, so
+    -- the owner creates it in the initial state and the superuser fixture line below moves it to contract_signed.
+    v := v || E'\nV1 OWNER INSERT new claim c3 with referral_id=rx (initial state): ' || pg_temp.try_as('authenticated', o, format('INSERT INTO public.claims (id,user_id,is_test,referral_id) VALUES (%L,%L,true,%L)', c3, o, rx));
+    UPDATE public.claims SET status = 'contract_signed' WHERE id = c3; -- fixture (superuser)
     v := v || E'\nV1 RESULT ' || pg_temp.acc(rx);
     v := v || E'\nV2 OWNER UPDATE quotes SET claim_id=c3 on the selected quote of c1: ' || pg_temp.try_as('authenticated', o, format('UPDATE public.quotes SET claim_id=%L WHERE id=%L', c3, q1));
     v := v || E'\nV2 STATE ' || format('quote.claim_id=c3:%s quote.claim_id=c1:%s quote.status=%s total_price=%s', (SELECT claim_id = c3 FROM quotes WHERE id = q1), (SELECT claim_id = c1 FROM quotes WHERE id = q1), (SELECT status FROM quotes WHERE id = q1), (SELECT total_price FROM quotes WHERE id = q1));
@@ -185,7 +188,8 @@ BEGIN
     t := pg_temp.q_as('anon', NULL, 'SELECT public.track_referral_click(''8C61OKGF'',''gh2479-quotes-proof'',NULL,NULL,NULL)::text');
     IF t ~ '^[0-9a-f-]{36}$' THEN
       rnew := t::uuid;
-      v := v || E'\nS2 LEGIT anon click -> OWNER INSERT new claim c4 with that referral: ' || pg_temp.try_as('authenticated', o, format('INSERT INTO public.claims (id,user_id,is_test,status,referral_id) VALUES (%L,%L,true,''contract_signed'',%L)', c4, o, rnew));
+      v := v || E'\nS2 LEGIT anon click -> OWNER INSERT new claim c4 with that referral: ' || pg_temp.try_as('authenticated', o, format('INSERT INTO public.claims (id,user_id,is_test,referral_id) VALUES (%L,%L,true,%L)', c4, o, rnew));
+      UPDATE public.claims SET status = 'contract_signed' WHERE id = c4; -- fixture (superuser), see V1
       UPDATE public.quotes SET claim_id = c4 WHERE id = q2; -- fixture (superuser): a selected $15000 quote on c4
       v := v || E'\nS2 LEGIT service_role completion of c4: ' || pg_temp.try_as('service_role', NULL, format('UPDATE public.claims SET completion_date=now() WHERE id=%L', c4));
       v := v || E'\nS2 RESULT ' || pg_temp.acc(rnew);
