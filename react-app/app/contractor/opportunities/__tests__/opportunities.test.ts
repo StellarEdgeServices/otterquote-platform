@@ -87,21 +87,39 @@ describe('mapClaimToOpportunity', () => {
 
   // gh-484: contractor-facing "Measurements" badge previously offered only the
   // Hover PDF button, which fails for homeowner-uploaded (non-Hover) files.
-  it('exposes a real homeowner-uploaded measurements path but not the Hover completion sentinel', () => {
+  // gh-2559 / D-368: the path of a homeowner-uploaded file now goes only to the contractor the
+  // homeowner selected; a bidder is not given it (the storage policy refuses it anyway).
+  it('exposes a real homeowner-uploaded measurements path to the selected contractor, never the Hover completion sentinel', () => {
+    const upload = 'uid-1/CL1/1785930676980-dummy-measurements.jpg';
     const withRealUpload = mapClaimToOpportunity(
-      { ...claim, measurements_filename: 'uid-1/CL1/1785930676980-dummy-measurements.jpg' },
+      { ...claim, measurements_filename: upload, selected_contractor_id: 'K-SEL' },
       null,
+      'K-SEL',
     );
-    expect(withRealUpload.measurementsFilename).toBe('uid-1/CL1/1785930676980-dummy-measurements.jpg');
+    expect(withRealUpload.measurementsFilename).toBe(upload);
 
     const withHoverSentinel = mapClaimToOpportunity(
-      { ...claim, measurements_filename: 'hover_123456_measurements.json' },
+      { ...claim, measurements_filename: 'hover_123456_measurements.json', selected_contractor_id: 'K-SEL' },
       null,
+      'K-SEL',
     );
     expect(withHoverSentinel.measurementsFilename).toBeNull();
 
-    const withNone = mapClaimToOpportunity(claim, null);
+    const withNone = mapClaimToOpportunity({ ...claim, selected_contractor_id: 'K-SEL' }, null, 'K-SEL');
     expect(withNone.measurementsFilename).toBeNull();
+  });
+
+  it('withholds the uploaded measurements path from a bidder but keeps the availability badge (gh-2559)', () => {
+    const upload = 'uid-1/CL1/1785930676980-dummy-measurements.jpg';
+    for (const o of [
+      mapClaimToOpportunity({ ...claim, measurements_filename: upload }, null),
+      mapClaimToOpportunity({ ...claim, measurements_filename: upload }, null, 'K-BIDDER'),
+      mapClaimToOpportunity({ ...claim, measurements_filename: upload, selected_contractor_id: 'K-OTHER' }, null, 'K-BIDDER'),
+      mapClaimToOpportunity({ ...claim, measurements_filename: upload, selected_contractor_id: 'K-OTHER' }, null, null),
+    ]) {
+      expect(o.measurementsFilename).toBeNull();
+      expect(o.measurementsAvailable).toBe(true);
+    }
   });
 });
 

@@ -30,4 +30,4 @@ No set is marked `UNVERIFIED`: every set has a recorded measurement. Two sets ar
 
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
-| `gh2559_claim_docs_summary_only` | forward, rollback, pre-flight | NOT APPLIED | no ledger row; live policy "Contractors can view biddable claim docs" is the world-fenced text of ledger version `20261006171747` (pg_policies read 2026-10-06 after a rolled-back forward and rollback proof); waits for its R-097 window on #2559 | none; proof at `supabase/tests/gh2559_claim_docs_summary_only_proof.sql` |
+| `gh2559_claim_docs_summary_only` | forward, rollback, pre-flight | NOT APPLIED | no ledger row; live policy "Contractors can view biddable claim docs" is the world-fenced text of ledger version `20261006171747` and `public.claims` has no `claims_guard_bid_release` trigger (pg_policies, pg_trigger and the ledger read 2026-10-06 after rolled-back forward and rollback proofs); rebuilt after REVIEW: FAIL; waits for its R-097 window on #2559 | none; proof at `supabase/tests/gh2559_claim_docs_summary_only_proof.sql` |

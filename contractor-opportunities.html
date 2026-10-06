@@ -609,7 +609,11 @@
                     // gh-484: only expose a real storage path — never the
                     // completion sentinel (`hover_{job}_measurements.json`, written by
                     // hover-webhook, matches no storage object).
-                    measurementsFilename: (claim.measurements_filename && !isHoverMeasurementsSentinel(claim.measurements_filename))
+                    // gh-2559 / D-368: the uploaded measurements file is a raw homeowner upload (it can
+                    // be a copy of the estimate), so it is withheld from a bidder like the estimate.
+                    measurementsFilename: (claim.measurements_filename && !isHoverMeasurementsSentinel(claim.measurements_filename)
+                        && currentContractor && currentContractor.id
+                        && claim.selected_contractor_id === currentContractor.id)
                       ? claim.measurements_filename
                       : null,
                   };

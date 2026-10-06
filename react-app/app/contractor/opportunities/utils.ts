@@ -343,8 +343,13 @@ export function mapClaimToOpportunity(
         ? claim.estimate_filename
         : null,
     // gh-484: only expose a real storage path — never the Hover completion sentinel.
+    // gh-2559 / D-368: and, like the estimate, only to the selected contractor: the uploaded
+    // measurements file is a raw homeowner upload (it can be a copy of the estimate).
     measurementsFilename:
-      claim.measurements_filename && !isHoverMeasurementsSentinel(claim.measurements_filename)
+      claim.measurements_filename &&
+      !isHoverMeasurementsSentinel(claim.measurements_filename) &&
+      !!contractorId &&
+      claim.selected_contractor_id === contractorId
         ? claim.measurements_filename
         : null,
   };

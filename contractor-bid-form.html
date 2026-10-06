@@ -4133,8 +4133,9 @@
       const parts = [];
       // gh-2559 / D-368: before the homeowner selects a contractor, a bidding contractor sees only
       // the parsed summary of the uploaded insurance estimate (the "Insurance Line Items" panel),
-      // not the file. The storage policy refuses the file to a bidder, so the button is offered
-      // only to the contractor the homeowner selected.
+      // not the files the homeowner uploaded (the estimate and the measurements slot, which can hold
+      // a copy of the estimate). The storage policy refuses every raw uploaded object to a bidder,
+      // so both buttons are offered only to the contractor the homeowner selected.
       if (canOpenRawEstimate()) {
         parts.push('<button class="doc-link-btn-form" onclick="openBidFormEstimatePdf()">&#x1F4C4; View Loss Sheet</button>');
       }
@@ -4144,7 +4145,7 @@
       // sentinel on claims (see supabase/functions/hover-webhook/index.ts) that names no storage
       // object — the real measurement artifact is a PDF served by the measurement-PDF button below. Rendering off
       // a bare truthiness check therefore offers a link that can only fail. Guard on the sentinel.
-      if (currentClaim.measurements_filename && !isHoverMeasurementsSentinel(currentClaim.measurements_filename)) {
+      if (canOpenRawMeasurements()) {
         parts.push('<button class="doc-link-btn-form" onclick="openBidFormMeasurementsPdf()">&#x1F4D0; View Measurements</button>');
       }
       // Always offer the measurement PDF — function handles gracefully if no measurement job exists
@@ -4165,6 +4166,14 @@
     // gh-2559 / D-368: true only for the contractor the homeowner selected on this claim.
     function canOpenRawEstimate() {
       return !!(currentClaim && currentClaim.estimate_filename
+        && currentContractor && currentContractor.id
+        && currentClaim.selected_contractor_id === currentContractor.id);
+    }
+
+    // gh-2559 / D-368: same rule for the homeowner-uploaded measurements file (it can be a copy of the estimate).
+    function canOpenRawMeasurements() {
+      return !!(currentClaim && currentClaim.measurements_filename
+        && !isHoverMeasurementsSentinel(currentClaim.measurements_filename)
         && currentContractor && currentContractor.id
         && currentClaim.selected_contractor_id === currentContractor.id);
     }
@@ -4191,8 +4200,7 @@
     }
 
     async function openBidFormMeasurementsPdf() {
-      if (!currentClaim?.measurements_filename) return;
-      if (isHoverMeasurementsSentinel(currentClaim.measurements_filename)) return;
+      if (!canOpenRawMeasurements()) return;
       try {
         const { data, error } = await sb.storage
           .from('claim-documents')

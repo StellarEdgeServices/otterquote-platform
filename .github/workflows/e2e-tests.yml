@@ -458,6 +458,9 @@ jobs:
       - name: admin loss-sheet queue offers no Mark reviewed on a Not-uploaded row + EF guard (gh-1796)
         run: node tests/gh1796-no-review-without-loss-sheet.mjs
 
+      - name: a bidding contractor is offered no raw homeowner upload, only the selected contractor (gh-2559, D-368)
+        run: node tests/gh2559-bidder-no-raw-files.mjs
+
       - name: partner-re one leads row per signup, variant carried (gh-2084 arm E)
         run: node tests/gh2084-partner-re-one-lead-row.mjs
 
