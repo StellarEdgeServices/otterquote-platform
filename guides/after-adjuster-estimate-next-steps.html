@@ -252,14 +252,14 @@
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
-  color: var(--amber);
+  color: var(--link-on-light);
   font-size: 0.9rem;
   font-weight: 500;
   margin-bottom: var(--sp-8);
   transition: color var(--duration) var(--ease);
 }
 .back-link:hover {
-  color: var(--amber-2);
+  color: var(--link-on-light-deep);
   text-decoration: none;
 }
 
@@ -286,7 +286,8 @@
   border-radius: var(--radius-md);
 }
 .step blockquote p { margin-bottom: 0; }
-.step a { color: var(--amber); }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
 .table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -295,7 +296,8 @@
 .table-wrap .definition-table { margin: 0; min-width: 480px; }
 .table-wrap .definition-table td:first-child { white-space: normal; }
 .article-intro p + p { margin-top: var(--sp-4); }
-.article-intro a { color: var(--amber); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.article-intro a:not(.btn):hover { color: var(--link-on-light-deep); }
 .cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
 .faq-item h3 { cursor: default; }
 .faq-item h3:hover { color: var(--white); }
