@@ -37,7 +37,7 @@ export const SIGN_COPY = {
   // ── (b) TIER-3 LEGAL — Step 1 "Right to Cancel" callout (contract-signing.html:937-938) ──
   rightToCancelTitle: 'Your Right to Cancel (Indiana Law IC 24-5-11)',
   rightToCancelBody:
-    'You may cancel this contract at any time before midnight on the third business day after signing. A Notice of Cancellation form is included in the contract documents. Both you and the contractor will sign this agreement.',
+    'You may cancel this contract at any time before midnight on the third business day after signing, or after your insurance company\'s written final decision on your claim if that is later. Both you and the contractor will sign this agreement.',
 
   // ── (c) TIER-3 LEGAL — Step 1 "No Cost to You" (D-206) (contract-signing.html:946-947) ──
   noCostTitle: 'No Cost to You',
@@ -56,7 +56,7 @@ export const SIGN_COPY = {
   // ── (d) TIER-3 LEGAL — Step 3 "Your Rights Under Indiana Law" (contract-signing.html:1046-1047) ──
   indianaRightsTitle: '⚖️ Your Rights Under Indiana Law (IC 24-5-11)',
   indianaRightsBody:
-    'You have the right to cancel this contract at any time before midnight on the third business day after the date you signed. To cancel, complete and deliver the Notice of Cancellation form included in your contract documents to your contractor. No penalty applies.',
+    'You have the right to cancel this contract at any time before midnight on the third business day after the date you signed, or after your insurance company\'s written final decision on your claim if that is later. To cancel, give your contractor written notice; you may use the Notice of Cancellation form in your contract documents.',
 
   // ── (e) TIER-3 LEGAL — Step 3 "Otter Quotes Contractor Switch Policy" (contract-signing.html:1052-1055) ──
   switchPolicyTitle: '🔄 Otter Quotes Contractor Switch Policy',
