@@ -91,7 +91,7 @@
 .step ul { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
 .step li { margin-bottom: var(--sp-3); color: var(--dark-gray); line-height: 1.7; }
 .step li strong { color: var(--navy); }
-.step em { color: var(--link-on-light-deep); font-style: italic; }
+.step em { color: var(--link-on-light-deep, #7A4200); font-style: italic; }
 .highlight-box {
   background: rgba(245, 158, 11, 0.08);
   border-left: 4px solid #E07B00;
@@ -190,13 +190,13 @@
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
-  color: var(--link-on-light);
+  color: var(--link-on-light, #A85C00);
   font-size: 0.9rem;
   font-weight: 500;
   margin-bottom: var(--sp-8);
   transition: color var(--duration) var(--ease);
 }
-.back-link:hover { color: var(--link-on-light-deep); text-decoration: none; }
+.back-link:hover { color: var(--link-on-light-deep, #7A4200); text-decoration: none; }
 @media (max-width: 768px) {
   .article-body { padding: 0 var(--sp-4); }
   .cta-box { padding: var(--sp-6) var(--sp-4); }
@@ -294,12 +294,12 @@
             <td>&minus;$1,500</td>
           </tr>
           <tr>
-            <td class="label" style="color:var(--link-on-light-deep)">Insurance pays</td>
+            <td class="label" style="color:var(--link-on-light-deep, #7A4200)">Insurance pays</td>
             <td class="acv" style="font-weight:700">$6,820</td>
             <td class="rcv" style="font-weight:700">$14,500*</td>
           </tr>
           <tr>
-            <td class="label" style="color:var(--link-on-light-deep)">You pay out of pocket</td>
+            <td class="label" style="color:var(--link-on-light-deep, #7A4200)">You pay out of pocket</td>
             <td class="acv" style="font-weight:700">$9,180</td>
             <td class="rcv" style="font-weight:700">$1,500*</td>
           </tr>
