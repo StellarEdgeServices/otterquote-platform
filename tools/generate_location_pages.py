@@ -1379,6 +1379,7 @@ CORNERSTONE_GUIDES = [
 TRADE_EXTRA_LINKS = {
     "roofing": [
         ("/blog/hail-vs-wind-roof-damage.html", "Hail vs. Wind Roof Damage: How They Differ"),
+        ("/blog/roofing-estimate-red-flags.html", "7 Red Flags in a Roofing Contractor Estimate"),
         ("/blog/storm-chaser-roofing-scams.html", "Storm Chaser Roofing Scams: How to Spot One"),
     ],
     "siding": [
