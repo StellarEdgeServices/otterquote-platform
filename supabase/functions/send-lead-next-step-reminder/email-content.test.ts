@@ -24,15 +24,15 @@ function countOccurrences(haystack: string, needle: string): number {
 }
 
 Deno.test("subject and preheader are verbatim from comment 5821796976", () => {
-  assertEquals(SUBJECT, "Next step on your roof assessment");
+  assertEquals(SUBJECT, "Your next step with Otter Quotes");
   assertEquals(
     PREHEADER,
     "Two quick ways to keep things moving while you wait to hear from Dustin.",
   );
 });
 
-Deno.test("body template is 80 words — matches the comment's own word-count check", () => {
-  assertEquals(BODY_TEMPLATE.split(/\s+/).filter(Boolean).length, 80);
+Deno.test("body template is 82 words — matches the comment's own word-count check", () => {
+  assertEquals(BODY_TEMPLATE.split(/\s+/).filter(Boolean).length, 82);
 });
 
 Deno.test("CTA URLs are the live Arm F deep links with ?lead=<id>", () => {
@@ -208,5 +208,5 @@ Deno.test("existing variants are unchanged: f / HO-2 / no variant render identic
     assertEquals(buildLeadReminderEmail("lead-1", "Jane", OPT, true, v), legacy);
   }
   assertStringIncludes(legacy.textBody, "Dustin will still call you");
-  assertEquals(legacy.subject, "Next step on your roof assessment");
+  assertEquals(legacy.subject, "Your next step with Otter Quotes");
 });

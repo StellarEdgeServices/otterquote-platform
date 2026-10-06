@@ -1,7 +1,7 @@
--- STATUS (gh-1438, as of 2026-09-30T12:32Z): APPLIED
+-- STATUS (gh-1438, as of 2026-10-05T20:57:39Z): APPLIED
 -- FILE ROLE: forward file of set gh2154_register_partner_rate_limit_fix (the STATUS is the set's; it describes the forward migration)
--- EVIDENCE: applied 2026-09-27/28 via the Management API /database/migrations, then re-applied byte-identical by a parallel session (idempotent): PR #2237 comments 5861052277 and 5861206755 (5 register_partner* rate_limit_config rows, vault salt count 1, anon EXECUTE false). Ledger version NOT recorded in either comment (the 2026-09-29T20:55Z ledger snapshot has ledger-only versions 20260927235229 and 20260927235943 near that time, but no name is recorded, so this is not confirmed). Not previously measured on gh-1438
--- REPO COPY: none in supabase/migrations/ or supabase/migrations_rollbacks/ for this file (forward .sql/.test.sql/_pre-flight.md: no copy in supabase/migrations/ (applied but never filed under its ledger version: a #1438 direction-1 gap))
+-- EVIDENCE: applied as ledger versions 20260927235229 and 20260927235943 (both name gh2154_register_partner_rate_limit_fix; the second is an idempotent re-apply, PR #2237 comments 5861052277, 5861206755); rate_limit_client_key() is live (pg_proc, 1 row, 2026-10-05T20:57Z); normalized statements of both ledger rows equal this file's body: gh-1438 part 4.
+-- REPO COPY: supabase/migrations/20260927235229_gh2154_register_partner_rate_limit_fix.sql (same statements; the second ledger version 20260927235943 is not filed separately); rollback at supabase/migrations_rollbacks/gh2154_register_partner_rate_limit_fix_rollback.sql
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- gh-2154 (rate-limit fix, discovered CEO RUN 71 pr2223-fix3, 2026-09-26) --

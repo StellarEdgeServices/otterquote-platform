@@ -21,6 +21,12 @@ vi.mock('next/script', () => ({
   default: (props: { src?: string; id?: string }) => <span data-testid={props.id ? `script-${props.id}` : 'script-src'} data-src={props.src ?? ''} />,
 }));
 vi.mock('../../lib/internal-traffic', () => ({ isInternalTraffic: () => false }));
+// gh-1925 / D-354: GA4Gate now reads the signed-in account's stored opt-out flag before loading anything. Every case in this file is a
+// visitor who has NOT opted out, modelled as "no session" (the gate then loads exactly as it did before); the opt-out cases themselves
+// live in gh1925-gpc-optout.test.tsx.
+vi.mock('../../lib/supabase', () => ({
+  supabase: { auth: { getSession: () => Promise.resolve({ data: { session: null }, error: null }) }, from: () => { throw new Error('no profile read without a session'); } },
+}));
 
 import { GA4Gate } from '../GA4Gate';
 
@@ -46,6 +52,19 @@ function setLocation(host: string, hash = '') {
   Object.defineProperty(window, 'location', { value: { ...window.location, hostname: host, hash, search: '', pathname: mockPath }, writable: true, configurable: true });
 }
 const clarityLoaded = (c: HTMLElement) => c.querySelector('[data-testid="script-clarity-init"]') !== null;
+/**
+ * "The gate's effect has run and its decision is rendered." On every route but one that is the GA4 init script appearing. gh-1925 (CEO,
+ * #2304 5974043923 item 7): /auth-callback never loads GA4, so there is no such marker there; wait out the (mocked, immediate) flag read
+ * instead and assert GA4 stayed off, so this helper cannot pass by simply not waiting.
+ */
+async function gateSettled(container: HTMLElement, route: string): Promise<void> {
+  if (route === '/auth-callback' || route.startsWith('/auth-callback/')) {
+    await new Promise((r) => setTimeout(r, 50));
+    expect(container.querySelector('[data-testid="script-ga4-init"]')).toBeNull();
+    return;
+  }
+  await waitFor(() => expect(container.querySelector('[data-testid="script-ga4-init"]')).not.toBeNull());
+}
 
 describe('Clarity on the React funnel: exactly the ruled routes, default-deny everywhere else', () => {
   beforeEach(() => { mockPath = '/get-started'; setLocation('app.otterquote.com'); });
@@ -73,7 +92,7 @@ describe('Clarity on the React funnel: exactly the ruled routes, default-deny ev
       mockPath = route;
       setLocation('app.otterquote.com');
       const { container } = render(<GA4Gate />);
-      await waitFor(() => expect(container.querySelector('[data-testid="script-ga4-init"]')).not.toBeNull()); // the effect has run (GA4 still loads)
+      await gateSettled(container, route); // the effect has run (GA4 loads everywhere except /auth-callback)
       if (clarityLoaded(container)) loadedOn.push(route);
     }
     expect(loadedOn.sort()).toEqual([...RULED].sort());
@@ -87,7 +106,7 @@ describe('Clarity on the React funnel: exactly the ruled routes, default-deny ev
     mockPath = route;
     setLocation('app.otterquote.com');
     const { container } = render(<GA4Gate />);
-    await waitFor(() => expect(container.querySelector('[data-testid="script-ga4-init"]')).not.toBeNull());
+    await gateSettled(container, route);
     expect(clarityLoaded(container)).toBe(false);
   });
 
