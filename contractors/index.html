@@ -30,6 +30,13 @@
 .dir-rating { display: block; font-size: 0.82rem; color: var(--amber); margin-top: var(--sp-1); }
 .empty-state { text-align: center; padding: var(--sp-16) var(--sp-6); color: var(--slate); }
 .empty-state p { max-width: 500px; margin: 0 auto var(--sp-8); }
+/* gh-2493: header links and the footer Terms / Privacy / Do Not Sell line sit on the light page (2.85:1 before); the footer links carry an inline colour */
+@media (min-width: 769px) {
+  .nav-links a:not(.btn) { color: var(--link-on-light, #A85C00); }
+  .nav-links a:not(.btn):hover { color: var(--link-on-light-deep, #7A4200); }
+}
+footer a { color: var(--link-on-light, #A85C00) !important; }
+footer a:hover { color: var(--link-on-light-deep, #7A4200) !important; }
 .disclosure { font-size: 0.82rem; color: var(--gray); text-align: center; padding: 0 var(--sp-6) var(--sp-10); max-width: 700px; margin: 0 auto; }
 </style>
 </head>
