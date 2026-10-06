@@ -717,6 +717,7 @@
                         <button id="dunningRetryBtn" onclick="retryDunningPayment()" style="background: #EF4444; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-weight: 600; font-size: 0.875rem; cursor: pointer;">Retry Payment Now</button>
                         <a href="contractor-settings.html" style="background: #0D1B2E; color: #E07B00; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-weight: 600; font-size: 0.875rem; cursor: pointer; text-decoration: none; display: inline-block;">Update Card</a>
                     </div>
+                    <p id="dunningRetryStatus" role="status" style="display: none; color: #7F1D1D; font-size: 0.8125rem; line-height: 1.5; margin: 0.75rem 0 0;"></p>
                 </div>
             </div>
         </div>
@@ -1753,24 +1754,37 @@
             }
         };
 
+        // gh-2442: the button no longer writes payment_failures from the browser (the old write set a status the
+        // table's CHECK constraint never allowed, and the contractor UPDATE policy was dropped in p16, so it never
+        // worked). It asks the server through request_dunning_retry(), which checks the failure is the caller's own,
+        // sets only retry_requested_at, and answers with a status. The server-side retry itself runs in process-dunning.
+        const DUNNING_RETRY_MESSAGES = {
+            requested: 'Retry requested. We will try your payment method on file again shortly. You can also update your card.',
+            already_requested: 'A retry was already requested a moment ago. We will try your payment method on file shortly.',
+            not_retryable: 'This payment can no longer be retried from here. Please update your card.'
+        };
+
         async function retryDunningPayment() {
             if (!activeDunningRecord || !sb) return;
             const btn = document.getElementById('dunningRetryBtn');
-            if (btn) { btn.disabled = true; btn.textContent = 'Retrying…'; }
+            const statusEl = document.getElementById('dunningRetryStatus');
+            if (btn) { btn.disabled = true; btn.textContent = 'Requesting…'; }
             try {
-                const { data: dunningRows, error } = await sb
-                    .from('payment_failures')
-                    .update({ dunning_status: 'retried' })
-                    .eq('id', activeDunningRecord.id)
-                    .select('id');
+                const { data: result, error } = await sb.rpc('request_dunning_retry', { p_failure_id: activeDunningRecord.id });
                 if (error) throw error;
-                // gh-2105 decision (a, money): a zero-row match keeps the banner and re-enables the button via the existing catch.
-                if (!Array.isArray(dunningRows) || dunningRows.length === 0) throw new Error('zero_rows_updated: payment_failures.dunning_status');
-                const banner = document.getElementById('dunningAlertBanner');
-                if (banner) banner.style.display = 'none';
-                activeDunningRecord = null;
+                const status = result && typeof result.status === 'string' ? result.status : '';
+                if (!Object.prototype.hasOwnProperty.call(DUNNING_RETRY_MESSAGES, status)) throw new Error('unexpected_status: request_dunning_retry');
+                if (statusEl) { statusEl.textContent = DUNNING_RETRY_MESSAGES[status]; statusEl.style.display = 'block'; }
+                if (btn) {
+                    btn.textContent = status === 'not_retryable' ? 'Retry unavailable' : 'Retry requested';
+                    // stays disabled: a second click inside 15 minutes would only return the existing request
+                }
             } catch (err) {
                 console.warn('[Dashboard] retryDunningPayment error:', err);
+                if (statusEl) {
+                    statusEl.textContent = 'We could not request a retry. Please try again, or update your card.';
+                    statusEl.style.display = 'block';
+                }
                 if (btn) { btn.disabled = false; btn.textContent = 'Retry Payment Now'; }
             }
         }
