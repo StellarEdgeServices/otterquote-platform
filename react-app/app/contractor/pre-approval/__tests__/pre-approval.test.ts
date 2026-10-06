@@ -261,7 +261,7 @@ describe('IC 24-5-11 attestation (Tier-3 verbatim version + payload)', () => {
   it('locked version strings — byte-for-byte with the static page', () => {
     expect(ATTESTATION_TEXT_VERSION).toBe('ic-24511-v1-2026-04');
     expect(CPA_VERSION).toBe('v1-2026-04');
-    expect(AGREEMENT_VERSION).toBe('v1-2026-04');
+    expect(AGREEMENT_VERSION).toBe('v2-2026-10');
   });
 
   it('the 3 required agreement checks (TCPA optional)', () => {
@@ -286,7 +286,7 @@ describe('IC 24-5-11 attestation (Tier-3 verbatim version + payload)', () => {
       attestation_signer_name: 'Pat', attestation_signer_title: 'Owner',
       attestation_text_version: 'ic-24511-v1-2026-04', attestation_accepted_at: ISO,
       ic_24511_attestation: a, sms_consent_ts: ISO,
-      agreement_accepted_at: ISO, agreement_version: 'v1-2026-04', onboarding_step: 3, updated_at: ISO,
+      agreement_accepted_at: ISO, agreement_version: 'v2-2026-10', onboarding_step: 3, updated_at: ISO,
     });
     expect(buildStep3ContractorUpdate({}, a, false, ISO).sms_consent_ts).toBeNull();
   });
