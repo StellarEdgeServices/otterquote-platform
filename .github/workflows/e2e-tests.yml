@@ -461,6 +461,9 @@ jobs:
       - name: partner-re one leads row per signup, variant carried (gh-2084 arm E)
         run: node tests/gh2084-partner-re-one-lead-row.mjs
 
+      - name: arm D fires GA4 router_contact_submitted once at d-email, with negative control (gh-1940)
+        run: node tests/gh1940-arm-d-contact-submitted.mjs
+
       - name: tsc --noEmit type gate (gh-414)
         working-directory: react-app
         run: npx tsc --noEmit
