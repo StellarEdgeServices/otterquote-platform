@@ -35,7 +35,7 @@ import {
 const STATIC = {
   rightToCancelTitle: 'Your Right to Cancel (Indiana Law IC 24-5-11)',
   rightToCancelBody:
-    'You may cancel this contract at any time before midnight on the third business day after signing, or after your insurance company\'s written final decision on your claim if that is later. Both you and the contractor will sign this agreement.',
+    'You may cancel this contract at any time before midnight on the third business day after signing, or the third business day after your insurance company\'s written final decision on your claim if that is later. Both you and the contractor will sign this agreement.',
   noCostTitle: 'No Cost to You',
   noCostBody:
     'Otter Quotes is 100% free for Homeowners. The price shown in this contract is the price you pay your contractor — there are no separate fees from Otter Quotes.',
@@ -45,7 +45,7 @@ const STATIC = {
   ackHint: 'Required before signing.',
   indianaRightsTitle: '⚖️ Your Rights Under Indiana Law (IC 24-5-11)',
   indianaRightsBody:
-    'You have the right to cancel this contract at any time before midnight on the third business day after the date you signed, or after your insurance company\'s written final decision on your claim if that is later. To cancel, give your contractor written notice; you may use the Notice of Cancellation form in your contract documents.',
+    'You have the right to cancel this contract at any time before midnight on the third business day after the date you signed, or the third business day after your insurance company\'s written final decision on your claim if that is later. To cancel, give your contractor written notice; you may use the Notice of Cancellation form in your contract documents.',
   switchPolicyTitle: '🔄 Otter Quotes Contractor Switch Policy',
   switchPolicyP1:
     'Changed your mind about your contractor? Up to 3 days before your scheduled installation date, you can switch to a different contractor in the Otter Quotes network — at no cost to you.',

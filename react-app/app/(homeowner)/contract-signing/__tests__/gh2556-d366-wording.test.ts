@@ -35,10 +35,12 @@ const OLD = {
 };
 const NEW = {
   s93: "Contractor is responsible for ensuring that its uploaded contract template contains every element required by IC 24-5-11, including the statement of the consumer's right to cancel and the attached Notice of Cancellation form, and including but not limited to:",
-  signing1: "You may cancel this contract at any time before midnight on the third business day after signing, or after your insurance company's written final decision on your claim if that is later. Both you and the contractor will sign this agreement.",
-  signing2: "You have the right to cancel this contract at any time before midnight on the third business day after the date you signed, or after your insurance company's written final decision on your claim if that is later. To cancel, give your contractor written notice; you may use the Notice of Cancellation form in your contract documents.",
+  signing1: "You may cancel this contract at any time before midnight on the third business day after signing, or the third business day after your insurance company's written final decision on your claim if that is later. Both you and the contractor will sign this agreement.",
+  signing2: "You have the right to cancel this contract at any time before midnight on the third business day after the date you signed, or the third business day after your insurance company's written final decision on your claim if that is later. To cancel, give your contractor written notice; you may use the Notice of Cancellation form in your contract documents.",
   s41Added: "We share your name and contact information with the contractor you select, so they can prepare and perform your contract.",
   s71: "4 years from creation, then deleted unless the lead has become an account or we hold a call or text consent record for it",
+  // D-366 amendment (#2556 comment 6022019578, 2026-10-06T17:43:49Z): Effective Date line with the Section 18.1 carve-out.
+  effective: "Effective Date: October 6, 2026. For Contractors who accepted an earlier version, the changes apply to new Opportunities posted after the date stated in the written notice sent under Section 18.1.",
 };
 
 describe('gh-2556 item 1: Contractor Agreement 9.3', () => {
@@ -79,6 +81,13 @@ describe('gh-2556 item 3: homeowner signing screens, static and React byte-equal
   it('no signing copy says a form "is included" or "No penalty applies"', () => {
     expect(SIGN_COPY.rightToCancelBody).not.toContain('is included');
     expect(SIGN_COPY.indianaRightsBody).not.toContain('No penalty applies');
+  });
+});
+
+describe('gh-2556 amendment: Contractor Agreement Effective Date line (D-366, comment 6022019578)', () => {
+  it('prints the date plus the Section 18.1 carve-out, once; the bare date line is gone', () => {
+    expect(count(agreement, NEW.effective)).toBe(1);
+    expect(agreement).not.toContain('Effective Date: October 6, 2026</p>');
   });
 });
 
