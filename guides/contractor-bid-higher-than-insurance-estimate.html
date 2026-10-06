@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Bid Higher Than the Insurance Estimate? | Otter Quotes</title>
+<meta name="description" content="Why a contractor's bid can be higher than your insurance estimate, how to compare the two side by side in one table, and what to ask the contractor.">
+<link rel="canonical" href="https://otterquote.com/guides/contractor-bid-higher-than-insurance-estimate.html">
+<meta property="og:title" content="Bid Higher Than the Insurance Estimate? | Otter Quotes">
+<meta property="og:description" content="Why a contractor's bid can be higher than your insurance estimate, how to compare the two side by side in one table, and what to ask the contractor.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/contractor-bid-higher-than-insurance-estimate.html">
+<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Otter Quotes logo">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-10-06">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds (same values as PR #2499; defined here until it merges) */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+.definition-table td { color: var(--dark-gray); border-bottom: 1px solid #D9DEE7; }
+.definition-table td:first-child { color: var(--navy); }
+.definition-table tr:last-child td { border-bottom: none; }
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>My Contractor's Bid Is Higher Than the Insurance Estimate. What Now?</h1>
+    <p class="meta">Otter Quotes &middot; Updated October 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>A contractor's bid and your insurer's estimate are two documents written by different people, so they can describe different work and put different prices on it. Lay them next to each other, find each line that differs, and ask the contractor to explain each difference in writing. Questions about the estimate itself belong with your insurer.</p>
+    </div>
+
+    <section class="step">
+      <h2>Why can a contractor's bid be higher than the insurance estimate?</h2>
+      <p>The estimate is your insurer's document for your claim, and the bid is a contractor's offer to do the work. Each lists work, quantities, materials and prices, and a different person wrote each. A higher total can come from a longer list, a different material, a different quantity, a different price for the same item, or a mix.</p>
+      <p>None of these tells you by itself which document is right. A difference is a question to ask. If the words on the estimate are unfamiliar, our explainer on <a href="/blog/what-is-scope-of-loss-roofing.html">what "scope of loss" means</a> covers the terms.</p>
+    </section>
+
+    <section class="step">
+      <h2>How do I compare the bid and the estimate side by side?</h2>
+      <p>Put the two documents in one table with a row for each item, so every difference sits where you can see it. Fill in what the estimate says and what the bid says, mark each row as the same or different, and ask the contractor to explain every row that differs, in writing.</p>
+      <p>Follow these steps:</p>
+      <ol>
+        <li><strong>Get the whole estimate.</strong> If you do not have every page, ask your insurer for a full copy.</li>
+        <li><strong>Ask the contractor for a line-item bid.</strong> A single lump sum hides what is and is not included.</li>
+        <li><strong>Make a row for each item.</strong> Add a row for every item either document lists, such as removal of the old material, the main material, small parts and trim, permit, disposal and cleanup.</li>
+        <li><strong>Fill in both columns.</strong> Copy what the estimate says and what the bid says for each item: quantity, unit, material and price.</li>
+        <li><strong>Mark each row.</strong> Write Same, Different, On the estimate only, or On the bid only.</li>
+        <li><strong>Send the questions.</strong> Ask the contractor to explain every row that is not Same, in writing.</li>
+      </ol>
+      <p>Copy this table into a document or spreadsheet. Leave the two middle columns blank until you have both documents in front of you.</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>What the estimate lists</th>
+              <th>What the bid lists</th>
+              <th>Question to ask the contractor</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Removal of the old material</td>
+              <td>&nbsp;</td>
+              <td>&nbsp;</td>
+              <td>Does the bid include removal, and how many layers?</td>
+            </tr>
+            <tr>
+              <td>Main material</td>
+              <td>&nbsp;</td>
+              <td>&nbsp;</td>
+              <td>Which manufacturer, product line and color?</td>
+            </tr>
+            <tr>
+              <td>Quantity and unit</td>
+              <td>&nbsp;</td>
+              <td>&nbsp;</td>
+              <td>Where did your measurements come from?</td>
+            </tr>
+            <tr>
+              <td>Small parts and trim</td>
+              <td>&nbsp;</td>
+              <td>&nbsp;</td>
+              <td>Which are listed, and which are new or reused?</td>
+            </tr>
+            <tr>
+              <td>Permit, disposal and cleanup</td>
+              <td>&nbsp;</td>
+              <td>&nbsp;</td>
+              <td>Who handles each, and are they in the total?</td>
+            </tr>
+            <tr>
+              <td>Warranty</td>
+              <td>&nbsp;</td>
+              <td>&nbsp;</td>
+              <td>What does it cover, for how long, and who stands behind it?</td>
+            </tr>
+            <tr>
+              <td>Start date and length of the job</td>
+              <td>&nbsp;</td>
+              <td>&nbsp;</td>
+              <td>What is written, and what could change it?</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Some rows, such as warranty and start date, may be on the bid only. Mark them that way.</p>
+    </section>
+
+    <section class="step">
+      <h2>What should I ask the contractor about each difference?</h2>
+      <p>Ask the contractor to say in writing why each line is in the bid and what it covers. Ask where the quantities came from, what the total includes and what could change the price after you sign. Send every contractor the same questions, so you can compare the answers side by side.</p>
+      <p>Copy these questions:</p>
+      <ul>
+        <li>Which lines in your bid are not on the insurer's estimate, and what does each one cover?</li>
+        <li>Which lines on the estimate are not in your bid, and why?</li>
+        <li>Where did your quantities and measurements come from?</li>
+        <li>Does your bid name a product line where the estimate names only a category?</li>
+        <li>What does your total include: removal, disposal, permit and cleanup?</li>
+        <li>What could change the price after I sign, and how would a change be written down?</li>
+        <li>Can you put every answer in writing, with a date?</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>What if the bid includes work the estimate does not list?</h2>
+      <p>A line in the bid that is not on the estimate is a line the estimate does not price. Whether your insurer considers it, and how, is a question for your insurer. Otter Quotes takes no part in that conversation, and neither a contractor nor a website can know in advance how your insurer will respond.</p>
+      <p>Ask your insurer, in writing where you can, and keep a copy of every answer. Questions you can ask:</p>
+      <ul>
+        <li>Can you walk me through how this line on your estimate is described and measured?</li>
+        <li>If a contractor's bid differs from your estimate, do you have a process for that, and who do I contact?</li>
+        <li>What, if anything, do you need from me or from a contractor if I want you to look at a bid?</li>
+        <li>Where do I find the dates and deadlines that apply to my claim?</li>
+      </ul>
+      <p>Write down the date, the name of the person you spoke with and what they said.</p>
+    </section>
+
+    <section class="step">
+      <h2>What do I owe the contractor if the bid is higher than the insurance payment?</h2>
+      <p>Your contract is between you and the contractor. How any insurance payment relates to the contract price is a question for your insurer and your policy, and Otter Quotes cannot answer it. Before you sign, ask the contractor to show in writing what you owe, when each payment is due and what each payment covers.</p>
+      <p>Read every page of the contract, and ask what any sentence about your insurance claim means before you sign.</p>
+    </section>
+
+    <section class="step">
+      <h2>Does a higher bid mean something is wrong?</h2>
+      <p>Not by itself. A higher bid is a reason to ask what is different, not a reason to drop the contractor or to choose the bid. The estimate is one thing to compare a bid with. Materials, warranty, schedule and who does the work belong in the comparison too.</p>
+      <p>With one bid, you hold one contractor's list and price against the estimate. With several bids on the same scope, you can compare side by side and see which differences show up in only one bid and which show up in more than one. Our <a href="/guides/roof-bid-comparison-worksheet.html">roof bid worksheet</a> lines bids up row by row.</p>
+    </section>
+
+    <section class="step">
+      <h2>Where does Otter Quotes fit?</h2>
+      <p>You provide a copy of your insurance estimate, and Otter Quotes creates a written scope of work for your project and sends it to multiple contractors. They compete online with bids on the same work, and you compare the bids side by side, next to reviews and licensing information. You sign online, with no salesperson in your home. There is no cost for homeowners who provide a copy of their insurance estimate. Contractors pay Otter Quotes a fee on the accepted bid. We do not work with your insurance company, we do not negotiate claims, we do not offer free inspections, and we do not sell upgrades. Call 844-875-3412 with questions.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>Can a contractor's bid be higher than my insurance estimate?</h3>
+        <div class="faq-answer">
+          <p>Yes. The two documents come from different people, and each lists work, quantities, materials and prices. A higher bid can come from a longer list, a different material, a different quantity or a different price for the same item. Ask the contractor to explain each difference in writing.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>How do I find out why the bid is higher?</h3>
+        <div class="faq-answer">
+          <p>Put the estimate and the bid in one table with a row for each item. Mark each row as the same, different or on one document only. Then ask the contractor to explain every row that is not the same, in writing.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Should I pick the bid closest to the insurance estimate?</h3>
+        <div class="faq-answer">
+          <p>Closeness to the estimate is one fact about a bid. Materials, warranty, schedule and who does the work also belong in the comparison. Compare the bids side by side on the same written scope, and ask about every line you do not understand before you sign.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Who do I ask about the insurance estimate itself?</h3>
+        <div class="faq-answer">
+          <p>Your insurer. Questions about what its estimate says, how it was measured and how your policy applies belong with your insurer, in writing where you can. Keep a copy of every answer. Otter Quotes does not work with your insurance company or negotiate claims.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does Otter Quotes work with my insurance company?</h3>
+        <div class="faq-answer">
+          <p>No. Otter Quotes does not work with your insurance company, negotiate claims or act as a public adjuster. We create a written scope of work for your project, send it to multiple contractors, and let you compare their bids online. Questions about your coverage and your claim belong with your insurer.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/guides/after-adjuster-estimate-next-steps.html">You Got the Adjuster's Estimate. Now What?</a></li>
+        <li><a href="/guides/multiple-bids-roof-insurance-claim.html">Can You Get Multiple Bids on a Roof Insurance Claim?</a></li>
+        <li><a href="/guides/how-to-read-contractor-estimate.html">How to Read a Roofing Contractor Estimate</a></li>
+        <li><a href="/blog/why-roofers-quote-different-prices.html">Why Two Roofers Quote Different Prices for the Same Job</a></li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "My Contractor's Bid Is Higher Than the Insurance Estimate. What Now?",
+  "description": "Why a contractor's bid can be higher than your insurance estimate, how to compare the two side by side in one table, and what to ask the contractor.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-10-06",
+  "dateModified": "2026-10-06",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/contractor-bid-higher-than-insurance-estimate.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Can a contractor's bid be higher than my insurance estimate?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. The two documents come from different people, and each lists work, quantities, materials and prices. A higher bid can come from a longer list, a different material, a different quantity or a different price for the same item. Ask the contractor to explain each difference in writing."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How do I find out why the bid is higher?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Put the estimate and the bid in one table with a row for each item. Mark each row as the same, different or on one document only. Then ask the contractor to explain every row that is not the same, in writing."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Should I pick the bid closest to the insurance estimate?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Closeness to the estimate is one fact about a bid. Materials, warranty, schedule and who does the work also belong in the comparison. Compare the bids side by side on the same written scope, and ask about every line you do not understand before you sign."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Who do I ask about the insurance estimate itself?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Your insurer. Questions about what its estimate says, how it was measured and how your policy applies belong with your insurer, in writing where you can. Keep a copy of every answer. Otter Quotes does not work with your insurance company or negotiate claims."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Otter Quotes work with my insurance company?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Otter Quotes does not work with your insurance company, negotiate claims or act as a public adjuster. We create a written scope of work for your project, send it to multiple contractors, and let you compare their bids online. Questions about your coverage and your claim belong with your insurer."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "My Contractor's Bid Is Higher Than the Insurance Estimate. What Now?",
+      "item": "https://otterquote.com/guides/contractor-bid-higher-than-insurance-estimate.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>
