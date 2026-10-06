@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>What Goes Into Roof Replacement Cost? | Otter Quotes</title>
+<meta name="description" content="See the line items in a roof replacement bid, what moves each one, and what to ask every contractor, from tear-off and decking to overhead and profit.">
+<link rel="canonical" href="https://otterquote.com/guides/roof-replacement-cost-breakdown.html">
+<meta property="og:title" content="What Goes Into Roof Replacement Cost? | Otter Quotes">
+<meta property="og:description" content="See the line items in a roof replacement bid, what moves each one, and what to ask every contractor, from tear-off and decking to overhead and profit.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/roof-replacement-cost-breakdown.html">
+<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Otter Quotes logo">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-10-06">
+<meta property="article:author" content="Otter Quotes">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+
+/* Cost table: readable body text on the light page, and stacked rows on narrow screens */
+.definition-table td { color: var(--dark-gray); }
+.definition-table td a { color: var(--link-on-light); }
+@media (max-width: 640px) {
+  .table-wrap .definition-table { min-width: 0; }
+  .definition-table.stack thead { display: none; }
+  .definition-table.stack tr { display: block; padding: var(--sp-4) 0; border-bottom: 1px solid rgba(0,0,0,0.12); }
+  .definition-table.stack td { display: block; padding: var(--sp-1) var(--sp-2); border-bottom: none; }
+  .definition-table.stack td[data-label]::before { content: attr(data-label); display: block; font-size: 0.8rem; font-weight: 600; color: var(--link-on-light-deep); }
+}
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>What Goes Into the Cost of a Roof Replacement?</h1>
+    <p class="meta">Otter Quotes &middot; Updated October 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>A roof replacement price is made of materials, labor and the cost of running the contracting business. The main line items are tear-off, decking repair, underlayment, shingles, flashing, ventilation, disposal, permits, labor, and overhead and profit. What moves each one is the size and shape of the roof, how steep it is, how tall the house is, and what the crew finds when the old roof comes off.</p>
+    </div>
+
+    <section class="step">
+      <h2>What are the line items in a roof replacement bid?</h2>
+      <p>A roof replacement bid can cover removing the old roof, checking and repairing the deck, new underlayment, drip edge, flashing, shingles with starter and ridge pieces, ventilation, cleanup and disposal, and permits, plus the crew&rsquo;s labor and the contractor&rsquo;s overhead and profit. A bid may show some of these on separate lines or show only one total, so ask.</p>
+      <p>Two manufacturer documents list the same kinds of parts. GAF, a shingle manufacturer, lists complete tear-off, new shingles, ridge cap shingles, underlayment, drip edges, flashings and final cleanup in its article on <a href="https://www.gaf.com/en-us/blog/your-home/whats-included-in-a-roof-replacement-a-complete-breakdown-c43ee6ec-80c3-4338-a76a-70db1f522632" target="_blank" rel="noopener nofollow">what is included in a roof replacement</a>. Owens Corning&rsquo;s <a href="https://champion.owenscorning.com/downloaddmsassets/2147485556.pdf" target="_blank" rel="noopener nofollow">guide specification for asphalt shingles</a> lists shingles, hip and ridge shingles, starter shingles, self-adhering ice and water barrier, shingle underlayment, attic ventilation, fasteners, and metal flashing and trim.</p>
+    </section>
+
+    <section class="step">
+      <h2>What can move each line item?</h2>
+      <p>Each line has its own drivers. The table gives each item in plain words, what can change it, and a question to put to every contractor. A blank answer is information: it means the bid is silent on that item.</p>
+      <div class="table-wrap">
+        <table class="definition-table stack">
+          <thead>
+            <tr>
+              <th>Line item</th>
+              <th>What it is and what can move it</th>
+              <th>What to ask</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Tear-off and disposal</td>
+              <td data-label="What it is and what can move it">Removing the old roofing and hauling it away. <a href="https://champion.owenscorning.com/downloaddmsassets/2147485556.pdf" target="_blank" rel="noopener nofollow">Owens Corning&rsquo;s guide specification</a> for its asphalt shingles tells the installer: &ldquo;Remove all existing roofing down to the roof deck.&rdquo; The size of the roof and the number of layers on it change how much there is to remove.</td>
+              <td data-label="What to ask">How many layers does the bid remove? Who supplies the dumpster and hauls the debris away?</td>
+            </tr>
+            <tr>
+              <td>Decking repair</td>
+              <td data-label="What it is and what can move it">The boards or panels under the shingles. <a href="https://www.gaf.com/en-us/blog/your-home/whats-included-in-a-roof-replacement-a-complete-breakdown-c43ee6ec-80c3-4338-a76a-70db1f522632" target="_blank" rel="noopener nofollow">GAF</a> describes the order of work this way: &ldquo;Once the old materials are removed, the contractor will perform a roof deck inspection, looking for signs of damage or soft spots where the plywood has been compromised by moisture.&rdquo; Because the deck is inspected after the old roof is off, the bid cannot show exactly how much repair the roof needs.</td>
+              <td data-label="What to ask">Does the bid price deck repair per sheet, carry a set allowance, or leave it out? What happens to the total if more is found?</td>
+            </tr>
+            <tr>
+              <td>Underlayment and ice and water barrier</td>
+              <td data-label="What it is and what can move it">The water-resistant layers between the deck and the shingles. <a href="https://champion.owenscorning.com/downloaddmsassets/2147485556.pdf" target="_blank" rel="noopener nofollow">Owens Corning</a> lists a self-adhering ice and water barrier and a shingle underlayment as separate products in its specification. The product chosen and the parts of the roof it covers change the line.</td>
+              <td data-label="What to ask">Which underlayment is quoted, and which areas get ice and water barrier?</td>
+            </tr>
+            <tr>
+              <td>Drip edge</td>
+              <td data-label="What it is and what can move it">Metal trim along the roof edges. Owens Corning&rsquo;s specification calls for drip edge on all roof edges, so the length of the roof&rsquo;s edges matters.</td>
+              <td data-label="What to ask">Is drip edge included at the eaves, the rakes, or both?</td>
+            </tr>
+            <tr>
+              <td>Flashing</td>
+              <td data-label="What it is and what can move it">Metal that directs water at joints and openings. The Asphalt Roofing Manufacturers Association&rsquo;s <a href="https://www.asphaltroofing.org/wp-content/uploads/2018/03/Residential-Manual-Preview-pages-77-80.pdf" target="_blank" rel="noopener nofollow">Residential Asphalt Roofing Manual</a> says: &ldquo;Wherever there is an intersection of the roof plane or a penetration through the roof surface, flashing is essential for leak-free roof performance.&rdquo; More walls, chimneys, valleys and roof openings mean more flashing to replace or reuse.</td>
+              <td data-label="What to ask">Which flashing is replaced and which is reused?</td>
+            </tr>
+            <tr>
+              <td>Shingles, starter and ridge pieces</td>
+              <td data-label="What it is and what can move it">The roof covering itself. Manufacturers sell several product lines, and Owens Corning&rsquo;s specification lists some hip and ridge products as impact resistant. The line and the number of squares of roof (a square is 100 square feet) set the material cost.</td>
+              <td data-label="What to ask">Which manufacturer, product line and impact rating, if any, are written on the bid? Many insurers offer a discount when you install impact-resistant roofing, and the amount varies by company and state. Ask yours what it offers.</td>
+            </tr>
+            <tr>
+              <td>Ventilation</td>
+              <td data-label="What it is and what can move it">Intake and exhaust vents for the attic. Owens Corning lists attic ventilation with its shingle products and says: &ldquo;Ventilation under the roof deck must meet local code requirements.&rdquo; What is already on the roof and what the work adds changes this line.</td>
+              <td data-label="What to ask">Does the bid add, replace or reuse vents, and who decides what the local code requires?</td>
+            </tr>
+            <tr>
+              <td>Pitch and stories</td>
+              <td data-label="What it is and what can move it">How steep the roof is and how high the eaves sit. Federal rules (<a href="https://www.ecfr.gov/current/title-29/subtitle-B/chapter-XVII/part-1926/subpart-M/section-1926.500" target="_blank" rel="noopener">29 CFR 1926.500</a>) define a steep roof as follows: &ldquo;Steep roof means a roof having a slope greater than 4 in 12 (vertical to horizontal).&rdquo; The rule at <a href="https://www.ecfr.gov/current/title-29/subtitle-B/chapter-XVII/part-1926/subpart-M/section-1926.501" target="_blank" rel="noopener">29 CFR 1926.501</a> requires workers on a steep roof with unprotected sides and edges 6 feet or more above a lower level to be protected by guardrails with toeboards, safety nets or personal fall arrest systems.</td>
+              <td data-label="What to ask">How will the crew work safely on this roof, and does the number of stories or the pitch change the bid?</td>
+            </tr>
+            <tr>
+              <td>Permits</td>
+              <td data-label="What it is and what can move it">Local rules decide whether a roof replacement needs a permit and what it costs. Your local building department can tell you what applies to your address.</td>
+              <td data-label="What to ask">Who applies for the permit, and is the fee in the bid?</td>
+            </tr>
+            <tr>
+              <td>Labor</td>
+              <td data-label="What it is and what can move it">The crew&rsquo;s time for everything above, and the cost of having the right people on the job. A roof with many valleys, walls and openings takes more handling than a plain one. Some bids come from a contractor&rsquo;s own crew, and some from a subcontractor.</td>
+              <td data-label="What to ask">Is the work done by the contractor&rsquo;s own crew or a subcontractor, and how many days does the bid allow?</td>
+            </tr>
+            <tr>
+              <td>Overhead and profit</td>
+              <td data-label="What it is and what can move it">Overhead is the cost of running the contracting business that is not one job&rsquo;s materials or crew: insurance, trucks and fuel, an office, marketing and sales commissions. Profit is what the contractor keeps after everything else. Every bid carries some of both, whether or not it shows them.</td>
+              <td data-label="What to ask">Does the bid show overhead and profit, or fold them into the total?</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="step">
+      <h2>Why can two bids for the same roof have different totals?</h2>
+      <p>Two bids can total different amounts because they price different jobs. One may reuse flashing that another replaces, remove one layer where another removes two, carry a deck allowance where another carries none, or quote a different shingle line. Match the line items first, then compare the totals.</p>
+      <p>Our <a href="/guides/roof-bid-comparison-worksheet.html">How to Compare Roofing Bids: A Side-by-Side Worksheet</a> turns these lines into a table you can fill in for each bid, and <a href="/blog/why-roofers-quote-different-prices.html">Why Two Roofers Quote Different Prices for the Same Job</a> goes deeper on the reasons.</p>
+    </section>
+
+    <section class="step">
+      <h2>What does overhead and profit mean, and can it change?</h2>
+      <p>Overhead and profit is the part of a price that is not materials or crew time. Overhead covers the cost of running the business, and profit is what the contractor keeps. Some overhead is the cost of finding customers, such as marketing and sales commissions, so how a contractor wins work can affect it.</p>
+      <p>Otter Quotes is built around that idea. Contractors bid online on one written scope of work, with no salesperson visiting your home, which can reduce sales and marketing cost. We cannot say what any contractor&rsquo;s bid will contain.</p>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>Otter Quotes creates a written scope of work for your project and sends it to multiple contractors. Every contractor bids on the same scope and the same measurements. You compare the bids online, next to reviews and licensing information, and sign online without a salesperson in your home. Subcontractors bid too, so you may be able to work directly with the crew that does the work. We are not a contractor, we do not sell upgrades, and we do not offer inspections. Contractors pay Otter Quotes a fee on the accepted bid.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>What goes into the cost of a roof replacement?</h3>
+        <div class="faq-answer">
+          <p>A roof replacement price covers tear-off and disposal, decking repair, underlayment, drip edge, flashing, shingles, ventilation, permits, labor, and the contractor’s overhead and profit. The size, shape and pitch of the roof, the height of the house and what the crew finds under the old roof can each move the price.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Why does roof pitch change a roofing bid?</h3>
+        <div class="faq-answer">
+          <p>Federal fall-protection rules define a steep roof as one with a slope greater than 4 in 12 and set requirements for protecting workers on one. Ask each contractor how the crew will work safely on your roof and whether the pitch or the number of stories changes the bid.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does a roof replacement bid include decking repair?</h3>
+        <div class="faq-answer">
+          <p>Not necessarily, so ask. A manufacturer’s article describes the deck inspection as happening once the old materials are removed, so a bid may price deck repair per sheet, carry an allowance, or leave it out. Ask each contractor which approach the bid takes and what happens to the total if damage is found.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What are overhead and profit in a roof bid?</h3>
+        <div class="faq-answer">
+          <p>Overhead is the cost of running the contracting business that is not one job’s materials or crew, such as insurance, trucks, an office, marketing and sales commissions. Profit is what the contractor keeps after all costs. Every bid carries some of both, whether or not the bid shows them separately.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Why does this page not list a price per square foot?</h3>
+        <div class="faq-answer">
+          <p>A price depends on your roof, the products chosen and the contractors bidding, none of which a general page can see. This page names the line items and what moves them. A written bid for your own roof is the number to compare.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/guides/roof-bid-comparison-worksheet.html">How to Compare Roofing Bids: A Side-by-Side Worksheet</a></li>
+        <li><a href="/blog/why-roofers-quote-different-prices.html">Why Two Roofers Quote Different Prices for the Same Job</a></li>
+        <li><a href="/blog/roof-shingle-warranty-tiers-explained.html">Roofing Warranty Tiers Explained: GAF and CertainTeed</a></li>
+        <li><a href="/guides/how-to-read-contractor-estimate.html">How to Read a Roofing Contractor Estimate</a></li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "What Goes Into the Cost of a Roof Replacement?",
+  "description": "See the line items in a roof replacement bid, what moves each one, and what to ask every contractor, from tear-off and decking to overhead and profit.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-10-06",
+  "dateModified": "2026-10-06",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/roof-replacement-cost-breakdown.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What goes into the cost of a roof replacement?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "A roof replacement price covers tear-off and disposal, decking repair, underlayment, drip edge, flashing, shingles, ventilation, permits, labor, and the contractor’s overhead and profit. The size, shape and pitch of the roof, the height of the house and what the crew finds under the old roof can each move the price."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Why does roof pitch change a roofing bid?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Federal fall-protection rules define a steep roof as one with a slope greater than 4 in 12 and set requirements for protecting workers on one. Ask each contractor how the crew will work safely on your roof and whether the pitch or the number of stories changes the bid."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does a roof replacement bid include decking repair?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Not necessarily, so ask. A manufacturer’s article describes the deck inspection as happening once the old materials are removed, so a bid may price deck repair per sheet, carry an allowance, or leave it out. Ask each contractor which approach the bid takes and what happens to the total if damage is found."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What are overhead and profit in a roof bid?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Overhead is the cost of running the contracting business that is not one job’s materials or crew, such as insurance, trucks, an office, marketing and sales commissions. Profit is what the contractor keeps after all costs. Every bid carries some of both, whether or not the bid shows them separately."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Why does this page not list a price per square foot?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "A price depends on your roof, the products chosen and the contractors bidding, none of which a general page can see. This page names the line items and what moves them. A written bid for your own roof is the number to compare."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "What Goes Into the Cost of a Roof Replacement?",
+      "item": "https://otterquote.com/guides/roof-replacement-cost-breakdown.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -97,6 +97,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/siding-bid-comparison.html',
   '/guides/gutter-bid-comparison':
     '/guides/gutter-bid-comparison.html',
+  '/guides/roof-replacement-cost-breakdown':
+    '/guides/roof-replacement-cost-breakdown.html',
   '/guides/after-adjuster-estimate-next-steps':
     '/guides/after-adjuster-estimate-next-steps.html',
 
