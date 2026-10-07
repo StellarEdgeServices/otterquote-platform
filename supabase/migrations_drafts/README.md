@@ -27,3 +27,10 @@ Statuses come from measurements recorded on issue #1438 and on PR #2237; this se
 | `v88_referral_agents_public_directory_optin` | forward, rollback, pre-flight | NOT APPLIED (superseded: the column is live via v101) | `referral_agents.public_directory_optin` live via `v101_referral_agents_public_directory_optin`, ledger version `20260808134406`: comment 5494221280; in ledger snapshot | `supabase/migrations/20260808134406_v101_referral_agents_public_directory_optin.sql` (a different migration from this draft); its rollback and pre-flight are `supabase/migrations_rollbacks/20260807223000_v101_…` (an earlier v101 version that is not in the ledger) |
 
 No set is marked `UNVERIFIED`: every set has a recorded measurement. Two sets are `NOT APPLIED` and were re-measured 2026-10-05T20:57Z (read-only): `c4` (`contractors.pitch_bands` absent) and `gh1026` (the `DROP VIEW` has not run; the view still exists). `gh1314`, `gh1961` and `gh2154` were `NOT APPLIED` / unversioned on earlier measurements and are now APPLIED, filed under their ledger versions (gh-1438 part 4).
+
+## Added 2026-10-06 (gh-2559, the claims-row half of D-368, PR #2578): 5 files, 2 sets, not counted in the table above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2559_bidder_claims_view` | forward, rollback, pre-flight (shared with the set below) | NOT APPLIED | no ledger row; no view named `bidder_claim_summary` exists (pg_class read 2026-10-06 after rolled-back proofs); additive | none; proof at `supabase/tests/gh2559_bidder_claims_view_proof.sql` |
+| `gh2559_claims_policy_narrow` | forward, rollback | NOT APPLIED | no ledger row; the two contractor SELECT policies on `public.claims` are live (pg_policy read 2026-10-06); Tier 3B, waits for its own R-097 window on #2559 and for the pages to be published first | none; same proof file |

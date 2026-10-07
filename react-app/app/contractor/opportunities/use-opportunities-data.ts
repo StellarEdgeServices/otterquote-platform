@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { ContractorRecord } from '../_shell/use-contractor-record';
 import {
+  BIDDER_CLAIM_OPP_COLS,
   applyMyBids,
   excludeCappedClaims,
   filterByTradeRelease,
@@ -49,9 +50,12 @@ export function useOpportunitiesData(
 
     (async () => {
       try {
+        // gh-2559 / D-368: a bidding contractor reads the claim SUMMARY view, never the base claims row
+        // (homeowner name, claim number, adjuster contact, file names). The view applies the eligibility
+        // (open for bids, same test-or-real world, or a claim this contractor bid on) itself.
         const { data, error: claimsErr } = await supabase
-          .from('claims')
-          .select('*')
+          .from('bidder_claim_summary')
+          .select(BIDDER_CLAIM_OPP_COLS)
           .eq('ready_for_bids', true)
           .in('status', ['active', 'bidding', 'pending'])
           .order('created_at', { ascending: false })
