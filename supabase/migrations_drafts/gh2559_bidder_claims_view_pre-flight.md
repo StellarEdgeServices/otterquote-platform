@@ -270,16 +270,46 @@ Known limits, stated: (1) a street name with no type word, typed as the second c
 ("4417, Larkspur Hollow, Carmel"), is returned as the city; nothing distinguishes it from a town. (2) A real town
 whose name ends in a street-type word or holds a unit word is shown as "Unknown".
 
-## Free text: `homeowner_notes` and `urgency_reason` (CEO ruling 6045859470)
+## Free text: `homeowner_notes` and `urgency_reason` (CEO ruling 6045859470; rebuilt after review 6049068071)
 
-The selected contractor reads both as typed. Every other caller reads them redacted: the whole value is replaced
-when it holds the claim's own street line or homeowner name; a line with a house number and a street type, or a PO
-box, is replaced; email addresses are replaced; any run of seven or more digits (a phone number in any common layout)
-is replaced. The replacement text is `[removed]`. A repair claim's notes (`job_type = 'repair'`) are withheld from a
-bidder altogether: the repair intake writes to the same column without the "Notes for Contractors" label, and the
-ruling says label it or hide it. **Cost: a bidder on a repair claim does not see the homeowner's description of the
-problem until selected.** Labelling the repair intake instead is homeowner-facing copy and is put to the CEO.
-It cannot recognise a name it was not given or an address written without a number.
+The selected contractor reads both as typed. Every other caller reads at most the first 2000 characters, redacted;
+each replacement is the text `[removed]`. A repair claim's notes (`job_type = 'repair'`) are withheld from a bidder
+altogether (the repair intake writes to the column without the "Notes for Contractors" label).
+
+- **Whole value replaced** when it holds the claim's own house number and one of its street words, with or without
+  a type word ("house is 123 N Main, blue door"); for an address with no house number, a street word alone.
+- **Name**: the words (three letters or more) of `profiles.full_name`, where production keeps the homeowner's name,
+  and of `claims.homeowner_name` (empty on every real claim): first name alone, last name alone, any order.
+- **Email and web**: addresses, also spaced out or written "x at y dot com"; anything holding an @; web addresses.
+- **Phone**: three, three and four digits with any separators that are not letters, digits or a comma (slash, any
+  dash, no-break space, underscore); and any run of seven or more digits with spaces, dots, dashes or brackets.
+- **Street**: a county-grid address; the whole line holding a number followed within five words by a street type;
+  capitalised words followed by a capitalised street type, with or without a number before or after; a number of
+  three to six digits followed by capitalised words; a number of one or two digits followed by capitalised words
+  ending in a street or place type (Ridge, Bend, Cove, Run, Pass ...).
+- **Codes and numbers**: a number after "code", "pin" or "combination"; a claim or policy number.
+
+**Behaviour on the reviewer's 43 shapes** (`tools/gh2559-bidder-view-behaviour.py`, view file verbatim, throwaway
+Postgres): this head `shapes blanked: 41 of 43 | stated residuals: 2`; the view of head `f8c82f30`:
+`shapes blanked: 12 of 43`, `leaks: 29`. Twelve ordinary descriptions come back unchanged, among them "Roof is 200
+sq, garage 400 sq, built 1998", "120 ft of ridge, 3 ridge vents, 40 ft gutter run", money, pitch and slash dates.
+
+### RESIDUALS (not redacted on purpose; for the CEO to accept in writing or overrule)
+
+Each of these could only be caught by a pattern that also blanks ordinary job descriptions.
+
+1. **A phone number with words between its groups** ("463 then 555 then 0187"). The same shape is "roof is 200 sq,
+   garage 400 sq, built 1998".
+2. **A phone number split over two lines** ("cell 463-555" / "then 0187").
+3. **A street written in lower case with no type word** ("9021 larkspur hollow"): the same shape as "30 squares
+   total". With a type word, or capitalised, it is removed.
+4. **A name of one or two letters** ("Li", "Wu"): as whole words these are too common to remove.
+5. **A name or address the row does not hold** (a spouse, a neighbour's house without a number, a landmark).
+6. **A phone number spelled in words.**
+
+Costs of the rule, also for him: an ISO or dashed date ("2026-09-14", "6-12-2026") is lost to the phone rule; a
+year followed by a capitalised brand ("2015 Owens Corning roof") loses the year and the brand; a homeowner whose
+name is an ordinary word (May, Wood, Hail) has that word removed from her own note.
 
 ## The street address outside the view: `get-hover-siding-data`
 

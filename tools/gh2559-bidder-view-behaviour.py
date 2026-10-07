@@ -70,6 +70,67 @@ NOTES = [
     ("the homeowner's name", "ask for zelda quixote at the door", ["zelda", "quixote"]),
     ("two lines, one is an address", "Steep back slope.\n12 Oak Ln is the neighbour, use our drive", ["12 Oak", "Oak Ln"]),
 ]
+# The 43 shapes of review 6049068071 (PR #2578), verbatim from the reviewer's harness. The claim they sit on
+# has the address R_ADDR; the homeowner's name is ONLY in profiles.full_name (claims.homeowner_name is NULL,
+# as on every real claim in production).
+R_NAME, R_ADDR = "Marisol Vanterpool", "123 N Main St Apt 4, Fishers, IN 46038"
+REVIEW_NOTES = [
+ ("phone dots","call 463.555.0187 pls",["555","0187"]),
+ ("phone spaces","call 463 555 0187 pls",["555 0187","0187"]),
+ ("phone slashes","call 463/555/0187",["555","0187"]),
+ ("phone en-dash","call 463–555–0187",["0187"]),
+ ("phone nbsp","call 463 555 0187",["0187"]),
+ ("phone underscores","463_555_0187",["0187"]),
+ ("phone w/ words between","463 then 555 then 0187",["0187"]),
+ ("phone split 3-4 on two lines w/ text","cell 463-555\nthen 0187",["0187"]),
+ ("phone spelled","four six three 555 0187",["555 0187"]),
+ ("phone ext","463-555-0187 x22",["0187"]),
+ ("email plus tag","write marisol+roof@vanterpool-mail.example.org",["marisol","vanterpool-mail","@"]),
+ ("email spaced dot","marisol @ mailhost . com",["marisol @","mailhost"]),
+ ("email 'at' 'dot'","marisol at mailhost dot com",["mailhost"]),
+ ("email upper+subdomain","MARISOL.V@MAIL.HOST.CO.UK",["MARISOL","HOST"]),
+ ("email no tld","marisol@mailhost",["marisol@"]),
+ ("addr: 123 N Main St Apt 4 (own, exact)","We are at 123 N Main St Apt 4",["123 N","Main St","Apt 4"]),
+ ("addr: own, type spelled out","We are at 123 North Main Street, apartment 4",["123","Main"]),
+ ("addr: own, no type word","house is 123 N Main, blue door",["123 N Main"]),
+ ("addr: own, double space","at 123  N Main St Apt 4",["Main St"]),
+ ("addr: own, no unit","at 123 N Main St",["123 N Main"]),
+ ("addr: other street no type word","park at 9021 Larkspur Hollow and walk",["9021","Larkspur"]),
+ ("addr: number AFTER street","Larkspur Hollow Rd #9021",["9021","Larkspur"]),
+ ("addr: county road grid","we are 9021 N 500 W",["9021 N 500"]),
+ ("addr: type not in list (Pass)","9021 Eagle Pass is the house",["9021","Eagle Pass"]),
+ ("addr: type not in notes list (Run)","9021 Fox Run",["9021","Fox Run"]),
+ ("addr: type Ridge/Bend/Cove/Trace/Point","8 Otter Ridge; 7 River Bend; 6 Quiet Cove; 5 Deer Trace; 4 West Point",["Otter Ridge","River Bend","Quiet Cove","Deer Trace"]),
+ ("addr: Broadway (single word)","9021 Broadway",["9021 Broadway"]),
+ ("addr: spelled number","Ninety Twenty-One Larkspur Hollow Rd",["Larkspur"]),
+ ("addr: street w/o number","corner of Larkspur Hollow Rd and Main",["Larkspur"]),
+ ("addr: number, 5+ words, type","9021 Old North East Little Big Larkspur Hollow Rd",["9021","Larkspur"]),
+ ("addr: tab separated","9021\tLarkspur\tRd",["9021","Larkspur"]),
+ ("addr: on line 2 of 3","Steep roof.\nWe're at 9021 Larkspur Rd.\nDog in yard.",["9021","Larkspur"]),
+ ("name: full","ask for Marisol Vanterpool",["Marisol","Vanterpool"]),
+ ("name: first only","ask for Marisol",["Marisol"]),
+ ("name: last only","the Vanterpool house",["Vanterpool"]),
+ ("name: reversed","Vanterpool, Marisol",["Marisol","Vanterpool"]),
+ ("name: double space","Marisol  Vanterpool",["Vanterpool"]),
+ ("name: sign-off","Thanks!\n- Marisol V.",["Marisol"]),
+ ("claim number 6 digits","claim no 778899 with State Farm",["778899"]),
+ ("claim number alnum","claim CLM-77-8899-A1",["8899"]),
+ ("gate code","gate code 4417",["4417"]),
+ ("url","see photos at marisolsroof.example.com/p?id=3",["marisolsroof"]),
+ ("social handle","IG @marisol_vanterpool_home",["marisol_vanterpool"]),
+]
+
+# Shapes NOT redacted on purpose: the same pattern would blank an ordinary job description ("roof is 200 sq,
+# garage 400 sq, built 1998" is three digit groups with words between). Listed for the CEO to accept in
+# writing (pre-flight, RESIDUALS). The test reports them and fails if the set ever changes silently.
+REVIEW_RESIDUALS = {"phone w/ words between", "phone split 3-4 on two lines w/ text"}
+REVIEW_BENIGN = ["Tree fell on the back slope. 30 squares, 8/12 pitch, 2 layers.","Budget around $12,500.00, deductible 1000","Need it done before 10/31/2026","Insurance approved 2026-09-14; adjuster visit done","Skylight 22.5 x 46.5 in; 3 pipe boots; 120 ft of ridge","Hail on 6-12-2026 about 1.75 inch"]
+# ordinary descriptions that must come back UNCHANGED (over-redaction guard). The two ISO / dashed dates of
+# the reviewer's list lose their date to the phone rule and are checked for that exact outcome below.
+MORE_BENIGN = ["Roof is 200 sq, garage 400 sq, built 1998", "120 ft of ridge, 3 ridge vents, 40 ft gutter run",
+               "about 30 sq total and 2 layers", "Use the best way in from the road, our drive is steep",
+               "2 story, 8/12 pitch, 25 squares, hail in June", "we may need new decking, will pay cash"]
+
 BENIGN = "Tree fell on the back slope. Two layers of shingles, about 30 squares, 8/12 pitch. Dog in yard."
 
 
@@ -93,6 +154,7 @@ def schema(cur, view_sql):
       grant usage on schema auth, public to authenticated, anon, service_role;
       create table public.contractors(id uuid primary key, user_id uuid unique, status text, is_test boolean);
       create table public.carrier_profiles(id uuid primary key, carrier_name text);
+      create table public.profiles(id uuid primary key, full_name text);
       create table public.claims(%s);
       create table public.quotes(claim_id uuid, contractor_id uuid);
       alter table public.claims enable row level security;
@@ -156,6 +218,31 @@ def run(view_sql, label):
             leaks.append("notes   a bidder read the selected claim's notes as typed")
         sel = read(SELECTED_U, "select homeowner_notes, urgency_reason from public.bidder_claim_summary where id = %s", (chosen,))
         if not sel or sel[0] != ("Call " + PHONE + ", " + STREET, EMAIL): fails.append("selected contractor does not read the notes as typed: %r" % (sel,))
+        # ---- review 6049068071: the reviewer's 43 shapes; the name lives in profiles only
+        OWNER2 = "00000000-0000-4000-8000-000000000077"
+        cur.execute("insert into profiles values (%s, %s)", (OWNER2, R_NAME))
+        rv = []
+        for lab, text, bad in REVIEW_NOTES:
+            n += 1; rv.append((lab, text, bad, claim(n, user_id=OWNER2, homeowner_name=None, claim_number=None, property_address=R_ADDR, homeowner_notes=text, urgency_reason=text)))
+        bn = []
+        for text in REVIEW_BENIGN + MORE_BENIGN:
+            n += 1; bn.append((text, claim(n, user_id=OWNER2, homeowner_name=None, claim_number=None, property_address=R_ADDR, homeowner_notes=text, urgency_reason=text)))
+        got2 = {r[0]: r[1:] for r in read(BIDDER_U, "select id::text, homeowner_notes, urgency_reason from public.bidder_claim_summary")}
+        blanked, residual_seen = 0, set()
+        for lab, text, bad, cid in rv:
+            vals = got2.get(cid, (text, text))
+            hit = [b for b in bad for v in vals if v is not None and b.lower() in v.lower()]
+            if not hit: blanked += 1
+            elif lab in REVIEW_RESIDUALS: residual_seen.add(lab); print("   RESIDUAL (stated, for the CEO) %-40s -> %r" % (lab, vals[0]))
+            else: leaks.append("review  %-40s still holds %r -> %r" % (lab, hit[0], vals[0]))
+        for lab in REVIEW_RESIDUALS - residual_seen: fails.append("a stated residual is now redacted, update REVIEW_RESIDUALS and the pre-flight: %s" % lab)
+        DATE_LOSS = {"Insurance approved 2026-09-14; adjuster visit done", "Hail on 6-12-2026 about 1.75 inch"}
+        for text, cid in bn:
+            v = got2.get(cid, (None, None))[0]
+            if text in DATE_LOSS:
+                if v is None or "[removed]" not in v: fails.append("expected the date in %r to be lost to the phone rule, got %r" % (text, v))
+            elif v != text: fails.append("OVER-REDACTION: %r came back as %r" % (text, v))
+        print("[%s] review 6049068071 shapes blanked: %d of %d | stated residuals: %d" % (label, blanked, len(rv), len(residual_seen)))
         allcols = read(BIDDER_U, "select to_jsonb(v)::text from public.bidder_claim_summary v")
         for (txt,) in allcols:
             for secret in (PHONE, EMAIL, "PROOF-CLAIM-0001", OWNER):

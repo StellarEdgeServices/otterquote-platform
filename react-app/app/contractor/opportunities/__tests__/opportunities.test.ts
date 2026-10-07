@@ -252,7 +252,7 @@ describe('BIDDER_CLAIM_OPP_COLS (gh-2559)', () => {
   });
   it('selects everything the card mapper reads from the view', () => {
     for (const c of ['id', 'location_city', 'location_zip', 'has_estimate', 'has_measurements', 'measured_squares', 'selected_contractor_id',
-      'contractor_scope_summary', 'homeowner_notes', 'roofing_bid_released_at', 'bid_window_expires_at', 'rcv_amount', 'ready_for_bids', 'status']) {
+      'contractor_scope_summary', 'parsed_line_items', 'homeowner_notes', 'roofing_bid_released_at', 'bid_window_expires_at', 'rcv_amount', 'ready_for_bids', 'status']) {
       expect(cols).toContain(c);
     }
   });

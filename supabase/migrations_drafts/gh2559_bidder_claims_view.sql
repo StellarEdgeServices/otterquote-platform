@@ -1,6 +1,6 @@
 -- STATUS (gh-1438, as of 2026-10-07T19:20:06Z): NOT APPLIED
 -- FILE ROLE: forward file of set gh2559_bidder_claims_view, step 1 of 3 (see the apply order below; the STATUS is the set's)
--- EVIDENCE: written 2026-10-06T20:16:10Z; proved forward and rollback on production inside one rolled-back block (supabase/tests/gh2559_bidder_claims_view_proof.sql). pg_class read the same day: no view named bidder_claim_summary exists. No ledger row exists for this set. Changed 2026-10-07 after REVIEW: FAIL 6025641188 and again after REVIEW: FAIL 6047719061 on #2578: location_city, location_zip and the two free-text columns. This text was run verbatim on a throwaway Postgres 16 with planted addresses and notes (tools/gh2559-bidder-view-behaviour.py); it has NOT been run on production by the worker who changed it.
+-- EVIDENCE: written 2026-10-06T20:16:10Z; proved forward and rollback on production inside one rolled-back block (supabase/tests/gh2559_bidder_claims_view_proof.sql). pg_class read the same day: no view named bidder_claim_summary exists. No ledger row exists for this set. Changed 2026-10-07 after REVIEW: FAIL 6025641188, 6047719061 and 6049068071 on #2578: location_city, location_zip and the redaction of the two free-text columns (now keyed on profiles.full_name for the name). This text was run verbatim on a throwaway Postgres 16 with planted addresses and notes (tools/gh2559-bidder-view-behaviour.py); it has NOT been run on production by the worker who changed it.
 -- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
@@ -153,16 +153,44 @@ LEFT JOIN LATERAL (
       substring(c.property_address FROM '(?i)\m(?:AL|AK|AZ|AR|CA|CO|CT|DE|DC|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)[\s,]+(\d{5})(?:-\d{4})?\s*$'),
       substring(btrim(c.property_zip) FROM '^(\d{5})(?:-\d{4})?$'))           AS zip
 ) loc ON true
--- ft: the two free-text columns as a caller who is not the selected contractor reads them. In order:
---   1. the whole value becomes '[removed]' when it contains the claim's own street line (first comma part
---      of property_address, 5+ characters) or the claim's homeowner_name (4+ characters), any case;
---   2. every LINE holding a house number followed within five words by a street type, or a PO box, becomes
---      '[removed]';
---   3. every email address becomes '[removed]';
---   4. every run of seven or more digits, with only spaces, dots, dashes and brackets between them (a phone
---      number in any common layout), becomes '[removed]'.
--- It cannot recognise a name it was not given or an address written without a number. That limit is stated
--- in the pre-flight; the ruling asks for phone numbers, email addresses and street-number lines.
+-- idn: what identifies THIS claim's homeowner, worked out once per row for the redaction below.
+--   house        the house number of the claim's own address (leading digits of the first comma part)
+--   street_words the words of that first part, three letters or more, that are not a street type, a unit
+--                word or a compass word ("123 N Main St Apt 4" gives main)
+--   name_words   the words, three letters or more, of profiles.full_name (where production keeps the
+--                homeowner's name; claims.homeowner_name is empty on every real claim) and of
+--                claims.homeowner_name. Letters only, so each list is safe inside a pattern.
+LEFT JOIN public.profiles pr ON pr.id = c.user_id
+LEFT JOIN LATERAL (
+  SELECT substring(split_part(coalesce(c.property_address, ''), ',', 1) FROM '^\s*(\d+)')            AS house,
+         (SELECT string_agg(DISTINCT w, '|')
+            FROM regexp_split_to_table(lower(split_part(coalesce(c.property_address, ''), ',', 1)), '[^a-z]+') AS w
+           WHERE length(w) >= 3
+             AND w !~ '^(st|str|street|ave|av|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place|cir|circle|ter|terrace|pkwy|parkway|hwy|highway|trl|trail|loop|pike|xing|crossing|alley|aly|north|south|east|west|unit|apt|apartment|suite|ste|lot|box|bldg|building|floor|room|trlr|trailer)$') AS street_words,
+         (SELECT string_agg(DISTINCT w, '|')
+            FROM regexp_split_to_table(lower(coalesce(pr.full_name, '') || ' ' || coalesce(c.homeowner_name, '')), '[^a-z]+') AS w
+           WHERE length(w) >= 3)                                                                       AS name_words
+) idn ON true
+-- ft: the two free-text columns as a caller who is not the selected contractor reads them
+-- (CEO ruling 6045859470; review 6049068071 finding 1). Every replacement is the text '[removed]'.
+--   WHOLE VALUE replaced when it holds the claim's own house number and one of its street words (with or
+--     without "St": "house is 123 N Main, blue door"), or, for an address with no house number, a street word.
+--   Otherwise, in this order, each match replaced where it stands:
+--    a. the claim number (and, applied last, the homeowner's name words: first name alone, last name
+--       alone, any order);
+--    b. email addresses, also written with spaces or as "x at y dot com"; anything holding an @; web addresses;
+--    c. phone numbers: three, three and four digits with ANY separators that are not letters, digits or a
+--       comma (slash, dash of any kind, no-break space, underscore), and any run of seven or more digits
+--       with spaces, dots, dashes or brackets between them;
+--    d. street lines: a county-grid address ("9021 N 500 W"); the whole LINE holding a number followed within
+--       five words by a street type; capitalised words followed by a capitalised street type, with or without
+--       a number before or after ("Larkspur Hollow Rd #9021"); a number of three to six digits followed by
+--       capitalised words ("9021 Fox Run", "9021 Broadway"); a number of one or two digits followed by
+--       capitalised words ending in a street or place type ("8 Otter Ridge");
+--    e. a number after the word code, pin or combination; a claim or policy number.
+-- Not redacted, on purpose, because the same shape is an ordinary job description (pre-flight, RESIDUALS):
+-- digit groups with words or a line break between them, a street written in lower case with no type word,
+-- a name of one or two letters, and a name or address this row does not hold.
 LEFT JOIN LATERAL (
   SELECT max(r.red) FILTER (WHERE r.k = 'n') AS notes,
          max(r.red) FILTER (WHERE r.k = 'u') AS urgency
@@ -170,19 +198,45 @@ LEFT JOIN LATERAL (
       SELECT v.k,
              CASE
                WHEN v.raw IS NULL THEN NULL
-               WHEN length(btrim(split_part(coalesce(c.property_address, ''), ',', 1))) >= 5
-                    AND position(lower(btrim(split_part(c.property_address, ',', 1))) IN lower(v.raw)) > 0 THEN '[removed]'
-               WHEN length(btrim(coalesce(c.homeowner_name, ''))) >= 4
-                    AND position(lower(btrim(c.homeowner_name)) IN lower(v.raw)) > 0 THEN '[removed]'
-               ELSE regexp_replace(
-                      regexp_replace(
-                        regexp_replace(v.raw,
-                          '^.*(\m\d+[[:alnum:]-]*\s+(\S+\s+){0,4}(st|str|street|ave|av|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place|cir|circle|ter|terrace|pkwy|parkway|hwy|highway|trl|trail|loop|pike|xing|crossing|alley|aly)\M|p\.?\s*o\.?\s*box\s*\d+).*$',
-                          '[removed]', 'gin'),
-                        '[[:alnum:]._%+-]+\s*@\s*[[:alnum:]-]+(\.[[:alnum:]-]+)+', '[removed]', 'g'),
-                      '(\+?\d[\s().-]*){7,}', '[removed] ', 'g')
+               WHEN idn.street_words IS NOT NULL AND idn.house IS NOT NULL
+                    AND v.raw ~ ('\m' || idn.house || '\M') AND v.raw ~* ('\m(' || idn.street_words || ')\M') THEN '[removed]'
+               WHEN idn.street_words IS NOT NULL AND idn.house IS NULL
+                    AND v.raw ~* ('\m(' || idn.street_words || ')\M') THEN '[removed]'
+               ELSE
+      regexp_replace(
+      regexp_replace(regexp_replace(
+      regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(
+      regexp_replace(regexp_replace(
+      regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(
+      regexp_replace(
+        v.raw,
+        -- a. the claim number, when the row has one of four characters or more
+        CASE WHEN length(btrim(coalesce(c.claim_number, ''))) >= 4
+             THEN regexp_replace(btrim(c.claim_number), '([^[:alnum:]])', '\\\1', 'g') ELSE '\A\Z\A' END, '[removed]', 'gi'),
+        -- b. email and web
+        '[[:alnum:]._%+-]+\s*@\s*[[:alnum:]-]+(\s*\.\s*[[:alnum:]-]+)*', '[removed]', 'g'),
+        '\S+\s+at\s+\S+\s+dot\s+\S+', '[removed]', 'gi'),
+        '\S*@\S*', '[removed]', 'g'),
+        '(https?://\S+|www\.\S+|\S+\.(com|net|org|io|co|us|info|biz|me)(/\S*)?(?![[:alnum:]]))', '[removed]', 'gi'),
+        'https?://\S+', '[removed]', 'gi'),
+        -- c. phone
+        '\(?\d{3}\)?[^[:alnum:],\n]{1,3}\d{3}[^[:alnum:],\n]{1,3}\d{4}(?!\d)', '[removed]', 'g'),
+        '(\+?\d[\s().-]*){7,}', '[removed] ', 'g'),
+        -- d. street
+        '\m\d+\s+[NSEWnsew]\.?\s+\d+\s+[NSEWnsew]\M\.?', '[removed]', 'g'),
+        '^.*(\m\d+[[:alnum:]-]*\s+(\S+\s+){0,4}(st|str|street|ave|av|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place|cir|circle|ter|terrace|pkwy|parkway|hwy|highway|trl|trail|loop|pike|xing|crossing|alley|aly)\M|p\.?\s*o\.?\s*box\s*\d+).*$', '[removed]', 'gin'),
+        '(\m\d+[A-Za-z]?[ \t]+)?([A-Z][[:alpha:]''’-]*\.?[ \t]+){1,8}(St|Str|Street|Ave|Av|Avenue|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Blvd|Boulevard|Way|Pl|Place|Cir|Circle|Ter|Terrace|Pkwy|Parkway|Hwy|Highway|Trl|Trail|Loop|Pike|Xing|Crossing|Alley|Aly|ST|STR|STREET|AVE|AV|AVENUE|RD|ROAD|DR|DRIVE|LN|LANE|CT|COURT|BLVD|BOULEVARD|WAY|PL|PLACE|CIR|CIRCLE|TER|TERRACE|PKWY|PARKWAY|HWY|HIGHWAY|TRL|TRAIL|LOOP|PIKE|XING|CROSSING|ALLEY|ALY)\M\.?([ \t,]*#?[ \t]*\d+\M)?', '[removed]', 'g'),
+        '\m\d{3,6}[A-Za-z]?[ \t]+([A-Z][[:alpha:]''’-]*\.?[ \t,]+){0,7}[A-Z][[:alpha:]''’-]+', '[removed]', 'g'),
+        '\m\d{1,2}[A-Za-z]?[ \t]+([A-Z][[:alpha:]''’-]*\.?[ \t]+){1,4}(St|Str|Street|Ave|Av|Avenue|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Blvd|Boulevard|Way|Pl|Place|Cir|Circle|Ter|Terrace|Pkwy|Parkway|Hwy|Highway|Trl|Trail|Loop|Pike|Xing|Crossing|Alley|Aly|Ridge|Bend|Cove|Trace|Point|Run|Pass|Row|Square|Path|Walk|View|Hill|Hills|Glen|Grove|Park|Landing|Knoll|Bluff|Vista|Creek|Commons|Close|Hollow|Meadow|Meadows|Woods|Lake|Springs)\M', '[removed]', 'g'),
+        -- e. codes and claim or policy numbers
+        '\m((gate|door|garage|alarm|access|entry|lock\s*box|key\s*pad)\s*)?(code|pin|combo|combination)\s*:?\s*(is\s+)?#?\d{3,8}\M', '[removed]', 'gi'),
+        '\m(claim|policy)\s*(no\.?|number|num|id|#)?\s*:?\s*#?[[:alnum:]-]*\d[[:alnum:]-]*', '[removed]', 'gi'),
+        -- a. the homeowner's name words, last so that an email address is still whole when rule b reads it
+        CASE WHEN idn.name_words IS NULL THEN '\A\Z\A' ELSE '\m(' || idn.name_words || ')\M' END, '[removed]', 'gi')
              END AS red
-        FROM (VALUES ('n', c.homeowner_notes), ('u', c.urgency_reason)) AS v(k, raw)
+        -- the homeowner forms cap these at 500 characters; a bidder is given at most the first 2000, so a
+        -- value written past the form cannot make the patterns above expensive
+        FROM (VALUES ('n', left(c.homeowner_notes, 2000)), ('u', left(c.urgency_reason, 2000))) AS v(k, raw)
     ) r
 ) ft ON true
 WHERE (   ct.status = 'active'
