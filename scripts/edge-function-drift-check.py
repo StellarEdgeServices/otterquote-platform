@@ -158,14 +158,17 @@ FAILING_VERDICTS = {DRIFTED, DEPLOYED_NOT_IN_REPO, IN_REPO_NEVER_DEPLOYED}
 NON_DRIFT_STATUSES = frozenset({"same", "test_not_bundled", "unreferenced_not_bundled"})
 
 
-def is_test_path(rel: str) -> bool:
-    """True for a repo file that is a test (or a test fixture) and therefore never deployed."""
+def is_test_path(rel: str, fixtures_are_tests: bool = True) -> bool:
+    """True for a repo file that is a test (or a test fixture) and therefore never deployed.
+
+    `fixtures_are_tests=False` is passed by compare_function when a non-test file mentions
+    `__fixtures__` (production code loads from it), so the directory is NOT a test asset."""
     parts = rel.split("/")
     name = parts[-1]
     return (
         name.endswith((".test.ts", ".test.js", ".test.tsx", "_test.ts"))
         or name.startswith("test_")
-        or "__fixtures__" in parts[:-1]
+        or (fixtures_are_tests and "__fixtures__" in parts[:-1])
     )
 
 
@@ -187,7 +190,39 @@ _CODE_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts")
 _ENTRYPOINTS = ("index.ts", "index.tsx", "index.js", "index.mjs", "mod.ts")
 
 
-def reachable_from_entrypoint(repo_dir: Path, rels) -> set:
+def _non_test_texts(repo_dir: Path, rels) -> dict:
+    """{rel: text} for every non-test, utf-8-decodable file (tests never ship, so what they
+    mention proves nothing). Used for the fail-closed quoted-name check below."""
+    out = {}
+    for rel in rels:
+        if is_test_path(rel):
+            continue
+        try:
+            out[rel] = (repo_dir / rel).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            pass
+    return out
+
+
+def quoted_mention(rel: str, texts: dict) -> bool:
+    """True when ANY other non-test file names `rel` inside a quoted string ('...', "..." or
+    `...`): the file's basename or its extensionless stem, as a whole path segment. This is
+    the fail-closed half of the excuse (PR #2600 review, comment 6045665870): the import
+    regex cannot see comments inside import braces, `import{a}from`, template-literal or
+    multi-argument dynamic imports, import-map aliases, Deno.readTextFile / Worker / URL
+    reads, extensionless specifiers or createRequire -- but every one of them still quotes
+    the file name, so a quoted mention keeps the file reported as missing_in_deploy.
+    A commented-out import also counts: that errs toward reporting drift."""
+    base = rel.rsplit("/", 1)[-1]
+    stem = base.rsplit(".", 1)[0] if "." in base else base
+    pat = re.compile(
+        r"""['"`][^'"`\n]*?(?<![\w.-])(?:%s|%s)(?![\w-])[^'"`\n]*?['"`]"""
+        % (re.escape(base), re.escape(stem))
+    )
+    return any(pat.search(t) for k, t in texts.items() if k != rel)
+
+
+def reachable_from_entrypoint(repo_dir: Path, rels, fixtures_are_tests: bool = True) -> set:
     """Repo-relative POSIX paths reachable from the function's entrypoint through
     relative imports of non-test code files. Empty set when there is no entrypoint."""
     present = set(rels)
@@ -204,7 +239,7 @@ def reachable_from_entrypoint(repo_dir: Path, rels) -> set:
         for m in _REL_IMPORT.finditer(src):
             spec = m.group(1) or m.group(2)
             tgt = posixpath.normpath(posixpath.join(posixpath.dirname(cur), spec))
-            if tgt.startswith("..") or tgt not in present or tgt in seen or is_test_path(tgt):
+            if tgt.startswith("..") or tgt not in present or tgt in seen or is_test_path(tgt, fixtures_are_tests):
                 continue
             seen.add(tgt)
             queue.append(tgt)
@@ -242,7 +277,10 @@ def compare_function(slug: str, repo_dir: Path, deployed_dir: Path) -> dict:
     repo_hashes = hash_tree(repo_dir)
     deployed_hashes = hash_tree(deployed_dir)
 
-    reachable = reachable_from_entrypoint(repo_dir, repo_hashes)
+    texts = _non_test_texts(repo_dir, repo_hashes)
+    # `__fixtures__/` is a test asset only while no non-test file mentions it.
+    fixtures_are_tests = not any("__fixtures__" in t for t in texts.values())
+    reachable = reachable_from_entrypoint(repo_dir, repo_hashes, fixtures_are_tests)
     files = []
     for rel in sorted(set(repo_hashes) | set(deployed_hashes)):
         repo_sha = repo_hashes.get(rel)
@@ -250,9 +288,14 @@ def compare_function(slug: str, repo_dir: Path, deployed_dir: Path) -> dict:
         if repo_sha is None:
             status = "missing_in_repo"
         elif deployed_sha is None:
-            if is_test_path(rel):
+            if is_test_path(rel, fixtures_are_tests):
                 status = "test_not_bundled"
-            elif reachable and rel.endswith(_CODE_SUFFIXES) and rel not in reachable:
+            elif (
+                reachable
+                and rel.endswith(_CODE_SUFFIXES)
+                and rel not in reachable
+                and not quoted_mention(rel, texts)
+            ):
                 status = "unreferenced_not_bundled"
             else:
                 status = "missing_in_deploy"

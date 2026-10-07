@@ -137,6 +137,77 @@ def build_fixtures(repo: pathlib.Path, deployed: pathlib.Path):
     write(deployed, "unref-differs", "orphan.ts", "export const o = 2\n")
 
 
+# PR #2600 review (comment 6045665870, 12 cases B1-B12): each is a function whose index.ts
+# NEEDS a file that the deploy lacks. The import regex cannot see these shapes, so the
+# excuse must fail closed on a quoted mention of the file. Every one must read DRIFTED.
+REVIEWER_CASES = {
+    "B1 comment with apostrophe inside import braces":
+        ("need.ts", "import {\n  a, // don't drop this\n  b,\n} from './need.ts'\n"),
+    "B2 comment with paren inside import braces":
+        ("need.ts", "import {\n  a, /* used by handler (gh-1) */\n} from './need.ts'\n"),
+    "B3 import{a}from'./need.ts' (no spaces)":
+        ("need.ts", "import{a}from'./need.ts'\n"),
+    "B4 dynamic import with trailing comma":
+        ("need.ts", "await import(\n  './need.ts',\n)\n"),
+    "B5 dynamic import via template literal":
+        ("need.ts", "await import(`./need.ts`)\n"),
+    "B6 import-map alias @/need.ts":
+        ("need.ts", "import { a } from '@/need.ts'\n"),
+    "B7 leaves and re-enters the dir (../<slug>/need.ts)":
+        ("need.ts", "import { a } from '../SLUG/need.ts'\n"),
+    "B8 Deno.readTextFile of a code file":
+        ("widget.js", "await Deno.readTextFile(new URL('./widget.js', import.meta.url))\n"),
+    "B9 Worker URL":
+        ("worker.ts", "new Worker(new URL('./worker.ts', import.meta.url).href, { type: 'module' })\n"),
+    "B10 __fixtures__ file loaded by production code":
+        ("__fixtures__/ref.json", "import ref from './__fixtures__/ref.json' with { type: 'json' }\n"),
+    "B11 extensionless specifier":
+        ("need.ts", "import { a } from './need'\n"),
+    "B12 createRequire":
+        ("need.js", "createRequire(import.meta.url)('./need.js')\n"),
+}
+
+
+def reviewer_cases():
+    print("\nPR #2600 review cases B1-B12 (needed file missing from deploy -> must be DRIFTED)")
+    for label, (needed, index_src) in REVIEWER_CASES.items():
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-rev-"))
+        try:
+            repo, deployed = tmp / "repo", tmp / "deployed"
+            src = index_src.replace("SLUG", "fn")
+            write(repo, "fn", "index.ts", src)
+            write(deployed, "fn", "index.ts", src)
+            write(repo, "fn", needed, "export const a = 1\n")
+            r = drift.build_report(repo, deployed, ["fn"], repo_slugs=["fn"])
+            row = r["functions"][0]
+            st = {f["path"]: f["status"] for f in row["files"]}[needed]
+            check(f"{label}: verdict", row["verdict"], drift.DRIFTED)
+            check(f"{label}: {needed} status", st, "missing_in_deploy")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    # Controls: the two real false-positive shapes stay non-drift when nothing non-test names them.
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-rev-"))
+    try:
+        repo, deployed = tmp / "repo", tmp / "deployed"
+        idx = "import { a } from './used.ts'\na()\n"
+        for root in (repo, deployed):
+            write(root, "fn", "index.ts", idx)
+            write(root, "fn", "used.ts", "export const a = () => 1\n")
+        write(repo, "fn", "email-footer.ts", "export const f = 1\n")
+        write(repo, "fn", "email-footer.test.ts", "import { f } from './email-footer.ts'\n")
+        # an UNQUOTED comment mention (as in onboarding-stage.ts) must not count
+        write(repo, "fn", "used.ts", "// see ./email-footer.ts for the copy\nexport const a = () => 1\n")
+        write(repo, "fn", "__fixtures__/ref.pdf", "%PDF\n")
+        r = drift.build_report(repo, deployed, ["fn"], repo_slugs=["fn"])
+        st = {f["path"]: f["status"] for f in r["functions"][0]["files"]}
+        check("control: unreferenced email-footer.ts (unquoted comment only) still excused",
+              st["email-footer.ts"], "unreferenced_not_bundled")
+        check("control: __fixtures__ pdf nobody mentions still a test asset",
+              st["__fixtures__/ref.pdf"], "test_not_bundled")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def verdicts_of(report):
     return {row["slug"]: row["verdict"] for row in report["functions"]}
 
@@ -259,6 +330,8 @@ def main():
             removable = False
         check("read-only download tree (incl. ancestors) removable after _reclaim_tree",
               removable, True)
+
+        reviewer_cases()
 
         print()
         if FAILURES:
