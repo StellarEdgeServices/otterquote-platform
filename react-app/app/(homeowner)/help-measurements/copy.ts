@@ -87,7 +87,7 @@ export const MEASUREMENTS_COPY = {
   // Rebate callout (help-measurements.html:611) — D-291 financial terms (repriced from D-205's $150), LOCKED.
   // "<strong>How the $15 works:</strong> …" flattened.
   rebateCallout:
-    "How the $15 works: You pay $15 now for a complete 3D property data file — every measurement, every wall, every opening, all in one place. When your project closes with an Otter Quotes contractor, the full $15 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
+    "How the $15 works: You pay $15 now for a complete 3D property data file — every measurement, every wall, every opening, all in one place. When your project is completed with an Otter Quotes contractor, the full $15 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
 
   // Hover steps (help-measurements.html:614-636).
   hoverStep1Title: 'Purchase Your Report',

@@ -58,7 +58,7 @@ const STATIC = {
   hoverSectionIntro:
     'Our advanced technology builds a complete 3D model of your home from photos you take with your phone — roof, walls, openings, and every measurement contractors need to bid accurately.',
   rebateCallout:
-    "How the $15 works: You pay $15 now for a complete 3D property data file — every measurement, every wall, every opening, all in one place. When your project closes with an Otter Quotes contractor, the full $15 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
+    "How the $15 works: You pay $15 now for a complete 3D property data file — every measurement, every wall, every opening, all in one place. When your project is completed with an Otter Quotes contractor, the full $15 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
   hoverStep1Title: 'Purchase Your Report',
   hoverStep1Text:
     'Pay the $15 fee securely through Stripe. This covers your Complete Property Report.',
