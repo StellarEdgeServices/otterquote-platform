@@ -2,7 +2,7 @@
 -- (supabase/migrations_drafts/gh2442_dunning_retry_request.sql; rollback beside it).
 -- ONE batch. Its last statement is a deliberate RAISE EXCEPTION, so every fixture row and the migration's DDL roll
 -- back whatever the client does; the findings are the exception text.
--- WHERE IT HAS BEEN RUN: the 2026-10-07 revision (cap, reason, rollback without the anon re-grant) was run on a
+-- WHERE IT HAS BEEN RUN: the 2026-10-07 revisions (cap, CHECK, reason per state, rollback without the anon re-grant) were run on a
 -- scratch Postgres built by supabase/tests/gh2442_replica_fixture.sql (the live table definition, policies and
 -- grants copied from a read-only SELECT), NOT on production. The 2026-10-06 version of this file was run on
 -- production (yeszghaspzwwstvsrioa) in this same rolled-back way. A production run of this version is the
@@ -30,9 +30,22 @@
 --   C2   owner, same instant          already_requested (still true); nothing written
 --   C3   owner, 16 min later          not_retryable / limit_reached; count stays 3; nothing written
 --   C4   owner, 10 more tries, each 16 min later   every one limit_reached; count stays 3   (THE CAP)
---   N1   owner, resolved row          not_retryable / resolved (never "closed")
---   N1b  owner, resolved_at set but status still active   not_retryable / resolved
---   N2   owner, contractor_out row    not_retryable / closed
+--   STATES, one row per shape. S1-S5 are the only shapes code under supabase/functions writes (enumerated in the
+--   migration header from main 7bc8a3cb); U1-U6 are shapes the CHECK allows but no code writes.
+--   S1   active, resolved_at NULL               = O1 above (accepted)
+--   S2   warning_sent, resolved_at NULL         = O4 above (accepted)
+--   S3   homeowner_notified, resolved_at NULL   not_retryable / homeowner_notified   (process-dunning:1298, :1341)
+--   S4   resolved + resolved_at                 not_retryable / homeowner_proceeded  (process-dunning:612)
+--   S5   contractor_out + resolved_at           not_retryable / contractor_out       (process-dunning:662)
+--   U1   escalated                              not_retryable / other_closed
+--   U2   expired                                not_retryable / other_closed
+--   U3   NULL status                            not_retryable / other_closed
+--   U4   active + resolved_at                   not_retryable / other_closed
+--   U5   warning_sent + resolved_at             not_retryable / other_closed
+--   U6   contractor_out, resolved_at NULL       not_retryable / contractor_out
+--   every S3-U6 row: nothing written (retry_requested_at NULL, count 0)
+--   K1   superuser sets retry_request_count = 4     REJECTED 23514 (the CHECK)      K2  = -1   REJECTED 23514
+--   K3   superuser sets retry_request_count = 3     rows=1 (3 is allowed)
 --   X1   another contractor           REJECTED 42501                X2  homeowner    REJECTED 42501
 --   X3   anon                         REJECTED 42501 (permission)   X4  no login claim  REJECTED 42501
 --   X5   unknown id                   REJECTED 42501                X6  NULL id        REJECTED 42501
@@ -67,7 +80,7 @@ CREATE FUNCTION pg_temp.matrix(p_phase text) RETURNS text
 LANGUAGE plpgsql AS $m$
 DECLARE
   k1 uuid; k1u uuid; k2u uuid; ho uuid;
-  fa uuid; fw uuid; fr uuid; fo uuid; fz uuid; i int; cnt int; agg text;
+  fa uuid; fw uuid; fs uuid; i int; cnt int; agg text; st record;
   out text := '';
   r text; sig0 text; sig1 text; ts0 timestamptz; ts1 timestamptz;
   has_fn boolean;
@@ -98,9 +111,6 @@ BEGIN
   -- fixtures, owned by k1 (is_test), created by the superuser inside this batch
   INSERT INTO public.payment_failures (contractor_id, amount_cents, dunning_status) VALUES (k1, 12345, 'active')       RETURNING id INTO fa;
   INSERT INTO public.payment_failures (contractor_id, amount_cents, dunning_status) VALUES (k1, 12345, 'warning_sent') RETURNING id INTO fw;
-  INSERT INTO public.payment_failures (contractor_id, amount_cents, dunning_status, resolved_at) VALUES (k1, 12345, 'resolved', now()) RETURNING id INTO fr;
-  INSERT INTO public.payment_failures (contractor_id, amount_cents, dunning_status) VALUES (k1, 12345, 'contractor_out') RETURNING id INTO fo;
-  INSERT INTO public.payment_failures (contractor_id, amount_cents, dunning_status, resolved_at) VALUES (k1, 12345, 'active', now()) RETURNING id INTO fz;
 
   IF NOT has_fn THEN
     out := out || format('[%s] O1 owner call: %s', p_phase, pg_temp.as_call('authenticated', k1u, format(call_tpl, fa))) || E'\n';
@@ -142,12 +152,32 @@ BEGIN
       agg := agg || CASE WHEN r::jsonb ->> 'reason' = 'limit_reached' AND r::jsonb ->> 'status' = 'not_retryable' THEN 'L' ELSE '!' END;
     END LOOP;
     out := out || format('[%s] C4 owner, 10 more tries each 16 min apart (L = limit_reached): %s | count=%s', p_phase, agg, (SELECT retry_request_count FROM public.payment_failures WHERE id = fa)) || E'\n';
-    out := out || format('[%s] N1 owner, resolved row: %s | retry_requested_at still null=%s', p_phase, pg_temp.as_call('authenticated', k1u, format(call_tpl, fr)),
-        (SELECT retry_requested_at IS NULL FROM public.payment_failures WHERE id = fr)) || E'\n';
-    out := out || format('[%s] N2 owner, contractor_out row: %s | retry_requested_at still null=%s', p_phase, pg_temp.as_call('authenticated', k1u, format(call_tpl, fo)),
-        (SELECT retry_requested_at IS NULL FROM public.payment_failures WHERE id = fo)) || E'\n';
-    out := out || format('[%s] N1b owner, resolved_at set but status still active: %s | retry_requested_at still null=%s', p_phase, pg_temp.as_call('authenticated', k1u, format(call_tpl, fz)),
-        (SELECT retry_requested_at IS NULL FROM public.payment_failures WHERE id = fz)) || E'\n';
+    -- STATES: one fixture row per shape, in the shape the code really writes it (see the migration header).
+    FOR st IN
+      SELECT * FROM (VALUES
+        ('S3', 'homeowner_notified', false, 'process-dunning:1298/:1341'),
+        ('S4', 'resolved',           true,  'process-dunning:612 homeowner Move Forward'),
+        ('S5', 'contractor_out',     true,  'process-dunning:662 different contractor'),
+        ('U1', 'escalated',          false, 'no writer'),
+        ('U2', 'expired',            false, 'no writer'),
+        ('U3', NULL,                 false, 'no writer'),
+        ('U4', 'active',             true,  'no writer'),
+        ('U5', 'warning_sent',       true,  'no writer'),
+        ('U6', 'contractor_out',     false, 'no writer')
+      ) AS v(tag, status, has_resolved, src)
+    LOOP
+      INSERT INTO public.payment_failures (contractor_id, amount_cents, dunning_status, resolved_at)
+        VALUES (k1, 12345, st.status, CASE WHEN st.has_resolved THEN now() END) RETURNING id INTO fs;
+      r := pg_temp.as_call('authenticated', k1u, format(call_tpl, fs));
+      out := out || format('[%s] %s %s%s (%s): %s / %s | nothing written=%s', p_phase, st.tag, COALESCE(st.status, 'NULL status'),
+          CASE WHEN st.has_resolved THEN ' + resolved_at' ELSE ', resolved_at NULL' END, st.src,
+          r::jsonb ->> 'status', r::jsonb ->> 'reason',
+          (SELECT retry_requested_at IS NULL AND retry_request_count = 0 FROM public.payment_failures WHERE id = fs)) || E'\n';
+    END LOOP;
+    -- THE CHECK: even the superuser (and so any service-role job) cannot store a count outside 0..3.
+    out := out || format('[%s] K1 superuser sets retry_request_count=4: %s', p_phase, pg_temp.as_call(current_user::text, NULL, format('UPDATE public.payment_failures SET retry_request_count=4 WHERE id=%L', fw))) || E'\n';
+    out := out || format('[%s] K2 superuser sets retry_request_count=-1: %s', p_phase, pg_temp.as_call(current_user::text, NULL, format('UPDATE public.payment_failures SET retry_request_count=-1 WHERE id=%L', fw))) || E'\n';
+    out := out || format('[%s] K3 superuser sets retry_request_count=3: %s', p_phase, pg_temp.as_call(current_user::text, NULL, format('UPDATE public.payment_failures SET retry_request_count=3 WHERE id=%L', fw))) || E'\n';
     -- reset the active row so the rejection lines below start from a clean request state
     UPDATE public.payment_failures SET retry_requested_at = NULL, retry_request_count = 0 WHERE id = fa;
     out := out || format('[%s] X1 another contractor: %s', p_phase, pg_temp.as_call('authenticated', k2u, format(call_tpl, fa))) || E'\n';
