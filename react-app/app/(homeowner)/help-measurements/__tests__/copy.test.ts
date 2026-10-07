@@ -30,14 +30,14 @@ const STATIC = {
   hoverBadge: 'Recommended for Most',
   hoverIcon: '📐',
   hoverCardTitle: 'Complete Property Report',
-  hoverCardPrice: '$15 (rebated if you use an Otter Quotes contractor)',
+  hoverCardPrice: '$15 (rebated if you complete a job on the platform)',
   hoverCardDescription:
     "Get a complete 3D model of your home — roof, walls, openings, and full measurements — by taking photos with your phone. Our measurement technology builds the model from your photos. This is your best option for any full-replacement project.",
   hoverCardFeatures: [
     'Precise, professional-grade measurements',
     '3D model of your property',
     'Ready in 24-48 hours',
-    'Cost rebated when using an Otter Quotes contractor',
+    'Cost rebated when you complete a job on the platform',
   ],
   // Adjuster card (588-599)
   adjusterBadge: 'Recommended for Insurance',
@@ -145,7 +145,7 @@ describe('MEASUREMENTS_COPY — D-291 financial terms (highest-value locks)', ()
   it('locks the $15 price line exactly', () => {
     expect(MEASUREMENTS_COPY.hoverCardPrice).toBe(STATIC.hoverCardPrice);
     expect(MEASUREMENTS_COPY.hoverCardPrice).toBe(
-      '$15 (rebated if you use an Otter Quotes contractor)',
+      '$15 (rebated if you complete a job on the platform)',
     );
   });
 
