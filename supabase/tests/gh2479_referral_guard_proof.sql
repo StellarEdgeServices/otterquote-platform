@@ -57,6 +57,7 @@ DECLARE
   r7 constant uuid := 'dd14c823-1edb-4cd1-90f1-aaa8ea5273b1';
   v_owner uuid; v_created timestamptz; v_stranger uuid := gen_random_uuid();
   v_out text := ''; v_fx text;
+  v_s9_pa_before int; v_s9_pa_after int; v_s9_ref_before text; v_s9_ref_after text;
 BEGIN
   SELECT user_id, created_at INTO v_owner, v_created FROM public.claims WHERE id = c_claim AND is_test;
   SELECT format('claim_is_test=%s owner_profile_is_test=%s referrals_is_test=%s agents_is_test=%s open_commission=%s',
@@ -168,6 +169,22 @@ BEGIN
     pg_temp.try_as('authenticated', v_owner, format('INSERT INTO public.claims (user_id, is_test, created_at) VALUES (%L, true, now() - interval ''40 days'')', v_owner));
   v_out := v_out || E'\nN5 RESULT newest owner claim created within 1 minute of now()=' ||
     (SELECT (created_at > now() - interval '1 minute')::text FROM public.claims WHERE user_id = v_owner AND id <> c_claim ORDER BY updated_at DESC LIMIT 1);
+
+  -- ===== gh-2403 closes-on (3): S9 =====
+  -- S9: claim with referral_id = NULL completed as service_role (the legitimate writer): zero new payouts/accruals, no referral state change
+  UPDATE public.claims SET completion_date = NULL, referral_id = NULL, created_at = v_created WHERE id = c_claim;
+  SELECT md5(COALESCE(string_agg(format('%s|%s|%s|%s|%s', id, status, commission_amount, recruit_commission_amount, job_value), ',' ORDER BY id), ''))
+    INTO v_s9_ref_before FROM public.referrals WHERE id IN (r1,r2,r3,r4,r5,r6,r7);
+  SELECT count(*) INTO v_s9_pa_before FROM public.payout_approvals WHERE referral_id IN (r1,r2,r3,r4,r5,r6,r7);
+  v_out := v_out || E'\nS9 NULL referral_id service_role complete: ' ||
+    pg_temp.try_as('service_role', v_owner, format('UPDATE public.claims SET completion_date = now() WHERE id = %L', c_claim));
+  SELECT count(*) INTO v_s9_pa_after FROM public.payout_approvals WHERE referral_id IN (r1,r2,r3,r4,r5,r6,r7);
+  SELECT md5(COALESCE(string_agg(format('%s|%s|%s|%s|%s', id, status, commission_amount, recruit_commission_amount, job_value), ',' ORDER BY id), ''))
+    INTO v_s9_ref_after FROM public.referrals WHERE id IN (r1,r2,r3,r4,r5,r6,r7);
+  v_out := v_out || E'\nS9 RESULT claim referral_id still NULL=' || (SELECT (referral_id IS NULL)::text FROM public.claims WHERE id = c_claim)
+    || ' completed=' || (SELECT (completion_date IS NOT NULL)::text FROM public.claims WHERE id = c_claim)
+    || ' | new payout_approvals rows=' || (v_s9_pa_after - v_s9_pa_before)
+    || ' | referrals state unchanged=' || (v_s9_ref_before = v_s9_ref_after)::text;
 
   RAISE EXCEPTION E'GH2479_FORCED_ROLLBACK%', v_out;
 END
