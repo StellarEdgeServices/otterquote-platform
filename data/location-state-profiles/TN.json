@@ -291,5 +291,215 @@
     }
    ]
   }
+ },
+ "county_sources": {
+  "Davidson": {
+   "roofing": [
+    {
+     "label": "NOAA NCEI Storm Events Database",
+     "url": "https://www.ncei.noaa.gov/access/storm-events-database/"
+    },
+    {
+     "label": "U.S. Census Bureau, American Community Survey 2020-2024 5-year, table DP04, Davidson County",
+     "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=050XX00US47037"
+    },
+    {
+     "label": "Metro Nashville Codes: Residential Building Permits",
+     "url": "https://www.nashville.gov/departments/codes/construction-and-permits/residential-building-permits"
+    },
+    {
+     "label": "Metro Nashville Codes: Renovate a Single Family Residence",
+     "url": "https://www.nashville.gov/departments/codes/construction-and-permits/building-permits-central/renovate-single-family-residence"
+    },
+    {
+     "label": "Metro Nashville Codes: Property Permit History",
+     "url": "https://www.nashville.gov/departments/codes/codes-administration/public-records-and-data/property-permit-history"
+    },
+    {
+     "label": "Tennessee Board for Licensing Contractors: contractor license",
+     "url": "https://www.tn.gov/commerce/regboards/contractors/license/get/contractor.html"
+    },
+    {
+     "label": "Tennessee Board for Licensing Contractors: home improvement license",
+     "url": "https://www.tn.gov/commerce/regboards/contractors/license/get/home-improvement.html"
+    }
+   ]
+  },
+  "Shelby": {
+   "roofing": [
+    {
+     "label": "NOAA NCEI Storm Events Database",
+     "url": "https://www.ncei.noaa.gov/access/storm-events-database/"
+    },
+    {
+     "label": "U.S. Census Bureau, American Community Survey 2020-2024 5-year, table DP04, Shelby County",
+     "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=050XX00US47157"
+    },
+    {
+     "label": "Shelby County Construction Code Enforcement: Policy for Roof Installations",
+     "url": "https://www.shelbycountytn.gov/DocumentCenter/View/41611/24-Policy-for-Roof-Installations"
+    },
+    {
+     "label": "Shelby County Construction Code Enforcement",
+     "url": "https://www.develop901.com/construction-enforcement"
+    },
+    {
+     "label": "Tennessee Board for Licensing Contractors: contractor license",
+     "url": "https://www.tn.gov/commerce/regboards/contractors/license/get/contractor.html"
+    },
+    {
+     "label": "Tennessee Board for Licensing Contractors: home improvement license",
+     "url": "https://www.tn.gov/commerce/regboards/contractors/license/get/home-improvement.html"
+    }
+   ]
+  },
+  "Knox": {
+   "roofing": [
+    {
+     "label": "NOAA NCEI Storm Events Database",
+     "url": "https://www.ncei.noaa.gov/access/storm-events-database/"
+    },
+    {
+     "label": "U.S. Census Bureau, American Community Survey 2020-2024 5-year, table DP04, Knox County",
+     "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=050XX00US47093"
+    },
+    {
+     "label": "City of Knoxville: Plans Review and Inspections",
+     "url": "https://www.knoxvilletn.gov/165/Plans-Review-Inspections"
+    },
+    {
+     "label": "City of Knoxville: Plans Review and Permits",
+     "url": "https://www.knoxvilletn.gov/899/Plans-Review-Permits"
+    },
+    {
+     "label": "City of Knoxville: Fast Fact Guides",
+     "url": "https://www.knoxvilletn.gov/903/Fast-Fact-Guides"
+    },
+    {
+     "label": "City of Knoxville: Construction Codes",
+     "url": "https://www.knoxvilletn.gov/1249/Construction-Codes"
+    },
+    {
+     "label": "Knox County Codes Administration",
+     "url": "https://www.knoxcounty.org/codes/"
+    },
+    {
+     "label": "Tennessee Board for Licensing Contractors: contractor license",
+     "url": "https://www.tn.gov/commerce/regboards/contractors/license/get/contractor.html"
+    },
+    {
+     "label": "Tennessee Verify a License search",
+     "url": "https://search.cloud.commerce.tn.gov/"
+    }
+   ]
+  },
+  "Hamilton": {
+   "roofing": [
+    {
+     "label": "NOAA NCEI Storm Events Database",
+     "url": "https://www.ncei.noaa.gov/access/storm-events-database/"
+    },
+    {
+     "label": "NOAA Storm Events bulk data format guide",
+     "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/Storm-Data-Bulk-csv-Format.pdf"
+    },
+    {
+     "label": "U.S. Census Bureau, American Community Survey 2020-2024 5-year, table DP04, Hamilton County",
+     "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=050XX00US47065"
+    },
+    {
+     "label": "Hamilton County Building Inspection Department",
+     "url": "https://www.hamiltontn.gov/Department_BuildingInspections.aspx"
+    },
+    {
+     "label": "City of Chattanooga: Residential Modification Permit",
+     "url": "https://chattanooga.gov/pay-and-apply/permits-applications/residential-modification-permit"
+    },
+    {
+     "label": "Tennessee Board for Licensing Contractors: contractor license",
+     "url": "https://www.tn.gov/commerce/regboards/contractors/license/get/contractor.html"
+    },
+    {
+     "label": "Tennessee Board for Licensing Contractors: home improvement license",
+     "url": "https://www.tn.gov/commerce/regboards/contractors/license/get/home-improvement.html"
+    }
+   ]
+  },
+  "Rutherford": {
+   "roofing": [
+    {
+     "label": "NOAA NCEI Storm Events Database",
+     "url": "https://www.ncei.noaa.gov/access/storm-events-database/"
+    },
+    {
+     "label": "NOAA Storm Events bulk data format guide",
+     "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/Storm-Data-Bulk-csv-Format.pdf"
+    },
+    {
+     "label": "U.S. Census Bureau, American Community Survey 2020-2024 5-year, table DP04, Rutherford County",
+     "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=050XX00US47149"
+    },
+    {
+     "label": "Rutherford County Building Codes Department",
+     "url": "https://rutherfordcountytn.gov/building-codes"
+    },
+    {
+     "label": "Rutherford County Building Code FAQ",
+     "url": "https://rutherfordcountytn.gov/building-faq"
+    },
+    {
+     "label": "City of Murfreesboro: Building and Codes",
+     "url": "https://www.murfreesborotn.gov/101/Buildingand-Codes"
+    },
+    {
+     "label": "City of Murfreesboro: FAQs",
+     "url": "https://www.murfreesborotn.gov/m/faq"
+    },
+    {
+     "label": "Tennessee Board for Licensing Contractors: contractor license",
+     "url": "https://www.tn.gov/commerce/regboards/contractors/license/get/contractor.html"
+    },
+    {
+     "label": "Tennessee Board for Licensing Contractors: home improvement license",
+     "url": "https://www.tn.gov/commerce/regboards/contractors/license/get/home-improvement.html"
+    }
+   ]
+  },
+  "Williamson": {
+   "roofing": [
+    {
+     "label": "NOAA NCEI Storm Events Database",
+     "url": "https://www.ncei.noaa.gov/access/storm-events-database/"
+    },
+    {
+     "label": "NOAA Storm Events bulk data format guide",
+     "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/Storm-Data-Bulk-csv-Format.pdf"
+    },
+    {
+     "label": "U.S. Census Bureau, American Community Survey 2020-2024 5-year, table DP04, Williamson County",
+     "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=050XX00US47187"
+    },
+    {
+     "label": "Williamson County Building Codes",
+     "url": "https://www.williamsoncounty-tn.gov/100/Building-Codes"
+    },
+    {
+     "label": "Williamson County Building Codes memo on residential roof repairs and replacements",
+     "url": "https://www.williamsoncounty-tn.gov/DocumentCenter/View/25893/BP-70C31_20250723_144505-1"
+    },
+    {
+     "label": "City of Franklin Building and Neighborhood Services: residential and commercial construction",
+     "url": "https://www.franklintn.gov/government/departments-a-j/building-and-neighborhood-services/department-operations/department-information/residential-and-commercial-construction"
+    },
+    {
+     "label": "Tennessee Board for Licensing Contractors: contractor license",
+     "url": "https://www.tn.gov/commerce/regboards/contractors/license/get/contractor.html"
+    },
+    {
+     "label": "Tennessee Board for Licensing Contractors: home improvement license",
+     "url": "https://www.tn.gov/commerce/regboards/contractors/license/get/home-improvement.html"
+    }
+   ]
+  }
  }
 }
