@@ -34,6 +34,7 @@ const sentinelSrc = extract(form, 'function isHoverMeasurementsSentinel(');
 const renderSrc = extract(form, 'function renderBidFormDocLinks(');
 const estSrc = extract(form, 'function canOpenRawEstimate(');
 const measSrc = extract(form, 'function canOpenRawMeasurements(');
+const pdfSrc = extract(form, 'function canOpenMeasurementPdf(');
 ok(!!sentinelSrc && !!renderSrc && !!estSrc, 'bid form defines the sentinel check, renderBidFormDocLinks() and canOpenRawEstimate()');
 ok(!!measSrc, 'bid form defines canOpenRawMeasurements()');
 
@@ -44,7 +45,7 @@ function render(claim, contractor) {
     CONFIG: { DEMO_MODE: false },
     document: { getElementById: () => el },
   });
-  vm.runInContext([sentinelSrc, estSrc, measSrc, renderSrc, 'renderBidFormDocLinks();'].join('\n'), ctx);
+  vm.runInContext([sentinelSrc, estSrc, measSrc, pdfSrc, renderSrc, 'renderBidFormDocLinks();'].join('\n'), ctx);
   return el.innerHTML;
 }
 
@@ -60,13 +61,19 @@ const selected = { id: 'K-SEL' };
 const asBidder = render(claim, bidder);
 ok(!/View Loss Sheet/.test(asBidder), 'bidder: no Loss Sheet button');
 ok(!/View Measurements</.test(asBidder), 'bidder: no View Measurements button (the slot can hold a copy of the estimate)');
-ok(/View Measurement PDF/.test(asBidder), 'bidder: still offered the platform Measurement PDF button');
+ok(!!pdfSrc && !/View Measurement PDF/.test(asBidder), 'bidder: no platform Measurement PDF button either (D-370: no measurement report before selection)');
 const noSelection = render({ ...claim, selected_contractor_id: null }, bidder);
 ok(!/View Loss Sheet/.test(noSelection) && !/View Measurements</.test(noSelection), 'bidder, nobody selected: neither raw-file button');
 const beforeContractorLoads = render(claim, null);
 ok(!/View Loss Sheet/.test(beforeContractorLoads) && !/View Measurements</.test(beforeContractorLoads), 'contractor not loaded yet: neither raw-file button');
 const asSelected = render(claim, selected);
 ok(/View Loss Sheet/.test(asSelected) && /View Measurements</.test(asSelected), 'selected contractor: both raw-file buttons');
+ok(/View Measurement PDF/.test(asSelected), 'selected contractor: the platform Measurement PDF button');
+{
+  const i = form.indexOf('async function openBidFormHoverPdf(');
+  const body = i === -1 ? '' : form.slice(i, form.indexOf('\n    }\n', i));
+  ok(/if \(!canOpenMeasurementPdf\(\)\) return;/.test(body), 'openBidFormHoverPdf() returns before calling get-hover-pdf unless the caller is the selected contractor');
+}
 
 const openers = ['openBidFormEstimatePdf', 'openBidFormMeasurementsPdf'];
 for (const fn of openers) {
@@ -86,23 +93,45 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 const hiw = read('contractor-how-it-works.html');
 const faq = read('contractor-faq.html');
 const reactCard = read('react-app/app/contractor/opportunities/page.tsx');
-ok(!/aerial measurements, and the homeowner's insurance estimate &mdash; when available/.test(hiw)
-  && /aerial measurements, and a line-item summary of the homeowner's insurance estimate &mdash; when available/.test(hiw),
-  'how-it-works: an opportunity shows a line-item summary of the estimate, not the estimate');
-ok(!/including the insurance estimate and measurements, when available/.test(faq)
-  && /including aerial measurements and a line-item summary of the insurance estimate, when available &mdash; before deciding to bid/.test(faq),
-  'FAQ (reviewing before bidding): a line-item summary of the estimate, not the estimate');
-ok(!/the homeowner's insurance estimate with an AI-parsed line-item summary, when available\. You know/.test(faq)
-  && /an AI-parsed line-item summary of the homeowner's insurance estimate, when available\. You know/.test(faq),
-  'FAQ (what you can see before bidding): the summary of the estimate, not the estimate with a summary');
-ok(!/Insurance Estimate &#x2713;/.test(opps) && /o\.contractorScopeSummary \? '<span class="badge badge-available">Estimate Summary &#x2713;<\/span>'/.test(opps),
-  'opportunities card: the estimate badge says Estimate Summary and shows only when the card has a summary');
+ok(!/aerial measurements, and (the homeowner's insurance estimate|a line-item summary)/.test(hiw)
+  && /shows the project details, measured quantities, and a line-item summary of the homeowner's insurance estimate &mdash; when available/.test(hiw),
+  'how-it-works: an opportunity shows measured quantities and a line-item summary of the estimate; no estimate file, no aerial-measurement report');
+ok(!/including (the insurance estimate and measurements|aerial measurements)/.test(faq)
+  && /including measured quantities and a line-item summary of the insurance estimate, when available &mdash; before deciding to bid/.test(faq),
+  'FAQ (reviewing before bidding): measured quantities and a line-item summary');
+ok(!/you have access to trade-specific aerial measurements/.test(faq)
+  && /you have access to measured quantities and an AI-parsed line-item summary of the homeowner's insurance estimate, when available\. You know/.test(faq),
+  'FAQ (what you can see before bidding): measured quantities and the summary of the estimate');
+ok(!/Insurance Estimate &#x2713;/.test(opps) && /o\.estimateSummaryAvailable \? '<span class="badge badge-available">Estimate Summary &#x2713;<\/span>'/.test(opps),
+  'opportunities card: the estimate badge says Estimate Summary and is keyed on estimateSummaryAvailable');
+{
+  // the real helper, extracted and run: a summary with zero line items shows no badge
+  const i = opps.indexOf('function estimateSummaryHasLineItems(');
+  const src = i === -1 ? '' : opps.slice(i, opps.indexOf('\n        }\n', i) + 11);
+  const has = src ? vm.runInNewContext('(' + src + ')') : () => null;
+  ok(has({ sections: [{ line_items: [{ d: 'x' }] }] }) === true && has({ sections: [{ items: [{}] }] }) === true, 'estimateSummaryHasLineItems: a section with a line item counts');
+  ok(has({ sections: [] }) === false && has({ sections: [{ line_items: [] }] }) === false && has({ summary: { rcv: 1 } }) === false && has(null) === false,
+    'estimateSummaryHasLineItems: zero sections, empty sections, totals only and null do not count');
+  ok(/estimateSummaryAvailable: !!claim\.contractor_scope_summary && estimateSummaryHasLineItems\(claim\.parsed_line_items\)/.test(opps), 'opportunities page: badge needs a scope summary AND line items');
+}
+ok(/if \(opp\.measurementsAvailable && opp\.isSelectedContractor\) \{\s*parts\.push\('<button class="doc-link-btn" id="hover-/.test(opps),
+  'opportunities card: the Measurement PDF button only for the selected contractor');
 ok(!/>Measurements &#x2713;</.test(opps) && />Measurements on File &#x2713;</.test(opps),
   'opportunities card: the measurements badge says a measurement is on file, not that it can be opened');
-ok(!/Insurance Estimate \u2713/.test(reactCard) && /opp\.contractorScopeSummary && <span className="oqo-badge oqo-badge-available">Estimate Summary \u2713<\/span>/.test(reactCard),
-  'React opportunities card: Estimate Summary badge keyed on the summary');
+ok(!/Insurance Estimate \u2713/.test(reactCard) && /opp\.estimateSummaryAvailable && <span className="oqo-badge oqo-badge-available">Estimate Summary \u2713<\/span>/.test(reactCard),
+  'React opportunities card: Estimate Summary badge keyed on estimateSummaryAvailable');
 ok(!/>Measurements \u2713</.test(reactCard) && />Measurements on File \u2713</.test(reactCard),
   'React opportunities card: Measurements on File badge');
+
+ok(/\{opp\.measurementsAvailable && opp\.isSelectedContractor && \(\s*<button type="button" className="oqo-doc-btn" disabled=\{hoverBusy\}/.test(reactCard),
+  'React opportunities card: the Measurement PDF button only for the selected contractor');
+const reactBid = read('react-app/app/contractor/bid/[claimId]/bid-form.tsx');
+ok(/\{canOpenMeasurementPdf && <button type="button" className="oqb-doclink" onClick=\{openHoverPdf\}>/.test(reactBid) && /if \(!canOpenMeasurementPdf\) return;/.test(reactBid),
+  'React bid form: the Measurement PDF button and its opener only for the selected contractor');
+const pdfGate = read('supabase/functions/get-hover-pdf/pdf-source.ts');
+ok(/\.select\("user_id, selected_contractor_id"\)/.test(pdfGate) && !/ready_for_bids/.test(pdfGate.slice(pdfGate.indexOf('export async function canAccessClaim')))
+  && !/from\("quotes"\)/.test(pdfGate),
+  'get-hover-pdf: the access gate reads the selected contractor and has no open-for-bids or has-a-quote branch');
 
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -62,6 +62,27 @@ describe('ZIP distance (haversine via centroids)', () => {
   });
 });
 
+describe('gh-2559: estimate-summary badge and selected-contractor flag', () => {
+  const base: RawClaim = { id: 'CLB', contractor_scope_summary: 'Carrier: Example', selected_contractor_id: 'K-SEL' };
+  it('badge needs a scope summary AND at least one parsed line item', () => {
+    expect(mapClaimToOpportunity({ ...base, parsed_line_items: { sections: [{ line_items: [{ d: 'x' }] }] } }, null, 'K-BID').estimateSummaryAvailable).toBe(true);
+    expect(mapClaimToOpportunity({ ...base, parsed_line_items: { sections: [{ items: [{}] }] } }, null, 'K-BID').estimateSummaryAvailable).toBe(true);
+    // negative controls: each of these showed the badge when it was keyed on the scope summary alone
+    expect(mapClaimToOpportunity({ ...base, parsed_line_items: { sections: [] } }, null, 'K-BID').estimateSummaryAvailable).toBe(false);
+    expect(mapClaimToOpportunity({ ...base, parsed_line_items: { sections: [{ line_items: [] }] } }, null, 'K-BID').estimateSummaryAvailable).toBe(false);
+    expect(mapClaimToOpportunity({ ...base, parsed_line_items: { summary: { rcv: 1 } } }, null, 'K-BID').estimateSummaryAvailable).toBe(false);
+    expect(mapClaimToOpportunity(base, null, 'K-BID').estimateSummaryAvailable).toBe(false);
+    expect(mapClaimToOpportunity({ id: 'CLC', parsed_line_items: { sections: [{ line_items: [{}] }] } }, null, 'K-BID').estimateSummaryAvailable).toBe(false);
+  });
+  it('isSelectedContractor is true only for the contractor the homeowner selected (D-370: measurement report)', () => {
+    expect(mapClaimToOpportunity(base, null, 'K-SEL').isSelectedContractor).toBe(true);
+    expect(mapClaimToOpportunity(base, null, 'K-BID').isSelectedContractor).toBe(false);
+    expect(mapClaimToOpportunity(base, null, null).isSelectedContractor).toBe(false);
+    expect(mapClaimToOpportunity(base, null).isSelectedContractor).toBe(false);
+    expect(mapClaimToOpportunity({ ...base, selected_contractor_id: null }, null, 'K-BID').isSelectedContractor).toBe(false);
+  });
+});
+
 describe('mapClaimToOpportunity', () => {
   const claim: RawClaim = {
     id: 'CL1', property_address: '123 Main St, Carmel, IN 46032', job_type: 'insurance_rcv',

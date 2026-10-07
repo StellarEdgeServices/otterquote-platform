@@ -544,8 +544,10 @@ function DocLinks({ claim, contractorId }: { claim: Record<string, unknown>; con
     if (error || !data?.signedUrl) { alert('Unable to open the loss sheet. Please try again.'); return; }
     window.open(data.signedUrl, '_blank');
   }
+  // gh-2559 / D-370: the measurement report opens only for the contractor the homeowner selected.
+  const canOpenMeasurementPdf = !!claim.id && !!contractorId && claim.selected_contractor_id === contractorId;
   async function openHoverPdf() {
-    if (!claim.id) return;
+    if (!canOpenMeasurementPdf) return;
     const { data, error } = await supabase.functions.invoke('get-hover-pdf', { body: { claim_id: claim.id, format: 'url' } });
     if (error || !data?.url) { alert('The measurement PDF is not available for this project yet. The measurement may still be in progress.'); return; }
     window.open(data.url, '_blank');
@@ -553,7 +555,7 @@ function DocLinks({ claim, contractorId }: { claim: Record<string, unknown>; con
   return (
     <div className="oqb-doclinks">
       {canOpenRawEstimate && <button type="button" className="oqb-doclink" onClick={openLossSheet}>📄 View Loss Sheet</button>}
-      {!!claim.id && <button type="button" className="oqb-doclink" onClick={openHoverPdf}>📏 View Measurement PDF</button>}
+      {canOpenMeasurementPdf && <button type="button" className="oqb-doclink" onClick={openHoverPdf}>📏 View Measurement PDF</button>}
     </div>
   );
 }

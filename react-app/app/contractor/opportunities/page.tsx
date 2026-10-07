@@ -302,13 +302,13 @@ function OpportunityCard({ opp, onDetails }: { opp: Opportunity; onDetails: () =
       </div>
 
       <div className="oqo-trade-badges">
-        {opp.contractorScopeSummary && <span className="oqo-badge oqo-badge-available">Estimate Summary ✓</span>}
+        {opp.estimateSummaryAvailable && <span className="oqo-badge oqo-badge-available">Estimate Summary ✓</span>}
         {opp.measurementsAvailable
           ? <span className="oqo-badge oqo-badge-available">Measurements on File ✓</span>
           : <span className="oqo-badge oqo-badge-pending">Measurements Pending</span>}
       </div>
 
-      {(opp.estimateFilename || opp.measurementsAvailable) && (
+      {(opp.estimateFilename || opp.measurementsFilename || (opp.measurementsAvailable && opp.isSelectedContractor)) && (
         <div className="oqo-docs">
           <span className="oqo-docs-label">{T.documentsLabel}</span>
           {opp.estimateFilename && (
@@ -322,7 +322,8 @@ function OpportunityCard({ opp, onDetails }: { opp: Opportunity; onDetails: () =
               {measurementsBusy ? T.loadingLabel : T.measurementsBtn}
             </button>
           )}
-          {opp.measurementsAvailable && (
+          {/* gh-2559 / D-370: the measurement report opens only for the selected contractor */}
+          {opp.measurementsAvailable && opp.isSelectedContractor && (
             <button type="button" className="oqo-doc-btn" disabled={hoverBusy} onClick={openHoverPdf}>
               {hoverBusy ? T.loadingLabel : T.hoverPdfBtn}
             </button>

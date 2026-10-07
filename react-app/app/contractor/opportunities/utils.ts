@@ -207,6 +207,7 @@ export interface RawClaim {
   existing_shingle_color?: string | null;
   estimate_filename?: string | null;
   selected_contractor_id?: string | null;
+  parsed_line_items?: unknown;
   has_estimate?: boolean | null;
   measurements_filename?: string | null;
   has_measurements?: boolean | null;
@@ -252,6 +253,10 @@ export interface Opportunity {
   totalSquares: number | null;
   existingShingle: string | null;
   estimateAvailable: boolean;
+  /** gh-2559: a scope summary exists AND the parsed estimate has at least one line item. */
+  estimateSummaryAvailable?: boolean;
+  /** gh-2559 / D-370: the viewing contractor is the one the homeowner selected. */
+  isSelectedContractor?: boolean;
   measurementsAvailable: boolean;
   claimFiledDate: string | null;
   distance: number | null;
@@ -280,6 +285,17 @@ export function isHoverMeasurementsSentinel(filename: string | null | undefined)
 }
 
 /** Map a raw `claims` row to an Opportunity. Ported from :523-573. */
+/** gh-2559: true when the parsed estimate has at least one section with at least one line item. */
+export function estimateSummaryHasLineItems(parsed: unknown): boolean {
+  const sections = (parsed as { sections?: unknown } | null | undefined)?.sections;
+  if (!Array.isArray(sections)) return false;
+  return sections.some((s) => {
+    const sec = s as { line_items?: unknown; items?: unknown } | null;
+    const items = sec?.line_items ?? sec?.items;
+    return Array.isArray(items) && items.length > 0;
+  });
+}
+
 export function mapClaimToOpportunity(
   claim: RawClaim,
   contractorZip: string | null | undefined,
@@ -323,6 +339,9 @@ export function mapClaimToOpportunity(
       ? `${claim.existing_shingle_brand} - ${claim.existing_shingle_color}`
       : null,
     estimateAvailable: !!(claim.estimate_filename || claim.has_estimate),
+    estimateSummaryAvailable:
+      !!claim.contractor_scope_summary && estimateSummaryHasLineItems(claim.parsed_line_items),
+    isSelectedContractor: !!contractorId && claim.selected_contractor_id === contractorId,
     measurementsAvailable: !!(claim.measurements_filename || claim.has_measurements),
     claimFiledDate: claim.created_at ?? null,
     distance: computeZipDistance(contractorZip, zip),

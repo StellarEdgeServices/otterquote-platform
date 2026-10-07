@@ -125,12 +125,57 @@ Deno.test("canAccessClaim: a non-owner, inactive-contractor caller is refused", 
   assertEquals(allowed, false);
 });
 
-Deno.test("canAccessClaim: an active contractor on a released biddable claim is served", async () => {
+// gh-2559 / D-370 (CEO ruling 6045857216): no measurement report before
+// selection. The first two cases below were SERVED before this change.
+Deno.test("canAccessClaim: an active contractor on a released biddable claim, nobody selected, is REFUSED (gh-2559)", async () => {
   const tables = baseTables();
   tables.contractors = [{ id: "c1", user_id: CONTRACTOR_USER.id, status: "active" }];
-  const supabase = stubSupabase(tables);
-  const allowed = await canAccessClaim(supabase, CLAIM_ID, CONTRACTOR_USER);
-  assertEquals(allowed, true);
+  const allowed = await canAccessClaim(stubSupabase(tables), CLAIM_ID, CONTRACTOR_USER);
+  assertEquals(allowed, false);
+});
+
+Deno.test("canAccessClaim: an active contractor with a quote on the claim, not selected, is REFUSED (gh-2559)", async () => {
+  const tables = baseTables();
+  tables.contractors = [{ id: "c1", user_id: CONTRACTOR_USER.id, status: "active" }];
+  tables.quotes = [{ id: "q1", claim_id: CLAIM_ID, contractor_id: "c1" }];
+  const allowed = await canAccessClaim(stubSupabase(tables), CLAIM_ID, CONTRACTOR_USER);
+  assertEquals(allowed, false);
+});
+
+Deno.test("canAccessClaim: a bidder is REFUSED when another contractor is the selected one (gh-2559)", async () => {
+  const tables = baseTables();
+  (tables.claims[0] as any).selected_contractor_id = "k-selected";
+  tables.contractors = [{ id: "c1", user_id: CONTRACTOR_USER.id, status: "active" }];
+  tables.quotes = [{ id: "q1", claim_id: CLAIM_ID, contractor_id: "c1" }];
+  const allowed = await canAccessClaim(stubSupabase(tables), CLAIM_ID, CONTRACTOR_USER);
+  assertEquals(allowed, false);
+});
+
+Deno.test("canAccessClaim: the SELECTED contractor, active, is served, also after the claim closes for bids (gh-2559)", async () => {
+  const tables = baseTables();
+  (tables.claims[0] as any).selected_contractor_id = "k-selected";
+  tables.contractors = [{ id: "k-selected", user_id: CONTRACTOR_USER.id, status: "active" }];
+  assertEquals(await canAccessClaim(stubSupabase(tables), CLAIM_ID, CONTRACTOR_USER), true);
+  tables.claims[0].ready_for_bids = false;
+  tables.claims[0].status = "contract_signed";
+  assertEquals(await canAccessClaim(stubSupabase(tables), CLAIM_ID, CONTRACTOR_USER), true);
+});
+
+Deno.test("canAccessClaim: the selected contractor record, when not active, is REFUSED (gh-2559)", async () => {
+  const tables = baseTables();
+  (tables.claims[0] as any).selected_contractor_id = "k-selected";
+  tables.contractors = [{ id: "k-selected", user_id: CONTRACTOR_USER.id, status: "suspended" }];
+  const allowed = await canAccessClaim(stubSupabase(tables), CLAIM_ID, CONTRACTOR_USER);
+  assertEquals(allowed, false);
+});
+
+Deno.test("canAccessClaim: a user with two contractor records is served only through the selected one (gh-2559)", async () => {
+  const tables = baseTables();
+  (tables.claims[0] as any).selected_contractor_id = "k-selected";
+  tables.contractors = [{ id: "k-other", user_id: CONTRACTOR_USER.id, status: "active" }];
+  assertEquals(await canAccessClaim(stubSupabase(tables), CLAIM_ID, CONTRACTOR_USER), false);
+  tables.contractors.push({ id: "k-selected", user_id: CONTRACTOR_USER.id, status: "active" });
+  assertEquals(await canAccessClaim(stubSupabase(tables), CLAIM_ID, CONTRACTOR_USER), true);
 });
 
 Deno.test("canAccessClaim: an unknown claim id is refused", async () => {

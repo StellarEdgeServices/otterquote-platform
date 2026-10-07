@@ -49,7 +49,8 @@ file, its name and the slot; **a file stored as "measurements" can be the estima
 estimate, the measurements slot holds a copy of it: two objects, same size, same eTag), and an upload to the
 second path segment is hers to place under any claim id. No marker the homeowner's upload path cannot set exists
 today in the folder the policy reads. The platform's own measurement files already live OUTSIDE it, and a bidder
-gets the vendor PDF through the `get-hover-pdf` edge function (service role), which this change does not touch.
+got the vendor PDF through the `get-hover-pdf` edge function (service role). The migration does not touch that
+function; the same PR changes its code so that it refuses a contractor who is not the selected one (below).
 Production on 2026-10-06 (storage.objects, counts only): 27 objects, none named `hover_measurements_*`; 22 follow the `{uuid}/{uuid}/file` shape; 23 of 27 carry the uploader's own user id as first segment.
 
 **Smallest server-only marker, if a bidder-readable raw file is ever wanted:** a platform-written object whose
@@ -64,8 +65,9 @@ allowed at her own. **Not built here.** Safe default taken: no raw object for a 
 | uploaded insurance estimate, current or earlier uploads | reads | refused |
 | the homeowner-uploaded **measurements file** (any upload in her folder, photos included) | reads | **refused (Dustin, comment 6038067961: "Hide it")** |
 | parsed summary of the estimate (`parsed_line_items`, `contractor_scope_summary`, RCV/ACV/deductible; "Insurance Line Items" panel and card text) | reads | reads |
-| platform measurement PDF (vendor or admin-uploaded, through `get-hover-pdf`) | reads | reads |
-| Hover design photos (`get-hover-siding-data`), homeowner-entered squares and shape on the claim row | reads | reads |
+| platform measurement PDF produced by the vendor (through `get-hover-pdf`) | reads | **refused once the changed `get-hover-pdf` is DEPLOYED** (D-370, CEO ruling 6045857216); until that deploy, still reads. The admin-uploaded PDF was already refused to every contractor (`index.ts`, manual branch: primary admin and service role only) |
+| measured quantities on the claim row (`roof_squares`, `repair_squares`, the squares figure of `hover_measurements`) | reads | reads |
+| Hover design photos (`get-hover-siding-data`) | reads | reads (that function also returns the job's street address to a bidder today; PR #2578 changes it) |
 | claim row personal columns (see below) | reads | **still reads** |
 
 **Consequence to say plainly.** Where a homeowner uploaded her own measurements file and no measurement was
@@ -74,6 +76,23 @@ typed). `parse-hover-measurements` runs at contract time (called by `create-docu
 there is no parsed measurement summary for a bidder either. Production today (claims table, 2026-10-06): 6 of the 10
 claims open for bids have a measurements upload (sentinel names excluded). Dustin answered this on 2026-10-07 (comment 6038067961): hide it; a product gap found later goes back to him and is
 not a reason to reopen the files.
+
+## The measurement PDF: a function change in this PR, deployed separately
+
+CEO ruling 6045857216 (D-370): before selection a bidding contractor does not open ANY measurement report on the
+claim, whether the homeowner uploaded it (the storage policy above) or it was produced through the platform.
+`supabase/functions/get-hover-pdf/pdf-source.ts` `canAccessClaim` now serves the claim's owner and the selected
+contractor (record active) and nobody else; it used to serve any active contractor on a claim open for bids and any
+contractor with a quote. Tests: `supabase/functions/get-hover-pdf/pdf-source.test.ts` (the served-bidder case of
+main is now a refusal; five more cases). The pages offer the "Measurement PDF" button only to the selected contractor.
+
+- **Merging this PR does not deploy the function.** The deploy is its own step with its own notice. Until then a
+  bidder can still open a vendor-produced PDF. Production on 2026-10-07 (review 6047712432, SELECT): 0 completed
+  orders with a vendor job id, 0 active real contractors, so nobody is served one today.
+- **Open before that deploy (money; not decided here):** the opportunity card sells a bidder a "Detailed Measurement
+  Report" (D-317, tier price). After the deploy a bidder who buys it cannot open it until selected. Not changed in
+  this PR; put to the CEO on #2559.
+- A bidder keeps the measured quantities (the squares on the card and the bid form).
 
 ## The claims row is PR #2578, not this change
 

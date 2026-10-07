@@ -578,6 +578,11 @@
                     totalSquares: null,
                     existingShingle: claim.existing_shingle_brand ? `${claim.existing_shingle_brand} - ${claim.existing_shingle_color}` : null,
                     estimateAvailable: !!(claim.estimate_filename || claim.has_estimate),
+                    // gh-2559: the "Estimate Summary" badge shows only over a summary that has line
+                    // items (a parse can return header lines and zero sections).
+                    estimateSummaryAvailable: !!claim.contractor_scope_summary && estimateSummaryHasLineItems(claim.parsed_line_items),
+                    // gh-2559 / D-370: no measurement report before selection, whoever produced it.
+                    isSelectedContractor: !!(currentContractor && currentContractor.id && claim.selected_contractor_id === currentContractor.id),
                     measurementsAvailable: !!(claim.measurements_filename || claim.has_measurements),
                     // gh-1411 / D-317 cl. 4-5: same field create-payment-intent's
                     // measurement-upgrade-gate.ts prices from (claims.hover_measurements.squares)
@@ -869,6 +874,15 @@
         // completion marker onto claims.measurements_filename that names no storage
         // object (the real measurement artifact is served by get-hover-pdf, separately).
         // Ported from contractor-bid-form.html's isHoverMeasurementsSentinel().
+        // gh-2559: true when the parsed estimate has at least one section with at least one line item.
+        function estimateSummaryHasLineItems(parsed) {
+            const sections = parsed && Array.isArray(parsed.sections) ? parsed.sections : [];
+            return sections.some(function (s) {
+                const items = s && (s.line_items || s.items);
+                return Array.isArray(items) && items.length > 0;
+            });
+        }
+
         function isHoverMeasurementsSentinel(filename) {
             return /^hover_\d+_measurements\.json$/i.test(filename || '');
         }
@@ -887,7 +901,9 @@
             if (opp.measurementsFilename) {
                 parts.push('<button class="doc-link-btn" id="measurements-' + opp.id + '" data-oq-action="doc-measurements" data-oq-claim="' + escHtml(String(opp.id)) + '">&#x1F4D0; View Measurements</button>');
             }
-            if (opp.measurementsAvailable) {
+            // gh-2559 / D-370 (CEO ruling 6045857216): the measurement report, ours or hers, opens only
+            // for the contractor the homeowner selected; get-hover-pdf refuses everyone else.
+            if (opp.measurementsAvailable && opp.isSelectedContractor) {
                 parts.push('<button class="doc-link-btn" id="hover-' + opp.id + '" data-oq-action="doc-hover" data-oq-claim="' + escHtml(String(opp.id)) + '">&#x1F4CF; Measurement PDF</button>');
             }
             if (!parts.length) return '';
@@ -1489,7 +1505,7 @@
                     + '<div class="info-block"><span class="info-label">' + vd.label + '</span><span class="info-value">' + vd.value + '</span></div>'
                     + '</div>'
                     + '<div class="badge-group">'
-                    + (o.contractorScopeSummary ? '<span class="badge badge-available">Estimate Summary &#x2713;</span>' : '')
+                    + (o.estimateSummaryAvailable ? '<span class="badge badge-available">Estimate Summary &#x2713;</span>' : '')
                     + (o.measurementsAvailable ? '<span class="badge badge-available">Measurements on File &#x2713;</span>' : '<span class="badge badge-pending">Measurements Pending</span>')
                     + '</div>'
                     + getDocLinksHtml(o)

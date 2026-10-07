@@ -4148,8 +4148,9 @@
       if (canOpenRawMeasurements()) {
         parts.push('<button class="doc-link-btn-form" onclick="openBidFormMeasurementsPdf()">&#x1F4D0; View Measurements</button>');
       }
-      // Always offer the measurement PDF — function handles gracefully if no measurement job exists
-      if (currentClaim.id && !CONFIG.DEMO_MODE) {
+      // gh-2559 / D-370 (CEO ruling 6045857216): the measurement report opens only for the contractor
+      // the homeowner selected; get-hover-pdf refuses a bidder. The measured quantities stay on the form.
+      if (currentClaim.id && !CONFIG.DEMO_MODE && canOpenMeasurementPdf()) {
         parts.push('<button class="doc-link-btn-form" id="bidFormHoverBtn" onclick="openBidFormHoverPdf()">&#x1F4CF; View Measurement PDF</button>');
       }
 
@@ -4167,6 +4168,12 @@
     function canOpenRawEstimate() {
       return !!(currentClaim && currentClaim.estimate_filename
         && currentContractor && currentContractor.id
+        && currentClaim.selected_contractor_id === currentContractor.id);
+    }
+
+    // gh-2559 / D-370: same rule for the platform's measurement PDF.
+    function canOpenMeasurementPdf() {
+      return !!(currentClaim && currentContractor && currentContractor.id
         && currentClaim.selected_contractor_id === currentContractor.id);
     }
 
@@ -4215,6 +4222,7 @@
 
     async function openBidFormHoverPdf() {
       if (!currentClaim?.id) return;
+      if (!canOpenMeasurementPdf()) return;
       const btn = document.getElementById('bidFormHoverBtn');
       if (btn) { btn.disabled = true; btn.textContent = 'Loading\u2026'; }
       try {

@@ -30,8 +30,10 @@
 -- The platform's own measurement pipeline writes under a different prefix that no client policy
 -- permits (get-hover-pdf: {claim_id}/hover_measurements_*.pdf; admin-measurements.html:
 -- {admin_uid}/measurements/{claim_id}/*.pdf), and neither path has the claim id in second position,
--- so the old bidding branch never reached them either; bidders get that PDF through the get-hover-pdf
--- edge function, which this migration does not touch.
+-- so the old bidding branch never reached them either. That PDF is served by the get-hover-pdf edge
+-- function, which this migration does not touch; the same PR changes that function's code to refuse
+-- a contractor who is not the selected one (D-370, comment 6045857216 on #2569), and that function's
+-- deploy is a separate step with its own notice.
 -- The bidding branch is REMOVED. A bidding contractor reads no raw object of the bucket at all; the
 -- summary lives in public.claims, not in storage. The only branch left is the selected contractor's,
 -- unchanged.
