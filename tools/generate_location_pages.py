@@ -1402,6 +1402,9 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     state_name = profile["name"]
     region = profile["county_region"][county]
     region_lbl = profile["region_label"][region]
+    # Labels that already begin with "the" (e.g. "the northeast hills of Ohio") read
+    # correctly mid-sentence; the heading template supplies its own "The".
+    region_head = region_lbl[4:] if region_lbl[:4].lower() == "the " else region_lbl
     seed = page_seed(county, trade)
     c_slug = county_slug(county, state)
     t_label = TRADE_LABELS[trade]
@@ -1562,7 +1565,7 @@ footer a:hover {{ color: var(--link-on-light-deep, #7A4200) !important; }}
 
     <p>{intro}</p>
 
-    <h2>The {region_lbl} climate and your {t_label.lower()}</h2>
+    <h2>The {region_head} climate and your {t_label.lower()}</h2>
     <p>{climate}</p>
 
     <h2>{noun_title} issues to look for after a storm</h2>
