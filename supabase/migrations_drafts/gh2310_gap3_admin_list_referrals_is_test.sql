@@ -9,8 +9,10 @@
 -- What changes: one added predicate pair in WHERE. A referral is listed only if its own flag is not true AND its agent's flag is not true.
 -- "IS NOT TRUE" keeps NULL-flag rows and keeps unattributed rows (referral_agent_id NULL => ra.* NULL), which the v98 header documents as the early-warning
 -- signal for attribution regressions (#595). Nothing else changes: columns, ORDER BY, LIMIT 1000, the is_admin_email() gate, SECURITY DEFINER, search_path.
--- Grants are preserved by CREATE OR REPLACE; the probe below re-asserts them.
+-- Grants are preserved by CREATE OR REPLACE; the probe below re-asserts them. The statements run in one transaction (BEGIN/COMMIT): if the probe raises, the body is not replaced.
 -- Effect measured read-only 2026-10-07T20:28Z: rows visible to the admin 48 -> 10 (38 test rows hidden; 9 of them are the legacy rows of gh2310_gap3_backfill_referrals_is_test).
+
+BEGIN;
 
 CREATE OR REPLACE FUNCTION public.admin_list_referrals()
  RETURNS TABLE(id uuid, created_at timestamp with time zone, status text, referral_agent_id uuid, partner_name text, partner_email text, partner_code text, homeowner_email text, landing_page text, job_value numeric, commission_amount numeric, recruit_commission_amount numeric, claim_id uuid, claim_completion_date timestamp with time zone)
@@ -55,3 +57,5 @@ BEGIN
   END IF;
 END
 $probe$;
+
+COMMIT;

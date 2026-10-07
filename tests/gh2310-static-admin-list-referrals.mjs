@@ -58,6 +58,15 @@ const rbIds = [...rb.matchAll(/'([0-9a-f-]{36})'::uuid/g)].map((m) => m[1]);
 ok(rbIds.length === 9 && JSON.stringify([...rbIds].sort()) === JSON.stringify([...ids].sort()), 'rollback restores exactly the same 9 ids');
 ok(/SET is_test = false/i.test(rb), 'rollback sets is_test back to false');
 
+
+// ---- 3b. transaction wrapper and a proof file that parses (review 6047687724) ----
+const rawFn = read(fnPath);
+const iB = rawFn.search(/^BEGIN;\s*$/m), iC = rawFn.search(/^COMMIT;\s*$/m), iF = rawFn.search(/^CREATE OR REPLACE FUNCTION/m), iP = rawFn.search(/^DO \$probe\$/m);
+ok(iB >= 0 && iF > iB && iP > iF && iC > iP, 'function migration runs in one transaction: BEGIN before the body, grants probe before COMMIT');
+const proof = read(path.join(ROOT, 'supabase/tests/gh2310_gap3_referrals_is_test_proof.sql'));
+const strayLines = proof.split('\n').filter((l) => /^CREATE OR REPLACE\b/i.test(l) && !/^CREATE OR REPLACE FUNCTION\b/i.test(l));
+ok(proof !== '' && strayLines.length === 0, 'proof file has no stray "CREATE OR REPLACE" header text outside a FUNCTION statement' + (strayLines.length ? ': ' + strayLines.join(' / ') : ''));
+
 // ---- 4. no staff address in the new files ----
 for (const f of [path.join(DRAFTS, BF + '.sql'), fnPath, path.join(RBK, BF + '_rollback.sql')]) {
   ok(!/[A-Za-z0-9._%+-]+@gmail\.com/i.test(read(f)), `no gmail literal in ${path.basename(f)}`);

@@ -5,7 +5,7 @@ BEGIN;
 CREATE TEMP TABLE proof_r (n serial PRIMARY KEY, phase text, label text, got text, expected text, ok boolean);
 CREATE FUNCTION pg_temp.rec(p_phase text, p_label text, p_got text, p_exp text) RETURNS void LANGUAGE sql AS
 $f$ INSERT INTO proof_r(phase,label,got,expected,ok) VALUES (p_phase,p_label,p_got,p_exp,p_got IS NOT DISTINCT FROM p_exp) $f$;
--- Act as the admin (is_admin_email reads auth.jwt()). Built by concatenation so no address literal is in the file.
+-- Act as the admin (is_admin_email reads auth.jwt()). The admin address is public in this repo (is_admin_email, other proofs); it is built by concatenation only to keep this file free of an address literal.
 CREATE FUNCTION pg_temp.as_admin() RETURNS text LANGUAGE sql AS
 $f$ SELECT set_config('request.jwt.claims', json_build_object('email', 'dustinstohler1' || '@gmail.com', 'role', 'authenticated')::text, true) $f$;
 CREATE FUNCTION pg_temp.as_nobody() RETURNS text LANGUAGE sql AS
@@ -32,9 +32,6 @@ SELECT pg_temp.rec('PRE', 'the 9 ids are exactly the 9 rows of the closes-on SEL
 SELECT pg_temp.measure('PRE', '38', '9');
 
 -- ===== FIXED: forward function (supabase/migrations_drafts/gh2310_gap3_admin_list_referrals_is_test.sql) =====
-CREATE OR REPLACE; the probe below re-asserts them.
--- Effect measured read-only 2026-10-07T20:28Z: rows visible to the admin 48 -> 10 (38 test rows hidden; 9 of them are the legacy rows of gh2310_gap3_backfill_referrals_is_test).
-
 CREATE OR REPLACE FUNCTION public.admin_list_referrals()
  RETURNS TABLE(id uuid, created_at timestamp with time zone, status text, referral_agent_id uuid, partner_name text, partner_email text, partner_code text, homeowner_email text, landing_page text, job_value numeric, commission_amount numeric, recruit_commission_amount numeric, claim_id uuid, claim_completion_date timestamp with time zone)
  LANGUAGE sql
@@ -66,7 +63,6 @@ AS $function$
   LIMIT 1000;
 $function$
 ;
-
 
 -- predicate alone, before the backfill: test-agent rows are already hidden; the SELECT still returns 9 (the backfill fixes the data, the predicate fixes the surface)
 SELECT pg_temp.measure('FIXED-fn-only', '0', '9');
@@ -110,8 +106,6 @@ UPDATE public.referrals SET is_test = false
    AND is_test = true;
 
 SELECT pg_temp.rec('ROLLBACK', 'backfill rolled back: the SELECT returns 9 again', (SELECT count(*) FROM public.referrals r JOIN public.referral_agents a ON a.id = r.referral_agent_id WHERE r.is_test = false AND a.is_test = true)::text, '9');
-CREATE OR REPLACE.
-
 CREATE OR REPLACE FUNCTION public.admin_list_referrals()
  RETURNS TABLE(id uuid, created_at timestamp with time zone, status text, referral_agent_id uuid, partner_name text, partner_email text, partner_code text, homeowner_email text, landing_page text, job_value numeric, commission_amount numeric, recruit_commission_amount numeric, claim_id uuid, claim_completion_date timestamp with time zone)
  LANGUAGE sql
