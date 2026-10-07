@@ -11,16 +11,24 @@ on:
     paths:
       - 'dashboard.html'
       - 'react-app/app/(homeowner)/dashboard/utils.ts'
-      - 'supabase/migrations/20261003010000_gh2421_homeowner_blocked_states.sql'
+      - 'supabase/migrations/20261003020711_gh2421_homeowner_blocked_states.sql'
       - 'tests/gh2421-static-homeowner-blocked-states.mjs'
+      - 'trade-selector.html'
+      - 'supabase/migrations_drafts/gh2431_profiles_address_state_default.sql'
+      - 'supabase/migrations_rollbacks/gh2431_profiles_address_state_default_rollback.sql'
+      - 'tests/gh2431-profiles-address-state-null.mjs'
       - '.github/workflows/static-homeowner-blocked-states-tests.yml'
   push:
     branches: [main]
     paths:
       - 'dashboard.html'
       - 'react-app/app/(homeowner)/dashboard/utils.ts'
-      - 'supabase/migrations/20261003010000_gh2421_homeowner_blocked_states.sql'
+      - 'supabase/migrations/20261003020711_gh2421_homeowner_blocked_states.sql'
       - 'tests/gh2421-static-homeowner-blocked-states.mjs'
+      - 'trade-selector.html'
+      - 'supabase/migrations_drafts/gh2431_profiles_address_state_default.sql'
+      - 'supabase/migrations_rollbacks/gh2431_profiles_address_state_default_rollback.sql'
+      - 'tests/gh2431-profiles-address-state-null.mjs'
       - '.github/workflows/static-homeowner-blocked-states-tests.yml'
 
 permissions:
@@ -47,3 +55,5 @@ jobs:
           node-version: '22.x'
       - name: Blocked-list gate present; Indiana-only literal gone (gh2421)
         run: node tests/gh2421-static-homeowner-blocked-states.mjs
+      - name: profiles.address_state has no Indiana default; every reader NULL-safe (gh2431)
+        run: node tests/gh2431-profiles-address-state-null.mjs

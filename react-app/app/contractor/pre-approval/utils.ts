@@ -370,7 +370,7 @@ export function buildSupportEmailBody(
 /** Locked legal version strings — ported verbatim (contractor-pre-approval.html:1032,1044,1047,1052). */
 export const ATTESTATION_TEXT_VERSION = 'ic-24511-v1-2026-04';
 export const CPA_VERSION = 'v1-2026-04';
-export const AGREEMENT_VERSION = 'v1-2026-04';
+export const AGREEMENT_VERSION = 'v2-2026-10';
 
 export interface PreApprovalAttestation {
   text_version: string;

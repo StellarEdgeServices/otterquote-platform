@@ -258,6 +258,9 @@
   .cl-right { display: none; }
   .cl-left { padding: var(--sp-8) var(--sp-6); }
 }
+/* gh-2493: the amber links inside the cross-role sentence carry an inline colour; on the light card they measured 2.85:1 */
+p.text-sm.text-center a[style*="var(--amber)"] { color: var(--link-on-light, #A85C00) !important; }
+p.text-sm.text-center a[style*="var(--amber)"]:hover { color: var(--link-on-light-deep, #7A4200) !important; }
 </style>
 </head>
 <body>
