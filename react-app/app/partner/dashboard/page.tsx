@@ -80,6 +80,7 @@ import {
   formatRelativeDate,
   w9SubmitUrl,
   fetchW9GateRetired,
+  type W9GateFlagClient,
 } from './utils';
 import {
   LOGIN_ROUTE,
@@ -178,7 +179,7 @@ export default function PartnerDashboardPage() {
           if (typeof window !== 'undefined') window.location.href = PARTNER_SIGNUP_REDIRECT;
           return;
         }
-        setW9GateRetired(await fetchW9GateRetired(supabase));
+        setW9GateRetired(await fetchW9GateRetired(supabase as unknown as W9GateFlagClient));
         setPartner(res.partner);
         setResolution('ok');
         await Promise.all([loadReferrals(res.partner), loadRecruits(res.partner)]);
