@@ -1,8 +1,8 @@
--- STATUS (gh-1438, as of 2026-10-07T20:19:40Z): APPLIED
--- FILE ROLE: forward file of set gh2431_profiles_address_state_default (the STATUS is the set's; it describes the forward migration)
--- EVIDENCE: applied as ledger version 20261007201941 (name gh2431_profiles_address_state_default) under R-097; profiles.address_state column_default is NULL (was 'IN'::text) and handle_new_user() no longer writes address_state; proof run before and after the apply is on #2431 (R-097 EXECUTED)
--- REPO COPY: supabase/migrations/20261007201941_gh2431_profiles_address_state_default.sql (same statements); rollback and pre-flight in supabase/migrations_rollbacks/
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- gh-2431 (R-097 EXECUTED, 2026-10-07T20:19:40Z): filed copy of supabase/migrations_drafts/gh2431_profiles_address_state_default.sql under its REAL
+-- applied ledger version 20261007201941 (supabase_migrations.schema_migrations, name=gh2431_profiles_address_state_default; production yeszghaspzwwstvsrioa).
+-- The bytes sent to production were the draft's, fetched from main at the apply; executable SQL below is the draft's, unchanged.
+-- Rollback and pre-flight: supabase/migrations_rollbacks/gh2431_profiles_address_state_default_rollback.sql and gh2431_profiles_address_state_default_pre-flight.md.
+--
 --
 -- gh-2431: stop seeding every new homeowner profile with address_state = 'IN'.
 --
