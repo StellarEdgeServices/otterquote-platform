@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>How Online Roof Bids Work (No Salesperson) | Otter Quotes</title>
+<meta name="description" content="How online roof bids work: one written scope of work, written bids from several contractors, side-by-side comparison and online signing.">
+<link rel="canonical" href="https://otterquote.com/guides/online-roof-bids-no-salesperson.html">
+<meta property="og:title" content="How Online Roof Bids Work (No Salesperson) | Otter Quotes">
+<meta property="og:description" content="How online roof bids work: one written scope of work, written bids from several contractors, side-by-side comparison and online signing.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/online-roof-bids-no-salesperson.html">
+<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Otter Quotes logo">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-10-07">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds (same values as PR #2499; defined here until it merges) */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+.definition-table td { color: var(--dark-gray); border-bottom: 1px solid #D9DEE7; }
+.definition-table td:first-child { color: var(--navy); }
+.definition-table tr:last-child td { border-bottom: none; }
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>How Do Online Roof Bids Work Without a Salesperson?</h1>
+    <p class="meta">Otter Quotes &middot; Updated October 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>With online roof bids, the work is described in writing once, and each contractor sends a written bid on that same description. You compare the bids on a screen and decide on your own schedule, with no salesperson at your kitchen table. Otter Quotes is one place to do this. This guide explains each step and what to check.</p>
+    </div>
+
+    <section class="step">
+      <h2>What is an online roof bid?</h2>
+      <p>An online roof bid is a written price for a described roofing job, sent by a contractor through a website instead of presented at your table. The homeowner and the contractor work from the same written description of the work, and the bid states the materials, the price and the terms in writing.</p>
+      <p>In a bid from a salesperson, the contractor visits, looks over the job and presents a price in person. In an online bid, you read the price and the terms yourself, compare them with other bids and decide when you are ready.</p>
+    </section>
+
+    <section class="step">
+      <h2>How do online roof bids work, step by step?</h2>
+      <p>Online bidding follows five steps. The job is described in a written scope of work. The scope goes to several contractors. Each contractor sends a bid on the same scope. You compare the bids side by side. You choose one contractor and sign online.</p>
+      <p>At Otter Quotes, the steps look like this:</p>
+      <ol>
+        <li><strong>The scope of work.</strong> Otter Quotes creates a written scope of work for your project. You can provide a copy of your insurance estimate, or have professional measurements made.</li>
+        <li><strong>The bids.</strong> We send the scope of work to multiple contractors, who compete online with bids on the same work. Subcontractors bid too.</li>
+        <li><strong>The comparison.</strong> You compare the bids online, next to reviews and licensing information.</li>
+        <li><strong>The signing.</strong> You sign online, without a salesperson in your home.</li>
+      </ol>
+    </section>
+
+    <section class="step">
+      <h2>What should an online bid include?</h2>
+      <p>A bid is only as useful as what it says in writing. The FTC says a written estimate should include a description of the work to be done, the materials, a completion date, the price and the contractor's contact information (<a href="https://consumer.ftc.gov/articles/how-avoid-scams-after-weather-emergencies-and-natural-disasters" target="_blank" rel="noopener">FTC</a>). Put each bid beside the others and check the same items in each.</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr><th>Item</th><th>What to look for in the bid</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>The work</td><td>A description that matches the scope of work you were given, line by line.</td></tr>
+            <tr><td>Materials</td><td>The product and the grade named, not just a category.</td></tr>
+            <tr><td>Warranty</td><td>Who stands behind it, what it covers and for how long, in writing.</td></tr>
+            <tr><td>Schedule</td><td>An estimated start date and completion date.</td></tr>
+            <tr><td>Price and payments</td><td>The total and a payment schedule, with the amount due before work starts.</td></tr>
+            <tr><td>Contractor details</td><td>Name, address, phone and license number, if one is required.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Our <a href="/guides/roof-bid-comparison-worksheet.html">side-by-side roof bid worksheet</a> turns this into a table you can fill in.</p>
+    </section>
+
+    <section class="step">
+      <h2>What do I give up without a salesperson?</h2>
+      <p>You do not get a person walking you through the bid. You read each bid yourself, so you will want to write down every question before you sign and get each answer in writing. A bid made from a written scope of work may be priced without anyone standing on your roof, so ask what could change the price.</p>
+      <p>Questions to copy:</p>
+      <ul>
+        <li>Could the price change after work starts, and what would cause it?</li>
+        <li>Is anything in the scope of work not in your bid?</li>
+        <li>Who will do the work, your own crew or a subcontractor?</li>
+        <li>Which materials and which warranty does the bid name?</li>
+        <li>What is the payment schedule?</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>How do I check the contractor behind a bid?</h2>
+      <p>The FTC says to confirm a contractor's license with your state or county government, ask for proof of insurance and look up what others say about the contractor (<a href="https://consumer.ftc.gov/articles/how-avoid-scams-after-weather-emergencies-and-natural-disasters" target="_blank" rel="noopener">FTC</a>). IBHS, a nonprofit research group, advises choosing a reputable, bonded and insured roofing contractor (<a href="https://ibhs.org/wp-content/uploads/member_docs/Is-It-Hail-Damage-Brochure_IBHS.pdf" target="_blank" rel="noopener">IBHS</a>).</p>
+      <p>On Otter Quotes, reviews and licensing information sit next to the bids, so you can read them in the same place. Our guide on <a href="/guides/how-to-choose-contractor.html">how to choose a contractor for insurance repairs</a> has a longer checklist.</p>
+    </section>
+
+    <section class="step">
+      <h2>Can I use online bids if I have an insurance estimate?</h2>
+      <p>Yes. You can provide a copy of your insurance estimate when you start, or you can start without one. Otter Quotes does not work with your insurance company and does not negotiate claims, so questions about your claim go to your insurer.</p>
+      <p>Our guides on <a href="/guides/after-adjuster-estimate-next-steps.html">what to do after the adjuster's estimate</a> and on <a href="/guides/show-contractor-insurance-estimate.html">whether to show a contractor the estimate</a> cover the document itself.</p>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>Otter Quotes creates a written scope of work for your project and sends it to multiple contractors. Every contractor bids on the same scope and the same measurements. You compare the bids online, next to reviews and licensing information, and sign online without a salesperson in your home. Subcontractors bid too, so you may be able to work directly with the crew that does the work. We are not a contractor, we do not sell upgrades, and we do not offer inspections. Contractors pay Otter Quotes a fee on the accepted bid.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>What is an online roof bid?</h3>
+        <div class="faq-answer">
+          <p>An online roof bid is a written price for a described roofing job, sent by a contractor through a website. The bid is based on a written scope of work, so every contractor prices the same job, and you compare the bids and sign online instead of meeting a salesperson at home.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>How is an online bid different from a bid from a salesperson at my door?</h3>
+        <div class="faq-answer">
+          <p>With an online bid you read the price and terms in writing and compare them with other bids on your own schedule. IBHS advises being wary of unsolicited offers to inspect or repair your roof. The FTC advises getting estimates from more than one contractor.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Can I compare several contractors without meeting each one?</h3>
+        <div class="faq-answer">
+          <p>On Otter Quotes, we send your scope of work to multiple contractors, who compete online with bids on the same work. You compare the bids online, next to reviews and licensing information, and you sign online. You decide which contractor to choose.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What does it cost?</h3>
+        <div class="faq-answer">
+          <p>There is no cost for homeowners who provide a copy of their insurance estimate. A homeowner without one pays an upfront charge of as little as $15 for professional measurements, refunded if they complete a job on the platform. Contractors pay Otter Quotes a fee on the accepted bid.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What does Otter Quotes not do?</h3>
+        <div class="faq-answer">
+          <p>We do not work with your insurance company or negotiate claims. Otter Quotes is not a contractor, does not sell upgrades and does not offer inspections. We create the written scope of work, send it to contractors and give you one place to compare their bids.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="step">
+      <h2>Sources</h2>
+      <ul>
+        <li><a href="https://consumer.ftc.gov/articles/how-avoid-scams-after-weather-emergencies-and-natural-disasters" target="_blank" rel="noopener">Federal Trade Commission, “How To Avoid Scams After Weather Emergencies and Natural Disasters”</a>: what a written estimate should include, checking a license and insurance, and getting estimates from more than one contractor.</li>
+        <li><a href="https://ibhs.org/wp-content/uploads/member_docs/Is-It-Hail-Damage-Brochure_IBHS.pdf" target="_blank" rel="noopener">Insurance Institute for Business & Home Safety, “Is It Hail Damage?” brochure</a>: choosing a reputable, bonded and insured roofing contractor and being wary of unsolicited offers to inspect or repair a roof.</li>
+      </ul>
+    </section>
+
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/guides/roof-bid-comparison-worksheet.html">How to Compare Roofing Bids: A Side-by-Side Worksheet</a></li>
+        <li><a href="/guides/multiple-bids-roof-insurance-claim.html">Can You Get Multiple Bids on a Roof Insurance Claim?</a></li>
+        <li><a href="/guides/how-to-choose-contractor.html">How to Choose a Contractor for Insurance Repairs</a></li>
+        <li><a href="/guides/how-to-read-contractor-estimate.html">How to Read a Roofing Contractor Estimate</a></li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "How Do Online Roof Bids Work Without a Salesperson?",
+  "description": "How online roof bids work: one written scope of work, written bids from several contractors, side-by-side comparison and online signing.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-10-07",
+  "dateModified": "2026-10-07",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/online-roof-bids-no-salesperson.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is an online roof bid?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "An online roof bid is a written price for a described roofing job, sent by a contractor through a website. The bid is based on a written scope of work, so every contractor prices the same job, and you compare the bids and sign online instead of meeting a salesperson at home."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is an online bid different from a bid from a salesperson at my door?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "With an online bid you read the price and terms in writing and compare them with other bids on your own schedule. IBHS advises being wary of unsolicited offers to inspect or repair your roof. The FTC advises getting estimates from more than one contractor."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I compare several contractors without meeting each one?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "On Otter Quotes, we send your scope of work to multiple contractors, who compete online with bids on the same work. You compare the bids online, next to reviews and licensing information, and you sign online. You decide which contractor to choose."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What does it cost?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "There is no cost for homeowners who provide a copy of their insurance estimate. A homeowner without one pays an upfront charge of as little as $15 for professional measurements, refunded if they complete a job on the platform. Contractors pay Otter Quotes a fee on the accepted bid."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What does Otter Quotes not do?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "We do not work with your insurance company or negotiate claims. Otter Quotes is not a contractor, does not sell upgrades and does not offer inspections. We create the written scope of work, send it to contractors and give you one place to compare their bids."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "How Do Online Roof Bids Work Without a Salesperson?",
+      "item": "https://otterquote.com/guides/online-roof-bids-no-salesperson.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>
