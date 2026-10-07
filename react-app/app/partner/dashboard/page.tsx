@@ -79,6 +79,7 @@ import {
   fmtRecruitEarnings,
   formatRelativeDate,
   w9SubmitUrl,
+  fetchW9GateRetired,
 } from './utils';
 import {
   LOGIN_ROUTE,
@@ -106,6 +107,8 @@ export default function PartnerDashboardPage() {
   const [referrals, setReferrals] = useState<PartnerReferral[]>([]);
   const [payoutByReferral, setPayoutByReferral] = useState<Record<string, string>>({});
   const [recruits, setRecruits] = useState<RecruitRecord[]>([]);
+  // D-319 (gh-1509): platform_settings.w9_gate_retired; false (gate enforced) until read as true.
+  const [w9GateRetired, setW9GateRetired] = useState(false);
 
   // ── Data loaders (supabase singleton — ADR-009 pattern) ─────────────────────
   const loadReferrals = useCallback(async (p: PartnerRecord) => {
@@ -175,6 +178,7 @@ export default function PartnerDashboardPage() {
           if (typeof window !== 'undefined') window.location.href = PARTNER_SIGNUP_REDIRECT;
           return;
         }
+        setW9GateRetired(await fetchW9GateRetired(supabase));
         setPartner(res.partner);
         setResolution('ok');
         await Promise.all([loadReferrals(res.partner), loadRecruits(res.partner)]);
@@ -205,6 +209,7 @@ export default function PartnerDashboardPage() {
         referrals={referrals}
         payoutByReferral={payoutByReferral}
         recruits={recruits}
+        w9GateRetired={w9GateRetired}
         onPartnerRefresh={(p) => setPartner(p)}
         userId={user?.id ?? ''}
       />
@@ -221,6 +226,7 @@ function DashboardView({
   referrals,
   payoutByReferral,
   recruits,
+  w9GateRetired,
   onPartnerRefresh,
   userId,
 }: {
@@ -228,6 +234,7 @@ function DashboardView({
   referrals: PartnerReferral[];
   payoutByReferral: Record<string, string>;
   recruits: RecruitRecord[];
+  w9GateRetired: boolean;
   onPartnerRefresh: (p: PartnerRecord) => void;
   userId: string;
 }) {
@@ -281,7 +288,8 @@ function DashboardView({
       </div>
 
       {/* W-9 status card (D-172) */}
-      <W9Card partner={partner} userId={userId} onPartnerRefresh={onPartnerRefresh} />
+      {/* D-319 (gh-1509): hidden when platform_settings.w9_gate_retired is ON */}
+      {!w9GateRetired && <W9Card partner={partner} userId={userId} onPartnerRefresh={onPartnerRefresh} />}
 
       {/* Quick Actions */}
       <h2 className="section-header">{SECTION_HEADERS.quickActions}</h2>
