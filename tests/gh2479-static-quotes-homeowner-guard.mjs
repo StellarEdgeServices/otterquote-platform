@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
 const MIG_DIR = path.join(ROOT, 'supabase/migrations');
-const MIG_NAME = '20261005170000_gh2479_quotes_homeowner_guard.sql';
+const MIG_NAME = '20261005173827_gh2479_quotes_homeowner_guard.sql';
 
 let passed = 0, failed = 0;
 function ok(cond, msg) { if (cond) { passed++; console.log('PASS: ' + msg); } else { failed++; console.log('FAIL: ' + msg); } }

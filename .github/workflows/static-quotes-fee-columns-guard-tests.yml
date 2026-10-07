@@ -51,7 +51,7 @@ jobs:
         run: node tests/gh2519-static-fee-columns-guard.mjs
       - name: Negative control - the born-state guard alone (no fee rule) must fail this check
         run: |
-          if node tests/gh2519-static-fee-columns-guard.mjs supabase/migrations/20261005200000_gh2479_born_state_guard.sql > /tmp/nc.out; then
+          if node tests/gh2519-static-fee-columns-guard.mjs supabase/migrations/20261005203540_gh2479_born_state_guard.sql > /tmp/nc.out; then
             echo "The check passed against a migration that has no fee rule: it asserts nothing."; exit 1
           fi
           grep -c '^FAIL' /tmp/nc.out

@@ -1,3 +1,6 @@
+-- gh-1438 reconciliation (cto61, 2026-10-06T19:47:53Z): renamed from 20260930140000_gh2310_gap2_referral_agents_internal_test_trigger.sql to the REAL applied ledger version.
+-- Ledger row: supabase_migrations.schema_migrations version=20261003014844 (SELECT-only read 2026-10-06). Content check: statements normalized md5 1009bb29 = file.
+-- Executable SQL body unchanged; only the filename version prefix and this banner changed.
 -- Migration: 20260930140000_gh2310_gap2_referral_agents_internal_test_trigger
 -- GitHub: #2310 Gap 2 (forward mechanism; the 9-id backfill shipped in PR #2400 / 20260930130000_...).
 -- Tier: 3B (new trigger on a payout-adjacent table). NOT APPLIED. R-097 notice required before apply.

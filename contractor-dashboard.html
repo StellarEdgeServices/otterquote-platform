@@ -1076,6 +1076,30 @@
             document.getElementById('gettingStartedSection').classList.add('show');
         }
 
+        // gh-2444: shared acceptance evidence for first acceptance AND re-acceptance.
+        // Call only after the row-checked contractors update succeeded. Both steps
+        // are non-fatal so a logging failure never blocks an accepted agreement.
+        async function recordCpaAcceptanceEvidence(now, title) {
+            // Record server-side IP via SECURITY DEFINER function (non-fatal)
+            try {
+                await sb.rpc('record_cpa_ip', { p_contractor_id: currentContractor.id });
+            } catch (ipErr) {
+                console.warn('record_cpa_ip failed (non-fatal):', ipErr);
+            }
+
+            // Log to activity_log (non-fatal)
+            try {
+                await sb.from('activity_log').insert({
+                    user_id:    currentUser.id,
+                    event_type: 'cpa_accepted',
+                    title:      title,
+                    created_at: now,
+                });
+            } catch (logErr) {
+                console.warn('Activity log failed (non-fatal):', logErr);
+            }
+        }
+
         // Handle agreement modal checkbox and button
         function initAgreementModal() {
             const checkbox = document.getElementById('agreementCheckbox');
@@ -1113,6 +1137,7 @@
                         const error = acceptErr || (!Array.isArray(acceptedRows) || acceptedRows.length === 0 ? new Error('zero_rows_updated') : null);
 
                         if (!error) {
+                            await recordCpaAcceptanceEvidence(now, `Accepted Contractor Partner Agreement (${CURRENT_CPA_VERSION})`);
                             currentContractor.agreement_accepted_at = now;
                             currentContractor.agreement_version = today;
                             currentContractor.cpa_version     = CURRENT_CPA_VERSION;
@@ -1169,24 +1194,8 @@
                             return;
                         }
 
-                        // 2. Record server-side IP via SECURITY DEFINER function (non-fatal)
-                        try {
-                            await sb.rpc('record_cpa_ip', { p_contractor_id: currentContractor.id });
-                        } catch (ipErr) {
-                            console.warn('record_cpa_ip failed (non-fatal):', ipErr);
-                        }
-
-                        // 3. Log to activity_log (non-fatal)
-                        try {
-                            await sb.from('activity_log').insert({
-                                user_id:    currentUser.id,
-                                event_type: 'cpa_accepted',
-                                title:      `Accepted updated Contractor Partner Agreement (${CURRENT_CPA_VERSION})`,
-                                created_at: now,
-                            });
-                        } catch (logErr) {
-                            console.warn('Activity log failed (non-fatal):', logErr);
-                        }
+                        // 2. Record server-side IP + log to activity_log (shared with first acceptance, non-fatal)
+                        await recordCpaAcceptanceEvidence(now, `Accepted updated Contractor Partner Agreement (${CURRENT_CPA_VERSION})`);
 
                         // 4. Update in-memory state
                         currentContractor.cpa_version              = CURRENT_CPA_VERSION;

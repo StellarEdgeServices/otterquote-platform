@@ -1,3 +1,6 @@
+-- gh-1438 reconciliation (cto61, 2026-10-06T19:47:53Z): renamed from 20261003193000_gh2479_referral_guard_and_commission_checks.sql to the REAL applied ledger version.
+-- Ledger row: supabase_migrations.schema_migrations version=20261005151842 (SELECT-only read 2026-10-06). Content check: live prosrc md5 5cd19c8b (apply_referral_commission) = file body; claims_guard_referral_columns later replaced by 20261005203540.
+-- Executable SQL body unchanged; only the filename version prefix and this banner changed.
 -- Migration: 20261003193000_gh2479_referral_guard_and_commission_checks
 -- GitHub: #2479 (MONEY, SECURITY), ruling on #2403 comment 5972625589 (Dustin, 2026-10-03: "a: section 9 covers it").
 -- Tier: 3B (new trigger on claims + replaces a money-path trigger function). Protective only (R-134): it only removes capability.

@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
 const MIG_DIR = path.join(ROOT, 'supabase/migrations');
-const MIG_NAME = '20261005200000_gh2479_born_state_guard.sql';
+const MIG_NAME = '20261005203540_gh2479_born_state_guard.sql';
 
 let passed = 0, failed = 0;
 function ok(cond, msg) { if (cond) { passed++; console.log('PASS: ' + msg); } else { failed++; console.log('FAIL: ' + msg); } }
@@ -155,8 +155,8 @@ const rbPath = path.join(ROOT, 'supabase/migrations_rollbacks', MIG_NAME.replace
 ok(fs.existsSync(rbPath), 'rollback file exists in supabase/migrations_rollbacks/');
 const rb = norm(read(rbPath));
 const body = (sql, fn) => (sql.match(new RegExp('CREATE OR REPLACE FUNCTION public\\.' + fn + '\\(\\).*?\\$guard\\$;', 'i')) || [''])[0];
-const prevQuotes = norm(read(path.join(MIG_DIR, '20261005170000_gh2479_quotes_homeowner_guard.sql')));
-const prevClaims = norm(read(path.join(MIG_DIR, '20261003193000_gh2479_referral_guard_and_commission_checks.sql')));
+const prevQuotes = norm(read(path.join(MIG_DIR, '20261005173827_gh2479_quotes_homeowner_guard.sql')));
+const prevClaims = norm(read(path.join(MIG_DIR, '20261005151842_gh2479_referral_guard_and_commission_checks.sql')));
 ok(body(rb, 'quotes_guard_homeowner_columns') !== '' && body(rb, 'quotes_guard_homeowner_columns') === body(prevQuotes, 'quotes_guard_homeowner_columns'),
   'rollback restores quotes_guard_homeowner_columns() to the body of 20261005170000 exactly');
 ok(body(rb, 'claims_guard_referral_columns') !== '' && body(rb, 'claims_guard_referral_columns') === body(prevClaims, 'claims_guard_referral_columns'),
