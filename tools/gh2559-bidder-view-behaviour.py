@@ -11,7 +11,7 @@ location_zip, homeowner_notes or urgency_reason. The selected contractor must re
 Negative control: pass --control <older view file> (CI passes none; the author ran it against head
 37391cfe, where the same plants leak).
 
-Run:  pip install pgserver psycopg2-binary && python3 scripts/gh2559-bidder-view-behaviour.py
+Run:  pip install pgserver psycopg2-binary && python3 tools/gh2559-bidder-view-behaviour.py
 """
 import json, os, re, shutil, sys, tempfile
 

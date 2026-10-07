@@ -257,7 +257,7 @@ applies, fail closed (a value it is not sure of is returned as NULL and the page
   them; else `property_zip` when it is exactly a zip. A box, lot, road or house number is never a zip.
 
 **Behavioural proof, throwaway Postgres 16 (pgserver), this view file run verbatim:**
-`scripts/gh2559-bidder-view-behaviour.py` plants 21 address shapes and 12 note shapes on open real claims and reads them
+`tools/gh2559-bidder-view-behaviour.py` plants 21 address shapes and 12 note shapes on open real claims and reads them
 as a contractor who is only bidding. This head: `rows read by the bidder: 36 | leaks: 0 | other failures: 0`.
 Negative control, the same plants against the view file of head `37391cfe`: `leaks: 65 | other failures: 12`
 (the four `location_city` shapes, the box and lot numbers as zip, and every note).

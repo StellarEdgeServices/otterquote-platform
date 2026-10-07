@@ -464,7 +464,7 @@ jobs:
       - name: the bidder view hands out no street, unit, box, lot, phone or email -- view file run on a throwaway Postgres (gh-2559, D-371)
         run: |
           python3 -m pip install --quiet pgserver==0.1.4 psycopg2-binary==2.9.13
-          python3 scripts/gh2559-bidder-view-behaviour.py
+          python3 tools/gh2559-bidder-view-behaviour.py
 
       - name: partner-re one leads row per signup, variant carried (gh-2084 arm E)
         run: node tests/gh2084-partner-re-one-lead-row.mjs

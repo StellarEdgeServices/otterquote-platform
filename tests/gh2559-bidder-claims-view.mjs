@@ -47,7 +47,7 @@ ok(viewCols.length >= 30 && viewCols.includes('id') && viewCols.includes('locati
 ok(viewCols.every((c) => !FORBIDDEN.includes(c)), 'no output column of the view is an identity, contact or reference-id column');
 
 // location and free text: what the view RETURNS is tested by behaviour on a throwaway Postgres
-// (scripts/gh2559-bidder-view-behaviour.py: planted street lines, units, boxes, lots, phones, emails). Here only
+// (tools/gh2559-bidder-view-behaviour.py: planted street lines, units, boxes, lots, phones, emails). Here only
 // the shape: the two location columns and the two free-text columns come from the guarded joins, never raw.
 ok(/loc\.city\s+AS location_city/.test(body) && /loc\.zip\s+AS location_zip/.test(body), 'view: location_city and location_zip come from the guarded loc join');
 ok(!/^\s*c\.homeowner_notes,\s*$/m.test(body) && !/^\s*c\.urgency_reason,\s*$/m.test(body), 'view: homeowner_notes and urgency_reason are not selected raw');
