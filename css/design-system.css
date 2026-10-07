@@ -255,6 +255,7 @@ main.article-body .faq-answer a:hover,
 }
 .btn-ghost-light:hover {
   background: rgba(13,27,46,0.06);
+  color: var(--navy);
 }
 
 .btn-sm { font-size: 0.875rem; padding: var(--sp-2) var(--sp-4); }
