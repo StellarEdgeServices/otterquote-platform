@@ -7,7 +7,7 @@
 -- now live on prod (referral_agents.fbclid/li_fat_id/funnel_id/
 -- app_first_signed_in_launch_at confirmed present via information_schema
 -- this session), and P-3's migration
--- (supabase/migrations/20260924200316_gh2154_p3_partner_new_alert_trigger.sql)
+-- (supabase/migrations/20260925180241_gh2154_p3_partner_new_alert_trigger.sql)
 -- is inlined verbatim below (section 2), replacing the earlier
 -- placeholder. Also confirmed this session: public.notifications.
 -- notification_type has NO CHECK constraint (pg_constraint, contype='c',
@@ -23,7 +23,7 @@
 -- running section 4's INSERT below inside this transaction.
 --
 -- UPDATED at P-3 review round 3 (REVIEW FAIL 5833567534, must-fix 1 + c,
--- should-fix 4): the go-live order is column-migration (20260925131429)
+-- should-fix 4): the go-live order is column-migration (20260925180145, formerly 20260925131429)
 -- FIRST, then the trigger migration -- the trigger migration now RAISEs an
 -- EXCEPTION if the column is missing, so this script applies 131429 before
 -- inlining the trigger migration, matching the corrected real-world order
@@ -75,7 +75,7 @@ ALTER TABLE public.referral_agents
 --      migration -- see the corrected go-live order above) ───────────────
 -- Byte-identical in effect (comment header trimmed for brevity here; full
 -- rationale lives in the migration file itself) to
--- supabase/migrations/20260925131429_gh2154_p3_notifications_referral_agent_id.sql.
+-- supabase/migrations/20260925180145_gh2154_p3_notifications_referral_agent_id.sql.
 ALTER TABLE public.notifications
   ADD COLUMN IF NOT EXISTS referral_agent_id UUID
     REFERENCES public.referral_agents(id) ON DELETE SET NULL;
@@ -96,7 +96,7 @@ ALTER POLICY "Users can update own notifications" ON public.notifications
 -- ── 3. P-3 trigger migration inlined verbatim ────────────────────────────
 -- Byte-identical (comment header trimmed for brevity here; full rationale
 -- lives in the migration file itself) to
--- supabase/migrations/20260924200316_gh2154_p3_partner_new_alert_trigger.sql.
+-- supabase/migrations/20260925180241_gh2154_p3_partner_new_alert_trigger.sql.
 -- Its own column-exists guard (must-fix 1, REVIEW FAIL 5833567534) runs
 -- here too and passes, because step 2 above already ran in this same
 -- transaction.
