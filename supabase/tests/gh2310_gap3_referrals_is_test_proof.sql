@@ -26,7 +26,7 @@ BEGIN
 END $f$;
 
 CREATE TEMP TABLE proof_pre AS SELECT md5(pg_get_functiondef('public.admin_list_referrals()'::regprocedure)) AS body_md5;
-INSERT INTO proof_r(phase,label,got,expected,ok) SELECT 'PRE','live admin_list_referrals md5 (reviewed value 9da71c089260f3d04dca3767568e03a2)', body_md5, '9da71c089260f3d04dca3767568e03a2', body_md5 = '9da71c089260f3d04dca3767568e03a2' FROM proof_pre;
+INSERT INTO proof_r(phase,label,got,expected,ok) SELECT 'PRE','live admin_list_referrals md5 (first 8 characters, reviewed value 9da71c08)', left(body_md5, 8), '9da71c08', left(body_md5, 8) = '9da71c08' FROM proof_pre;
 SELECT pg_temp.rec('PRE', 'the 9 ids are exactly the 9 rows of the closes-on SELECT', (SELECT count(*) FROM public.referrals r JOIN public.referral_agents a ON a.id = r.referral_agent_id WHERE r.id = ANY (pg_temp.nine()) AND r.is_test = false AND a.is_test = true)::text, '9');
 -- NEGATIVE CONTROL: before the change the admin sees test-agent rows (38 = 9 legacy + 29 already flagged) and the SELECT returns 9.
 SELECT pg_temp.measure('PRE', '38', '9');

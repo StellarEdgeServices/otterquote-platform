@@ -1,5 +1,5 @@
 -- Rollback for gh2310_gap3_admin_list_referrals_is_test (draft in supabase/migrations_drafts/).
--- Restores the production body of admin_list_referrals() byte for byte: pg_get_functiondef md5 9da71c089260f3d04dca3767568e03a2 (read 2026-10-07T20:28Z).
+-- Restores the production body of admin_list_referrals() byte for byte: pg_get_functiondef md5 9da71c08… (first 8 characters) (read 2026-10-07T20:28Z).
 -- After it runs the admin Referrals table lists test rows again (the pre-fix behaviour). Never move into supabase/migrations/ (the CLI would replay it forward).
 -- Grants are untouched by CREATE OR REPLACE.
 

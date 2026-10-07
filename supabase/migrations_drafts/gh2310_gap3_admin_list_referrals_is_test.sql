@@ -1,7 +1,7 @@
 -- gh-2310 Gap 3: admin_list_referrals() gets the missing is_test predicate (row 5a of Docs/is-test-steering-queries.md).
 -- STATUS (gh-1438): NOT APPLIED. Replaces the body of an existing SECURITY DEFINER SQL function (same signature, same grants), additive in effect: it only hides rows.
 -- Tier 3B by the CTO's ruling on #2310 (comment 6046227412) because it changes what the admin sees; R-097 notice on #2310 first. Do not apply, merge or deploy from this PR.
--- EVIDENCE: production body md5 9da71c089260f3d04dca3767568e03a2 (pg_get_functiondef, read-only 2026-10-07T20:28Z) equals sql/v98-admin-list-referrals.sql and the baseline migration body: no is_test anywhere.
+-- EVIDENCE: production body md5 9da71c08… (first 8 characters) (pg_get_functiondef, read-only 2026-10-07T20:28Z) equals sql/v98-admin-list-referrals.sql and the baseline migration body: no is_test anywhere.
 -- Rollback: supabase/migrations_rollbacks/gh2310_gap3_admin_list_referrals_is_test_rollback.sql (restores that body byte for byte)
 -- Test: tests/gh2310-static-admin-list-referrals.mjs (static, CI) and supabase/tests/gh2310_gap3_referrals_is_test_proof.sql (rolled back, human-run)
 -- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3B path, then file it under supabase/migrations/<ledger version>_gh2310_gap3_admin_list_referrals_is_test.sql.

@@ -27,7 +27,7 @@ b206c41a-6b1e-4d6d-b21d-fe3ed6cd64f5  1927861f-8836-49ce-a528-08c432cc69cc  2026
 ```
 If the SELECT returns anything other than these nine ids, stop: the data moved since the notice.
 
-Also record: `select md5(pg_get_functiondef('public.admin_list_referrals()'::regprocedure))` must be `9da71c089260f3d04dca3767568e03a2` (the rollback restores exactly this body).
+Also record: `select md5(pg_get_functiondef('public.admin_list_referrals()'::regprocedure))` must be `9da71c08…` (the rollback restores exactly this body).
 
 ## Business effect
 Nine click rows made by our own staff accounts in August stop counting as real referral clicks (the Business Lines dashboard referral-clicks series reads `referrals.is_test`). The admin Referrals table stops listing rows under test or staff agents (48 listed today, 10 after; measured read-only). Nothing a partner or homeowner sees changes. No email is sent.
