@@ -258,6 +258,8 @@
             font-size: 1rem;
             color: var(--navy);
         }
+        /* gh-2493: these links carry an inline #E07B00 (static markup and the script that fills the field); 2.43:1 on the field background */
+        .view-field-value a { color: var(--link-on-light-deep, #7A4200) !important; }
 
         /* Badge Styles */
         .badge {

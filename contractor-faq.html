@@ -147,11 +147,14 @@
   margin-top: var(--sp-4);
 }
 .cta-bottom-secondary a {
-  color: var(--amber);
+  color: var(--link-on-light, #A85C00);
   text-decoration: none;
   transition: color var(--duration) var(--ease);
 }
-.cta-bottom-secondary a:hover { color: var(--white); }
+.cta-bottom-secondary a:hover { color: var(--link-on-light-deep, #7A4200); }
+/* gh-2493: the "Contact us directly" link carries an inline #E07B00 */
+.cta-bottom-secondary a[style*="color"] { color: var(--link-on-light, #A85C00) !important; }
+.cta-bottom-secondary a[style*="color"]:hover { color: var(--link-on-light-deep, #7A4200) !important; }
 </style>
 
 <!-- Structured Data -->

@@ -74,16 +74,24 @@ const REDIRECT_MAP: Record<string, string> = {
     '/blog/rcv-vs-acv-roof-insurance.html',
   '/blog/roof-shingle-warranty-tiers-explained':
     '/blog/roof-shingle-warranty-tiers-explained.html',
+  '/blog/roofing-estimate-red-flags':
+    '/blog/roofing-estimate-red-flags.html',
   '/blog/storm-chaser-roofing-scams':
     '/blog/storm-chaser-roofing-scams.html',
+  '/blog/what-is-recoverable-depreciation-roofing':
+    '/blog/what-is-recoverable-depreciation-roofing.html',
   '/blog/what-is-scope-of-loss-roofing':
     '/blog/what-is-scope-of-loss-roofing.html',
+  '/blog/when-not-to-file-roof-insurance-claim':
+    '/blog/when-not-to-file-roof-insurance-claim.html',
   '/blog/why-roofers-quote-different-prices':
     '/blog/why-roofers-quote-different-prices.html',
 
-  // gh-1745 wave 3: the index.html twins. (The two wave-3 posts, and the other
-  // three removed articles, were deleted by gh-2480 Part 5 R1 and 301 to their
-  // targets from _redirects; a map entry for a deleted page would 301 to a 404.)
+  // gh-1745 wave 3: posts added after wave 2, plus the index.html twins.
+  '/blog/hail-damage-roof-inspection-first-72-hours':
+    '/blog/hail-damage-roof-inspection-first-72-hours.html',
+  '/blog/how-long-does-roof-insurance-claim-take-indiana':
+    '/blog/how-long-does-roof-insurance-claim-take-indiana.html',
   '/blog/index.html': '/blog/',
   '/guides/index.html': '/guides/',
 
@@ -101,6 +109,16 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/roof-replacement-cost-breakdown.html',
   '/guides/after-adjuster-estimate-next-steps':
     '/guides/after-adjuster-estimate-next-steps.html',
+  '/guides/contractor-bid-higher-than-insurance-estimate':
+    '/guides/contractor-bid-higher-than-insurance-estimate.html',
+  '/guides/prove-date-of-loss-hail':
+    '/guides/prove-date-of-loss-hail.html',
+  '/guides/show-contractor-insurance-estimate':
+    '/guides/show-contractor-insurance-estimate.html',
+  '/guides/window-replacement-bid-comparison':
+    '/guides/window-replacement-bid-comparison.html',
+  '/guides/siding-replacement-cost-factors':
+    '/guides/siding-replacement-cost-factors.html',
 
   // CRO RUN 52 / #2423: generated /locations/ pages -- the index.html twin 301s to the
   // trailing-slash URL (same class as /blog/index.html above).
@@ -114,6 +132,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/franklin-county-oh/roofing/',
   '/locations/hamilton-county-oh/roofing/index.html':
     '/locations/hamilton-county-oh/roofing/',
+  '/locations/hamilton-county-tn/roofing/index.html':
+    '/locations/hamilton-county-tn/roofing/',
   '/locations/jackson-county-mo/roofing/index.html':
     '/locations/jackson-county-mo/roofing/',
   '/locations/knox-county-tn/roofing/index.html':
@@ -126,12 +146,16 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/marion-county-in/roofing/',
   '/locations/montgomery-county-oh/roofing/index.html':
     '/locations/montgomery-county-oh/roofing/',
+  '/locations/rutherford-county-tn/roofing/index.html':
+    '/locations/rutherford-county-tn/roofing/',
   '/locations/shelby-county-tn/roofing/index.html':
     '/locations/shelby-county-tn/roofing/',
   '/locations/st-louis-county-mo/roofing/index.html':
     '/locations/st-louis-county-mo/roofing/',
   '/locations/summit-county-oh/roofing/index.html':
     '/locations/summit-county-oh/roofing/',
+  '/locations/williamson-county-tn/roofing/index.html':
+    '/locations/williamson-county-tn/roofing/',
 };
 
 export default async (req: Request, context: any) => {

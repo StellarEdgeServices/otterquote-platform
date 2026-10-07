@@ -75,6 +75,10 @@ for (const host of ['otterquote.com', 'www.otterquote.com', 'localhost']) {
 const SKIP_DIRS = new Set(['node_modules', '.git', 'Archive', 'react-app', 'handoffs', 'otterquote-deploy', 'supabase']);
 const NO_LEGAL_LINKS_FOOTER = new Set([
   // gh-1925 (Ben ruling 5896607701): empty. stellar-edge.html used to be here; it loads the ad gates, so it now carries the link.
+  // the-ashes.html (PR #2599): a Stellar Edge Services page served on stellaredgeservices.com, not an Otter Quotes page.
+  // It loads NO script at all (no ga-gate, no meta-pixel-gate, no linkedin-insight-gate), so there is no sale or
+  // sharing to opt out of; if it ever loads an ad gate, remove this entry and give it the link.
+  'the-ashes.html',
 ]);
 const EMPTY_SKIPNAV_FOOTER = /<footer id="site-footer" data-skip-nav="true"><\/footer>/; // hi-*, ins-*: footer intentionally empty
 function walk(d, out = []) {

@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
 <title>How to Read a Roofing Contractor Estimate · Otter Quotes</title>
-<meta name="description" content="What the line items on a roofing estimate mean, what a scope of work is, and what to check on a written bid before you compare it with another.">
+<meta name="description" content="How to read and compare roofing estimates: line items, material grades, warranty tiers and red flags, plus how to compare two quotes side by side.">
 <link rel="canonical" href="https://otterquote.com/guides/how-to-read-contractor-estimate.html">
-<meta property="og:title" content="How to Read a Roofing Contractor Estimate · Otter Quotes">
-<meta property="og:description" content="What the line items on a roofing estimate mean, what a scope of work is, and what to check on a written bid before you compare it with another.">
+<meta property="og:title" content="How to Read a Roofing Contractor Estimate (2026 Guide) · Otter Quotes">
+<meta property="og:description" content="What every line item on a roofing estimate actually means, how to compare two bids side by side, and what red flags tell you about a contractor before you sign anything.">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://otterquote.com/guides/how-to-read-contractor-estimate.html">
 <meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
@@ -43,7 +43,7 @@
   max-width: 700px;
   margin: 0 auto;
   font-size: 1.1rem;
-  color: var(--slate);
+  color: var(--dark-gray);
 }
 .page-hero .meta {
   font-size: 0.9rem;
@@ -64,7 +64,7 @@
 }
 .article-intro p {
   font-size: 1.05rem;
-  color: var(--slate);
+  color: var(--dark-gray);
   line-height: 1.8;
 }
 .section {
@@ -74,9 +74,9 @@
 }
 .section:last-of-type { border-bottom: none; }
 .section h2 { margin-bottom: var(--sp-4); margin-top: 0; }
-.section h3 { color: var(--amber); font-size: 1rem; margin-top: var(--sp-6); margin-bottom: var(--sp-2); }
+.section h3 { color: var(--link-on-light-deep, #7A4200); font-size: 1rem; margin-top: var(--sp-6); margin-bottom: var(--sp-2); }
 .section p {
-  color: var(--slate);
+  color: var(--dark-gray);
   margin-bottom: var(--sp-4);
   line-height: 1.8;
 }
@@ -86,10 +86,13 @@
 }
 .section li {
   margin-bottom: var(--sp-3);
-  color: var(--slate);
+  color: var(--dark-gray);
   line-height: 1.7;
 }
-.section li strong { color: var(--white); }
+.section li strong { color: var(--navy); }
+.article-intro a:not(.btn) { color: var(--link-on-light-hero, #9E5600); }
+.section a:not(.btn) { color: var(--link-on-light, #A85C00); }
+.article-intro a:not(.btn):hover, .section a:not(.btn):hover { color: var(--link-on-light-deep, #7A4200); }
 
 .highlight-box {
   background: rgba(245, 158, 11, 0.08);
@@ -98,8 +101,8 @@
   margin: var(--sp-6) 0;
   border-radius: var(--radius-md);
 }
-.highlight-box strong { color: #fbbf24; }
-.highlight-box, .highlight-box p { color: var(--slate); line-height: 1.7; }
+.highlight-box strong { color: var(--navy); }
+.highlight-box, .highlight-box p { color: var(--dark-gray); line-height: 1.7; }
 
 .warning-box {
   background: rgba(220, 38, 38, 0.06);
@@ -108,8 +111,8 @@
   margin: var(--sp-6) 0;
   border-radius: var(--radius-md);
 }
-.warning-box strong { color: #f87171; }
-.warning-box, .warning-box p { color: var(--slate); line-height: 1.7; }
+.warning-box strong { color: var(--navy); }
+.warning-box, .warning-box p { color: var(--dark-gray); line-height: 1.7; }
 
 .cta-box {
   background: var(--navy-2);
@@ -129,7 +132,7 @@
 }
 .line-item-table th {
   background: rgba(224, 123, 0, 0.12);
-  color: var(--amber);
+  color: var(--link-on-light-deep, #7A4200);
   padding: var(--sp-3) var(--sp-4);
   text-align: left;
   font-weight: 600;
@@ -138,7 +141,7 @@
 }
 .line-item-table td {
   padding: var(--sp-3) var(--sp-4);
-  color: var(--slate);
+  color: var(--dark-gray);
   border-bottom: 1px solid rgba(255,255,255,0.05);
   line-height: 1.6;
   vertical-align: top;
@@ -146,7 +149,7 @@
 .line-item-table tr:last-child td { border-bottom: none; }
 .line-item-table td:first-child {
   font-weight: 600;
-  color: var(--white);
+  color: var(--navy);
   min-width: 160px;
 }
 
@@ -158,7 +161,7 @@
 }
 .warranty-table th {
   background: rgba(224, 123, 0, 0.12);
-  color: var(--amber);
+  color: var(--link-on-light-deep, #7A4200);
   padding: var(--sp-2) var(--sp-3);
   text-align: left;
   font-weight: 600;
@@ -166,15 +169,15 @@
 }
 .warranty-table td {
   padding: var(--sp-2) var(--sp-3);
-  color: var(--slate);
+  color: var(--dark-gray);
   border-bottom: 1px solid rgba(255,255,255,0.04);
   line-height: 1.5;
   vertical-align: top;
 }
 .warranty-table tr:last-child td { border-bottom: none; }
-.warranty-table td:first-child { font-weight: 600; color: var(--white); white-space: nowrap; }
+.warranty-table td:first-child { font-weight: 600; color: var(--navy); white-space: nowrap; }
 .warranty-table td.cert-required {
-  color: #fbbf24;
+  color: var(--navy);
   font-size: 0.8rem;
   font-weight: 600;
 }
@@ -218,8 +221,8 @@
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 .faq-item:last-of-type { border-bottom: none; }
-.faq-item h3 { font-size: 1.1rem; margin-bottom: var(--sp-3); color: var(--white); }
-.faq-answer p { color: var(--slate); line-height: 1.8; margin-bottom: var(--sp-3); }
+.faq-item h3 { font-size: 1.1rem; margin-bottom: var(--sp-3); color: var(--navy); }
+.faq-answer p { color: var(--dark-gray); line-height: 1.8; margin-bottom: var(--sp-3); }
 .faq-answer p:last-child { margin-bottom: 0; }
 
 .breadcrumb {
@@ -229,7 +232,7 @@
   margin-bottom: 0;
 }
 .breadcrumb a { color: var(--gray); text-decoration: none; }
-.breadcrumb a:hover { color: var(--link-on-light-deep); }
+.breadcrumb a:hover { color: var(--link-on-light-deep, #7A4200); }
 .breadcrumb span { margin: 0 var(--sp-2); }
 
 .author-line {
@@ -239,7 +242,7 @@
   margin-top: var(--sp-6);
   justify-content: center;
 }
-.author-name { font-weight: 600; color: var(--white); font-size: 0.95rem; }
+.author-name { font-weight: 600; color: var(--navy); font-size: 0.95rem; }
 .author-title { color: var(--gray); font-size: 0.85rem; }
 
 @media (max-width: 600px) {
@@ -262,7 +265,7 @@
       <span>How to Read a Contractor Estimate</span>
     </nav>
     <h1 style="margin-top: var(--sp-6);">How to Read a Roofing Contractor Estimate</h1>
-    <p class="subtitle">What each line item on a roofing estimate means, what a scope of work is, and what to check on a written bid before you compare it with another.</p>
+    <p class="subtitle">Every line item decoded — what contractors are actually pricing, why bids vary by thousands of dollars, and what the fine print tells you before you sign.</p>
     <div class="meta">
       <div class="author-line">
         <div>
@@ -279,180 +282,313 @@
     <div class="article-body">
 
       <div class="article-intro">
-        <p>A roofing estimate is a written price for a defined piece of work. Contractors write them in shorthand, such as squares, starter, drip edge and ice and water shield. This guide defines each of those terms, explains the difference between unit pricing and a lump sum, describes what a scope of work is, and lists what to check on a written bid.</p>
-        <p>Warranty terms have their own page: <a href="/blog/roof-shingle-warranty-tiers-explained.html">Roofing Warranty Tiers Explained</a>. Terms that belong to an insurance estimate, such as overhead and profit, are defined on <a href="/blog/what-is-scope-of-loss-roofing.html">the scope of loss page</a>.</p>
+        <p>Many homeowners receive roofing estimates written in contractor shorthand — squares, LF, starter, drip edge, ice and water — and sign the one with the lowest number without understanding what they're actually buying. Two estimates can quote completely different scopes of work at different material grades and still look similar on the bottom line. Reading the estimate is how you find out which one is actually the better deal.</p>
+        <p>This guide walks through every major section of a roofing estimate, explains what the line items mean, shows how to spot shortcuts in the scope, and covers what a warranty tier actually promises compared to what many homeowners assume they're getting.</p>
       </div>
 
-      <!-- SECTION 1: Line items -->
-      <div class="section" id="line-items">
-        <h2>What Are the Line Items on a Roofing Estimate?</h2>
-        <p>The table defines each common line item and, where a building code or a manufacturer addresses it, quotes what that source says. Building codes are adopted by states and local governments, which can change them (<a href="https://www.law.cornell.edu/regulations/oklahoma/OAC-748-20-6-14" rel="noopener">one state's rule</a> begins: &ldquo;Chapter 9 of the IRC&reg; 2018 is adopted with the following modifications&rdquo;). The requirements for a given roof are therefore the ones your local building department publishes. The code quotes below come from several editions of the International Residential Code (2009 to 2018) as reproduced or summarized by state and local agencies. Editions differ, and your jurisdiction may have adopted another one. They are shown as examples of the model text.</p>
+      <!-- SECTION 1: Anatomy -->
+      <div class="section">
+        <h2>The Anatomy of a Roofing Estimate</h2>
+        <p>A legitimate roofing estimate is not a single number — it's a line-item breakdown that accounts for labor, materials, disposal, and miscellaneous costs. Here's what a complete estimate includes:</p>
 
-        <div style="overflow-x: auto;">
         <table class="line-item-table">
           <thead>
             <tr>
               <th>Line Item</th>
-              <th>What It Means</th>
-              <th>What a Code or Manufacturer Source Says</th>
+              <th>What It Covers</th>
+              <th>Why It Matters</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>Square</td>
-              <td>A unit of roof area equal to 100 square feet. A roof with 2,400 square feet of roof area is 24 squares.</td>
-              <td>GAF's glossary: &ldquo;A measurement of roof area equal to 100 square feet or enough roofing material to cover 100 square feet of a roof deck.&rdquo; (<a href="https://www.gaf.com/en-us/blog/your-home/a-glossary-of-roofing-terms-for-homeowners-20f8d4c0-188c-4a13-aa6e-16f603990ef9" rel="noopener">GAF</a>)</td>
+              <td>Tear-off &amp; disposal</td>
+              <td>Labor to remove existing shingles, underlayment, and flashing; haul away debris; dumpster or dump run</td>
+              <td>Missing this means the contractor plans to layer over your old roof — only acceptable in limited circumstances, and only if local code permits it</td>
             </tr>
             <tr>
-              <td>Tear-off and disposal</td>
-              <td>Removing the existing roof covering and hauling it away.</td>
-              <td>Model code text (2015 edition, as printed in Seattle&rsquo;s residential code), R908.3: &ldquo;Roof replacement shall include the removal of existing layers of roof coverings down to the roof deck.&rdquo; The next subsection, R908.3.1, permits a new roof covering over an existing one under listed conditions. An exception lets an existing ice barrier membrane that is adhered to the deck stay in place under a new layer. (<a href="https://seattle.gov/documents/Departments/SDCI/Codes/SeattleResidentialCode/2015SRCChapter9.pdf" rel="noopener">Seattle Residential Code, Chapter 9</a>)</td>
-            </tr>
-            <tr>
-              <td>Shingles</td>
-              <td>The roof covering, named by manufacturer and product line, such as GAF Timberline HDZ. A 3-tab shingle is a single layer cut into three tabs. An architectural (dimensional) shingle is built from multiple laminated layers.</td>
-              <td>GAF: 3-tab shingles are &ldquo;single-layer shingles&rdquo; with a &ldquo;uniform, flat appearance&rdquo;; &ldquo;Architectural shingles, like GAF Timberline HDZ&reg; and Timberline&reg; AS II, are made of multiple layers of asphalt-coated fiberglass that are laminated together.&rdquo; (<a href="https://www.gaf.com/en-us/blog/your-home/types-of-roof-shingles-for-houses-9cc0e9b0-c933-4e17-b816-04cb657d143c" rel="noopener">GAF</a>)</td>
+              <td>Shingles (per square)</td>
+              <td>Material cost for the asphalt shingles themselves, priced per square (100 sq ft)</td>
+              <td>Bundles per square vary by product (typically 3 for standard, 4 for heavier products); confirm the grade and manufacturer product line, not just "architectural shingles"</td>
             </tr>
             <tr>
               <td>Underlayment</td>
-              <td>A rolled layer installed under the shingles. It is made of asphalt-saturated felt or of synthetic materials.</td>
-              <td>GAF's glossary: &ldquo;Asphaltic saturated organic or synthetic-based rolled materials designed to be installed under the main roofing materials to help shed water and resist weather infiltration.&rdquo; (<a href="https://www.gaf.com/en-us/blog/your-home/a-glossary-of-roofing-terms-for-homeowners-20f8d4c0-188c-4a13-aa6e-16f603990ef9" rel="noopener">GAF</a>)</td>
+              <td>Water-resistant membrane installed under shingles</td>
+              <td>Felt paper (15 lb or 30 lb) is the budget option; synthetic underlayment is more durable and slip-resistant; some manufacturer warranties require synthetic — verify what's specified</td>
             </tr>
             <tr>
-              <td>Ice and water shield (the code calls it an ice barrier)</td>
-              <td>A self-adhering, &ldquo;peel-and-stick&rdquo; leak barrier applied before flashing at eaves and rake edges, valley joints, and around skylights and dormers.</td>
-              <td>GAF describes where it goes (<a href="https://www.gaf.com/en-us/blog/your-home/the-benefits-of-installing-ice-and-water-shields-in-roof-valleys-281474980317651" rel="noopener">GAF</a>). The model code, R905.1.2: &ldquo;In areas where there has been a history of ice forming along the eaves causing a backup of water as designated in Table R301.2(1), an ice barrier shall be installed for asphalt shingles,&rdquo; extending &ldquo;to a point not less than 24 inches (610 mm) inside the exterior wall line of the building.&rdquo; (<a href="https://www.in.gov/dhs/files/Ice-and-Water-Shield-Update-2020-02-25-Revised.pdf" rel="noopener">Indiana Department of Homeland Security</a>)</td>
+              <td>Ice &amp; water shield</td>
+              <td>Self-adhering waterproof membrane at eaves, valleys, and penetrations</td>
+              <td>Building code often requires a specific width at eaves in cold climates; this is frequently omitted from budget bids or specified at minimum code width only</td>
             </tr>
             <tr>
               <td>Drip edge</td>
-              <td>Rigid material installed at the edge of the roof, along the eaves and rakes, that sets the shingles out over the eave and gutter.</td>
-              <td>Model code R905.2.8.5: &ldquo;A drip edge shall be provided at eaves and rake edges of shingle roofs.&rdquo; (<a href="https://www.in.gov/dhs/files/Ice-and-Water-Shield-Update-2020-02-25-Revised.pdf" rel="noopener">Indiana Department of Homeland Security</a>)</td>
+              <td>Metal flashing along eaves and rakes to direct water off the roof deck</td>
+              <td>Required by code in most jurisdictions; sometimes omitted entirely from low-bid estimates</td>
             </tr>
             <tr>
-              <td>Starter strip</td>
-              <td>The first row of shingles, installed at the eave.</td>
-              <td>GAF's glossary: &ldquo;The first row of roofing that is installed at the edge of the eave.&rdquo; (<a href="https://www.gaf.com/en-us/blog/your-home/a-glossary-of-roofing-terms-for-homeowners-20f8d4c0-188c-4a13-aa6e-16f603990ef9" rel="noopener">GAF</a>)</td>
+              <td>Ridge cap shingles</td>
+              <td>Specialty shingles for the peak of the roof (hip and ridge)</td>
+              <td>Some contractors cut 3-tab shingles into ridge cap pieces instead of using purpose-made product; manufactured ridge cap lasts longer and looks better</td>
             </tr>
             <tr>
-              <td>Ridge cap</td>
-              <td>Material made to cover the peak (the ridge) and the hips of the roof.</td>
-              <td>GAF's glossary: &ldquo;Material specifically made to cover the peak ridge or hips of the roof.&rdquo; (<a href="https://www.gaf.com/en-us/blog/your-home/a-glossary-of-roofing-terms-for-homeowners-20f8d4c0-188c-4a13-aa6e-16f603990ef9" rel="noopener">GAF</a>)</td>
+              <td>Starter strips</td>
+              <td>Pre-cut starter course at eaves and sometimes rakes</td>
+              <td>Prevents wind uplift on the first shingle course; sometimes substituted with cut shingles — starter strips are the correct method</td>
             </tr>
             <tr>
-              <td>Flashing (step, valley, chimney, pipe boots)</td>
-              <td>Material installed around a roof penetration or along an edge to help keep moisture out. A valley is where two downward-sloping sections of roof join.</td>
-              <td>GAF's glossary defines flashing and valley (<a href="https://www.gaf.com/en-us/blog/your-home/a-glossary-of-roofing-terms-for-homeowners-20f8d4c0-188c-4a13-aa6e-16f603990ef9" rel="noopener">GAF</a>). Model code R905.2.8.1: &ldquo;Base and cap flashing shall be installed in accordance with manufacturer's instructions.&rdquo; (<a href="https://seattle.gov/documents/Departments/SDCI/Codes/SeattleResidentialCode/2015SRCChapter9.pdf" rel="noopener">Seattle Residential Code, Chapter 9</a>)</td>
+              <td>Pipe flashing / boots</td>
+              <td>Rubber or metal boots around plumbing vent pipes</td>
+              <td>Rubber boots wear out soonest; lead boots last longer; tri-flex or storm collar styles last longest — the spec matters here, especially on insurance claims</td>
             </tr>
             <tr>
-              <td>Decking (sheathing)</td>
-              <td>The structural material the roofing is applied over. Plywood and oriented strand board (OSB) are both wood structural panels used for roof sheathing.</td>
-              <td>GAF's glossary: &ldquo;The structural material over which roofing is applied. Usually plywood, boards, or planks.&rdquo; Model code R905.2.1: &ldquo;Asphalt shingles shall be fastened to solidly sheathed decks.&rdquo; APA: plywood and OSB are &ldquo;engineered wood structural panels commonly used in floor, wall, and roof systems.&rdquo; (<a href="https://www.gaf.com/en-us/blog/your-home/a-glossary-of-roofing-terms-for-homeowners-20f8d4c0-188c-4a13-aa6e-16f603990ef9" rel="noopener">GAF</a>, <a href="https://seattle.gov/documents/Departments/SDCI/Codes/SeattleResidentialCode/2015SRCChapter9.pdf" rel="noopener">Seattle</a>, <a href="https://www.apawood.org/engineered-wood-products/plywood-osb/" rel="noopener">APA</a>)</td>
+              <td>Valley flashing</td>
+              <td>Metal or membrane in roof valleys where two planes meet</td>
+              <td>Open metal valleys are more durable; woven or cut valleys use shingles only — open metal is preferred for longevity; should be line-itemed separately</td>
+            </tr>
+            <tr>
+              <td>Chimney / step flashing</td>
+              <td>Metal flashing at chimneys, skylights, and sidewalls</td>
+              <td>Often the source of leaks on older roofs; check whether the estimate includes replacement or just reuse of existing flashing</td>
+            </tr>
+            <tr>
+              <td>Decking / sheathing</td>
+              <td>Replacement of damaged roof decking (OSB or plywood)</td>
+              <td>Typically priced per sheet (4×8); estimates should state price per sheet so you're not surprised when damaged decking is found during tear-off</td>
             </tr>
             <tr>
               <td>Ventilation</td>
-              <td>Openings that let air, heat and water vapor out of the attic, such as ridge vents, soffit vents and box vents.</td>
-              <td>GAF&rsquo;s glossary, under attic vent: &ldquo;An opening that allows air, heat, and water vapor to escape from the attic.&rdquo; Macomb Township Building Department&rsquo;s re-roof requirements sheet (revised 4/1/2026), which summarizes Michigan&rsquo;s residential code and cites Sec. R806.2: &ldquo;The minimum net free ventilation area shall be 1/150 of the area of the vented space. Exception: The minimum net free ventilation area shall be 1/300 of the vented space provided when not less than 40 percent and not more than 50 percent of the required ventilating area is provided by ventilators located in the upper portion of the attic or rafter space.&rdquo; (<a href="https://www.gaf.com/en-us/blog/your-home/a-glossary-of-roofing-terms-for-homeowners-20f8d4c0-188c-4a13-aa6e-16f603990ef9" rel="noopener">GAF</a>, <a href="https://www.macomb-mi.gov/DocumentCenter/View/3297/Residential-Re-Roof-Requirements" rel="noopener">Macomb Township Building Department</a>)</td>
+              <td>Ridge vents, soffit vents, box vents, or power ventilators</td>
+              <td>Improper attic ventilation voids many manufacturer warranties; verify the ventilation calculation meets the 1:150 or 1:300 attic area ratio standard</td>
+            </tr>
+            <tr>
+              <td>Labor</td>
+              <td>Installation labor for all components above</td>
+              <td>Sometimes bundled into material costs, sometimes line-itemed separately; ask if it's not clear</td>
             </tr>
             <tr>
               <td>Permit</td>
-              <td>The permission a local building official gives for work the building code regulates.</td>
-              <td>Model code R105.1 (2009 edition): &ldquo;Any owner or authorized agent who intends to construct, enlarge, alter, repair, move, demolish or change the occupancy of a building or structure &hellip; shall first make application to the building official and obtain the required permit.&rdquo; (<a href="https://www.mcpcity.com/DocumentCenter/View/844/2009-International-Residential-Code-Permits" rel="noopener">2009 IRC, Section R105</a>)</td>
+              <td>Building permit fee (often pass-through, pulled by the contractor)</td>
+              <td>Some contractors omit permits to keep the number low; a permit-free job is a red flag in jurisdictions that require them</td>
             </tr>
           </tbody>
         </table>
-        </div>
 
         <div class="highlight-box">
-          <strong>A bid can group related items on one line.</strong> When it does, the line should still say what it includes. A single line reading &ldquo;complete roof replacement&rdquo; with one price does not say.
+          <strong>A complete estimate isn't necessarily a long estimate.</strong> Some contractors use concise formats that bundle related items. What matters is that every major cost category above is either explicitly covered or you've confirmed it's included in a bundled line. "Complete roof replacement" with a single price and no detail is not a complete estimate.
         </div>
       </div>
 
       <!-- SECTION 2: Lump sum vs unit pricing -->
       <div class="section">
-        <h2>Unit Pricing or Lump Sum?</h2>
-        <p>A <strong>unit-priced</strong> estimate states a price per unit: per square of shingles, per sheet of decking, per linear foot of drip edge. A <strong>lump-sum</strong> estimate states one price for the whole scope. The Minnesota Department of Labor and Industry lists &ldquo;the total contract price or how the price will be calculated&rdquo; among the things a written contract should include, which describes either format (<a href="https://www.dli.mn.gov/workers/homeowners/tips-hiring-contractor" rel="noopener">Minnesota Department of Labor and Industry</a>).</p>
-        <p>A <strong>change order</strong> is a written change to the contract. The same agency lists &ldquo;a provision requiring that every change to the contract be reduced to a written change order that you are required to sign&rdquo; among those items. Look for where a bid says how extra work, such as damaged decking found after the old roof is removed, would be priced and recorded.</p>
+        <h2>Unit Pricing vs. Lump Sum: Why the Difference Matters</h2>
+        <p>Roofing estimates fall into two basic formats: <strong>unit pricing</strong> (cost per square, per sheet of decking, per linear foot of flashing) and <strong>lump sum</strong> (one total price for the job). Both are legitimate, but they create very different dynamics if something changes during the project.</p>
+
+        <h3>Unit Pricing</h3>
+        <p>A unit-priced estimate specifies a price per square for shingles, per square for labor, per sheet for decking replacement, and per linear foot for materials like drip edge and ice and water shield. This format protects you in both directions: if the job is smaller than estimated (say, some decking is in better shape than expected), the price adjusts down. If more damage is found, each additional unit has a pre-agreed price.</p>
+        <p>For insurance jobs where the scope is often confirmed or revised mid-project, unit pricing is almost always preferable. It also makes it easier to compare the estimate against an insurance adjuster's Xactimate pricing, which is unit-based.</p>
+
+        <h3>Lump Sum</h3>
+        <p>A lump sum estimate gives a single total price for the specified scope. This is cleaner administratively — you know exactly what you're paying for a defined job — but it requires that the scope be very precisely defined upfront. If additional damage is found (rotted decking, failed flashing under a chimney), a lump sum contract typically creates ambiguity: is fixing that included? At the contractor's discretion? A change order?</p>
+        <p>If you're accepting a lump sum estimate, make sure the contract spells out explicitly how change orders are handled, what triggers them, and at what price. "Additional decking at $X per sheet" in writing before work starts prevents the uncomfortable conversation midway through a tear-off.</p>
+
+        <div class="warning-box">
+          <strong>Red flag: lump sum with no decking price.</strong> Damaged decking is a common unexpected expense in a roof replacement. An estimate that doesn't address decking replacement — either by including it or by specifying a per-sheet price if needed — leaves a gap that can cost you significant money once the old shingles come off.
+        </div>
       </div>
 
       <!-- SECTION 3: Scope of Work -->
-      <div class="section" id="scope-of-work">
-        <h2>What Is a Scope of Work?</h2>
-        <p>A scope of work is the written description of the work a contractor agrees to do. The Minnesota Department of Labor and Industry lists &ldquo;a detailed summary of the work to be done&rdquo; and &ldquo;a description of materials&rdquo; among the parts of a written contract. Otter Quotes creates a scope of work and submits it to multiple contractors, who then bid.</p>
-        <p>A written scope can answer these questions:</p>
+      <div class="section">
+        <h2>What "Scope of Work" Actually Means</h2>
+        <p>The scope of work is the most important part of any estimate — it defines exactly what the contractor is agreeing to do. A scope of work should answer these questions unambiguously:</p>
         <ul>
-          <li><strong>What is replaced and what is reused?</strong> A bid can name flashing, pipe boots, valley flashing and step flashing at chimneys as replaced or as reused.</li>
-          <li><strong>Which materials, by manufacturer and product line?</strong> &ldquo;Architectural shingles&rdquo; names a category. A product line, such as GAF Timberline HDZ, names a product.</li>
-          <li><strong>Which underlayment, and what ventilation plan?</strong> The line items above define both.</li>
-          <li><strong>What are the exclusions?</strong> An exclusion is an item the bid states it does not include, such as gutter removal or interior repairs.</li>
-          <li><strong>What are the contingencies?</strong> A contingency is a condition that can change the price, such as a stated price per sheet if damaged decking is found.</li>
-          <li><strong>How many layers come off?</strong> One local building department's re-roof sheet states: &ldquo;New roof coverings shall not be installed without first removing existing roof coverings where 1) there are 2 or more applications of any type of roof coverings&rdquo;. (<a href="https://www.macomb-mi.gov/DocumentCenter/View/3297/Residential-Re-Roof-Requirements" rel="noopener">Macomb Township Building Department</a>)</li>
+          <li><strong>What is being replaced vs. reused?</strong> Specifically: pipe boots, valley flashing, step flashing at chimneys. "Replace all pipe boots" means something specific. "Repair as needed" does not.</li>
+          <li><strong>What materials by manufacturer and product line?</strong> "Architectural shingles" can mean anything from an entry-level product to a premium laminate. The estimate should name the manufacturer and product line (e.g., GAF Timberline HDZ, Owens Corning Duration, CertainTeed Landmark).</li>
+          <li><strong>What is the ventilation plan?</strong> If existing ventilation is insufficient, is the contractor addressing it? Are they replacing box vents, adding ridge vent, or leaving ventilation as-is?</li>
+          <li><strong>What are the exclusions?</strong> What is the contractor explicitly not doing? Fascia repair, soffit work, gutter rehang — know what's out of scope before you start.</li>
+          <li><strong>What happens if hidden damage is found?</strong> Rotten decking, failed flashing under a chimney, moisture-damaged insulation — the scope should specify how these are handled.</li>
         </ul>
+
+        <p>If any of these questions aren't answered in the estimate or attached scope of work, ask before signing. A contractor who can't or won't provide this detail in writing is a contractor whose word you'll be relying on at every friction point during the project.</p>
       </div>
 
-      <!-- SECTION 4: Material names -->
+      <!-- SECTION 4: Contingencies and exclusions -->
       <div class="section">
-        <h2>What Do the Material Names on a Bid Mean?</h2>
-        <h3>Shingles</h3>
-        <p>GAF describes 3-tab as &ldquo;the most economical roofing choice&rdquo; (<a href="https://www.gaf.com/en-us/blog/your-home/types-of-roof-shingles-for-houses-9cc0e9b0-c933-4e17-b816-04cb657d143c" rel="noopener">GAF</a>). The shingles row of the table above quotes GAF on architectural shingles and names Timberline HDZ and Timberline AS II as examples, so a bid that names the manufacturer and the product line says more than one that says &ldquo;architectural.&rdquo;</p>
-        <h3>Underlayment</h3>
-        <p>GAF states that underlayment is &ldquo;usually made of either asphalt-saturated felt or synthetic materials&rdquo; and acts as &ldquo;a secondary moisture barrier between the roof deck and the overlying shingles&rdquo; (<a href="https://www.gaf.com/en-us/blog/your-home/what-is-roof-underlayment-281474980110751" rel="noopener">GAF</a>). A bid should say which type it uses.</p>
-      </div>
+        <h2>Contingencies and Exclusions</h2>
+        <p>Contingencies are conditions built into the estimate that can change the final price. Exclusions are items the estimate explicitly does not cover. Both need to be read carefully.</p>
 
-      <!-- SECTION 5: Warranties -->
-      <div class="section">
-        <h2>How Do Warranties Show Up on a Bid?</h2>
-        <p>A bid may name a manufacturer warranty, a contractor workmanship warranty, or both. They are two different promises with different sources, and the terms are defined, with GAF's and CertainTeed's own published terms side by side, on the <a href="/blog/roof-shingle-warranty-tiers-explained.html">warranty tiers page</a>. On Otter Quotes, the bid comparison lists the workmanship warranty and the manufacturer's warranty as separate rows.</p>
-      </div>
-
-      <!-- SECTION 6: Things to check -->
-      <div class="section">
-        <h2>What Should You Check on a Written Bid?</h2>
-        <p>Each item below is something a bid can state in writing. A bid that leaves one out is a bid to ask about.</p>
+        <p><strong>Common contingencies to look for:</strong></p>
         <ul>
-          <li><strong>A detailed summary of the work.</strong> A single line with one price does not give one. (Minnesota Department of Labor and Industry, above.)</li>
-          <li><strong>The materials, by manufacturer and product line.</strong> Including the underlayment type.</li>
-          <li><strong>How damaged decking and other extra work are priced and recorded.</strong> See unit pricing and change orders above.</li>
-          <li><strong>Who applies for the permit.</strong> The permit row above quotes the 2009 edition of the model code, R105.1, on who makes the application.</li>
-          <li><strong>The payment schedule.</strong> The Minnesota agency lists a &ldquo;payment schedule making clear when payments are due&rdquo; among the parts of a written contract.</li>
-          <li><strong>The timeline.</strong> The same agency lists &ldquo;specific timelines.&rdquo; Otter Quotes bid forms ask contractors for an estimated start date and completion time, and the bids page shows both.</li>
-          <li><strong>The warranties, in writing.</strong> Which manufacturer warranty, by name, and what workmanship warranty the contractor gives. GAF, for example, states which of its warranties a contractor can offer depending on the contractor's GAF designation (<a href="https://www.gaf.com/en-us/roofing-contractors/residential" rel="noopener">GAF</a>).</li>
+          <li><strong>Decking replacement:</strong> "Price does not include decking; damaged decking will be replaced at $X per sheet" — this is appropriate and expected. "Price includes decking" on a lump sum with no unit price is suspicious for a large job.</li>
+          <li><strong>Additional layers:</strong> If there are existing layers of shingles on the roof and code limits how many layers are permitted (typically two), there may be a charge for removing the extra layer before installing new material.</li>
+          <li><strong>Unknown conditions:</strong> Fascia in worse shape than visible from the ground, rotted structural framing under decking — a reasonable contingency clause covers how these are handled without giving the contractor unlimited upside.</li>
         </ul>
+
+        <p><strong>Common exclusions that can catch you off guard:</strong></p>
+        <ul>
+          <li>Skylight replacement or resealing (often excluded; ask if you have skylights)</li>
+          <li>Chimney masonry or crown repair (flashing replacement is usually included; the masonry is not)</li>
+          <li>Gutter removal and reinstallation (some contractors include this; others don't)</li>
+          <li>Satellite dish or solar panel removal and reinstallation</li>
+          <li>Interior damage repair (roofing contractors replace the roof, not your drywall)</li>
+        </ul>
+
+        <p>An exclusion isn't a red flag — every estimate has exclusions. What matters is that they're spelled out, so you're not surprised when work you assumed was included turns out to need a separate contractor or a change order.</p>
+      </div>
+
+      <!-- SECTION 5: Material grades -->
+      <div class="section">
+        <h2>Material Grades: What You're Actually Buying</h2>
+        <p>The materials on a roofing estimate span a meaningful quality range, and the difference between grades isn't always obvious from the label. Here's what to know about the most common materials:</p>
+
+        <h3>Shingles: 3-Tab vs. Architectural (Dimensional) vs. Premium</h3>
+        <ul>
+          <li><strong>3-tab shingles</strong> are the lowest-cost option — a flat, single-layer shingle with a clean three-tab cutout pattern. They're thinner, lighter, and have lower wind resistance ratings than dimensional shingles. They're becoming less common on new installations because the price gap with architectural has narrowed.</li>
+          <li><strong>Architectural / dimensional shingles</strong> are the current standard. Multi-layer laminate construction gives them depth, better wind resistance, and longer warranties (30 years to lifetime depending on manufacturer). This is what most estimates default to when they say "architectural shingles."</li>
+          <li><strong>Premium / designer shingles</strong> (GAF Camelot, Owens Corning Berkshire, CertainTeed Grand Manor) are heavyweight multi-layer products that simulate wood shake or slate. Significantly higher cost.</li>
+        </ul>
+
+        <h3>Underlayment: Felt vs. Synthetic</h3>
+        <ul>
+          <li><strong>15 lb felt</strong> is the minimum and the cheapest option. It tears during installation in high wind, is slippery when wet, and degrades fastest. Acceptable for quick-close jobs in low-wind environments.</li>
+          <li><strong>30 lb felt</strong> is heavier and more durable than 15 lb but still tears and is slippery. Better, but not the current best practice.</li>
+          <li><strong>Synthetic underlayment</strong> is the current industry best practice. Lighter than felt, stronger, slip-resistant for installers, and holds up to weather exposure better if the roof is interrupted mid-install. Many manufacturer warranty programs at higher tiers require synthetic underlayment specifically.</li>
+        </ul>
+
+        <h3>Decking: OSB vs. Plywood</h3>
+        <p>If your estimate includes decking replacement, the material matters. OSB (oriented strand board) is the current standard and is code-compliant. Plywood is more expensive but performs better in repeated wet/dry cycles. Both are appropriate; if your contractor defaults to OSB, that's fine — if they're using the cost savings argument to justify eliminating another line item, that's a different conversation.</p>
+      </div>
+
+      <!-- SECTION 6: Warranty tiers -->
+      <div class="section">
+        <h2>Understanding Manufacturer Warranty Tiers</h2>
+        <p>Every major shingle manufacturer offers multiple warranty tiers, and the tier you receive depends on a combination of the materials used, the installation methods, and in most cases whether the installing contractor holds a current manufacturer certification. Many homeowners assume they're getting the manufacturer's best warranty when they hire a contractor who "carries" a particular brand. That is frequently not the case.</p>
+
+        <p>Manufacturer warranty tiers work on a system/certification basis: the highest tiers are available only when specific products are used together as a system (underlayment, shingles, ridge cap, ventilation from the same manufacturer or approved line) and installed by a contractor the manufacturer has certified and trained. Here's how the major manufacturers tier their warranties:</p>
+
+        <table class="warranty-table">
+          <thead>
+            <tr>
+              <th>Manufacturer</th>
+              <th>Entry Tier</th>
+              <th>Mid Tier</th>
+              <th>Top Tier</th>
+              <th>Cert Required?</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>GAF</td>
+              <td>Standard (limited, product only)</td>
+              <td>System Plus / Silver Pledge (50-yr non-prorated)</td>
+              <td>Golden Pledge (lifetime, 25-yr workmanship)</td>
+              <td class="cert-required">Yes — Master Elite contractor required for Golden Pledge</td>
+            </tr>
+            <tr>
+              <td>Owens Corning</td>
+              <td>Standard (limited)</td>
+              <td>System / Preferred</td>
+              <td>Platinum Protection</td>
+              <td class="cert-required">Yes — Platinum Preferred contractor required for Platinum Protection</td>
+            </tr>
+            <tr>
+              <td>CertainTeed</td>
+              <td>Standard / SureStart</td>
+              <td>SureStart PLUS / 5-Star</td>
+              <td>5-Star 50-year / SureStart PLUS Transferable</td>
+              <td class="cert-required">Yes — ShingleMaster credentials or 5-Star certification required for top tiers</td>
+            </tr>
+          </tbody>
+        </table>
+
         <div class="highlight-box">
-          <strong>Otter Quotes does not vet, verify, or approve the contractors who bid &mdash; we never describe them as &ldquo;vetted&rdquo; or &ldquo;approved.&rdquo;</strong> Contractors compete for your project, and you make the final hiring decision. For door-to-door offers, see <a href="/blog/storm-chaser-roofing-scams.html">Storm Chaser Roofing Scams</a>.
+          <strong>Verify the warranty tier, not just the brand.</strong> A contractor who "installs GAF" but is not a GAF Master Elite contractor cannot offer a Golden Pledge warranty regardless of which GAF products they use. Ask specifically: "What warranty tier will I receive, and what is the basis for offering that tier?" A legitimate contractor will tell you their certification status without hesitation. You can also verify most manufacturer certifications directly on the manufacturer's website by searching the contractor by name or zip code.
+        </div>
+
+        <p><strong>Workmanship warranty vs. manufacturer warranty:</strong> The manufacturer warranty covers the materials — defects in the shingles themselves. The workmanship warranty (typically offered by the contractor, not the manufacturer) covers installation errors. At the top manufacturer warranty tiers, both workmanship and materials are covered under the same warranty document. At lower tiers, you have only the material warranty, and workmanship defects are covered (or not) by whatever the contractor offers separately.</p>
+      </div>
+
+      <!-- SECTION 7: Red flags -->
+      <div class="section">
+        <h2>Red Flags in a Roofing Estimate</h2>
+        <p>Some warning signs in an estimate are obvious; others are easy to miss if you don't know what you're reading. Here's what to look for:</p>
+
+        <div class="compare-grid">
+          <div class="compare-col">
+            <h4>Red flags</h4>
+            <ul>
+              <li class="red-flag">Single-line "complete roof replacement" with no itemization</li>
+              <li class="red-flag">No material brands or product lines specified</li>
+              <li class="red-flag">No mention of underlayment type</li>
+              <li class="red-flag">Decking not addressed (no unit price if found)</li>
+              <li class="red-flag">No permit included or mentioned</li>
+              <li class="red-flag">Payment structure front-loaded (50%+ upfront before work starts)</li>
+              <li class="red-flag">No written warranty terms — verbal only</li>
+              <li class="red-flag">No mention of how change orders are handled</li>
+              <li class="red-flag">Manufacturer warranty tier claimed with no cert verification offered</li>
+              <li class="red-flag">Unusually short timeline for the roof size quoted</li>
+            </ul>
+          </div>
+          <div class="compare-col">
+            <h4>Good signs</h4>
+            <ul>
+              <li class="green-flag">Manufacturer, product line, and grade named for shingles</li>
+              <li class="green-flag">Underlayment type specified (synthetic preferred)</li>
+              <li class="green-flag">Per-sheet decking price stated</li>
+              <li class="green-flag">Ice &amp; water shield and drip edge line-itemed</li>
+              <li class="green-flag">Permit included or stated as pass-through cost</li>
+              <li class="green-flag">Payment tied to milestones, not calendar</li>
+              <li class="green-flag">Written warranty covering workmanship for 5+ years</li>
+              <li class="green-flag">Manufacturer cert documented or verifiable online</li>
+              <li class="green-flag">Exclusions spelled out clearly</li>
+              <li class="green-flag">Change order process described in writing</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="warning-box">
+          <strong>The "storm chaser" estimate pattern.</strong> After a significant hail or wind event, your area will attract contractors from outside the region who offer to start work immediately at a low price. These estimates are often the thinnest — minimal scope detail, aggressive upfront payment requests, and no local license or insurance you can easily verify. The combination of time pressure ("insurance won't cover it if you wait") and an unfamiliar contractor in a high-volume storm market is exactly where shortcuts happen. Take the time to verify before you sign.
         </div>
       </div>
 
-      <!-- Red flags: Minnesota DLI list, three paperwork items quoted, full list linked -->
-      <div class="section" id="red-flags">
-        <h2>Red Flags on a Written Bid</h2>
-        <p>The Minnesota Department of Labor and Industry&rsquo;s page &ldquo;Tips for hiring a contractor&rdquo;, written for Minnesota homeowners, lists contractors to avoid. The list includes those that &ldquo;ask you to sign an estimate or authorization before you have decided to hire them. You may unknowingly be signing a contract&rdquo;, &ldquo;require full or substantial payment before work begins&rdquo; and &ldquo;refuse to provide a written estimate or contract&rdquo; (<a href="https://www.dli.mn.gov/workers/homeowners/tips-hiring-contractor" rel="noopener">Minnesota Department of Labor and Industry</a>). The agency&rsquo;s page has the <a href="https://www.dli.mn.gov/workers/homeowners/tips-hiring-contractor" rel="noopener">full list</a>.</p>
-      </div>
-
-      <!-- SECTION 7: Comparing two estimates -->
+      <!-- SECTION 8: Comparing two estimates -->
       <div class="section">
-        <h2>How Do You Compare Two Estimates?</h2>
+        <h2>Comparing Two Estimates Side by Side</h2>
+        <p>The lowest number wins only if everything else is equal — and it almost never is. Here's how to do a real comparison between two estimates for the same roof:</p>
+
         <ol>
-          <li><strong>Compare scope first.</strong> Confirm both bids include the same line items from the table above before you compare totals.</li>
-          <li><strong>Compare product lines.</strong> Two bids that both say &ldquo;architectural shingles&rdquo; may name different products.</li>
-          <li><strong>Compare warranties by document.</strong> A bid that says &ldquo;lifetime warranty&rdquo; and a bid that says &ldquo;25-year warranty&rdquo; may describe different documents from different sources. See the <a href="/blog/roof-shingle-warranty-tiers-explained.html">warranty tiers page</a>.</li>
-          <li><strong>Compare how decking is handled.</strong> One bid may state a price per sheet while another states a flat price, so compare how each one records extra work.</li>
-          <li><strong>Compare square counts.</strong> If two bids state different numbers of squares, they are not priced on the same roof area. Ask each contractor where the number came from. On Otter Quotes, homeowners pay as little as $15 up front for professional measurements that are used by every contractor, and the money is refunded if they complete a job on the platform. See <a href="/blog/aerial-roof-measurement-reports.html">Aerial Roof Measurement Reports</a>.</li>
-          <li><strong>Compare payment terms and timelines.</strong> The same total can come with different payment schedules.</li>
+          <li><strong>Normalize the scope first.</strong> Before comparing any prices, verify both estimates include the same components. If estimate A includes synthetic underlayment and estimate B specifies felt, you're not comparing equivalent jobs. Adjust mentally (or ask the lower bidder to match the spec) before treating the bottom line as a fair comparison.</li>
+          <li><strong>Check the shingle line.</strong> Both estimates say "architectural shingles." Are they the same product? A GAF Timberline HDZ and a GAF Timberline High Definition are both "GAF architectural" but are different products at different price points and warranty levels. Name the product line specifically.</li>
+          <li><strong>Compare warranty tiers, not just years.</strong> "25-year warranty" on one and "lifetime warranty" on the other might both be manufacturer standard warranties — or one might be a system warranty from a certified contractor. Ask each contractor to describe the specific warranty document you would receive.</li>
+          <li><strong>Look at the decking language.</strong> If one estimate says "$X per sheet for decking as needed" and the other says "price includes all decking," ask the second contractor how many sheets they're assuming. An estimate that "includes" decking at a flat price is either assuming a specific quantity or building a cushion into the price.</li>
+          <li><strong>Verify the measurements.</strong> Both estimates should reflect the same square footage of your roof. If they differ significantly, one contractor measured differently — ask both to show you their measurements. Significant discrepancies in estimated squares are a red flag for either careless estimating or deliberate underbidding on quantity.</li>
+          <li><strong>Factor in payment terms.</strong> A lower total price with a 50% deposit upfront is a different risk profile than a slightly higher price with payment tied to project milestones. The deposit-heavy structure concentrates your financial risk at the beginning of the project, before most of the work is done.</li>
         </ol>
 
         <div class="cta-box">
-          <h3>See Bids in One Comparison View</h3>
-          <p>Otter Quotes submits a scope of work to multiple contractors. Each bid on the bids page shows its total price, start date and completion time. With two or more bids, a comparison table lines up the workmanship warranty, the manufacturer's warranty, the shingle brand, the underlayment and other line items, and a field a contractor left blank shows as a dash.</p>
-          <a href="/how-it-works.html" class="btn btn-primary btn-lg">How Otter Quotes Works</a>
+          <h3>See Bids the Way They Should Be Compared</h3>
+          <p>Otter Quotes delivers competing contractor bids to a standardized comparison dashboard — scope, materials, warranties, and price in the same format for every bid. See what you're actually comparing before you decide.</p>
+          <a href="/how-it-works.html" class="btn btn-primary btn-lg">View the Comparison Experience</a>
         </div>
       </div>
 
-      <!-- Keep Reading -->
+      <!-- SECTION 9: How OQ standardizes -->
+      <div class="section">
+        <h2>How Otter Quotes Makes Estimates Easier to Compare</h2>
+        <p>One of the structural problems with contractor estimates is that they're self-generated — every contractor uses their own format, their own terminology, and their own level of detail. Comparing three estimates from three different contractors means translating between three different documents before you can make a real comparison.</p>
+
+        <p>When you submit a project through Otter Quotes, contractors bid using a standardized format that captures the same fields for every bid: total price, shingle brand and product line, underlayment type, warranty tier, workmanship warranty years, material grade, whether decking is included and at what unit price, and any project-specific notes from the contractor. Those bids come to you in a side-by-side comparison view so you can evaluate them directly — trade name, credential level, and bid detail in the same columns for every contractor.</p>
+
+        <p>The standardized bid format means you're comparing what contractors are actually offering, not trying to figure out whether line item A on one estimate is the same thing as line item C on another.</p>
+
+        <a href="/how-it-works.html" class="btn btn-outline" style="margin-top: var(--sp-4); display: inline-block;">How Otter Quotes Works</a>
+      </div>
+
+      <!-- FAQ -->
       <div class="related-links" data-related="1">
       <h3>Keep Reading</h3>
       <ul>
         <li><a href="/guides/siding-bid-comparison.html">Siding Replacement Bids: What a Quote Should Include and How to Compare</a></li>
-        <li><a href="/blog/roof-shingle-warranty-tiers-explained.html">Roofing Warranty Tiers Explained: GAF and CertainTeed</a></li>
+        <li><a href="/blog/roof-shingle-warranty-tiers-explained.html">Roofing Warranty Tiers Explained: GAF, Owens Corning &amp; CertainTeed</a></li>
         <li><a href="/guides/roof-bid-comparison-worksheet.html">How to Compare Roofing Bids: A Side-by-Side Worksheet</a></li>
         <li><a href="/blog/why-roofers-quote-different-prices.html">Why Two Roofers Quote Different Prices for the Same Job</a></li>
       </ul>
@@ -464,44 +600,51 @@
         <div class="faq-item">
           <h3>How many squares of roofing do I need?</h3>
           <div class="faq-answer">
-            <p>A square is 100 square feet of roof area, so divide the roof area in square feet by 100. A roof with 2,400 square feet of roof area is 24 squares. A bid should state the number of squares it assumes.</p>
+            <p>One roofing square equals 100 square feet of roof surface. To estimate your square count, you need the total roof surface area — not the footprint of your house. A house with a steep pitch has significantly more roof surface than its footprint because the slope adds surface area. Satellite measurement tools can calculate this precisely from aerial imagery. Hips, valleys, dormers, and multiple planes all add area. Your contractor's estimate should state the number of squares explicitly — if it doesn't, ask.</p>
           </div>
         </div>
 
         <div class="faq-item">
           <h3>What is the difference between felt and synthetic underlayment?</h3>
           <div class="faq-answer">
-            <p>Both are rolled layers installed under the shingles. GAF&rsquo;s description of the two types is quoted in the underlayment section above. A bid should say which one it specifies.</p>
+            <p>Felt underlayment (15 lb or 30 lb) is made from organic or fiberglass mat saturated with asphalt. It's the traditional option — less expensive but heavier, tears more easily during installation (particularly in wind), and degrades faster when exposed to UV during multi-day installs. Synthetic underlayment is made from woven polypropylene or polyethylene — it's lighter, stronger, slip-resistant for installers, and holds up better to weather exposure if work is interrupted. Many manufacturer warranty programs at mid and upper tiers require synthetic underlayment specifically. When in doubt, synthetic is the better choice even if it costs slightly more.</p>
           </div>
         </div>
 
         <div class="faq-item">
-          <h3>What is a change order?</h3>
+          <h3>What does a workmanship warranty cover?</h3>
           <div class="faq-answer">
-            <p>A change order is a written change to the contract. The Minnesota Department of Labor and Industry&rsquo;s description of it is quoted in the unit pricing section above.</p>
+            <p>A workmanship warranty covers defects in the installation itself — improper fastening, incorrect flashing detail, failure to follow manufacturer installation specifications — as distinct from defects in the materials, which are covered by the manufacturer warranty. Workmanship warranties are offered by the contractor (not the manufacturer) and vary widely: some contractors offer one year, others offer five years, and at the top manufacturer warranty tiers (GAF Golden Pledge, Owens Corning Platinum Protection, etc.), the manufacturer itself backs workmanship as part of the system warranty. Always get the workmanship warranty terms in writing and confirm they're separate from the standard manufacturer material warranty.</p>
           </div>
         </div>
 
         <div class="faq-item">
-          <h3>What does the building code say about attic ventilation?</h3>
+          <h3>Why do roofing estimates vary so much between contractors?</h3>
           <div class="faq-answer">
-            <p>The ventilation row of the line-item table above quotes a Michigan township&rsquo;s re-roof sheet on Sec. R806.2, including an exception. Your local building department publishes the version that applies where you live.</p>
+            <p>Multiple factors drive estimate variation beyond material quality and brand: overhead structure (larger companies with higher overhead price higher), regional labor rates, the contractor's current workload (a fully booked contractor may price higher than one hungry for work), material waste factors (a steeper or more complex roof wastes more material), and what's actually included in scope. Two estimates that look very different on price often include very different work — one may include synthetic underlayment, new pipe boots, and complete flashing replacement, while the other specifies felt, reuses existing boots, and "repairs" rather than replaces flashing. Normalizing the scope first is the only way to determine whether the price difference is real or an apples-to-oranges comparison.</p>
           </div>
         </div>
 
         <div class="faq-item">
-          <h3>How do I check a contractor's manufacturer designation?</h3>
+          <h3>What is overhead and profit (O&amp;P) on a contractor estimate?</h3>
           <div class="faq-answer">
-            <p>Each manufacturer names and defines its own contractor designations. GAF, for example, describes Certified, Certified Plus and Master Elite contractors and its contractor page states: &ldquo;Enter your contractor&rsquo;s name or business to verify that they are certified by GAF.&rdquo; The warranty tiers page lists what each designation can offer.</p>
+            <p>Overhead and profit is a line item on insurance estimates (written in Xactimate) that covers the general contractor's business operating costs and a reasonable profit margin, separate from direct material and labor costs. It's standard on insurance claims where a general contractor is coordinating multiple trades. Adjusters sometimes omit O&amp;P when they determine a specialty contractor is handling the job directly without a GC. If you see this line item on an estimate and your adjuster omitted it from the insurance payment, it may be a legitimate supplement item — ask your contractor whether they believe it applies to your project.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <h3>How do I verify that a contractor actually has a manufacturer certification?</h3>
+          <div class="faq-answer">
+            <p>Most major manufacturers maintain a publicly searchable contractor lookup on their website. GAF has "Find a GAF Contractor" at gaf.com; Owens Corning has a contractor finder at owenscorning.com; CertainTeed has a similar search on certainteed.com. Search by the contractor's company name or zip code. The lookup will show both whether the contractor is in the manufacturer's certified program and at what tier — a contractor claiming Golden Pledge status should appear in GAF's Master Elite lookup. If a contractor claims a certification that doesn't appear in the manufacturer's lookup, ask them to show you their certification document directly from the manufacturer and confirm whether it's currently active.</p>
           </div>
         </div>
       </section>
 
       <!-- Final CTA -->
       <div class="cta-box" style="margin-top: var(--sp-12); margin-bottom: var(--sp-8);">
-        <h3>Compare Contractor Bids</h3>
-        <p>Otter Quotes submits one scope of work to multiple contractors, who compete for your project. Otter Quotes connects homeowners with contractors and is not a public adjuster.</p>
-        <a href="/start.html" class="btn btn-primary btn-lg">Get Competing Bids</a>
+        <h3>Compare Contractor Bids Without the Translation Work</h3>
+        <p>Otter Quotes delivers competing bids from contractors in a standardized format — material grade, warranty tier, scope, and price side by side — so you're comparing the same thing across every bid.</p>
+        <a href="/start.html" class="btn btn-primary btn-lg">Get Competing Bids &mdash; Free</a>
       </div>
 
     </div>
@@ -520,14 +663,14 @@
   "@context": "https://schema.org",
   "@type": "Article",
   "headline": "How to Read a Roofing Contractor Estimate",
-  "description": "What the line items on a roofing estimate mean, what a scope of work is, and what to check on a written bid before you compare it with another.",
+  "description": "A complete guide to understanding roofing contractor estimates — line items decoded, material grades explained, warranty tiers compared, red flags identified, and how to compare two estimates side by side.",
   "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
   "author": {
     "@type": "Organization",
     "name": "Otter Quotes"
   },
   "datePublished": "2026-05-23",
-  "dateModified": "2026-10-03",
+  "dateModified": "2026-05-23",
   "publisher": {
     "@type": "Organization",
     "name": "Otter Quotes",
@@ -549,53 +692,61 @@
   "@context": "https://schema.org",
   "@type": "HowTo",
   "name": "How to Read a Roofing Contractor Estimate",
-  "description": "Steps for reading a roofing estimate: identify the line items, note the pricing format, read the scope of work, check the materials and warranties named, and compare bids on the same scope.",
+  "description": "A step-by-step guide to understanding roofing estimates, identifying missing line items, comparing material grades and warranty tiers, spotting red flags, and making an informed contractor selection.",
   "step": [
     {
       "@type": "HowToStep",
       "position": 1,
-      "name": "Identify the Line Items",
-      "text": "Find each line item the bid lists, such as tear-off and disposal, shingles by manufacturer and product line, underlayment, ice and water shield, drip edge, starter strip, ridge cap, flashing, decking and ventilation, and use the definitions in the table on this page."
+      "name": "Identify Every Major Line Item",
+      "text": "Confirm the estimate includes tear-off and disposal, shingles by manufacturer and product line, underlayment type, ice and water shield, drip edge, ridge cap, starter strips, pipe boots, valley and step flashing, and decking replacement pricing."
     },
     {
       "@type": "HowToStep",
       "position": 2,
-      "name": "Note the Pricing Format",
-      "text": "A unit-priced estimate states a price per unit, such as per square or per sheet of decking. A lump-sum estimate states one price for the whole scope. Look for how extra work would be priced and recorded as a change order."
+      "name": "Determine Pricing Format: Unit vs. Lump Sum",
+      "text": "Unit-priced estimates specify cost per square, per sheet, and per linear foot — adjusting if scope changes. Lump sum estimates fix a total price for a defined scope. Know which format you have and confirm how change orders are handled in either case."
     },
     {
       "@type": "HowToStep",
       "position": 3,
-      "name": "Read the Scope of Work",
-      "text": "A scope of work is the written description of the work the contractor agrees to do. Check what is replaced and what is reused, the materials by manufacturer and product line, the exclusions and the contingencies."
+      "name": "Read the Scope of Work Carefully",
+      "text": "Confirm what is being replaced vs. reused, what specific materials are specified by manufacturer and product line, what the ventilation plan is, and what is explicitly excluded from the estimate."
     },
     {
       "@type": "HowToStep",
       "position": 4,
-      "name": "Check the Material Names",
-      "text": "Compare the shingle type, the manufacturer and product line, the underlayment type and the decking material named on each bid."
+      "name": "Understand the Contingencies and Exclusions",
+      "text": "Identify any contingency pricing (especially for decking) and what the estimate explicitly excludes — skylights, chimney masonry, gutters, satellite dishes. Know what will trigger a change order before work begins."
     },
     {
       "@type": "HowToStep",
       "position": 5,
-      "name": "Check the Warranties Named",
-      "text": "Look for the manufacturer warranty by name and the contractor's workmanship warranty, and read the warranty tiers page for what the terms mean."
+      "name": "Evaluate the Material Grades",
+      "text": "Compare shingle grade (3-tab vs. architectural vs. premium), underlayment type (felt vs. synthetic), and decking material (OSB vs. plywood). Match the spec to your budget and the warranty tier you expect to receive."
     },
     {
       "@type": "HowToStep",
       "position": 6,
-      "name": "Check the Written Bid",
-      "text": "Look for a detailed summary of the work, the materials, who applies for the permit, the payment schedule, the timeline and the warranties, all in writing."
+      "name": "Verify the Warranty Tier",
+      "text": "Confirm what manufacturer warranty tier you will receive, whether it requires a certified contractor, and whether the contractor holds that certification. Verify manufacturer certifications directly on the manufacturer's website using their contractor lookup tool."
     },
     {
       "@type": "HowToStep",
       "position": 7,
-      "name": "Compare Bids on the Same Scope",
-      "text": "Compare scope, product lines, warranty documents, how decking is handled, square counts, payment terms and timelines before comparing totals."
+      "name": "Scan for Red Flags",
+      "text": "Look for single-line lump sums with no detail, missing material specs, front-loaded payment structures, missing permit line items, and verbal-only warranty offers. Good estimates specify materials, address change orders, and tie payment to milestones."
+    },
+    {
+      "@type": "HowToStep",
+      "position": 8,
+      "name": "Compare Estimates on a Normalized Basis",
+      "text": "Before comparing prices, normalize scope. Verify both estimates include the same components, the same material grades, and the same warranty tier. Compare square counts and ask each contractor to show their measurement source if totals differ significantly."
     }
   ]
 }
 </script>
+
+<!-- JSON-LD Schema: FAQPage -->
 
 <!-- JSON-LD Schema: BreadcrumbList -->
 <script type="application/ld+json">

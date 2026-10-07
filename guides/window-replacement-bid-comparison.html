@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>How to Compare Window Replacement Bids | Otter Quotes</title>
+<meta name="description" content="Compare window replacement bids with a copyable table: frame, glass, NFRC ratings, installation method, trim, permits and warranty, so each bid prices one job.">
+<link rel="canonical" href="https://otterquote.com/guides/window-replacement-bid-comparison.html">
+<meta property="og:title" content="How to Compare Window Replacement Bids | Otter Quotes">
+<meta property="og:description" content="Compare window replacement bids with a copyable table: frame, glass, NFRC ratings, installation method, trim, permits and warranty, so each bid prices one job.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/window-replacement-bid-comparison.html">
+<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Otter Quotes logo">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-10-05">
+<meta property="article:author" content="Otter Quotes">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds (same values as PR #2499; defined here until it merges) */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>How to Compare Window Replacement Bids</h1>
+    <p class="meta">Otter Quotes &middot; Updated October 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>Two window replacement bids only compare when they price the same job. Ask every contractor to state in writing the window style and frame material, the glass package, the NFRC ratings, how each window will be installed, what happens to trim and siding, who handles permits and disposal, and the warranty. Then line the answers up in one table.</p>
+    </div>
+
+    <section class="step">
+      <h2>Why do window replacement bids differ for the same house?</h2>
+      <p>Pella, a window manufacturer, says in its guide to <a href="https://www.pella.com/ideas/windows/replacement-window-cost/cost-factors/" target="_blank" rel="noopener nofollow">replacement window cost</a> that window quotes price a complete project, not only a product. The guide lists seven factors that affect cost: window size, style and configuration; frame material and product selection; installation method; glass package and energy performance features; exterior conditions and accessibility; regional labor, permits and market demand; and project size and scheduling.</p>
+      <p>Two bids with different totals may differ in any of these. That is why the details below matter more than the bottom line.</p>
+    </section>
+
+    <section class="step">
+      <h2>Window replacement bid comparison table</h2>
+      <p>Copy this table into a document or spreadsheet and fill in one column per bid. Any blank cell is a question to send back to that contractor before you compare totals. Each row is a detail to get in writing.</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr>
+              <th>What to look for</th>
+              <th>Bid A</th>
+              <th>Bid B</th>
+              <th>Bid C</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Number of windows, and the location and size (width and height) of each opening</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Window style for each opening (double-hung, casement, slider, awning or fixed)</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Frame material (vinyl, fiberglass, wood, composite or aluminum with a thermal break)</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Manufacturer, product line and model</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Number of glass panes, and the gas between them, if any</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Low-e coating, tint or other glass coating</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>NFRC ratings for the exact model: U-factor, solar heat gain coefficient, visible transmittance and air leakage</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Whether the model is ENERGY STAR certified</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Installation method: insert or full-frame</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Interior and exterior trim: repaired, replaced or reused, and who paints or finishes it</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Siding or exterior wall work needed around each opening</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>What happens, and what it costs, if rot or water damage is found behind an old window</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Work required by local building code, if any</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Permits: who applies for them and who pays</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Lead-safe work practices, if the home was built before 1978</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Removal and disposal of the old windows</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Warranty on the glass, on the other parts and on the installation labor, in writing</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Deposit and payment schedule</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Start window and how long the job takes</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Exclusions and change-order pricing</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="step">
+      <h2>What do the NFRC numbers on a window label mean?</h2>
+      <p>The National Fenestration Rating Council (NFRC) label gives a window&rsquo;s energy performance ratings in several categories, so you can compare one product with another. A lower U-Factor means the window keeps more heat in, and a lower Solar Heat Gain Coefficient means it lets in less solar heat.</p>
+      <p><a href="https://www.nfrc.org/" target="_blank" rel="noopener">NFRC</a> lists five ratings on its window label:</p>
+      <ul>
+        <li><strong>U-Factor</strong> measures how well a product keeps heat from escaping a room. The lower the number, the better it is at keeping heat in.</li>
+        <li><strong>Solar Heat Gain Coefficient</strong> measures how much solar heat a product allows in. Low numbers resist solar heat, and high numbers allow solar heat.</li>
+        <li><strong>Visible Transmittance</strong> measures how well a product lights your home with daylight. The higher the number, the more natural light is let in.</li>
+        <li><strong>Air Leakage</strong> measures how much air will enter a room through a product.</li>
+        <li><strong>Condensation Resistance</strong> measures a product&rsquo;s resistance to condensation. The higher the number, the better a product resists condensation.</li>
+      </ul>
+      <p>The U.S. Department of Energy&rsquo;s Federal Energy Management Program says that the &ldquo;energy savings of fenestration products varies according to climate.&rdquo; Its <a href="https://www.energy.gov/cmei/femp/purchasing-energy-efficient-residential-windows-doors-and-skylights" target="_blank" rel="noopener">guidance for federal buyers of windows</a> also points to the NFRC&rsquo;s directory search for a list of ENERGY STAR certified windows by climate zone. NFRC describes itself as the official certification body for ENERGY STAR windows, doors and skylights, and the <a href="https://www.energystar.gov/products/res_windows_doors_skylights/key-product-criteria" target="_blank" rel="noopener">ENERGY STAR page on what makes a window certified</a> says that certified products have NFRC ratings that meet guidelines set by the U.S. Environmental Protection Agency.</p>
+      <p>Ask each contractor for the NFRC ratings of the exact model in the bid, and write them in the table.</p>
+    </section>
+
+    <section class="step">
+      <h2>Which frame material is each bid quoting?</h2>
+      <p>Ask each contractor which frame material the bid quotes, because frame materials differ in how well they insulate and in the upkeep they need. A fact sheet on the U.S. Department of Energy&rsquo;s Building Science Education site, <a href="https://bsesc.energy.gov/sites/default/files/Fenestration%20-%20Types%20of%20Windows_0.pdf" target="_blank" rel="noopener">&ldquo;Types of Windows&rdquo; (PDF)</a>, says that vinyl, wood, fiberglass and some composite frame materials provide greater thermal resistance than metal.</p>
+      <p>That fact sheet describes the materials this way:</p>
+      <ul>
+        <li><strong>Aluminum or metal.</strong> Metal frames conduct heat very well, so they should have a thermal break, which is an insulating plastic strip placed between the inside and outside of the frame and sash.</li>
+        <li><strong>Fiberglass.</strong> Fiberglass frames are dimensionally stable and have air cavities that can be filled with insulation.</li>
+        <li><strong>Vinyl.</strong> Vinyl frames do not require painting and have good moisture resistance. Their hollow cavities can be filled with insulation.</li>
+        <li><strong>Wood.</strong> Wood frames insulate relatively well, but they expand and contract in response to weather conditions and require regular maintenance, although aluminum or vinyl cladding reduces maintenance requirements.</li>
+        <li><strong>Composite.</strong> Composite frames consist of composite wood products, such as particleboard and laminated strand lumber. The fact sheet says: &ldquo;These composites are very stable, they have the same or better structural and thermal properties as conventional wood, and they have better moisture and decay resistance.&rdquo;</li>
+      </ul>
+      <p>If a bid quotes a metal frame, ask whether it has a thermal break. If it quotes a wood frame, ask what upkeep it needs and whether it has aluminum or vinyl cladding. Ask each contractor why they chose that material for your house.</p>
+    </section>
+
+    <section class="step">
+      <h2>What should you ask about the glass package?</h2>
+      <p>Ask each contractor how many panes the glass has, what fills the space between them, and whether there is a coating or tint. The Department of Energy&rsquo;s Building Science Education page on <a href="https://bsesc.energy.gov/energy-basics/high-performance-window-systems-glass" target="_blank" rel="noopener">high-performance window glass</a> says that features that help reduce heat transfer include two or three panes of insulated glass and low-emissivity coatings.</p>
+      <p>The same <a href="https://bsesc.energy.gov/sites/default/files/Fenestration%20-%20Types%20of%20Windows_0.pdf" target="_blank" rel="noopener">&ldquo;Types of Windows&rdquo; fact sheet</a> describes the parts of a glass package this way:</p>
+      <ul>
+        <li><strong>Insulated glazing</strong> refers to windows with two or more panes of glass, spaced apart and sealed, leaving an insulating air space.</li>
+        <li><strong>Gas fills.</strong> Some manufacturers fill the space between the panes with an inert gas, such as argon or krypton, that has a higher resistance to heat flow than air.</li>
+        <li><strong>Low-emissivity (low-e) coating</strong> is a microscopically thin, virtually invisible, metal or metallic oxide layer deposited directly on the surface of one or more of the panes of glass. These coatings control heat transfer by reducing the transmittance of infrared radiation.</li>
+        <li><strong>Heat-absorbing tints</strong> change the color of the glass and reduce the solar heat gain coefficient and the visible transmittance. The same fact sheet says the tint does not lower a window&rsquo;s U-factor.</li>
+      </ul>
+      <p>Write each bid&rsquo;s answers in the table. If one bid says &ldquo;low-e&rdquo; and another says nothing about coatings, ask the second contractor to state the glass package in writing.</p>
+    </section>
+
+    <section class="step">
+      <h2>Insert or full-frame: what changes in the bid?</h2>
+      <p>An insert replacement fits a new window into the existing frame, while a full-frame replacement removes everything down to the structural opening. Because the two methods involve different work on the frame, trim and siding, ask each contractor which one the bid quotes for each opening. Do not compare an insert bid with a full-frame bid as though they were the same job.</p>
+      <p>Andersen Windows, a window manufacturer, says in its <a href="https://www.andersenwindows.com/ideas-and-inspiration/blog/tips/new-construction-vs-window-replacement" target="_blank" rel="noopener nofollow">guide to new construction and replacement windows</a> that an insert replacement window &ldquo;fits inside the existing window frame, so only the old sash is removed&rdquo;. It says this type works when the frame is in good condition, and that the existing frame must be structurally sound.</p>
+      <p>Pella, another window manufacturer, describes the same split in its guide to <a href="https://www.pella.com/ideas/windows/replacement-window-cost/cost-factors/" target="_blank" rel="noopener nofollow">replacement window cost</a>: an insert, or pocket, replacement fits a new window into the existing frame, and a full-frame replacement involves removing everything down to the structural opening. Ask each contractor which method each opening gets, and what the contractor will do about the frame behind the old window.</p>
+    </section>
+
+    <section class="step">
+      <h2>What else can change a window bid?</h2>
+      <p>Trim, siding, hidden damage, permits and disposal can each change the price. Andersen&rsquo;s guide says: &ldquo;Generally, the costs that fall under replacement will include labor, materials, permitting, and disposal fees.&rdquo;</p>
+      <ul>
+        <li><strong>Trim and siding.</strong> Andersen says that in a replacement project &ldquo;you&rsquo;re opening a hole in the wall, which could necessitate finishing work such as repairing or replacing trim and siding, repainting, and more.&rdquo;</li>
+        <li><strong>Hidden damage.</strong> The same page says that opening a wall can uncover another problem, such as rot under a window, that has to be repaired before installation. Ask how each contractor prices that repair if it is found. Pella&rsquo;s <a href="https://www.pella.com/ideas/windows/replacement-window-cost/cost-factors/" target="_blank" rel="noopener nofollow">guide</a> also says older homes may have hidden issues, such as frame rot, that only become visible during the replacement.</li>
+        <li><strong>Building code.</strong> Ask whether the bid includes any work your local building code requires.</li>
+        <li><strong>Installation quality.</strong> The Department of Energy&rsquo;s <a href="https://www.energy.gov/sites/prod/files/guide_to_energy_efficient_windows.pdf" target="_blank" rel="noopener">Guide to Energy-Efficient Windows (October 2010)</a> says: &ldquo;Even the most energy-efficient windows can result in a drafty house and moisture condensation if they are not properly installed.&rdquo;</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>What does the EPA say about work on a home built before 1978?</h2>
+      <p>The U.S. Environmental Protection Agency&rsquo;s page on its <a href="https://www.epa.gov/lead/lead-renovation-repair-and-painting-program" target="_blank" rel="noopener">Renovation, Repair and Painting Program</a> says that the rule &ldquo;requires that anyone paid to perform work that disturbs painted surfaces in homes, childcare facilities and preschools built before 1978 be certified and their employees be trained (either as a certified renovator or on-the-job by a certified renovator) in the use of lead-safe work practices that minimize occupants&rsquo; exposure to lead hazards.&rdquo; The same page says who the rule covers and names the states that run their own programs. If your home was built before 1978, ask each contractor how paint dust will be handled during the work.</p>
+    </section>
+
+    <section class="step">
+      <h2>What should you ask about a window warranty?</h2>
+      <p>Ask each contractor for the written warranty for the exact model in the bid, and read it. Ask what it covers on the glass, on the other parts and on labor, how long each part of the cover lasts, and who handles a warranty call. Ask whether the contractor gives its own workmanship warranty and, if so, ask for it in writing.</p>
+    </section>
+
+    <section class="step">
+      <h2>Is the lowest window bid the best one?</h2>
+      <p>Not necessarily. A low total may reflect fewer windows, a different frame material, a simpler glass package, an insert installation where another bid is full-frame, or no trim or siding work. Compare the table first, then the price, so you know the low bid covers the same job as the others.</p>
+      <p>Look at the gaps. If one column has blanks the others filled in, ask that contractor to complete them in writing. A bid that cannot answer the questions may still be honest, but you cannot tell what you would be buying. Our guide, <a href="/guides/roof-bid-comparison-worksheet.html">How to Compare Roofing Bids: A Side-by-Side Worksheet</a>, uses the same row-by-row approach for a roof.</p>
+    </section>
+
+    <section class="step">
+      <h2>What to ask every window contractor</h2>
+      <p>Copy these questions and send them to each bidder in the same message. Asking everyone the same things gives you answers you can line up in the comparison table, and it shows which contractors explain their bid clearly and which leave gaps:</p>
+      <ul>
+        <li>How many windows are in this bid, and what are the size and style of each one?</li>
+        <li>What frame material, glass package and manufacturer model are you quoting?</li>
+        <li>What are the NFRC ratings of that exact model, and is it ENERGY STAR certified?</li>
+        <li>Is each opening an insert or a full-frame installation, and why?</li>
+        <li>What happens to the interior and exterior trim and to the siding around each opening?</li>
+        <li>How is repair priced if rot or water damage is found behind an old window?</li>
+        <li>Does the bid include any work that local building code requires?</li>
+        <li>Who applies for permits, and who removes and disposes of the old windows?</li>
+        <li>If the home was built before 1978, how will you handle paint dust during the work?</li>
+        <li>What does the warranty cover on the glass, on the other parts and on labor, and who handles a warranty call?</li>
+        <li>What are the deposit, the payment schedule, the start window and the duration?</li>
+        <li>What is excluded, and how are change orders priced?</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>You compare the bids online, next to reviews and licensing information, and you do not need a salesperson to visit your home. Contractors pay Otter Quotes a fee on the accepted bid. We do not sell upgrades, and we are not a contractor.</p>
+      <p><a href="/how-it-works.html">How Otter Quotes works</a></p>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>How do I compare window replacement quotes?</h3>
+        <div class="faq-answer">
+          <p>Ask every contractor to state the same details in writing: window count, size and style, frame material, glass package, NFRC ratings, installation method, trim and siding work, permits, disposal and warranty. Put the answers side by side in one table. Any blank cell is a question to send back before you compare totals.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What do U-factor and solar heat gain coefficient mean on a window label?</h3>
+        <div class="faq-answer">
+          <p>The NFRC label shows U-Factor, which measures how well a product keeps heat from escaping a room, where a lower number keeps more heat in. It also shows Solar Heat Gain Coefficient, which measures how much solar heat a product allows in, where low numbers resist solar heat and high numbers allow it.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What is the difference between an insert and a full-frame window replacement?</h3>
+        <div class="faq-answer">
+          <p>An insert replacement fits a new window into the existing frame. A full-frame replacement removes everything down to the structural opening. Because the two methods involve different work on the frame, trim and siding, ask each contractor which one the bid quotes for each opening.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Should I ask for the NFRC ratings of the window in each bid?</h3>
+        <div class="faq-answer">
+          <p>Yes. The NFRC label gives energy performance ratings in multiple categories, so asking each contractor for the ratings of the exact model lets you compare bids on the same measures. Ask for the manufacturer, product line and model as well, so the ratings you receive match the window in the bid.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does a window bid include trim, permits and disposal?</h3>
+        <div class="faq-answer">
+          <p>Not necessarily, so ask. One manufacturer&rsquo;s guide lists labor, materials, permitting and disposal fees among the costs in a replacement project. Ask each contractor to state in writing who handles trim, permits and the removal of the old windows.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/guides/siding-bid-comparison.html">Siding Replacement Bids: What a Quote Should Include and How to Compare</a></li>
+        <li><a href="/guides/gutter-bid-comparison.html">Gutter Replacement Bids: Linear Feet, Downspouts and What to Check</a></li>
+        <li><a href="/guides/roof-bid-comparison-worksheet.html">How to Compare Roofing Bids: A Side-by-Side Worksheet</a></li>
+        <li><a href="/how-it-works.html">How Otter Quotes Works</a></li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "How to Compare Window Replacement Bids",
+  "description": "Compare window replacement bids with a copyable table: frame, glass, NFRC ratings, installation method, trim, permits and warranty, so each bid prices one job.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {"@type": "Organization", "name": "Otter Quotes", "url": "https://otterquote.com/"},
+  "datePublished": "2026-10-05",
+  "dateModified": "2026-10-05",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/window-replacement-bid-comparison.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://otterquote.com"},
+    {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://otterquote.com/guides/"},
+    {"@type": "ListItem", "position": 3, "name": "How to Compare Window Replacement Bids", "item": "https://otterquote.com/guides/window-replacement-bid-comparison.html"}
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>
