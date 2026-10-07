@@ -1,8 +1,9 @@
+-- gh-2443 (R-097 EXECUTED, 2026-10-07T19:47:48Z): filed copy of supabase/migrations_drafts/gh2443_cpa_reattest_clear.sql under its REAL
+-- applied ledger version 20261007194749 (supabase_migrations.schema_migrations, name=gh2443_cpa_reattest_clear; production yeszghaspzwwstvsrioa).
+-- The bytes sent to production were the draft's, fetched from main at the apply; executable SQL below is the draft's, unchanged.
+-- Rollback and pre-flight: supabase/migrations_rollbacks/gh2443_cpa_reattest_clear_rollback.sql and gh2443_cpa_reattest_clear_pre-flight.md.
+--
 -- gh-2443: contractors_freeze_privileged_columns: let a contractor clear ONLY their own CPA re-attestation flag.
--- STATUS (gh-1438, as of 2026-10-07T20:19:40Z): APPLIED
--- EVIDENCE: applied as ledger version 20261007194749 (name gh2443_cpa_reattest_clear) under R-097; contractors_freeze_privileged_columns() prosrc md5 on production is c93a8971… (was 432ad0aa…), this file's function body; proof run before and after the apply is on #2443 (R-097 EXECUTED)
--- REPO COPY: supabase/migrations/20261007194749_gh2443_cpa_reattest_clear.sql (same statements); rollback and pre-flight in supabase/migrations_rollbacks/
--- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3B path. Rollback: supabase/migrations_rollbacks/gh2443_cpa_reattest_clear_rollback.sql
 -- Pre-flight: supabase/migrations_rollbacks/gh2443_cpa_reattest_clear_pre-flight.md  Proof (rolled back, is_test rows only): supabase/tests/gh2443_cpa_reattest_clear_proof.sql
 --
 -- What changes: in the UPDATE branch, the pin NEW.needs_cpa_reattestation := OLD.needs_cpa_reattestation becomes a
