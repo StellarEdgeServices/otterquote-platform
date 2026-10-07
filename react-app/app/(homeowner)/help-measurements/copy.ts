@@ -52,14 +52,14 @@ export const MEASUREMENTS_COPY = {
   hoverIcon: '📐',
   hoverCardTitle: 'Complete Property Report',
   // D-291 price line (repriced from D-205's $150) — LOCKED, exact.
-  hoverCardPrice: '$15 (rebated if you use an Otter Quotes contractor)',
+  hoverCardPrice: '$15 (rebated if you complete a job on the platform)',
   hoverCardDescription:
     "Get a complete 3D model of your home — roof, walls, openings, and full measurements — by taking photos with your phone. Our measurement technology builds the model from your photos. This is your best option for any full-replacement project.",
   hoverCardFeatures: [
     'Precise, professional-grade measurements',
     '3D model of your property',
     'Ready in 24-48 hours',
-    'Cost rebated when using an Otter Quotes contractor',
+    'Cost rebated when you complete a job on the platform',
   ],
 
   // ── Path B card — Ask Adjuster, FREE (help-measurements.html:588-599) ──
@@ -87,7 +87,7 @@ export const MEASUREMENTS_COPY = {
   // Rebate callout (help-measurements.html:611) — D-291 financial terms (repriced from D-205's $150), LOCKED.
   // "<strong>How the $15 works:</strong> …" flattened.
   rebateCallout:
-    "How the $15 works: You pay $15 now for a complete 3D property data file — every measurement, every wall, every opening, all in one place. When your project closes with an Otter Quotes contractor, the full $15 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
+    "How the $15 works: You pay $15 now for a complete 3D property data file — every measurement, every wall, every opening, all in one place. When your project is completed with an Otter Quotes contractor, the full $15 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
 
   // Hover steps (help-measurements.html:614-636).
   hoverStep1Title: 'Purchase Your Report',
