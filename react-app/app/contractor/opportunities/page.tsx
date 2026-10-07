@@ -302,9 +302,9 @@ function OpportunityCard({ opp, onDetails }: { opp: Opportunity; onDetails: () =
       </div>
 
       <div className="oqo-trade-badges">
-        {opp.estimateAvailable && <span className="oqo-badge oqo-badge-available">Insurance Estimate ✓</span>}
+        {opp.contractorScopeSummary && <span className="oqo-badge oqo-badge-available">Estimate Summary ✓</span>}
         {opp.measurementsAvailable
-          ? <span className="oqo-badge oqo-badge-available">Measurements ✓</span>
+          ? <span className="oqo-badge oqo-badge-available">Measurements on File ✓</span>
           : <span className="oqo-badge oqo-badge-pending">Measurements Pending</span>}
       </div>
 

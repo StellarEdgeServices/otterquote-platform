@@ -1,6 +1,6 @@
 -- gh-2559 item 3 proof: D-368 narrowing of the storage policy "Contractors can view biddable claim docs"
--- plus the bid-release gate (supabase/migrations_drafts/gh2559_claim_docs_summary_only.sql; NOT APPLIED
--- when this was written).
+-- (supabase/migrations_drafts/gh2559_claim_docs_summary_only.sql; NOT APPLIED when this was written).
+-- The bid-open trigger of the previous head was cut (comment 6029315131 item A); its rows G1 to G8 left with it.
 -- Run against production (yeszghaspzwwstvsrioa) as ONE statement. It is a single DO block whose last
 -- action is a deliberate RAISE EXCEPTION, so every fixture write (and, in forward-rollback mode, the
 -- DDL) rolls back whatever the client does. The findings are the exception text.
@@ -13,9 +13,8 @@
 -- Roles are set the way PostgREST sets them (role + request.jwt.claims) and cleared after each read.
 -- "obj" lines count the rows of storage.objects the caller can SELECT for ONE named object (or the whole
 -- claim-documents bucket). "sum" lines count the claim row WITH its parsed summary present. "cols" lines
--- count the claim row selected with homeowner_name, claim_number and estimate_filename (item (b) of the
--- rebuild is split into its own PR, so those stay readable and are reported as such). "gate" lines try
--- to open a not-yet-open test claim for bids (1 = the update went through, 0 = refused). File contents
+-- count the claim row selected with homeowner_name, claim_number and estimate_filename (the claims row is
+-- PR #2578, so those stay readable here and are reported as such). File contents
 -- and summary contents are never read.
 --
 -- NO IDENTIFIER IS HARD-CODED. Every fixture is looked up at run time by what it is:
@@ -32,7 +31,6 @@
 --   cR   real claim open for bids with BOTH an estimate object and a measurements object (the mislabelled
 --        copy case: on 2026-10-06 the two objects have the same size and eTag)
 --   cR2  another real claim open for bids with a measurements object
---   cG   a test claim NOT open for bids, used for the gate rows
 --   ownE, ownR  the claim owners of cE and cR; kP  a contractor that is pending_approval
 --   admin email  read out of the live text of public.is_admin_email()
 -- The FIXTURES lines print roles and flags, never ids.
@@ -67,25 +65,17 @@
 --       world plus claims selected to it; NARROWED = claims selected to it only)
 --   W1  homeowner session writes an object at {claim id}/... (the proposed server-only prefix)  refused both
 --   W2  the same session writes an object under its own user id                                  allowed both
---   G1  claim with an estimate that never parsed, opened for bids      1 -> 0   (gate; condition a)
---   G2  claim with a parsed estimate (line-item sections)             1 -> 1
---   G3  claim with a parsed summary-only estimate (no sections, RCV)  1 -> 1
---   G4  summary repeats the homeowner name                             1 -> 0   (gate; condition b)
---   G5  summary repeats the street address                             1 -> 0
---   G6  summary repeats the claim number                               1 -> 0
---   G7  claim with no estimate file                                    1 -> 1
---   G8  claim already open, unparsed estimate, updated again           1 -> 1   (only the false-to-true change is checked)
 --   OTHER  md5 over every other policy on storage.objects and over the public.claims policies, and the
---          list of triggers on public.claims: identical in every phase except the one trigger added.
+--          count and md5 of the triggers on public.claims: identical in every phase (this change adds none).
 DO $proof$
 DECLARE
   v_fwd text := /*@FWD@*/ NULL /*@FWD@*/;
   v_rb  text := /*@RB@*/ NULL /*@RB@*/;
   c_pol constant text := 'Contractors can view biddable claim docs';
   kT uuid; kTu uuid; kR uuid; kRu uuid; kS uuid; kSu uuid; kP uuid; kPu uuid;
-  cE uuid; cM uuid; cC uuid; cR uuid; cR2 uuid; cG uuid;
+  cE uuid; cM uuid; cC uuid; cR uuid; cR2 uuid;
   ownE uuid; ownR uuid;
-  oidE uuid; oidM uuid; oidR_est uuid; oidR_meas uuid; oidR2 uuid; oidC uuid; oidG uuid;
+  oidE uuid; oidM uuid; oidR_est uuid; oidR_meas uuid; oidR2 uuid; oidC uuid;
   v_admin text;
   out text := '';
   phase text;
@@ -96,7 +86,6 @@ DECLARE
   v_narrow boolean;
   t text;
   sv_est text; sv_meas text;
-  g_res int;
   exp_wide bigint; exp_narrow bigint;
 BEGIN
   -- ---------------------------------------------------------------- fixture lookup (superuser)
@@ -148,8 +137,6 @@ BEGIN
      AND c.measurements_filename IS NOT NULL
      AND EXISTS (SELECT 1 FROM storage.objects o WHERE o.bucket_id = 'claim-documents' AND o.name = c.measurements_filename AND (storage.foldername(o.name))[2] = c.id::text)
    ORDER BY c.id LIMIT 1;
-  SELECT c.id INTO cG FROM public.claims c
-   WHERE c.is_test AND NOT c.ready_for_bids ORDER BY c.id LIMIT 1;
 
   SELECT o.id INTO oidE FROM storage.objects o JOIN public.claims c ON c.id = cE AND o.name = c.estimate_filename AND o.bucket_id = 'claim-documents';
   SELECT o.id INTO oidM FROM storage.objects o JOIN public.claims c ON c.id = cM AND o.name = c.measurements_filename AND o.bucket_id = 'claim-documents';
@@ -161,10 +148,10 @@ BEGIN
   v_admin := substring(pg_get_functiondef('public.is_admin_email()'::regprocedure) FROM '''([^'']+@[^'']+)''');
 
   IF kT IS NULL OR kR IS NULL OR kS IS NULL OR kP IS NULL OR cE IS NULL OR cM IS NULL OR cC IS NULL
-     OR cR IS NULL OR cR2 IS NULL OR cG IS NULL OR v_admin IS NULL THEN
-    RAISE EXCEPTION 'gh2559 proof: FIXTURE MISSING kT=% kR=% kS=% kP=% cE=% cM=% cC=% cR=% cR2=% cG=% admin=%',
+     OR cR IS NULL OR cR2 IS NULL OR v_admin IS NULL THEN
+    RAISE EXCEPTION 'gh2559 proof: FIXTURE MISSING kT=% kR=% kS=% kP=% cE=% cM=% cC=% cR=% cR2=% admin=%',
       kT IS NOT NULL, kR IS NOT NULL, kS IS NOT NULL, kP IS NOT NULL, cE IS NOT NULL, cM IS NOT NULL, cC IS NOT NULL,
-      cR IS NOT NULL, cR2 IS NOT NULL, cG IS NOT NULL, v_admin IS NOT NULL USING ERRCODE = 'P0U02';
+      cR IS NOT NULL, cR2 IS NOT NULL, v_admin IS NOT NULL USING ERRCODE = 'P0U02';
   END IF;
 
   -- ---------------------------------------------------------------- fixture changes (rolled back)
@@ -183,7 +170,7 @@ BEGIN
            || ' selected=' || (c.selected_contractor_id IS NOT NULL)
            || ' est=' || (c.estimate_filename IS NOT NULL) || ' meas=' || (c.measurements_filename IS NOT NULL)
            || ' summary=' || (c.parsed_line_items IS NOT NULL AND c.contractor_scope_summary IS NOT NULL), ' ; ' ORDER BY lbl)
-    FROM (VALUES ('cE', cE), ('cM', cM), ('cC', cC), ('cR', cR), ('cR2', cR2), ('cG', cG)) v(lbl, cid)
+    FROM (VALUES ('cE', cE), ('cM', cM), ('cC', cC), ('cR', cR), ('cR2', cR2)) v(lbl, cid)
     JOIN public.claims c ON c.id = v.cid) || E'\n';
   out := out || 'FIXTURES cR objects: estimate and measurements are two objects=' || (oidR_est <> oidR_meas)
     || ' same size=' || ((SELECT metadata->>'size' FROM storage.objects WHERE id = oidR_est) = (SELECT metadata->>'size' FROM storage.objects WHERE id = oidR_meas))
@@ -206,8 +193,8 @@ BEGIN
     SELECT 'CLAIMS policies on public.claims: n=' || count(*) || ' md5=' || left(md5(string_agg(policyname || '|' || permissive || '|' || roles::text || '|' || cmd || '|' || coalesce(qual, '') || '|' || coalesce(with_check, ''), E'\n' ORDER BY policyname)), 8) || '...'
       INTO t FROM pg_policies WHERE schemaname = 'public' AND tablename = 'claims';
     out := out || t || E'\n';
-    SELECT 'TRIGGERS on public.claims: n=' || count(*) || ' bid_release_gate=' || coalesce(bool_or(tgname = 'claims_guard_bid_release'), false)
-           || ' md5_of_all_other_trigger_defs=' || left(md5(string_agg(pg_get_triggerdef(oid), E'\n' ORDER BY tgname) FILTER (WHERE tgname <> 'claims_guard_bid_release')), 8) || '...'
+    SELECT 'TRIGGERS on public.claims: n=' || count(*) || ' bid_open_trigger_present=' || coalesce(bool_or(tgname = 'claims_guard_bid_release'), false)
+           || ' md5_of_all_trigger_defs=' || left(md5(string_agg(pg_get_triggerdef(oid), E'\n' ORDER BY tgname)), 8) || '...'
       INTO t FROM pg_trigger WHERE tgrelid = 'public.claims'::regclass AND NOT tgisinternal;
     out := out || t || E'\n';
 
@@ -242,15 +229,7 @@ BEGIN
         (26, 'R-all real bidder -> whole bucket (oracle count)',                      'authenticated', kRu, NULL, 'ball', kR, NULL, -1, -1),
         (27, 'S-all selected contractor -> whole bucket (oracle count)',              'authenticated', kSu, NULL, 'ball', kS, NULL, -1, -1),
         (28, 'W1 homeowner session writes an object at {claim id}/... (proposed server-only prefix)', 'authenticated', ownE, NULL, 'write_claimprefix', cE, NULL, 0, 0),
-        (29, 'W2 same session writes under its own user id (control for W1)',                          'authenticated', ownE, NULL, 'write_ownprefix', cE, NULL, 1, 1),
-        (30, 'G1 open cG for bids with an estimate that never parsed',                'gate', NULL::uuid, NULL, 'gate', cG, 'g_unparsed', 1, 0),
-        (31, 'G2 open cG for bids, parsed estimate with line-item sections',          'gate', NULL::uuid, NULL, 'gate', cG, 'g_sections', 1, 1),
-        (32, 'G3 open cG for bids, parsed summary-only estimate (no sections, RCV)',  'gate', NULL::uuid, NULL, 'gate', cG, 'g_summaryonly', 1, 1),
-        (33, 'G4 open cG for bids, summary repeats the homeowner name',               'gate', NULL::uuid, NULL, 'gate', cG, 'g_name', 1, 0),
-        (34, 'G5 open cG for bids, summary repeats the street address',               'gate', NULL::uuid, NULL, 'gate', cG, 'g_street', 1, 0),
-        (35, 'G6 open cG for bids, summary repeats the claim number',                 'gate', NULL::uuid, NULL, 'gate', cG, 'g_claimno', 1, 0),
-        (36, 'G7 open cG for bids, no estimate file on it',                           'gate', NULL::uuid, NULL, 'gate', cG, 'g_noestimate', 1, 1),
-        (37, 'G8 cM already open, unparsed estimate, ready_for_bids written again',                  'gate', NULL::uuid, NULL, 'gate', cM, 'g_alreadyopen', 1, 1)
+        (29, 'W2 same session writes under its own user id (control for W1)',                          'authenticated', ownE, NULL, 'write_ownprefix', cE, NULL, 1, 1)
       ) AS s(ord, label, role, sub, email, kind, target, mut, wide, narrowed) ORDER BY ord
     LOOP
       exp_wide := r.wide; exp_narrow := r.narrowed;
@@ -275,54 +254,6 @@ BEGIN
         UPDATE public.claims SET measurements_filename = sv_est WHERE id = cE;
       END IF;
 
-      IF r.kind = 'gate' THEN
-        g_res := 0;
-        BEGIN
-          IF r.mut = 'g_alreadyopen' THEN
-            -- a claim that is ALREADY open (cM): give it an estimate that never parsed, then write
-            -- ready_for_bids = true again. The gate must let it through (old value was already true).
-            UPDATE public.claims SET estimate_filename = 'gate-fixture/estimate.pdf', loss_sheet_parsed_at = NULL,
-                   parsed_line_items = NULL, contractor_scope_summary = NULL WHERE id = cM;
-            UPDATE public.claims SET ready_for_bids = true WHERE id = cM;
-          ELSE
-          -- a clean, not-open test claim for each gate case; the whole subtransaction is undone below
-          UPDATE public.claims SET ready_for_bids = false, status = 'documents_needed',
-                 estimate_filename = 'gate-fixture/estimate.pdf', loss_sheet_parsed_at = now(),
-                 parsed_line_items = '{"sections":[{"name":"Roofing","line_items":[{"d":"x"}]}],"summary":{"rcv":1000}}'::jsonb,
-                 contractor_scope_summary = 'Carrier: Example. Roofing: replace shingles.',
-                 homeowner_name = 'Zz Proofname', property_address = '999 Proofstreet Rd, Proofville, ZZ 00000', claim_number = 'PROOF-CLAIM-0001'
-           WHERE id = cG;
-          IF r.mut = 'g_unparsed' THEN
-            UPDATE public.claims SET loss_sheet_parsed_at = NULL, parsed_line_items = NULL, contractor_scope_summary = NULL WHERE id = cG;
-          ELSIF r.mut = 'g_summaryonly' THEN
-            UPDATE public.claims SET parsed_line_items = '{"sections":[],"summary":{"rcv":1000}}'::jsonb WHERE id = cG;
-          ELSIF r.mut = 'g_name' THEN
-            UPDATE public.claims SET contractor_scope_summary = 'Insured: ZZ PROOFNAME. Roofing: replace shingles.' WHERE id = cG;
-          ELSIF r.mut = 'g_street' THEN
-            UPDATE public.claims SET parsed_line_items = jsonb_set(parsed_line_items, '{loss_address}', '"999 proofstreet rd"') WHERE id = cG;
-          ELSIF r.mut = 'g_claimno' THEN
-            UPDATE public.claims SET contractor_scope_summary = 'Claim proof-claim-0001. Roofing.' WHERE id = cG;
-          ELSIF r.mut = 'g_noestimate' THEN
-            UPDATE public.claims SET estimate_filename = NULL, loss_sheet_parsed_at = NULL, parsed_line_items = NULL, contractor_scope_summary = NULL WHERE id = cG;
-          END IF;
-          UPDATE public.claims SET ready_for_bids = true, updated_at = now() WHERE id = cG;
-          END IF;
-          g_res := 1;
-          RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U03';
-        EXCEPTION
-          WHEN SQLSTATE 'P0U03' THEN NULL;
-          WHEN OTHERS THEN
-            g_res := 0;
-            IF SQLSTATE <> '23514' OR SQLERRM NOT LIKE 'gh2559:%' THEN
-              out := out || r.label || ' : UNEXPECTED ERROR ' || SQLSTATE || ' ' || left(SQLERRM, 100) || E'\n';
-              g_res := -9;
-            END IF;
-        END;
-        out := out || r.label || ' : went_through=' || g_res || '  (wide ' || r.wide || ', narrowed ' || r.narrowed || ')' || E'\n';
-        v_wide := v_wide AND g_res = r.wide;
-        v_narrow := v_narrow AND g_res = r.narrowed;
-        CONTINUE;
-      END IF;
 
       PERFORM set_config('request.jwt.claims',
         CASE WHEN r.sub IS NULL THEN json_build_object('role', r.role)::text

@@ -1,26 +1,22 @@
--- STATUS (gh-1438, as of 2026-10-06T19:50:52Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-10-07T19:20:06Z): NOT APPLIED
 -- FILE ROLE: rollback file of set gh2559_claim_docs_summary_only (the STATUS is the set's; it describes the forward migration)
--- EVIDENCE: the forward file has not been applied (no ledger row; live policy is the world-fenced text of ledger version 20261006171747, pg_policies read 2026-10-06). This rollback was run inside the same rolled-back proof block as the forward file (supabase/tests/gh2559_claim_docs_summary_only_proof.sql).
+-- EVIDENCE: the forward file has not been applied (no ledger row; live policy is the world-fenced text of ledger version 20261006171747, pg_policies read 2026-10-06). The CREATE POLICY statement below is byte-identical to the one at head c60b216f, which was run inside the same rolled-back proof block as the forward file (supabase/tests/gh2559_claim_docs_summary_only_proof.sql; review 6024856617 finding 9: rollback text = live text).
 -- REPO COPY: none. When the forward file is applied, move this file to supabase/migrations_rollbacks/ under the forward file's ledger version.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- Rollback for gh2559_claim_docs_summary_only.sql (gh-2559 item 3, D-368).
 -- WARNING: this RE-OPENS what D-368 closed: a contractor in the claim's own world (test with test,
 -- real with real) can again read every file in the folder of any claim that is open for bids, the
--- homeowner's uploaded insurance estimate included. It also removes the bid-release gate (a claim can
--- again open for bids on an estimate that has not parsed or whose summary repeats the homeowner's name). Run it only if the narrowing refuses a read a
--- bidding contractor needs to price a job, and say so on #2559.
+-- homeowner's uploaded insurance estimate and measurement report included. Run it only if the
+-- narrowing refuses a read a bidding contractor needs to price a job, and say so on #2559.
 -- It restores the policy text that was live before the narrowing: the world-fenced text applied as
 -- ledger version 20261006171747 (20261006171024_gh2559_claim_docs_world_fence). It does NOT remove
--- the world fence. It drops the bid-release trigger and its function. Nothing else is touched.
+-- the world fence. Nothing else is touched (the forward file changes nothing but this policy).
 -- If the forward file was applied with a ledger row, also delete that
 -- supabase_migrations.schema_migrations row.
 BEGIN;
 
 SET LOCAL lock_timeout = '5s';
-
-DROP TRIGGER IF EXISTS claims_guard_bid_release ON public.claims;
-DROP FUNCTION IF EXISTS public.claims_guard_bid_release();
 
 DROP POLICY IF EXISTS "Contractors can view biddable claim docs" ON storage.objects;
 

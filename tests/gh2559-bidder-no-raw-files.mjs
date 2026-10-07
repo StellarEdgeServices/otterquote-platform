@@ -6,6 +6,9 @@
  * The real helpers are extracted from the pages and run in vm (the gh1570 / gh1796 idiom), not copied.
  * The opportunities page maps claims inline, so its two filename mappings are checked as source.
  *
+ * It also pins the contractor-facing copy that goes with it: the three public sentences and the two
+ * opportunity-card badges say a bidder sees a SUMMARY of the estimate (D-368), never the estimate file.
+ *
  * Run: node tests/gh2559-bidder-no-raw-files.mjs
  * GH2559_ROOT points at another tree for a negative control (e.g. a checkout of main: expect failures).
  */
@@ -76,6 +79,30 @@ ok(/estimateFilename: \(claim\.estimate_filename && currentContractor && current
   'opportunities page: estimate path only for the selected contractor');
 ok(/measurementsFilename: \(claim\.measurements_filename && !isHoverMeasurementsSentinel\(claim\.measurements_filename\)\s*&& currentContractor && currentContractor\.id\s*&& claim\.selected_contractor_id === currentContractor\.id\)/.test(opps),
   'opportunities page: measurements path only for the selected contractor');
+
+// --- public copy and card badges (CEO ruling 6029315131 condition 2): no page tells a bidder the
+// estimate file itself is on offer before selection. Read as source; the three sentences are static HTML.
+const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
+const hiw = read('contractor-how-it-works.html');
+const faq = read('contractor-faq.html');
+const reactCard = read('react-app/app/contractor/opportunities/page.tsx');
+ok(!/aerial measurements, and the homeowner's insurance estimate &mdash; when available/.test(hiw)
+  && /aerial measurements, and a line-item summary of the homeowner's insurance estimate &mdash; when available/.test(hiw),
+  'how-it-works: an opportunity shows a line-item summary of the estimate, not the estimate');
+ok(!/including the insurance estimate and measurements, when available/.test(faq)
+  && /including aerial measurements and a line-item summary of the insurance estimate, when available &mdash; before deciding to bid/.test(faq),
+  'FAQ (reviewing before bidding): a line-item summary of the estimate, not the estimate');
+ok(!/the homeowner's insurance estimate with an AI-parsed line-item summary, when available\. You know/.test(faq)
+  && /an AI-parsed line-item summary of the homeowner's insurance estimate, when available\. You know/.test(faq),
+  'FAQ (what you can see before bidding): the summary of the estimate, not the estimate with a summary');
+ok(!/Insurance Estimate &#x2713;/.test(opps) && /o\.contractorScopeSummary \? '<span class="badge badge-available">Estimate Summary &#x2713;<\/span>'/.test(opps),
+  'opportunities card: the estimate badge says Estimate Summary and shows only when the card has a summary');
+ok(!/>Measurements &#x2713;</.test(opps) && />Measurements on File &#x2713;</.test(opps),
+  'opportunities card: the measurements badge says a measurement is on file, not that it can be opened');
+ok(!/Insurance Estimate \u2713/.test(reactCard) && /opp\.contractorScopeSummary && <span className="oqo-badge oqo-badge-available">Estimate Summary \u2713<\/span>/.test(reactCard),
+  'React opportunities card: Estimate Summary badge keyed on the summary');
+ok(!/>Measurements \u2713</.test(reactCard) && />Measurements on File \u2713</.test(reactCard),
+  'React opportunities card: Measurements on File badge');
 
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
