@@ -74,16 +74,24 @@ const REDIRECT_MAP: Record<string, string> = {
     '/blog/rcv-vs-acv-roof-insurance.html',
   '/blog/roof-shingle-warranty-tiers-explained':
     '/blog/roof-shingle-warranty-tiers-explained.html',
+  '/blog/roofing-estimate-red-flags':
+    '/blog/roofing-estimate-red-flags.html',
   '/blog/storm-chaser-roofing-scams':
     '/blog/storm-chaser-roofing-scams.html',
+  '/blog/what-is-recoverable-depreciation-roofing':
+    '/blog/what-is-recoverable-depreciation-roofing.html',
   '/blog/what-is-scope-of-loss-roofing':
     '/blog/what-is-scope-of-loss-roofing.html',
+  '/blog/when-not-to-file-roof-insurance-claim':
+    '/blog/when-not-to-file-roof-insurance-claim.html',
   '/blog/why-roofers-quote-different-prices':
     '/blog/why-roofers-quote-different-prices.html',
 
-  // gh-1745 wave 3: the index.html twins. (The two wave-3 posts, and the other
-  // three removed articles, were deleted by gh-2480 Part 5 R1 and 301 to their
-  // targets from _redirects; a map entry for a deleted page would 301 to a 404.)
+  // gh-1745 wave 3: posts added after wave 2, plus the index.html twins.
+  '/blog/hail-damage-roof-inspection-first-72-hours':
+    '/blog/hail-damage-roof-inspection-first-72-hours.html',
+  '/blog/how-long-does-roof-insurance-claim-take-indiana':
+    '/blog/how-long-does-roof-insurance-claim-take-indiana.html',
   '/blog/index.html': '/blog/',
   '/guides/index.html': '/guides/',
 

@@ -1,3 +1,6 @@
+-- gh-1438 reconciliation (cto61, 2026-10-06T19:47:53Z): renamed from 20260930130000_gh2310_gap2_backfill_referral_agents_is_test.sql to the REAL applied ledger version.
+-- Ledger row: supabase_migrations.schema_migrations version=20261003014821 (SELECT-only read 2026-10-06). Content check: statements normalized md5 0503d5dd = file.
+-- Executable SQL body unchanged; only the filename version prefix and this banner changed.
 -- Migration: 20260930130000_gh2310_gap2_backfill_referral_agents_is_test
 -- GitHub: #2310 Gap 2 (residual of #1961), referral_agents ONLY. Gap 1 (profiles) was applied separately (20260928233000_...).
 -- Tier: 3B (production data UPDATE). NOT APPLIED. Do not apply, merge or deploy without R-097 notice.

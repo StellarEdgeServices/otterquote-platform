@@ -1,0 +1,57 @@
+name: Static Quotes Fee Columns Guard Tests
+
+# gh-2519 -- the quotes fee columns (fee_amount, fee_percentage, platform_fee_pct, platform_fee_basis) stay
+# guarded for the claim owner inside quotes_guard_homeowner_columns(). Static check of the latest definition
+# of that function across supabase/migrations and of the rollback. The live proof is
+# supabase/tests/gh2519_quotes_fee_columns_guard_proof.sql, a rolled-back run a human does against
+# production; CI never touches the database.
+# `pull_request` + `push` to main, no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/migrations_rollbacks/**'
+      - 'tests/gh2519-static-fee-columns-guard.mjs'
+      - 'supabase/tests/gh2519_quotes_fee_columns_guard_proof.sql'
+      - '.github/workflows/static-quotes-fee-columns-guard-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/migrations_rollbacks/**'
+      - 'tests/gh2519-static-fee-columns-guard.mjs'
+      - 'supabase/tests/gh2519_quotes_fee_columns_guard_proof.sql'
+      - '.github/workflows/static-quotes-fee-columns-guard-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-quotes-fee-columns-guard-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-quotes-fee-columns-guard-tests:
+    name: Quotes fee columns guard (gh2519)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Fee-column rule stays in the latest quotes guard definition (gh2519)
+        run: node tests/gh2519-static-fee-columns-guard.mjs
+      - name: Negative control - the born-state guard alone (no fee rule) must fail this check
+        run: |
+          if node tests/gh2519-static-fee-columns-guard.mjs supabase/migrations/20261005203540_gh2479_born_state_guard.sql > /tmp/nc.out; then
+            echo "The check passed against a migration that has no fee rule: it asserts nothing."; exit 1
+          fi
+          grep -c '^FAIL' /tmp/nc.out

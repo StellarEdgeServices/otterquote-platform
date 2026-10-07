@@ -77,7 +77,7 @@ jobs:
         run: node tests/gh2479-static-born-state-guard.mjs
       - name: Negative control - the previous quotes guard alone must fail this check
         run: |
-          if node tests/gh2479-static-born-state-guard.mjs supabase/migrations/20261005170000_gh2479_quotes_homeowner_guard.sql > /tmp/nc.out; then
+          if node tests/gh2479-static-born-state-guard.mjs supabase/migrations/20261005173827_gh2479_quotes_homeowner_guard.sql > /tmp/nc.out; then
             echo "The check passed against a migration that has no born-state rule: it asserts nothing."; exit 1
           fi
           grep -c '^FAIL' /tmp/nc.out
