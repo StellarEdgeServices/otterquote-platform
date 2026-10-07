@@ -1,3 +1,8 @@
+-- gh-1438 reconciliation part 5 (2026-10-06T15:55:01Z): renamed from 20260924200316_gh2154_p3_partner_new_alert_trigger.sql to the REAL
+-- applied version. Live ledger row: supabase_migrations.schema_migrations version=20260925180241
+-- name=gh2154_p3_partner_new_alert_trigger (SELECT-only verified in part 3/4: normalized-statement text of this file's body
+-- equals the ledger's recorded statements for this version). Executable SQL body
+-- byte-for-byte unchanged; only the filename's version prefix and this banner changed.
 -- gh-2154 P-3: new-partner alert to Dustin (<=60s), build phase.
 -- Stacked on P-1 (7a887e65, CSPRNG signup password) and P-2 (already applied
 -- to prod: referral_agents.fbclid/li_fat_id/funnel_id/app_first_signed_in_launch_at
