@@ -102,10 +102,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
   </nav>
 
   <div class="info-banner">
-    <strong>Read-only.</strong> Every claim listed here was signed in BoldSign at a price that differs
+    <strong>Read-only.</strong> Every claim listed here was signed at a price that differs
     from the bid the homeowner accepted (or whose signed price could not be read). The platform halted:
     <code>contract_signed_at</code> stays empty, no platform fee was charged, no invoice was created,
-    and the claim stays at <code>awarded</code>. BoldSign still holds a fully signed document, so both
+    and the claim stays at <code>awarded</code>. The e-signature service still holds a fully signed document, so both
     parties may believe signing finished. This page has no void or re-issue action yet.
   </div>
 
@@ -137,7 +137,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
           <th>Difference</th>
           <th>Verdict</th>
           <th>Claim status</th>
-          <th>BoldSign document</th>
+          <th>Signed document id</th>
         </tr>
       </thead>
       <tbody id="rows"><tr><td colspan="8" class="loading">Loading&hellip;</td></tr></tbody>
@@ -149,7 +149,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 <script>
 /*
  * gh-2543 part 1 -- read-only list of claims the signed-price reconciliation
- * halted (docusign-webhook / price-verify.ts, gh-1314).
+ * halted (signing webhook, price-verify.ts, gh-1314).
  *
  * A halted claim has claims.signed_price_verdict = 'mismatch' (or 'unverified')
  * AND claims.contract_signed_at still NULL: the webhook returns before setting
@@ -213,7 +213,7 @@ function daysAgo(iso) {
 async function loadHalted() {
   var res = await sb
     .from('claims')
-    .select('id, status, property_address, property_state, is_test, selected_bid_amount, docusign_envelope_id, contract_signed_at, signed_contract_price, signed_price_raw, signed_price_verdict, signed_price_reason, signed_price_checked_at')
+    .select('id, status, property_address, property_state, is_test, selected_bid_amount, envelope:docusign_envelope_id, contract_signed_at, signed_contract_price, signed_price_raw, signed_price_verdict, signed_price_reason, signed_price_checked_at')
     .in('signed_price_verdict', ['mismatch', 'unverified'])
     .is('contract_signed_at', null)
     .order('signed_price_checked_at', { ascending: false });
@@ -264,7 +264,7 @@ function renderRows() {
       '<td>' + (delta === null ? '&mdash;' : '<span class="delta-neg">' + (delta > 0 ? '+' : '') + money(delta) + '</span>') + '</td>' +
       '<td>' + verdictBadge(r) + '</td>' +
       '<td>' + esc(r.status || '') + '</td>' +
-      '<td class="mono">' + (r.docusign_envelope_id ? esc(r.docusign_envelope_id) : '&mdash;') + '</td>' +
+      '<td class="mono">' + (r.envelope ? esc(r.envelope) : '&mdash;') + '</td>' +
       '</tr>';
   }).join('');
 }
