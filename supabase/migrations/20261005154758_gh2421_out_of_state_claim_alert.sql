@@ -1,3 +1,6 @@
+-- gh-1438 reconciliation (cto61, 2026-10-06T19:47:53Z): renamed from 20261003130000_gh2421_out_of_state_claim_alert.sql to the REAL applied ledger version.
+-- Ledger row: supabase_migrations.schema_migrations version=20261005154758 (SELECT-only read 2026-10-06). Content check: live prosrc md5 afbef471 and 5a7e84aa = file bodies; triggers and column present.
+-- Executable SQL body unchanged; only the filename version prefix and this banner changed.
 -- gh-2421 (D-344), PR B: alert Dustin when a claim has a property_state that
 -- is not IN and not on the blocked list (FL, LA, TX by default). Tier 3B
 -- (new trigger that drives an email-sending Edge Function). Requirement,

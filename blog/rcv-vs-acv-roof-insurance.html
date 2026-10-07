@@ -43,7 +43,7 @@
   max-width: 700px;
   margin: 0 auto;
   font-size: 1.1rem;
-  color: var(--slate);
+  color: var(--dark-gray);
 }
 .page-hero .meta {
   font-size: 0.9rem;
@@ -64,7 +64,7 @@
 }
 .article-intro p {
   font-size: 1.05rem;
-  color: var(--slate);
+  color: var(--dark-gray);
   line-height: 1.8;
 }
 .step {
@@ -87,11 +87,11 @@
   margin-bottom: var(--sp-3);
 }
 .step h2 { margin-bottom: var(--sp-3); margin-top: var(--sp-2); }
-.step p { color: var(--slate); margin-bottom: var(--sp-4); line-height: 1.8; }
+.step p { color: var(--dark-gray); margin-bottom: var(--sp-4); line-height: 1.8; }
 .step ul { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
-.step li { margin-bottom: var(--sp-3); color: var(--slate); line-height: 1.7; }
-.step li strong { color: var(--white); }
-.step em { color: var(--amber); font-style: italic; }
+.step li { margin-bottom: var(--sp-3); color: var(--dark-gray); line-height: 1.7; }
+.step li strong { color: var(--navy); }
+.step em { color: var(--link-on-light-deep, #7A4200); font-style: italic; }
 .highlight-box {
   background: rgba(245, 158, 11, 0.08);
   border-left: 4px solid #E07B00;
@@ -99,8 +99,8 @@
   margin: var(--sp-6) 0;
   border-radius: var(--radius-md);
 }
-.highlight-box strong { color: #fbbf24; }
-.highlight-box, .highlight-box p { color: var(--slate); line-height: 1.7; }
+.highlight-box strong { color: var(--navy); }
+.highlight-box, .highlight-box p { color: var(--dark-gray); line-height: 1.7; }
 .warning-box {
   background: rgba(239, 68, 68, 0.08);
   border-left: 4px solid var(--red);
@@ -108,8 +108,8 @@
   margin: var(--sp-6) 0;
   border-radius: var(--radius-md);
 }
-.warning-box strong { color: #f87171; }
-.warning-box, .warning-box p { color: var(--slate); line-height: 1.7; }
+.warning-box strong { color: var(--navy); }
+.warning-box, .warning-box p { color: var(--dark-gray); line-height: 1.7; }
 .cta-box {
   background: var(--navy-2);
   border: 1px solid rgba(224, 123, 0, 0.2);
@@ -136,14 +136,14 @@
 }
 .compare-table td {
   padding: var(--sp-3) var(--sp-4);
-  color: var(--slate);
+  color: var(--dark-gray);
   border-bottom: 1px solid rgba(255,255,255,0.05);
   line-height: 1.6;
 }
 .compare-table tr:last-child td { border-bottom: none; }
-.compare-table .label { color: var(--white); font-weight: 600; }
-.compare-table .acv { color: #f87171; }
-.compare-table .rcv { color: #4ade80; }
+.compare-table .label { color: var(--navy); font-weight: 600; }
+.compare-table .acv { color: var(--navy); }
+.compare-table .rcv { color: var(--navy); }
 .faq-section {
   background: var(--navy-2);
   padding: var(--sp-10) var(--sp-8);
@@ -151,7 +151,7 @@
   margin-top: var(--sp-12);
   border: 1px solid rgba(255,255,255,0.06);
 }
-.faq-section h2 { margin-bottom: var(--sp-8); text-align: center; }
+.faq-section h2 { margin-bottom: var(--sp-8); text-align: center; color: var(--white); }
 .faq-item {
   margin-bottom: var(--sp-6);
   border-bottom: 1px solid rgba(255,255,255,0.06);
@@ -190,13 +190,13 @@
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
-  color: var(--link-on-light);
+  color: var(--link-on-light, #A85C00);
   font-size: 0.9rem;
   font-weight: 500;
   margin-bottom: var(--sp-8);
   transition: color var(--duration) var(--ease);
 }
-.back-link:hover { color: var(--link-on-light-deep); text-decoration: none; }
+.back-link:hover { color: var(--link-on-light-deep, #7A4200); text-decoration: none; }
 @media (max-width: 768px) {
   .article-body { padding: 0 var(--sp-4); }
   .cta-box { padding: var(--sp-6) var(--sp-4); }
@@ -294,12 +294,12 @@
             <td>&minus;$1,500</td>
           </tr>
           <tr>
-            <td class="label" style="color:var(--amber)">Insurance pays</td>
+            <td class="label" style="color:var(--link-on-light-deep, #7A4200)">Insurance pays</td>
             <td class="acv" style="font-weight:700">$6,820</td>
             <td class="rcv" style="font-weight:700">$14,500*</td>
           </tr>
           <tr>
-            <td class="label" style="color:var(--amber)">You pay out of pocket</td>
+            <td class="label" style="color:var(--link-on-light-deep, #7A4200)">You pay out of pocket</td>
             <td class="acv" style="font-weight:700">$9,180</td>
             <td class="rcv" style="font-weight:700">$1,500*</td>
           </tr>
@@ -322,6 +322,7 @@
       <div class="warning-box">
         <strong>The catch:</strong> You must actually complete the repairs to receive the second payment. If you pocket the first check without repairing the roof, you lose the recoverable depreciation. And some policies have a deadline &mdash; typically 6 to 12 months from the date of loss &mdash; by which repairs must be completed and documented.
       </div>
+      <p>For a detailed breakdown of how recoverable depreciation works and how to make sure you collect it, see our guide on <a href="/blog/what-is-recoverable-depreciation-roofing.html">Recoverable Depreciation Explained (With Example Math)</a>.</p>
     </section>
 
     <!-- CTA Box 1 -->
@@ -385,7 +386,8 @@
     <div class="related-links" data-related="1">
       <h3>Keep Reading</h3>
       <ul>
-        <li><a href="/guides/how-to-file-property-damage-claim.html">How to File a Property Damage Insurance Claim</a></li>
+        <li><a href="/blog/how-long-does-roof-insurance-claim-take-indiana.html">How Long Does a Roof Claim Take in Indiana?</a></li>
+        <li><a href="/blog/what-is-recoverable-depreciation-roofing.html">Recoverable Depreciation on Roof Claims Explained</a></li>
         <li><a href="/blog/what-is-scope-of-loss-roofing.html">What "Scope of Loss" Actually Means on a Roof Claim</a></li>
         <li><a href="/blog/public-adjuster-vs-diy-roof-claim.html">What Does a Public Adjuster Do on a Roof Claim?</a></li>
       </ul>

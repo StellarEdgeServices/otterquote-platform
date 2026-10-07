@@ -1,3 +1,6 @@
+-- gh-1438 reconciliation (cto61, 2026-10-06T19:47:53Z): renamed from 20261003140000_gh2462_send_support_email_rate_limit.sql to the REAL applied ledger version.
+-- Ledger row: supabase_migrations.schema_migrations version=20261005150921 (SELECT-only read 2026-10-06). Content check: live rate_limit_config row send-support-email 20/60/600 enabled.
+-- Executable SQL body unchanged; only the filename version prefix and this banner changed.
 -- gh-2462 Q2: send-support-email now calls check_rate_limit() (per-IP synthetic UUID bucket,
 -- same design as check-email-exists, gh-1724 step 2). check_rate_limit() denies by default
 -- when a function has no rate_limit_config row, so the row ships in lockstep with the call.

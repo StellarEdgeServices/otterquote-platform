@@ -7,7 +7,7 @@
 
 import { assert, assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
-const STEM = "20260930140000_gh2310_gap2_referral_agents_internal_test_trigger";
+const STEM = "20261003014844_gh2310_gap2_referral_agents_internal_test_trigger";
 const FORWARD = `supabase/migrations/${STEM}.sql`;
 const ROLLBACK = `supabase/migrations_rollbacks/${STEM}_rollback.sql`;
 const PREFLIGHT = `supabase/migrations/${STEM}_pre-flight.md`;

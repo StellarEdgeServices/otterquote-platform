@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
 const MIG_DIR = path.join(ROOT, 'supabase/migrations');
-const MIG_NAME = '20261003141000_gh2472_referrals_insert_lockdown.sql';
+const MIG_NAME = '20261005151538_gh2472_referrals_insert_lockdown.sql';
 
 let passed = 0, failed = 0;
 function ok(cond, msg) { if (cond) { passed++; console.log('PASS: ' + msg); } else { failed++; console.log('FAIL: ' + msg); } }

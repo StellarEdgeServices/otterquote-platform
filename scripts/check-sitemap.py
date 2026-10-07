@@ -11,6 +11,8 @@ UNLISTED_OK = {"login.html", "contractors/index.html"}
 UNLISTED_OK.add("contractor-about.html")
 # Pages PR #2460 (gh-2450, T4) makes noindex. Remove these five entries when #2460 merges.
 UNLISTED_OK |= {"re-1.html", "re-3.html", "re-5.html", "contractor-auto-bids.html", "oqom-onboarding.html"}
+# Not an Otter Quotes page: the-ashes.html is served on stellaredgeservices.com (canonical there; otterquote.com/the-ashes 301s to it), so it does not belong in this sitemap.
+UNLISTED_OK.add("the-ashes.html")
 
 def read(p): return Path(p).read_text(encoding="utf-8", errors="replace")
 robots = read("robots.txt")

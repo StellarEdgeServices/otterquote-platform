@@ -20,7 +20,7 @@ function ok(cond, msg) { if (cond) { passed++; console.log('PASS: ' + msg); } el
 
 const dash = fs.readFileSync(path.join(ROOT, 'dashboard.html'), 'utf8');
 const reactUtils = fs.readFileSync(path.join(ROOT, 'react-app/app/(homeowner)/dashboard/utils.ts'), 'utf8');
-const migration = fs.readFileSync(path.join(ROOT, 'supabase/migrations/20261003010000_gh2421_homeowner_blocked_states.sql'), 'utf8');
+const migration = fs.readFileSync(path.join(ROOT, 'supabase/migrations/20261003020711_gh2421_homeowner_blocked_states.sql'), 'utf8');
 
 // ---- dashboard.html ----
 ok(!/property_state\s*!==\s*['"]IN['"]/.test(dash), "dashboard.html: the Indiana-only `property_state !== 'IN'` gate literal is gone");

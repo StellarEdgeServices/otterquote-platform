@@ -1,3 +1,6 @@
+-- gh-1438 reconciliation (cto61, 2026-10-06T19:47:53Z): renamed from 20261005170000_gh2479_quotes_homeowner_guard.sql to the REAL applied ledger version.
+-- Ledger row: supabase_migrations.schema_migrations version=20261005173827 (SELECT-only read 2026-10-06). Content check: live prosrc md5 c1f3ceb3 (referral_agents_guard_agent_type) = file body; quotes_guard_homeowner_columns later replaced twice.
+-- Executable SQL body unchanged; only the filename version prefix and this banner changed.
 -- Migration: 20261005170000_gh2479_quotes_homeowner_guard
 -- GitHub: #2479 (MONEY, SECURITY; CLOSE-REVIEW: FAIL comment 5998207363) and #2519 (quotes.total_price client-writable).
 -- Tier: 3B (new triggers on quotes and referral_agents). Protective only (R-134): it only removes capability.

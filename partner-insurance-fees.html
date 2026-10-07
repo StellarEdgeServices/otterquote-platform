@@ -115,8 +115,9 @@
   text-align: center;
   padding: var(--sp-16) 0 var(--sp-20);
 }
-.cta-bottom h2 { margin-bottom: var(--sp-4); color: var(--white); }
+.cta-bottom h2 { margin-bottom: var(--sp-4); color: var(--navy); }
 .cta-bottom p { max-width: 500px; margin: 0 auto var(--sp-8); font-size: 1.1rem; }
+.cta-bottom p { color: var(--dark-gray); }
 .cta-bottom-links {
   display: flex;
   flex-direction: column;
@@ -125,11 +126,11 @@
 }
 .cta-bottom-links .btn { margin-bottom: var(--sp-2); }
 .cta-bottom-links a.secondary-link {
-  color: var(--amber);
+  color: var(--link-on-light, #A85C00);
   text-decoration: none;
   font-size: 0.95rem;
 }
-.cta-bottom-links a.secondary-link:hover { text-decoration: underline; }
+.cta-bottom-links a.secondary-link:hover { color: var(--link-on-light-deep, #7A4200); text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -182,7 +183,7 @@
     <p>It takes about 2 minutes to create your free partner account.</p>
     <div class="cta-bottom-links">
       <a href="/partner-insurance.html#signup" class="btn btn-primary btn-lg">Become a Partner</a>
-      <p class="referral-fee-disclaimer" style="color: var(--slate, #94A3B8); font-size: 0.85rem; text-align: center; margin-top: 0.75rem; line-height: 1.5;">
+      <p class="referral-fee-disclaimer" style="color: var(--dark-gray, #3D4F60); font-size: 0.85rem; text-align: center; margin-top: 0.75rem; line-height: 1.5;">
         Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
       </p>
       <a href="/partner-insurance.html" class="secondary-link">&larr; Back to Insurance Agent Partners</a>
