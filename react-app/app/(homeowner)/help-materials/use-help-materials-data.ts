@@ -132,6 +132,7 @@ export async function saveMaterialSelection(
   claimId: string,
   update: ClaimMaterialUpdate,
 ): Promise<void> {
-  const { error } = await supabase.from('claims').update(update).eq('id', claimId);
+  const { data: upRows, error } = await supabase.from('claims').update(update).eq('id', claimId).select('id');
   if (error) throw new Error(error.message);
+  if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: claims (material selection)');
 }

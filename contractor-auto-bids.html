@@ -805,12 +805,14 @@
       }
 
       try {
-        const { error } = await sb
+        const { data: upRows, error } = await sb
           .from('contractors')
           .update(payload)
-          .eq('id', contractorRecord.id);
+          .eq('id', contractorRecord.id)
+          .select('id');
 
         if (error) throw error;
+        if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: contractors (auto-bid settings)');
 
         Object.assign(contractorRecord, payload);
 

@@ -244,7 +244,7 @@ export async function saveColorSelection({
   brand: string | null;
   colorName: string;
 }): Promise<void> {
-  const { error } = await supabase
+  const { data: upRows, error } = await supabase
     .from('claims')
     .update({
       color_brand: brand,
@@ -252,10 +252,14 @@ export async function saveColorSelection({
       color_selected_at: new Date().toISOString(),
     })
     .eq('id', claimId)
-    .eq('homeowner_id', userId);
+    .eq('homeowner_id', userId)
+    .select('id');
 
   if (error) {
     throw new Error('Failed to save color selection: ' + error.message);
+  }
+  if (!Array.isArray(upRows) || upRows.length === 0) {
+    throw new Error('Failed to save color selection: update_zero_rows');
   }
 }
 

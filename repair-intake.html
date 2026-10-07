@@ -1291,7 +1291,7 @@
                     return;
                 } else {
                     // Update existing claim with repair data
-                    const { error: updateErr } = await sb
+                    const { data: upRows, error: updateErr } = await sb
                         .from('claims')
                         .update({
                             job_type: 'repair',
@@ -1302,9 +1302,11 @@
                             homeowner_notes: repairNotes
                         })
                         .eq('id', claimId)
-                        .eq('user_id', user.id);
+                        .eq('user_id', user.id)
+                        .select('id');
 
                     if (updateErr) throw new Error(updateErr.message);
+                    if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: claims (repair intake)');
                 }
 
                 // ── Upload photos to Supabase Storage ──────────────────────

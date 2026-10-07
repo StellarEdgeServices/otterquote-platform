@@ -1085,7 +1085,7 @@
           button.textContent = 'Saving...';
 
           // Save color to claims table
-          const { error } = await sb
+          const { data: upRows, error } = await sb
             .from('claims')
             .update({
               color_brand: this.brand,
@@ -1093,9 +1093,11 @@
               color_selected_at: new Date().toISOString()
             })
             .eq('id', this.claimId)
-            .eq('homeowner_id', this.userId);
+            .eq('homeowner_id', this.userId)
+            .select('id');
 
           if (error) throw error;
+          if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: claims (color selection)');
 
           // Show success state
           this.showSuccessState();

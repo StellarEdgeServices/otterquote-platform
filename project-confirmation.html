@@ -2103,12 +2103,14 @@
         const payload = buildPayload();
 
         // 1. Save project_confirmation JSONB to claims table
-        const { error: saveError } = await sb
+        const { data: upRows, error: saveError } = await sb
           .from('claims')
           .update({ project_confirmation: payload })
-          .eq('id', state.claimId);
+          .eq('id', state.claimId)
+          .select('id');
 
         if (saveError) throw new Error('Failed to save project confirmation: ' + saveError.message);
+        if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('Failed to save project confirmation: update_zero_rows');
 
         // 2. Create DocuSign envelope (non-fatal)
         submitBtn.textContent = 'Sending for signature...';

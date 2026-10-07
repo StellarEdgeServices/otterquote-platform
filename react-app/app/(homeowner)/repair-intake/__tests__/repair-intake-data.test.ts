@@ -28,6 +28,7 @@ interface SetupOpts {
   newClaimId?: string;
   insertError?: { message: string } | null;
   updateError?: { message: string } | null;
+  zeroRows?: boolean; // gh-2105: RLS filters the match to zero rows -> {data:[], error:null}
   uploadError?: { message: string } | null;
 }
 
@@ -37,6 +38,7 @@ function setup(opts: SetupOpts = {}) {
     newClaimId = 'new-claim',
     insertError = null,
     updateError = null,
+    zeroRows = false,
     uploadError = null,
   } = opts;
 
@@ -77,8 +79,12 @@ function setup(opts: SetupOpts = {}) {
           rec.updates.push(payload);
           const chain: Record<string, unknown> = {};
           chain.eq = () => chain;
+          chain.select = () => chain;
           chain.then = (resolve: (v: unknown) => unknown) =>
-            Promise.resolve({ error: updateError }).then(resolve);
+            Promise.resolve({
+              data: updateError ? null : zeroRows ? [] : [{ id: 'c-existing' }],
+              error: updateError,
+            }).then(resolve);
           return chain;
         },
       };
@@ -188,6 +194,14 @@ describe('(d) submitRepairIntake — claim write + photo upload', () => {
     setup({ updateError: { message: 'rls denied' } });
     await expect(submitRepairIntake(baseSub({ claimId: 'c-existing' }))).rejects.toThrow(
       /rls denied/,
+    );
+  });
+
+  // gh-2105 negative control: RLS-denied row -> error:null + 0 rows must throw, not report success.
+  it('claim update matching zero rows (RLS) → throws update_zero_rows', async () => {
+    setup({ zeroRows: true });
+    await expect(submitRepairIntake(baseSub({ claimId: 'c-existing' }))).rejects.toThrow(
+      /update_zero_rows/,
     );
   });
 });

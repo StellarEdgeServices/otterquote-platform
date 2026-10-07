@@ -1521,12 +1521,14 @@
                 }
 
                 // Save to database
-                const { error } = await sb
+                const { data: upRows, error } = await sb
                     .from('claims')
                     .update(updateData)
-                    .eq('id', claimRow.id);
+                    .eq('id', claimRow.id)
+                    .select('id');
 
                 if (error) throw error;
+                if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: claims (material selection)');
 
                 // Redirect with success message
                 window.location.href = 'dashboard.html?material=saved';

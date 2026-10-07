@@ -87,28 +87,28 @@ BASELINE: dict[str, int] = {
     "admin-referrals.html": 0,  # gh-2105 batch 12: 3 fixed (a), 1 comment reworded
     "admin-template-review.html": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
     "bids.html": 2,
-    "color-selection.html": 1,
+    "color-selection.html": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "contract-signing.html": 0,  # gh-2105 batch 11: log-only stamps
-    "contractor-auto-bids.html": 1,
+    "contractor-auto-bids.html": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "contractor-bid-form.html": 0,  # gh-2105 batch 11: decision a, money
     "contractor-dashboard.html": 0,  # gh-2105 batch 12: 3 fixed (a), 1 annotated (b)
-    "contractor-pre-approval.html": 2,
+    "contractor-pre-approval.html": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "contractor-profile.html": 1,
     "contractor-settings.html": 0,  # gh-2105 batch 12: 8 fixed (a), 1 annotated (b)
     "dashboard.html": 0,  # gh-2105 batch 12: 2 log-only, 1 fixed (a), 1 already selected (comment reworded)
     "help-estimate.html": 1,
-    "help-materials.html": 1,
+    "help-materials.html": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "help-measurements.html": 1,
     "js/auth.js": 2,
     "js/contract-template-validation.js": 0,  # gh-2105 batch 7: fixed (see PR body)
     "js/services.js": 2,
     "js/video-upload-handler.js": 1,
-    "project-confirmation.html": 1,
+    "project-confirmation.html": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "project-info-acv.html": 2,
     "project-info-cash.html": 1,
     "project-info-rcv.html": 2,
     "react-app/app/(homeowner)/bids/actions.ts": 1,
-    "react-app/app/(homeowner)/color-selection/use-color-selection-data.ts": 1,
+    "react-app/app/(homeowner)/color-selection/use-color-selection-data.ts": 0,  # gh-2105 batch 13: page/JS fixed (a)
     # gh-2105 batch 4: fixed both sites (recordHomeownerSigned's two
     # quotes.homeowner_signed_at writes -- decision a, LEGAL path, see the
     # batch-4 PR body). Lowered 2->0, following batches 1-3's precedent of
@@ -119,30 +119,30 @@ BASELINE: dict[str, int] = {
     # full grep enumeration + per-site decisions). Lowered 3->0.
     "react-app/app/(homeowner)/dashboard/actions.ts": 0,
     "react-app/app/(homeowner)/help-estimate/actions.ts": 1,
-    "react-app/app/(homeowner)/help-materials/use-help-materials-data.ts": 1,
+    "react-app/app/(homeowner)/help-materials/use-help-materials-data.ts": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/(homeowner)/help-measurements/use-help-measurements-data.ts": 1,
-    "react-app/app/(homeowner)/project-confirmation/use-project-confirmation-data.ts": 1,
-    "react-app/app/(homeowner)/repair-intake/use-repair-intake-data.ts": 2,
+    "react-app/app/(homeowner)/project-confirmation/use-project-confirmation-data.ts": 0,  # gh-2105 batch 13: page/JS fixed (a)
+    "react-app/app/(homeowner)/repair-intake/use-repair-intake-data.ts": 1,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/admin/contractors/page.tsx": 1,
     "react-app/app/admin/fee-config/page.tsx": 0,
     "react-app/app/admin/referrals/page.tsx": 0,  # gh-2105 batch 12: 3 fixed (a), 3 comment mentions reworded
     "react-app/app/admin/referrals/utils.ts": 0,  # gh-2105 batch 12: comment mention reworded
     "react-app/app/admin/template-review/page.tsx": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
-    "react-app/app/contractor/auto-bids/page.tsx": 1,
+    "react-app/app/contractor/auto-bids/page.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/bid/[claimId]/bid-form.tsx": 0,
     "react-app/app/contractor/dashboard/page.tsx": 2,
-    "react-app/app/contractor/pre-approval/page.tsx": 2,
-    "react-app/app/contractor/profile/ContractTemplates.tsx": 2,
-    "react-app/app/contractor/profile/PcTemplates.tsx": 1,
-    "react-app/app/contractor/profile/d199-validation.tsx": 1,
+    "react-app/app/contractor/pre-approval/page.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
+    "react-app/app/contractor/profile/ContractTemplates.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
+    "react-app/app/contractor/profile/PcTemplates.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
+    "react-app/app/contractor/profile/d199-validation.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/settings/StripePaymentMethods.tsx": 1,
-    "react-app/app/contractor/settings/page.tsx": 1,
+    "react-app/app/contractor/settings/page.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/settings/utils.ts": 1,
     "react-app/app/hooks/use-notification-count.ts": 1,
     "react-app/app/lib/partner-record.ts": 1,
     "react-app/app/lib/services.ts": 2,
     "react-app/app/trade-selector/page.tsx": 1,
-    "repair-intake.html": 2,
+    "repair-intake.html": 1,  # gh-2105 batch 13: page/JS fixed (a)
     "supabase/functions/admin-contractor-action/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     "supabase/functions/approve-warranty-drift/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     "supabase/functions/check-rate-limits/index.ts": 1,
