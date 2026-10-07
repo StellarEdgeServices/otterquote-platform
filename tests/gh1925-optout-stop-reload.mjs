@@ -22,17 +22,17 @@ const AT = 'sb-otterquote-at=' + encodeURIComponent('h.' + b64u({ sub: UID }) + 
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).filter((s) => s.includes('oq-ad-optout-btn'));
 ok(scripts.length === 1, 'privacy.html has exactly one inline script wiring the section 12 button');
 
-function run({ jar = '', withClarity = true, fetchImpl } = {}) {
-  const log = []; const timers = []; let listener = null;
+function run({ jar = '', withClarity = true, fetchImpl, load = false } = {}) {
+  const log = []; const timers = []; const sent = []; let listener = null;
   const btn = { disabled: false, addEventListener(t, fn) { if (t === 'click') listener = fn; } };
   const document = { get cookie() { return jar; }, set cookie(v) { log.push('cookie'); }, getElementById: (id) => (id === 'oq-ad-optout-btn' ? btn : null) };
-  const win = { location: { hostname: 'otterquote.com', reload: () => log.push('reload') } };
+  const win = { location: { hostname: 'otterquote.com', reload: () => { log.push('reload'); sent.forEach((q) => { if (!q.keepalive) q.cancelled = true; }); } } };
   if (withClarity) win.clarity = (...a) => log.push('clarity:' + a.join(','));
-  const ctx = { window: win, document, navigator: {}, CONFIG: { SUPABASE_URL: 'https://x.supabase.co', SUPABASE_ANON: 'k' }, fetch: (u, o) => { log.push('patch'); return fetchImpl(u, o); },
+  const ctx = { window: win, document, navigator: {}, CONFIG: { SUPABASE_URL: 'https://x.supabase.co', SUPABASE_ANON: 'k' }, fetch: (u, o) => { log.push('patch'); sent.push({ keepalive: !!(o && o.keepalive), cancelled: false, method: o && o.method }); return fetchImpl(u, o); },
     atob: (s) => Buffer.from(s, 'base64').toString('binary'), decodeURIComponent, encodeURIComponent, JSON, String, Date, RegExp, Promise, console: { warn() {} },
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; } };
   vm.createContext(ctx); vm.runInContext(scripts[0] || '', ctx);
-  return { btn, win, log, timers, click: () => listener && listener() };
+  return { btn, win, log, timers, sent, click: () => listener && listener() };
 }
 const tick = () => new Promise((r) => setTimeout(r, 20));
 const count = (a, x) => a.filter((e) => e === x).length;
@@ -75,6 +75,30 @@ const count = (a, x) => a.filter((e) => e === x).length;
   const r = run({ jar: AT, fetchImpl: () => Promise.reject(new Error('net')) });
   r.click(); await tick();
   ok(count(r.log, 'reload') === 1 && r.win['ga-disable-G-D1Y1TLGEFY'] === true, 'PATCH rejects: tags stopped and one reload');
+}
+// 6. keepalive: every profile PATCH (first and 23514 retry) is sent with keepalive:true, and a cap reload cannot cancel the write
+{
+  const r = run({ jar: AT, fetchImpl: () => new Promise(() => {}) });
+  r.click(); await tick(); r.timers.forEach((t) => t.fn());
+  ok(r.sent.length === 1 && r.sent[0].method === 'PATCH' && r.sent[0].keepalive === true, 'keepalive: the profile PATCH carries keepalive:true');
+  ok(count(r.log, 'reload') === 1 && r.sent.every((q) => !q.cancelled), 'cap reload with the PATCH in flight: the write is NOT cancelled by the reload');
+}
+{
+  let n = 0;
+  const r = run({ jar: AT, fetchImpl: () => Promise.resolve(++n === 1 ? { ok: false, status: 400, json: () => Promise.resolve({ code: '23514' }) } : new Promise(() => {})) });
+  r.click(); await tick(); r.timers.forEach((t) => t.fn());
+  ok(r.sent.length === 2 && r.sent.every((q) => q.keepalive === true), '23514 retry: both the first PATCH and the retry carry keepalive:true (got ' + r.sent.length + ' sent)');
+  ok(r.sent.every((q) => !q.cancelled) && count(r.log, 'reload') === 1, '23514 retry: reload while the retry is in flight does not cancel either write; one reload');
+}
+// 7. a visitor who does not press: nothing set, nothing stopped, no reload, no write, button enabled
+{
+  const r = run({ jar: AT, fetchImpl: () => Promise.resolve({ ok: true }) }); await tick();
+  ok(r.log.length === 0 && r.win['ga-disable-G-D1Y1TLGEFY'] === undefined && r.btn.disabled === false && r.timers.length === 0, 'no press: no cookie, no clarity stop, no GA4 flag, no PATCH, no reload, no timer, button enabled');
+}
+// 8. after the reload (cookie present on load): button disabled, nothing stopped again, no reload loop, no write
+{
+  const r = run({ jar: 'oq_ad_optout=1; ' + AT, fetchImpl: () => Promise.resolve({ ok: true }) }); await tick();
+  ok(r.btn.disabled === true && r.log.length === 0 && r.win['ga-disable-G-D1Y1TLGEFY'] === undefined && r.timers.length === 0, 'after reload: button disabled, no flag, no clarity call, no reload, no PATCH');
 }
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
