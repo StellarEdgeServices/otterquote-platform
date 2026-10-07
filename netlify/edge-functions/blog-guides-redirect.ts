@@ -125,6 +125,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/roofers-backed-up-after-storm.html',
   '/guides/online-roof-bids-no-salesperson':
     '/guides/online-roof-bids-no-salesperson.html',
+  '/guides/hail-damaged-windows-gutters-claim':
+    '/guides/hail-damaged-windows-gutters-claim.html',
 
   // CRO RUN 52 / #2423: generated /locations/ pages -- the index.html twin 301s to the
   // trailing-slash URL (same class as /blog/index.html above).
