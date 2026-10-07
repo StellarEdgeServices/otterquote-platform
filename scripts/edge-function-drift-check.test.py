@@ -52,7 +52,7 @@ def check(label, actual, expected):
 
 def write(root: pathlib.Path, slug: str, name: str, content: str):
     d = root / slug
-    d.mkdir(parents=True, exist_ok=True)
+    (d / name).parent.mkdir(parents=True, exist_ok=True)
     (d / name).write_text(content, encoding="utf-8")
 
 
@@ -100,9 +100,41 @@ def build_fixtures(repo: pathlib.Path, deployed: pathlib.Path):
     write(repo, "brand-new-function", "index.ts", "serve(() => new Response('new'))\n")
 
     # --- 8. A file present in main but absent from the deploy ---------------
-    write(repo, "docusign-webhook", "index.ts", same)
-    write(deployed, "docusign-webhook", "index.ts", same)
+    # gh-1295 (RUN 62): verify.ts is IMPORTED by index.ts here, as in production, so the
+    # bundler dropping it is real drift. (Before RUN 62 this fixture's index.ts did not
+    # import it, which the detector could not tell apart from an unreferenced file.)
+    wh = "import { verify } from './verify.ts'\nverify()\n"
+    write(repo, "docusign-webhook", "index.ts", wh)
+    write(deployed, "docusign-webhook", "index.ts", wh)
     write(repo, "docusign-webhook", "verify.ts", "export const verify = () => true;\n")
+
+    # --- 9. gh-1295 RUN 62: files nothing reachable from index.ts imports -----
+    # meta-leadgen-webhook/email-footer.ts and send-partner-onboarding/
+    # claim-stage-sql-proof.ts (imported only by their tests) and
+    # validate-contract-template/__fixtures__/*.pdf (read only by a test) are never
+    # bundled; scheduled run 37652054968 flagged all three functions DRIFTED.
+    imp = "import { a } from './used.ts'\na()\n"
+    write(repo, "unref-ok", "index.ts", imp)
+    write(deployed, "unref-ok", "index.ts", imp)
+    write(repo, "unref-ok", "used.ts", "export const a = () => 1\n")
+    write(deployed, "unref-ok", "used.ts", "export const a = () => 1\n")
+    write(repo, "unref-ok", "email-footer.ts", "export const f = 'x'\n")
+    write(repo, "unref-ok", "email-footer.test.ts", "import { f } from './email-footer.ts'\n")
+    write(repo, "unref-ok", "__fixtures__/ref.pdf", "%PDF-fixture\n")
+    # transitive: index -> used.ts -> deep.ts, deep.ts dropped from the deploy = real drift
+    write(repo, "transitive-drop", "index.ts", imp)
+    write(deployed, "transitive-drop", "index.ts", imp)
+    write(repo, "transitive-drop", "used.ts", "import { d } from './deep.ts'\nexport const a = d\n")
+    write(deployed, "transitive-drop", "used.ts", "import { d } from './deep.ts'\nexport const a = d\n")
+    write(repo, "transitive-drop", "deep.ts", "export const d = () => 2\n")
+    # no entrypoint at all: nothing may be excused
+    write(repo, "no-entry", "a.ts", "export const a = 1\n")
+    write(deployed, "no-entry", "b.ts", "export const b = 1\n")
+    # an unreferenced file that EXISTS in the deploy but differs is still `differs`
+    write(repo, "unref-differs", "index.ts", same)
+    write(deployed, "unref-differs", "index.ts", same)
+    write(repo, "unref-differs", "orphan.ts", "export const o = 1\n")
+    write(deployed, "unref-differs", "orphan.ts", "export const o = 2\n")
 
 
 def verdicts_of(report):
@@ -137,7 +169,19 @@ def main():
         check("docusign-webhook (verify.ts missing from deploy)",
               v["docusign-webhook"], drift.DRIFTED)
 
+        check("unref-ok (unreferenced src + test + fixture not bundled)", v["unref-ok"], drift.IDENTICAL)
+        check("transitive-drop (reachable via used.ts, absent from deploy)", v["transitive-drop"], drift.DRIFTED)
+        check("no-entry (no entrypoint: excuse nothing)", v["no-entry"], drift.DRIFTED)
+        check("unref-differs (unreferenced but deployed and different)", v["unref-differs"], drift.DRIFTED)
+
         print("\nPer-file detail")
+        row = next(r for r in report["functions"] if r["slug"] == "unref-ok")
+        statuses = {f["path"]: f["status"] for f in row["files"]}
+        check("unref-ok email-footer.ts", statuses["email-footer.ts"], "unreferenced_not_bundled")
+        check("unref-ok __fixtures__/ref.pdf", statuses["__fixtures__/ref.pdf"], "test_not_bundled")
+        row = next(r for r in report["functions"] if r["slug"] == "transitive-drop")
+        statuses = {f["path"]: f["status"] for f in row["files"]}
+        check("transitive-drop deep.ts", statuses["deep.ts"], "missing_in_deploy")
         row = next(r for r in report["functions"] if r["slug"] == "send-partner-status-email")
         statuses = {f["path"]: f["status"] for f in row["files"]}
         check("send-partner-status-email index.ts unchanged", statuses["index.ts"], "same")

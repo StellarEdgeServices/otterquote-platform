@@ -94,6 +94,8 @@ import argparse
 import hashlib
 import json
 import os
+import posixpath
+import re
 import shutil
 import stat
 import subprocess
@@ -153,16 +155,60 @@ FAILING_VERDICTS = {DRIFTED, DEPLOYED_NOT_IN_REPO, IN_REPO_NEVER_DEPLOYED}
 # The row is still PRINTED, only its verdict changes -- the same tightening
 # credential-sweep.py took on the sbp_ prefix (a narrowing that cannot hide a real
 # finding, because a test file that genuinely differs still reports `differs`).
-NON_DRIFT_STATUSES = frozenset({"same", "test_not_bundled"})
+NON_DRIFT_STATUSES = frozenset({"same", "test_not_bundled", "unreferenced_not_bundled"})
 
 
 def is_test_path(rel: str) -> bool:
-    """True for a repo file that is a test and therefore never deployed."""
-    name = rel.rsplit("/", 1)[-1]
+    """True for a repo file that is a test (or a test fixture) and therefore never deployed."""
+    parts = rel.split("/")
+    name = parts[-1]
     return (
         name.endswith((".test.ts", ".test.js", ".test.tsx", "_test.ts"))
         or name.startswith("test_")
+        or "__fixtures__" in parts[:-1]
     )
+
+
+# gh-1295 (CTO RUN 62, cto-2026-10-07T17:47:04Z): the bundler ships what the entrypoint
+# imports, so a non-test file that NOTHING reachable from the entrypoint imports is never
+# deployed either -- exactly like a test file. Measured on scheduled run 37652054968
+# (2026-10-07): meta-leadgen-webhook/email-footer.ts and send-partner-onboarding/
+# claim-stage-sql-proof.ts are imported only by their *.test.ts files, so they read
+# `missing_in_deploy` and flipped two healthy functions to DRIFTED on every run.
+# What this does NOT excuse: a file the entrypoint DOES reach (directly or through other
+# files) but the deploy lacks -- the docusign-webhook/verify.ts shape -- stays
+# `missing_in_deploy` and stays DRIFTED. When there is no entrypoint to walk from, nothing
+# is excused (fail toward reporting drift).
+_REL_IMPORT = re.compile(
+    r"""(?:\bimport|\bexport)\s+(?:[^'"();]*?\bfrom\s*)?["'](\.{1,2}/[^"']+)["']"""
+    r"""|\bimport\(\s*["'](\.{1,2}/[^"']+)["']\s*\)"""
+)
+_CODE_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts")
+_ENTRYPOINTS = ("index.ts", "index.tsx", "index.js", "index.mjs", "mod.ts")
+
+
+def reachable_from_entrypoint(repo_dir: Path, rels) -> set:
+    """Repo-relative POSIX paths reachable from the function's entrypoint through
+    relative imports of non-test code files. Empty set when there is no entrypoint."""
+    present = set(rels)
+    queue = [e for e in _ENTRYPOINTS if e in present]
+    seen = set(queue)
+    while queue:
+        cur = queue.pop()
+        if not cur.endswith(_CODE_SUFFIXES):
+            continue
+        try:
+            src = (repo_dir / cur).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for m in _REL_IMPORT.finditer(src):
+            spec = m.group(1) or m.group(2)
+            tgt = posixpath.normpath(posixpath.join(posixpath.dirname(cur), spec))
+            if tgt.startswith("..") or tgt not in present or tgt in seen or is_test_path(tgt):
+                continue
+            seen.add(tgt)
+            queue.append(tgt)
+    return seen
 
 
 def sha256_file(path: Path) -> str:
@@ -196,6 +242,7 @@ def compare_function(slug: str, repo_dir: Path, deployed_dir: Path) -> dict:
     repo_hashes = hash_tree(repo_dir)
     deployed_hashes = hash_tree(deployed_dir)
 
+    reachable = reachable_from_entrypoint(repo_dir, repo_hashes)
     files = []
     for rel in sorted(set(repo_hashes) | set(deployed_hashes)):
         repo_sha = repo_hashes.get(rel)
@@ -203,9 +250,12 @@ def compare_function(slug: str, repo_dir: Path, deployed_dir: Path) -> dict:
         if repo_sha is None:
             status = "missing_in_repo"
         elif deployed_sha is None:
-            status = (
-                "test_not_bundled" if is_test_path(rel) else "missing_in_deploy"
-            )
+            if is_test_path(rel):
+                status = "test_not_bundled"
+            elif reachable and rel.endswith(_CODE_SUFFIXES) and rel not in reachable:
+                status = "unreferenced_not_bundled"
+            else:
+                status = "missing_in_deploy"
         elif repo_sha == deployed_sha:
             status = "same"
         else:
