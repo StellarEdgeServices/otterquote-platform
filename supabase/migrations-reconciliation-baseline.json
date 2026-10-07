@@ -9,7 +9,7 @@
     "repo_migrations_scan": "filesystem scan of supabase/migrations/ on this branch (excludes _rollback.sql and _pre-flight.md), de-duplicated -- 192 distinct version prefixes"
   },
   "counts": {
-    "applied_versions_total": 213,
+    "applied_versions_total": 215,
     "applied_no_repo_file": 48,
     "repo_file_no_applied": 27
   },
@@ -226,7 +226,9 @@
     "20261005173827",
     "20261005203540",
     "20261006170000",
-    "20261006171747"
+    "20261006171747",
+    "20261007194749",
+    "20261007201941"
   ],
   "applied_no_repo_file_versions": [
     "20260423184557",
@@ -313,6 +315,7 @@
     "This is a point-in-time snapshot (2026-09-29T20:55Z, regenerated after merging origin/main, Marty A 5896036859) superseding all earlier baselines in this issue's history. Counts: applied 199, applied_no_repo_file 63, repo_file_no_applied 39.",
     "Point-in-time snapshot (2026-10-05T20:57Z, gh-1438 part 4) superseding the 2026-09-29 baseline. Counts: applied 211, applied_no_repo_file 58, repo_file_no_applied 36 (was 199 / 63 / 39 at 2026-09-29, and 211 / 75 / 50 on origin/main at f97f8f12 before this branch).",
     "The gh2154_p3 pair (20260924200316_..._partner_new_alert_trigger, 20260925131429_..._notifications_referral_agent_id) has a same-name content-equal ledger row each (20260925180241, 20260925180145) but is deliberately NOT renamed here: supabase/tests/gh2154_p3_migration_order.test.ts asserts the old sort order and must be rewritten with the rename. gh974/gh972 differ from their ledger rows and need a statement-body diff.",
-    "gh-1438 baseline reconcile (cto61, 2026-10-06T19:47:53Z): ten applied migrations whose files carried the author's version (20260930130000, 20260930140000, 20261003010000, 20261003011500, 20261003130000, 20261003140000, 20261003141000, 20261003193000, 20261005170000, 20261005200000) are renamed, with their pre-flight and rollback siblings, to the ledger versions production recorded (20261003014821, 20261003014844, 20261003020711, 20261003020713, 20261005154758, 20261005150921, 20261005151538, 20261005151842, 20261005173827, 20261005203540), and 20261006170000 (gh2519, file version equals ledger version) is added to applied_versions. Content evidence per file is in the PR body; three of the ten (20261003193000, 20261005170000, 20261005200000) are verified by the live body of the function each file alone defines, because the ledger statements column is NULL for them and their other functions were later replaced. Counts: applied 213, applied_no_repo_file 48, repo_file_no_applied 27 (was 212 / 58 / 38 on main 9380a3afd78d)."
+    "gh-1438 baseline reconcile (cto61, 2026-10-06T19:47:53Z): ten applied migrations whose files carried the author's version (20260930130000, 20260930140000, 20261003010000, 20261003011500, 20261003130000, 20261003140000, 20261003141000, 20261003193000, 20261005170000, 20261005200000) are renamed, with their pre-flight and rollback siblings, to the ledger versions production recorded (20261003014821, 20261003014844, 20261003020711, 20261003020713, 20261005154758, 20261005150921, 20261005151538, 20261005151842, 20261005173827, 20261005203540), and 20261006170000 (gh2519, file version equals ledger version) is added to applied_versions. Content evidence per file is in the PR body; three of the ten (20261003193000, 20261005170000, 20261005200000) are verified by the live body of the function each file alone defines, because the ledger statements column is NULL for them and their other functions were later replaced. Counts: applied 213, applied_no_repo_file 48, repo_file_no_applied 27 (was 212 / 58 / 38 on main 9380a3afd78d).",
+    "cto62 (2026-10-07T20:19:40Z): 20261007194749 (gh2443_cpa_reattest_clear), 20261007201941 (gh2431_profiles_address_state_default) applied to production under R-097 and added to applied_versions with their filed copies; applied_versions_total is now 215. applied_no_repo_file and repo_file_no_applied are unchanged (each new ledger row has its repo file)."
   ]
 }
