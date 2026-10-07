@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Hail Damage Found Months Later? Next Steps | Otter Quotes</title>
+<meta name="description" content="Found hail damage months after the storm? What a shingle maker says about damage that shows late, how to find the storm date, and how to get bids.">
+<link rel="canonical" href="https://otterquote.com/guides/hail-damage-found-months-later.html">
+<meta property="og:title" content="Hail Damage Found Months Later? Next Steps | Otter Quotes">
+<meta property="og:description" content="Found hail damage months after the storm? What a shingle maker says about damage that shows late, how to find the storm date, and how to get bids.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/hail-damage-found-months-later.html">
+<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Otter Quotes logo">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-10-07">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds (same values as PR #2499; defined here until it merges) */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol, .step ul { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+.definition-table td { color: var(--dark-gray); border-bottom: 1px solid #D9DEE7; }
+.definition-table td:first-child { color: var(--navy); }
+.definition-table tr:last-child td { border-bottom: none; }
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>I Found Hail Damage Months After the Storm. What Now?</h1>
+    <p class="meta">Otter Quotes &middot; Updated October 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>Hail damage does not always show up right away. GAF's technical bulletin on hail says outward damage &ldquo;may not be apparent until months or years later.&rdquo; This guide covers what to do next: find the storm date, get bids on the work, and ask your insurer what your policy says. This guide states no deadline.</p>
+    </div>
+
+    <section class="step">
+      <h2>Can hail damage really show up months after the storm?</h2>
+      <p>Yes. GAF, a shingle manufacturer, says in its technical bulletin on hail damage that &ldquo;Outward damage may not be apparent until months or years later.&rdquo; The bulletin adds that hidden damage to the shingle mat can &ldquo;manifest and develop into cracks and tears at a later point in time&rdquo; (<a href="https://www.gaf.com/en-us/document-library/documents/technical-bulletins-&amp;-notes/tab-r-108-damage-to-shingles-caused-by-hail.pdf" target="_blank" rel="noopener">GAF TAB-R-108</a>).</p>
+      <p>So a roof that looked fine after the storm can still have hail damage that becomes visible later. It can also have other marks that are not from hail, which is why a written description from someone who has looked at the roof is worth asking for.</p>
+    </section>
+
+    <section class="step">
+      <h2>How can I tell hail damage from other marks?</h2>
+      <p>IBHS, a nonprofit research group, publishes a short guide called &ldquo;Is It Hail Damage?&rdquo; It says spatter marks or impact indentations on other items around the building are good indicators that hail has occurred, and that you may find marks made by installation, man-made damage or natural weathering that hail did not cause (<a href="https://ibhs.org/wp-content/uploads/member_docs/Is-It-Hail-Damage-Brochure_IBHS.pdf" target="_blank" rel="noopener">IBHS</a>).</p>
+      <p>The guide sorts what it shows into three groups:</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr><th>Group</th><th>What IBHS lists</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Marks on other items</td><td>Dents in metal flashing and in air conditioner unit fins. Spatter, which IBHS says is not damage but appears when hail knocks oxidation or dirt off metal surfaces.</td></tr>
+            <tr><td>On the shingles</td><td>Impacts in a random pattern. IBHS says a bruise can usually be felt on real hail impacts on shingles.</td></tr>
+            <tr><td>Look-alikes</td><td>General granule loss common on shingle edges, blisters, mechanical marks and a manufacturer defect.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Otter Quotes does not assess roofs. Stay off a damaged roof, and ask a roofer to write down what they see and where.</p>
+    </section>
+
+    <section class="step">
+      <h2>How do I find out which storm it was?</h2>
+      <p>NOAA's Storm Events Database lists reported hail by county and date, and the Storm Prediction Center posts daily pages of reports. Search your county for the months before you found the damage. A report describes a place and a time, not your roof.</p>
+      <p>Our guide on <a href="/guides/prove-date-of-loss-hail.html">how to find the date hail hit your house</a> walks through the steps. Two limits are worth knowing. NOAA's search page says events take 3 months to appear in the database (<a href="https://www.ncei.noaa.gov/access/storm-events-database/search" target="_blank" rel="noopener">NOAA</a>). The Storm Prediction Center says its report list is preliminary and likely does not contain all severe weather reports for any particular event (<a href="https://www.spc.noaa.gov/faq/" target="_blank" rel="noopener">SPC FAQ</a>).</p>
+    </section>
+
+    <section class="step">
+      <h2>Is it too late to file an insurance claim?</h2>
+      <p>This guide cannot say. Policies set their own notice and filing rules, and which date a claim uses is a question for your policy and your insurer. This guide states no deadline. Read your policy or ask your insurer.</p>
+      <p>Questions you can ask your insurer:</p>
+      <ul>
+        <li>What does my policy say about notice, and in what form should it be given?</li>
+        <li>What does my policy say about protecting the property from further damage?</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>What can I do right now?</h2>
+      <p>You can protect the house, write down what you found, look up the storm dates, get written bids on the work and read your policy. The list below covers those five steps. They are not in order of importance, and none of them has to wait for another. Where a source or one of our guides covers a step, the step links to it.</p>
+      <ul>
+        <li><strong>Protect the house.</strong> IBHS's guide says to make temporary repairs to prevent further damage (<a href="https://ibhs.org/wp-content/uploads/member_docs/Is-It-Hail-Damage-Brochure_IBHS.pdf" target="_blank" rel="noopener">IBHS</a>). Stay off the roof and ask a roofer about a temporary cover.</li>
+        <li><strong>Write down what you found.</strong> Note what you saw, where, and the date you saw it, for your own records.</li>
+        <li><strong>Look up the storm dates.</strong> Use the NOAA steps in our <a href="/guides/prove-date-of-loss-hail.html">date-of-hail guide</a>.</li>
+        <li><strong>Get written bids.</strong> Give every contractor the same description of the work. Our <a href="/guides/roof-bid-comparison-worksheet.html">roof bid worksheet</a> shows how to compare them.</li>
+        <li><strong>Read your policy.</strong> Ask your insurer the questions above.</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>What should I ask a roofer who looks at the roof?</h2>
+      <p>Ask for a written description of what the roofer saw, where they saw it and what work the roofer proposes. A bid that names the work, the materials and the price in writing is easier to compare with other bids and easier to keep with your records.</p>
+      <p>Questions to copy:</p>
+      <ul>
+        <li>What did you see, and where on the roof and the house?</li>
+        <li>Did you see marks on metal items such as flashing, vents or gutters?</li>
+        <li>Which marks do you think are from hail, and which are from age or installation?</li>
+        <li>What materials and warranty does your bid name?</li>
+        <li>Can you put your answers in writing, with the date you looked?</li>
+      </ul>
+      <p>Our guide on <a href="/guides/how-to-read-contractor-estimate.html">how to read a roofing contractor estimate</a> explains the lines you will see.</p>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>Otter Quotes creates a written scope of work for your project and sends it to multiple contractors. Every contractor bids on the same scope and the same measurements. You compare the bids online, next to reviews and licensing information, and sign online without a salesperson in your home. Subcontractors bid too, so you may be able to work directly with the crew that does the work. We are not a contractor, we do not sell upgrades, and we do not offer inspections. Contractors pay Otter Quotes a fee on the accepted bid.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>Is it too late to file a claim if I found hail damage months later?</h3>
+        <div class="faq-answer">
+          <p>This guide cannot say. Policies set their own notice and filing rules, and which date a claim uses is a question for your policy and your insurer. This guide states no deadline. Read your policy or ask your insurer what your policy says about notice.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Can hail damage show up months after a storm?</h3>
+        <div class="faq-answer">
+          <p>GAF's technical bulletin on hail says outward damage may not be apparent until months or years later, and that hidden damage to the shingle mat can develop into cracks and tears at a later point in time. Ask a roofer to describe in writing what they see.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>How do I find which storm caused the damage?</h3>
+        <div class="faq-answer">
+          <p>NOAA's Storm Events Database lists reported hail by county and date, and the Storm Prediction Center posts daily report pages. Search your county for the months before you found the damage. A report describes a place and a time, not your roof.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Should I make temporary repairs now?</h3>
+        <div class="faq-answer">
+          <p>IBHS's guide says to make temporary repairs to prevent further damage. Stay off a damaged roof, and ask a roofer whether they can put a temporary cover on for you. Ask your insurer what your policy says about protecting the property.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does Otter Quotes inspect my roof or decide which storm caused the damage?</h3>
+        <div class="faq-answer">
+          <p>No. We do not offer inspections or assessments, we do not find or confirm a date of loss, and we do not work with your insurance company. Otter Quotes creates a written scope of work for your project and sends it to multiple contractors, who compete online with bids on the same work.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="step">
+      <h2>Sources</h2>
+      <ul>
+        <li><a href="https://www.gaf.com/en-us/document-library/documents/technical-bulletins-&amp;-notes/tab-r-108-damage-to-shingles-caused-by-hail.pdf" target="_blank" rel="noopener">GAF, Technical Advisory Bulletin TAB-R-108, “Damage to Shingles Caused by Hail”</a>: outward hail damage may not be apparent until months or years later, and hidden damage to the mat can develop into cracks and tears later.</li>
+        <li><a href="https://ibhs.org/wp-content/uploads/member_docs/Is-It-Hail-Damage-Brochure_IBHS.pdf" target="_blank" rel="noopener">Insurance Institute for Business &amp; Home Safety, “Is It Hail Damage?” brochure</a>: indicators of hail, look-alike marks, and making temporary repairs to prevent further damage.</li>
+        <li><a href="https://www.ncei.noaa.gov/access/storm-events-database/search" target="_blank" rel="noopener">NOAA National Centers for Environmental Information, Storm Events Database</a>: events take 3 months to appear in the database.</li>
+        <li><a href="https://www.spc.noaa.gov/faq/" target="_blank" rel="noopener">NOAA Storm Prediction Center, FAQ (item 6.1)</a>: the storm reports list is preliminary and likely does not contain all severe weather reports for any particular event.</li>
+      </ul>
+    </section>
+
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/guides/prove-date-of-loss-hail.html">How to Find the Date Hail Hit Your House</a></li>
+        <li><a href="/blog/hail-vs-wind-roof-damage.html">Hail vs. Wind Roof Damage: How They Differ</a></li>
+        <li><a href="/guides/roof-bid-comparison-worksheet.html">How to Compare Roofing Bids: A Side-by-Side Worksheet</a></li>
+        <li><a href="/guides/how-to-read-contractor-estimate.html">How to Read a Roofing Contractor Estimate</a></li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "I Found Hail Damage Months After the Storm. What Now?",
+  "description": "Found hail damage months after the storm? What a shingle maker says about damage that shows late, how to find the storm date, and how to get bids.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-10-07",
+  "dateModified": "2026-10-07",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/hail-damage-found-months-later.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is it too late to file a claim if I found hail damage months later?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "This guide cannot say. Policies set their own notice and filing rules, and which date a claim uses is a question for your policy and your insurer. This guide states no deadline. Read your policy or ask your insurer what your policy says about notice."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can hail damage show up months after a storm?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "GAF's technical bulletin on hail says outward damage may not be apparent until months or years later, and that hidden damage to the shingle mat can develop into cracks and tears at a later point in time. Ask a roofer to describe in writing what they see."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How do I find which storm caused the damage?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "NOAA's Storm Events Database lists reported hail by county and date, and the Storm Prediction Center posts daily report pages. Search your county for the months before you found the damage. A report describes a place and a time, not your roof."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Should I make temporary repairs now?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "IBHS's guide says to make temporary repairs to prevent further damage. Stay off a damaged roof, and ask a roofer whether they can put a temporary cover on for you. Ask your insurer what your policy says about protecting the property."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Otter Quotes inspect my roof or decide which storm caused the damage?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. We do not offer inspections or assessments, we do not find or confirm a date of loss, and we do not work with your insurance company. Otter Quotes creates a written scope of work for your project and sends it to multiple contractors, who compete online with bids on the same work."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "I Found Hail Damage Months After the Storm. What Now?",
+      "item": "https://otterquote.com/guides/hail-damage-found-months-later.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>
