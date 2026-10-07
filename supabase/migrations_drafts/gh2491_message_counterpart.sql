@@ -1,3 +1,8 @@
+-- gh-2491: get_message_counterpart(uuid), the narrow SECURITY DEFINER label function for messaging.
+-- STATUS (gh-1438, as of 2026-10-07): NOT APPLIED. Tier 3B (new SECURITY DEFINER function), R-097 notice 6024592257 posted, apply HELD on Ben's guard condition (issue #2491 comment 6029407730: a guard on claims.platform_fee_charged must be live first).
+-- EVIDENCE: production read-only 2026-10-07 (review 6045432900 on PR #2545): no get_message_counterpart in pg_proc and no ledger row for gh-2491. The statements below are byte-identical to the file PR #2545 first carried as supabase/migrations/20261005210000_gh2491_message_counterpart.sql (sha256 pair on the PR).
+-- REPO COPY: none. After apply, file this forward SQL under its real ledger version in supabase/migrations/ and keep the rollback and pre-flight in supabase/migrations_rollbacks/. The Rollback and Pre-flight paths named in the original comment block below predate the move; use the paths on the next line.
+-- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3B path. Rollback: supabase/migrations_rollbacks/gh2491_message_counterpart_rollback.sql  Pre-flight: supabase/migrations_rollbacks/gh2491_message_counterpart_pre-flight.md
 -- gh-2491: messaging shows "--" for the other party because profiles / contractors
 -- RLS (correctly) hides the counterpart's row. This adds ONE narrow SECURITY DEFINER
 -- function that returns only a display label for the other party on a claim, and

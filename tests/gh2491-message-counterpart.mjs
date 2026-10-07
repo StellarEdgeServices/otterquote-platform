@@ -31,8 +31,8 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
 const dash = read('dashboard.html');
 const ctr = read('contractor-dashboard.html');
-const mig = read('supabase/migrations/20261005210000_gh2491_message_counterpart.sql');
-const rb = read('supabase/migrations_rollbacks/20261005210000_gh2491_message_counterpart_rollback.sql');
+const mig = read('supabase/migrations_drafts/gh2491_message_counterpart.sql');
+const rb = read('supabase/migrations_rollbacks/gh2491_message_counterpart_rollback.sql');
 
 // ---------- 1. static ----------
 const count = (s, re) => (s.match(re) || []).length;

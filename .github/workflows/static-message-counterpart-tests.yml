@@ -13,8 +13,8 @@ on:
     paths:
       - 'dashboard.html'
       - 'contractor-dashboard.html'
-      - 'supabase/migrations/20261005210000_gh2491_message_counterpart.sql'
-      - 'supabase/migrations_rollbacks/20261005210000_gh2491_message_counterpart_rollback.sql'
+      - 'supabase/migrations_drafts/gh2491_message_counterpart.sql'
+      - 'supabase/migrations_rollbacks/gh2491_message_counterpart_rollback.sql'
       - 'tests/gh2491-message-counterpart.mjs'
       - '.github/workflows/static-message-counterpart-tests.yml'
   push:
@@ -22,8 +22,8 @@ on:
     paths:
       - 'dashboard.html'
       - 'contractor-dashboard.html'
-      - 'supabase/migrations/20261005210000_gh2491_message_counterpart.sql'
-      - 'supabase/migrations_rollbacks/20261005210000_gh2491_message_counterpart_rollback.sql'
+      - 'supabase/migrations_drafts/gh2491_message_counterpart.sql'
+      - 'supabase/migrations_rollbacks/gh2491_message_counterpart_rollback.sql'
       - 'tests/gh2491-message-counterpart.mjs'
       - '.github/workflows/static-message-counterpart-tests.yml'
 
