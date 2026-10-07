@@ -2,7 +2,8 @@
 -- (supabase/migrations_drafts/gh2442_dunning_retry_request.sql; rollback beside it).
 -- ONE batch. Its last statement is a deliberate RAISE EXCEPTION, so every fixture row and the migration's DDL roll
 -- back whatever the client does; the findings are the exception text.
--- WHERE IT HAS BEEN RUN: the 2026-10-07 revisions (cap, CHECK, reason per state, rollback without the anon re-grant) were run on a
+-- WHERE IT HAS BEEN RUN: the 2026-10-07 revisions (cap per quote, CHECK, reason per state, sibling rows, rollback without the anon
+-- re-grant) were run on a
 -- scratch Postgres built by supabase/tests/gh2442_replica_fixture.sql (the live table definition, policies and
 -- grants copied from a read-only SELECT), NOT on production. The 2026-10-06 version of this file was run on
 -- production (yeszghaspzwwstvsrioa) in this same rolled-back way. A production run of this version is the
@@ -46,6 +47,20 @@
 --   every S3-U6 row: nothing written (retry_requested_at NULL, count 0)
 --   K1   superuser sets retry_request_count = 4     REJECTED 23514 (the CHECK)      K2  = -1   REJECTED 23514
 --   K3   superuser sets retry_request_count = 3     rows=1 (3 is allowed)
+--   SIBLING ROWS OF ONE QUOTE (REVIEW 6049015214). On main one failed charge leaves a webhook row (W: active, no
+--   schedule, never updated) and a scheduled row for the same quote. Each T line calls the function 4 times on
+--   the WEBHOOK row, 16 minutes apart, then reads the count recorded for the quote.
+--   T0   W + scheduled row active (S1)          one shared allowance: W requested, scheduled row same instant
+--                                               already_requested, then (16 min apart) scheduled requested, W requested,
+--                                               scheduled limit_reached, W limit_reached; quote total 3
+--   T1   W + scheduled row homeowner_notified   4 x not_retryable / homeowner_notified; quote total 0
+--   T2   W + scheduled row resolved (:612)      4 x not_retryable / homeowner_proceeded; quote total 0
+--   T3   W + scheduled row contractor_out (:662)  4 x not_retryable / contractor_out; quote total 0
+--   T4   W alone (alternate method charged, process-dunning:958)   4 x not_retryable / no_dunning_schedule; total 0
+--   T5   W + scheduled S1, and the scheduled row already holds 3    W: not_retryable / limit_reached; total 3
+--   T6   W + scheduled S1, a closed row of the SAME contractor on NO quote exists    still accepted (groups do not leak)
+--   At head 0e0d255 (per-row logic) T1-T5 each read requested, requested, requested, limit_reached on the webhook
+--   row, and T0 and T5 end with 6 recorded for the quote.
 --   X1   another contractor           REJECTED 42501                X2  homeowner    REJECTED 42501
 --   X3   anon                         REJECTED 42501 (permission)   X4  no login claim  REJECTED 42501
 --   X5   unknown id                   REJECTED 42501                X6  NULL id        REJECTED 42501
@@ -80,14 +95,17 @@ CREATE FUNCTION pg_temp.matrix(p_phase text) RETURNS text
 LANGUAGE plpgsql AS $m$
 DECLARE
   k1 uuid; k1u uuid; k2u uuid; ho uuid;
-  fa uuid; fw uuid; fs uuid; i int; cnt int; agg text; st record;
+  fa uuid; fw uuid; fs uuid; i int; cnt int; agg text; st record; q1 uuid; fwh uuid; fsc uuid; tc record;
   out text := '';
   r text; sig0 text; sig1 text; ts0 timestamptz; ts1 timestamptz;
   has_fn boolean;
   call_tpl constant text := 'SELECT public.request_dunning_retry(%L)::text';
 BEGIN
+  -- k1: prefer a test contractor that has a quote, so the sibling-row cases can share a real quote_id
   SELECT c.id, c.user_id INTO k1, k1u FROM public.contractors c
-   WHERE c.is_test AND c.user_id IS NOT NULL ORDER BY c.id LIMIT 1;
+   WHERE c.is_test AND c.user_id IS NOT NULL
+   ORDER BY EXISTS (SELECT 1 FROM public.quotes q WHERE q.contractor_id = c.id) DESC, c.id LIMIT 1;
+  SELECT q.id INTO q1 FROM public.quotes q WHERE q.contractor_id = k1 ORDER BY q.id LIMIT 1;
   SELECT c.user_id INTO k2u FROM public.contractors c
    WHERE c.is_test AND c.user_id IS NOT NULL AND c.user_id <> k1u ORDER BY c.id LIMIT 1;
   SELECT p.id INTO ho FROM public.profiles p
@@ -109,8 +127,9 @@ BEGIN
       has_table_privilege('anon','public.payment_failures','TRIGGER'), has_table_privilege('authenticated','public.payment_failures','UPDATE')) || E'\n';
 
   -- fixtures, owned by k1 (is_test), created by the superuser inside this batch
-  INSERT INTO public.payment_failures (contractor_id, amount_cents, dunning_status) VALUES (k1, 12345, 'active')       RETURNING id INTO fa;
-  INSERT INTO public.payment_failures (contractor_id, amount_cents, dunning_status) VALUES (k1, 12345, 'warning_sent') RETURNING id INTO fw;
+  -- fa, fw: scheduled rows as process-dunning:1083 writes them (schedule set), on no quote, so each is a group of one
+  INSERT INTO public.payment_failures (contractor_id, amount_cents, dunning_status, homeowner_notify_at) VALUES (k1, 12345, 'active', now() + interval '1 day')       RETURNING id INTO fa;
+  INSERT INTO public.payment_failures (contractor_id, amount_cents, dunning_status, homeowner_notify_at) VALUES (k1, 12345, 'warning_sent', now() + interval '1 day') RETURNING id INTO fw;
 
   IF NOT has_fn THEN
     out := out || format('[%s] O1 owner call: %s', p_phase, pg_temp.as_call('authenticated', k1u, format(call_tpl, fa))) || E'\n';
@@ -166,8 +185,8 @@ BEGIN
         ('U6', 'contractor_out',     false, 'no writer')
       ) AS v(tag, status, has_resolved, src)
     LOOP
-      INSERT INTO public.payment_failures (contractor_id, amount_cents, dunning_status, resolved_at)
-        VALUES (k1, 12345, st.status, CASE WHEN st.has_resolved THEN now() END) RETURNING id INTO fs;
+      INSERT INTO public.payment_failures (contractor_id, amount_cents, dunning_status, resolved_at, homeowner_notify_at)
+        VALUES (k1, 12345, st.status, CASE WHEN st.has_resolved THEN now() END, now() + interval '1 day') RETURNING id INTO fs;
       r := pg_temp.as_call('authenticated', k1u, format(call_tpl, fs));
       out := out || format('[%s] %s %s%s (%s): %s / %s | nothing written=%s', p_phase, st.tag, COALESCE(st.status, 'NULL status'),
           CASE WHEN st.has_resolved THEN ' + resolved_at' ELSE ', resolved_at NULL' END, st.src,
@@ -178,6 +197,57 @@ BEGIN
     out := out || format('[%s] K1 superuser sets retry_request_count=4: %s', p_phase, pg_temp.as_call(current_user::text, NULL, format('UPDATE public.payment_failures SET retry_request_count=4 WHERE id=%L', fw))) || E'\n';
     out := out || format('[%s] K2 superuser sets retry_request_count=-1: %s', p_phase, pg_temp.as_call(current_user::text, NULL, format('UPDATE public.payment_failures SET retry_request_count=-1 WHERE id=%L', fw))) || E'\n';
     out := out || format('[%s] K3 superuser sets retry_request_count=3: %s', p_phase, pg_temp.as_call(current_user::text, NULL, format('UPDATE public.payment_failures SET retry_request_count=3 WHERE id=%L', fw))) || E'\n';
+    -- SIBLING ROWS OF ONE QUOTE. fwh is the webhook row (quote, contractor, amount only: status by default
+    -- active, no schedule); fsc is the scheduled row process-dunning adds for the same quote.
+    IF q1 IS NULL THEN
+      out := out || format('[%s] T0-T6 NO QUOTE FIXTURE for k1 -> INCOMPLETE', p_phase) || E'\n';
+    ELSE
+      FOR tc IN
+        SELECT * FROM (VALUES
+          ('T0', 'active',             false, 0, true,  'W + scheduled row active (S1)'),
+          ('T1', 'homeowner_notified', false, 0, true,  'W + scheduled row homeowner_notified (S3)'),
+          ('T2', 'resolved',           true,  0, true,  'W + scheduled row resolved + resolved_at (S4, :612)'),
+          ('T3', 'contractor_out',     true,  0, true,  'W + scheduled row contractor_out + resolved_at (S5, :662)'),
+          ('T4', NULL,                 false, 0, false, 'W alone, no scheduled row (alternate method charged, :958)'),
+          ('T5', 'active',             false, 3, true,  'W + scheduled row active that already holds 3 requests'),
+          ('T6', 'active',             false, 0, true,  'W + scheduled row active; closed rows of the same contractor on no quote exist (S3-U6 above)')
+        ) AS v(tag, sib_status, sib_resolved, sib_count, has_sib, label)
+      LOOP
+        DELETE FROM public.payment_failures WHERE quote_id = q1;
+        INSERT INTO public.payment_failures (quote_id, contractor_id, amount_cents) VALUES (q1, k1, 12345) RETURNING id INTO fwh;
+        fsc := NULL;
+        IF tc.has_sib THEN
+          INSERT INTO public.payment_failures (quote_id, contractor_id, amount_cents, dunning_status, resolved_at, homeowner_notify_at)
+            VALUES (q1, k1, 12345, tc.sib_status, CASE WHEN tc.sib_resolved THEN now() END, now() + interval '1 day') RETURNING id INTO fsc;
+          IF tc.sib_count > 0 THEN
+            UPDATE public.payment_failures SET retry_request_count = tc.sib_count, retry_requested_at = now() - interval '16 minutes' WHERE id = fsc;
+          END IF;
+        END IF;
+        agg := '';
+        IF tc.tag = 'T0' THEN
+          -- the two rows are called in turn: they must share one window and one count
+          FOR i IN 1..6 LOOP
+            IF i > 2 THEN
+              UPDATE public.payment_failures SET retry_requested_at = retry_requested_at - interval '16 minutes' WHERE quote_id = q1 AND retry_requested_at IS NOT NULL;
+            END IF;
+            r := pg_temp.as_call('authenticated', k1u, format(call_tpl, CASE WHEN i IN (1, 4, 6) THEN fwh ELSE fsc END));
+            agg := agg || CASE WHEN i > 1 THEN ', ' ELSE '' END || CASE WHEN i IN (1, 4, 6) THEN 'W=' ELSE 'sched=' END
+                   || COALESCE(NULLIF(r::jsonb ->> 'reason', ''), r::jsonb ->> 'status');
+          END LOOP;
+        ELSE
+          FOR i IN 1..4 LOOP
+            IF i > 1 THEN
+              UPDATE public.payment_failures SET retry_requested_at = retry_requested_at - interval '16 minutes' WHERE quote_id = q1 AND retry_requested_at IS NOT NULL;
+            END IF;
+            r := pg_temp.as_call('authenticated', k1u, format(call_tpl, fwh));
+            agg := agg || CASE WHEN i > 1 THEN ', ' ELSE '' END || COALESCE(NULLIF(r::jsonb ->> 'reason', ''), r::jsonb ->> 'status');
+          END LOOP;
+        END IF;
+        out := out || format('[%s] %s %s: %s | recorded for the quote=%s', p_phase, tc.tag, tc.label, agg,
+            (SELECT sum(retry_request_count) FROM public.payment_failures WHERE quote_id = q1)) || E'\n';
+      END LOOP;
+      DELETE FROM public.payment_failures WHERE quote_id = q1;
+    END IF;
     -- reset the active row so the rejection lines below start from a clean request state
     UPDATE public.payment_failures SET retry_requested_at = NULL, retry_request_count = 0 WHERE id = fa;
     out := out || format('[%s] X1 another contractor: %s', p_phase, pg_temp.as_call('authenticated', k2u, format(call_tpl, fa))) || E'\n';

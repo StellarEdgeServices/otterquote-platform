@@ -4,7 +4,8 @@
 -- payment_failures below is the live definition as read from production by read-only SELECT on 2026-10-07
 -- (information_schema.columns, pg_constraint, pg_policies, role_table_grants): 15 columns, the dunning_status
 -- CHECK, RLS on, 3 policies, and the anon / authenticated table grants exactly as they stand, including the three
--- anon write grants the migration removes. contractors, profiles, claims and quotes are cut down to the columns
+-- anon write grants the migration removes. Its 6 indexes are not copied (they change no answer). contractors,
+-- profiles, claims and quotes are cut down to the columns
 -- the proof and the function read. auth.uid() and auth.jwt() read request.jwt.claims as Supabase's do.
 -- Production is PostgreSQL 17.6; the scratch run recorded in the pre-flight used PostgreSQL 16.
 DO $r$ BEGIN
@@ -25,7 +26,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, au
 CREATE TABLE public.profiles (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), is_test boolean NOT NULL DEFAULT false);
 CREATE TABLE public.contractors (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid UNIQUE, is_test boolean NOT NULL DEFAULT false);
 CREATE TABLE public.claims (id uuid PRIMARY KEY DEFAULT gen_random_uuid());
-CREATE TABLE public.quotes (id uuid PRIMARY KEY DEFAULT gen_random_uuid());
+CREATE TABLE public.quotes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), contractor_id uuid REFERENCES public.contractors(id));
 GRANT SELECT ON public.profiles, public.contractors TO anon, authenticated;
 
 CREATE TABLE public.payment_failures (
@@ -59,3 +60,5 @@ GRANT INSERT, SELECT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON public.pa
 WITH u AS (INSERT INTO public.profiles (is_test) VALUES (true), (true), (true) RETURNING id),
      n AS (SELECT id, row_number() OVER (ORDER BY id) AS rn FROM u)
 INSERT INTO public.contractors (user_id, is_test) SELECT id, true FROM n WHERE rn <= 2;
+-- one quote per test contractor, so two payment_failures rows can share a quote as they do on main
+INSERT INTO public.quotes (contractor_id) SELECT id FROM public.contractors;

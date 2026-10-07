@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-07T22:44Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-10-07T23:53Z): NOT APPLIED
 -- FILE ROLE: rollback file of set gh2442_dunning_retry_request (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: forward file not applied; see gh2442_dunning_retry_request.sql
 -- REPO COPY: none
