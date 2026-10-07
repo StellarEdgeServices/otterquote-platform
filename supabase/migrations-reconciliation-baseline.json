@@ -305,7 +305,8 @@
     "20260928211500",
     "20260928215500",
     "20260928233000",
-    "20260929180000"
+    "20260929180000",
+    "20261005210000"
   ],
   "known_limitations": [
     "Version-number matching ONLY. This does not verify byte-identical SQL -- see the gh-1438 part-2 PR body and the migrations-reconciliation doc's part(a) table for sets explicitly flagged as unverified-byte-match.",
