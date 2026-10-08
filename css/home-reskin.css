@@ -70,6 +70,12 @@ body.hr { margin: 0; font-family: var(--hr-font); color: var(--hr-ink); backgrou
 .hr-plain .hr-bar { background: #C9D3DC; }
 .hr-explain { margin: 0; min-height: 44px; font-size: 15px; line-height: 1.45; color: var(--hr-slate); }
 
+/* minimal footer (slice 1; replaced by the full footer in slice 4) */
+.hr-foot { background: var(--hr-navy-foot); border-top: 1px solid var(--hr-line-navy); color: var(--hr-on-navy-2); font-size: 15px; }
+.hr-foot .hr-wrap { padding-top: 24px; padding-bottom: 24px; display: flex; flex-wrap: wrap; gap: 8px 22px; }
+.hr .hr-foot a { color: var(--hr-on-navy); display: inline-flex; align-items: center; min-height: 48px; }
+@media (max-width: 767px) { .hr-foot .hr-wrap { padding-left: 16px; padding-right: 16px; } body.hr { padding-bottom: 64px; } }
+
 /* phone sticky bar: appears once the hero button has scrolled out of view */
 .hr-sticky { display: none; }
 
