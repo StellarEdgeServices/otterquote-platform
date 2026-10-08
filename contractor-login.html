@@ -261,6 +261,8 @@
 /* gh-2493: the amber links inside the cross-role sentence carry an inline colour; on the light card they measured 2.85:1 */
 p.text-sm.text-center a[style*="var(--amber)"] { color: var(--link-on-light, #A85C00) !important; }
 p.text-sm.text-center a[style*="var(--amber)"]:hover { color: var(--link-on-light-deep, #7A4200) !important; }
+/* gh-2423: "Apply to Join" keeps btn-secondary; its #E07B00 label and white 45% border are unreadable on the light card (2.85:1), so use the on-light amber for label and border, rest and hover (4.75:1) */
+#cl-join-cta .btn-secondary { color: var(--link-on-light); border-color: var(--link-on-light); }
 </style>
 </head>
 <body>
