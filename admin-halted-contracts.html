@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<!-- gh-2043: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready (pattern from gh-2010, PR #2023). -->
+<script>
+  window.sentryOnLoad = function () {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  };
+</script>
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<meta charset="UTF-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Admin - Halted Contracts | Otter Quotes</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+<style>
+:root {
+  --navy: #0D1B2E; --amber: #E07B00; --white: #FFFFFF;
+  --slate: #94A3B8; --light: #E2E8F0;
+  --red: #EF4444; --green: #10B981; --teal: #14B8A6;
+}
+body { background-color: var(--navy); color: #1F2937; font-family: 'Rubik', sans-serif; }
+main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
+.admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; }
+.admin-title  { display: flex; align-items: center; gap: 1rem; }
+.admin-badge  { background: var(--amber); color: var(--navy); padding: 0.4rem 0.8rem; border-radius: 0.5rem; font-weight: 700; font-size: 0.875rem; }
+.admin-header h1 { font-size: 2.5rem; color: var(--white); margin: 0; }
+.logout-btn  { background: var(--white); color: var(--navy); border: none; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: 600; cursor: pointer; }
+.admin-nav { display: flex; gap: 0.75rem; margin-bottom: 2rem; flex-wrap: wrap; }
+.admin-nav a { color: var(--slate); text-decoration: none; font-weight: 500; font-size: 0.9rem; padding: 0.5rem 1rem; border-radius: 0.5rem; }
+.admin-nav a:hover  { background: rgba(255,255,255,0.08); color: var(--white); }
+.admin-nav a.active { background: rgba(255,255,255,0.12); color: var(--white); }
+.summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+.summary-card { background: var(--white); border-radius: 0.75rem; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.summary-card-label { font-size: 0.8rem; color: var(--slate); margin-bottom: 0.4rem; font-weight: 500; }
+.summary-card-value { font-size: 2rem; font-weight: 700; color: var(--navy); }
+.info-banner { background: rgba(20,184,166,0.08); border: 1px solid rgba(20,184,166,0.25); color: var(--teal); padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; font-size: 0.9rem; line-height: 1.5; }
+.filter-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.filter-tab  { background: rgba(255,255,255,0.05); color: var(--slate); border: 1px solid rgba(255,255,255,0.1); padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer; font-size: 0.9rem; font-family: inherit; }
+.filter-tab:hover  { background: rgba(255,255,255,0.1); color: var(--white); }
+.filter-tab.active { background: var(--amber); color: var(--navy); border-color: var(--amber); font-weight: 600; }
+.table-wrapper { background: var(--white); border-radius: 0.75rem; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+.h-table { width: 100%; border-collapse: collapse; min-width: 1000px; }
+.h-table th { background: var(--light); padding: 0.875rem 1rem; text-align: left; font-weight: 600; color: var(--navy); font-size: 0.85rem; white-space: nowrap; }
+.h-table td { padding: 1rem; border-top: 1px solid var(--light); font-size: 0.9rem; vertical-align: top; }
+.h-table tr:hover { background: rgba(0,0,0,0.02); }
+.sub { font-size: 0.82rem; color: #64748B; margin-top: 0.15rem; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82rem; word-break: break-all; }
+.delta-neg { color: var(--red); font-weight: 600; }
+.badge { display: inline-block; padding: 0.25rem 0.65rem; border-radius: 1rem; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+.badge-mismatch   { background: #FEE2E2; color: #991B1B; }
+.badge-unverified { background: #FEF3C7; color: #92400E; }
+.badge-test       { background: #DBEAFE; color: #1E40AF; margin-left: 0.4rem; }
+.badge-other      { background: #F1F5F9; color: #475569; }
+.loading, .empty { padding: 2rem; text-align: center; color: var(--slate); }
+</style>
+</head>
+<body>
+
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+
+<main id="main-content" style="display:none">
+
+  <div class="admin-header">
+    <div class="admin-title">
+      <span class="admin-badge">ADMIN</span>
+      <h1>Halted Contracts</h1>
+    </div>
+    <button class="logout-btn" onclick="Auth.signOut()">Sign Out</button>
+  </div>
+
+  <nav class="admin-nav">
+    <a href="admin-homeowners.html">Homeowners</a>
+    <a href="admin-contractors.html">Contractors</a>
+    <a href="admin-incomplete-profiles.html">Incomplete Profiles</a>
+    <a href="admin-template-review.html">Template Review</a>
+    <a href="admin-cert-verifications.html">Cert Verifications</a>
+    <a href="admin-payouts.html">Payouts</a>
+    <a href="admin-warranty-drift.html">Warranty Drift</a>
+    <a href="admin-measurements.html">Measurements</a>
+    <a href="admin-halted-contracts.html" class="active">Halted Contracts</a>
+  </nav>
+
+  <div class="info-banner">
+    <strong>Read-only.</strong> Every claim listed here was signed at a price that differs
+    from the bid the homeowner accepted (or whose signed price could not be read). The platform halted:
+    <code>contract_signed_at</code> stays empty, no platform fee was charged, no invoice was created,
+    and the claim stays at <code>awarded</code>. The e-signature service still holds a fully signed document, so both
+    parties may believe signing finished. This page has no void or re-issue action yet.
+  </div>
+
+  <div class="summary-cards">
+    <div class="summary-card">
+      <div class="summary-card-label">Halted on price mismatch</div>
+      <div class="summary-card-value" id="count-mismatch">&mdash;</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">Halted, price unverified</div>
+      <div class="summary-card-value" id="count-unverified">&mdash;</div>
+    </div>
+  </div>
+
+  <div class="filter-tabs" id="filterTabs">
+    <button class="filter-tab active" data-filter="mismatch" type="button">Price mismatch</button>
+    <button class="filter-tab" data-filter="unverified" type="button">Unverified (halted)</button>
+    <button class="filter-tab" data-filter="all" type="button">Both</button>
+  </div>
+
+  <div class="table-wrapper">
+    <table class="h-table">
+      <thead>
+        <tr>
+          <th>Checked</th>
+          <th>Claim</th>
+          <th>Accepted bid</th>
+          <th>Signed price</th>
+          <th>Difference</th>
+          <th>Verdict</th>
+          <th>Claim status</th>
+          <th>Signed document id</th>
+        </tr>
+      </thead>
+      <tbody id="rows"><tr><td colspan="8" class="loading">Loading&hellip;</td></tr></tbody>
+    </table>
+  </div>
+
+</main>
+
+<script>
+/*
+ * gh-2543 part 1 -- read-only list of claims the signed-price reconciliation
+ * halted (signing webhook, price-verify.ts, gh-1314).
+ *
+ * A halted claim has claims.signed_price_verdict = 'mismatch' (or 'unverified')
+ * AND claims.contract_signed_at still NULL: the webhook returns before setting
+ * contract_signed_at, charging, or invoicing.
+ *
+ * Reads claims only, through the existing claims_admin_select RLS policy
+ * (is_admin_email()). No writes, no RPC, no Edge Function, no schema change.
+ */
+var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
+
+var state = { filter: 'mismatch', rows: [] };
+var _initFired = false;
+
+if (sb) {
+  sb.auth.onAuthStateChange(async function (event, session) {
+    if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && !_initFired) {
+      _initFired = true;
+      if (!session) { window.location.href = '/'; return; }
+      await checkAdminAndInit(session.user);
+    }
+  });
+}
+
+async function checkAdminAndInit(user) {
+  var isAdmin = user.email === 'dustinstohler1@gmail.com';
+  if (!isAdmin) {
+    var res = await sb.from('contractors').select('template_review_role').eq('user_id', user.id).maybeSingle();
+    isAdmin = res.data && res.data.template_review_role === 'admin';
+  }
+  if (!isAdmin) { window.location.href = '/'; return; }
+  document.getElementById('main-content').style.display = 'block';
+
+  document.getElementById('filterTabs').addEventListener('click', function (e) {
+    var btn = e.target.closest('.filter-tab');
+    if (!btn) return;
+    state.filter = btn.dataset.filter;
+    document.querySelectorAll('.filter-tab').forEach(function (t) { t.classList.toggle('active', t === btn); });
+    renderRows();
+  });
+
+  await loadHalted();
+}
+
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function money(n) {
+  if (n === null || n === undefined || n === '') return '&mdash;';
+  var v = Number(n);
+  if (!isFinite(v)) return '&mdash;';
+  return (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function daysAgo(iso) {
+  if (!iso) return '';
+  var d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  return d <= 0 ? 'today' : d === 1 ? '1 day ago' : d + ' days ago';
+}
+
+async function loadHalted() {
+  var res = await sb
+    .from('claims')
+    .select('id, status, property_address, property_state, is_test, selected_bid_amount, envelope:docusign_envelope_id, contract_signed_at, signed_contract_price, signed_price_raw, signed_price_verdict, signed_price_reason, signed_price_checked_at')
+    .in('signed_price_verdict', ['mismatch', 'unverified'])
+    .is('contract_signed_at', null)
+    .order('signed_price_checked_at', { ascending: false });
+
+  if (res.error) {
+    document.getElementById('rows').innerHTML =
+      '<tr><td colspan="8" class="empty">Could not load halted contracts: ' + esc(res.error.message) + '</td></tr>';
+    return;
+  }
+  state.rows = res.data || [];
+  var m = state.rows.filter(function (r) { return r.signed_price_verdict === 'mismatch'; }).length;
+  document.getElementById('count-mismatch').textContent = m;
+  document.getElementById('count-unverified').textContent = state.rows.length - m;
+  renderRows();
+}
+
+function verdictBadge(r) {
+  var v = r.signed_price_verdict;
+  var cls = v === 'mismatch' || v === 'unverified' ? v : 'other';
+  var label = v === 'mismatch' ? 'Price mismatch' : v === 'unverified' ? 'Unverified' : v;
+  return '<span class="badge badge-' + cls + '">' + esc(label) + '</span>' +
+    (r.is_test ? '<span class="badge badge-test">test</span>' : '') +
+    (r.signed_price_reason ? '<div class="sub">' + esc(r.signed_price_reason) + '</div>' : '');
+}
+
+function renderRows() {
+  var list = state.filter === 'all' ? state.rows : state.rows.filter(function (r) { return r.signed_price_verdict === state.filter; });
+  var tbody = document.getElementById('rows');
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">No halted contracts in this view.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(function (r) {
+    var accepted = r.selected_bid_amount;
+    var signed = r.signed_contract_price;
+    var delta = (accepted !== null && accepted !== undefined && signed !== null && signed !== undefined)
+      ? Number(signed) - Number(accepted) : null;
+    var addr = r.property_address || '';
+    return '<tr>' +
+      '<td>' + (r.signed_price_checked_at ? esc(new Date(r.signed_price_checked_at).toLocaleString()) : '&mdash;') +
+        '<div class="sub">' + esc(daysAgo(r.signed_price_checked_at)) + '</div></td>' +
+      '<td>' + (addr ? esc(addr) : '<span class="sub">no address on claim</span>') +
+        (r.property_state ? ' <span class="sub">' + esc(r.property_state) + '</span>' : '') +
+        '<div class="sub mono">' + esc(r.id) + '</div></td>' +
+      '<td>' + money(accepted) + '</td>' +
+      '<td>' + money(signed) +
+        (r.signed_price_raw ? '<div class="sub mono">raw: ' + esc(r.signed_price_raw) + '</div>' : '') + '</td>' +
+      '<td>' + (delta === null ? '&mdash;' : '<span class="delta-neg">' + (delta > 0 ? '+' : '') + money(delta) + '</span>') + '</td>' +
+      '<td>' + verdictBadge(r) + '</td>' +
+      '<td>' + esc(r.status || '') + '</td>' +
+      '<td class="mono">' + (r.envelope ? esc(r.envelope) : '&mdash;') + '</td>' +
+      '</tr>';
+  }).join('');
+}
+</script>
+</body>
+</html>
