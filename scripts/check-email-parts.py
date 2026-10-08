@@ -68,7 +68,6 @@ FUNCTIONS_DIR = REPO / "supabase" / "functions"
 # text-only. Do not add an entry here without re-verifying the recipient --
 # see the #869 task report's AC9 table for how each entry was confirmed.
 TEXT_ONLY_ALLOWLIST = {
-    "check-rate-limits",           # to ALERT_EMAIL = dustinstohler1@gmail.com
     "check-docusign-usage",        # to "dustinstohler1@gmail.com" (hardcoded)
     "refresh-warranty-manifest",   # to ADMIN_EMAIL = dustinstohler1@gmail.com
     "platform-health-check",       # to ALERT_EMAIL = dustinstohler1@gmail.com
