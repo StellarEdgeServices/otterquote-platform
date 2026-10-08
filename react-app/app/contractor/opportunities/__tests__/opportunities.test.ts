@@ -13,7 +13,7 @@ import {
   mapClaimToOpportunity, filterByTradeRelease, excludeCappedClaims, applyMyBids,
   applyOppFilters, valueDisplay, calcFees, expiryCountdown, tradeReleaseBadges,
   tradeDisplay, resolveStateGate, resultsCountLabel, fmtCurrency,
-  isHoverMeasurementsSentinel,
+  isHoverMeasurementsSentinel, BIDDER_CLAIM_OPP_COLS,
   type RawClaim, type Opportunity,
 } from '../utils';
 import {
@@ -85,11 +85,11 @@ describe('gh-2559: estimate-summary badge and selected-contractor flag', () => {
 
 describe('mapClaimToOpportunity', () => {
   const claim: RawClaim = {
-    id: 'CL1', property_address: '123 Main St, Carmel, IN 46032', job_type: 'insurance_rcv',
+    id: 'CL1', location_city: 'Carmel', location_zip: '46032', job_type: 'insurance_rcv',
     selected_trades: ['roofing', 'gutters'], damage_type: 'Roof', damage_description: 'Hail',
     rcv_amount: 22000, roofing_bid_released_at: '2026-03-01T00:00:00Z', created_at: '2026-03-15',
   };
-  it('parses city/zip from the address and derives released trades', () => {
+  it('takes city/zip from the summary view and derives released trades', () => {
     const o = mapClaimToOpportunity(claim, '46220');
     expect(o.location).toBe('Carmel');
     expect(o.zip).toBe('46032');
@@ -99,11 +99,18 @@ describe('mapClaimToOpportunity', () => {
     expect(o.estimatedValue).toBe(22000);
     expect(typeof o.distance).toBe('number'); // both zips known
   });
-  it('defaults trades to roofing and falls back through address parts', () => {
-    const o = mapClaimToOpportunity({ id: 'X', property_address: 'Indianapolis 46220' }, null);
+  it('defaults trades to roofing and city to Unknown when the view has none', () => {
+    const o = mapClaimToOpportunity({ id: 'X', location_zip: '46220' }, null);
     expect(o.trades).toEqual(['roofing']);
+    expect(o.location).toBe('Unknown');
     expect(o.zip).toBe('46220');
     expect(o.distance).toBeNull(); // contractor zip null
+  });
+  // gh-2559 / D-368: a bidder is never given the street address, whatever the row carries.
+  it('never maps a street address into the opportunity (propertyAddress is always null)', () => {
+    const o = mapClaimToOpportunity({ id: 'X', property_address: '123 Main St, Carmel, IN 46032', location_city: 'Carmel', location_zip: '46032' }, null);
+    expect(o.propertyAddress).toBeNull();
+    expect(o.location).toBe('Carmel');
   });
 
   // gh-484: contractor-facing "Measurements" badge previously offered only the
@@ -294,5 +301,23 @@ describe('copy: filter catalogs + bid deep-links', () => {
     expect(submitBidHref('CL1')).toBe('/contractor/bid/CL1');
     expect(renewBidHref('CL1', 'Q9')).toBe('/contractor/bid/CL1?renew=true');
     expect(detailBidHref('CL1')).toBe('/contractor/bid/CL1');
+  });
+});
+
+// gh-2559 / D-368: the column list the page selects from the claim SUMMARY view.
+describe('BIDDER_CLAIM_OPP_COLS (gh-2559)', () => {
+  const FORBIDDEN = ['user_id', 'claim_number', 'homeowner_name', 'adjuster_name', 'adjuster_email', 'adjuster_phone',
+    'ingest_email', 'ingest_email_address', 'property_address', 'video_url', 'referral_code', 'docusign_envelope_id',
+    'deductible_stripe_id', 'platform_fee_stripe_id', 'is_test', 'carrier_id', 'hover_measurements'];
+  const cols = BIDDER_CLAIM_OPP_COLS.split(',').map((c) => c.trim());
+  it('selects no identity, contact or reference-id column and no star', () => {
+    for (const f of FORBIDDEN) expect(cols).not.toContain(f);
+    expect(BIDDER_CLAIM_OPP_COLS).not.toContain('*');
+  });
+  it('selects everything the card mapper reads from the view', () => {
+    for (const c of ['id', 'location_city', 'location_zip', 'has_estimate', 'has_measurements', 'measured_squares', 'selected_contractor_id',
+      'contractor_scope_summary', 'parsed_line_items', 'homeowner_notes', 'roofing_bid_released_at', 'bid_window_expires_at', 'rcv_amount', 'ready_for_bids', 'status']) {
+      expect(cols).toContain(c);
+    }
   });
 });

@@ -57,7 +57,8 @@ export function HomePhotosCard({ claimId, isSiding }: { claimId: string; isSidin
           ts: Date.now(),
           images: (data?.design_images as string[]) || [],
           hover_job_id: (data?.hover_job_id as string) || null,
-          job_address: (data?.job_address as string) || null,
+          // gh-2559 / D-371: the bid form never keeps or prints the job's street address.
+          job_address: null,
         };
         try { sessionStorage.setItem('hover_photos_' + claimId, JSON.stringify(next)); } catch { /* ignore */ }
         setPayload(next);
@@ -76,7 +77,6 @@ export function HomePhotosCard({ claimId, isSiding }: { claimId: string; isSidin
 
   return (
     <Card title="Home Photos" sub="Reference imagery from the measurement for this property.">
-      {payload?.job_address && <div className="oqb-summary-k" style={{ marginBottom: '0.5rem' }}>{payload.job_address}</div>}
 
       {loading && <div className="oqb-summary-k">Loading photos…</div>}
 

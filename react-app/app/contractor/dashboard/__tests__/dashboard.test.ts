@@ -15,6 +15,7 @@ import {
   formatActivityTime, buildLocation, buildMaterial, formatEarnings, formatMoney,
   titleCase, calculateProfileCompletion, profileChecklist, filterOpportunities,
   serviceAreaDisplay, efUrl, activityDotColor, type OppClaim,
+  buildPendingLocation, BIDDER_CLAIM_DASH_COLS, BIDDER_CLAIM_PEND_COLS,
 } from '../utils';
 
 // ── Exact strings from contractor-dashboard.html @ main ──
@@ -147,5 +148,26 @@ describe('serviceAreaDisplay / efUrl / activityDotColor', () => {
   it('maps activity dot colors', () => {
     expect(activityDotColor('bid_accepted')).toBe('#15803D');
     expect(activityDotColor('whatever')).toBe('#6B7280');
+  });
+});
+
+// gh-2559 / D-368: a pending bid shows city and zip from the claim SUMMARY view, never a street address.
+describe('buildPendingLocation (gh-2559)', () => {
+  it('builds "City, IN zip" from the view columns', () => {
+    expect(buildPendingLocation('Carmel', '46032')).toBe('Carmel, IN 46032');
+  });
+  it('falls back to the city alone, then Unknown', () => {
+    expect(buildPendingLocation('Carmel', null)).toBe('Carmel');
+    expect(buildPendingLocation(null, '46032')).toBe('Unknown, IN 46032');
+    expect(buildPendingLocation(undefined, undefined)).toBe('Unknown');
+  });
+  it('the view column lists carry no identity, contact or street-address column', () => {
+    for (const list of [BIDDER_CLAIM_DASH_COLS, BIDDER_CLAIM_PEND_COLS]) {
+      const cols = list.split(',').map((c) => c.trim());
+      for (const f of ['user_id', 'homeowner_name', 'claim_number', 'adjuster_email', 'adjuster_phone', 'property_address']) {
+        expect(cols).not.toContain(f);
+      }
+      expect(list).not.toContain('*');
+    }
   });
 });

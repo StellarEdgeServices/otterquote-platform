@@ -29,6 +29,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { jobAddressFor, mayReceiveJobAddress } from "./job-address.ts";
 
 const HOVER_API_BASE = "https://hover.to";
 
@@ -195,6 +196,9 @@ serve(async (req) => {
     // address / material_total / materials / design images.)
     const authHeader = req.headers.get("Authorization");
     const isServiceRole = !!authHeader && authHeader.includes(supabaseKey);
+    // gh-2559 / D-371: the street address goes to the service role, the claim's owner and the
+    // selected contractor only. A bidder gets job_address: null (see ./job-address.ts).
+    let mayReceiveAddress = isServiceRole;
     if (!isServiceRole) {
       const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY") || supabaseKey, {
         global: { headers: { Authorization: authHeader ?? "" } },
@@ -213,6 +217,7 @@ serve(async (req) => {
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+      mayReceiveAddress = await mayReceiveJobAddress(supabase, claim_id, user);
     }
 
     // ── Step 1: Resolve hover_job_id ─────────────────────────────
@@ -489,7 +494,7 @@ serve(async (req) => {
         wall_sqft: wallSqft,
         design_images: designImages,
         material_total: materialTotal,
-        job_address: jobAddress,
+        job_address: jobAddressFor(mayReceiveAddress, jobAddress),
         // D-164 design-completeness fields
         design_manufacturer: designAttrs.manufacturer,
         design_profile:      designAttrs.profile,

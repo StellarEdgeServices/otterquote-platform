@@ -2838,7 +2838,9 @@
           ts: Date.now(),
           images: data.design_images || [],
           hover_job_id: data.hover_job_id || null,
-          job_address: data.job_address || null,
+          // gh-2559 / D-371: the bid form never keeps or prints the job's street address (a bidder
+          // sees city and zip only; the Location line comes from the claim summary view).
+          job_address: null,
         };
 
         // Cache result
@@ -2863,7 +2865,8 @@
       if (loadingEl) loadingEl.style.display = 'none';
 
       // Address line
-      if (addrEl && payload.job_address) addrEl.textContent = payload.job_address;
+      // gh-2559 / D-371: no street address on the bid form, whatever the function or an old cache returns.
+      if (addrEl) addrEl.textContent = '';
 
       const images = payload.images || [];
 
@@ -2990,9 +2993,10 @@
         const data = await resp.json();
 
         // ── Address line ──────────────────────────────────────────────
-        if (data.job_address) {
+        // gh-2559 / D-371: no street address on the bid form.
+        {
           const addrEl = document.getElementById('hoverJobAddressLine');
-          if (addrEl) addrEl.textContent = data.job_address;
+          if (addrEl) addrEl.textContent = '';
         }
 
         // ── Rendered images gallery ───────────────────────────────────
@@ -3339,9 +3343,10 @@
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
 
-        if (data.job_address) {
+        // gh-2559 / D-371: no street address on the bid form.
+        {
           const addrEl = document.getElementById('hoverRoofingAddressLine');
-          if (addrEl) addrEl.textContent = data.job_address;
+          if (addrEl) addrEl.textContent = '';
         }
 
         // Try to extract roofing-specific measurements from the vendor payload
@@ -3502,14 +3507,19 @@
 
       if (claimId && !CONFIG.DEMO_MODE && sb) {
         try {
-          // ── Bug Fix #2: Join carrier_profiles to get carrier name ──
+          // gh-2559 / D-368: a bidding contractor reads the claim SUMMARY view, never the base claims row
+          // (homeowner name, claim number, adjuster contact, street address, user id). The view returns the
+          // carrier's name as carrier_profile_name (Bug Fix #2 used a carrier_profiles join) and the
+          // estimate / measurements file names to the selected contractor only.
+          const BIDDER_CLAIM_BID_COLS = 'id, trades, job_type, funding_type, damage_type, material_category, shingle_type, impact_class, designer_product, designer_manufacturer, rcv_amount, parsed_line_items, siding_bid_released_at, location_city, location_zip, carrier_profile_name, estimate_filename, measurements_filename, selected_contractor_id';
           const { data, error } = await sb
-            .from('claims')
-            .select('*, carrier_profiles(carrier_name)')
+            .from('bidder_claim_summary')
+            .select(BIDDER_CLAIM_BID_COLS)
             .eq('id', claimId)
             .single();
 
           if (!error && data) {
+            data.carrier_profiles = data.carrier_profile_name ? { carrier_name: data.carrier_profile_name } : null;
             currentClaim = data;
 
             // Determine RCV for bid type selector
@@ -3937,15 +3947,10 @@
         jobIdEl.textContent = String(currentClaim.id).slice(-8).toUpperCase();
       }
 
-      // Location: D-074 — city + zip only (never full street address to contractors before bid)
-      const addressParts = (currentClaim.property_address || '').split(',');
-      let city = 'Unknown';
-      if (addressParts.length >= 2) {
-        city = addressParts[1].trim();
-      } else if (addressParts.length === 1) {
-        city = addressParts[0].trim();
-      }
-      const zip = (currentClaim.property_address || '').match(/\d{5}/)?.[0] || '';
+      // Location: D-074 — city + zip only (never full street address to contractors before bid).
+      // gh-2559: the summary view returns them already split; it has no street address.
+      const city = currentClaim.location_city || 'Unknown';
+      const zip = currentClaim.location_zip || '';
       const locationDisplay = zip ? `${city}, IN ${zip}` : city;
 
       // ── Bug Fix #2: Carrier name ──

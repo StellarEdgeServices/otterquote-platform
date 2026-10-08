@@ -63,6 +63,24 @@ export function buildLocation(address: string | null | undefined, status: string
   return zip ? `${city}, IN ${zip}` : city || 'Unknown';
 }
 
+/**
+ * gh-2559 / D-368: the "City, IN zip" label of a bid still pending (no contractor selected yet), built from the
+ * claim SUMMARY view's location_city / location_zip. The street address is not given to a bidder.
+ */
+export function buildPendingLocation(city: string | null | undefined, zip: string | null | undefined): string {
+  const c = (city || '').trim() || 'Unknown';
+  return zip ? `${c}, IN ${zip}` : c;
+}
+
+/**
+ * gh-2559 / D-368: the columns the dashboard reads from public.bidder_claim_summary. Availability count:
+ * BIDDER_CLAIM_DASH_COLS. Pending-bid lookup (location and damage type of claims the contractor bid on):
+ * BIDDER_CLAIM_PEND_COLS. tests/gh2559-bidder-claims-view.mjs checks these equal the static page's strings and
+ * the proof file's.
+ */
+export const BIDDER_CLAIM_DASH_COLS = 'id, trades, status';
+export const BIDDER_CLAIM_PEND_COLS = 'id, location_city, location_zip, damage_type';
+
 export interface ClaimLike {
   material_category?: string | null;
   shingle_type?: string | null;

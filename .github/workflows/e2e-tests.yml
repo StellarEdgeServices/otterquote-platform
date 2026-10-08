@@ -458,6 +458,14 @@ jobs:
       - name: admin loss-sheet queue offers no Mark reviewed on a Not-uploaded row + EF guard (gh-1796)
         run: node tests/gh1796-no-review-without-loss-sheet.mjs
 
+      - name: a bidding contractor reads the claim summary view, never the base claims row (gh-2559, D-368)
+        run: node tests/gh2559-bidder-claims-view.mjs
+
+      - name: the bidder view hands out no street, unit, box, lot, phone or email -- view file run on a throwaway Postgres (gh-2559, D-371)
+        run: |
+          python3 -m pip install --quiet pgserver==0.1.4 psycopg2-binary==2.9.13
+          python3 tools/gh2559-bidder-view-behaviour.py
+
       - name: a bidding contractor is offered no raw homeowner upload, only the selected contractor (gh-2559, D-368)
         run: node tests/gh2559-bidder-no-raw-files.mjs
 
