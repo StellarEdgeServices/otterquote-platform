@@ -100,6 +100,16 @@ CREATE FUNCTION pg_temp.st(p_id uuid) RETURNS text LANGUAGE sql AS $f$
        FROM public.quotes WHERE id = p_id), ' -> (no such row)');
 $f$;
 
+-- who a claim is awarded to, and how many bids on it are selected (any bid_status / selected AND active)
+CREATE FUNCTION pg_temp.sel(p_claim uuid) RETURNS text LANGUAGE sql AS $f$
+  SELECT format(' | claim status=%s selected_contractor=%s selected_bid_amount=%s | selected bids (any bid_status)=%s, selected AND active=%s',
+    c.status, CASE WHEN c.selected_contractor_id IS NULL THEN 'none' WHEN c.selected_contractor_id = 'aaaaaaa1-0000-4000-8000-000000000001'::uuid THEN 'k1' WHEN c.selected_contractor_id = 'aaaaaaa2-0000-4000-8000-000000000002'::uuid THEN 'k2' ELSE 'other' END,
+    COALESCE(c.selected_bid_amount::text, 'NULL'),
+    (SELECT count(*) FROM public.quotes WHERE claim_id = p_claim AND status = 'selected'),
+    (SELECT count(*) FROM public.quotes WHERE claim_id = p_claim AND status = 'selected' AND bid_status = 'active'))
+  FROM public.claims c WHERE c.id = p_claim;
+$f$;
+
 -- complete a claim the way mark-job-complete does (service side) and report what the referral accrued
 CREATE FUNCTION pg_temp.complete(p_claim uuid) RETURNS text LANGUAGE plpgsql AS $f$
 DECLARE v text;
@@ -146,7 +156,7 @@ DECLARE
   before text; v text := '';
 BEGIN
   before := pg_temp.snap();
-  v := v || E'\nGUARDS ' || format('guard_triggers_on_quotes=%s guard_md5=%s commission_md5=%s server_sets_fee=%s second_selected_rule=%s allow_list=%s lock_gh2564=%s helper_quotes_platform_fee_for=%s commission_reads_selected_contractor=%s accept_bid_md5=%s accept_bid_refuses_second=%s lock_terms_d381=%s',
+  v := v || E'\nGUARDS ' || format('guard_triggers_on_quotes=%s guard_md5=%s commission_md5=%s server_sets_fee=%s second_selected_rule=%s allow_list=%s lock_gh2564=%s helper_quotes_platform_fee_for=%s commission_reads_selected_contractor=%s accept_bid_md5=%s accept_bid_refuses_second=%s lock_terms_d381=%s one_selected_index=%s accept_bid_claim_lock_first=%s',
     (SELECT count(*) FROM pg_trigger WHERE tgrelid = 'public.quotes'::regclass AND tgname LIKE '%guard%' AND NOT tgisinternal),
     (SELECT left(md5(prosrc), 8) FROM pg_proc WHERE oid = 'public.quotes_guard_homeowner_columns()'::regprocedure),
     (SELECT left(md5(prosrc), 8) FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure),
@@ -158,7 +168,9 @@ BEGIN
     (SELECT prosrc LIKE '%contractor_id = NEW.selected_contractor_id%' FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure),
     (SELECT left(md5(prosrc), 8) FROM pg_proc WHERE oid = 'public.accept_bid(uuid,uuid)'::regprocedure),
     (SELECT prosrc LIKE '%a second bid cannot be selected beside it%' FROM pg_proc WHERE oid = 'public.accept_bid(uuid,uuid)'::regprocedure),
-    (SELECT prosrc LIKE '%NEW.scope_summary IS DISTINCT FROM OLD.scope_summary%' FROM pg_proc WHERE oid = 'public.quotes_guard_homeowner_columns()'::regprocedure));
+    (SELECT prosrc LIKE '%NEW.scope_summary IS DISTINCT FROM OLD.scope_summary%' FROM pg_proc WHERE oid = 'public.quotes_guard_homeowner_columns()'::regprocedure),
+    (SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'quotes_one_selected_bid_per_claim'),
+    (SELECT prosrc LIKE '%FOR NO KEY UPDATE%' FROM pg_proc WHERE oid = 'public.accept_bid(uuid,uuid)'::regprocedure));
   v := v || E'\nCFG   ' || format('platform_fee_config rows=%s | row for (contractor state IN, trade roofing): fee_pct=%s fee_basis=%s | rows a signed-in contractor can read through RLS=%s',
     (SELECT count(*) FROM public.platform_fee_config),
     (SELECT fee_pct FROM public.platform_fee_config WHERE state IS NULL AND trade IS NULL), (SELECT fee_basis FROM public.platform_fee_config WHERE state IS NULL AND trade IS NULL),
@@ -306,6 +318,7 @@ BEGIN
     RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
   EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
   BEGIN
+    DROP INDEX IF EXISTS public.quotes_one_selected_bid_per_claim; -- fixture, undone with the savepoint: with the index in place (N1) this state cannot be built, so the commission function is tested alone
     UPDATE public.quotes SET status = 'selected', updated_at = now() + interval '1 minute' WHERE id = ql; -- fixture (table owner): the second selected bid exists by SOME route
     v := v || E'\nE4b second selected bid forced in by the table owner, then c2 completed (the commission function alone): ' || pg_temp.complete(c2);
     RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
@@ -354,6 +367,78 @@ BEGIN
   BEGIN
     v := v || E'\nX3 CONTROL STRANGER rpc accept_bid(c2, ql) on a claim the caller does not own: '
       || pg_temp.try_as('authenticated', x, format('SELECT * FROM public.accept_bid(%L, %L)', c2, ql));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+
+  BEGIN
+    UPDATE public.claims SET status = 'contract_signed' WHERE id = c3; -- fixture: the contract on c3 is signed
+    v := v || E'\nX2b CONTROL OWNER rpc accept_bid(c3, qs), the live selected bid, on a claim whose contract is signed (a repeated click; before: the claim is rewound to awarded): '
+      || pg_temp.try_as('authenticated', o, format('SELECT * FROM public.accept_bid(%L, %L)', c3, qs)) || pg_temp.sel(c3);
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+
+  -- ===== W: the claim after the platform's first exit, switch-contractor (re-review 6051423781 finding 1) =====
+  -- switch-contractor step 6 writes quotes.status = 'cancelled' (refused by quotes_status_check, logged "Non-fatal"), then
+  -- step 7 resets the claim to bidding with no selected contractor. The old bid stays selected.
+  BEGIN
+    v := v || E'\nW1 CONTROL switch-contractor step 6 as service_role, quotes.status=cancelled on the winner qw (quotes_status_check allows only draft, submitted, selected, declined, expired): '
+      || pg_temp.try_as('service_role', NULL, format('UPDATE public.quotes SET status=''cancelled'', cancelled_at=now(), cancellation_reason=''homeowner_switched_contractor'' WHERE id=%L', qw)) || pg_temp.st(qw);
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    UPDATE public.quotes SET status = 'submitted', updated_at = now() WHERE id = ql; -- fixture: k2's bid on c2 is open
+    v := v || E'\nW2 switch-contractor step 7 as service_role, claim c2 reset (status bidding, selected_contractor_id NULL; qw stays selected): '
+      || pg_temp.try_as('service_role', NULL, format('UPDATE public.claims SET status=''bidding'', selected_contractor_id=NULL, contractor_switched_at=now(), contractor_switch_count=contractor_switch_count+1 WHERE id=%L', c2)) || pg_temp.sel(c2);
+    v := v || E'\nW3 OWNER rpc accept_bid(c2, ql) after the switch (the homeowner awards another bid; before: two selected bids, after the previous head: refused and the claim stuck in bidding): '
+      || pg_temp.try_as('authenticated', o, format('SELECT * FROM public.accept_bid(%L, %L)', c2, ql)) || pg_temp.sel(c2);
+    v := v || format(' | qw=%s ql=%s', (SELECT status FROM public.quotes WHERE id = qw), (SELECT status FROM public.quotes WHERE id = ql));
+    v := v || E'\nW3b  ... then c2 is completed (service side; the commission follows the claim''s selected contractor k2): ' || pg_temp.complete(c2);
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nW4 RESIDUAL OWNER the React award shape on c2 (claim stays awarded; react-app bids/actions.ts writes claims, then quotes): UPDATE claims to k2, then UPDATE quotes SET status=selected on ql. The same repoint R1 shows; before: two selected bids; after the previous head: the second write refused and the claim left naming k2 with k2''s bid unselected: '
+      || pg_temp.try_as('authenticated', o, format('UPDATE public.claims SET selected_contractor_id=%L, selected_bid_amount=12000, status=''awarded'' WHERE id=%L', k2, c2))
+      || ' / ' || pg_temp.try_as('authenticated', o, format('UPDATE public.quotes SET status=''selected'' WHERE id=%L', ql)) || pg_temp.sel(c2);
+    v := v || format(' | qw=%s ql=%s', (SELECT status FROM public.quotes WHERE id = qw), (SELECT status FROM public.quotes WHERE id = ql));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+
+  -- ===== RB: the claim after the platform's second exit, rescind-bid, and the re-bid (D-369's way out) =====
+  -- rescind-bid writes quotes.bid_status = 'rescinded', which quotes_bid_status_check refuses, and leaves status selected.
+  -- 'cancelled' is the nearest value the constraint allows: what a repaired rescind-bid would have to write.
+  BEGIN
+    v := v || E'\nRB1 CONTROL rescind-bid''s own write as service_role, bid_status=rescinded on the selected bid qs (quotes_bid_status_check allows only active, expired, superseded, cancelled): '
+      || pg_temp.try_as('service_role', NULL, format('UPDATE public.quotes SET bid_status=''rescinded'', updated_at=now() WHERE id=%L', qs));
+    v := v || format(' -> bid_status=%s', (SELECT bid_status FROM public.quotes WHERE id = qs));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nRB2 rescind (service_role, bid_status=cancelled on qs), k1 re-bids 14000 on c3, OWNER rpc accept_bid(c3, new bid): '
+      || pg_temp.try_as('service_role', NULL, format('UPDATE public.quotes SET bid_status=''cancelled'', updated_at=now() WHERE id=%L', qs))
+      || ' / ' || pg_temp.try_as('authenticated', k1u, format('INSERT INTO public.quotes %s VALUES (%L,%L,%L, 14000, 5.0, 700, ''scope'', NULL, NULL, NULL, false, ''roofing'', ''{}''::jsonb, NULL, false, true, NULL, NULL, NULL, 5, ''bid_amount'', now())', ins_cols, n1, c3, k1))
+      || ' / ' || pg_temp.try_as('authenticated', o, format('SELECT * FROM public.accept_bid(%L, %L)', c3, n1)) || pg_temp.sel(c3);
+    v := v || format(' | qs=%s/%s new=%s/%s', (SELECT status FROM public.quotes WHERE id = qs), (SELECT bid_status FROM public.quotes WHERE id = qs), (SELECT status FROM public.quotes WHERE id = n1), (SELECT bid_status FROM public.quotes WHERE id = n1));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nRB3 CONTROL no rescind: k1 re-bids 14000 on c3 while qs is still the live selected bid, OWNER rpc accept_bid(c3, new bid): '
+      || pg_temp.try_as('authenticated', k1u, format('INSERT INTO public.quotes %s VALUES (%L,%L,%L, 14000, 5.0, 700, ''scope'', NULL, NULL, NULL, false, ''roofing'', ''{}''::jsonb, NULL, false, true, NULL, NULL, NULL, 5, ''bid_amount'', now())', ins_cols, n1, c3, k1))
+      || ' / ' || pg_temp.try_as('authenticated', o, format('SELECT * FROM public.accept_bid(%L, %L)', c3, n1)) || pg_temp.sel(c3);
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+
+  -- ===== I2: the partial unique index quotes_one_selected_bid_per_claim, every route that skips the guard =====
+  BEGIN
+    v := v || E'\nN1 service_role selects q1 then q2 on c1 in two statements (the guard does not apply to service_role; the SQL editor and Edge Functions are the same): '
+      || pg_temp.try_as('service_role', NULL, format('UPDATE public.quotes SET status=''selected'' WHERE id=%L', q1))
+      || ' / ' || pg_temp.try_as('service_role', NULL, format('UPDATE public.quotes SET status=''selected'' WHERE id=%L', q2)) || pg_temp.sel(c1);
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nN2 CONTROL service_role selects q1, q1 is rescinded (bid_status=cancelled), q2 is selected: '
+      || pg_temp.try_as('service_role', NULL, format('UPDATE public.quotes SET status=''selected'' WHERE id=%L', q1))
+      || ' / ' || pg_temp.try_as('service_role', NULL, format('UPDATE public.quotes SET bid_status=''cancelled'' WHERE id=%L', q1))
+      || ' / ' || pg_temp.try_as('service_role', NULL, format('UPDATE public.quotes SET status=''selected'' WHERE id=%L', q2)) || pg_temp.sel(c1);
     RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
   EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
 

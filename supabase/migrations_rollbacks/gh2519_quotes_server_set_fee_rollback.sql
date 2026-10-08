@@ -6,9 +6,15 @@
 -- It restores quotes_guard_homeowner_columns() to the body of 20261006170000_gh2519_quotes_fee_columns_guard.sql
 -- (prosrc md5 f6102d1c…) and accept_bid() to the live body (prosrc md5 07ae60dd…) and apply_referral_commission() to the body of
 -- 20261005151842_gh2479_referral_guard_and_commission_checks.sql (prosrc md5 5cd19c8b…), byte for byte, with
--- their comments, and drops the one function the migration added. The trigger is untouched. No data is lost:
+-- their comments, and drops the one function and the one index the migration added. The trigger is untouched. No data is lost:
 -- the migration changed no table. Fee values the server wrote while it was live stay as stored.
 -- If the migration was applied, also delete its supabase_migrations.schema_migrations row.
+-- COMMENT TEXTS (re-review 6051423781 finding 9): the COMMENT on quotes_guard_homeowner_columns() below is the text of
+-- 20261006170000 (md5 of the text 139ec9b0). The COMMENT on apply_referral_commission() below matches NO file under
+-- supabase/migrations/ (the last repo COMMENT on that function is 20260819225113_gh1050, a different text); it was written
+-- from production's pg_description by the author of the first draft and cannot be verified from the repo (md5 of this text
+-- 4f8b242d). Before the apply, compare it with production: SELECT left(md5(obj_description('public.apply_referral_commission()'::regprocedure,'pg_proc')),8)
+-- must read 4f8b242d; if not, correct the text in this file to production's before relying on this rollback.
 BEGIN;
 
 CREATE OR REPLACE FUNCTION public.quotes_guard_homeowner_columns()
@@ -406,6 +412,9 @@ BEGIN
 
   RETURN QUERY SELECT p_claim_id, p_quote_id, v_contractor, v_amount, v_declined;
 END $function$;
+
+-- gh-2519 re-review 6051423781 finding 3: the partial unique index the migration added.
+DROP INDEX IF EXISTS public.quotes_one_selected_bid_per_claim;
 
 DROP FUNCTION IF EXISTS public.quotes_platform_fee_for(uuid, uuid);
 

@@ -157,15 +157,28 @@ BEGIN
         USING ERRCODE = '42501';
     END IF;
 
-    -- gh-2519 residual 4: a client may set a bid to selected only when no other bid on that claim is selected.
+    -- gh-2519 residual 4: one selected bid per claim. A client may set a bid to selected only when the claim has no
+    -- LIVE selected bid: a bid with status selected, bid_status active, whose contractor is the claim's current
+    -- selected contractor. A bid that was switched away from (the claim has no selected contractor, or another one)
+    -- or rescinded (bid_status not active) is not live and does not block; any such leftover selected, active bid is
+    -- set to declined here so that the partial unique index quotes_one_selected_bid_per_claim holds. Re-review
+    -- 6051423781 findings 1 and 3. Two simultaneous selects are closed by that index, not by this check.
     IF COALESCE(NEW.status IN ('selected', 'awarded'), false)
-       AND NOT COALESCE(OLD.status IN ('selected', 'awarded'), false)
-       AND EXISTS (
+       AND NOT COALESCE(OLD.status IN ('selected', 'awarded'), false) THEN
+      IF EXISTS (
              SELECT 1 FROM public.quotes q2
+               JOIN public.claims cl ON cl.id = q2.claim_id
               WHERE q2.claim_id = OLD.claim_id AND q2.id <> OLD.id
-                AND q2.status IN ('selected', 'awarded')) THEN
-      RAISE EXCEPTION 'quotes: another bid on this claim is already selected; a second bid cannot be selected beside it (gh-2519)'
-        USING ERRCODE = '42501';
+                AND q2.status IN ('selected', 'awarded')
+                AND q2.bid_status = 'active'
+                AND cl.selected_contractor_id IS NOT NULL
+                AND q2.contractor_id = cl.selected_contractor_id) THEN
+        RAISE EXCEPTION 'quotes: another bid on this claim is already selected; a second bid cannot be selected beside it (gh-2519)'
+          USING ERRCODE = '42501';
+      END IF;
+      UPDATE public.quotes q3 SET status = 'declined', updated_at = now()
+       WHERE q3.claim_id = OLD.claim_id AND q3.id <> OLD.id
+         AND q3.status = 'selected' AND q3.bid_status = 'active';
     END IF;
 
     -- gh-2519 residual 3: column allow-list. Whatever else changed must be a column this caller's pages
@@ -200,6 +213,6 @@ END;
 $guard$;
 
 COMMENT ON FUNCTION public.quotes_guard_homeowner_columns() IS
-  'gh-2479 / gh-2519: BEFORE INSERT OR UPDATE guard on public.quotes. Client roles (anon, authenticated) that are not admins: on INSERT can create only their own bid (contractor_id is a contractor row of the caller) born status submitted, bid_status active, not an auto-bid, not a renewal, with no signing, payment, test, envelope, cancellation, expiry or warranty-upload state, and the server sets platform_fee_pct, fee_percentage, platform_fee_basis and fee_amount from quotes_platform_fee_for() whatever the browser sent; on UPDATE cannot change claim_id or contractor_id, can change total_price only as the quote''s own contractor (whose three rate fields then keep their stored values and whose fee_amount is recomputed from total_price), cannot change the fee columns as anyone else, can change status only as the claim owner, only to selected or declined, and to selected only when no other bid on the claim is selected, and can change no column outside the caller''s allow-list (owner: status, homeowner_signed_at; contractor: the bid-form columns and contractor_signed_at). Rejected 42501; an unchanged value is not a change. service_role, admins and owner-level (SECURITY DEFINER) sessions such as accept_bid() are untouched.';
+  'gh-2479 / gh-2519: BEFORE INSERT OR UPDATE guard on public.quotes. Client roles (anon, authenticated) that are not admins: on INSERT can create only their own bid (contractor_id is a contractor row of the caller) born status submitted, bid_status active, not an auto-bid, not a renewal, with no signing, payment, test, envelope, cancellation, expiry or warranty-upload state, and the server sets platform_fee_pct, fee_percentage, platform_fee_basis and fee_amount from quotes_platform_fee_for() whatever the browser sent; on UPDATE cannot change claim_id or contractor_id, can change total_price only as the quote''s own contractor (whose three rate fields then keep their stored values and whose fee_amount is recomputed from total_price), cannot change the fee columns as anyone else, can change status only as the claim owner, only to selected or declined, and to selected only when the claim has no live selected bid (selected, active, and the claim''s current selected contractor; a switched-away or rescinded bid does not count and is set to declined), and can change no column outside the caller''s allow-list (owner: status, homeowner_signed_at; contractor: the bid-form columns and contractor_signed_at). Rejected 42501; an unchanged value is not a change. service_role, admins and owner-level (SECURITY DEFINER) sessions such as accept_bid() are untouched.';
 
 COMMIT;

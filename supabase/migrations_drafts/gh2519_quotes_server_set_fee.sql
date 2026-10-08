@@ -7,7 +7,7 @@
 --
 -- Tier 3B, NOT the R-134 fast path: it rewrites what a live bid path stores (ruling 6049007305).
 -- What changes, for client callers only (current_user anon/authenticated, JWT role not service_role, not an
--- admin). service_role (every Edge Function), admins and owner-level SECURITY DEFINER functions are untouched, exactly as today, except accept_bid(), which gains one refusal (item 4).
+-- admin). service_role (every Edge Function), admins and owner-level SECURITY DEFINER functions are untouched, exactly as today, except accept_bid(), which is re-created (item 4).
 --   1. INSERT: platform_fee_pct, fee_percentage and platform_fee_basis are written from the
 --      platform_fee_config row for the bid's contractor and claim, and fee_amount is computed from
 --      total_price. Whatever the browser sent in those four fields is overwritten, not refused, so both live
@@ -19,11 +19,30 @@
 --      contractor_signed_at; both updated_at. Anything else (payment_status, payment_intent_id, is_test,
 --      bid_status, ...) is refused 42501. On INSERT the test, payment, envelope, cancellation, expiry and
 --      warranty-upload columns must be born at their defaults.
---   4. Residual 4: a client may set a bid to selected only when no other bid on that claim is selected, and
---      apply_referral_commission() reads the bid of claims.selected_contractor_id, not the newest selected bid.
---      The same rule holds through rpc accept_bid() (review 6050036561 B1, CEO ruling 6050104316): it is
---      SECURITY DEFINER, so the guard cannot see the caller, and it now refuses itself (42501) when another bid
---      on the claim is already selected. switch-contractor is the one re-award path.
+--   4. Residual 4: one selected bid per claim, by three parts that work together (review 6050036561 B1 and the
+--      re-review 6051423781 findings 1 and 3):
+--      (a) DEFINITION. A bid "blocks" another from being selected only when it is LIVE: status selected, bid_status
+--          active, and its contractor is the claim's current selected contractor (claims.selected_contractor_id).
+--          A bid that was switched away from (switch-contractor resets the claim to bidding with no selected
+--          contractor but leaves the old bid selected) or rescinded (bid_status leaves active) is not live and
+--          does not block a new award. The same definition is used by the guard (client UPDATE to selected) and by
+--          accept_bid() (SECURITY DEFINER, so the guard cannot see its caller).
+--      (b) CLEAN-UP. When a client or accept_bid() selects a bid, any other bid left status selected and active that
+--          is not live is set to declined in the same statement, so a switched-away bid does not stay "selected".
+--      (c) INDEX. A partial unique index, quotes_one_selected_bid_per_claim, ON quotes (claim_id) WHERE
+--          status = 'selected' AND bid_status = 'active', closes every other route (two simultaneous direct
+--          UPDATEs, a direct UPDATE beside accept_bid(), service_role, the SQL editor). It cannot be defeated by a race.
+--      accept_bid() also takes the claim row lock FIRST (FOR NO KEY UPDATE), then the quote row, so two simultaneous
+--      accepts serialize without the deadlock the re-review reproduced, and returns without writing when the bid is
+--      already the live selected one (a repeated click no longer rewinds a signed claim to awarded).
+--      The two exits are NOT changed here. Their defects, stated precisely:
+--        - supabase/functions/switch-contractor/index.ts step 6 writes quotes.status = 'cancelled'; the check
+--          quotes_status_check allows only draft, submitted, selected, declined, expired, so the write is refused
+--          (logged "Non-fatal") and the old bid stays selected. A deployed Edge Function; not changed in this PR.
+--        - supabase/functions/rescind-bid/index.ts writes quotes.bid_status = 'rescinded'; quotes_bid_status_check
+--          allows only active, expired, superseded, cancelled, so the write is refused and the function answers 500
+--          "Failed to rescind bid": today NO bid can be rescinded. Even once repaired it leaves status selected.
+--      With (a) and (b) a claim is never stranded after either exit.
 -- NOT here: the price-and-fee lock on a selected bid (D-369). That is gh2564_quotes_selected_price_lock.sql, its own change.
 --
 -- TIER C POINT LEFT OPEN BY THE RULING (which rate a REVISED bid carries if the configured rate changed after
@@ -39,9 +58,27 @@
 -- One function is ADDED (quotes_platform_fee_for, a read of the fee config; needed because the config table
 -- is readable by admins only and the guard runs as the caller). No trigger is added: the rules live inside
 -- the existing quotes_guard_homeowner_columns(), and every earlier rule is kept verbatim.
--- Three functions are replaced (guard, commission, accept_bid). Idempotent: CREATE OR REPLACE FUNCTION. No table, policy, trigger or data change.
+-- Three functions are replaced (guard, commission, accept_bid) and one partial unique index is added. Idempotent:
+-- CREATE OR REPLACE FUNCTION and CREATE UNIQUE INDEX IF NOT EXISTS. No table, policy or trigger change; no data change.
+-- PRE-FLIGHT FOR THE INDEX (must return 0 rows before apply, assumption: production has at most one selected active
+-- bid per claim; the file cannot read production): see supabase/migrations_rollbacks/gh2519_quotes_server_set_fee_pre-flight.md.
+-- The DO block at the start of the transaction raises if it does not.
 
 BEGIN;
+
+-- gh-2519 pre-flight, in the transaction: the unique index below cannot be built over existing data that already
+-- breaks it. If any claim has two selected, active bids this raises and nothing is applied. Do not fix the data
+-- here; rule on the rows (the pre-flight file says how to list them).
+DO $preflight$
+DECLARE v_claims integer;
+BEGIN
+  SELECT count(*) INTO v_claims FROM (
+    SELECT claim_id FROM public.quotes WHERE status = 'selected' AND bid_status = 'active' GROUP BY claim_id HAVING count(*) > 1) d;
+  IF v_claims > 0 THEN
+    RAISE EXCEPTION 'gh2519: % claim(s) already have more than one selected, active bid; resolve them before this change is applied', v_claims;
+  END IF;
+END
+$preflight$;
 
 CREATE OR REPLACE FUNCTION public.quotes_platform_fee_for(p_contractor_id uuid, p_claim_id uuid)
 RETURNS TABLE (fee_pct numeric, fee_basis text)
@@ -221,15 +258,28 @@ BEGIN
         USING ERRCODE = '42501';
     END IF;
 
-    -- gh-2519 residual 4: a client may set a bid to selected only when no other bid on that claim is selected.
+    -- gh-2519 residual 4: one selected bid per claim. A client may set a bid to selected only when the claim has no
+    -- LIVE selected bid: a bid with status selected, bid_status active, whose contractor is the claim's current
+    -- selected contractor. A bid that was switched away from (the claim has no selected contractor, or another one)
+    -- or rescinded (bid_status not active) is not live and does not block; any such leftover selected, active bid is
+    -- set to declined here so that the partial unique index quotes_one_selected_bid_per_claim holds. Re-review
+    -- 6051423781 findings 1 and 3. Two simultaneous selects are closed by that index, not by this check.
     IF COALESCE(NEW.status IN ('selected', 'awarded'), false)
-       AND NOT COALESCE(OLD.status IN ('selected', 'awarded'), false)
-       AND EXISTS (
+       AND NOT COALESCE(OLD.status IN ('selected', 'awarded'), false) THEN
+      IF EXISTS (
              SELECT 1 FROM public.quotes q2
+               JOIN public.claims cl ON cl.id = q2.claim_id
               WHERE q2.claim_id = OLD.claim_id AND q2.id <> OLD.id
-                AND q2.status IN ('selected', 'awarded')) THEN
-      RAISE EXCEPTION 'quotes: another bid on this claim is already selected; a second bid cannot be selected beside it (gh-2519)'
-        USING ERRCODE = '42501';
+                AND q2.status IN ('selected', 'awarded')
+                AND q2.bid_status = 'active'
+                AND cl.selected_contractor_id IS NOT NULL
+                AND q2.contractor_id = cl.selected_contractor_id) THEN
+        RAISE EXCEPTION 'quotes: another bid on this claim is already selected; a second bid cannot be selected beside it (gh-2519)'
+          USING ERRCODE = '42501';
+      END IF;
+      UPDATE public.quotes q3 SET status = 'declined', updated_at = now()
+       WHERE q3.claim_id = OLD.claim_id AND q3.id <> OLD.id
+         AND q3.status = 'selected' AND q3.bid_status = 'active';
     END IF;
 
     -- gh-2519 residual 3: column allow-list. Whatever else changed must be a column this caller's pages
@@ -264,7 +314,7 @@ END;
 $guard$;
 
 COMMENT ON FUNCTION public.quotes_guard_homeowner_columns() IS
-  'gh-2479 / gh-2519: BEFORE INSERT OR UPDATE guard on public.quotes. Client roles (anon, authenticated) that are not admins: on INSERT can create only their own bid (contractor_id is a contractor row of the caller) born status submitted, bid_status active, not an auto-bid, not a renewal, with no signing, payment, test, envelope, cancellation, expiry or warranty-upload state, and the server sets platform_fee_pct, fee_percentage, platform_fee_basis and fee_amount from quotes_platform_fee_for() whatever the browser sent; on UPDATE cannot change claim_id or contractor_id, can change total_price only as the quote''s own contractor (whose three rate fields then keep their stored values and whose fee_amount is recomputed from total_price), cannot change the fee columns as anyone else, can change status only as the claim owner, only to selected or declined, and to selected only when no other bid on the claim is selected, and can change no column outside the caller''s allow-list (owner: status, homeowner_signed_at; contractor: the bid-form columns and contractor_signed_at). Rejected 42501; an unchanged value is not a change. service_role, admins and owner-level (SECURITY DEFINER) sessions such as accept_bid() are untouched.';
+  'gh-2479 / gh-2519: BEFORE INSERT OR UPDATE guard on public.quotes. Client roles (anon, authenticated) that are not admins: on INSERT can create only their own bid (contractor_id is a contractor row of the caller) born status submitted, bid_status active, not an auto-bid, not a renewal, with no signing, payment, test, envelope, cancellation, expiry or warranty-upload state, and the server sets platform_fee_pct, fee_percentage, platform_fee_basis and fee_amount from quotes_platform_fee_for() whatever the browser sent; on UPDATE cannot change claim_id or contractor_id, can change total_price only as the quote''s own contractor (whose three rate fields then keep their stored values and whose fee_amount is recomputed from total_price), cannot change the fee columns as anyone else, can change status only as the claim owner, only to selected or declined, and to selected only when the claim has no live selected bid (selected, active, and the claim''s current selected contractor; a switched-away or rescinded bid does not count and is set to declined), and can change no column outside the caller''s allow-list (owner: status, homeowner_signed_at; contractor: the bid-form columns and contractor_signed_at). Rejected 42501; an unchanged value is not a change. service_role, admins and owner-level (SECURITY DEFINER) sessions such as accept_bid() are untouched.';
 
 CREATE OR REPLACE FUNCTION public.apply_referral_commission()
  RETURNS trigger
@@ -530,9 +580,11 @@ $function$;
 COMMENT ON FUNCTION public.apply_referral_commission() IS
   'Trigger function attached to claims AFTER UPDATE OF completion_date (after_claim_completed). On completion, when the selected/awarded quote of the claim''s selected contractor (claims.selected_contractor_id; gh-2519) is >= $10,000, inserts a pending_approval payout_approvals row for $200 to the referrer and, when forward-only recruit criteria pass, $50 to the recruiter. D-333 (gh-2155): a home_inspector referrer accrues NO referral fee and triggers no send-partner-status-email; a home_inspector recruiter accrues NO recruit bonus (the referrer''s own type does not gate the recruit bonus). Idempotent via commission_amount > 0 (referral fee) and recruit_commission_amount > 0 (recruit bonus), independently. SECURITY DEFINER; all commission-side errors are swallowed and logged.';
 
--- gh-2519, CEO ruling 6050104316 on PR #2612 (review 6050036561 finding B1): accept_bid() is the second award route.
--- Live body (prosrc md5 07ae60dd…) plus the claim-row lock and ONE refusal, marked gh-2519. Owner, signature, grants and
--- the rest of the body are unchanged; CREATE OR REPLACE keeps EXECUTE for authenticated.
+-- gh-2519, CEO ruling 6050104316 on PR #2612 (review 6050036561 finding B1; re-review 6051423781 findings 1 and 3):
+-- accept_bid() is the second award route. Live body (prosrc md5 07ae60dd) plus, each marked gh-2519: the claim row
+-- lock taken FIRST, one refusal (another LIVE selected bid), the clean-up of a switched-away selected bid, and an early
+-- return when the bid is already the live selected one. Owner, signature, grants and the rest of the body are unchanged;
+-- CREATE OR REPLACE keeps EXECUTE for authenticated.
 CREATE OR REPLACE FUNCTION public.accept_bid(p_claim_id uuid, p_quote_id uuid)
  RETURNS TABLE(out_claim_id uuid, out_quote_id uuid, out_contractor_id uuid, out_amount numeric, out_declined_count integer)
  LANGUAGE plpgsql
@@ -540,14 +592,20 @@ CREATE OR REPLACE FUNCTION public.accept_bid(p_claim_id uuid, p_quote_id uuid)
  SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE v_uid uuid := auth.uid(); v_contractor uuid; v_amount numeric; v_declined integer; v_has_pm boolean;
+        v_sel_contractor uuid; v_already boolean;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'accept_bid: no authenticated user' USING ERRCODE='28000';
   END IF;
 
+  -- gh-2519: the claim row is locked FIRST (FOR NO KEY UPDATE: it does not block a contractor's bid INSERT, whose
+  -- foreign-key check takes KEY SHARE on the claim), then the quote row below. Every accept takes the two locks in
+  -- this one order, so two simultaneous accepts serialize instead of deadlocking. A caller who does not own the claim
+  -- locks nothing and is refused by the ownership check that follows.
+  PERFORM 1 FROM claims WHERE id = p_claim_id AND user_id = v_uid FOR NO KEY UPDATE;
+
   -- Ownership check + row lock: only the claim's own homeowner may accept a bid on it,
-  -- and FOR UPDATE OF q takes the lock in the same statement that authorizes the caller,
-  -- so two simultaneous accepts on one claim serialize instead of racing.
+  -- and FOR UPDATE OF q takes the lock in the same statement that authorizes the caller.
   SELECT q.contractor_id, q.total_price INTO v_contractor, v_amount
     FROM quotes q JOIN claims c ON c.id = q.claim_id
    WHERE q.id = p_quote_id AND q.claim_id = p_claim_id AND c.user_id = v_uid
@@ -558,14 +616,29 @@ BEGIN
       p_quote_id, p_claim_id USING ERRCODE='42501';
   END IF;
 
-  -- gh-2519 (CEO ruling 6050104316 on PR #2612): one selected bid per claim holds through this route too.
-  -- This function is SECURITY DEFINER, so quotes_guard_homeowner_columns() does not see the caller as a client
-  -- and cannot refuse here. When another bid on the claim is already selected, refuse; the one re-award path is
-  -- switch-contractor. The claim row is locked first so two simultaneous accepts of different bids serialize.
-  PERFORM 1 FROM claims WHERE id = p_claim_id AND user_id = v_uid FOR UPDATE;
-  IF EXISTS (SELECT 1 FROM quotes q3
-              WHERE q3.claim_id = p_claim_id AND q3.id <> p_quote_id
-                AND q3.status IN ('selected', 'awarded')) THEN
+  -- gh-2519: the claim's current selected contractor, read under the claim lock.
+  SELECT selected_contractor_id INTO v_sel_contractor FROM claims WHERE id = p_claim_id;
+
+  -- gh-2519: a repeated accept of the bid that is already the live selected one writes nothing (before this it
+  -- rewound a signed claim to awarded and rewrote selected_bid_amount).
+  SELECT (q.status = 'selected' AND q.bid_status = 'active' AND v_sel_contractor IS NOT DISTINCT FROM v_contractor)
+    INTO v_already FROM quotes q WHERE q.id = p_quote_id;
+  IF v_already THEN
+    RETURN QUERY SELECT p_claim_id, p_quote_id, v_contractor, v_amount, 0;
+    RETURN;
+  END IF;
+
+  -- gh-2519 (CEO ruling 6050104316 on PR #2612): one selected bid per claim holds through this route too. This
+  -- function is SECURITY DEFINER, so quotes_guard_homeowner_columns() does not see the caller as a client and cannot
+  -- refuse here. Refuse when another LIVE bid is selected: status selected, bid_status active, and its contractor is
+  -- the claim's current selected contractor. A bid that was switched away from (claim reset to bidding with no
+  -- selected contractor) or rescinded (bid_status not active) does not block a new award.
+  IF v_sel_contractor IS NOT NULL AND EXISTS (
+         SELECT 1 FROM quotes q3
+          WHERE q3.claim_id = p_claim_id AND q3.id <> p_quote_id
+            AND q3.status IN ('selected', 'awarded')
+            AND q3.bid_status = 'active'
+            AND q3.contractor_id = v_sel_contractor) THEN
     RAISE EXCEPTION 'accept_bid: another bid on this claim is already selected; a second bid cannot be selected beside it (gh-2519)'
       USING ERRCODE='42501';
   END IF;
@@ -583,6 +656,11 @@ BEGIN
       USING ERRCODE = 'P0001';
   END IF;
 
+  -- gh-2519: any other bid still selected and active is, after the refusal above, one that was switched away from.
+  -- Set it to declined so the partial unique index quotes_one_selected_bid_per_claim holds for the new selection.
+  UPDATE quotes SET status = 'declined', updated_at = now()
+   WHERE claim_id = p_claim_id AND id <> p_quote_id AND status = 'selected' AND bid_status = 'active';
+
   UPDATE claims SET selected_contractor_id = v_contractor,
                     selected_bid_amount    = v_amount,
                     status                 = 'awarded',
@@ -598,5 +676,15 @@ BEGIN
 
   RETURN QUERY SELECT p_claim_id, p_quote_id, v_contractor, v_amount, v_declined;
 END $function$;
+
+-- gh-2519 (re-review 6051423781 finding 3): the partial unique index that closes every route to two selected bids
+-- (two simultaneous direct UPDATEs, a direct UPDATE beside accept_bid(), service_role, the SQL editor). The rows it
+-- covers are the ones the live definition above uses; a rescinded or expired bid (bid_status not active) is outside it.
+CREATE UNIQUE INDEX IF NOT EXISTS quotes_one_selected_bid_per_claim
+  ON public.quotes (claim_id)
+  WHERE status = 'selected' AND bid_status = 'active';
+
+COMMENT ON INDEX public.quotes_one_selected_bid_per_claim IS
+  'gh-2519: at most one selected, active bid per claim. A switched-away bid is set to declined by accept_bid() / the quotes guard when the next bid is selected; a rescinded bid (bid_status not active) is outside the index.';
 
 COMMIT;

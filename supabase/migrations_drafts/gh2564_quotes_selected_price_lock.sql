@@ -5,7 +5,8 @@
 -- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3B path (review, R-177, R-097 24-hour notice, recorded apply).
 -- Proof (throwaway Postgres, beside failing controls on today's schema): supabase/tests/gh2519_gh2564_fee_lock_proof.sql
 --
--- REQUIRES gh2519_quotes_server_set_fee.sql APPLIED FIRST. This file re-creates the same guard function: its body is
+-- REQUIRES gh2519_quotes_server_set_fee.sql APPLIED FIRST, and NEVER applied without it (the DO block after BEGIN raises if
+-- quotes_platform_fee_for() or the gh2519 index is missing, or if no bid can be rescinded). This file re-creates the same guard function: its body is
 -- gh2519_quotes_server_set_fee.sql's body plus two blocks, both marked gh-2564. Applied on its own it would also bring in every
 -- gh-2519 rule and would fail at the first bid, because quotes_platform_fee_for() would not exist.
 --
@@ -35,6 +36,32 @@
 -- Idempotent: CREATE OR REPLACE FUNCTION. No new function, trigger, table, policy or data change.
 
 BEGIN;
+
+-- gh-2564 apply gate (re-review 6051423781 finding 7). This file must never be applied without gh2519 and never before a
+-- working rescind path exists (CEO 6050104316: "no lock before rescind-bid works on production"). The block raises, and
+-- nothing is applied, unless:
+--   (a) public.quotes_platform_fee_for(uuid, uuid) exists (gh2519 is applied; without it every browser bid fails),
+--   (b) the gh2519 index quotes_one_selected_bid_per_claim exists (the gh2519 of THIS review, not an older head), and
+--   (c) quotes_bid_status_check admits the bid_status value that rescind-bid writes. c_rescind_bid_writes is that value
+--       as read from supabase/functions/rescind-bid/index.ts (L197: 'rescinded'; production's constraint allows only
+--       active, expired, superseded, cancelled, so today this block raises). Whoever repairs rescind-bid sets this
+--       constant to the value the repaired function writes; (c) is necessary, not sufficient: the pre-flight still requires
+--       a rescind of an is_test selected bid to be shown succeeding.
+DO $gate$
+DECLARE c_rescind_bid_writes CONSTANT text := 'rescinded';
+BEGIN
+  IF to_regprocedure('public.quotes_platform_fee_for(uuid,uuid)') IS NULL THEN
+    RAISE EXCEPTION 'gh2564: gh2519_quotes_server_set_fee.sql is not applied (public.quotes_platform_fee_for(uuid, uuid) does not exist); applying this file alone would refuse every browser bid';
+  END IF;
+  IF to_regclass('public.quotes_one_selected_bid_per_claim') IS NULL THEN
+    RAISE EXCEPTION 'gh2564: the index quotes_one_selected_bid_per_claim does not exist; apply the current gh2519_quotes_server_set_fee.sql first';
+  END IF;
+  IF position(quote_literal(c_rescind_bid_writes) IN COALESCE((SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conrelid = 'public.quotes'::regclass AND conname = 'quotes_bid_status_check'), '')) = 0 THEN
+    RAISE EXCEPTION 'gh2564: rescind-bid writes bid_status %, which quotes_bid_status_check does not admit, so no bid can be rescinded; this lock would leave a contractor no way to change a selected bid (D-369). Repair the rescind path first.', quote_literal(c_rescind_bid_writes);
+  END IF;
+END
+$gate$;
 
 CREATE OR REPLACE FUNCTION public.quotes_guard_homeowner_columns()
 RETURNS trigger
@@ -196,15 +223,28 @@ BEGIN
         USING ERRCODE = '42501';
     END IF;
 
-    -- gh-2519 residual 4: a client may set a bid to selected only when no other bid on that claim is selected.
+    -- gh-2519 residual 4: one selected bid per claim. A client may set a bid to selected only when the claim has no
+    -- LIVE selected bid: a bid with status selected, bid_status active, whose contractor is the claim's current
+    -- selected contractor. A bid that was switched away from (the claim has no selected contractor, or another one)
+    -- or rescinded (bid_status not active) is not live and does not block; any such leftover selected, active bid is
+    -- set to declined here so that the partial unique index quotes_one_selected_bid_per_claim holds. Re-review
+    -- 6051423781 findings 1 and 3. Two simultaneous selects are closed by that index, not by this check.
     IF COALESCE(NEW.status IN ('selected', 'awarded'), false)
-       AND NOT COALESCE(OLD.status IN ('selected', 'awarded'), false)
-       AND EXISTS (
+       AND NOT COALESCE(OLD.status IN ('selected', 'awarded'), false) THEN
+      IF EXISTS (
              SELECT 1 FROM public.quotes q2
+               JOIN public.claims cl ON cl.id = q2.claim_id
               WHERE q2.claim_id = OLD.claim_id AND q2.id <> OLD.id
-                AND q2.status IN ('selected', 'awarded')) THEN
-      RAISE EXCEPTION 'quotes: another bid on this claim is already selected; a second bid cannot be selected beside it (gh-2519)'
-        USING ERRCODE = '42501';
+                AND q2.status IN ('selected', 'awarded')
+                AND q2.bid_status = 'active'
+                AND cl.selected_contractor_id IS NOT NULL
+                AND q2.contractor_id = cl.selected_contractor_id) THEN
+        RAISE EXCEPTION 'quotes: another bid on this claim is already selected; a second bid cannot be selected beside it (gh-2519)'
+          USING ERRCODE = '42501';
+      END IF;
+      UPDATE public.quotes q3 SET status = 'declined', updated_at = now()
+       WHERE q3.claim_id = OLD.claim_id AND q3.id <> OLD.id
+         AND q3.status = 'selected' AND q3.bid_status = 'active';
     END IF;
 
     -- gh-2564 (D-369, Dustin 2026-10-06: "Lock (Recommended)"; D-381, Dustin 2026-10-08: "Freeze terms too
@@ -267,6 +307,6 @@ END;
 $guard$;
 
 COMMENT ON FUNCTION public.quotes_guard_homeowner_columns() IS
-  'gh-2479 / gh-2519 / gh-2564: BEFORE INSERT OR UPDATE guard on public.quotes. Client roles (anon, authenticated) that are not admins: on INSERT can create only their own bid (contractor_id is a contractor row of the caller) born status submitted, bid_status active, not an auto-bid, not a renewal, with no signing, payment, test, envelope, cancellation, expiry or warranty-upload state, and the server sets platform_fee_pct, fee_percentage, platform_fee_basis and fee_amount from quotes_platform_fee_for() whatever the browser sent; on UPDATE cannot change claim_id or contractor_id, can change total_price only as the quote''s own contractor (whose three rate fields then keep their stored values and whose fee_amount is recomputed from total_price), cannot change the fee columns as anyone else, can change status only as the claim owner, only to selected or declined, and to selected only when no other bid on the claim is selected, and can change no column outside the caller''s allow-list (owner: status, homeowner_signed_at; contractor: the bid-form columns and contractor_signed_at). gh-2564 (D-369): on a selected bid no client caller can change total_price, fee_amount, fee_percentage, platform_fee_pct, platform_fee_basis, card_fee_cents, decking_price_per_sheet, full_redeck_price, per_trade_breakdown, or (D-381) trade_type, value_adds, workmanship_warranty_years, warranty_option_id, warranty_snapshot or scope_summary. Rejected 42501; an unchanged value is not a change. service_role, admins and owner-level (SECURITY DEFINER) sessions such as accept_bid() are untouched.';
+  'gh-2479 / gh-2519 / gh-2564: BEFORE INSERT OR UPDATE guard on public.quotes. Client roles (anon, authenticated) that are not admins: on INSERT can create only their own bid (contractor_id is a contractor row of the caller) born status submitted, bid_status active, not an auto-bid, not a renewal, with no signing, payment, test, envelope, cancellation, expiry or warranty-upload state, and the server sets platform_fee_pct, fee_percentage, platform_fee_basis and fee_amount from quotes_platform_fee_for() whatever the browser sent; on UPDATE cannot change claim_id or contractor_id, can change total_price only as the quote''s own contractor (whose three rate fields then keep their stored values and whose fee_amount is recomputed from total_price), cannot change the fee columns as anyone else, can change status only as the claim owner, only to selected or declined, and to selected only when the claim has no live selected bid (selected, active, and the claim''s current selected contractor; a switched-away or rescinded bid does not count and is set to declined), and can change no column outside the caller''s allow-list (owner: status, homeowner_signed_at; contractor: the bid-form columns and contractor_signed_at). gh-2564 (D-369): on a selected bid no client caller can change total_price, fee_amount, fee_percentage, platform_fee_pct, platform_fee_basis, card_fee_cents, decking_price_per_sheet, full_redeck_price, per_trade_breakdown, or (D-381) trade_type, value_adds, workmanship_warranty_years, warranty_option_id, warranty_snapshot or scope_summary. Rejected 42501; an unchanged value is not a change. service_role, admins and owner-level (SECURITY DEFINER) sessions such as accept_bid() are untouched.';
 
 COMMIT;
