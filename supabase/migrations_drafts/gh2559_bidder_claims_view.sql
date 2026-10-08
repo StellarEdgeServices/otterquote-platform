@@ -1,6 +1,6 @@
--- STATUS (gh-1438, as of 2026-10-07T19:20:06Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-10-08T02:12:50Z): NOT APPLIED
 -- FILE ROLE: forward file of set gh2559_bidder_claims_view, step 1 of 3 (see the apply order below; the STATUS is the set's)
--- EVIDENCE: written 2026-10-06T20:16:10Z; proved forward and rollback on production inside one rolled-back block (supabase/tests/gh2559_bidder_claims_view_proof.sql). pg_class read the same day: no view named bidder_claim_summary exists. No ledger row exists for this set. Changed 2026-10-07 after REVIEW: FAIL 6025641188, 6047719061 and 6049068071 on #2578: location_city, location_zip and the redaction of the two free-text columns (now keyed on profiles.full_name for the name). This text was run verbatim on a throwaway Postgres 16 with planted addresses and notes (tools/gh2559-bidder-view-behaviour.py); it has NOT been run on production by the worker who changed it.
+-- EVIDENCE: written 2026-10-06T20:16:10Z; proved forward and rollback on production inside one rolled-back block (supabase/tests/gh2559_bidder_claims_view_proof.sql). pg_class read the same day: no view named bidder_claim_summary exists. No ledger row exists for this set. Changed 2026-10-07 and 2026-10-08 after REVIEW: FAIL 6025641188, 6047719061, 6049068071 and 6050015567 (and Ben 6050104102) on #2578; at the last change urgency_reason left the view, numbered streets, name forms and email forms were added: location_city, location_zip and the redaction of the two free-text columns (now keyed on profiles.full_name for the name). This text was run verbatim on a throwaway Postgres 16 with planted addresses and notes (tools/gh2559-bidder-view-behaviour.py); it has NOT been run on production by the worker who changed it.
 -- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
@@ -73,8 +73,8 @@ SELECT
   c.impact_class,
   c.designer_product,
   c.designer_manufacturer,
-  c.existing_shingle_brand,
-  c.existing_shingle_color,
+  CASE WHEN c.existing_shingle_brand ~ '@|https?:|www\.|\d{7}|\d{3}[^[:alnum:]]+\d{3}' OR length(c.existing_shingle_brand) > 60 THEN NULL ELSE c.existing_shingle_brand END AS existing_shingle_brand,
+  CASE WHEN c.existing_shingle_color ~ '@|https?:|www\.|\d{7}|\d{3}[^[:alnum:]]+\d{3}' OR length(c.existing_shingle_color) > 60 THEN NULL ELSE c.existing_shingle_color END AS existing_shingle_color,
   c.rcv_amount,
   c.acv_amount,
   c.deductible_amount,
@@ -85,7 +85,7 @@ SELECT
   CASE WHEN jsonb_typeof(c.hover_measurements) = 'object'
         AND jsonb_typeof(c.hover_measurements -> 'squares') = 'number'
        THEN (c.hover_measurements ->> 'squares')::numeric END AS measured_squares,
-  c.measurement_shape,
+  CASE WHEN c.measurement_shape ~ '@|https?:|www\.|\d{7}|\d{3}[^[:alnum:]]+\d{3}' OR length(c.measurement_shape) > 60 THEN NULL ELSE c.measurement_shape END AS measurement_shape,
   -- the parsed summary of the uploaded estimate: carrier, date of loss, pricing database, sections and
   -- line items, summary totals (keys read from production 2026-10-06: carrier_name, pricing_database,
   -- sections, format_detected, date_of_loss, summary). Nothing in the database checks this object for
@@ -95,11 +95,14 @@ SELECT
   c.contractor_scope_summary,
   c.urgency,
   c.urgency_deadline,
-  -- free text typed by the homeowner (CEO ruling, PR #2578 comment 6045859470): the selected contractor
-  -- reads it as typed; every other caller reads the redacted text (the "ft" join below). A repair claim's
-  -- notes come from the repair intake, which does not label the box "Notes for Contractors", so they are
-  -- withheld before selection.
-  CASE WHEN c.selected_contractor_id = ct.id THEN c.urgency_reason ELSE ft.urgency END   AS urgency_reason,
+  -- urgency_reason (free text the homeowner types) is NOT in this view: no bidder page shows it (checked in
+  -- contractor-opportunities.html, contractor-bid-form.html, contractor-dashboard.html and the React app),
+  -- so it is left out rather than filtered (review 6050015567: a pattern filter is the wrong tool for a
+  -- column nobody reads).
+  -- homeowner_notes is free text typed by the homeowner (CEO ruling, PR #2578 comment 6045859470): the
+  -- selected contractor reads it as typed; every other caller reads the redacted text (the "ft" join below).
+  -- A repair claim's notes come from the repair intake, which does not label the box "Notes for
+  -- Contractors", so they are withheld before selection.
   CASE WHEN c.selected_contractor_id = ct.id THEN c.homeowner_notes
        WHEN c.job_type = 'repair' THEN NULL
        ELSE ft.notes END                                                       AS homeowner_notes,
@@ -145,7 +148,7 @@ LEFT JOIN LATERAL (
       WHERE s.city IS NOT NULL
         AND s.city ~ '^[A-Za-z][A-Za-z .''-]*$'
         AND length(s.city) <= 40
-        AND s.city !~* '\m(st|str|street|ave|av|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place|cir|circle|ter|terrace|pkwy|parkway|hwy|highway|trl|trail|loop|run|pike|row|xing|crossing|sq|square|alley|aly)\.?\s*$'
+        AND s.city !~* '\m(st|str|street|ave|av|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place|cir|circle|ter|terrace|pkwy|parkway|hwy|highway|trl|trail|loop|run|pike|row|xing|crossing|sq|square|alley|aly)\.?(\s+(n|s|e|w|ne|nw|se|sw|north|south|east|west|northeast|northwest|southeast|southwest)\.?)?\s*$'
         AND s.city !~* '\m(unit|apt|apartment|suite|ste|lot|box|bldg|building|floor|fl|rm|room|trlr|trailer|po)\M'
       ORDER BY cand.ord
       LIMIT 1)                                                                 AS city,
@@ -155,26 +158,36 @@ LEFT JOIN LATERAL (
 ) loc ON true
 -- idn: what identifies THIS claim's homeowner, worked out once per row for the redaction below.
 --   house        the house number of the claim's own address (leading digits of the first comma part)
---   street_words the words of that first part, three letters or more, that are not a street type, a unit
---                word or a compass word ("123 N Main St Apt 4" gives main)
---   name_words   the words, three letters or more, of profiles.full_name (where production keeps the
---                homeowner's name; claims.homeowner_name is empty on every real claim) and of
---                claims.homeowner_name. Letters only, so each list is safe inside a pattern.
+--   street_words the tokens of that first part (letters and digits) that hold a letter, are three characters
+--                or more, and are not a street type, a unit word or a compass word ("123 N Main St Apt 4"
+--                gives main; "1420 E 96th St" gives 96th)
+--   name_long / name_short / name_caps  the words, three letters or more, of profiles.full_name (where
+--                production keeps the homeowner's name; claims.homeowner_name is empty on every real claim) and
+--                of claims.homeowner_name, accents folded. Letters only, so each list is safe inside a pattern.
+--                long = six letters or more (removed wherever they stand), short = three to five (removed as
+--                whole words), caps = the short ones capitalised (removed when glued to another capital).
 LEFT JOIN public.profiles pr ON pr.id = c.user_id
 LEFT JOIN LATERAL (
   SELECT substring(split_part(coalesce(c.property_address, ''), ',', 1) FROM '^\s*(\d+)')            AS house,
          (SELECT string_agg(DISTINCT w, '|')
-            FROM regexp_split_to_table(lower(split_part(coalesce(c.property_address, ''), ',', 1)), '[^a-z]+') AS w
-           WHERE length(w) >= 3
+            FROM regexp_split_to_table(lower(translate(split_part(coalesce(c.property_address, ''), ',', 1), U&'\00E1\00E0\00E2\00E4\00E3\00E5\00E7\00E9\00E8\00EA\00EB\00ED\00EC\00EE\00EF\00F1\00F3\00F2\00F4\00F6\00F5\00FA\00F9\00FB\00FC\00FD\00FF\00C1\00C0\00C2\00C4\00C3\00C5\00C7\00C9\00C8\00CA\00CB\00CD\00CC\00CE\00CF\00D1\00D3\00D2\00D4\00D6\00D5\00DA\00D9\00DB\00DC\00DD', 'aaaaaaceeeeiiiinooooouuuuyyAAAAAACEEEEIIIINOOOOOUUUUY')), '[^a-z0-9]+') AS w
+           WHERE length(w) >= 3 AND w ~ '[a-z]'
              AND w !~ '^(st|str|street|ave|av|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place|cir|circle|ter|terrace|pkwy|parkway|hwy|highway|trl|trail|loop|pike|xing|crossing|alley|aly|north|south|east|west|unit|apt|apartment|suite|ste|lot|box|bldg|building|floor|room|trlr|trailer)$') AS street_words,
          (SELECT string_agg(DISTINCT w, '|')
-            FROM regexp_split_to_table(lower(coalesce(pr.full_name, '') || ' ' || coalesce(c.homeowner_name, '')), '[^a-z]+') AS w
-           WHERE length(w) >= 3)                                                                       AS name_words
+            FROM regexp_split_to_table(lower(translate(coalesce(pr.full_name, '') || ' ' || coalesce(c.homeowner_name, ''), U&'\00E1\00E0\00E2\00E4\00E3\00E5\00E7\00E9\00E8\00EA\00EB\00ED\00EC\00EE\00EF\00F1\00F3\00F2\00F4\00F6\00F5\00FA\00F9\00FB\00FC\00FD\00FF\00C1\00C0\00C2\00C4\00C3\00C5\00C7\00C9\00C8\00CA\00CB\00CD\00CC\00CE\00CF\00D1\00D3\00D2\00D4\00D6\00D5\00DA\00D9\00DB\00DC\00DD', 'aaaaaaceeeeiiiinooooouuuuyyAAAAAACEEEEIIIINOOOOOUUUUY')), '[^a-z]+') AS w
+           WHERE length(w) >= 6)                                                                       AS name_long,
+         (SELECT string_agg(DISTINCT w, '|')
+            FROM regexp_split_to_table(lower(translate(coalesce(pr.full_name, '') || ' ' || coalesce(c.homeowner_name, ''), U&'\00E1\00E0\00E2\00E4\00E3\00E5\00E7\00E9\00E8\00EA\00EB\00ED\00EC\00EE\00EF\00F1\00F3\00F2\00F4\00F6\00F5\00FA\00F9\00FB\00FC\00FD\00FF\00C1\00C0\00C2\00C4\00C3\00C5\00C7\00C9\00C8\00CA\00CB\00CD\00CC\00CE\00CF\00D1\00D3\00D2\00D4\00D6\00D5\00DA\00D9\00DB\00DC\00DD', 'aaaaaaceeeeiiiinooooouuuuyyAAAAAACEEEEIIIINOOOOOUUUUY')), '[^a-z]+') AS w
+           WHERE length(w) BETWEEN 3 AND 5)                                                            AS name_short,
+         (SELECT string_agg(DISTINCT initcap(w), '|')
+            FROM regexp_split_to_table(lower(translate(coalesce(pr.full_name, '') || ' ' || coalesce(c.homeowner_name, ''), U&'\00E1\00E0\00E2\00E4\00E3\00E5\00E7\00E9\00E8\00EA\00EB\00ED\00EC\00EE\00EF\00F1\00F3\00F2\00F4\00F6\00F5\00FA\00F9\00FB\00FC\00FD\00FF\00C1\00C0\00C2\00C4\00C3\00C5\00C7\00C9\00C8\00CA\00CB\00CD\00CC\00CE\00CF\00D1\00D3\00D2\00D4\00D6\00D5\00DA\00D9\00DB\00DC\00DD', 'aaaaaaceeeeiiiinooooouuuuyyAAAAAACEEEEIIIINOOOOOUUUUY')), '[^a-z]+') AS w
+           WHERE length(w) BETWEEN 3 AND 5)                                                            AS name_caps
 ) idn ON true
 -- ft: the two free-text columns as a caller who is not the selected contractor reads them
 -- (CEO ruling 6045859470; review 6049068071 finding 1). Every replacement is the text '[removed]'.
 --   WHOLE VALUE replaced when it holds the claim's own house number and one of its street words (with or
---     without "St": "house is 123 N Main, blue door"), or, for an address with no house number, a street word.
+--     without "St": "house is 123 N Main, blue door"; an ordinal such as "96th" is a street word), or, for an
+--     address with no house number, a street word.
 --   Otherwise, in this order, each match replaced where it stands:
 --    a. the claim number (and, applied last, the homeowner's name words: first name alone, last name
 --       alone, any order);
@@ -192,17 +205,16 @@ LEFT JOIN LATERAL (
 -- digit groups with words or a line break between them, a street written in lower case with no type word,
 -- a name of one or two letters, and a name or address this row does not hold.
 LEFT JOIN LATERAL (
-  SELECT max(r.red) FILTER (WHERE r.k = 'n') AS notes,
-         max(r.red) FILTER (WHERE r.k = 'u') AS urgency
+  SELECT r.red AS notes
     FROM (
-      SELECT v.k,
-             CASE
+      SELECT CASE
                WHEN v.raw IS NULL THEN NULL
                WHEN idn.street_words IS NOT NULL AND idn.house IS NOT NULL
                     AND v.raw ~ ('\m' || idn.house || '\M') AND v.raw ~* ('\m(' || idn.street_words || ')\M') THEN '[removed]'
                WHEN idn.street_words IS NOT NULL AND idn.house IS NULL
                     AND v.raw ~* ('\m(' || idn.street_words || ')\M') THEN '[removed]'
                ELSE
+      regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(
       regexp_replace(
       regexp_replace(regexp_replace(
       regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(
@@ -215,15 +227,19 @@ LEFT JOIN LATERAL (
              THEN regexp_replace(btrim(c.claim_number), '([^[:alnum:]])', '\\\1', 'g') ELSE '\A\Z\A' END, '[removed]', 'gi'),
         -- b. email and web
         '[[:alnum:]._%+-]+\s*@\s*[[:alnum:]-]+(\s*\.\s*[[:alnum:]-]+)*', '[removed]', 'g'),
+        '[[:alnum:]._%+-]+\s*(?:[\(\[\{<]\s*at\s*[\)\]\}>]|\s+at\s+)\s*[[:alpha:]][[:alnum:]-]*(?:\s*(?:\.|[\(\[\{<]\s*dot\s*[\)\]\}>]|\s+dot\s+)\s*[[:alpha:]][[:alnum:]-]*)+', '[removed]', 'gi'),
         '\S+\s+at\s+\S+\s+dot\s+\S+', '[removed]', 'gi'),
         '\S*@\S*', '[removed]', 'g'),
-        '(https?://\S+|www\.\S+|\S+\.(com|net|org|io|co|us|info|biz|me)(/\S*)?(?![[:alnum:]]))', '[removed]', 'gi'),
+        '(https?://\S+|www\.\S+|\S+\.(com|net|org|edu|gov|mil|io|co|us|info|biz|me|app|dev|ai|xyz|online|site|tech|uk|ca)(/\S*)?(?![[:alnum:]]))', '[removed]', 'gi'),
         'https?://\S+', '[removed]', 'gi'),
         -- c. phone
         '\(?\d{3}\)?[^[:alnum:],\n]{1,3}\d{3}[^[:alnum:],\n]{1,3}\d{4}(?!\d)', '[removed]', 'g'),
         '(\+?\d[\s().-]*){7,}', '[removed] ', 'g'),
         -- d. street
         '\m\d+\s+[NSEWnsew]\.?\s+\d+\s+[NSEWnsew]\M\.?', '[removed]', 'g'),
+        '\m\d{3,6}[A-Za-z]?[ \t]+((north|south|east|west|n|s|e|w)\.?[ \t]+)?\d+(st|nd|rd|th)\M', '[removed]', 'gi'),
+        '\m\d{1,2}[ \t]+(north|south|east|west|n|s|e|w)\.?[ \t]+\d+(st|nd|rd|th)\M', '[removed]', 'gi'),
+        '\m\d{1,2}[ \t]+\d{2,3}(st|nd|rd|th)\M', '[removed]', 'gi'),
         '^.*(\m\d+[[:alnum:]-]*\s+(\S+\s+){0,4}(st|str|street|ave|av|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place|cir|circle|ter|terrace|pkwy|parkway|hwy|highway|trl|trail|loop|pike|xing|crossing|alley|aly)\M|p\.?\s*o\.?\s*box\s*\d+).*$', '[removed]', 'gin'),
         '(\m\d+[A-Za-z]?[ \t]+)?([A-Z][[:alpha:]''’-]*\.?[ \t]+){1,8}(St|Str|Street|Ave|Av|Avenue|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Blvd|Boulevard|Way|Pl|Place|Cir|Circle|Ter|Terrace|Pkwy|Parkway|Hwy|Highway|Trl|Trail|Loop|Pike|Xing|Crossing|Alley|Aly|ST|STR|STREET|AVE|AV|AVENUE|RD|ROAD|DR|DRIVE|LN|LANE|CT|COURT|BLVD|BOULEVARD|WAY|PL|PLACE|CIR|CIRCLE|TER|TERRACE|PKWY|PARKWAY|HWY|HIGHWAY|TRL|TRAIL|LOOP|PIKE|XING|CROSSING|ALLEY|ALY)\M\.?([ \t,]*#?[ \t]*\d+\M)?', '[removed]', 'g'),
         '\m\d{3,6}[A-Za-z]?[ \t]+([A-Z][[:alpha:]''’-]*\.?[ \t,]+){0,7}[A-Z][[:alpha:]''’-]+', '[removed]', 'g'),
@@ -232,11 +248,13 @@ LEFT JOIN LATERAL (
         '\m((gate|door|garage|alarm|access|entry|lock\s*box|key\s*pad)\s*)?(code|pin|combo|combination)\s*:?\s*(is\s+)?#?\d{3,8}\M', '[removed]', 'gi'),
         '\m(claim|policy)\s*(no\.?|number|num|id|#)?\s*:?\s*#?[[:alnum:]-]*\d[[:alnum:]-]*', '[removed]', 'gi'),
         -- a. the homeowner's name words, last so that an email address is still whole when rule b reads it
-        CASE WHEN idn.name_words IS NULL THEN '\A\Z\A' ELSE '\m(' || idn.name_words || ')\M' END, '[removed]', 'gi')
+        CASE WHEN idn.name_long IS NULL THEN '\A\Z\A' ELSE '(' || idn.name_long || ')(''?s)?' END, '[removed]', 'gi'),
+        CASE WHEN idn.name_short IS NULL THEN '\A\Z\A' ELSE '(?<![a-z])(' || idn.name_short || ')(''?s)?(?![a-z])' END, '[removed]', 'gi'),
+        CASE WHEN idn.name_caps IS NULL THEN '\A\Z\A' ELSE '(?<![a-z])(' || idn.name_caps || ')(?=[A-Z])|(?<=[a-z])(' || idn.name_caps || ')(?![a-z])' END, '[removed]', 'g')
              END AS red
         -- the homeowner forms cap these at 500 characters; a bidder is given at most the first 2000, so a
         -- value written past the form cannot make the patterns above expensive
-        FROM (VALUES ('n', left(c.homeowner_notes, 2000)), ('u', left(c.urgency_reason, 2000))) AS v(k, raw)
+        FROM (VALUES (translate(left(c.homeowner_notes, 2000), U&'\00E1\00E0\00E2\00E4\00E3\00E5\00E7\00E9\00E8\00EA\00EB\00ED\00EC\00EE\00EF\00F1\00F3\00F2\00F4\00F6\00F5\00FA\00F9\00FB\00FC\00FD\00FF\00C1\00C0\00C2\00C4\00C3\00C5\00C7\00C9\00C8\00CA\00CB\00CD\00CC\00CE\00CF\00D1\00D3\00D2\00D4\00D6\00D5\00DA\00D9\00DB\00DC\00DD', 'aaaaaaceeeeiiiinooooouuuuyyAAAAAACEEEEIIIINOOOOOUUUUY')))  AS v(raw)
     ) r
 ) ft ON true
 WHERE (   ct.status = 'active'

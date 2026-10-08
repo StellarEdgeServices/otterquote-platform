@@ -51,6 +51,9 @@ ADDRESSES = [
     ("line break", STREET + "\nCarmel, IN 46032", None, None, None, "46032"),
     ("house number in the zip column", STREET + ", Carmel", None, "4417", "Carmel", None),
     ("name first", NAME + ", " + STREET + ", Carmel, IN", None, None, None, None),
+    ("street type then compass word, second part", "4417, Larkspur Hollow Rd N, Carmel, IN 46032", None, None, None, "46032"),
+    ("street type then compass word, city column", STREET + ", Carmel, IN 46032", "Larkspur Hollow Rd N", None, "Carmel", "46032"),
+    ("street type then spelled compass, city column", None, "Meridian Street East", "46032", None, "46032"),
     ("street without a type word as second part", "4417, Larkspur Hollow, Carmel", None, None, "Larkspur Hollow", None),  # known limit, see below
 ]
 KNOWN_LIMIT = {"street without a type word as second part"}
@@ -131,6 +134,51 @@ MORE_BENIGN = ["Roof is 200 sq, garage 400 sq, built 1998", "120 ft of ridge, 3 
                "about 30 sq total and 2 layers", "Use the best way in from the road, our drive is steep",
                "2 story, 8/12 pitch, 25 squares, hail in June", "we may need new decking, will pay cash"]
 
+# Review 6050015567 (head 08db93cd) and Ben 6050104102: the claim's own address on a NUMBERED street typed without
+# "St"; names as plurals, glued, underscored or with accents; email written as "x at gmail.com" or with .edu.
+# Three owners, each with the name ONLY in profiles.full_name. Each tuple: (label, text, fragments that must NOT reach a bidder).
+N_NAME, N_ADDR = "Marisol Vanterpool", "1420 E 96th St, Indianapolis, IN 46240"
+A_NAME, A_ADDR = "Jos\u00e9 N\u00fa\u00f1ez", "77 Elm Ct, Carmel, IN 46032"
+S_NAME, S_ADDR = "Joe Smith", "88 Oak Ln, Fishers, IN 46038"
+NUMBERED = [
+ ("numbered: own, no type word","house is 1420 E 96th, blue door",["1420","96th"]),
+ ("numbered: own, lower case","we're at 1420 e 96th",["1420","96th"]),
+ ("numbered: own, spelled-out compass","1420 East 96th, ring bell",["1420","96th"]),
+ ("numbered: other street, ordinal","my mom is at 305 W 116th if I'm out",["305","116th"]),
+ ("numbered: other, short house number","at 12 146th, gray barn",["146th"]),
+ ("numbered: other, no compass","go to 4417 62nd for the key",["4417","62nd"]),
+ ("numbered: control, with the type word","we are at 1420 E 96th St",["1420","96th"]),
+]
+NAMES = [
+ ("name: plural","the Vanterpools live here",["Vanterpool"]),
+ ("name: possessive","Vanterpool's roof",["Vanterpool"]),
+ ("name: underscored","marisol_vanterpool",["marisol","vanterpool"]),
+ ("name: glued, lower case","marisolvanterpool",["marisol","vanterpool"]),
+ ("name: glued, camel case","MarisolVanterpool",["Marisol","Vanterpool"]),
+ ("name: digits glued","vanterpool2024 is my login",["vanterpool"]),
+]
+ACCENT = [
+ ("name: accented as on the profile","ask for Jos\u00e9 N\u00fa\u00f1ez",["Nu","Jos"]),
+ ("name: accents dropped","ask for Jose Nunez",["Nunez","Jose"]),
+ ("name: accented, last name only","the N\u00fa\u00f1ez house",["ez"]),
+]
+SHORT = [
+ ("name: short name, camel case","JoeSmith called",["Joe","Smith"]),
+ ("name: short name, plural","the Smiths are away",["Smith"]),
+]
+EMAILS = [
+ ("email: 'at' with a dotted domain","write roofgal77 at gmail.com",["roofgal77","gmail"]),
+ ("email: .edu with 'at'","jdoe at purdue.edu",["jdoe","purdue"]),
+ ("email: .edu with @","jdoe@purdue.edu",["jdoe","purdue"]),
+ ("email: .gov","jdoe@indy.gov",["jdoe","indy"]),
+ ("email: (at)(dot)","x(at)y(dot)com",["x(at)","(dot)"]),
+ ("email: [at] [dot]","x [at] y [dot] com",["[at]","[dot]"]),
+ ("email: at dot","jane at mailhost dot edu",["jane","mailhost"]),
+]
+# ordinary text that must come back unchanged on the same claims (over-redaction guard)
+N_BENIGN = ["leak at the 96th percentile of rainfall","Ridge vent at 40 ft; new 2nd-story window flashing","3 2nd-story windows and a bay","Meet me at 3.5 hours after rain","The roofer arrived at 8.30 and left at 4.15",
+            "Ladder at the south side; ask for a quote at the door"]
+
 BENIGN = "Tree fell on the back slope. Two layers of shingles, about 30 squares, 8/12 pitch. Dog in yard."
 
 
@@ -195,7 +243,7 @@ def run(view_sql, label):
             cur.execute("select set_config('request.jwt.claim.sub', %s, true)", (user,))
             cur.execute(sql, args); r = cur.fetchall(); cur.execute("rollback"); return r
 
-        got = {r[0]: r[1:] for r in read(BIDDER_U, "select id::text, location_city, location_zip, homeowner_notes, urgency_reason from public.bidder_claim_summary")}
+        got = {r[0]: r[1:] for r in read(BIDDER_U, "select v.id::text, v.location_city, v.location_zip, v.homeowner_notes, to_jsonb(v)->>'urgency_reason' from public.bidder_claim_summary v")}
         street_bits = re.compile(r"larkspur|hollow|quixote|\brd\b|\bunit\b|\bapt\b|\bbox\b|\blot\b|\d", re.I)
         for kind, lab, cid, exp in rows:
             if cid not in got: fails.append("%s: row not visible to the bidder" % lab); continue
@@ -211,13 +259,13 @@ def run(view_sql, label):
                     for b in exp:
                         if val is not None and b.lower() in val.lower(): leaks.append("%-7s %-40s still holds %r" % (col, lab, b))
         if benign in got and got[benign][2] != BENIGN: fails.append("benign note changed: %r" % (got[benign][2],))
-        if benign in got and got[benign][3] != "Leak over the kitchen": fails.append("benign urgency changed: %r" % (got[benign][3],))
+        if benign in got and got[benign][3] not in (None, "Leak over the kitchen"): fails.append("benign urgency changed: %r" % (got[benign][3],))
         if repair in got and got[repair][2] is not None: leaks.append("notes   repair-intake notes reached a bidder: %r" % (got[repair][2],))
         other = got.get(chosen)
         if other and (PHONE in (other[2] or "") or "Larkspur" in (other[2] or "") or "@" in (other[3] or "")):
             leaks.append("notes   a bidder read the selected claim's notes as typed")
-        sel = read(SELECTED_U, "select homeowner_notes, urgency_reason from public.bidder_claim_summary where id = %s", (chosen,))
-        if not sel or sel[0] != ("Call " + PHONE + ", " + STREET, EMAIL): fails.append("selected contractor does not read the notes as typed: %r" % (sel,))
+        sel = read(SELECTED_U, "select v.homeowner_notes, to_jsonb(v)->>'urgency_reason' from public.bidder_claim_summary v where v.id = %s", (chosen,))
+        if not sel or sel[0][0] != "Call " + PHONE + ", " + STREET or sel[0][1] not in (None, EMAIL): fails.append("selected contractor does not read the notes as typed: %r" % (sel,))
         # ---- review 6049068071: the reviewer's 43 shapes; the name lives in profiles only
         OWNER2 = "00000000-0000-4000-8000-000000000077"
         cur.execute("insert into profiles values (%s, %s)", (OWNER2, R_NAME))
@@ -227,7 +275,7 @@ def run(view_sql, label):
         bn = []
         for text in REVIEW_BENIGN + MORE_BENIGN:
             n += 1; bn.append((text, claim(n, user_id=OWNER2, homeowner_name=None, claim_number=None, property_address=R_ADDR, homeowner_notes=text, urgency_reason=text)))
-        got2 = {r[0]: r[1:] for r in read(BIDDER_U, "select id::text, homeowner_notes, urgency_reason from public.bidder_claim_summary")}
+        got2 = {r[0]: r[1:] for r in read(BIDDER_U, "select v.id::text, v.homeowner_notes, to_jsonb(v)->>'urgency_reason' from public.bidder_claim_summary v")}
         blanked, residual_seen = 0, set()
         for lab, text, bad, cid in rv:
             vals = got2.get(cid, (text, text))
@@ -243,6 +291,39 @@ def run(view_sql, label):
                 if v is None or "[removed]" not in v: fails.append("expected the date in %r to be lost to the phone rule, got %r" % (text, v))
             elif v != text: fails.append("OVER-REDACTION: %r came back as %r" % (text, v))
         print("[%s] review 6049068071 shapes blanked: %d of %d | stated residuals: %d" % (label, blanked, len(rv), len(residual_seen)))
+
+        # ---- review 6050015567 / Ben 6050104102
+        OW_N, OW_A, OW_S = ["00000000-0000-4000-8000-0000000000%02d" % i for i in (81, 82, 83)]
+        for o, nm in ((OW_N, N_NAME), (OW_A, A_NAME), (OW_S, S_NAME)): cur.execute("insert into profiles values (%s, %s)", (o, nm))
+        grp = [(NUMBERED + NAMES + EMAILS, OW_N, N_ADDR), (ACCENT, OW_A, A_ADDR), (SHORT, OW_S, S_ADDR)]
+        rv2 = []
+        for items, ow, addr in grp:
+            for lab, text, bad in items:
+                n += 1; rv2.append((lab, text, bad, claim(n, user_id=ow, homeowner_name=None, claim_number=None, property_address=addr, homeowner_notes=text, urgency_reason=text)))
+        bn2 = []
+        for text in N_BENIGN:
+            n += 1; bn2.append((text, claim(n, user_id=OW_N, homeowner_name=None, claim_number=None, property_address=N_ADDR, homeowner_notes=text, urgency_reason=text)))
+        got3 = {r[0]: r[1:] for r in read(BIDDER_U, "select v.id::text, v.homeowner_notes, to_jsonb(v)->>'urgency_reason' from public.bidder_claim_summary v")}
+        b2 = 0
+        for lab, text, bad, cid in rv2:
+            vals = got3.get(cid, (text, text))
+            hit = [b for b in bad for v in vals if v is not None and b.lower() in v.lower()]
+            if not hit: b2 += 1
+            else: leaks.append("r6050  %-42s still holds %r -> %r" % (lab, hit[0], vals[0]))
+        for text, cid in bn2:
+            v = got3.get(cid, (None, None))[0]
+            if v != text: fails.append("OVER-REDACTION: %r came back as %r" % (text, v))
+        print("[%s] review 6050015567 + Ben 6050104102 shapes blanked: %d of %d" % (label, b2, len(rv2)))
+
+        # ---- free-text catalogue columns (shingle brand / colour, measurement shape) and the dropped urgency_reason
+        n += 1; cat_bad = claim(n, property_address=STREET + ", Carmel, IN 46032", existing_shingle_brand="call 317 555 0142", existing_shingle_color="mail zelda.q@example.invalid", measurement_shape="x" * 80)
+        n += 1; cat_ok = claim(n, property_address=STREET + ", Carmel, IN 46032", existing_shingle_brand="GAF Timberline HD", existing_shingle_color="Charcoal", measurement_shape="hip")
+        cat = {r[0]: r[1:] for r in read(BIDDER_U, "select v.id::text, v.existing_shingle_brand, v.existing_shingle_color, v.measurement_shape from public.bidder_claim_summary v")}
+        if cat.get(cat_bad) != (None, None, None): leaks.append("catalogue  a phone, an email or an 80-character shape reached a bidder: %r" % (cat.get(cat_bad),))
+        if cat.get(cat_ok) != ("GAF Timberline HD", "Charcoal", "hip"): fails.append("catalogue  an ordinary brand, colour and shape changed: %r" % (cat.get(cat_ok),))
+        has_urg = read(BIDDER_U, "select count(*) from information_schema.columns where table_name = 'bidder_claim_summary' and column_name = 'urgency_reason'")[0][0]
+        print("[%s] urgency_reason exposed by the view: %s" % (label, "YES" if has_urg else "no"))
+        if has_urg and label == "this head": fails.append("urgency_reason is exposed; no bidder page shows it")
         allcols = read(BIDDER_U, "select to_jsonb(v)::text from public.bidder_claim_summary v")
         for (txt,) in allcols:
             for secret in (PHONE, EMAIL, "PROOF-CLAIM-0001", OWNER):

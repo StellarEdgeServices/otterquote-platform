@@ -77,7 +77,7 @@ change). The `quotes` triggers that read `claims` are SECURITY DEFINER, except `
 
 Classes: **needed-to-price** and **needed-for-UI** = in the view. **identity-or-contact** = must NOT be exposed before selection. **unused** = no bidder page reads it (and not exposed).
 "Read by": OH contractor-opportunities.html, OR React opportunities, BH contractor-bid-form.html, BR React bid form, DH contractor-dashboard.html, DR React dashboard, MS messaging.
-Counts: needed-to-price 20, needed-for-UI 17, identity-or-contact 21, unused 72. The view has 41 output columns: the 37 needed columns (`hover_measurements` and `carrier_id` come out as the derived `measured_squares` and `carrier_profile_name`; `has_estimate` and `has_measurements` fold in the file-name test), the 2 derived location columns, and the 2 selected-only file names.
+Counts: needed-to-price 20, needed-for-UI 16, identity-or-contact 21, unused 73 (`urgency_reason` moved from needed-for-UI to unused). The view has 40 output columns: the 36 needed columns (`hover_measurements` and `carrier_id` come out as the derived `measured_squares` and `carrier_profile_name`; `has_estimate` and `has_measurements` fold in the file-name test), the 2 derived location columns, and the 2 selected-only file names.
 
 | claims column | class | in the view as | read by | what a bidder gets instead / note |
 |---|---|---|---|---|
@@ -136,7 +136,7 @@ Counts: needed-to-price 20, needed-for-UI 17, identity-or-contact 21, unused 72.
 | `existing_shingle_color` | needed-to-price | existing_shingle_color | OH OR | "existing shingle" on the card |
 | `urgency` | needed-for-UI | urgency | OH OR | card |
 | `urgency_deadline` | needed-for-UI | urgency_deadline | OH OR | card |
-| `urgency_reason` | needed-for-UI | urgency_reason | OH OR | card. Free text typed by the homeowner (QUESTION 2) |
+| `urgency_reason` | unused | not in the view | - | free text typed by the homeowner. No bidder page renders it (grep of the three static pages and the React app, 2026-10-08), so it is not exposed at all (review 6050015567: structural fix rather than a filter) |
 | `homeowner_notes` | needed-for-UI | homeowner_notes | OH OR | "Homeowner Notes" block on the card. Free text typed by the homeowner (QUESTION 2) |
 | `referral_code` | identity-or-contact | not in the view | - | who referred the homeowner |
 | `referral_id` | identity-or-contact | not in the view | - | referral record |
@@ -270,27 +270,40 @@ Known limits, stated: (1) a street name with no type word, typed as the second c
 ("4417, Larkspur Hollow, Carmel"), is returned as the city; nothing distinguishes it from a town. (2) A real town
 whose name ends in a street-type word or holds a unit word is shown as "Unknown".
 
-## Free text: `homeowner_notes` and `urgency_reason` (CEO ruling 6045859470; rebuilt after review 6049068071)
+## Free text: `homeowner_notes` (CEO ruling 6045859470; rebuilt after reviews 6049068071 and 6050015567)
 
-The selected contractor reads both as typed. Every other caller reads at most the first 2000 characters, redacted;
+**`urgency_reason` is no longer in the view.** No bidder page shows it, so there is nothing to filter. The same reasoning was applied to the typed catalogue columns the pages do show: `existing_shingle_brand`, `existing_shingle_color` and `measurement_shape` come back NULL when they hold an @, a web address, seven digits or a phone-shaped digit run, or are longer than 60 characters.
+
+The selected contractor reads the notes as typed. Every other caller reads at most the first 2000 characters, redacted;
 each replacement is the text `[removed]`. A repair claim's notes (`job_type = 'repair'`) are withheld from a bidder
 altogether (the repair intake writes to the column without the "Notes for Contractors" label).
 
 - **Whole value replaced** when it holds the claim's own house number and one of its street words, with or without
-  a type word ("house is 123 N Main, blue door"); for an address with no house number, a street word alone.
+  a type word ("house is 123 N Main, blue door"); for an address with no house number, a street word alone. A street
+  word is a token of the address's first part that holds a letter and is three characters or more, so an ordinal
+  ("96th", "2nd") counts (review 6050015567 finding 1).
 - **Name**: the words (three letters or more) of `profiles.full_name`, where production keeps the homeowner's name,
-  and of `claims.homeowner_name` (empty on every real claim): first name alone, last name alone, any order.
-- **Email and web**: addresses, also spaced out or written "x at y dot com"; anything holding an @; web addresses.
+  and of `claims.homeowner_name` (empty on every real claim): first name alone, last name alone, any order. Accents are
+  folded on both sides (the notes a bidder reads lose their accents). A word of six letters or more is removed
+  wherever it stands (glued, underscored, with digits, in a handle); a word of three to five letters is removed as a
+  whole word, with an optional plural or possessive, and when glued in capitalised form ("JoeSmith"). Ben 6050104102.
+- **Email and web**: addresses, also spaced out or written "x at y dot com", "x at gmail.com", "x(at)y(dot)com" or
+  "x [at] y [dot] com"; anything holding an @; web addresses, now including .edu, .gov and .mil.
 - **Phone**: three, three and four digits with any separators that are not letters, digits or a comma (slash, any
   dash, no-break space, underscore); and any run of seven or more digits with spaces, dots, dashes or brackets.
 - **Street**: a county-grid address; the whole line holding a number followed within five words by a street type;
   capitalised words followed by a capitalised street type, with or without a number before or after; a number of
   three to six digits followed by capitalised words; a number of one or two digits followed by capitalised words
-  ending in a street or place type (Ridge, Bend, Cove, Run, Pass ...).
+  ending in a street or place type (Ridge, Bend, Cove, Run, Pass ...); a house number, an optional compass word and
+  an ordinal ("1420 E 96th", "305 W 116th"), and a one- or two-digit number before a compass word and an ordinal or a
+  two- or three-digit ordinal ("12 146th").
 - **Codes and numbers**: a number after "code", "pin" or "combination"; a claim or policy number.
 
-**Behaviour on the reviewer's 43 shapes** (`tools/gh2559-bidder-view-behaviour.py`, view file verbatim, throwaway
-Postgres): this head `shapes blanked: 41 of 43 | stated residuals: 2`; the view of head `f8c82f30`:
+**Behaviour** (`tools/gh2559-bidder-view-behaviour.py`, view file verbatim, throwaway Postgres): the 25 shapes of review
+6050015567 and Ben 6050104102 blank 25 of 25; the view of head `08db93cd` blanks 5 of 25. On production, inside a
+transaction that rolls back (`tools/gh2559-freetext-prod-proof-build.py`): old head LEAK 23, this head LEAK 0.
+
+**Behaviour on the reviewer's 43 shapes of review 6049068071**: this head `shapes blanked: 41 of 43 | stated residuals: 2`; the view of head `f8c82f30`:
 `shapes blanked: 12 of 43`, `leaks: 29`. Twelve ordinary descriptions come back unchanged, among them "Roof is 200
 sq, garage 400 sq, built 1998", "120 ft of ridge, 3 ridge vents, 40 ft gutter run", money, pitch and slash dates.
 
@@ -298,6 +311,7 @@ sq, garage 400 sq, built 1998", "120 ft of ridge, 3 ridge vents, 40 ft gutter ru
 
 Each of these could only be caught by a pattern that also blanks ordinary job descriptions.
 
+0. **Accepted by Ben in writing (6050104102):** the six below, plus a comma-separated phone ("463, 555, 0187") and a bare one- or two-digit house number with a capitalised name and no type word ("12 Elm").
 1. **A phone number with words between its groups** ("463 then 555 then 0187"). The same shape is "roof is 200 sq,
    garage 400 sq, built 1998".
 2. **A phone number split over two lines** ("cell 463-555" / "then 0187").

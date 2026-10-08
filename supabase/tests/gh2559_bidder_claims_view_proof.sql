@@ -52,7 +52,7 @@ DECLARE
   v_vrb  text := /*@VR@*/ NULL /*@VR@*/;
   -- the exact column lists the pages select from the view (tests/gh2559-bidder-claims-view.mjs checks these
   -- strings are the ones in the page source)
-  c_opp  constant text := 'id, status, ready_for_bids, created_at, trades, job_type, funding_type, damage_type, existing_shingle_brand, existing_shingle_color, rcv_amount, acv_amount, deductible_amount, roof_squares, repair_squares, measured_squares, measurement_shape, contractor_scope_summary, parsed_line_items, urgency, urgency_deadline, urgency_reason, homeowner_notes, roofing_bid_released_at, gutters_bid_released_at, siding_bid_released_at, windows_bid_released_at, bid_window_expires_at, has_estimate, has_measurements, location_city, location_zip, estimate_filename, measurements_filename, selected_contractor_id';
+  c_opp  constant text := 'id, status, ready_for_bids, created_at, trades, job_type, funding_type, damage_type, existing_shingle_brand, existing_shingle_color, rcv_amount, acv_amount, deductible_amount, roof_squares, repair_squares, measured_squares, measurement_shape, contractor_scope_summary, parsed_line_items, urgency, urgency_deadline, homeowner_notes, roofing_bid_released_at, gutters_bid_released_at, siding_bid_released_at, windows_bid_released_at, bid_window_expires_at, has_estimate, has_measurements, location_city, location_zip, estimate_filename, measurements_filename, selected_contractor_id';
   c_bid  constant text := 'id, trades, job_type, funding_type, damage_type, material_category, shingle_type, impact_class, designer_product, designer_manufacturer, rcv_amount, parsed_line_items, siding_bid_released_at, location_city, location_zip, carrier_profile_name, estimate_filename, measurements_filename, selected_contractor_id';
   c_dash constant text := 'id, trades, status';
   c_pend constant text := 'id, location_city, location_zip, damage_type';
@@ -232,7 +232,7 @@ BEGIN
         (55, 'L2 test bidder kT -> every row of the VIEW: the same count (must be 0)',            'authenticated', kTu, NULL, 'viewleak', NULL, kT, NULL, -2, 0, 0),
         (56, 'L3 real bidder kR -> VIEW cR with its address set to a street line with NO comma and a five-digit house number, no city or zip column: city and zip both null (1 = nothing of the street came through)', 'authenticated', kRu, NULL, 'viewnoaddr', cR, kR, 'nocomma', -2, 1, 1),
         (57, 'L4 real bidder kR -> VIEW cR with the address "street, city, ST zip": city and zip both present (control for L3)', 'authenticated', kRu, NULL, 'viewloc', cR, kR, 'commas', -2, 1, 1),
-        (58, 'L5 real bidder kR -> VIEW cR with a phone number, an email address and a street line typed into the notes and the urgency reason: both come back with none of the three (1 = redacted)', 'authenticated', kRu, NULL, 'viewnotes', cR, kR, 'notes', -2, 1, 1)
+        (58, 'L5 real bidder kR -> VIEW cR with a phone number, an email address and a street line typed into the notes: they come back with none of the three (1 = redacted)', 'authenticated', kRu, NULL, 'viewnotes', cR, kR, 'notes', -2, 1, 1)
       ) AS s(ord, label, role, sub, email, kind, target, ct, mut, e_live, e_view, e_both) ORDER BY ord
     LOOP
       e_cur := CASE WHEN phase IN ('live', 'after view rollback') THEN r.e_live
@@ -326,7 +326,7 @@ BEGIN
         ELSIF r.kind = 'viewnoaddr' THEN
           EXECUTE 'SELECT count(*) FROM public.bidder_claim_summary WHERE id = $1 AND location_city IS NULL AND location_zip IS NULL' INTO n USING r.target;
         ELSIF r.kind = 'viewnotes' THEN
-          EXECUTE 'SELECT count(*) FROM public.bidder_claim_summary WHERE id = $1 AND homeowner_notes LIKE ''Steep back slope.%'' AND homeowner_notes !~ ''555|@|Proofstreet'' AND urgency_reason !~ ''555''' INTO n USING r.target;
+          EXECUTE 'SELECT count(*) FROM public.bidder_claim_summary WHERE id = $1 AND homeowner_notes LIKE ''Steep back slope.%'' AND homeowner_notes !~ ''555|@|Proofstreet''' INTO n USING r.target;
         ELSIF r.kind = 'viewleak' THEN
           -- read what the bidder is given, as the bidder; it is compared with the base row after the role is reset
           EXECUTE 'SELECT coalesce(jsonb_agg(jsonb_build_object(''id'', id, ''c'', location_city, ''z'', location_zip)), ''[]''::jsonb) FROM public.bidder_claim_summary' INTO j;

@@ -536,7 +536,7 @@
               // row (it holds the homeowner's name, claim number, adjuster contact and file names). The
               // view applies the eligibility itself (open for bids, same test-or-real world, or a claim this
               // contractor has bid on). Column list: BIDDER_CLAIM_OPP_COLS.
-              const BIDDER_CLAIM_OPP_COLS = 'id, status, ready_for_bids, created_at, trades, job_type, funding_type, damage_type, existing_shingle_brand, existing_shingle_color, rcv_amount, acv_amount, deductible_amount, roof_squares, repair_squares, measured_squares, measurement_shape, contractor_scope_summary, parsed_line_items, urgency, urgency_deadline, urgency_reason, homeowner_notes, roofing_bid_released_at, gutters_bid_released_at, siding_bid_released_at, windows_bid_released_at, bid_window_expires_at, has_estimate, has_measurements, location_city, location_zip, estimate_filename, measurements_filename, selected_contractor_id';
+              const BIDDER_CLAIM_OPP_COLS = 'id, status, ready_for_bids, created_at, trades, job_type, funding_type, damage_type, existing_shingle_brand, existing_shingle_color, rcv_amount, acv_amount, deductible_amount, roof_squares, repair_squares, measured_squares, measurement_shape, contractor_scope_summary, parsed_line_items, urgency, urgency_deadline, homeowner_notes, roofing_bid_released_at, gutters_bid_released_at, siding_bid_released_at, windows_bid_released_at, bid_window_expires_at, has_estimate, has_measurements, location_city, location_zip, estimate_filename, measurements_filename, selected_contractor_id';
               const { data, error } = await sb
                 .from('bidder_claim_summary')
                 .select(BIDDER_CLAIM_OPP_COLS)
@@ -599,7 +599,7 @@
                     distance: computeZipDistance(currentContractor?.address_zip, zip),
                     urgency: claim.urgency || 'flexible',
                     urgencyDeadline: claim.urgency_deadline,
-                    urgencyReason: claim.urgency_reason,
+                    urgencyReason: null,
                     homeownerNotes: claim.homeowner_notes,
                     contractorScopeSummary: claim.contractor_scope_summary || null,
                     fundingType: claim.funding_type || (claim.job_type?.startsWith('insurance') ? 'insurance' : 'cash'),

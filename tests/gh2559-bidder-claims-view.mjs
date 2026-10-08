@@ -50,10 +50,13 @@ ok(viewCols.every((c) => !FORBIDDEN.includes(c)), 'no output column of the view 
 // (tools/gh2559-bidder-view-behaviour.py: planted street lines, units, boxes, lots, phones, emails). Here only
 // the shape: the two location columns and the two free-text columns come from the guarded joins, never raw.
 ok(/loc\.city\s+AS location_city/.test(body) && /loc\.zip\s+AS location_zip/.test(body), 'view: location_city and location_zip come from the guarded loc join');
-ok(!/^\s*c\.homeowner_notes,\s*$/m.test(body) && !/^\s*c\.urgency_reason,\s*$/m.test(body), 'view: homeowner_notes and urgency_reason are not selected raw');
+ok(!/^\s*c\.homeowner_notes,\s*$/m.test(body), 'view: homeowner_notes is not selected raw');
 ok(/CASE WHEN c\.selected_contractor_id = ct\.id THEN c\.homeowner_notes\s+WHEN c\.job_type = 'repair' THEN NULL\s+ELSE ft\.notes END\s+AS homeowner_notes/.test(body),
   'view: notes as typed only for the selected contractor; repair-intake notes withheld; redacted for everyone else');
-ok(/CASE WHEN c\.selected_contractor_id = ct\.id THEN c\.urgency_reason ELSE ft\.urgency END\s+AS urgency_reason/.test(body), 'view: urgency_reason redacted unless selected');
+ok(!/urgency_reason/.test(body.replace(/--[^\n]*/g, '')), 'view: urgency_reason is not exposed at all (no bidder page shows it; review 6050015567, structural fix)');
+ok(!/urgency_reason/.test(rd('contractor-opportunities.html').match(/BIDDER_CLAIM_OPP_COLS = '[^']*'/)[0]), 'opportunities page: urgency_reason is not in the column list read from the view');
+ok(!/urgency_reason/.test(rd('react-app/app/contractor/opportunities/utils.ts').match(/BIDDER_CLAIM_OPP_COLS =\s*'[^']*'/)[0]), 'React opportunities: urgency_reason is not in the column list read from the view');
+ok(/existing_shingle_brand ~ .*length\(c\.existing_shingle_brand\) > 60/.test(body) && /measurement_shape ~ .*length\(c\.measurement_shape\) > 60/.test(body), 'view: the typed catalogue columns carry a shape guard (no phone, email or web address, 60 characters at most)');
 ok(!/substring\(c\.property_address FROM '\\d\{5\}'\)/.test(body), 'view: the zip is never the first five-digit run of the address');
 ok(!/bid-release gate/.test(sql), 'view SQL no longer rests the summary on a bid-release gate that does not exist');
 
