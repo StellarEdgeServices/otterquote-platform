@@ -1,10 +1,10 @@
 -- gh-2310 Gap 3: backfill referrals.is_test = true on the 9 legacy click rows that sit under test/staff referral_agents.
--- STATUS (gh-1438): NOT APPLIED. Tier 3B (production data UPDATE), R-097 24-hour notice on #2310 first. Do not apply, merge or deploy from this PR.
+-- STATUS (gh-1438): APPLIED. Tier 3B (production data UPDATE). APPLIED to production (yeszghaspzwwstvsrioa) under R-097 by CTO RUN 64 (claim cto-2026-10-08T16:29:34Z): supabase_migrations.schema_migrations version 20261008210737, name gh2310_gap3_backfill_referrals_is_test; evidence #2310 comment 6069081536.
 -- Ruling: #2310 comment 6046227412 (CTO). Review that found the residue: CLOSE-REVIEW 6045581293.
 -- Rollback: supabase/migrations_rollbacks/gh2310_gap3_backfill_referrals_is_test_rollback.sql
 -- Pre-flight (prints the 9 rows): supabase/migrations_rollbacks/gh2310_gap3_referrals_is_test_pre-flight.md
 -- Proof (rolled back, human-run): supabase/tests/gh2310_gap3_referrals_is_test_proof.sql
--- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3B path, then file it under supabase/migrations/<ledger version>_gh2310_gap3_backfill_referrals_is_test.sql.
+-- NEVER RE-RUN by hand: this is the filed copy under the ledger version (moved from supabase/migrations_drafts/ after the apply; SQL statements unchanged, header comments only).
 --
 -- Rows (measured SELECT-only 2026-10-07T20:28Z, project yeszghaspzwwstvsrioa): referrals with is_test=false whose referral_agents row has is_test=true = 9,
 -- created 2026-08-05 to 2026-08-27, under three staff/test agents 76c64636, 1927861f, 0a934e11. Match is by EXACT ID LIST (same list as the rollback), not by predicate.
