@@ -1,13 +1,13 @@
 <!--
-STATUS (gh-1438, as of 2026-10-07T19:20:06Z): NOT APPLIED
+STATUS (gh-1438): APPLIED to production (yeszghaspzwwstvsrioa) under R-097 by CTO RUN 64 (claim cto-2026-10-08T16:29:34Z) as ledger version 20261008231142, name gh2559_claim_docs_summary_only; evidence #2559 comment 6070932320. The text below is the pre-apply pre-flight, kept as written.
 FILE ROLE: pre-flight file of set gh2559_claim_docs_summary_only (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: no ledger row for this set; the live policy is the world-fenced text of ledger version 20261006171747 (pg_policies and the ledger read 2026-10-06, before and after every proof run). The forward and rollback CREATE POLICY statements are byte-identical to those at head c60b216f, which were run on production inside rolled-back blocks (supabase/tests/gh2559_claim_docs_summary_only_proof.sql; review 6024856617 finding 9). The cut-down files themselves were NOT re-run on production by the worker who cut them (no production write in that worker's grant); the reviewer of this head re-runs the proof.
-REPO COPY: none. When the forward file is applied, move this file to supabase/migrations_rollbacks/ under the forward file's ledger version.
-DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+REPO COPY: this file, moved from supabase/migrations_drafts/ after the apply; the forward file is supabase/migrations/20261008231142_gh2559_claim_docs_summary_only.sql and the rollback is supabase/migrations_rollbacks/20261008231142_gh2559_claim_docs_summary_only_rollback.sql.
+Never move into supabase/migrations/ (the CLI would replay it).
 -->
 # Pre-Flight: gh2559_claim_docs_summary_only (cut down to the storage policy)
 
-**Migration**: `supabase/migrations_drafts/gh2559_claim_docs_summary_only.sql` (NOT APPLIED)
+**Migration**: `supabase/migrations/20261008231142_gh2559_claim_docs_summary_only.sql` (APPLIED 2026-10-08, ledger version `20261008231142`)
 **Author**: worker for Marty (CTO RUN 62, claim `cto-2026-10-07T17:47:04Z`, tid `cto62-gh2559`), on the draft by the CTO RUN 61 worker `cto61-rebuild-2569`
 **GitHub**: Refs #2559 (item 3). **Decision**: D-368, extended by Dustin's answers of 2026-10-07 (comment 6038067961). **Tier**: 3B, 24-hour notice (R-097) on #2559.
 **Replaces** the draft at head `c60b216f` (REVIEW: FAIL 6024856617) and its R-097 notice 6024524228, which is void:
@@ -195,7 +195,7 @@ digest, ledger count and head): identical, ledger `213` rows, head `202610061717
 
 ## Rollback
 
-`supabase/migrations_drafts/gh2559_claim_docs_summary_only_rollback.sql` restores the world-fenced policy text that
+`supabase/migrations_rollbacks/20261008231142_gh2559_claim_docs_summary_only_rollback.sql` restores the world-fenced policy text that
 is live today (ledger version 20261006171747), in one transaction. Then delete this set's ledger row. WARNING: it
 re-opens the raw files to every bidder. Do not run it after `gh2559_claim_docs_world_fence_rollback.sql` (the
 world-fence PR's rollback restores the unfenced text).

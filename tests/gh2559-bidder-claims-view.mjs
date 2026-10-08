@@ -38,7 +38,7 @@ for (const f of [...STATIC, ...REACT]) {
 }
 
 // view output columns, from the SQL
-const sql = rd('supabase/migrations_drafts/gh2559_bidder_claims_view.sql');
+const sql = rd('supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql');
 const body = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
 const sel = body.slice(body.indexOf('SELECT') + 6, body.indexOf('FROM public.claims c'));
 const items = []; { let d = 0, cur = ''; for (const ch of sel) { if (ch === '(') d++; if (ch === ')') d--; if (ch === ',' && d === 0) { items.push(cur); cur = ''; } else cur += ch; } items.push(cur); }

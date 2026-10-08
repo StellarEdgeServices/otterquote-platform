@@ -1,8 +1,8 @@
--- STATUS (gh-1438, as of 2026-10-07T19:20:06Z): NOT APPLIED
+-- STATUS (gh-1438): the forward file is APPLIED (ledger version 20261008231142, name gh2559_claim_docs_summary_only; evidence #2559 comment 6070932320); this rollback has not been run.
 -- FILE ROLE: rollback file of set gh2559_claim_docs_summary_only (the STATUS is the set's; it describes the forward migration)
--- EVIDENCE: the forward file has not been applied (no ledger row; live policy is the world-fenced text of ledger version 20261006171747, pg_policies read 2026-10-06). The CREATE POLICY statement below is byte-identical to the one at head c60b216f, which was run inside the same rolled-back proof block as the forward file (supabase/tests/gh2559_claim_docs_summary_only_proof.sql; review 6024856617 finding 9: rollback text = live text).
--- REPO COPY: none. When the forward file is applied, move this file to supabase/migrations_rollbacks/ under the forward file's ledger version.
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- EVIDENCE: before the apply (no ledger row yet; live policy was the world-fenced text of ledger version 20261006171747, pg_policies read 2026-10-06). The CREATE POLICY statement below is byte-identical to the one at head c60b216f, which was run inside the same rolled-back proof block as the forward file (supabase/tests/gh2559_claim_docs_summary_only_proof.sql; review 6024856617 finding 9: rollback text = live text).
+-- REPO COPY: this file, moved from supabase/migrations_drafts/ after the apply; the forward file is supabase/migrations/20261008231142_gh2559_claim_docs_summary_only.sql.
+-- Never move into supabase/migrations/ (the CLI would replay it forward). Rollback only on a human decision, after saying so on #2559.
 --
 -- Rollback for gh2559_claim_docs_summary_only.sql (gh-2559 item 3, D-368).
 -- WARNING: this RE-OPENS what D-368 closed: a contractor in the claim's own world (test with test,
