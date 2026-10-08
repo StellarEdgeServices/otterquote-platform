@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # gh-2519 / gh-2564: run the fee-and-lock proof on a THROWAWAY Postgres. Never point this at production.
-# Usage: PGHOST=... PGPORT=... PGUSER=postgres supabase/tests/gh2519_gh2564_fee_lock_proof_run.sh [outdir]
+# Usage: PGHOST=... PGPORT=... PGUSER=postgres bash supabase/tests/gh2519_gh2564_fee_lock_proof_run.sh [outdir]
 #   (any scratch server where PGUSER is a superuser named postgres; e.g. `pip install pgserver` in a venv,
 #    or a local `initdb -U postgres`). It creates and drops the database gh2519_fee_lock_proof.
 # Five passes of supabase/tests/gh2519_gh2564_fee_lock_proof.sql in one database:
