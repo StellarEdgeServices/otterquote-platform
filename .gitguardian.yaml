@@ -1,13 +1,17 @@
 # GitGuardian / ggshield v2 config (gh-2580).
 # Excludes four folders from SECRET scanning only, and nothing else:
-#   supabase/tests/                      (22 files, 2 of them .test.ts)
+#   supabase/tests/                      (26 files, 2 of them .test.ts)
 #   supabase/migrations_applied_manually/, supabase/migrations_drafts/,
-#   supabase/migrations_rollbacks/       (190 files)
+#   supabase/migrations_rollbacks/       (198 files)
 # supabase/migrations/ (the applied migrations) is NOT excluded and stays scanned.
-# Why: the proof file that tripped the "Generic High Entropy Secret" detector
-# holds row ids and UUIDs (#2144, #2146, #2177, #2580). That file is in
-# supabase/tests/, so the first pattern alone covers it. The second pattern
-# does not cover it; it only adds the three migrations_* folders.
+# Why: #2580 - GitGuardian's "Generic High Entropy Secret" detector flagged
+# UUID-shaped row ids in commit 069a2a4's copy of
+# supabase/tests/gh2559_claim_docs_world_fence_proof.sql (that commit is only on
+# branch gh-2559-storage-world-fence-cto61; main's copy holds no ids). Same
+# false-positive class as #2144/#2146/#2177, which were in other files. The
+# flagged path is in supabase/tests/, so the first pattern alone covers it.
+# The second pattern does not cover it; it only adds the three migrations_*
+# folders.
 # ggshield turns each `*` into one-or-more non-slash characters and a trailing
 # `**` into the same, so both patterns reach one folder level only; a nested
 # folder under these paths would be scanned.
