@@ -124,7 +124,6 @@ RATCHET_FOOTER = {
     "admin-contractor-action",
     "approve-payout",
     "approve-warranty-drift",
-    "check-rate-limits",
     "counter-sig-reminders",
     "mark-job-complete",
     "mark-payout-paid",
@@ -150,6 +149,21 @@ RATCHET_FOOTER = {
     "send-welcome-email",
     "switch-contractor",
     "watch-template-mapping",
+}
+
+# gh-1824 / D-380: the ONE named exemption. `send-adjuster-email` relays a
+# homeowner's own message to their insurance adjuster, structure only and never
+# new wording (its own header comment, gh-1013 / #869). The owner decided on
+# 2026-10-08 (decision D-380; Dustin's selection "Leave it off (Recommended)",
+# recorded on #1824 comment 6050256708) that this email keeps NO postal-address
+# line, so it is neither required nor reported as a gap. This is an exemption by
+# name and by decision, not a pattern: every other Mailgun sender must still
+# carry a USED D-237 footer or sit in the known-gap list. Do not add a name here
+# without a new numbered decision; the self-test pins this set to exactly
+# {"send-adjuster-email"}. An exempt name that stops sending via Mailgun fails
+# the stale-entry check below, like any allowlist entry.
+EXEMPT_FOOTER = {
+    "send-adjuster-email": "D-380 (#1824 comment 6050256708): homeowner-to-adjuster relay keeps no address line",
 }
 
 # Functions this guard actively enforces (must never regress). Each one was
@@ -400,16 +414,21 @@ def main():
         if ok:
             covered[name] = mode
 
-    missing = [n for n in senders if n not in covered]
+    exempt = sorted(n for n in senders if n in EXEMPT_FOOTER)
+    missing = [n for n in senders if n not in covered and n not in EXEMPT_FOOTER]
 
     print(f"Mailgun-sending Edge Functions found: {len(senders)}")
     print(f"  with a USED D-237 footer            : {len(covered)}")
+    print(f"  exempt by decision (D-380)          : {len(exempt)}")
     print(f"  without                             : {len(missing)}")
     print()
     print("Covered:")
     for n in sorted(covered):
         note = " (invoice document, not an email footer)" if covered[n] == "C" else ""
         print(f"  [x] {n}  [mode {covered[n]}]{note}")
+    print("Exempt by named decision (no footer required):")
+    for n in exempt:
+        print(f"  [-] {n}  [{EXEMPT_FOOTER[n]}]")
     print("Missing (known gap, tracked on #1824):")
     for n in sorted(missing):
         print(f"  [ ] {n}")
@@ -424,7 +443,7 @@ def main():
             print(f"  - {n}")
         return 1
 
-    stale = sorted(n for n in enforced if n not in senders)
+    stale = sorted(n for n in (enforced | set(EXEMPT_FOOTER)) if n not in senders)
     if stale:
         print()
         print("FAIL: check-mailgun-footer-coverage: REQUIRED_FOOTER names a function "
@@ -438,8 +457,10 @@ def main():
     print()
     print(f"PASS: check-mailgun-footer-coverage: all {len(enforced)} "
           f"REQUIRED_FOOTER/RATCHET_FOOTER functions have a USED D-237 footer. "
+          f"{len(exempt)} exempt by named decision (D-380), "
           f"{len(other_gap)} other Mailgun sender(s) remain a known gap "
-          f"(#1824 continuation, not yet enforced).")
+          f"(#1824 continuation, not yet enforced); "
+          f"{len(covered) + len(exempt)} of {len(senders)} senders accounted for.")
     return 0
 
 

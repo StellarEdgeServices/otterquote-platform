@@ -23,6 +23,8 @@ on:
       - 'tests/gh1925-gpc-optout.mjs'
       - 'tests/gh1925-optout-crossdevice.mjs'
       - 'tests/gh1925-clarity-ga4-stored-flag.mjs'
+      - 'tests/gh1925-optout-stop-reload.mjs'
+      - 'privacy.html'
       - 'js/internal-traffic.js'
       - 'tests/gh2356-synthetic-traffic-guard.mjs'
       - 'tests/gh2107-gpc-client.mjs'
@@ -115,6 +117,8 @@ on:
       - 'tests/gh1925-gpc-optout.mjs'
       - 'tests/gh1925-optout-crossdevice.mjs'
       - 'tests/gh1925-clarity-ga4-stored-flag.mjs'
+      - 'tests/gh1925-optout-stop-reload.mjs'
+      - 'privacy.html'
       - 'js/internal-traffic.js'
       - 'tests/gh2356-synthetic-traffic-guard.mjs'
       - 'tests/gh2107-gpc-client.mjs'
@@ -223,6 +227,8 @@ jobs:
         run: node tests/gh1925-gpc-optout.mjs
       - name: Section 12 opt-out follows the signed-in person (gh1925-optout-crossdevice)
         run: node tests/gh1925-optout-crossdevice.mjs
+      - name: Section 12 opt-out button stops loaded GA4/Clarity and reloads once, after the profile write (gh1925-optout-stop-reload)
+        run: node tests/gh1925-optout-stop-reload.mjs
       - name: D-354 Clarity gated on the opt-out, GA4/Clarity read the stored flag, no GA4 on auth-callback (gh1925-clarity-ga4-stored-flag)
         run: node tests/gh1925-clarity-ga4-stored-flag.mjs
       - name: Static measurement checkout fires measurement_purchase + Purchase once, deduped, suppression honoured (gh2078-static-measurement-purchase)

@@ -32,6 +32,7 @@ import { isPendingApproval } from '../_shell/contractor-gating';
 import { DASHBOARD_COPY as C, QUICK_LINKS } from './copy';
 import { useDashboardData, type ActiveProject } from './use-dashboard-data';
 import { Messaging } from './Messaging';
+import { recordCpaAcceptanceEvidence } from './cpa-evidence';
 import {
   activityDotColor, calculateProfileCompletion, efUrl, formatEarnings,
   profileChecklist, serviceAreaDisplay, type ChecklistContractor,
@@ -342,11 +343,11 @@ function WarrantyModal({ quoteId, onClose, onSuccess }: { quoteId: string; onClo
 }
 
 // ── Tier-3 verbatim-locked legal modals (copy in ./copy.ts) ──
-function AgreementModal({ contractor, onAccepted }: { contractor: { id: string }; onAccepted: () => void }) {
+function AgreementModal({ contractor, onAccepted }: { contractor: { id: string; user_id: string }; onAccepted: () => void }) {
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const accept = async () => {
-    if (!checked) return;
+    if (!checked || busy) return;
     setBusy(true);
     try {
       const now = new Date().toISOString();
@@ -356,6 +357,12 @@ function AgreementModal({ contractor, onAccepted }: { contractor: { id: string }
         cpa_version: CURRENT_CPA_VERSION, cpa_accepted_at: now, needs_cpa_reattestation: false,
       }).eq('id', contractor.id);
       if (error) throw error;
+      // gh-2444: same shared evidence path as re-acceptance; a failed write is a failed acceptance (existing error copy, retry allowed).
+      const evidenceErr = await recordCpaAcceptanceEvidence(supabase, {
+        contractorId: contractor.id, userId: contractor.user_id, now,
+        title: `Accepted Contractor Partner Agreement (${CURRENT_CPA_VERSION})`,
+      });
+      if (evidenceErr) throw evidenceErr;
       onAccepted();
     } catch (e) {
       console.error('Error accepting agreement:', e);
@@ -380,7 +387,7 @@ function CpaReacceptModal({ contractorId, userId, onAccepted }: { contractorId: 
   const [err, setErr] = useState('');
   const m = C.cpaReacceptModal;
   const accept = async () => {
-    if (!checked) return;
+    if (!checked || busy) return;
     setBusy(true); setErr('');
     try {
       const now = new Date().toISOString();
@@ -388,13 +395,11 @@ function CpaReacceptModal({ contractorId, userId, onAccepted }: { contractorId: 
         cpa_version: CURRENT_CPA_VERSION, cpa_accepted_at: now, needs_cpa_reattestation: false,
       }).eq('id', contractorId);
       if (error) { setErr(m.errorSave); setBusy(false); return; }
-      try { await supabase.rpc('record_cpa_ip', { p_contractor_id: contractorId }); } catch (e) { console.warn('record_cpa_ip failed (non-fatal):', e); }
-      try {
-        await supabase.from('activity_log').insert({
-          user_id: userId, event_type: 'cpa_accepted',
-          title: `Accepted updated Contractor Partner Agreement (${CURRENT_CPA_VERSION})`, created_at: now,
-        });
-      } catch (e) { console.warn('activity_log failed (non-fatal):', e); }
+      const evidenceErr = await recordCpaAcceptanceEvidence(supabase, {
+        contractorId, userId, now,
+        title: `Accepted updated Contractor Partner Agreement (${CURRENT_CPA_VERSION})`,
+      });
+      if (evidenceErr) { setErr(m.errorSave); setBusy(false); return; }
       clearCpaRedirectGuard();
       onAccepted();
     } catch (e) {

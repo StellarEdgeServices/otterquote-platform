@@ -466,6 +466,9 @@ jobs:
           python3 -m pip install --quiet pgserver==0.1.4 psycopg2-binary==2.9.13
           python3 tools/gh2559-bidder-view-behaviour.py
 
+      - name: a bidding contractor is offered no raw homeowner upload, only the selected contractor (gh-2559, D-368)
+        run: node tests/gh2559-bidder-no-raw-files.mjs
+
       - name: partner-re one leads row per signup, variant carried (gh-2084 arm E)
         run: node tests/gh2084-partner-re-one-lead-row.mjs
 

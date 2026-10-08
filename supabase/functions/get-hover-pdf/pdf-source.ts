@@ -12,12 +12,16 @@
  * Before gh-1538 the caller only ever checked hover_job_id and 500'd for
  * every manual order, regardless of whether a report_url existed.
  *
- * canAccessClaim is copied verbatim from index.ts (behaviour unchanged) so
- * it can be exercised in isolation with a stubbed Supabase client — it
- * mirrors the `claims`-table RLS SELECT boundary: (1) homeowner ownership,
- * (2) active contractor on a released biddable claim, (3) contractor with
- * an existing quote on the claim. See the long comment at its call site in
- * index.ts for the RLS policy names each branch corresponds to.
+ * canAccessClaim decides who may be served a claim's measurement PDF:
+ * (1) the homeowner who owns the claim; (2) the contractor the homeowner
+ * SELECTED on it, while that contractor record is active. Nobody else.
+ * gh-2559 / D-370 (CEO ruling on PR #2569, comment 6045857216): before
+ * selection a bidding contractor does not open any measurement report on
+ * the claim, whether the homeowner uploaded it or it was produced through
+ * the platform. Before this change the function mirrored the claims-table
+ * RLS SELECT boundary and served any active contractor on a claim open for
+ * bids, and any contractor with a quote on it. A bidder still prices from
+ * the measured quantities on the claim summary; only the report is withheld.
  */
 
 export type PdfSource =
@@ -47,37 +51,23 @@ export async function canAccessClaim(
   // (1) Homeowner ownership.
   const { data: claim } = await supabase
     .from("claims")
-    .select("user_id, ready_for_bids, status")
+    .select("user_id, selected_contractor_id")
     .eq("id", claimId)
     .maybeSingle();
   if (!claim) return false; // unknown claim → deny
   if (claim.user_id === user.id) return true;
 
-  // Resolve the caller's contractor record(s) once (a user may own more than one).
+  // (2) The contractor the homeowner selected on this claim, and only while
+  // that contractor record is active (the same test the claim-documents
+  // storage policy applies to the selected contractor). A claim with nobody
+  // selected serves no contractor at all.
+  if (!claim.selected_contractor_id) return false;
   const { data: contractors } = await supabase
     .from("contractors")
     .select("id, status")
     .eq("user_id", user.id);
   const contractorRows = (contractors ?? []) as { id: string; status: string | null }[];
-  if (contractorRows.length === 0) return false; // not the owner and not a contractor
-
-  // (2) Active contractor + released, biddable claim.
-  const biddable =
-    claim.ready_for_bids === true &&
-    ["active", "bidding", "pending"].includes(claim.status);
-  if (biddable && contractorRows.some((c: { status: string | null }) => c.status === "active")) {
-    return true;
-  }
-
-  // (3) Contractor associated via an existing quote/selection on this claim.
-  const { data: quote } = await supabase
-    .from("quotes")
-    .select("id")
-    .eq("claim_id", claimId)
-    .in("contractor_id", contractorRows.map((c: { id: string }) => c.id))
-    .limit(1)
-    .maybeSingle();
-  if (quote) return true;
-
-  return false;
+  return contractorRows.some(
+    (c) => c.id === claim.selected_contractor_id && c.status === "active",
+  );
 }

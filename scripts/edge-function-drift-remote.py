@@ -110,6 +110,7 @@ import shutil
 import sys
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -214,6 +215,54 @@ def fetch_github_function_tree(repo: str, functions_dir: str, token: str) -> dic
     return out
 
 
+def fetch_github_file(repo: str, path: str, token: str):
+    """Raw bytes of one file at `path` on `main`, or None when the repo has no such file (HTTP
+    404). Used for files a deployed bundle carries from OUTSIDE supabase/functions/ (for example
+    react-app/app/lib/...), which the Supabase CLI refuses to extract and the Management API
+    fallback returns instead. Any other failure raises RemoteFetchError (the project is then
+    UNMEASURED); no response body is echoed (R-089)."""
+    quoted = urllib.parse.quote(path, safe="/")
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{repo}/contents/{quoted}?ref=main",
+        headers={
+            "Authorization": "Bearer " + token,
+            "Accept": "application/vnd.github.raw+json",
+            "User-Agent": "otterquote-drift-detector-remote",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raise RemoteFetchError(f"GitHub API HTTP {exc.code} ({exc.reason}) for {path}") from None
+    except Exception as exc:  # noqa: BLE001
+        raise RemoteFetchError(f"{type(exc).__name__} fetching {path}") from None
+
+
+def _fetch_out_of_tree_repo_files(repo, repo_root: Path, deployed_root: Path, deployed_slugs, token, github_file_fetch):
+    """Put `main`'s copy of every out-of-tree file a deployed bundle carries into `repo_root`
+    (same relative path), so build_report compares the two. A file `main` does not have stays
+    absent and reads missing_in_repo."""
+    seen = set()
+    for slug in deployed_slugs:
+        oot_dir = deployed_root / efdc.OUT_OF_TREE_DIR / slug
+        if not oot_dir.is_dir():
+            continue
+        for rel in efdc.hash_tree(oot_dir):
+            if rel in seen:
+                continue
+            seen.add(rel)
+            dest = repo_root / rel
+            if not dest.resolve().is_relative_to(repo_root.resolve()):
+                continue  # a path that climbs out of the repo is left absent -> missing_in_repo
+            data = github_file_fetch(repo, rel, token)
+            if data is not None:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(data)
+
+
 # ---------------------------------------------------------------------------
 # Orchestration -- one project. `github_fetch`/`list_slugs`/`fetch_all`/
 # `require_cli` are ALL injectable so the fixture suite can drive this with
@@ -260,6 +309,7 @@ def check_project(
     list_slugs=None,
     fetch_all=None,
     require_cli=None,
+    github_file_fetch=None,
 ) -> dict:
     """Compare one remote project's deployed Edge Functions against its own
     repo's `main`. Returns {name, project_ref, github_repo, status, reason,
@@ -277,6 +327,7 @@ def check_project(
     list_slugs = list_slugs or efdc.list_deployed_slugs
     fetch_all = fetch_all or efdc.fetch_all
     require_cli = require_cli or efdc.require_cli
+    github_file_fetch = github_file_fetch or fetch_github_file
 
     token_env = project["supabase_token_env"]
     github_token = os.environ.get(GITHUB_TOKEN_ENV_VAR, "").strip()
@@ -312,11 +363,21 @@ def check_project(
             deployed_tmp = Path(tempfile.mkdtemp(prefix="ef-drift-remote-deployed-"))
             deployed_slugs, failed_fetches = fetch_all(cli, project["project_ref"], slugs, deployed_tmp)
 
-        report = efdc.build_report(repo_functions_dir, deployed_tmp, deployed_slugs)
-        for slug in failed_fetches:
-            report["functions"].append({"slug": slug, "verdict": efdc.FETCH_FAILED, "files": []})
-            report["counts"][efdc.FETCH_FAILED] = report["counts"].get(efdc.FETCH_FAILED, 0) + 1
-        report["functions"].sort(key=lambda r: r["slug"])
+        # PR #2600 review finding 1: a function fetched through the Management API fallback can
+        # carry files from outside supabase/functions/. Without `repo_root` build_report never
+        # compared them and the function read IDENTICAL. Fetch main's copy of each one into the
+        # repo tree and pass the root so they are compared. No allowlist here: the allowlist
+        # names otterquote-platform paths only, so nothing is excused for a remote project.
+        _fetch_out_of_tree_repo_files(
+            project["github_repo"], repo_tmp, deployed_tmp, deployed_slugs, github_token, github_file_fetch
+        )
+        report = efdc.build_report(
+            repo_functions_dir,
+            deployed_tmp,
+            deployed_slugs,
+            repo_root=repo_tmp,
+            fetch_failed={slug: efdc.FETCH_REASONS.get(slug) for slug in failed_fetches},
+        )
 
         return {
             "name": project["name"],

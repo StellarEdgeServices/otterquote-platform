@@ -56,8 +56,9 @@ export function ContractTemplates({ contractorId, initialTemplates }: {
       const { error: upErr } = await supabase.storage.from('contractor-templates').upload(filePath, file, { contentType: 'application/pdf' });
       if (upErr) throw upErr;
       const updated = upsertContractTemplate(templates, slot.trade, slot.fundingType, filePath, file.name, new Date().toISOString());
-      const { error: dbErr } = await supabase.from('contractors').update({ contract_templates: updated, updated_at: new Date().toISOString() }).eq('id', contractorId);
+      const { data: upRows, error: dbErr } = await supabase.from('contractors').update({ contract_templates: updated, updated_at: new Date().toISOString() }).eq('id', contractorId).select('id');
       if (dbErr) throw dbErr;
+      if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: contractors (contract template upload)');
       setTemplates(updated);
       setMappingSlot({ trade: slot.trade, fundingType: slot.fundingType });
     } catch (err2) {
@@ -168,8 +169,9 @@ function FieldMappingModal({ contractorId, templates, trade, fundingType, onClos
     const updated = setContractFieldMappings(templates, trade, fundingType, mappings);
     setStatus({ msg: T.fieldMapping.saved, color: '#065F46' });
     try {
-      const { error } = await supabase.from('contractors').update({ contract_templates: updated }).eq('id', contractorId);
+      const { data: upRows, error } = await supabase.from('contractors').update({ contract_templates: updated }).eq('id', contractorId).select('id');
       if (error) throw error;
+      if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: contractors (field mappings)');
       onSaved(updated);
       setStatus({ msg: T.fieldMapping.saved, color: '#6EE7B7' });
       setTimeout(() => setStatus(null), 3000);

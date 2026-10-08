@@ -148,6 +148,37 @@ export function w9CardState(
   return 'action-required';
 }
 
+/**
+ * D-319 (gh-1509): platform_settings.w9_gate_retired — same read as
+ * loadW9GateFlag() in partner-dashboard.html. Fails CLOSED: a missing row
+ * (incl. an RLS-filtered read), a non-`true` value, an error, or a throw all
+ * resolve to `false`, i.e. the W-9 gate stays enforced and the W-9 card is shown.
+ * Never throws. `client` is the supabase client (injected so it is unit-testable).
+ */
+export interface W9GateFlagClient {
+  from(table: string): {
+    select(cols: string): {
+      eq(col: string, val: string): {
+        maybeSingle(): PromiseLike<{ data: { value?: unknown } | null; error?: unknown }>;
+      };
+    };
+  };
+}
+
+export async function fetchW9GateRetired(client: W9GateFlagClient): Promise<boolean> {
+  try {
+    const { data, error } = await client
+      .from('platform_settings')
+      .select('value')
+      .eq('key', 'w9_gate_retired')
+      .maybeSingle();
+    if (error) return false;
+    return !!data && data.value === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Default-locale date label — mirrors `new Date(iso).toLocaleDateString()` in renderW9Card(). */
 export function w9CardDate(iso: string | null | undefined): string {
   if (!iso) return '';
