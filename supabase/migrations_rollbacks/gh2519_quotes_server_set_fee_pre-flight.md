@@ -1,0 +1,66 @@
+# Pre-flight: gh2519_quotes_server_set_fee (Tier 3B, DRAFT)
+
+NOT APPLIED. Refs #2519, ruling 6049007305 (CTO RUN 62). It is not the R-134 fast path: it rewrites what a live bid path stores, so it applies only after review, the R-177 signature and an R-097 24-hour notice. The price-and-fee lock on a selected bid (D-369) is a separate draft, `gh2564_quotes_selected_price_lock.sql`.
+
+No fee, rate, basis or price rule is chosen here. Every number comes from `public.platform_fee_config`, which on production holds one row: `fee_pct 5.00`, `fee_basis bid_amount`, state and trade NULL, effective 2026-05-06 (SELECT, 2026-10-08).
+
+## What it does
+For client callers only (`current_user` is `anon`/`authenticated`, JWT role is not `service_role`, caller is not an admin). `service_role` (every Edge Function), admins and owner-level `SECURITY DEFINER` functions such as `accept_bid()` are untouched.
+
+1. **New bid (INSERT).** `platform_fee_pct`, `fee_percentage` and `platform_fee_basis` are written from the fee config row for the bid's contractor and claim; `fee_amount` is `round(rate / 100 * total_price, 2)`, the formula `normalize_quotes_fee_amount()` already applies. Whatever the browser sent in the four fields is overwritten, not refused. With no config row the bid is refused (`P0001`): the function holds no fallback rate.
+2. **The bid's own contractor's UPDATE.** The three rate fields keep their stored values and `fee_amount` is recomputed from the new `total_price`. A legacy row with no `platform_fee_pct` keeps it NULL and its `fee_amount` is computed from `fee_percentage`.
+3. **Column allow-list on UPDATE.** Claim owner: `status` (to `selected` or `declined`, as today) and `homeowner_signed_at`. The bid's contractor: `total_price`, the four fee fields (server-set), `fee_accepted_at`, `scope_summary`, `notes`, `decking_price_per_sheet`, `full_redeck_price`, `supplement_acknowledged`, `trade_type`, `value_adds`, `per_trade_breakdown`, `auto_renew`, `warranty_option_id`, `warranty_snapshot`, `workmanship_warranty_years`, `contractor_signed_at`. Both: `updated_at`. Any other changed column is refused 42501 and the message names it. On INSERT, `is_test`, `payment_intent_id`, `payment_method_id`, `payment_method_type`, `card_fee_cents`, `docusign_envelope_id`, `cancelled_at`, `cancellation_reason`, `expires_at`, `expired_at`, `warranty_document_url` and `warranty_uploaded_at` must be at their defaults.
+4. **One selected bid per claim, for client callers.** Setting a bid to `selected` is refused 42501 when another bid on the claim is already selected.
+5. **`apply_referral_commission()`** reads the bid of `claims.selected_contractor_id` (one added predicate, `AND contractor_id = NEW.selected_contractor_id`); the rest of the function is byte for byte the live body.
+
+Objects: one function added (`public.quotes_platform_fee_for(uuid, uuid)`, `STABLE SECURITY DEFINER`, EXECUTE for `authenticated` and `service_role` only), two functions replaced. No trigger, table, policy or data change. The lookup function is needed because `platform_fee_config` has one policy, `Admin can manage fee config` (`is_admin_email()`), so the guard, which runs as the caller, cannot read it.
+
+## The Tier C point the ruling left open, and where it lives
+"If the configured rate is changed while a bid is still open, which rate does a revised bid carry?" Built: the stored rate stays (what happens today). The other answer is one line: `c_revised_bid_takes_current_config_rate CONSTANT boolean := false;` at the top of `quotes_guard_homeowner_columns()`; set it to `true`. Proof lines K4 and K4b show the built behaviour with a test rate of 6.00.
+
+## Which columns each live bid form sends (main `0ec6feeb`)
+Scan: every `.html`, `.js`, `.ts`, `.tsx`, `.mjs`, `.jsx` outside `node_modules` and `supabase/functions` at main for the literal `.from('quotes')` or `/rest/v1/quotes` (a table name passed in a variable would not be found), then `.update(`, `.insert(`, `.upsert(` or `.delete(` within 4 lines. 10 client writes; no upsert, no delete.
+
+| Path | Caller | Columns sent | With this draft |
+|---|---|---|---|
+| `contractor-bid-form.html` L5575 `quoteData` (INSERT) | contractor | `claim_id`, `contractor_id`, `total_price`, `fee_percentage` (hardcoded 5.0), `fee_amount`, `scope_summary`, `notes`, `decking_price_per_sheet`, `full_redeck_price`, `supplement_acknowledged`, `trade_type`, `value_adds`, `per_trade_breakdown`, `is_auto_bid` (false), `auto_renew`, `warranty_option_id`, `warranty_snapshot`, `workmanship_warranty_years`, `platform_fee_pct`, `platform_fee_basis` (`'bid_amount'`), `fee_accepted_at` (21) | Saved; the four fee fields are overwritten from the config (proof I1, I2) |
+| `react-app/app/contractor/bid/[claimId]/bid-form.tsx` L358, `buildQuoteInsert()` in `utils.ts` (INSERT) | contractor | the same 21 columns | Same |
+| `contractor-bid-form.html` L5513 `_changeBidPayload` (UPDATE) | the bid's contractor | `total_price`, `fee_percentage`, `fee_amount`, `platform_fee_pct`, `platform_fee_basis`, `fee_accepted_at`, `scope_summary`, `notes`, `decking_price_per_sheet`, `full_redeck_price`, `supplement_acknowledged`, `trade_type`, `value_adds`, `per_trade_breakdown`, `auto_renew`, `warranty_option_id`, `warranty_snapshot`, `workmanship_warranty_years`, `updated_at` (19); in renewal mode also `bid_status`, `expired_at`, `expires_at`, `renewals_count` | Saved; rate fields keep stored values, `fee_amount` recomputed (proof K2, K3). Renewal mode: see finding 2 |
+| `bid-form.tsx` L326, `buildQuoteUpdate()` (UPDATE) | the bid's contractor | the same 19, and the same 4 in renewal mode | Same |
+| `react-app/app/(homeowner)/bids/actions.ts` L135, L152 | claim owner | `status` | Allowed (proof L3, L4) |
+| `contract-signing.html` L2029, L2039 | owner or contractor | `homeowner_signed_at` or `contractor_signed_at` (by `signRole`) | Allowed for the matching party (proof L5, L5b); the owner writing the contractor's stamp is refused (C6) |
+| `use-contract-signing-data.ts` L335, L354 | claim owner | `homeowner_signed_at` | Allowed |
+| `bids.html` L2137, `contractor-about.html` L1008: `rpc('accept_bid')` | claim owner | inside the RPC | Untouched (proof L8) |
+
+## Departures from the ruling's text, each forced by what the scan found
+- The ruling lists `fee_accepted_at` among the refused columns. Both bid forms send it on every INSERT and every change-bid save, so it is on the contractor's allow-list (refusing it would break both forms). It is refused for the claim owner (proof C3).
+- The ruling names the homeowner's "signature stamps". The contractor also stamps `contractor_signed_at` from `contract-signing.html`, so that column is on the contractor's allow-list.
+- "The config row the bid form reads": the forms cannot read it (finding 1). The lookup is the one both forms and `process-auto-bids` are written to make, with the contractor's state taken from `contractors.address_state`, as `process-auto-bids` does.
+
+## Findings (not changed by this draft)
+1. **The bid forms do not read the fee config today.** `platform_fee_config` is admin-only under RLS, so a contractor's SELECT returns 0 rows (proof line CFG), and the HTML form filters on `currentContractor.state`, a column `contractors` does not have. Both forms fall back to a hardcoded 5.0, which equals the configured 5.00. If the config row is ever changed, this draft stores the configured rate while the form still shows 5%. The form's read has to be fixed before the rate is changed (D-214: the contractor accepts the fee the platform displays).
+2. **Bid renewal from the forms cannot succeed today.** The renewal payload sends `renewals_count`, which is not a column of `quotes` (49 columns, information_schema), and `bid_status = 'submitted'`, which `quotes_bid_status_check` does not allow (`active`, `expired`, `superseded`, `cancelled`). The allow-list refuses `bid_status`, `expired_at` and `expires_at` for the contractor, as the ruling says; when renewal is repaired it should go through `service_role`.
+3. The admin fee page saves trades capitalised (`Roofing`) while every lookup compares lower case (`roofing`), and no lookup reads `effective_date`. With one all-states, all-trades row neither matters today.
+4. `switch-contractor` writes `quotes.status = 'cancelled'`, which `quotes_status_check` does not allow (`draft`, `submitted`, `selected`, `declined`, `expired`); the function treats the error as non-fatal.
+
+## Residuals this draft does not close
+- **R1 (measured, proof lines R1):** the claim owner can still decline the selected bid, select another and repoint `claims.selected_contractor_id` from the browser, which is a re-award outside `switch-contractor`. The commission then follows the re-awarded bid. Closing it means the owner can no longer un-select a bid from the browser, a product rule nobody has decided.
+- The one-selected-bid rule is a trigger check without a lock, so two simultaneous requests can both pass. The commission change covers that case (proof E4b).
+- A browser-chosen `created_at` on INSERT, and `fee_accepted_at` being the browser's clock.
+
+## Production reads behind this draft (SELECT only, 2026-10-08)
+- `quotes`: 8 rows (7 `is_test`, 1 not); 7 carry `platform_fee_pct 5.00` and 1 (`0a334300`, `is_test`) carries NULL; every `fee_percentage` is 5.00 and every `fee_amount` equals `fee_percentage` x `total_price`.
+- Selected bids whose contractor is not `claims.selected_contractor_id`: 0. Claims with two selected bids: 0. Completed claims: 1. Real claims with a `referral_id`: 0.
+- Live function bodies: `quotes_guard_homeowner_columns()` prosrc md5 `f6102d1c`…, `apply_referral_commission()` `5cd19c8b`…; both equal the repo text this draft and its rollback are built from.
+
+## Before applying
+1. Re-read both md5 values above; if either differs, stop (a later migration replaced a function this draft re-creates).
+2. `SELECT count(*) FROM public.platform_fee_config` must be at least 1 with an all-states, all-trades row, or every browser bid is refused.
+3. File the forward file in `supabase/migrations/` under its ledger version. `tests/gh2519-static-fee-columns-guard.mjs` passes on this draft's function (21 passed, 0 failed); `tests/gh2479-static-born-state-guard.mjs` and `tests/gh2479-static-quotes-homeowner-guard.mjs` need a full checkout and run in CI when the file is filed.
+4. The production closes-on run (#2519, 6049007305) is done by an agent that did not write this change.
+
+## Rollback
+`supabase/migrations_rollbacks/gh2519_quotes_server_set_fee_rollback.sql` restores both functions to their live bodies byte for byte and drops the added function. Proof pass 5 prints the same lines as pass 1, with the md5 values back at `f6102d1c` and `5cd19c8b`. No data is lost; fee values the server wrote while the change was live stay as stored. Roll back `gh2564_quotes_selected_price_lock` first if it was applied.
+
+## Proof
+`supabase/tests/gh2519_gh2564_fee_lock_proof_run.sh` (throwaway Postgres; schema file `supabase/tests/gh2519_gh2564_throwaway_schema.sql` is production's seven tables, policies, grants, functions and triggers, read by SELECT; production is PostgreSQL 17.6, the run was on 16). Raw output is in the PR body.
