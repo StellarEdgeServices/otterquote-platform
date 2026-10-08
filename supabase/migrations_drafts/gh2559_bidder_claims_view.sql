@@ -218,11 +218,21 @@ LEFT JOIN LATERAL (
             FROM regexp_matches(lower(fx.nm), '([^\x01-\x7f\u3000-\u303f]+)', 'g') AS m
            WHERE length(m[1]) >= 2 OR m[1] ~ U&'[\4E00-\9FFF\3040-\30FF\AC00-\D7AF]')                       AS name_nl
 ) idn ON true
+-- idn5: the claim's own street-name words of FIVE LETTERS OR MORE (CEO ruling 6063622505, item 1): the words in
+--   idn.street_words (so never a street type, compass word or unit word) that hold five or more letters
+--   ("2718 Juniper Bend Ct Unit 3" gives juniper; "1420 E 96th St" gives none). Used below with no house number needed.
+LEFT JOIN LATERAL (
+  SELECT string_agg(DISTINCT w, '|') AS own5
+    FROM regexp_split_to_table(idn.street_words, '[|]') AS w
+   WHERE length(regexp_replace(w, '[^a-z]', '', 'g')) >= 5
+) idn5 ON true
 -- ft: the two free-text columns as a caller who is not the selected contractor reads them
 -- (CEO ruling 6045859470; review 6049068071 finding 1). Every replacement is the text '[removed]'.
 --   WHOLE VALUE replaced when it holds the claim's own house number and one of its street words (with or
 --     without "St": "house is 123 N Main, blue door"; an ordinal such as "96th" is a street word), or, for an
 --     address with no house number, a street word.
+--   WHOLE VALUE also replaced, with or without a house number in the note, when it holds one of the claim's own
+--     street-name words of five letters or more (idn5; CEO ruling 6063622505): "blue house on Juniper Bend".
 --   Otherwise, in this order, each match replaced where it stands:
 --    a. the claim number (and, applied last, the homeowner's name words: first name alone, last name
 --       alone, any order);
@@ -250,6 +260,8 @@ LEFT JOIN LATERAL (
                     AND v.raw ~ ('\m' || idn.house || '\M') AND v.raw ~* ('\m(' || idn.street_words || ')\M') THEN '[removed]'
                WHEN idn.street_words IS NOT NULL AND idn.house IS NULL
                     AND v.raw ~* ('\m(' || idn.street_words || ')\M') THEN '[removed]'
+               WHEN idn5.own5 IS NOT NULL
+                    AND v.raw ~* ('\m(' || idn5.own5 || ')\M') THEN '[removed]'
                ELSE
       regexp_replace(
       regexp_replace(

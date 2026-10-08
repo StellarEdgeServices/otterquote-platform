@@ -330,6 +330,9 @@ altogether (the repair intake writes to the column without the "Notes for Contra
   a type word ("house is 123 N Main, blue door"); for an address with no house number, a street word alone. A street
   word is a token of the address's first part that holds a letter and is three characters or more, so an ordinal
   ("96th", "2nd") counts (review 6050015567 finding 1).
+  Also replaced whole, with or without a house number in the note: any note that holds one of the claim's own
+  street-name words of five letters or more (a street word as above, so never a type, compass or unit word; CEO
+  ruling 6063622505, item 1), compared case-insensitively on word boundaries.
 - **Name**: the words (three letters or more) of `profiles.full_name`, where production keeps the homeowner's name,
   and of `claims.homeowner_name` (empty on every real claim): first name alone, last name alone, any order. Accents are
   folded on both sides by one Unicode step (review 6051111207 finding 2): NFKD, then the combining marks after a Latin letter and the zero-width, direction, soft-hyphen and variation characters are removed, a short table folds the letters NFKD leaves alone (l-stroke, o-slash, dotless i, d-stroke, h-stroke, sharp s, ae, oe, thorn), then NFC. So "Nguyen/Nguyễn", "Yildiz/Yıldız", "Dvorak/Dvořák", "Odegard/Ødegård", a name stored decomposed, full-width letters and digits, and a zero-width character inside a name or a phone number all meet their plain forms (the notes a bidder reads lose their accents). A name in a script with no Latin spelling (Cyrillic, Greek, CJK ...) is removed as an exact occurrence of each of its tokens (a CJK token of one character counts). A word of six letters or more is removed
@@ -369,7 +372,7 @@ Each of these could only be caught by a pattern that also blanks ordinary job de
 5. **A name or address the row does not hold** (a spouse, a neighbour's house without a number, a landmark).
 6. **A phone number spelled in words.**
 
-7. **Added by review 6051111207, not blocking:** an email address written without a dot or an @ ("my gmail is rozziek74", "rozziek74 at gmail"), a social handle or a payment handle, a number spelled in words, the claim's own street with no house number, a street whose number is glued or spelled, a letter O for a zero in a phone number, a three-word location, a plus code, a gate or lockbox code without the word code, a relative's name. The notes box invites some of this (see "For the legal reader" in the PR).
+7. **Added by review 6051111207, not blocking:** an email address written without a dot or an @ ("my gmail is rozziek74", "rozziek74 at gmail"), a social handle or a payment handle, a number spelled in words, a street whose number is glued or spelled, a letter O for a zero in a phone number, a three-word location, a plus code, a gate or lockbox code without the word code, a relative's name. The notes box invites some of this (see "For the legal reader" in the PR).
 8. **A plain name in the brand or colour box** ("Rosalind Ketterby"): the shape guard has no word to catch.
 9. **A street name that is also a listed roofing brand or unit** ("9021 Timberline", "9021 Atlas"): the quantity exclusion lets it through when it has no street type.
 

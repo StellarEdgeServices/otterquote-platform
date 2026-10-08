@@ -59,6 +59,9 @@ ok(!/urgency_reason/.test(rd('react-app/app/contractor/opportunities/utils.ts').
 ok(/fx\.brand ~\* .*length\(fx\.brand\) > 60/.test(body) && /fx\.color ~\* .*length\(fx\.color\) > 60/.test(body) && /measurement_shape IN \('basic', 'full'\)/.test(body), 'view: the typed catalogue columns carry a shape guard on the folded text (no @, web address with or without a scheme, "at"/"dot", phone-shaped run, street word with a digit, 60 characters at most); measurement_shape is a closed list');
 ok(!/^\s*c\.damage_type,\s*$/m.test(body) && /WHEN c\.damage_type IS NULL OR btrim\(c\.damage_type\) = ''/.test(body) && /ELSE 'Other' END\s+AS damage_type/.test(body), 'view: damage_type (typed text) is returned only through the damage-word allow-list, else Other (review 6051111207 finding 1)');
 ok(/normalize\(/.test(body) && /NFKD/.test(body) && /name_nl/.test(body), 'view: names and notes are compared after one Unicode fold (NFKD, combining marks, zero-width, full-width) and non-Latin name tokens are removed as exact text');
+ok(/regexp_split_to_table\(idn\.street_words, '\[\|\]'\)/.test(body) && /length\(regexp_replace\(w, '\[\^a-z\]', '', 'g'\)\) >= 5/.test(body)
+  && /WHEN idn5\.own5 IS NOT NULL\s+AND v\.raw ~\* \('\\m\(' \|\| idn5\.own5 \|\| '\)\\M'\) THEN '\[removed\]'/.test(body),
+  'view: a note is removed whole when it holds one of the claim\'s own street-name words of five letters or more, house number or not (CEO ruling 6063622505)');
 ok(/CREATE OR REPLACE VIEW public\.bidder_claim_summary/.test(body) && !/^\s*CREATE VIEW/m.test(body), 'view file is idempotent (CREATE OR REPLACE VIEW; a second run succeeds)');
 ok(!/substring\(c\.property_address FROM '\\d\{5\}'\)/.test(body), 'view: the zip is never the first five-digit run of the address');
 ok(!/bid-release gate/.test(sql), 'view SQL no longer rests the summary on a bid-release gate that does not exist');

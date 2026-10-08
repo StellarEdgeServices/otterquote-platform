@@ -241,6 +241,25 @@ OVER = [
  "Please replace 5 vents and fix the place where the flashing lifted.", "Old roof is 25 years old. 3 Bids Wanted. Drive is shared with the neighbour.",
  "Roof 2400 SQ FT, steep drive", "Installed 2012 Owens Corning Duration, 30 squares", "180 LF fascia and 4 Downspouts", "Two layers, 1998 CertainTeed Landmark, 28 Squares",
 ]
+# (d2) CEO ruling 6063622505 item 1: a note is removed WHOLE when it holds one of the claim's own street-name words of
+# five letters or more, with no house number needed. (label, claim address, note, removed whole?)
+# K_ADDR gives juniper (seven letters; a street-name word) and bend (four letters; below the cut).
+# "1234 North Yorkshire Circle" gives yorkshire; north and circle are a compass word and a street type, which the
+# view's street-word list has always left out (a note saying "north side" or "circle drive" is an ordinary description).
+Y_ADDR = "1234 North Yorkshire Circle, Westfield, IN 46074"
+OWN5 = [
+ ("own street word, no house number", K_ADDR, "blue house on Juniper Bend, third from the corner", True),
+ ("same note without the street word", K_ADDR, "blue house on the corner, third from the end", False),
+ ("own street word, lower case", K_ADDR, "the juniper bend place, ask the neighbours", True),
+ ("own street word, upper case", K_ADDR, "WE ARE ON JUNIPER", True),
+ ("own street word, mixed case", K_ADDR, "Meet at jUnIpEr and turn left", True),
+ ("own street word, with a trailing comma", K_ADDR, "off Juniper, second drive", True),
+ ("four-letter street word does not trigger", K_ADDR, "gutter runs round the bend by the porch", False),
+ ("street word glued inside a longer word does not trigger", K_ADDR, "junipers along the fence need cutting back", False),
+ ("longer street word, no house number", Y_ADDR, "the Yorkshire side of the house, two storeys", True),
+ ("compass word alone does not trigger", Y_ADDR, "the north side of the roof has the hail damage", False),
+ ("street type alone does not trigger", Y_ADDR, "there is a circle drive at the front, park there", False),
+]
 # (e) brand / colour boxes (repair intake and homeowner dashboard)
 CAT_LEAK = ["rozziesplace.net/roof", "rozziek74 at gmail.com", "x at gmail.com", "bit.ly/3xRoofQ", "rozziesplace dot com", "call my wife Dana", "gate code 4417",
             "2718 Juniper Bend Ct Unit 3", "４６３-５５５-０１６４", "mail zelda.q@example.invalid", "call 317 555 0142", "www.example.invalid", "rozziek74@gmail"]
@@ -403,6 +422,7 @@ def run(view_sql, label):
         keep = [(lab, text, bad, plant(OWK, K_ADDR, text)) for lab, text, bad in KEEP_BLANKED]
         newsh = [(lab, text, bad, plant(OWK, K_ADDR, text)) for lab, text, bad in NEW_SHAPES]
         over = [(text, plant(OWK, K_ADDR, text)) for text in OVER]
+        own5 = [(lab, text, rem, plant(OWK, addr, text)) for lab, addr, text, rem in OWN5]
         got4 = {r[0]: r[1:] for r in read(BIDDER_U, "select v.id::text, v.homeowner_notes, v.damage_type from public.bidder_claim_summary v")}
         d_clean = d_kept = 0
         for t, cid in dm:
@@ -433,6 +453,14 @@ def run(view_sql, label):
             if v == text: o_ok += 1
             else: fails.append("OVER-REDACTION: %r came back as %r" % (text, v))
         print("[%s] ordinary quantities and phrases kept as typed: %d of %d" % (label, o_ok, len(over)))
+        w_ok = 0
+        for lab, text, rem, cid in own5:
+            v = got4.get(cid, (text, None))[0]
+            if rem and v == "[removed]": w_ok += 1
+            elif rem: leaks.append("own street  %-48s not removed whole: %r" % (lab, v))
+            elif v == text: w_ok += 1
+            else: fails.append("OVER-REDACTION (own street word rule): %-40s %r came back as %r" % (lab, text, v))
+        print("[%s] claim's own street-name word (5+ letters) removes the note whole / others pass: %d of %d" % (label, w_ok, len(own5)))
         cats = [(b, c, claim(n + 1 + i, property_address=K_ADDR, existing_shingle_brand=b, existing_shingle_color=c)) for i, (b, c) in enumerate([(x, "Charcoal") for x in CAT_LEAK] + [("GAF", x) for x in CAT_LEAK])]
         n += len(cats)
         cats2 = [(b, c, claim(n + 1 + i, property_address=K_ADDR, existing_shingle_brand=b, existing_shingle_color=c)) for i, (b, c) in enumerate(CAT_OK + [(x, x) for x in CAT_RESIDUAL])]
