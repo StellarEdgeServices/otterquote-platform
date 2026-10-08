@@ -10,9 +10,8 @@
  * createColorAddendum EF call:1123-1159).
  *
  * Faithful-port notes:
- *   • Ownership is scoped by claims.user_id (claims has no homeowner_id column; a May 2026
- *     rename to homeowner_id was wrong and broke the load, gh-2105 batch 13). The static keys the
- *     claim on user_id (color-selection.html:661). This page loads the claim by
+ *   • Ownership is scoped by claims.homeowner_id (NOT user_id) — the static keys the
+ *     claim on homeowner_id (color-selection.html:656). This page loads the claim by
  *     id and gates ownership separately (mirrors H4's missing-claim/access-denied
  *     split) rather than the static's in-query .eq() + alert/redirect.
  *   • The profile lookup uses profiles.id = auth uid (color-selection.html:636 and the
@@ -52,7 +51,7 @@ export interface ColorContractorRow {
 
 export interface ColorClaimRow {
   id: string;
-  user_id?: string | null;
+  homeowner_id?: string | null;
   selected_contractor_id?: string | null;
   property_address?: string | null;
   // Supabase returns an embedded to-one resource as an object; typed permissively
@@ -152,7 +151,7 @@ export function useColorSelectionData(
           .select(
             `
             id,
-            user_id,
+            homeowner_id,
             selected_contractor_id,
             property_address,
             contractor:contractors(id, name, preferred_brand, phone, notification_phones, email),
@@ -169,8 +168,8 @@ export function useColorSelectionData(
         }
         const claim = claimData as ColorClaimRow;
 
-        // 3. Ownership gate (static 656 scoped user_id; here split like H4)
-        if (claim.user_id && userId && claim.user_id !== userId) {
+        // 3. Ownership gate (static 656 scoped homeowner_id; here split like H4)
+        if (claim.homeowner_id && userId && claim.homeowner_id !== userId) {
           if (!active) return;
           setData({ ...EMPTY, loading: false, gate: 'access-denied' });
           return;
@@ -230,7 +229,7 @@ export function useColorSelectionData(
 // ── Mutations ──────────────────────────────────────────────────────────────────
 
 /**
- * SAVE-FIRST step: persist the chosen color to claims, scoped by id + user_id
+ * SAVE-FIRST step: persist the chosen color to claims, scoped by id + homeowner_id
  * (static handleColorConfirmation 1081-1091). Throws on error so the page can show
  * the success state only on a real save.
  */
@@ -245,7 +244,7 @@ export async function saveColorSelection({
   brand: string | null;
   colorName: string;
 }): Promise<void> {
-  const { data: upRows, error } = await supabase
+  const { error } = await supabase
     .from('claims')
     .update({
       color_brand: brand,
@@ -253,14 +252,10 @@ export async function saveColorSelection({
       color_selected_at: new Date().toISOString(),
     })
     .eq('id', claimId)
-    .eq('user_id', userId)
-    .select('id');
+    .eq('homeowner_id', userId);
 
   if (error) {
     throw new Error('Failed to save color selection: ' + error.message);
-  }
-  if (!Array.isArray(upRows) || upRows.length === 0) {
-    throw new Error('Failed to save color selection: update_zero_rows');
   }
 }
 

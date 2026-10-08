@@ -70,7 +70,7 @@ const authed = (over: Record<string, unknown> = {}) => ({
 const readyData = (over: Record<string, unknown> = {}) => ({
   claim: {
     id: 'c1',
-    user_id: 'u1',
+    homeowner_id: 'u1',
     selected_contractor_id: 'ctr1',
     property_address: '123 Oak St, Zionsville 46077',
     contractor: {

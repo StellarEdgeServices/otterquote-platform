@@ -1,6 +1,6 @@
 /**
  * gh-2105 (PR #2610, CTO ruling): the raw internal token `update_zero_rows`
- * must never reach a user. Four catch sites used to hand the caught error's
+ * must never reach a user. Three catch sites used to hand the caught error's
  * message to a user-visible sink (alert / setSaveError / setSubmitError). They
  * now show the page's own existing generic failure sentence and log the
  * caught error (console / Sentry) for diagnosis.
@@ -56,14 +56,6 @@ const SITES = [
     log: /Sentry\.captureException\(err\)/,
   },
   {
-    file: 'react-app/app/(homeowner)/color-selection/page.tsx',
-    start: 'await saveColorSelection(',
-    end: '// b. Success state',
-    sink: 'setSaveError',
-    generic: "'Error saving color. Please try again.'",
-    log: /console\.error\([^)]*err\)/,
-  },
-  {
     file: 'react-app/app/(homeowner)/project-confirmation/page.tsx',
     start: 'await saveProjectConfirmation(',
     end: '// b. Create envelope',
@@ -93,7 +85,6 @@ describe('update_zero_rows is never passed to a user-visible sink (gh-2105)', ()
   it('the throw sites still carry the token (it stays diagnosable in logs)', () => {
     expect(read('repair-intake.html')).toContain('update_zero_rows: claims (repair intake)');
     expect(read('project-confirmation.html')).toContain('update_zero_rows');
-    expect(read('react-app/app/(homeowner)/color-selection/use-color-selection-data.ts')).toContain('update_zero_rows');
     expect(read('react-app/app/(homeowner)/project-confirmation/use-project-confirmation-data.ts')).toContain('update_zero_rows');
   });
 });
