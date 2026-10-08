@@ -2066,48 +2066,7 @@
         }
     </script>
 
-<!-- Messaging Thread UI Section for contractor-dashboard.html -->
-<!-- Insert this after the "Claims" card section, before closing main -->
-
-<div class="card messages-section" style="margin-top: 32px;">
-  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-    <h3 style="margin: 0; font-size: 18px; font-weight: 600; color: var(--navy);">Messages</h3>
-  </div>
-
-  <!-- Claim Selector -->
-  <div style="margin-bottom: 20px;">
-    <label style="display: block; font-size: 14px; font-weight: 500; color: var(--navy); margin-bottom: 8px;">Select a project:</label>
-    <select id="messagingClaimSelect" style="width: 100%; padding: 8px 12px; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 14px; font-family: inherit;">
-      <option value="">-- No projects with messages yet --</option>
-    </select>
-  </div>
-
-  <!-- Message Thread Container -->
-  <div id="messagingThreadContainer" style="display: none;">
-    <!-- Messages List -->
-    <div id="messagesList" style="border: 1px solid #E2E8F0; border-radius: 6px; padding: 16px; height: 300px; overflow-y: auto; margin-bottom: 16px; background: #FAFBFC;">
-      <p style="color: #94A3B8; text-align: center; margin: 0;">No messages yet.</p>
-    </div>
-
-    <!-- Message Input -->
-    <div style="display: flex; gap: 12px; margin-bottom: 16px;">
-      <textarea
-        id="messageBody"
-        placeholder="Type your message..."
-        style="flex: 1; padding: 12px; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 14px; font-family: inherit; resize: vertical; min-height: 60px;"
-      ></textarea>
-      <button
-        id="messageSendBtn"
-        style="align-self: flex-end; padding: 12px 24px; background: var(--navy); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;"
-      >
-        Send
-      </button>
-    </div>
-
-    <!-- Status Message -->
-    <div id="messageStatus" style="font-size: 12px; color: #64748B; text-align: center;"></div>
-  </div>
-</div>
+<!-- gh-2491: the second, dead Messages panel (duplicate ids; getElementById resolves to the first panel above) was removed. -->
 
 <script>
 // Messaging — contractor-dashboard.html (v74, F-007 compliant)
@@ -2168,8 +2127,30 @@
     document.getElementById("messageSendBtn").addEventListener("click", sendMessage);
   }
 
+  let counterpart = null; // { counterpart_user_id, counterpart_role, display_label } or null
+  const HOMEOWNER_LABEL = "the homeowner"; // Contractor Agreement 6.2 / D-277: no PII before the fee
+
+  async function loadCounterpart() {
+    counterpart = null;
+    try {
+      const { data, error } = await sb.rpc("get_message_counterpart", { p_claim_id: currentClaimId });
+      if (error) console.warn("[Messaging] get_message_counterpart:", error.message || error);
+      else if (Array.isArray(data) && data.length > 0) counterpart = data[0];
+    } catch (e) { console.warn("[Messaging] get_message_counterpart threw:", e); }
+  }
+
+  // Label for one message. The homeowner is "the homeowner" until the server-side rpc
+  // (get_message_counterpart) says the fee is collected and returns the name; this page
+  // never reads the homeowner's profiles row, and never shows a name the rpc did not return.
+  function senderLabel(msg, isOwn) {
+    if (isOwn) return (msg.profiles && msg.profiles.full_name) ? msg.profiles.full_name + " (You)" : "You";
+    if (counterpart && msg.sender_id === counterpart.counterpart_user_id && counterpart.display_label) return counterpart.display_label;
+    return msg.sender_role === "contractor" ? "Another contractor" : HOMEOWNER_LABEL;
+  }
+
   async function loadMessages() {
     if (!currentClaimId) return;
+    await loadCounterpart();
     const { data: messages, error } = await sb
       .from("messages")
       .select("id, sender_id, sender_role, body, created_at, profiles:sender_id(full_name)")
@@ -2188,7 +2169,7 @@
       const isOwn = msg.sender_id === userId;
       const timestamp = new Date(msg.created_at).toLocaleString();
       return '<div style="margin-bottom:12px;padding:12px;background:' + (isOwn ? "#EFF6FF" : "#F1F5F9") + ';border-radius:6px;border-left:3px solid ' + (isOwn ? "var(--navy)" : "var(--amber)") + ';">' +
-        '<div style="font-weight:600;font-size:13px;color:var(--navy);margin-bottom:4px;">' + escapeHtml((msg.profiles && msg.profiles.full_name) || "--") + (isOwn ? " (You)" : "") + '</div>' +
+        '<div style="font-weight:600;font-size:13px;color:var(--navy);margin-bottom:4px;">' + escapeHtml(senderLabel(msg, isOwn)) + '</div>' +
         '<div style="font-size:13px;color:#333;margin-bottom:8px;word-wrap:break-word;">' + escapeHtml(msg.body) + '</div>' +
         '<div style="font-size:11px;color:#94A3B8;">' + timestamp + '</div></div>';
     }).join("");
