@@ -1,8 +1,17 @@
 # GitGuardian / ggshield v2 config (gh-2580).
-# Excludes SQL test fixtures and migration files from SECRET scanning only.
-# Those paths hold row ids, UUIDs and file paths that trip the "Generic High
-# Entropy Secret" detector (see #2144, #2146, #2177, #2580). Everything else in
-# the repo is still scanned, and no detector is disabled.
+# Excludes four folders from SECRET scanning only, and nothing else:
+#   supabase/tests/                      (22 files, 2 of them .test.ts)
+#   supabase/migrations_applied_manually/, supabase/migrations_drafts/,
+#   supabase/migrations_rollbacks/       (190 files)
+# supabase/migrations/ (the applied migrations) is NOT excluded and stays scanned.
+# Why: the proof file that tripped the "Generic High Entropy Secret" detector
+# holds row ids and UUIDs (#2144, #2146, #2177, #2580). That file is in
+# supabase/tests/, so the first pattern alone covers it. The second pattern
+# does not cover it; it only adds the three migrations_* folders.
+# ggshield turns each `*` into one-or-more non-slash characters and a trailing
+# `**` into the same, so both patterns reach one folder level only; a nested
+# folder under these paths would be scanned.
+# Every other path is still scanned, and no detector is disabled.
 # Key `ignored_paths` and `version: 2` per ggshield's .gitguardian.example.yml.
 version: 2
 
