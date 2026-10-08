@@ -430,15 +430,20 @@ export function cancellationNoticeState(pdfText: string): CancellationNoticeStat
   //       first six words after the phrase is a pointer word (attached, see, enclosed, ...); and
   //   (2) none of the three words before the phrase, in its sentence, is a pointer word. A page label
   //       ("Attachment A", "Enclosure 2") directly before the phrase is a heading, not a pointer.
-  // Anything else is a pointer and the document reads "referenced": "A Notice of Cancellation is attached",
-  // "...Notice of Cancellation attached hereto", "the attached copy of the Notice of Cancellation", "Exhibit B
-  // (Notice of Cancellation), which is attached", "receipt of the Notice of Cancellation. Buyer has the right
-  // to cancel ...", and a cancel statement that comes BEFORE the phrase. So "a heading followed by the notice's
-  // own text" is present and "a mention that sends the reader elsewhere" is referenced.
-  // This reports what is IN the document; it never judges whether a notice is legally sufficient and it
-  // supplies no words. Known limits, all in the warning direction (never a hidden gap): a real notice whose
-  // cancel statement is worded differently or sits more than NOTICE_TEXT_REACH characters after its heading,
-  // or whose heading follows a pointer word that is not a page label, reads "referenced".
+  // Anything else reads "referenced", for example (each as tested, with no notice wording in the 200 characters
+  // after it): "A Notice of Cancellation is attached", "...Notice of Cancellation attached hereto", "the
+  // attached copy of the Notice of Cancellation", "Exhibit B (Notice of Cancellation), which is attached",
+  // "receipt of the Notice of Cancellation. Buyer has the right to cancel ...", and a cancel statement that
+  // comes BEFORE the phrase. So "a heading followed by the notice's own text" is present and "a mention that
+  // sends the reader elsewhere" is referenced.
+  // This reports what is IN the document; it never judges whether a notice is legally sufficient and it supplies
+  // no words. Known limits, in both directions. A real notice reads "referenced" when its cancel statement is
+  // worded differently or begins more than NOTICE_TEXT_REACH characters after its heading, when a pointer word
+  // is among the six words after its heading ("NOTICE OF CANCELLATION (Attachment A)", "... per Indiana Code
+  // ..."), or when its heading follows a pointer word that is not a page label. A document with no notice still
+  // reads "present" when a mention of the phrase has no pointer word in the three words before it or the six
+  // after it and is followed within NOTICE_TEXT_REACH characters by "you may cancel", "cancel this transaction"
+  // or "I hereby cancel".
   const standalone = hits.some((m) => {
     const i = m.index ?? 0;
     const j = i + m[0].length;
