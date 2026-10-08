@@ -1077,27 +1077,41 @@
         }
 
         // gh-2444: shared acceptance evidence for first acceptance AND re-acceptance.
-        // Call only after the row-checked contractors update succeeded. Both steps
-        // are non-fatal so a logging failure never blocks an accepted agreement.
+        // Call only after the row-checked contractors update succeeded. supabase-js
+        // RETURNS {error} (it does not throw), so both results are checked. Returns
+        // null on success or the first error; a failed evidence write must NOT be
+        // treated as a successful acceptance. Stops at the first failure so a retry
+        // does not duplicate an activity_log row.
         async function recordCpaAcceptanceEvidence(now, title) {
-            // Record server-side IP via SECURITY DEFINER function (non-fatal)
+            // Record server-side IP via SECURITY DEFINER function
             try {
-                await sb.rpc('record_cpa_ip', { p_contractor_id: currentContractor.id });
-            } catch (ipErr) {
-                console.warn('record_cpa_ip failed (non-fatal):', ipErr);
+                const { error: ipErr } = await sb.rpc('record_cpa_ip', { p_contractor_id: currentContractor.id });
+                if (ipErr) {
+                    console.error('record_cpa_ip failed:', ipErr);
+                    return ipErr;
+                }
+            } catch (ipThrown) {
+                console.error('record_cpa_ip failed:', ipThrown);
+                return ipThrown;
             }
 
-            // Log to activity_log (non-fatal)
+            // Log to activity_log
             try {
-                await sb.from('activity_log').insert({
+                const { error: logErr } = await sb.from('activity_log').insert({
                     user_id:    currentUser.id,
                     event_type: 'cpa_accepted',
                     title:      title,
                     created_at: now,
                 });
-            } catch (logErr) {
-                console.warn('Activity log failed (non-fatal):', logErr);
+                if (logErr) {
+                    console.error('Activity log failed:', logErr);
+                    return logErr;
+                }
+            } catch (logThrown) {
+                console.error('Activity log failed:', logThrown);
+                return logThrown;
             }
+            return null;
         }
 
         // Handle agreement modal checkbox and button
@@ -1116,6 +1130,9 @@
             if (button) {
                 button.addEventListener('click', async () => {
                     if (!currentContractor || !checkbox || !checkbox.checked || !sb) return;
+                    // gh-2444: block a double click while the write is in flight.
+                    if (button.disabled) return;
+                    button.disabled = true;
 
                     try {
                         const today = new Date().toISOString().split('T')[0];
@@ -1137,7 +1154,13 @@
                         const error = acceptErr || (!Array.isArray(acceptedRows) || acceptedRows.length === 0 ? new Error('zero_rows_updated') : null);
 
                         if (!error) {
-                            await recordCpaAcceptanceEvidence(now, `Accepted Contractor Partner Agreement (${CURRENT_CPA_VERSION})`);
+                            const evidenceErr = await recordCpaAcceptanceEvidence(now, `Accepted Contractor Partner Agreement (${CURRENT_CPA_VERSION})`);
+                            if (evidenceErr) {
+                                // gh-2444: evidence write failed -> not a successful acceptance; existing error copy, retry allowed.
+                                alert('Error accepting agreement. Please try again.');
+                                button.disabled = false;
+                                return;
+                            }
                             currentContractor.agreement_accepted_at = now;
                             currentContractor.agreement_version = today;
                             currentContractor.cpa_version     = CURRENT_CPA_VERSION;
@@ -1146,10 +1169,12 @@
                             location.reload();
                         } else {
                             alert('Error accepting agreement. Please try again.');
+                            button.disabled = false;
                         }
                     } catch (err) {
                         console.error('Error accepting agreement:', err);
                         alert('An error occurred. Please try again.');
+                        button.disabled = false;
                     }
                 });
             }
@@ -1194,8 +1219,14 @@
                             return;
                         }
 
-                        // 2. Record server-side IP + log to activity_log (shared with first acceptance, non-fatal)
-                        await recordCpaAcceptanceEvidence(now, `Accepted updated Contractor Partner Agreement (${CURRENT_CPA_VERSION})`);
+                        // 2. Record server-side IP + log to activity_log (shared with first acceptance; a returned error is a failure)
+                        const evidenceErr = await recordCpaAcceptanceEvidence(now, `Accepted updated Contractor Partner Agreement (${CURRENT_CPA_VERSION})`);
+                        if (evidenceErr) {
+                            alert('Error saving agreement acceptance. Please try again.');
+                            button.disabled = false;
+                            button.textContent = 'Accept and Continue';
+                            return;
+                        }
 
                         // 4. Update in-memory state
                         currentContractor.cpa_version              = CURRENT_CPA_VERSION;
