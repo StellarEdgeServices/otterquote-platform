@@ -324,6 +324,118 @@ def test_github_fetch_empty_tree_is_unreadable_not_empty_clean():
     check("empty-tree: reason mentions zero files", "zero files" in result["reason"], True)
 
 
+OOT_PATH = "react-app/app/lib/types.ts"
+OOT_INDEX = b"import { T } from '../../../react-app/app/lib/types.ts'\nconsole.log(T)\n"
+
+
+def run_oot_check(deployed_oot_bytes, main_oot_bytes, fetch_failed_slugs=(), extra_repo=None):
+    """check_project() where `fn` was fetched through the Management API fallback: its bundle
+    carries `react-app/app/lib/types.ts` from OUTSIDE supabase/functions/ (the
+    notify-admin-new-homeowner shape). `main_oot_bytes=None` means main has no such file."""
+    import os
+
+    def fetch_all(cli, project_ref, slugs, dest_root):
+        fetched, failed = [], []
+        for slug in slugs:
+            if slug in fetch_failed_slugs:
+                failed.append(slug)
+                continue
+            (dest_root / slug).mkdir(parents=True, exist_ok=True)
+            (dest_root / slug / "index.ts").write_bytes(OOT_INDEX)
+            if slug == "fn":
+                oot = dest_root / "__out_of_tree__" / slug / OOT_PATH
+                oot.parent.mkdir(parents=True, exist_ok=True)
+                oot.write_bytes(deployed_oot_bytes)
+            fetched.append(slug)
+        return fetched, failed
+
+    def github_file_fetch(repo, path, token):
+        return main_oot_bytes if path == OOT_PATH else None
+
+    github_files = {"fn/index.ts": OOT_INDEX, **(extra_repo or {})}
+    os.environ[drift_remote.GITHUB_TOKEN_ENV_VAR] = "fake-gh-token"
+    os.environ[PROJECT["supabase_token_env"]] = "fake-sbp-token"
+    try:
+        return drift_remote.check_project(
+            PROJECT,
+            github_fetch=fake_github_fetch_factory(github_files),
+            list_slugs=fake_list_slugs_factory(sorted({"fn", *fetch_failed_slugs})),
+            fetch_all=fetch_all,
+            require_cli=fake_require_cli,
+            github_file_fetch=github_file_fetch,
+        )
+    finally:
+        os.environ.pop(drift_remote.GITHUB_TOKEN_ENV_VAR, None)
+        os.environ.pop(PROJECT["supabase_token_env"], None)
+
+
+def test_out_of_tree_file_is_compared_through_the_api_fallback():
+    """PR #2600 review 3, finding 1. A function fetched through the Management API fallback
+    carries a file from outside supabase/functions/. With the old call
+    (build_report without repo_root) that file was never compared and the function read
+    IDENTICAL, exit 0, while the deployed copy was stale. It must be compared."""
+    stale = run_oot_check(b"export const T = 'STALE, NOT WHAT MAIN HAS'\n", b"export const T = 'main'\n")
+    report = expect_measured(stale, "oot stale: expected a MEASURED report")
+    if report is not None:
+        files = {f["path"]: f["status"] for f in report["functions"][0]["files"]}
+        check("oot stale: out-of-tree file differs", files.get(OOT_PATH), "differs")
+        check("oot stale: verdict DRIFTED, not IDENTICAL", report["functions"][0]["verdict"], "DRIFTED")
+    check("oot stale: exit code 1", drift_remote.overall_exit_code([stale]), 1)
+
+    same = run_oot_check(b"export const T = 'main'\n", b"export const T = 'main'\n")
+    report = expect_measured(same, "oot same: expected a MEASURED report")
+    if report is not None:
+        check("oot same: IDENTICAL (control)", report["functions"][0]["verdict"], "IDENTICAL")
+
+    missing = run_oot_check(b"export const T = 'x'\n", None)
+    report = expect_measured(missing, "oot missing in main: expected a MEASURED report")
+    if report is not None:
+        files = {f["path"]: f["status"] for f in report["functions"][0]["files"]}
+        check("oot absent from main: missing_in_repo, DRIFTED", (files.get(OOT_PATH), report["functions"][0]["verdict"]),
+              ("missing_in_repo", "DRIFTED"))
+
+
+def test_fetch_failed_function_is_one_could_not_measure_row():
+    """PR #2600 review 3, finding 3, remote path: the failed function is one FETCH_FAILED row,
+    not also IN_REPO_NEVER_DEPLOYED, and not counted as measured and failing; exit stays 2."""
+    result = run_oot_check(b"x", b"x", fetch_failed_slugs=("beta",),
+                           extra_repo={"beta/index.ts": SAMPLE_SOURCE})
+    report = expect_measured(result, "fetch failed: expected a MEASURED report")
+    if report is not None:
+        rows = [r["verdict"] for r in report["functions"] if r["slug"] == "beta"]
+        check("fetch failed: beta has exactly one row, FETCH_FAILED", rows, ["FETCH_FAILED"])
+        check("fetch failed: counts", report["counts"], {"IDENTICAL": 1, "FETCH_FAILED": 1})
+    md = drift_remote.render_markdown([result])
+    check("fetch failed: not 'never deployed', not 'measured and failing'",
+          "IN_REPO_NEVER_DEPLOYED" not in md and "measured and failing" not in md, True)
+    check("fetch failed: overall exit code 2", drift_remote.overall_exit_code([result]), 2)
+
+
+def test_fetch_github_file_404_is_absent_other_errors_are_unmeasured():
+    import io
+    import urllib.error
+
+    original = drift_remote.urllib.request.urlopen
+
+    def raising(code):
+        def _open(req, timeout=None):
+            raise urllib.error.HTTPError(req.full_url, code, "x", {}, io.BytesIO(b"secret-body"))
+        return _open
+
+    try:
+        drift_remote.urllib.request.urlopen = raising(404)
+        check("404 -> None (main has no such file)", drift_remote.fetch_github_file("o/r", "a/b.ts", "t"), None)
+        drift_remote.urllib.request.urlopen = raising(500)
+        try:
+            drift_remote.fetch_github_file("o/r", "a/b.ts", "t")
+            got = "no error"
+        except drift_remote.RemoteFetchError as exc:
+            got = "RemoteFetchError" if "secret-body" not in str(exc) else "body leaked"
+        check("500 -> RemoteFetchError without the response body", got, "RemoteFetchError")
+    finally:
+        drift_remote.urllib.request.urlopen = original
+
+
 def main():
     tests = [
         test_project_measured_identical,
@@ -332,6 +444,9 @@ def main():
         test_project_unreadable_reports_unmeasured,
         test_overall_report_shows_passing_and_unreadable_side_by_side,
         test_github_fetch_empty_tree_is_unreadable_not_empty_clean,
+        test_out_of_tree_file_is_compared_through_the_api_fallback,
+        test_fetch_failed_function_is_one_could_not_measure_row,
+        test_fetch_github_file_404_is_absent_other_errors_are_unmeasured,
     ]
     for t in tests:
         print(f"-- {t.__name__} --")
