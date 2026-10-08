@@ -26,6 +26,7 @@ import {
   RESCINDABLE_STATUSES, isRescindable, buildRescindRequest,
   resolveClaimId, resolveBidMode, wroteRow,
   type BidGateContractor, type BidClaim,
+  BIDDER_CLAIM_BID_COLS, claimLocationLabel, withCarrierProfile,
 } from '../utils';
 import {
   BID_COPY, buildFeeDisclosureText, CUSTOM_WARRANTY_TAIL,
@@ -468,5 +469,34 @@ describe('bid-form.tsx wiring (gh-2105, money — HIGH PRIORITY)', () => {
     const mutated = line.replace(".select('id')", '');
     expect(mutated).not.toContain(".select('id')");
     expect(line).toContain(".select('id')");
+  });
+});
+
+// gh-2559 / D-368: the bid form reads the claim SUMMARY view, not the base claims row.
+describe('bid form claim summary view (gh-2559)', () => {
+  const cols = BIDDER_CLAIM_BID_COLS.split(',').map((c) => c.trim());
+  it('selects no identity, contact or street-address column and no star', () => {
+    for (const f of ['user_id', 'homeowner_name', 'claim_number', 'adjuster_name', 'adjuster_email', 'adjuster_phone', 'ingest_email',
+      'property_address', 'video_url', 'referral_code', 'docusign_envelope_id', 'is_test', 'carrier_id', 'hover_measurements']) {
+      expect(cols).not.toContain(f);
+    }
+    expect(BIDDER_CLAIM_BID_COLS).not.toContain('*');
+  });
+  it('selects what the form prices and renders from', () => {
+    for (const c of ['id', 'trades', 'job_type', 'funding_type', 'rcv_amount', 'parsed_line_items', 'damage_type', 'carrier_profile_name',
+      'location_city', 'location_zip', 'selected_contractor_id', 'estimate_filename', 'siding_bid_released_at']) {
+      expect(cols).toContain(c);
+    }
+  });
+  it('claimLocationLabel is city and zip, never a street', () => {
+    expect(claimLocationLabel({ location_city: 'Carmel', location_zip: '46032', property_address: '1 Main St' })).toBe('Carmel, IN 46032');
+    expect(claimLocationLabel({ location_city: 'Carmel' })).toBe('Carmel');
+    expect(claimLocationLabel({ location_zip: '46032' })).toBe('46032');
+    expect(claimLocationLabel(null)).toBe('');
+  });
+  it('withCarrierProfile rebuilds the carrier_profiles shape the form reads', () => {
+    expect(withCarrierProfile({ id: 'c', carrier_profile_name: 'Example Mutual' }).carrier_profiles).toEqual({ carrier_name: 'Example Mutual' });
+    expect(withCarrierProfile({ id: 'c', carrier_profile_name: null }).carrier_profiles).toBeNull();
+    expect(withCarrierProfile({ id: 'c' }).carrier_profiles).toBeNull();
   });
 });

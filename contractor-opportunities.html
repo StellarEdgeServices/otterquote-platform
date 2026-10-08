@@ -532,9 +532,14 @@
             try {
               // Query claims that are ready for bids (status = 'active' or 'bidding')
               // Also include 'pending' for claims that are freshly submitted
+              // gh-2559 / D-368: a bidding contractor reads the claim SUMMARY view, never the base claims
+              // row (it holds the homeowner's name, claim number, adjuster contact and file names). The
+              // view applies the eligibility itself (open for bids, same test-or-real world, or a claim this
+              // contractor has bid on). Column list: BIDDER_CLAIM_OPP_COLS.
+              const BIDDER_CLAIM_OPP_COLS = 'id, status, ready_for_bids, created_at, trades, job_type, funding_type, damage_type, existing_shingle_brand, existing_shingle_color, rcv_amount, acv_amount, deductible_amount, roof_squares, repair_squares, measured_squares, measurement_shape, contractor_scope_summary, parsed_line_items, urgency, urgency_deadline, homeowner_notes, roofing_bid_released_at, gutters_bid_released_at, siding_bid_released_at, windows_bid_released_at, bid_window_expires_at, has_estimate, has_measurements, location_city, location_zip, estimate_filename, measurements_filename, selected_contractor_id';
               const { data, error } = await sb
-                .from('claims')
-                .select('*')
+                .from('bidder_claim_summary')
+                .select(BIDDER_CLAIM_OPP_COLS)
                 .eq('ready_for_bids', true)
                 .in('status', ['active', 'bidding', 'pending'])
                 .order('created_at', { ascending: false })
@@ -542,10 +547,10 @@
 
               if (!error && data) {
                 allOpportunities = data.map(claim => {
-                  // Parse city and zip from property_address
-                  const addressParts = (claim.property_address || '').split(',');
-                  const city = claim.address_city || addressParts[1]?.trim() || addressParts[0]?.trim() || 'Unknown';
-                  const zip = claim.address_zip || claim.property_address?.match(/\d{5}/)?.[0] || '';
+                  // gh-2559: city and zip come from the view (derived there from the street address,
+                  // which a bidder is not given before selection)
+                  const city = claim.location_city || 'Unknown';
+                  const zip = claim.location_zip || '';
 
                   // Parse trades from claim
                   const trades = claim.selected_trades || claim.trades || ['roofing'];
@@ -560,7 +565,7 @@
 
                   return {
                     id: claim.id,
-                    propertyAddress: claim.property_address || null,
+                    propertyAddress: null,  // gh-2559: the street address is not given to a bidder
                     location: city,
                     zip: zip,
                     state: claim.address_state || 'IN',
@@ -577,28 +582,29 @@
                     repairSquares: claim.repair_squares || null,
                     totalSquares: null,
                     existingShingle: claim.existing_shingle_brand ? `${claim.existing_shingle_brand} - ${claim.existing_shingle_color}` : null,
-                    estimateAvailable: !!(claim.estimate_filename || claim.has_estimate),
+                    estimateAvailable: !!claim.has_estimate,  // gh-2559: the view folds the file-name test into this flag
                     // gh-2559: the "Estimate Summary" badge shows only over a summary that has line
                     // items (a parse can return header lines and zero sections).
                     estimateSummaryAvailable: !!claim.contractor_scope_summary && estimateSummaryHasLineItems(claim.parsed_line_items),
                     // gh-2559 / D-370: no measurement report before selection, whoever produced it.
                     isSelectedContractor: !!(currentContractor && currentContractor.id && claim.selected_contractor_id === currentContractor.id),
-                    measurementsAvailable: !!(claim.measurements_filename || claim.has_measurements),
+                    measurementsAvailable: !!claim.has_measurements,
                     // gh-1411 / D-317 cl. 4-5: same field create-payment-intent's
                     // measurement-upgrade-gate.ts prices from (claims.hover_measurements.squares)
                     // — NOT claim.roof_squares above, which is a separate, legacy-parsed
                     // column the upgrade gate does not read. #1410 tolerant read: a
                     // missing/null measurement_shape (column may not be applied yet)
                     // resolves to "basic", exactly like the server-side gate.
-                    hoverSquares: (typeof claim.hover_measurements?.squares === 'number' && isFinite(claim.hover_measurements.squares) && claim.hover_measurements.squares > 0)
-                      ? claim.hover_measurements.squares
+                    // gh-2559: the view returns just the squares number (measured_squares), not the whole object
+                    hoverSquares: (typeof claim.measured_squares === 'number' && isFinite(claim.measured_squares) && claim.measured_squares > 0)
+                      ? claim.measured_squares
                       : null,
                     measurementShape: claim.measurement_shape || null,
                     claimFiledDate: claim.created_at,
                     distance: computeZipDistance(currentContractor?.address_zip, zip),
                     urgency: claim.urgency || 'flexible',
                     urgencyDeadline: claim.urgency_deadline,
-                    urgencyReason: claim.urgency_reason,
+                    urgencyReason: null,
                     homeownerNotes: claim.homeowner_notes,
                     contractorScopeSummary: claim.contractor_scope_summary || null,
                     fundingType: claim.funding_type || (claim.job_type?.startsWith('insurance') ? 'insurance' : 'cash'),

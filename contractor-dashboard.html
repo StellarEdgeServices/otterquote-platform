@@ -1294,9 +1294,12 @@
                 // Load opportunities count — must match contractor-opportunities.html logic exactly
                 let availableCount = 0;
                 try {
+                  // gh-2559 / D-368: the claim SUMMARY view, not the base claims row (see
+                  // contractor-opportunities.html). Only id, trades and status are needed for the count.
+                  const BIDDER_CLAIM_DASH_COLS = 'id, trades, status';
                   const { data: oppClaims } = await sb
-                    .from('claims')
-                    .select('*')
+                    .from('bidder_claim_summary')
+                    .select(BIDDER_CLAIM_DASH_COLS)
                     .eq('ready_for_bids', true)
                     .in('status', ['active', 'bidding', 'pending'])
                     .order('created_at', { ascending: false })
@@ -1399,18 +1402,27 @@
                   .limit(50);
 
                 if (allQuotes && allQuotes.length > 0) {
+                  // gh-2559 / D-368: a bid not yet selected shows its claim's city, zip and damage type from
+                  // the claim SUMMARY view; the base claims row is readable to the selected contractor only.
+                  const pendingIds = allQuotes.filter(q => q.status === 'submitted').map(q => q.claim_id);
+                  const summaryById = {};
+                  if (pendingIds.length > 0) {
+                    const BIDDER_CLAIM_PEND_COLS = 'id, location_city, location_zip, damage_type';
+                    const { data: summaries } = await sb
+                      .from('bidder_claim_summary')
+                      .select(BIDDER_CLAIM_PEND_COLS)
+                      .in('id', pendingIds);
+                    (summaries || []).forEach(s => { summaryById[s.id] = s; });
+                  }
                   // Helper: build location string with privacy control
-                  function buildLocation(claim, status) {
-                    const addr = claim.property_address || '';
+                  function buildLocation(claim, status, summary) {
                     // For awarded/completed: show full address. For pending bids: city + zip only.
                     if (status === 'awarded' || status === 'completed' || status === 'selected') {
-                      return addr || 'Unknown';
+                      return claim.property_address || 'Unknown';
                     }
-                    // city + zip only for pending bids
-                    const parts = addr.split(',');
-                    const city = parts.length >= 2 ? parts[1].trim() : (parts[0]?.trim() || 'Unknown');
-                    const zip = addr.match(/\d{5}/)?.[0] || '';
-                    return zip ? `${city}, IN ${zip}` : city || 'Unknown';
+                    const city = (summary && summary.location_city) || 'Unknown';
+                    const zip = (summary && summary.location_zip) || '';
+                    return zip ? `${city}, IN ${zip}` : city;
                   }
                   // Helper: build material label from correct DB columns
                   function buildMaterial(claim) {
@@ -1428,11 +1440,13 @@
                   allQuotes.forEach(q => {
                     const claim = q.claims || {};
                     if (q.status === 'submitted') {
+                      const summary = summaryById[q.claim_id] || {};
+                      const pendingDamage = summary.damage_type || claim.damage_type;
                       pendingBids.push({
                         quoteId: q.id,
                         claimId: q.claim_id,
-                        location: buildLocation(claim, q.status),
-                        damageType: claim.damage_type ? (claim.damage_type.charAt(0).toUpperCase() + claim.damage_type.slice(1)) : 'Roofing',
+                        location: buildLocation(claim, q.status, summary),
+                        damageType: pendingDamage ? (pendingDamage.charAt(0).toUpperCase() + pendingDamage.slice(1)) : 'Roofing',
                         bidAmount: q.total_price ? '$' + Number(q.total_price).toLocaleString() : '—',
                         submittedDate: new Date(q.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
                         status: 'Pending Decision',
@@ -1445,7 +1459,7 @@
                         id: claim.id ? String(claim.id).slice(0, 8) : q.claim_id?.slice(0, 8) || '—',
                         fullId: q.claim_id,
                         quoteId: q.id,
-                        location: buildLocation(claim, q.status),
+                        location: buildLocation(claim, q.status, null),
                         damageType: claim.damage_type ? (claim.damage_type.charAt(0).toUpperCase() + claim.damage_type.slice(1)) : 'Unknown',
                         material: buildMaterial(claim),
                         estimatedValue: q.total_price ? '$' + Number(q.total_price).toLocaleString() : (claim.rcv_amount ? '$' + Number(claim.rcv_amount).toLocaleString() : '—'),
@@ -2092,9 +2106,12 @@
     const claimSelect = document.getElementById("messagingClaimSelect");
     const threadContainer = document.getElementById("messagingThreadContainer");
 
+    // gh-2559 / D-368: the label is the full address only once the contractor is selected on the project
+    // (quote status selected, awarded or completed); before that it is the city and zip from the claim SUMMARY
+    // view. The base claims row is readable to the selected contractor only, and user_id is not read here.
     const { data: quotes } = await sb
       .from("quotes")
-      .select("claim_id, claims:claim_id(id, user_id, property_address)")
+      .select("claim_id, status, claims:claim_id(id, property_address)")
       .eq("contractor_id", contractorData.id);
 
     if (!quotes || quotes.length === 0) {
@@ -2103,11 +2120,23 @@
       return;
     }
 
+    const messagingSummaryById = {};
+    {
+      const { data: messagingSummaries } = await sb
+        .from("bidder_claim_summary")
+        .select("id, location_city, location_zip")
+        .in("id", quotes.map((q) => q.claim_id));
+      (messagingSummaries || []).forEach((s) => { messagingSummaryById[s.id] = s; });
+    }
+
     claimSelect.innerHTML = '<option value="">-- Select a project --</option>';
     quotes.forEach((q) => {
       const option = document.createElement("option");
       option.value = q.claim_id;
-      option.textContent = q.claims.property_address || "Claim " + q.claim_id.substring(0, 8);
+      const won = ["selected", "awarded", "completed"].includes(q.status);
+      const sm = messagingSummaryById[q.claim_id];
+      const where = sm && sm.location_city ? sm.location_city + (sm.location_zip ? ", IN " + sm.location_zip : "") : "";
+      option.textContent = (won && q.claims && q.claims.property_address) || where || "Claim " + q.claim_id.substring(0, 8);
       claimSelect.appendChild(option);
     });
 

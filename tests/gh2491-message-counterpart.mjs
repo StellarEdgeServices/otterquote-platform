@@ -62,7 +62,7 @@ async function run(page, src, { rpc, messages, claimId = 'claim-1' }) {
   const els = {};
   const el = (id) => (els[id] ||= { id, textContent: '', innerHTML: '', value: '', disabled: false, scrollTop: 0, scrollHeight: 0, style: {}, options: { length: 2 }, listeners: {}, appendChild() {}, addEventListener(t, f) { this.listeners[t] = f; } });
   const rpcCalls = [];
-  const q = (data) => { const o = { select: () => o, eq: () => o, order: () => o, single: () => Promise.resolve({ data: Array.isArray(data) ? data[0] : data }), maybeSingle: () => Promise.resolve({ data: null }), then: (f) => Promise.resolve({ data, error: null }).then(f) }; return o; };
+  const q = (data) => { const o = { select: () => o, eq: () => o, in: () => o, order: () => o, single: () => Promise.resolve({ data: Array.isArray(data) ? data[0] : data }), maybeSingle: () => Promise.resolve({ data: null }), then: (f) => Promise.resolve({ data, error: null }).then(f) }; return o; };
   let authCb;
   const sb = {
     auth: { onAuthStateChange: (cb) => { authCb = cb; }, getSession: async () => ({ data: { session: { access_token: 't' } } }) },
@@ -70,6 +70,7 @@ async function run(page, src, { rpc, messages, claimId = 'claim-1' }) {
     from: (table) => {
       if (table === 'claims') return q([{ id: claimId, property_address: '1 Main St', selected_contractor_id: 'ctr-1', quotes: [{ contractor_id: 'ctr-1', contractors: { id: 'ctr-1', user_id: 'u-ctr' } }] }]);
       if (table === 'contractors') return q({ id: 'ctr-me' });
+      if (table === 'bidder_claim_summary') return q([]); // gh-2559: the messaging picker reads city and zip from the view
       if (table === 'quotes') return q([{ claim_id: claimId, claims: { id: claimId, user_id: 'u-ho', property_address: '1 Main St' } }]);
       if (table === 'messages') return q(messages);
       if (table === 'profiles') throw new Error('messaging must not read profiles directly');

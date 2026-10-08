@@ -29,7 +29,7 @@ import {
   bidGateRpcParams, interpretBidGate, BID_GATE_ROUTES, DEFAULT_PLATFORM_FEE_PCT,
   buildScopeSummary, buildQuoteInsert, buildQuoteUpdate,
   buildFeeAcceptanceInsert, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
-  computeWizardEligibility, wizardReducer, wroteRow,
+  computeWizardEligibility, wizardReducer, wroteRow, claimLocationLabel,
 } from './utils';
 
 // ── Option lists (values byte-faithful to contractor-bid-form.html) ──
@@ -413,7 +413,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
   return (
     <div className="oqb-wrap">
       <h1 className="oqb-h1">{mode === 'renew' ? BID_COPY.pageTitleRenew : mode === 'change' ? BID_COPY.pageTitleChange : BID_COPY.pageTitleSubmit}</h1>
-      <p className="oqb-sub">{claim.property_address ? String(claim.property_address) : 'Submit your competitive bid for this project.'}</p>
+      <p className="oqb-sub">{claimLocationLabel(claim) || 'Submit your competitive bid for this project.'}</p>
 
       {mode === 'change' && <div className="oqb-banner oqb-banner-change">You are editing your existing bid for this project.</div>}
       {mode === 'renew' && <div className="oqb-banner oqb-banner-renew">Your previous bid expired — renewing resets the 14-day window.</div>}
@@ -522,7 +522,7 @@ function ProjectSummary({ claim, flags, claimRcv, contractorId }: { claim: Recor
   return (
     <Card title="Project Summary">
       <div className="oqb-summary">
-        <span className="oqb-summary-k">Address</span><span className="oqb-summary-v">{strOf(claim.property_address) || '—'}</span>
+        <span className="oqb-summary-k">Location</span><span className="oqb-summary-v">{claimLocationLabel(claim) || '—'}</span>
         <span className="oqb-summary-k">{flags.isRetailJob ? 'Funding' : 'Carrier'}</span>
         <span className="oqb-summary-v">{flags.isRetailJob ? 'Out of Pocket' : (carrier || '—')}</span>
         <span className="oqb-summary-k">Damage</span><span className="oqb-summary-v">{strOf(claim.damage_type) || '—'}</span>

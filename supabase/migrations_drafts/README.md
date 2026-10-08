@@ -38,3 +38,10 @@ No set is marked `UNVERIFIED`: every set has a recorded measurement. Two sets ar
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2559_claim_docs_summary_only` | forward, rollback, pre-flight | NOT APPLIED | no ledger row; live policy "Contractors can view biddable claim docs" is the world-fenced text of ledger version `20261006171747` (pg_policies and the ledger read 2026-10-06 after rolled-back forward and rollback proofs); cut down 2026-10-07 to the storage policy alone (the bid-open trigger is out, comment 6029315131 on #2569); waits for its R-097 window on #2559 | none; proof at `supabase/tests/gh2559_claim_docs_summary_only_proof.sql` |
+
+## Added 2026-10-06 (gh-2559, the claims-row half of D-368, PR #2578): 5 files, 2 sets, not counted in the table above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2559_bidder_claims_view` | forward, rollback, pre-flight (shared with the set below) | NOT APPLIED | no ledger row; no view named `bidder_claim_summary` exists (pg_class read 2026-10-06 after rolled-back proofs); additive | none; proof at `supabase/tests/gh2559_bidder_claims_view_proof.sql` |
+| `gh2559_claims_policy_narrow` | forward, rollback | NOT APPLIED | no ledger row; the two contractor SELECT policies on `public.claims` are live (pg_policy read 2026-10-06); Tier 3B, waits for its own R-097 window on #2559 and for the pages to be published first | none; same proof file |
