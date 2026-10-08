@@ -155,6 +155,67 @@ Deno.test("a template that only refers to a Notice of Cancellation reads 'refere
   assertEquals(hasCancellationNotice("NOTICE OF CANCELLATION You may cancel this transaction within three business days"), true);
 });
 
+// [gh-1315, review of #2616 M1/M2] The pointer word can come AFTER the phrase or sit more than three words before it,
+// and the cancel language can live elsewhere in the terms. None of these texts contains a notice.
+Deno.test("a pointer written after the phrase, or far before it, still reads 'referenced'", () => {
+  const NB = "\u00a0";
+  const cases: Array<[string, string]> = [
+    ["pointer after: 'is attached' beside an ordinary right-to-cancel sentence",
+      "11. Buyer has the right to cancel this contract. A Notice of Cancellation is attached to this contract."],
+    ["pointer after: 'attached hereto'",
+      "Buyer may cancel before midnight of the third business day as set out in the Notice of Cancellation attached hereto."],
+    ["pointer four words back, cancel line earlier in the terms",
+      "You may cancel. Complete the attached copy of the Notice of Cancellation and mail it."],
+    ["pointer after the phrase in a parenthesis",
+      "Buyer's right to cancel is described in Exhibit B (Notice of Cancellation), which is attached."],
+    ["receipt of copies, cancel language in the next sentence",
+      "Buyer acknowledges receipt of two copies of the Notice of Cancellation. Buyer has the right to cancel within three business days."],
+    ["'provided with this contract', no listed pointer word",
+      "For your right to cancel, refer to the Notice of Cancellation provided with this contract."],
+    ["a passing mention in a sentence about something else",
+      "Any notice of cancellation by Buyer must be in writing. Owner's right to cancel is governed by state law."],
+    ["pointer before, notice-like words after the sentence ends",
+      "As described in the Notice of Cancellation, which is attached. You may cancel this transaction by mail."],
+    ["pointer word before the phrase and cancel words right after it: still a pointer",
+      "Per the attached Notice of Cancellation you may cancel within three business days."],
+    ["the phrase inside a longer sentence about financing",
+      "Nothing in the financing addendum limits the rights described in the Notice of Cancellation, and Buyer may cancel this contract if financing is denied."],
+    ["mixed case with a line break inside the phrase",
+      "Buyer has the right to cancel.\nA NoTiCe Of\nCancellation is ATTACHED to this contract."],
+    ["non-breaking spaces throughout",
+      `Buyer may cancel. The${NB}Notice${NB}of${NB}Cancellation${NB}is${NB}enclosed.`],
+    ["all capitals, pointer first", "SEE ATTACHED NOTICE OF CANCELLATION."],
+    ["a page label that is itself followed by a stop and unrelated text",
+      "See Attachment A Notice of Cancellation. Warranty 5 years. You may cancel the maintenance plan at renewal."],
+  ];
+  for (const [name, text] of cases) assertEquals(cancellationNoticeState(text), "referenced", name);
+});
+
+// [gh-1315, review of #2616 m1] A real notice headed with a page label and no punctuation must not be told it has
+// none. The rule: the phrase counts as a notice's own heading when "you may cancel" / "cancel this transaction" /
+// "I hereby cancel" follows it within 200 characters with no pointer word among the next six words, and no
+// pointer word sits among the three words before it once a page label ("Attachment A", "Enclosure 2") is removed.
+Deno.test("a real notice headed by a page label, or written in any case, still reads 'present'", () => {
+  const body = "You may cancel this transaction, without any penalty or obligation, within three business days from the above date.";
+  const cases: Array<[string, string]> = [
+    ["ATTACHMENT A NOTICE OF CANCELLATION, no punctuation (review m1)",
+      `Signature ____ ATTACHMENT A NOTICE OF CANCELLATION Date ____ ${body} I hereby cancel this transaction. Signature ____`],
+    ["'Attachment A - Notice of Cancellation'", `Attachment A - Notice of Cancellation Date ____ ${body}`],
+    ["'Enclosure 2' label", `Enclosure 2 NOTICE OF CANCELLATION ${body}`],
+    ["mixed case", `Terms. nOtIcE oF cAnCeLlAtIoN yOU MaY CaNcEl ThIs TrAnSaCtIoN within three business days.`],
+    ["line breaks inside the phrase", `Terms.\nNOTICE OF\nCANCELLATION\n${body}`],
+    ["non-breaking spaces inside the phrase and the statement",
+      "Terms. NOTICE\u00a0OF\u00a0CANCELLATION You\u00a0may\u00a0cancel this\u00a0transaction within three business days."],
+    ["single-l spelling", `NOTICE OF CANCELATION ${body}`],
+    ["a heading and the tear-off line only", "NOTICE OF CANCELLATION Date ____ I HEREBY CANCEL THIS TRANSACTION. Buyer signature ____"],
+    ["a pointer sentence in the terms AND a real notice later",
+      `11. As provided in the attached Notice of Cancellation. ... NOTICE OF CANCELLATION ${body}`],
+  ];
+  for (const [name, text] of cases) assertEquals(cancellationNoticeState(text), "present", name);
+  // Nothing here widens "absent": no phrase, no state other than absent.
+  assertEquals(cancellationNoticeState("Buyer has the right to cancel this contract. You may cancel this transaction."), "absent");
+});
+
 Deno.test("every missing marker comes back with a name, a place and something to paste", () => {
   const slot = MANIFEST.trades.roofing.retail;
   // deno-lint-ignore no-explicit-any

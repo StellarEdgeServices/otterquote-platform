@@ -373,21 +373,43 @@ const POINTER_WORDS = new Set([
   "accompanying", "accompanies", "accompany", "see", "separate", "separately", "appended", "annexed",
   "referenced", "herewith", "per",
 ]);
-// Cancellation-form language: a statement that the buyer may cancel, which a real notice block carries
-// and a one-line pointer does not.
-const CANCEL_STATEMENT_RE =
-  /you\s+may\s+cancel|right\s+to\s+cancel|cancel\s+this\s+(?:transaction|contract|agreement)|prior\s+to\s+midnight|before\s+midnight/i;
+// The words a notice's own text uses. Deliberately narrow: ordinary terms and pointer sentences say "right to
+// cancel", "cancel this contract" or "before midnight" ("see the attached form for an explanation of this
+// right"); a notice block says "you may cancel" and carries the tear-off "I hereby cancel this transaction".
+const NOTICE_OWN_TEXT_RE = /you\s+may\s+cancel|cancel\s+this\s+transaction|i\s+hereby\s+cancel/i;
+// How many characters after the phrase the notice's own text may begin, and how many words after it a
+// pointer word still makes the occurrence a pointer.
+const NOTICE_TEXT_REACH = 200;
+const POINTER_AFTER_WORDS = 6;
+// "Attachment A", "Enclosure 2": a label for a page, which is how a real notice page is often headed.
+const LABEL_NOUNS = new Set(["attachment", "enclosure"]);
+const LABEL_TOKEN_RE = /^(?:[a-z]|\d{1,2}|[ivx]{1,4})$/;
 
-/** True when this occurrence of the phrase is introduced by a pointer word within the three words before it. */
+const toWords = (s: string): string[] => s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+
+/** True when the three words before this occurrence (same sentence) include a pointer word. */
 function introducedByPointer(before: string): boolean {
   // Only the current sentence counts: cut at the last sentence terminator or line break.
   const cut = Math.max(
     before.lastIndexOf("."), before.lastIndexOf(";"), before.lastIndexOf(":"),
     before.lastIndexOf("!"), before.lastIndexOf("?"), before.lastIndexOf("\n"),
   );
-  const tail = (cut >= 0 ? before.slice(cut + 1) : before.slice(-80))
-    .toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(Boolean).slice(-3);
-  return tail.some((w) => POINTER_WORDS.has(w));
+  const words = toWords(cut >= 0 ? before.slice(cut + 1) : before.slice(-80));
+  // A page label ("ATTACHMENT A NOTICE OF CANCELLATION") names the page; it does not point at one.
+  const n = words.length;
+  if (n >= 2 && LABEL_TOKEN_RE.test(words[n - 1]) && LABEL_NOUNS.has(words[n - 2])) words.length = n - 2;
+  else if (n >= 1 && LABEL_NOUNS.has(words[n - 1])) words.length = n - 1;
+  return words.slice(-3).some((w) => POINTER_WORDS.has(w));
+}
+
+/**
+ * True when the notice's own text begins within NOTICE_TEXT_REACH characters after the phrase and none of the
+ * first POINTER_AFTER_WORDS words after it is a pointer word.
+ */
+function followedByNoticeText(after: string): boolean {
+  const window = after.slice(0, NOTICE_TEXT_REACH);
+  if (toWords(window).slice(0, POINTER_AFTER_WORDS).some((w) => POINTER_WORDS.has(w))) return false;
+  return NOTICE_OWN_TEXT_RE.test(window);
 }
 
 export function cancellationNoticeState(pdfText: string): CancellationNoticeState {
@@ -400,9 +422,29 @@ export function cancellationNoticeState(pdfText: string): CancellationNoticeStat
   if (text.includes(NOTICE_PLACEHOLDER_HEAD)) return "placeholder";
   const hits = Array.from(text.matchAll(NOTICE_PHRASE_RE));
   if (hits.length === 0) return "absent";
-  // At least one occurrence that is not a pointer, plus cancellation-form language in the same document.
-  const standalone = hits.some((m) => !introducedByPointer(text.slice(Math.max(0, (m.index ?? 0) - 120), m.index ?? 0)));
-  return standalone && CANCEL_STATEMENT_RE.test(text) ? "present" : "referenced";
+  // THE RULE (gh-1315). The phrase alone proves nothing, and neither does cancel language elsewhere in the
+  // document (ordinary terms say "right to cancel" with no notice in them). An occurrence is a notice's own
+  // heading, and the document reads "present", only when BOTH hold:
+  //   (1) the notice's own words follow the phrase at once: "you may cancel", "cancel this transaction" or
+  //       "I hereby cancel" begins within NOTICE_TEXT_REACH characters AFTER the phrase, and none of the
+  //       first six words after the phrase is a pointer word (attached, see, enclosed, ...); and
+  //   (2) none of the three words before the phrase, in its sentence, is a pointer word. A page label
+  //       ("Attachment A", "Enclosure 2") directly before the phrase is a heading, not a pointer.
+  // Anything else is a pointer and the document reads "referenced": "A Notice of Cancellation is attached",
+  // "...Notice of Cancellation attached hereto", "the attached copy of the Notice of Cancellation", "Exhibit B
+  // (Notice of Cancellation), which is attached", "receipt of the Notice of Cancellation. Buyer has the right
+  // to cancel ...", and a cancel statement that comes BEFORE the phrase. So "a heading followed by the notice's
+  // own text" is present and "a mention that sends the reader elsewhere" is referenced.
+  // This reports what is IN the document; it never judges whether a notice is legally sufficient and it
+  // supplies no words. Known limits, all in the warning direction (never a hidden gap): a real notice whose
+  // cancel statement is worded differently or sits more than NOTICE_TEXT_REACH characters after its heading,
+  // or whose heading follows a pointer word that is not a page label, reads "referenced".
+  const standalone = hits.some((m) => {
+    const i = m.index ?? 0;
+    const j = i + m[0].length;
+    return !introducedByPointer(text.slice(Math.max(0, i - 120), i)) && followedByNoticeText(text.slice(j));
+  });
+  return standalone ? "present" : "referenced";
 }
 
 /** Back-compat shim: true only when a real notice is present. */
