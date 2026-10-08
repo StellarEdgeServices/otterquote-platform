@@ -1,7 +1,7 @@
 <!--
-STATUS (gh-1438, as of 2026-10-07T19:20:06Z): NOT APPLIED
+STATUS (gh-1438, as of 2026-10-08T02:59:56Z): NOT APPLIED
 FILE ROLE: pre-flight file of set gh2559_bidder_claims_view and set gh2559_claims_policy_narrow (the STATUS is the sets'; it describes the forward migrations)
-EVIDENCE: no ledger row for either set; no view named bidder_claim_summary exists; the two contractor SELECT policies on public.claims are live (pg_class, pg_policy and the ledger read 2026-10-06, before and after every proof run). Forward and rollback of both were run on production inside one rolled-back block (supabase/tests/gh2559_bidder_claims_view_proof.sql) at head f4bdedce. After REVIEW: FAIL 6025641188 the view's location_city and location_zip expressions were changed (2026-10-07); the new expressions were measured read-only against public.claims (section "Location" below) and the changed view and the proof rows L1 to L4 were NOT re-run on production by the worker who changed them.
+EVIDENCE: no ledger row for either set; no view named bidder_claim_summary exists; the two contractor SELECT policies on public.claims are live (pg_class, pg_policy and the ledger read 2026-10-06, before and after every proof run). Forward and rollback of both were run on production inside one rolled-back block (supabase/tests/gh2559_bidder_claims_view_proof.sql) at head f4bdedce. After REVIEW: FAIL 6025641188 the view's location_city and location_zip expressions were changed (2026-10-07); the new expressions were measured read-only against public.claims (section "Location" below) and the changed view and the proof rows L1 to L4 were NOT re-run on production by the worker who changed them. At the last change (after REVIEW: FAIL 6051111207) the view file was run twice and read as a bidder on a throwaway Postgres 16 only (tools/gh2559-bidder-view-behaviour.py); nothing was run on production.
 REPO COPY: none. When the forward files are applied, move this file to supabase/migrations_rollbacks/ under the first forward file's ledger version.
 DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 -->
@@ -125,15 +125,15 @@ Counts: needed-to-price 20, needed-for-UI 16, identity-or-contact 21, unused 73 
 | `estimate_filename` | identity-or-contact | estimate_filename (selected contractor only, else null) | OH OR BH BR | storage path holds the homeowner's user id; a bidder sees has_estimate and the parsed summary instead |
 | `measurements_filename` | identity-or-contact | measurements_filename (selected contractor only, else null) | OH OR BH BR | same; a bidder sees has_measurements instead |
 | `date_of_loss` | unused | not in the view | - |  |
-| `damage_type` | needed-for-UI | damage_type | OH OR BH BR DH DR | "Damage" on the card and form |
+| `damage_type` | needed-for-UI | damage_type, only through a closed list of damage words; anything else reads `Other` | OH OR BH BR DH DR | "Damage" on the card and form. It is a typed text box (finding 1 of review 6051111207); see "Every output column" below |
 | `job_type` | needed-to-price | job_type | OH OR BH BR | insurance_rcv / retail; drives the fee base |
 | `rcv_amount` | needed-to-price | rcv_amount | OH OR BH BR | insurer RCV: estimated value on the card, the fee base, the form total |
 | `acv_amount` | needed-to-price | acv_amount | OH OR | ACV payout on the card |
 | `roof_squares` | needed-to-price | roof_squares | OH OR | squares on the card |
 | `repair_squares` | needed-to-price | repair_squares | OH OR | squares on the card |
-| `existing_shingle_brand` | needed-to-price | existing_shingle_brand | OH OR | "existing shingle" on the card |
+| `existing_shingle_brand` | needed-to-price | existing_shingle_brand, NULL when it fails the shape guard | OH OR | "existing shingle" on the card |
 | `existing_shingle_product` | unused | not in the view | - |  |
-| `existing_shingle_color` | needed-to-price | existing_shingle_color | OH OR | "existing shingle" on the card |
+| `existing_shingle_color` | needed-to-price | existing_shingle_color, NULL when it fails the shape guard | OH OR | "existing shingle" on the card |
 | `urgency` | needed-for-UI | urgency | OH OR | card |
 | `urgency_deadline` | needed-for-UI | urgency_deadline | OH OR | card |
 | `urgency_reason` | unused | not in the view | - | free text typed by the homeowner. No bidder page renders it (grep of the three static pages and the React app, 2026-10-08), so it is not exposed at all (review 6050015567: structural fix rather than a filter) |
@@ -212,6 +212,54 @@ Counts: needed-to-price 20, needed-for-UI 16, identity-or-contact 21, unused 73 
 | `signed_price_checked_at` | unused | not in the view | - |  |
 | `out_of_state_alerted_at` | unused | not in the view | - |  |
 
+## Every output column, by what writes it (added after REVIEW: FAIL 6051111207)
+
+Checked against the forms and writers in the repo at this head, not against the earlier table.
+
+| # | output column | what writes it (file:line at this head) | kind | what the view returns |
+|---|---|---|---|---|
+| 1 | `id` | database default `gen_random_uuid()` | id | as is |
+| 2 | `status` | code only; database `claims_status_check` (8 values, migration gh1532) | fixed list, enforced | as is |
+| 3 | `ready_for_bids` | code only | boolean | as is |
+| 4 | `created_at` | database default `now()` | date | as is |
+| 5 | `trades` | `trade-selector.html:962` buttons (`roofing, siding, gutters, windows`); no typed input | fixed list, page only | as is |
+| 6 | `job_type` | literals in `project-info-rcv.html:256`, `project-info-acv.html:272`; database `claims_job_type_check` | fixed list, enforced | as is |
+| 7 | `funding_type` | literal `insurance` in both intake forms; database `claims_funding_type_check` | fixed list, enforced | as is |
+| 8 | **`damage_type`** | **`<input type="text">` `project-info-rcv.html:113`, `project-info-acv.html:113` (written `:262`, `:278`); editable text on `dashboard.html:2074`** | **typed text** | **only if made of damage words (list below, 60 characters at most); else `Other`; blank stays NULL** |
+| 9 | `material_category` | `help-materials.html:1485` from two card buttons (`shingles`, `metal`) | fixed list, page only | as is |
+| 10 | `shingle_type` | `help-materials.html:1490` from three card buttons (`architectural`, `designer`, `3-tab`) | fixed list, page only | as is |
+| 11 | `impact_class` | `help-materials.html:1498` copied from `material_catalog.impact_class`, normalised to `class-N` | catalogue value | as is |
+| 12 | `designer_product` | `help-materials.html:1501` copied from `material_catalog.product_name` (a grid pick) | catalogue value | as is |
+| 13 | `designer_manufacturer` | `help-materials.html:1502` copied from `material_catalog.manufacturer` | catalogue value | as is |
+| 14 | **`existing_shingle_brand`** | **`repair-intake.html:1271` (`input data-field="brand"`), `dashboard.html:1302` (`input type="text"`)** | **typed text** | **fold, then NULL if it holds an @, a web address (scheme or not), "at"/"dot"/call/text/cell/phone/mail/code/gate/contact, a phone-shaped run, a digit with a street or unit word, or is over 60 characters** |
+| 15 | **`existing_shingle_color`** | **`repair-intake.html:1273`, `dashboard.html:1311` (same boxes)** | **typed text** | **same guard** |
+| 16 | `rcv_amount` | `<input type="number">` / `parse-loss-sheet` (`index.ts:472`); `numeric(10,2)` | number | as is |
+| 17 | `acv_amount` | same (`:473`); `numeric(10,2)` | number | as is |
+| 18 | `deductible_amount` | `<input type="number">` `project-info-rcv.html:117`; `numeric(10,2)` | number | as is |
+| 19 | `roof_squares` | no writer in the repo (grep of html, ts, tsx and edge functions finds none); column type `numeric(6,1)` | number | as is |
+| 20 | `repair_squares` | `dashboard.html:2888` `parseFloat`; `numeric(6,1)` | number | as is |
+| 21 | `measured_squares` | derived from `hover_measurements -> squares` | number | only a JSON number, else NULL (nothing else in that object) |
+| 22 | `measurement_shape` | `admin-measurements.html:701` only; trigger `claims_guard_measurement_shape` (gh2238) refuses anyone but admin or service role | fixed list, enforced by trigger | now a closed list: `basic` or `full`, else NULL |
+| 23 | `parsed_line_items` | `parse-loss-sheet/index.ts:469` from the uploaded insurance estimate; no form input | machine-read from the insurer's document | as is. Safeguard is the parser instruction only; **not closed by this PR** (named remaining part of #2559) |
+| 24 | `contractor_scope_summary` | `parse-loss-sheet/index.ts:470`, same source; `text` | machine-read | as is; same open point |
+| 25 | `urgency` | `<select>`; database `claims_urgency_check` (4 values) | fixed list, enforced | as is |
+| 26 | `urgency_deadline` | `<input type="date">` `project-info-rcv.html:152` | date | as is |
+| 27 | **`homeowner_notes`** | **`<textarea>` "Notes for Contractors", 500 characters** | **typed text** | **selected contractor: as typed; repair claims: NULL; everyone else: fold + pattern redaction (CEO ruling 6045859470)** |
+| 28-31 | `roofing_ / gutters_ / siding_ / windows_bid_released_at` | system (`check-siding-design-completion` and the release code) | date | as is |
+| 32 | `bid_window_expires_at` | system | date | as is |
+| 33 | `has_estimate` | boolean flag, OR a file name exists | boolean | as is |
+| 34 | `has_measurements` | same | boolean | as is |
+| 35 | **`location_city`** | derived from typed `property_city` and the second part of typed `property_address` | derived from typed text | fail-closed filter (letters only, 40 characters, no street or unit word); unchanged here |
+| 36 | **`location_zip`** | derived from typed `property_zip` / the end of `property_address` | derived from typed text | exactly five digits, after a state code; unchanged here |
+| 37 | `carrier_profile_name` | `carrier_profiles.carrier_name` via a `<select id="carrier_id">` | lookup table | as is |
+| 38 | `selected_contractor_id` | uuid | id | the caller's own id when selected, else NULL |
+| 39 | `estimate_filename` | generated by the upload code | file path | selected contractor only, else NULL |
+| 40 | `measurements_filename` | generated by the upload code | file path | selected contractor only, else NULL |
+
+Result of the audit: four columns hold text a homeowner types (`damage_type`, `existing_shingle_brand`, `existing_shingle_color`, `homeowner_notes`) and two are derived from typed address text (`location_city`, `location_zip`). Each of the six has a filter written for what it holds. Two columns carry machine-read text with no database check (`parsed_line_items`, `contractor_scope_summary`): not closed here. The page-only lists (rows 5, 9 to 13) have no typed input anywhere in the repo; they could be written by a hand-made API call by the homeowner herself, which is a risk to herself only.
+
+`damage_type` allow-list (case-insensitive, whole value, at most 60 characters): `hail wind storm tree trees fire water leak leaks roof roofing siding gutter gutters window windows age aging wear ice snow tornado hurricane lightning flood impact partial replacement repair damage other unknown and`, joined by spaces and `& / , + . - – —`. Source: the form placeholder ("e.g. Wind, Hail"), the values the bidder pages print (`Roof`, `Hail & Wind`, `Wind`, `Age / Wear`, `Wind — Partial`, `Roof + Gutters`, `Roof + Siding`, `Roofing`, the column default `roof`) and the reviewer's tested list. Anything else reads `Other`. Why `Other` and not NULL: on a NULL the pages print "Unknown" (opportunities), "Not specified" (static bid form), "—" (React bid form) and "Roofing" (dashboard, pending bids), the last of which says something the homeowner did not; `Other` prints as `Other` on all of them.
+
 ## The view
 
 Eligibility, one filter: (a) open for bids (`ready_for_bids`, status active, bidding or pending) AND the caller is an ACTIVE contractor AND `c.is_test = ct.is_test`;
@@ -272,7 +320,7 @@ whose name ends in a street-type word or holds a unit word is shown as "Unknown"
 
 ## Free text: `homeowner_notes` (CEO ruling 6045859470; rebuilt after reviews 6049068071 and 6050015567)
 
-**`urgency_reason` is no longer in the view.** No bidder page shows it, so there is nothing to filter. The same reasoning was applied to the typed catalogue columns the pages do show: `existing_shingle_brand`, `existing_shingle_color` and `measurement_shape` come back NULL when they hold an @, a web address, seven digits or a phone-shaped digit run, or are longer than 60 characters.
+**`urgency_reason` is no longer in the view.** No bidder page shows it, so there is nothing to filter. The same reasoning was applied to the typed catalogue columns the pages do show: `existing_shingle_brand` and `existing_shingle_color` (typed text) come back NULL, after the Unicode fold below, when they hold an @, a web address with or without a scheme (a dot followed by letters), the words at / dot / call / text / cell / phone / mail / code / gate / contact / wife / husband, seven digits or a phone-shaped digit run, a digit together with a street-type or unit word, or are longer than 60 characters. A plain name with no digit ("Rosalind Ketterby") is NOT caught: that is a stated residual. `measurement_shape` is a closed list (`basic`, `full`; the database also refuses a write by anyone but the service role or an admin, gh-2238). `damage_type` is a typed box too and is returned only when it is made of damage words (below).
 
 The selected contractor reads the notes as typed. Every other caller reads at most the first 2000 characters, redacted;
 each replacement is the text `[removed]`. A repair claim's notes (`job_type = 'repair'`) are withheld from a bidder
@@ -284,16 +332,16 @@ altogether (the repair intake writes to the column without the "Notes for Contra
   ("96th", "2nd") counts (review 6050015567 finding 1).
 - **Name**: the words (three letters or more) of `profiles.full_name`, where production keeps the homeowner's name,
   and of `claims.homeowner_name` (empty on every real claim): first name alone, last name alone, any order. Accents are
-  folded on both sides (the notes a bidder reads lose their accents). A word of six letters or more is removed
+  folded on both sides by one Unicode step (review 6051111207 finding 2): NFKD, then the combining marks after a Latin letter and the zero-width, direction, soft-hyphen and variation characters are removed, a short table folds the letters NFKD leaves alone (l-stroke, o-slash, dotless i, d-stroke, h-stroke, sharp s, ae, oe, thorn), then NFC. So "Nguyen/Nguyễn", "Yildiz/Yıldız", "Dvorak/Dvořák", "Odegard/Ødegård", a name stored decomposed, full-width letters and digits, and a zero-width character inside a name or a phone number all meet their plain forms (the notes a bidder reads lose their accents). A name in a script with no Latin spelling (Cyrillic, Greek, CJK ...) is removed as an exact occurrence of each of its tokens (a CJK token of one character counts). A word of six letters or more is removed
   wherever it stands (glued, underscored, with digits, in a handle); a word of three to five letters is removed as a
   whole word, with an optional plural or possessive, and when glued in capitalised form ("JoeSmith"). Ben 6050104102.
 - **Email and web**: addresses, also spaced out or written "x at y dot com", "x at gmail.com", "x(at)y(dot)com" or
-  "x [at] y [dot] com"; anything holding an @; web addresses, now including .edu, .gov and .mil.
+  "x [at] y [dot] com"; anything holding an @; web addresses, now including .edu, .gov and .mil, and any word.ending/path ("rozzie.homes/roof").
 - **Phone**: three, three and four digits with any separators that are not letters, digits or a comma (slash, any
-  dash, no-break space, underscore); and any run of seven or more digits with spaces, dots, dashes or brackets.
-- **Street**: a county-grid address; the whole line holding a number followed within five words by a street type;
+  dash, no-break space, underscore); three and four digits split by a slash ("555/0164"); and any run of seven or more digits with spaces, dots, dashes or brackets.
+- **Street**: a county-grid address; the whole line holding a number followed within five words by a street type (road, way, place, drive, lane, court, trail, loop, circle, terrace, crossing, alley and pike only when the line reads like a street: a number, capitalised words with no punctuation, the word capitalised; or a house number then one to three plain words, or a one- or two-digit number then one or two, then the word, where the first word is not a unit or a roofing word and no comma or full stop stands between);
   capitalised words followed by a capitalised street type, with or without a number before or after; a number of
-  three to six digits followed by capitalised words; a number of one or two digits followed by capitalised words
+  three to six digits followed by capitalised words (not when the next word is a unit, a roofing brand or a wind rating: "2400 Square Feet", "3000 SF", "180 LF", "2009 GAF Timberline", "150 MPH"); a number of one or two digits followed by capitalised words
   ending in a street or place type (Ridge, Bend, Cove, Run, Pass ...); a house number, an optional compass word and
   an ordinal ("1420 E 96th", "305 W 116th"), and a one- or two-digit number before a compass word and an ordinal or a
   two- or three-digit ordinal ("12 146th").
@@ -321,9 +369,13 @@ Each of these could only be caught by a pattern that also blanks ordinary job de
 5. **A name or address the row does not hold** (a spouse, a neighbour's house without a number, a landmark).
 6. **A phone number spelled in words.**
 
+7. **Added by review 6051111207, not blocking:** an email address written without a dot or an @ ("my gmail is rozziek74", "rozziek74 at gmail"), a social handle or a payment handle, a number spelled in words, the claim's own street with no house number, a street whose number is glued or spelled, a letter O for a zero in a phone number, a three-word location, a plus code, a gate or lockbox code without the word code, a relative's name. The notes box invites some of this (see "For the legal reader" in the PR).
+8. **A plain name in the brand or colour box** ("Rosalind Ketterby"): the shape guard has no word to catch.
+9. **A street name that is also a listed roofing brand or unit** ("9021 Timberline", "9021 Atlas"): the quantity exclusion lets it through when it has no street type.
+
 Costs of the rule, also for him: an ISO or dashed date ("2026-09-14", "6-12-2026") is lost to the phone rule; a
-year followed by a capitalised brand ("2015 Owens Corning roof") loses the year and the brand; a homeowner whose
-name is an ordinary word (May, Wood, Hail) has that word removed from her own note.
+year followed by a capitalised word that is not a listed unit or brand ("2015 Pro Roofing") loses the year and the word; a homeowner whose
+name is an ordinary word (May, Wood, Hail) has that word removed from her own note; a typed damage type that is not made of damage words reads "Other"; a sentence with a number and "Dr." or "St" within five words loses its whole line; a brand or colour that contains the word "mail", "code", "gate" or "contact" reads blank.
 
 ## The street address outside the view: `get-hover-siding-data`
 

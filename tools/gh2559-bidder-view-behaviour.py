@@ -179,6 +179,75 @@ EMAILS = [
 N_BENIGN = ["leak at the 96th percentile of rainfall","Ridge vent at 40 ft; new 2nd-story window flashing","3 2nd-story windows and a bay","Meet me at 3.5 hours after rain","The roofer arrived at 8.30 and left at 4.15",
             "Ladder at the south side; ask for a quote at the door"]
 
+
+# ---- review 6051111207 (head cf8d98e1) and the task fix2578b. Every list below is read through the view as a bidder.
+# (a) damage_type: a free-text box on the two insurance intake forms. Only damage words may come back; the rest reads 'Other'.
+DAMAGE_LEAK = [
+ "Hail - call 463-555-0164", "Hail at 2718 Juniper Bend", "Rosalind Ketterby", "rketterby@fastmail.example", "gate code 4417",
+ "Wind, call my wife Dana", "hail; see rozziesplace.net/roof", "Roof at Juniper Bend Ct", "Hail 2024 claim CLM-77-8899", "Wind damage - ask for Rosalind",
+ "Hail (Juniper Bend)", "Tree fell, key under mat", "röof häil Ketterby", "Hail" + " " * 3 + "x" * 80, "Wind\nrketterby@fastmail.example",
+ "wind, hail, 463 555 0164", "Roof - Rosalind K", "Storm @rozziek74", "Hail, Juniper Bend Estates", "Fire at 4417 Larkspur",
+]
+DAMAGE_OK = ["roof", "Roof — Hail & Wind", "Wind, Hail", "tree / wind", "Hail", "Age / Wear", "Roof + Gutters", "Wind — Partial", "hail and wind", "Storm damage",
+             "Water leak", "Ice and snow"]
+# (b) names the 53-letter table did not fold. (profile name stored on profiles.full_name, address, note, fragments that must NOT reach a bidder)
+UNI = [
+ ("Nguyễn Thị Hương", "55 Elm Ct, Carmel, IN 46032", [("viet: plain letters", "ask for Huong Nguyen", ["Huong", "Nguyen"]), ("viet: as stored", "ask for Nguyễn Thị Hương", ["Nguy", "Hương", "Huong"])]),
+ ("Çağla Yıldız", "55 Elm Ct, Carmel, IN 46032", [("turk: plain letters", "ask for Cagla Yildiz", ["Cagla", "Yildiz"]), ("turk: dotless i typed", "ask for Cağla Yıldız", ["Yıld", "Yildiz"])]),
+ ("Antonín Dvořák", "55 Elm Ct, Carmel, IN 46032", [("czech: plain letters", "the Dvorak place; Antonin is home", ["Dvorak", "Antonin"])]),
+ ("Søren Ødegård", "55 Elm Ct, Carmel, IN 46032", [("nordic: plain letters", "Soren Odegard here", ["Soren", "Odegard"])]),
+ ("Łukasz Żółkiewski", "55 Elm Ct, Carmel, IN 46032", [("polish: plain letters", "the Zolkiewski house, ask for Lukasz", ["Zolkiewski", "Lukasz", "Zol"])]),
+ ("José Núñez", "55 Elm Ct, Carmel, IN 46032", [("decomposed profile name, plain note", "ask for Jose Nunez", ["Jose", "Nunez"])]),
+ ("Straßer Müller", "55 Elm Ct, Carmel, IN 46032", [("sharp s", "ask for Strasser Mueller or Muller", ["Strasser", "Muller"])]),
+ ("Иван Петров", "55 Elm Ct, Carmel, IN 46032", [("cyrillic: declined", "позвоните Ивану Петрову", ["Иван", "Петров"]), ("cyrillic: exact", "Иван Петров", ["Иван", "Петров"])]),
+ ("王小明", "55 Elm Ct, Carmel, IN 46032", [("cjk: one token", "请找王小明师傅", ["王小明"])]),
+ ("李 明", "55 Elm Ct, Carmel, IN 46032", [("cjk: surname and given name", "李明先生住在这里", ["李", "明"])]),
+ ("Marisol Vanterpool", "55 Elm Ct, Carmel, IN 46032", [("zero-width inside the name", "ask for Mari​sol Vanter‍pool", ["Mari", "Vanter"]), ("full-width letters", "ask for Ｍａｒｉｓｏｌ", ["Marisol", "Ｍ"]), ("soft hyphen", "the Vanter­pool house", ["Vanter"])]),
+]
+UNI_PHONE = [
+ ("phone: full-width digits", "call ４６３-５５５-０１８７", ["0187", "０１"]),
+ ("phone: zero-width space in each group", "call 4​6​3 5​5​5 0​1​8​7", ["0187", "018"]),
+ ("email: full-width @", "marisol＠mailhost.com", ["mailhost", "marisol"]),
+]
+# (c) shapes the reviewer listed as BLANKED (controls that must stay blanked), on 2718 Juniper Bend Ct Unit 3, Westfield, IN 46074 / Rosalind Ketterby.
+# The strings are rebuilt from the review text, not copied from the reviewer's harness.
+K_NAME, K_ADDR = "Rosalind Ketterby", "2718 Juniper Bend Ct Unit 3, Westfield, IN 46074"
+KEEP_BLANKED = [
+ ("zwj between phone groups", "call 463‍555‍0164", ["0164"]),
+ ("emoji separators", "463\U0001F4DE555\U0001F4DE0164", ["0164"]),
+ ("tel: uri", "tel:+14635550164", ["0164"]),
+ ("email with a zero-width space", "rozzie​@example.invalid", ["example"]),
+ ("AT ... DOT upper case", "rozziek74 AT mailhost DOT com", ["mailhost", "rozziek74"]),
+ ("handle with @", "@rozziek74 on insta", ["rozziek74"]),
+ ("web address .net/roof", "see rozziesplace.net/roof", ["rozziesplace"]),
+ ("lat long, five decimals", "pin 40.04281, -86.12754", ["04281", "12754"]),
+ ("parcel number", "parcel 29-05-12-100-044.000-013", ["044"]),
+ ("own address, unit, no street type", "we are 2718 Juniper Bend #3", ["2718", "Juniper"]),
+ ("street then number", "Juniper Bend Ct 2718", ["2718", "Juniper"]),
+ ("hash then house number after the street", "Juniper Bend #2718", ["2718", "Juniper"]),
+ ("other address, unit, no type", "at 905 Maple Grove #4", ["905", "Maple"]),
+ ("initial and surname", "ask for R. Ketterby", ["Ketterby"]),
+]
+# (c2) shapes this commit closes that the old head let through
+NEW_SHAPES = [
+ ("three-and-four digits split by a slash", "reach me 555/0164", ["0164"]),
+ ("scheme-less address with a path, unlisted ending", "see rozzie.homes/roof", ["rozzie.homes"]),
+ ("scheme-less address with a path, another ending", "photos at rozziesplace.photos/roof-2024", ["rozziesplace"]),
+]
+# (d) ordinary job descriptions that must come back UNCHANGED (review 6051111207 finding 4)
+OVER = [
+ "Roof is about 2400 Square Feet, 6/12 pitch.", "About 3000 SF, two layers, installed 2009 GAF Timberline.", "Gutters: 180 LF of 6 inch, 4 downspouts.",
+ "NEED 28 SQUARES REPLACED, 150 MPH WIND RATED SHINGLES.", "3 tab shingles, steep drive, please park on the road.", "2 story house, the only way up is from the back.",
+ "Please replace 5 vents and fix the place where the flashing lifted.", "Old roof is 25 years old. 3 Bids Wanted. Drive is shared with the neighbour.",
+ "Roof 2400 SQ FT, steep drive", "Installed 2012 Owens Corning Duration, 30 squares", "180 LF fascia and 4 Downspouts", "Two layers, 1998 CertainTeed Landmark, 28 Squares",
+]
+# (e) brand / colour boxes (repair intake and homeowner dashboard)
+CAT_LEAK = ["rozziesplace.net/roof", "rozziek74 at gmail.com", "x at gmail.com", "bit.ly/3xRoofQ", "rozziesplace dot com", "call my wife Dana", "gate code 4417",
+            "2718 Juniper Bend Ct Unit 3", "４６３-５５５-０１６４", "mail zelda.q@example.invalid", "call 317 555 0142", "www.example.invalid", "rozziek74@gmail"]
+CAT_OK = [("GAF Timberline HD", "Charcoal"), ("Owens Corning Oakridge", "Weathered Wood"), ("CertainTeed Landmark", "Pewter Gray"), ("IKO Cambridge", "Mission Brown"),
+          ("TAMKO Heritage", "Black Walnut"), ("Atlas Pinnacle", "Estate Gray")]
+CAT_RESIDUAL = ["Rosalind Ketterby"]  # a plain name in the brand box is NOT caught; stated in the pre-flight
+
 BENIGN = "Tree fell on the back slope. Two layers of shingles, about 30 squares, 8/12 pitch. Dog in yard."
 
 
@@ -315,12 +384,79 @@ def run(view_sql, label):
             if v != text: fails.append("OVER-REDACTION: %r came back as %r" % (text, v))
         print("[%s] review 6050015567 + Ben 6050104102 shapes blanked: %d of %d" % (label, b2, len(rv2)))
 
+
+        # ---- review 6051111207 + task fix2578b
+        def plant(items_user, addr, text, **kw):
+            nonlocal n
+            n += 1
+            return claim(n, user_id=items_user, homeowner_name=None, claim_number=None, property_address=addr, homeowner_notes=text, **kw)
+        OWK = "00000000-0000-4000-8000-000000000091"
+        cur.execute("insert into profiles values (%s, %s)", (OWK, K_NAME))
+        dm = [(t, plant(OWK, K_ADDR, "x", damage_type=t)) for t in DAMAGE_LEAK + DAMAGE_OK]
+        n += 1; dnull = claim(n, user_id=OWK, homeowner_name=None, claim_number=None, property_address=K_ADDR, damage_type=None)
+        uni = []
+        for i, (pname, addr, items) in enumerate(UNI):
+            ow = "00000000-0000-4000-8000-0000000001%02d" % i
+            cur.execute("insert into profiles values (%s, %s)", (ow, pname))
+            for lab, text, bad in items: uni.append((lab, text, bad, plant(ow, addr, text)))
+        for lab, text, bad in UNI_PHONE: uni.append((lab, text, bad, plant(OWK, K_ADDR, text)))
+        keep = [(lab, text, bad, plant(OWK, K_ADDR, text)) for lab, text, bad in KEEP_BLANKED]
+        newsh = [(lab, text, bad, plant(OWK, K_ADDR, text)) for lab, text, bad in NEW_SHAPES]
+        over = [(text, plant(OWK, K_ADDR, text)) for text in OVER]
+        got4 = {r[0]: r[1:] for r in read(BIDDER_U, "select v.id::text, v.homeowner_notes, v.damage_type from public.bidder_claim_summary v")}
+        d_clean = d_kept = 0
+        for t, cid in dm:
+            v = got4.get(cid, (None, t))[1]
+            if t in DAMAGE_OK:
+                if v == t: d_kept += 1
+                else: fails.append("damage_type: an ordinary value changed: %r -> %r" % (t, v))
+            elif v == t: leaks.append("damage  typed text came back as typed: %r" % (t,))
+            else:
+                d_clean += 1
+                if v != "Other": fails.append("damage_type: expected 'Other' for %r, got %r" % (t, v))
+        if got4.get(dnull, (None, "x"))[1] is not None: fails.append("damage_type: NULL did not stay NULL")
+        print("[%s] damage_type typed text refused: %d of %d | ordinary damage words kept: %d of %d" % (label, d_clean, len(DAMAGE_LEAK), d_kept, len(DAMAGE_OK)))
+        def judge(group, items):
+            ok = 0
+            for lab, text, bad, cid in items:
+                v = got4.get(cid, (text, None))[0]
+                hit = [b for b in bad if v is not None and b.lower() in v.lower()]
+                if hit: leaks.append("%-8s %-40s still holds %r -> %r" % (group, lab, hit[0], v))
+                else: ok += 1
+            print("[%s] %s shapes blanked: %d of %d" % (label, group, ok, len(items)))
+        judge("unicode names, phone and email", uni)
+        judge("reviewer's blanked controls", keep)
+        judge("new shapes (slash phone, address with a path)", newsh)
+        o_ok = 0
+        for text, cid in over:
+            v = got4.get(cid, (None,))[0]
+            if v == text: o_ok += 1
+            else: fails.append("OVER-REDACTION: %r came back as %r" % (text, v))
+        print("[%s] ordinary quantities and phrases kept as typed: %d of %d" % (label, o_ok, len(over)))
+        cats = [(b, c, claim(n + 1 + i, property_address=K_ADDR, existing_shingle_brand=b, existing_shingle_color=c)) for i, (b, c) in enumerate([(x, "Charcoal") for x in CAT_LEAK] + [("GAF", x) for x in CAT_LEAK])]
+        n += len(cats)
+        cats2 = [(b, c, claim(n + 1 + i, property_address=K_ADDR, existing_shingle_brand=b, existing_shingle_color=c)) for i, (b, c) in enumerate(CAT_OK + [(x, x) for x in CAT_RESIDUAL])]
+        n += len(cats2)
+        cg = {r[0]: r[1:] for r in read(BIDDER_U, "select v.id::text, v.existing_shingle_brand, v.existing_shingle_color from public.bidder_claim_summary v")}
+        c_clean = 0
+        for b, c, cid in cats:
+            gb, gc = cg.get(cid, (b, c))
+            if (b in CAT_LEAK and gb is not None) or (c in CAT_LEAK and gc is not None): leaks.append("catalogue  brand/colour came back: %r / %r" % (gb, gc))
+            else: c_clean += 1
+        c_ok = 0
+        for b, c, cid in cats2:
+            if (b, c) == (CAT_RESIDUAL[0], CAT_RESIDUAL[0]):
+                print("   RESIDUAL (stated, for the CEO) a plain name in the brand and colour boxes comes back: %r" % (cg.get(cid),)); continue
+            if cg.get(cid) == (b, c): c_ok += 1
+            else: fails.append("catalogue  an ordinary brand/colour changed: %r -> %r" % ((b, c), cg.get(cid)))
+        print("[%s] brand and colour boxes: refused %d of %d leaking pairs | ordinary pairs kept %d of %d" % (label, c_clean, len(cats), c_ok, len(CAT_OK)))
+
         # ---- free-text catalogue columns (shingle brand / colour, measurement shape) and the dropped urgency_reason
         n += 1; cat_bad = claim(n, property_address=STREET + ", Carmel, IN 46032", existing_shingle_brand="call 317 555 0142", existing_shingle_color="mail zelda.q@example.invalid", measurement_shape="x" * 80)
-        n += 1; cat_ok = claim(n, property_address=STREET + ", Carmel, IN 46032", existing_shingle_brand="GAF Timberline HD", existing_shingle_color="Charcoal", measurement_shape="hip")
+        n += 1; cat_ok = claim(n, property_address=STREET + ", Carmel, IN 46032", existing_shingle_brand="GAF Timberline HD", existing_shingle_color="Charcoal", measurement_shape="full")
         cat = {r[0]: r[1:] for r in read(BIDDER_U, "select v.id::text, v.existing_shingle_brand, v.existing_shingle_color, v.measurement_shape from public.bidder_claim_summary v")}
         if cat.get(cat_bad) != (None, None, None): leaks.append("catalogue  a phone, an email or an 80-character shape reached a bidder: %r" % (cat.get(cat_bad),))
-        if cat.get(cat_ok) != ("GAF Timberline HD", "Charcoal", "hip"): fails.append("catalogue  an ordinary brand, colour and shape changed: %r" % (cat.get(cat_ok),))
+        if cat.get(cat_ok) != ("GAF Timberline HD", "Charcoal", "full"): fails.append("catalogue  an ordinary brand, colour and shape changed: %r" % (cat.get(cat_ok),))
         has_urg = read(BIDDER_U, "select count(*) from information_schema.columns where table_name = 'bidder_claim_summary' and column_name = 'urgency_reason'")[0][0]
         print("[%s] urgency_reason exposed by the view: %s" % (label, "YES" if has_urg else "no"))
         if has_urg and label == "this head": fails.append("urgency_reason is exposed; no bidder page shows it")

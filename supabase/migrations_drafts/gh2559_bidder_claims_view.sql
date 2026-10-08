@@ -1,6 +1,6 @@
--- STATUS (gh-1438, as of 2026-10-08T02:12:50Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-10-08T02:59:56Z): NOT APPLIED
 -- FILE ROLE: forward file of set gh2559_bidder_claims_view, step 1 of 3 (see the apply order below; the STATUS is the set's)
--- EVIDENCE: written 2026-10-06T20:16:10Z; proved forward and rollback on production inside one rolled-back block (supabase/tests/gh2559_bidder_claims_view_proof.sql). pg_class read the same day: no view named bidder_claim_summary exists. No ledger row exists for this set. Changed 2026-10-07 and 2026-10-08 after REVIEW: FAIL 6025641188, 6047719061, 6049068071 and 6050015567 (and Ben 6050104102) on #2578; at the last change urgency_reason left the view, numbered streets, name forms and email forms were added: location_city, location_zip and the redaction of the two free-text columns (now keyed on profiles.full_name for the name). This text was run verbatim on a throwaway Postgres 16 with planted addresses and notes (tools/gh2559-bidder-view-behaviour.py); it has NOT been run on production by the worker who changed it.
+-- EVIDENCE: written 2026-10-06T20:16:10Z; proved forward and rollback on production inside one rolled-back block (supabase/tests/gh2559_bidder_claims_view_proof.sql). pg_class read the same day: no view named bidder_claim_summary exists. No ledger row exists for this set. Changed 2026-10-07 and 2026-10-08 after REVIEW: FAIL 6025641188, 6047719061, 6049068071, 6050015567 and 6051111207 (and Ben 6050104102) on #2578; at the last change damage_type was put behind a closed list of damage words (anything else reads 'Other'); names, streets and notes are compared after one Unicode fold (NFKD, combining marks, zero-width, full-width) and a non-Latin name is removed as exact text; the brand and colour guard refuses a scheme-less web address and "x at gmail.com"; the street rules no longer blank ordinary quantities; this file can be run twice (CREATE OR REPLACE VIEW). This text was run verbatim on a throwaway Postgres 16 with planted addresses and notes (tools/gh2559-bidder-view-behaviour.py); it has NOT been run on production by the worker who changed it.
 -- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
@@ -9,7 +9,9 @@
 --   (Dustin, 2026-10-06, comment 6018744630, "Summary only"), extended by his answer of 2026-10-07
 --   (comment 6038067961, question 2: "City and zip only (Recommended)").
 -- Tier: ADDITIVE. It creates one read-only view and changes nothing that exists, so no contractor loses a read
---   when it is applied. (The policy narrowing in gh2559_claims_policy_narrow.sql is the Tier 3B part.)
+--   when it is applied. It can be run twice: CREATE OR REPLACE VIEW keeps the grants and the comment, and the REVOKEs and the
+--   assertion repeat harmlessly. A later change that adds, removes, reorders or re-types an output column cannot be done by REPLACE
+--   (Postgres refuses): run the rollback file and then this file inside ONE transaction, so bidders never read an empty list in between. (The policy narrowing in gh2559_claims_policy_narrow.sql is the Tier 3B part.)
 -- Rollback: supabase/migrations_drafts/gh2559_bidder_claims_view_rollback.sql
 -- Pre-flight: supabase/migrations_drafts/gh2559_bidder_claims_view_pre-flight.md (column table, apply order)
 -- Proof (rolled back, role-switched): supabase/tests/gh2559_bidder_claims_view_proof.sql
@@ -56,7 +58,7 @@ BEGIN;
 
 SET LOCAL lock_timeout = '5s';
 
-CREATE VIEW public.bidder_claim_summary
+CREATE OR REPLACE VIEW public.bidder_claim_summary
 WITH (security_barrier = true)
 AS
 SELECT
@@ -67,14 +69,27 @@ SELECT
   c.trades,
   c.job_type,
   c.funding_type,
-  c.damage_type,
+  -- damage_type is a free-text box on the two insurance intake forms (placeholder "e.g. Wind, Hail"). It is returned
+  -- only when it is made of damage words and joining punctuation (the closed list below, at most 60 characters);
+  -- anything else reads 'Other' (every bidder page prints "Other" as it stands; NULL would print "Unknown",
+  -- "Not specified", "-" or, on the dashboard, "Roofing", which says something the homeowner did not). A blank or NULL stays NULL.
+  CASE WHEN c.damage_type IS NULL OR btrim(c.damage_type) = '' THEN NULL
+       WHEN length(c.damage_type) <= 60
+        AND c.damage_type ~* '^\s*((hail|wind|storm|tree|trees|fire|water|leak|leaks|roof|roofing|siding|gutter|gutters|window|windows|age|aging|wear|ice|snow|tornado|hurricane|lightning|flood|impact|partial|replacement|repair|damage|other|unknown|and)\s*|[&/,+.\u2013\u2014-]\s*)+$'
+       THEN c.damage_type
+       ELSE 'Other' END                                                         AS damage_type,
   c.material_category,
   c.shingle_type,
   c.impact_class,
   c.designer_product,
   c.designer_manufacturer,
-  CASE WHEN c.existing_shingle_brand ~ '@|https?:|www\.|\d{7}|\d{3}[^[:alnum:]]+\d{3}' OR length(c.existing_shingle_brand) > 60 THEN NULL ELSE c.existing_shingle_brand END AS existing_shingle_brand,
-  CASE WHEN c.existing_shingle_color ~ '@|https?:|www\.|\d{7}|\d{3}[^[:alnum:]]+\d{3}' OR length(c.existing_shingle_color) > 60 THEN NULL ELSE c.existing_shingle_color END AS existing_shingle_color,
+  -- brand and colour: typed text on the repair intake and the homeowner dashboard. Read through the same Unicode fold as
+  -- the notes ("fx" below), then refused (NULL) when they hold an @, a web address with or without a scheme (a dot
+  -- followed by letters), the words at / dot / call / text / cell / phone / mail / code / gate / contact, a seven-digit
+  -- run or a phone-shaped run, a digit together with a street-type or unit word, or more than 60 characters.
+  -- NOT caught, and said so in the pre-flight: a plain name or a word with no digit ("Rosalind Ketterby").
+  CASE WHEN fx.brand ~* '@|https?:|www\.|\d{7}|\d{3}[^[:alnum:]]+\d{3}|[[:alnum:]-]\.[[:alpha:]]{2,}|\m(at|dot|call|text|cell|phone|email|e-mail|mail|code|gate|lockbox|contact|wife|husband)\M|\d.*\m(st|str|street|ave|av|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|way|pl|place|cir|trl|hwy|pkwy|unit|apt|lot|box)\M|\m(st|str|street|ave|av|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|way|pl|place|cir|trl|hwy|pkwy|unit|apt|lot|box)\M.*\d' OR length(fx.brand) > 60 THEN NULL ELSE fx.brand END AS existing_shingle_brand,
+  CASE WHEN fx.color ~* '@|https?:|www\.|\d{7}|\d{3}[^[:alnum:]]+\d{3}|[[:alnum:]-]\.[[:alpha:]]{2,}|\m(at|dot|call|text|cell|phone|email|e-mail|mail|code|gate|lockbox|contact|wife|husband)\M|\d.*\m(st|str|street|ave|av|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|way|pl|place|cir|trl|hwy|pkwy|unit|apt|lot|box)\M|\m(st|str|street|ave|av|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|way|pl|place|cir|trl|hwy|pkwy|unit|apt|lot|box)\M.*\d' OR length(fx.color) > 60 THEN NULL ELSE fx.color END AS existing_shingle_color,
   c.rcv_amount,
   c.acv_amount,
   c.deductible_amount,
@@ -85,7 +100,7 @@ SELECT
   CASE WHEN jsonb_typeof(c.hover_measurements) = 'object'
         AND jsonb_typeof(c.hover_measurements -> 'squares') = 'number'
        THEN (c.hover_measurements ->> 'squares')::numeric END AS measured_squares,
-  CASE WHEN c.measurement_shape ~ '@|https?:|www\.|\d{7}|\d{3}[^[:alnum:]]+\d{3}' OR length(c.measurement_shape) > 60 THEN NULL ELSE c.measurement_shape END AS measurement_shape,
+  CASE WHEN c.measurement_shape IN ('basic', 'full') THEN c.measurement_shape END AS measurement_shape,
   -- the parsed summary of the uploaded estimate: carrier, date of loss, pricing database, sections and
   -- line items, summary totals (keys read from production 2026-10-06: carrier_name, pricing_database,
   -- sections, format_detected, date_of_loss, summary). Nothing in the database checks this object for
@@ -163,25 +178,45 @@ LEFT JOIN LATERAL (
 --                gives main; "1420 E 96th St" gives 96th)
 --   name_long / name_short / name_caps  the words, three letters or more, of profiles.full_name (where
 --                production keeps the homeowner's name; claims.homeowner_name is empty on every real claim) and
---                of claims.homeowner_name, accents folded. Letters only, so each list is safe inside a pattern.
+--                of claims.homeowner_name, folded (fx). Letters only, so each list is safe inside a pattern.
+--   name_nl      the runs of characters outside ASCII in that name (Cyrillic, Greek, CJK, Arabic ...), two characters or more
+--                (one character for Han, kana and Hangul): removed from a note as exact text, since there is no Latin spelling to fold to.
 --                long = six letters or more (removed wherever they stand), short = three to five (removed as
 --                whole words), caps = the short ones capitalised (removed when glued to another capital).
 LEFT JOIN public.profiles pr ON pr.id = c.user_id
+-- fx: one Unicode fold (review 6051111207 finding 2), applied to everything compared below, on BOTH sides, so a name
+--   or street typed with accents, in a decomposed form, in full-width letters or digits, with zero-width characters,
+--   or with letters that have no accent decomposition (l-stroke, o-slash, dotless i, d-stroke, sharp s, ae) meets its
+--   plain-letter form: NFKD, then the combining marks that follow a Latin letter and the zero-width / direction /
+--   variation characters are removed, a short table folds the letters NFKD leaves alone, then NFC (so Cyrillic,
+--   Greek, kana and Hangul come back composed and an exact occurrence of a non-Latin name still matches).
+--   nm = profile + claim name; st = the first part of the claim's address; notes = the notes (first 2000 characters);
+--   brand / color = the two catalogue text columns.
 LEFT JOIN LATERAL (
-  SELECT substring(split_part(coalesce(c.property_address, ''), ',', 1) FROM '^\s*(\d+)')            AS house,
+  SELECT normalize(replace(replace(replace(replace(replace(replace(replace(translate(regexp_replace(regexp_replace(normalize(coalesce(pr.full_name, '') || ' ' || coalesce(c.homeowner_name, ''), NFKD), U&'([A-Za-z])[\0300-\036F]+', '\1', 'g'), U&'[\00AD\034F\180E\200B-\200F\202A-\202E\2060-\2064\FE00-\FE0F\FEFF]', '', 'g'), U&'\0142\0141\00F8\00D8\0131\0111\0110\00F0\0127\0126', 'lLoOidDdhH'), U&'\00DF', 'ss'), U&'\00E6', 'ae'), U&'\00C6', 'AE'), U&'\0153', 'oe'), U&'\0152', 'OE'), U&'\00FE', 'th'), U&'\00DE', 'Th'), NFC) AS nm,
+         normalize(replace(replace(replace(replace(replace(replace(replace(translate(regexp_replace(regexp_replace(normalize(split_part(coalesce(c.property_address, ''), ',', 1), NFKD), U&'([A-Za-z])[\0300-\036F]+', '\1', 'g'), U&'[\00AD\034F\180E\200B-\200F\202A-\202E\2060-\2064\FE00-\FE0F\FEFF]', '', 'g'), U&'\0142\0141\00F8\00D8\0131\0111\0110\00F0\0127\0126', 'lLoOidDdhH'), U&'\00DF', 'ss'), U&'\00E6', 'ae'), U&'\00C6', 'AE'), U&'\0153', 'oe'), U&'\0152', 'OE'), U&'\00FE', 'th'), U&'\00DE', 'Th'), NFC) AS st,
+         normalize(replace(replace(replace(replace(replace(replace(replace(translate(regexp_replace(regexp_replace(normalize(left(c.homeowner_notes, 2000), NFKD), U&'([A-Za-z])[\0300-\036F]+', '\1', 'g'), U&'[\00AD\034F\180E\200B-\200F\202A-\202E\2060-\2064\FE00-\FE0F\FEFF]', '', 'g'), U&'\0142\0141\00F8\00D8\0131\0111\0110\00F0\0127\0126', 'lLoOidDdhH'), U&'\00DF', 'ss'), U&'\00E6', 'ae'), U&'\00C6', 'AE'), U&'\0153', 'oe'), U&'\0152', 'OE'), U&'\00FE', 'th'), U&'\00DE', 'Th'), NFC) AS notes,
+         normalize(replace(replace(replace(replace(replace(replace(replace(translate(regexp_replace(regexp_replace(normalize(c.existing_shingle_brand, NFKD), U&'([A-Za-z])[\0300-\036F]+', '\1', 'g'), U&'[\00AD\034F\180E\200B-\200F\202A-\202E\2060-\2064\FE00-\FE0F\FEFF]', '', 'g'), U&'\0142\0141\00F8\00D8\0131\0111\0110\00F0\0127\0126', 'lLoOidDdhH'), U&'\00DF', 'ss'), U&'\00E6', 'ae'), U&'\00C6', 'AE'), U&'\0153', 'oe'), U&'\0152', 'OE'), U&'\00FE', 'th'), U&'\00DE', 'Th'), NFC) AS brand,
+         normalize(replace(replace(replace(replace(replace(replace(replace(translate(regexp_replace(regexp_replace(normalize(c.existing_shingle_color, NFKD), U&'([A-Za-z])[\0300-\036F]+', '\1', 'g'), U&'[\00AD\034F\180E\200B-\200F\202A-\202E\2060-\2064\FE00-\FE0F\FEFF]', '', 'g'), U&'\0142\0141\00F8\00D8\0131\0111\0110\00F0\0127\0126', 'lLoOidDdhH'), U&'\00DF', 'ss'), U&'\00E6', 'ae'), U&'\00C6', 'AE'), U&'\0153', 'oe'), U&'\0152', 'OE'), U&'\00FE', 'th'), U&'\00DE', 'Th'), NFC) AS color
+) fx ON true
+LEFT JOIN LATERAL (
+  SELECT substring(fx.st FROM '^\s*(\d+)')            AS house,
          (SELECT string_agg(DISTINCT w, '|')
-            FROM regexp_split_to_table(lower(translate(split_part(coalesce(c.property_address, ''), ',', 1), U&'\00E1\00E0\00E2\00E4\00E3\00E5\00E7\00E9\00E8\00EA\00EB\00ED\00EC\00EE\00EF\00F1\00F3\00F2\00F4\00F6\00F5\00FA\00F9\00FB\00FC\00FD\00FF\00C1\00C0\00C2\00C4\00C3\00C5\00C7\00C9\00C8\00CA\00CB\00CD\00CC\00CE\00CF\00D1\00D3\00D2\00D4\00D6\00D5\00DA\00D9\00DB\00DC\00DD', 'aaaaaaceeeeiiiinooooouuuuyyAAAAAACEEEEIIIINOOOOOUUUUY')), '[^a-z0-9]+') AS w
+            FROM regexp_split_to_table(lower(fx.st), '[^a-z0-9]+') AS w
            WHERE length(w) >= 3 AND w ~ '[a-z]'
              AND w !~ '^(st|str|street|ave|av|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place|cir|circle|ter|terrace|pkwy|parkway|hwy|highway|trl|trail|loop|pike|xing|crossing|alley|aly|north|south|east|west|unit|apt|apartment|suite|ste|lot|box|bldg|building|floor|room|trlr|trailer)$') AS street_words,
          (SELECT string_agg(DISTINCT w, '|')
-            FROM regexp_split_to_table(lower(translate(coalesce(pr.full_name, '') || ' ' || coalesce(c.homeowner_name, ''), U&'\00E1\00E0\00E2\00E4\00E3\00E5\00E7\00E9\00E8\00EA\00EB\00ED\00EC\00EE\00EF\00F1\00F3\00F2\00F4\00F6\00F5\00FA\00F9\00FB\00FC\00FD\00FF\00C1\00C0\00C2\00C4\00C3\00C5\00C7\00C9\00C8\00CA\00CB\00CD\00CC\00CE\00CF\00D1\00D3\00D2\00D4\00D6\00D5\00DA\00D9\00DB\00DC\00DD', 'aaaaaaceeeeiiiinooooouuuuyyAAAAAACEEEEIIIINOOOOOUUUUY')), '[^a-z]+') AS w
+            FROM regexp_split_to_table(lower(fx.nm), '[^a-z]+') AS w
            WHERE length(w) >= 6)                                                                       AS name_long,
          (SELECT string_agg(DISTINCT w, '|')
-            FROM regexp_split_to_table(lower(translate(coalesce(pr.full_name, '') || ' ' || coalesce(c.homeowner_name, ''), U&'\00E1\00E0\00E2\00E4\00E3\00E5\00E7\00E9\00E8\00EA\00EB\00ED\00EC\00EE\00EF\00F1\00F3\00F2\00F4\00F6\00F5\00FA\00F9\00FB\00FC\00FD\00FF\00C1\00C0\00C2\00C4\00C3\00C5\00C7\00C9\00C8\00CA\00CB\00CD\00CC\00CE\00CF\00D1\00D3\00D2\00D4\00D6\00D5\00DA\00D9\00DB\00DC\00DD', 'aaaaaaceeeeiiiinooooouuuuyyAAAAAACEEEEIIIINOOOOOUUUUY')), '[^a-z]+') AS w
+            FROM regexp_split_to_table(lower(fx.nm), '[^a-z]+') AS w
            WHERE length(w) BETWEEN 3 AND 5)                                                            AS name_short,
          (SELECT string_agg(DISTINCT initcap(w), '|')
-            FROM regexp_split_to_table(lower(translate(coalesce(pr.full_name, '') || ' ' || coalesce(c.homeowner_name, ''), U&'\00E1\00E0\00E2\00E4\00E3\00E5\00E7\00E9\00E8\00EA\00EB\00ED\00EC\00EE\00EF\00F1\00F3\00F2\00F4\00F6\00F5\00FA\00F9\00FB\00FC\00FD\00FF\00C1\00C0\00C2\00C4\00C3\00C5\00C7\00C9\00C8\00CA\00CB\00CD\00CC\00CE\00CF\00D1\00D3\00D2\00D4\00D6\00D5\00DA\00D9\00DB\00DC\00DD', 'aaaaaaceeeeiiiinooooouuuuyyAAAAAACEEEEIIIINOOOOOUUUUY')), '[^a-z]+') AS w
-           WHERE length(w) BETWEEN 3 AND 5)                                                            AS name_caps
+            FROM regexp_split_to_table(lower(fx.nm), '[^a-z]+') AS w
+           WHERE length(w) BETWEEN 3 AND 5)                                                            AS name_caps,
+         (SELECT string_agg(DISTINCT m[1], '|')
+            FROM regexp_matches(lower(fx.nm), '([^\x01-\x7f\u3000-\u303f]+)', 'g') AS m
+           WHERE length(m[1]) >= 2 OR m[1] ~ U&'[\4E00-\9FFF\3040-\30FF\AC00-\D7AF]')                       AS name_nl
 ) idn ON true
 -- ft: the two free-text columns as a caller who is not the selected contractor reads them
 -- (CEO ruling 6045859470; review 6049068071 finding 1). Every replacement is the text '[removed]'.
@@ -196,10 +231,12 @@ LEFT JOIN LATERAL (
 --       comma (slash, dash of any kind, no-break space, underscore), and any run of seven or more digits
 --       with spaces, dots, dashes or brackets between them;
 --    d. street lines: a county-grid address ("9021 N 500 W"); the whole LINE holding a number followed within
---       five words by a street type; capitalised words followed by a capitalised street type, with or without
+--       five words by a street type (for road, way, place, drive, lane, court, trail ... only when it reads like a street line, so
+--       "3 tab shingles, steep drive" and "2 story, the only way up" stay); capitalised words followed by a capitalised street type, with or without
 --       a number before or after ("Larkspur Hollow Rd #9021"); a number of three to six digits followed by
 --       capitalised words ("9021 Fox Run", "9021 Broadway"); a number of one or two digits followed by
---       capitalised words ending in a street or place type ("8 Otter Ridge");
+--       capitalised words ending in a street or place type ("8 Otter Ridge"); none of these fires when the number is followed by a
+--       unit, a roofing brand or a wind rating ("2400 Square Feet", "3000 SF", "2009 GAF Timberline", "150 MPH");
 --    e. a number after the word code, pin or combination; a claim or policy number.
 -- Not redacted, on purpose, because the same shape is an ordinary job description (pre-flight, RESIDUALS):
 -- digit groups with words or a line break between them, a street written in lower case with no type word,
@@ -214,6 +251,9 @@ LEFT JOIN LATERAL (
                WHEN idn.street_words IS NOT NULL AND idn.house IS NULL
                     AND v.raw ~* ('\m(' || idn.street_words || ')\M') THEN '[removed]'
                ELSE
+      regexp_replace(
+      regexp_replace(
+      regexp_replace(regexp_replace(
       regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(
       regexp_replace(
       regexp_replace(regexp_replace(
@@ -230,9 +270,10 @@ LEFT JOIN LATERAL (
         '[[:alnum:]._%+-]+\s*(?:[\(\[\{<]\s*at\s*[\)\]\}>]|\s+at\s+)\s*[[:alpha:]][[:alnum:]-]*(?:\s*(?:\.|[\(\[\{<]\s*dot\s*[\)\]\}>]|\s+dot\s+)\s*[[:alpha:]][[:alnum:]-]*)+', '[removed]', 'gi'),
         '\S+\s+at\s+\S+\s+dot\s+\S+', '[removed]', 'gi'),
         '\S*@\S*', '[removed]', 'g'),
-        '(https?://\S+|www\.\S+|\S+\.(com|net|org|edu|gov|mil|io|co|us|info|biz|me|app|dev|ai|xyz|online|site|tech|uk|ca)(/\S*)?(?![[:alnum:]]))', '[removed]', 'gi'),
+        '(https?://\S+|www\.\S+|\S+\.(com|net|org|edu|gov|mil|io|co|us|info|biz|me|app|dev|ai|xyz|online|site|tech|uk|ca|homes|home|house|realty|space|page|link|blog|live|pro)(/\S*)?(?![[:alnum:]])|\S+\.[[:alpha:]]{2,}/\S*)', '[removed]', 'gi'),
         'https?://\S+', '[removed]', 'gi'),
         -- c. phone
+        '\m\d{3}[/\\]\d{4}\M', '[removed]', 'g'),
         '\(?\d{3}\)?[^[:alnum:],\n]{1,3}\d{3}[^[:alnum:],\n]{1,3}\d{4}(?!\d)', '[removed]', 'g'),
         '(\+?\d[\s().-]*){7,}', '[removed] ', 'g'),
         -- d. street
@@ -240,21 +281,31 @@ LEFT JOIN LATERAL (
         '\m\d{3,6}[A-Za-z]?[ \t]+((north|south|east|west|n|s|e|w)\.?[ \t]+)?\d+(st|nd|rd|th)\M', '[removed]', 'gi'),
         '\m\d{1,2}[ \t]+(north|south|east|west|n|s|e|w)\.?[ \t]+\d+(st|nd|rd|th)\M', '[removed]', 'gi'),
         '\m\d{1,2}[ \t]+\d{2,3}(st|nd|rd|th)\M', '[removed]', 'gi'),
-        '^.*(\m\d+[[:alnum:]-]*\s+(\S+\s+){0,4}(st|str|street|ave|av|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place|cir|circle|ter|terrace|pkwy|parkway|hwy|highway|trl|trail|loop|pike|xing|crossing|alley|aly)\M|p\.?\s*o\.?\s*box\s*\d+).*$', '[removed]', 'gin'),
-        '(\m\d+[A-Za-z]?[ \t]+)?([A-Z][[:alpha:]''’-]*\.?[ \t]+){1,8}(St|Str|Street|Ave|Av|Avenue|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Blvd|Boulevard|Way|Pl|Place|Cir|Circle|Ter|Terrace|Pkwy|Parkway|Hwy|Highway|Trl|Trail|Loop|Pike|Xing|Crossing|Alley|Aly|ST|STR|STREET|AVE|AV|AVENUE|RD|ROAD|DR|DRIVE|LN|LANE|CT|COURT|BLVD|BOULEVARD|WAY|PL|PLACE|CIR|CIRCLE|TER|TERRACE|PKWY|PARKWAY|HWY|HIGHWAY|TRL|TRAIL|LOOP|PIKE|XING|CROSSING|ALLEY|ALY)\M\.?([ \t,]*#?[ \t]*\d+\M)?', '[removed]', 'g'),
-        '\m\d{3,6}[A-Za-z]?[ \t]+([A-Z][[:alpha:]''’-]*\.?[ \t,]+){0,7}[A-Z][[:alpha:]''’-]+', '[removed]', 'g'),
-        '\m\d{1,2}[A-Za-z]?[ \t]+([A-Z][[:alpha:]''’-]*\.?[ \t]+){1,4}(St|Str|Street|Ave|Av|Avenue|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Blvd|Boulevard|Way|Pl|Place|Cir|Circle|Ter|Terrace|Pkwy|Parkway|Hwy|Highway|Trl|Trail|Loop|Pike|Xing|Crossing|Alley|Aly|Ridge|Bend|Cove|Trace|Point|Run|Pass|Row|Square|Path|Walk|View|Hill|Hills|Glen|Grove|Park|Landing|Knoll|Bluff|Vista|Creek|Commons|Close|Hollow|Meadow|Meadows|Woods|Lake|Springs)\M', '[removed]', 'g'),
+        -- the whole LINE goes when a number is followed within five words by a street type that is not also an everyday word
+        '^.*(\m\d+[[:alnum:]-]*\s+([^\s.;!?]+\s+){0,4}(st|str|street|ave|av|avenue|rd|blvd|boulevard|ln|pkwy|parkway|hwy|highway|trl|xing|aly|cir|ct|pl|ter|dr)\M|p\.?\s*o\.?\s*box\s*\d+).*$', '[removed]', 'gin'),
+        -- ... and for the words that are also ordinary (road way place drive lane court trail loop circle terrace crossing alley pike) only when
+        --     it reads like a street line: a number, then capitalised words with no punctuation, then the word capitalised; or a house number of
+        --     three to six digits then one to three plain words, or of one or two digits then one or two plain words, then the word in any case
+        --     (the first word is not a unit of measure or a roofing word, and no comma or full stop may stand between)
+        '^.*\m\d+[[:alnum:]-]*[ \t]+([A-Z0-9][^\s.,;:!?]*[ \t]+){0,5}(Road|Way|Place|Drive|Lane|Court|Trail|Loop|Circle|Terrace|Crossing|Alley|Pike|ROAD|WAY|PLACE|DRIVE|LANE|COURT|TRAIL|LOOP|CIRCLE|TERRACE|CROSSING|ALLEY|PIKE)\M.*$', '[removed]', 'gn'),
+        '^.*\m(\d{3,6}[A-Za-z]?[ \t]+(?!(?:sq|sqft|sf|lf|ft|feet|foot|inch|inches|square|squares|layer|layers|year|years|yr|yrs|mph|story|stories|tab|shingle|shingles|vent|vents|bundle|bundles|piece|pieces|linear|skylight|skylights|window|windows|door|doors|tree|trees|pipe|pipes|boot|boots|chimney|chimneys|dormer|dormers|roof|roofs|bid|bids|gutter|gutters|downspout|downspouts)\M)([A-Za-z0-9''’-]+[ \t]+){1,3}|\d{1,2}[A-Za-z]?[ \t]+(?!(?:sq|sqft|sf|lf|ft|feet|foot|inch|inches|square|squares|layer|layers|year|years|yr|yrs|mph|story|stories|tab|shingle|shingles|vent|vents|bundle|bundles|piece|pieces|linear|skylight|skylights|window|windows|door|doors|tree|trees|pipe|pipes|boot|boots|chimney|chimneys|dormer|dormers|roof|roofs|bid|bids|gutter|gutters|downspout|downspouts)\M)([A-Za-z0-9''’-]+[ \t]+){1,2})(road|way|place|drive|lane|court|trail|loop|circle|terrace|crossing|alley|pike)\M.*$', '[removed]', 'gin'),
+        '(\m\d+[A-Za-z]?[ \t]+)?(([A-Z][[:alpha:]''’-]*|[A-Z][a-z]{0,2}\.)[ \t]+){1,8}(St|Str|Street|Ave|Av|Avenue|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Blvd|Boulevard|Way|Pl|Place|Cir|Circle|Ter|Terrace|Pkwy|Parkway|Hwy|Highway|Trl|Trail|Loop|Pike|Xing|Crossing|Alley|Aly|ST|STR|STREET|AVE|AV|AVENUE|RD|ROAD|DR|DRIVE|LN|LANE|CT|COURT|BLVD|BOULEVARD|WAY|PL|PLACE|CIR|CIRCLE|TER|TERRACE|PKWY|PARKWAY|HWY|HIGHWAY|TRL|TRAIL|LOOP|PIKE|XING|CROSSING|ALLEY|ALY)\M\.?([ \t,]*#?[ \t]*\d+\M)?', '[removed]', 'g'),
+        -- (not when the next word is a unit, a roofing brand or a wind rating: "2400 Square Feet", "3000 SF", "2009 GAF Timberline")
+        '\m\d{3,6}[A-Za-z]?[ \t]+(?!(?:ATLAS|Atlas|BUNDLE|BUNDLES|Bundle|Bundles|CERTAINTEED|CORNING|CertainTeed|Corning|DURATION|Duration|FEET|FOOT|FT|Feet|Foot|Ft|GAF|IKO|INCH|INCHES|Inch|Inches|LANDMARK|LAYER|LAYERS|LF|LINEAR|Landmark|Layer|Layers|Linear|MALARKEY|MPH|Malarkey|OAKRIDGE|OWENS|Oakridge|Owens|PABCO|PIECE|PIECES|Pabco|Piece|Pieces|SF|SQ|SQFT|SQUARE|SQUARES|Sq|Sqft|Square|Squares|TAB|TAMKO|TIMBERLINE|Tab|Tamko|Timberline|YEAR|YEARS|Year|Years)\M)([A-Z][[:alpha:]''’-]*\.?[ \t,]+){0,7}[A-Z][[:alpha:]''’-]+', '[removed]', 'g'),
+        '\m\d{1,2}[A-Za-z]?[ \t]+(([A-Z][[:alpha:]''’-]*|[A-Z][a-z]{0,2}\.)[ \t]+){1,4}(St|Str|Street|Ave|Av|Avenue|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Blvd|Boulevard|Way|Pl|Place|Cir|Circle|Ter|Terrace|Pkwy|Parkway|Hwy|Highway|Trl|Trail|Loop|Pike|Xing|Crossing|Alley|Aly|Ridge|Bend|Cove|Trace|Point|Run|Pass|Row|Square|Path|Walk|View|Hill|Hills|Glen|Grove|Park|Landing|Knoll|Bluff|Vista|Creek|Commons|Close|Hollow|Meadow|Meadows|Woods|Lake|Springs)\M', '[removed]', 'g'),
         -- e. codes and claim or policy numbers
         '\m((gate|door|garage|alarm|access|entry|lock\s*box|key\s*pad)\s*)?(code|pin|combo|combination)\s*:?\s*(is\s+)?#?\d{3,8}\M', '[removed]', 'gi'),
         '\m(claim|policy)\s*(no\.?|number|num|id|#)?\s*:?\s*#?[[:alnum:]-]*\d[[:alnum:]-]*', '[removed]', 'gi'),
         -- a. the homeowner's name words, last so that an email address is still whole when rule b reads it
         CASE WHEN idn.name_long IS NULL THEN '\A\Z\A' ELSE '(' || idn.name_long || ')(''?s)?' END, '[removed]', 'gi'),
         CASE WHEN idn.name_short IS NULL THEN '\A\Z\A' ELSE '(?<![a-z])(' || idn.name_short || ')(''?s)?(?![a-z])' END, '[removed]', 'gi'),
-        CASE WHEN idn.name_caps IS NULL THEN '\A\Z\A' ELSE '(?<![a-z])(' || idn.name_caps || ')(?=[A-Z])|(?<=[a-z])(' || idn.name_caps || ')(?![a-z])' END, '[removed]', 'g')
+        CASE WHEN idn.name_caps IS NULL THEN '\A\Z\A' ELSE '(?<![a-z])(' || idn.name_caps || ')(?=[A-Z])|(?<=[a-z])(' || idn.name_caps || ')(?![a-z])' END, '[removed]', 'g'),
+        -- a. a name in a script with no Latin letters (Cyrillic, Greek, CJK, Arabic ...): an exact occurrence of each token
+        CASE WHEN idn.name_nl IS NULL THEN '\A\Z\A' ELSE '(' || idn.name_nl || ')' END, '[removed]', 'gi')
              END AS red
         -- the homeowner forms cap these at 500 characters; a bidder is given at most the first 2000, so a
         -- value written past the form cannot make the patterns above expensive
-        FROM (VALUES (translate(left(c.homeowner_notes, 2000), U&'\00E1\00E0\00E2\00E4\00E3\00E5\00E7\00E9\00E8\00EA\00EB\00ED\00EC\00EE\00EF\00F1\00F3\00F2\00F4\00F6\00F5\00FA\00F9\00FB\00FC\00FD\00FF\00C1\00C0\00C2\00C4\00C3\00C5\00C7\00C9\00C8\00CA\00CB\00CD\00CC\00CE\00CF\00D1\00D3\00D2\00D4\00D6\00D5\00DA\00D9\00DB\00DC\00DD', 'aaaaaaceeeeiiiinooooouuuuyyAAAAAACEEEEIIIINOOOOOUUUUY')))  AS v(raw)
+        FROM (VALUES (fx.notes)) AS v(raw)
     ) r
 ) ft ON true
 WHERE (   ct.status = 'active'

@@ -56,7 +56,10 @@ ok(/CASE WHEN c\.selected_contractor_id = ct\.id THEN c\.homeowner_notes\s+WHEN 
 ok(!/urgency_reason/.test(body.replace(/--[^\n]*/g, '')), 'view: urgency_reason is not exposed at all (no bidder page shows it; review 6050015567, structural fix)');
 ok(!/urgency_reason/.test(rd('contractor-opportunities.html').match(/BIDDER_CLAIM_OPP_COLS = '[^']*'/)[0]), 'opportunities page: urgency_reason is not in the column list read from the view');
 ok(!/urgency_reason/.test(rd('react-app/app/contractor/opportunities/utils.ts').match(/BIDDER_CLAIM_OPP_COLS =\s*'[^']*'/)[0]), 'React opportunities: urgency_reason is not in the column list read from the view');
-ok(/existing_shingle_brand ~ .*length\(c\.existing_shingle_brand\) > 60/.test(body) && /measurement_shape ~ .*length\(c\.measurement_shape\) > 60/.test(body), 'view: the typed catalogue columns carry a shape guard (no phone, email or web address, 60 characters at most)');
+ok(/fx\.brand ~\* .*length\(fx\.brand\) > 60/.test(body) && /fx\.color ~\* .*length\(fx\.color\) > 60/.test(body) && /measurement_shape IN \('basic', 'full'\)/.test(body), 'view: the typed catalogue columns carry a shape guard on the folded text (no @, web address with or without a scheme, "at"/"dot", phone-shaped run, street word with a digit, 60 characters at most); measurement_shape is a closed list');
+ok(!/^\s*c\.damage_type,\s*$/m.test(body) && /WHEN c\.damage_type IS NULL OR btrim\(c\.damage_type\) = ''/.test(body) && /ELSE 'Other' END\s+AS damage_type/.test(body), 'view: damage_type (typed text) is returned only through the damage-word allow-list, else Other (review 6051111207 finding 1)');
+ok(/normalize\(/.test(body) && /NFKD/.test(body) && /name_nl/.test(body), 'view: names and notes are compared after one Unicode fold (NFKD, combining marks, zero-width, full-width) and non-Latin name tokens are removed as exact text');
+ok(/CREATE OR REPLACE VIEW public\.bidder_claim_summary/.test(body) && !/^\s*CREATE VIEW/m.test(body), 'view file is idempotent (CREATE OR REPLACE VIEW; a second run succeeds)');
 ok(!/substring\(c\.property_address FROM '\\d\{5\}'\)/.test(body), 'view: the zip is never the first five-digit run of the address');
 ok(!/bid-release gate/.test(sql), 'view SQL no longer rests the summary on a bid-release gate that does not exist');
 
