@@ -3,8 +3,10 @@
 # The bundler ships what an entrypoint imports. A repo file that no production code imports
 # is never deployed, so its absence is not drift. The detector does NOT work out which files
 # those are (reading imports is a guessing game that has failed open three times, see PR
-# #2600). It excuses exactly the repo paths listed here and nothing else: any other file that
-# is missing from, or differs from, the deployed bundle makes the function DRIFTED.
+# #2600). It excuses exactly the repo paths listed here, plus any `*.test.*` file that no
+# non-test code quotes (a test is imported by nothing, so it is never bundled), and nothing
+# else: any other file that is missing from, or differs from, the deployed bundle makes the
+# function DRIFTED. A name like `test_mode.ts` or `util_test.ts` excuses nothing.
 #
 # Format: one entry per line, `<exact repo path> :: <one-line reason>`. No globs, no
 # directories. Blank lines and lines starting with # are ignored.
@@ -12,8 +14,9 @@
 # Adding a line is a reviewed change. scripts/edge-function-drift-check.test.py pins this
 # exact set, so a new entry also needs a matching edit in that test. Do NOT add a file that
 # any non-test code imports or reads: that file IS bundled, so if the deploy lacks it that is
-# real drift. The detector exits 2 if a listed file is quoted by a relative path in non-test
-# code under supabase/functions/.
+# real drift. The detector exits 2 if a listed file (or a `*.test.*` file) is quoted by a
+# relative path in non-test code under supabase/functions/. "Non-test code" means any file
+# that is not `*.test.*`: a `test_helpers.ts` that imports a listed file is caught.
 #
 # Every run prints the excused files in the job summary.
 

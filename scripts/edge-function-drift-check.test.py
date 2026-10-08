@@ -304,6 +304,12 @@ def pinned_allowlist_cases():
     check("every entry names a file that exists in the repo", sorted(k for k in real if not (REPO_ROOT / k).is_file()), [])
     check("no listed file is imported or read by non-test code in the real tree",
           drift.allowlist_import_violations(real, REPO_ROOT), {})
+    check("no `*.test.*` file is quoted by non-test code in the real tree",
+          drift.test_file_import_violations(REPO_ROOT), {})
+    check("the real tree has no test-NAMED file that is not `*.test.*` (nothing relied on the old name rule)",
+          sorted(str(q.relative_to(REPO_ROOT)) for q in (REPO_ROOT / drift.FUNCTIONS_DIR).rglob("*")
+                 if q.is_file() and (q.name.startswith("test_") or q.name.endswith("_test.ts")) and not drift.is_test_path(q.name)),
+          [])
 
     print("\nA listed file that non-test code imports fails loudly")
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-viol-"))
@@ -339,6 +345,107 @@ def pinned_allowlist_cases():
               (st["helper.ts"], rep["functions"][0]["verdict"]), ("missing_in_deploy", drift.DRIFTED))
         check("imported + listed: violation reported and exit 2", (list(rep["allowlist_violations"]), drift.report_exit_code(rep)), ([target], 2))
         check("imported + listed: summary says ALLOWLIST INVALID", "ALLOWLIST INVALID" in drift.render_markdown(rep), True)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_name_cases():
+    """CTO RUN 63 (PR #2600 review 6051654612): a file is excused by NAME only if it is
+    `*.test.*` and no non-test code quotes it. `test_*` and `*_test.ts` are ordinary names."""
+    print("\nTest-named files: only an un-imported `*.test.*` file is excused by name")
+    for name, want in (
+        ("a.test.ts", True), ("a.test.js", True), ("a.test.tsx", True), ("a/b/c.test.mjs", True),
+        ("test_mode.ts", False), ("util_test.ts", False), ("test_helpers.ts", False),
+        ("latest.ts", False), (".test.ts", False), ("a.test.", False), ("a.tests.ts", False),
+    ):
+        check(f"is_test_path({name!r})", drift.is_test_path(name), want)
+
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-testname-"))
+    try:
+        root, funcs, deployed = make_root(tmp)
+
+        def fresh(index_src, extra):
+            """One function `fn`: index.ts (same in repo and deploy) plus `extra` repo files that
+            are absent from the deploy."""
+            shutil.rmtree(funcs, ignore_errors=True)
+            shutil.rmtree(deployed, ignore_errors=True)
+            funcs.mkdir(parents=True)
+            deployed.mkdir()
+            write(funcs, "fn", "index.ts", index_src)
+            write(deployed, "fn", "index.ts", index_src)
+            for name, src in extra.items():
+                write(funcs, "fn", name, src)
+
+        def run(allow=None):
+            return drift.build_report(funcs, deployed, ["fn"], repo_slugs=["fn"], repo_root=root, allowlist=allow or {})
+
+        def st(rep):
+            return {f["path"]: f["status"] for f in rep["functions"][0]["files"]}
+
+        # C2 / C3: production files whose names merely look like tests, imported by index.ts.
+        for label, fname in (("C2 ./test_mode.ts", "test_mode.ts"), ("C3 ./util_test.ts", "util_test.ts")):
+            fresh(f"import {{ m }} from './{fname}'\nm()\n", {fname: "export const m = () => 1\n"})
+            rep = run()
+            check(f"{label} imported by index.ts, missing from deploy -> missing_in_deploy / DRIFTED / exit 1",
+                  (st(rep)[fname], verdicts_of(rep)["fn"], drift.report_exit_code(rep)),
+                  ("missing_in_deploy", drift.DRIFTED, 1))
+            check(f"{label} is not printed as excused", rep["excused"], [])
+        # The same names with NOTHING importing them are not excused either: only `*.test.*` is.
+        for fname in ("test_mode.ts", "util_test.ts"):
+            fresh("console.log('hi')\n", {fname: "export const m = 1\n"})
+            rep = run()
+            check(f"{fname} not imported, missing from deploy -> still DRIFTED (not a `*.test.*` name)",
+                  (st(rep)[fname], verdicts_of(rep)["fn"]), ("missing_in_deploy", drift.DRIFTED))
+
+        # C5: a test-NAMED importer that is not `*.test.*` cannot hide an import of a listed file.
+        target = "supabase/functions/fn/email-footer.ts"
+        fresh("import { h } from './test_helpers.ts'\nh()\n",
+              {"test_helpers.ts": "import { f } from './email-footer.ts'\nexport const h = () => f\n",
+               "email-footer.ts": "export const f = 'x'\n"})
+        rep = run({target: "test-only"})
+        check("C5 test_helpers.ts (not *.test.*) imports a listed file -> violation names it",
+              rep["allowlist_violations"], {target: "supabase/functions/fn/test_helpers.ts"})
+        check("C5 -> entry not applied, exit 2",
+              (st(rep)["email-footer.ts"], st(rep)["test_helpers.ts"], drift.report_exit_code(rep)),
+              ("missing_in_deploy", "missing_in_deploy", 2))
+        check("C5 -> summary says ALLOWLIST INVALID", "ALLOWLIST INVALID" in drift.render_markdown(rep), True)
+        # ...but a `*.test.*` importer of a listed file is still fine (the listed files' real shape).
+        fresh("console.log('hi')\n",
+              {"email-footer.test.ts": "import { f } from './email-footer.ts'\n", "email-footer.ts": "export const f = 'x'\n"})
+        rep = run({target: "test-only"})
+        check("a `*.test.*` importer of a listed file -> no violation, IDENTICAL, exit 0",
+              (rep["allowlist_violations"], rep["test_name_violations"], verdicts_of(rep)["fn"], drift.report_exit_code(rep)),
+              ({}, {}, drift.IDENTICAL, 0))
+
+        # A `*.test.*` file that nothing imports: excused by name, as before.
+        fresh("console.log('hi')\n", {"a.test.ts": "import { x } from './a.ts'\n"})
+        rep = run()
+        check("un-imported a.test.ts missing from deploy -> test_not_bundled / IDENTICAL / exit 0",
+              (st(rep)["a.test.ts"], verdicts_of(rep)["fn"], drift.report_exit_code(rep)),
+              ("test_not_bundled", drift.IDENTICAL, 0))
+        # ...and one that a test-named helper or another test imports is still excused.
+        fresh("console.log('hi')\n", {"a.test.ts": "export const t = 1\n", "b.test.ts": "import { t } from './a.test.ts'\n"})
+        rep = run()
+        check("a.test.ts imported only by b.test.ts -> still test_not_bundled",
+              (st(rep)["a.test.ts"], rep["test_name_violations"]), ("test_not_bundled", {}))
+
+        # A `*.test.*` file that non-test code imports is NOT excused, and the run exits 2.
+        for label, src in (("relative", "import { t } from './a.test.ts'\n"),
+                           ("extensionless", "import { t } from './a.test'\n"),
+                           ("alias", "import { t } from '@/lib/a.test.ts'\n")):
+            fresh(src, {"a.test.ts": "export const t = 1\n"})
+            rep = run()
+            check(f"{label} import of a.test.ts by index.ts -> missing_in_deploy / DRIFTED",
+                  (st(rep)["a.test.ts"], verdicts_of(rep)["fn"]), ("missing_in_deploy", drift.DRIFTED))
+            check(f"{label} import of a.test.ts -> test_name_violations, exit 2, summary says so",
+                  (rep["test_name_violations"], drift.report_exit_code(rep),
+                   "TEST-NAMED FILE IS IMPORTED" in drift.render_markdown(rep)),
+                  ({"supabase/functions/fn/a.test.ts": "supabase/functions/fn/index.ts"}, 2, True))
+        # An imported `*.test.*` file that the deploy DOES carry is compared normally.
+        fresh("import { t } from './a.test.ts'\n", {"a.test.ts": "export const t = 1\n"})
+        write(deployed, "fn", "a.test.ts", "export const t = 2\n")
+        rep = run()
+        check("imported a.test.ts deployed with different bytes -> differs", st(rep)["a.test.ts"], "differs")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -731,6 +838,7 @@ def main():
         allowlist_cases()
         no_shape_cases()
         pinned_allowlist_cases()
+        test_name_cases()
         out_of_tree_cases()
         fetch_failed_cases()
         planted_drift_selftest()

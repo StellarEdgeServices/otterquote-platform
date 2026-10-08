@@ -83,7 +83,7 @@ USAGE
     0  — every deployed function is byte-identical to `main`
     1  — drift found (or a deployed function has no counterpart in the repo)
     2  — COULD NOT MEASURE: no token, no CLI, a fetch failed, or the allowlist is invalid
-         (a listed file is named by non-test code). Never silent.
+         (a listed file, or a `*.test.*` file, is named by non-test code). Never silent.
 
 Requires the Supabase CLI on PATH and SUPABASE_ACCESS_TOKEN in the environment
 (a Personal Access Token — the service-role key is NOT sufficient; the Management
@@ -169,12 +169,16 @@ NON_DRIFT_STATUSES = frozenset({"same", "test_not_bundled", "allowlisted_not_bun
 
 
 def is_test_path(rel: str) -> bool:
-    """True for a repo file that is a test and therefore never deployed."""
+    """True for a `*.test.*` file: a name that contains `.test.` followed by an extension.
+
+    CTO RUN 63 (PR #2600 review 6051654612): this used to also match `*_test.ts` and `test_*`,
+    which excused a production file such as `test_mode.ts` by its name alone. Only `*.test.*`
+    is excused by name now (the one form the tree uses: 254 files, all `*.test.*`), and even
+    that excuse is withdrawn for a file that non-test code quotes (test_file_import_violations).
+    """
     name = rel.rsplit("/", 1)[-1]
-    return (
-        name.endswith((".test.ts", ".test.js", ".test.tsx", "_test.ts"))
-        or name.startswith("test_")
-    )
+    head, sep, tail = name.partition(".test.")
+    return bool(head) and bool(sep) and bool(tail)
 
 
 # gh-1295 (CTO RUN 63, PR #2600 fourth attempt): the ONLY other file allowed to be absent from
@@ -226,23 +230,32 @@ _SPECIFIER = re.compile(r"[\w@~:./-]+")
 _MODULE_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts", ".cjs", ".cts")
 
 
-def allowlist_import_violations(allowlist: dict, repo_root: Path) -> dict:
-    """{allowlisted path: first non-test file that quotes it}. An allowlisted file that
-    non-test code names is bundled, so its absence from a deploy would be real drift and the
-    entry is wrong. This is a tripwire on the list, not a recogniser: the excuse itself is
-    still the exact path. It resolves every quoted relative specifier (`./x`, `../y/x.ts`,
-    extensionless, directory index) against the importing file, and flags a non-relative
-    quoted string (an alias) whose last segment is the file's exact name. Computed paths
-    cannot be resolved and are not seen, which is why adding to the list is a reviewed act."""
+def _import_violations(candidates, repo_root: Path) -> dict:
+    """{candidate path: first importer that quotes it}, over every non-`*.test.*` file under
+    supabase/functions/. A candidate (an allowlisted file, or a file excused by its `*.test.*`
+    name) that non-test code names is bundled, so its absence from a deploy would be real drift
+    and the excuse is wrong. A test-NAMED importer that is not `*.test.*` (`test_helpers.ts`,
+    `util_test.ts`) counts as non-test code here: the importer exemption is the same narrow
+    name rule as the file excuse, so a production file cannot hide behind a test-like name."""
     root = Path(repo_root)
     functions = root / FUNCTIONS_DIR
-    if not allowlist or not functions.is_dir():
+    candidates = list(candidates)
+    if not candidates or not functions.is_dir():
         return {}
-    targets = {}
-    for rel in allowlist:
+    # Lookup tables so the scan is O(quoted strings), not O(strings x candidates).
+    by_path = {}   # resolved relative specifier -> candidate paths
+    by_base = {}   # exact file name -> candidate paths (alias / import-map specifiers)
+    for rel in candidates:
         base = rel.rsplit("/", 1)[-1]
         stem = base[: base.rfind(".")] if "." in base else base
-        targets[rel] = (base, rel[: len(rel) - len(base) + len(stem)] if stem != base else rel)
+        keys = {rel}
+        if stem != base:
+            keys.add(rel[: len(rel) - len(base) + len(stem)])
+        if any(base == "index" + suffix for suffix in _MODULE_SUFFIXES):
+            keys.add(posixpath.dirname(rel))
+        for k in keys:
+            by_path.setdefault(k, []).append(rel)
+        by_base.setdefault(base, []).append(rel)
     found = {}
     for path in sorted(functions.rglob("*")):
         if not path.is_file() or path.is_symlink():
@@ -258,21 +271,44 @@ def allowlist_import_violations(allowlist: dict, repo_root: Path) -> dict:
             quote, spec = m.group(1), m.group(2)
             if not _SPECIFIER.fullmatch(spec):
                 continue  # prose between two apostrophes in a comment, not a path
-            for rel, (base, extless) in targets.items():
-                if rel in found or importer == rel:
-                    continue
-                if spec.startswith(("./", "../")):
-                    resolved = posixpath.normpath(posixpath.join(posixpath.dirname(importer), spec))
-                    hit = resolved == rel or resolved == extless or any(
-                        resolved + suffix == rel or resolved + "/index" + suffix == rel for suffix in _MODULE_SUFFIXES
-                    )
-                else:
-                    # alias / import-map specifier. Backticks are skipped here: a `code span` in a
-                    # comment is far more common than an aliased template-literal import.
-                    hit = quote != "`" and spec.rsplit("/", 1)[-1] == base
-                if hit:
+            if spec.startswith(("./", "../")):
+                hits = by_path.get(posixpath.normpath(posixpath.join(posixpath.dirname(importer), spec)), ())
+            else:
+                # alias / import-map specifier. Backticks are skipped here: a `code span` in a
+                # comment is far more common than an aliased template-literal import.
+                hits = by_base.get(spec.rsplit("/", 1)[-1], ()) if quote != "`" else ()
+            for rel in hits:
+                if rel not in found and importer != rel:
                     found[rel] = importer
     return found
+
+
+def allowlist_import_violations(allowlist: dict, repo_root: Path) -> dict:
+    """{allowlisted path: first non-test file that quotes it}. An allowlisted file that
+    non-test code names is bundled, so its absence from a deploy would be real drift and the
+    entry is wrong. This is a tripwire on the list, not a recogniser: the excuse itself is
+    still the exact path. It resolves every quoted relative specifier (`./x`, `../y/x.ts`,
+    extensionless, directory index) against the importing file, and flags a non-relative
+    quoted string (an alias) whose last segment is the file's exact name. Computed paths
+    cannot be resolved and are not seen, which is why adding to the list is a reviewed act."""
+    return _import_violations(allowlist, repo_root) if allowlist else {}
+
+
+def test_file_import_violations(repo_root: Path) -> dict:
+    """{`*.test.*` path: first non-test file that quotes it}. The name excuse applies only to
+    a `*.test.*` file that no non-test code imports; one that is quoted is not excused and the
+    run exits 2, exactly as for a listed file. Same resolver, same limits (a computed path is
+    not seen)."""
+    root = Path(repo_root)
+    functions = root / FUNCTIONS_DIR
+    if not functions.is_dir():
+        return {}
+    tests = [
+        p.relative_to(root).as_posix()
+        for p in sorted(functions.rglob("*"))
+        if p.is_file() and not p.is_symlink() and is_test_path(p.name)
+    ]
+    return _import_violations(tests, repo_root)
 
 
 def sha256_file(path: Path) -> str:
@@ -297,7 +333,7 @@ def hash_tree(root: Path) -> dict:
     return out
 
 
-def compare_function(slug: str, repo_dir: Path, deployed_dir: Path, out_of_tree: dict = None, allowlist: dict = None) -> dict:
+def compare_function(slug: str, repo_dir: Path, deployed_dir: Path, out_of_tree: dict = None, allowlist: dict = None, test_violations=None) -> dict:
     """Compare one function's deployed tree against its repo tree.
 
     Returns a row: {slug, verdict, files: [{path, status, repo_sha, deployed_sha}]}
@@ -312,10 +348,14 @@ def compare_function(slug: str, repo_dir: Path, deployed_dir: Path, out_of_tree:
     `allowlist` is {exact repo-root-relative path: reason}. It only ever excuses a file that
     exists in the repo and is absent from the deploy; a listed file that is deployed and
     differs is still `differs`.
+
+    `test_violations` is a set of repo paths of `*.test.*` files that non-test code quotes
+    (test_file_import_violations); the name excuse is withdrawn for them.
     """
     repo_hashes = hash_tree(repo_dir)
     deployed_hashes = hash_tree(deployed_dir)
     allowlist = allowlist or {}
+    test_violations = set(test_violations or ())
 
     files = []
     for rel in sorted(set(repo_hashes) | set(deployed_hashes)):
@@ -326,7 +366,7 @@ def compare_function(slug: str, repo_dir: Path, deployed_dir: Path, out_of_tree:
             status = "missing_in_repo"
         elif deployed_sha is None:
             repo_path = f"{FUNCTIONS_DIR}/{slug}/{rel}"
-            if is_test_path(rel):
+            if is_test_path(rel) and repo_path not in test_violations:
                 status = "test_not_bundled"
             elif repo_path in allowlist:
                 status = "allowlisted_not_bundled"
@@ -398,7 +438,8 @@ def build_report(
     `allowlist` is {exact repo path: reason} (see load_allowlist). The report lists every file
     it actually excused under "excused", every entry that names no file in the repo under
     "allowlist_stale", and every entry that non-test code quotes under
-    "allowlist_violations"; a violating entry is NOT applied.
+    "allowlist_violations"; a violating entry is NOT applied. A `*.test.*` file that non-test
+    code quotes is not excused by its name either: it is listed under "test_name_violations".
     """
     if repo_slugs is None:
         repo_slugs = discover_repo_slugs(repo_functions_dir)
@@ -406,7 +447,14 @@ def build_report(
     allowlist = dict(allowlist or {})
 
     scan_root = repo_root if repo_root is not None else repo_functions_dir.parent.parent
-    violations = allowlist_import_violations(allowlist, scan_root) if allowlist else {}
+    tests_on_disk = [
+        p.relative_to(scan_root).as_posix()
+        for p in sorted((scan_root / FUNCTIONS_DIR).rglob("*"))
+        if p.is_file() and not p.is_symlink() and is_test_path(p.name)
+    ] if (scan_root / FUNCTIONS_DIR).is_dir() else []
+    quoted = _import_violations(list(allowlist) + [t for t in tests_on_disk if t not in allowlist], scan_root)
+    violations = {k: v for k, v in quoted.items() if k in allowlist}
+    test_violations = {k: v for k, v in quoted.items() if k not in allowlist}
     effective = {k: v for k, v in allowlist.items() if k not in violations}
     stale = sorted(k for k in allowlist if not (scan_root / k).is_file())
 
@@ -425,6 +473,7 @@ def build_report(
                 deployed_root / slug,
                 out_of_tree=oot,
                 allowlist=effective,
+                test_violations=set(test_violations),
             )
         )
 
@@ -453,6 +502,7 @@ def build_report(
         "excused": excused,
         "allowlist_stale": stale,
         "allowlist_violations": violations,
+        "test_name_violations": test_violations,
     }
 
 
@@ -479,8 +529,8 @@ def report_exit_code(report: dict, allow_undeployed: bool = False) -> int:
     verdicts = {row["verdict"] for row in report["functions"]}
     if verdicts & UNMEASURED_VERDICTS:
         return 2
-    if report.get("allowlist_violations"):
-        return 2  # the allowlist itself is wrong; nothing it excused can be trusted
+    if report.get("allowlist_violations") or report.get("test_name_violations"):
+        return 2  # the allowlist (or a name excuse) is wrong; nothing it excused can be trusted
     if report["deployed_count"] == 0:
         return 2
     failing = set(FAILING_VERDICTS)
@@ -530,6 +580,16 @@ def render_markdown(report: dict) -> str:
             "",
         ]
 
+    test_viol = report.get("test_name_violations") or {}
+    if test_viol:
+        lines += [
+            f"> **TEST-NAMED FILE IS IMPORTED (exit 2): {len(test_viol)} `*.test.*` file(s) are named by non-test code.** "
+            "Such a file is not excused by its name; if the deploy lacks it that is real drift. Rename the file "
+            "or stop importing it: "
+            + ", ".join(f"`{k}` (named in `{v}`)" for k, v in sorted(test_viol.items())),
+            "",
+        ]
+
     # Always printed, even when every function is IDENTICAL: an excuse nobody can see is how a
     # wrong one survives. Anything NOT listed here that is missing from a deploy is DRIFTED.
     excused = report.get("excused") or []
@@ -537,7 +597,7 @@ def render_markdown(report: dict) -> str:
         f"## Files excused by the allowlist ({len(excused)})",
         "",
         f"Exact repo paths in `scripts/{ALLOWLIST_FILENAME}` that are absent from the deployed bundle. "
-        "No other file is excused (test files named `*.test.*` aside).",
+        "No other file is excused, except a `*.test.*` file that no non-test code quotes.",
         "",
     ]
     lines += [f"- `{e['path']}` ({e['slug']}): {e['reason']}" for e in excused] or ["- none"]
@@ -971,6 +1031,12 @@ def main() -> int:
                     f"COULD NOT MEASURE: {len(failed_fetches)} function(s) failed to download through the "
                     f"CLI and the Management API: {', '.join(failed_fetches)}\n"
                     "This is NOT a drift finding, and the run stays red on purpose.",
+                    file=sys.stderr,
+                )
+            if report.get("test_name_violations"):
+                print(
+                    "COULD NOT TRUST THE TEST-NAME EXCUSE: " + ", ".join(sorted(report["test_name_violations"]))
+                    + " are `*.test.*` files named by non-test code.",
                     file=sys.stderr,
                 )
             if report.get("allowlist_violations"):
