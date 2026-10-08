@@ -4,7 +4,7 @@
 
 Some files here are read by other code and must not be moved without updating the reader: `supabase/functions/docusign-webhook/price-verify.test.ts` reads `gh1314_persist_signed_price.sql` (a Deno test on CI, read allowlist in `.github/workflows/e2e-tests.yml`), and `sql/schema-pending.json` names the same file as the migration that closes five pending `claims` columns.
 
-## Status of the 44 files (17 sets), as of 2026-09-30 (rows gh1314, gh1961 and gh2154 re-measured 2026-10-05T20:57Z, gh-1438 part 4; rows gh2519 and gh2564 added 2026-10-08T00:01:23Z)
+## Status of the 44 files (18 sets), as of 2026-09-30 (rows gh1314, gh1961 and gh2154 re-measured 2026-10-05T20:57Z, gh-1438 part 4; rows gh2519 and gh2564 added 2026-10-08T00:01:23Z)
 
 Statuses come from measurements recorded on issue #1438 and on PR #2237; this session had no database access and ran no query. "Ledger snapshot" is the 199-row `schema_migrations` list checked in at `supabase/migrations-reconciliation-baseline.json` (queried 2026-09-29T20:55Z, comments 5902170993 and 5902404090). "Compare" is a comment/blank-line/`BEGIN`/`COMMIT`/whitespace-normalised text compare run in this session, not a database check.
 
