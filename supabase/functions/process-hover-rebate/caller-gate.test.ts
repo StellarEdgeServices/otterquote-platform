@@ -124,7 +124,7 @@ Deno.test("index.ts wiring: serviceGate precedes makeClient(...) and every .from
 // The five copies of caller-gate.ts must stay byte-identical (one source of truth).
 Deno.test("caller-gate.ts copies are byte-identical across the gated functions", async () => {
   const mine = await Deno.readTextFile(new URL("./caller-gate.ts", import.meta.url));
-  for (const fn of ["check-siding-design-completion", "notify-feature-request", "notify-contractors", "check-rate-limits"]) {
+  for (const fn of ["check-siding-design-completion", "notify-feature-request", "notify-contractors"]) {
     const other = await Deno.readTextFile(new URL(`../${fn}/caller-gate.ts`, import.meta.url));
     assertEquals(other, mine, `${fn}/caller-gate.ts drifted from process-hover-rebate/caller-gate.ts`);
   }

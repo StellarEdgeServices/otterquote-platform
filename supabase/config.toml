@@ -285,11 +285,6 @@ verify_jwt = false
 [functions.admin-contractor-action]
 verify_jwt = false
 
-[functions.check-rate-limits]
-# gh-2462: service bearer required in-handler (no caller in the repo or in production cron per
-# CTO 5965391365); 401 before any DB read or Mailgun call. verify_jwt stays false (gh-2309).
-verify_jwt = false
-
 [functions.check-siding-design-completion]
 # gh-2462: service bearer required in-handler (cron job 6 vault key, hover-webhook runtime key);
 # 401 with zero I/O otherwise. verify_jwt stays false: the vault key is not a JWT (gh-2309).

@@ -109,8 +109,9 @@ function AutoBidsForm({ contractor }: { contractor: ContractorRecord }) {
     setSaveState('saving');
     try {
       const payload = buildAutoBidPayload(form);
-      const { error } = await supabase.from('contractors').update(payload).eq('id', contractor.id);
+      const { data: upRows, error } = await supabase.from('contractors').update(payload).eq('id', contractor.id).select('id');
       if (error) throw error;
+      if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: contractors (auto-bid settings)');
       if (typeof window !== 'undefined' && typeof (window as unknown as { gtag?: unknown }).gtag === 'function') {
         (window as unknown as { gtag: (...a: unknown[]) => void }).gtag('event', 'auto_bid_settings_saved', {
           contractor_id: contractor.id, auto_bid_enabled: payload.auto_bid_enabled,

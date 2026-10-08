@@ -2103,12 +2103,14 @@
         const payload = buildPayload();
 
         // 1. Save project_confirmation JSONB to claims table
-        const { error: saveError } = await sb
+        const { data: upRows, error: saveError } = await sb
           .from('claims')
           .update({ project_confirmation: payload })
-          .eq('id', state.claimId);
+          .eq('id', state.claimId)
+          .select('id');
 
         if (saveError) throw new Error('Failed to save project confirmation: ' + saveError.message);
+        if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('Failed to save project confirmation: update_zero_rows');
 
         // 2. Create DocuSign envelope (non-fatal)
         submitBtn.textContent = 'Sending for signature...';
@@ -2140,7 +2142,8 @@
         console.error('[Otter Quotes] Project confirmation submit error:', err);
         submitBtn.disabled = false;
         submitBtn.textContent = 'Submit Project Confirmation →';
-        alert('There was an error submitting your confirmation: ' + err.message + '\n\nPlease try again or contact support.');
+        if (typeof Sentry !== 'undefined' && Sentry.captureException) Sentry.captureException(err);
+        alert('There was an error submitting your confirmation.\n\nPlease try again or contact support.');
       }
     }
 
