@@ -101,6 +101,10 @@ on:
       - 'partner-profile.html'
       - 'tests/gh2155-hi05b-inspector-crawler.mjs'
       - 'tests/gh2225-handout-pii-gate.mjs'
+      - 'home-next.html'
+      - 'css/home-reskin.css'
+      - 'js/home-reskin.js'
+      - 'tests/gh2598-home-next-staging.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
     branches: [main]
@@ -195,6 +199,10 @@ on:
       - 'partner-profile.html'
       - 'tests/gh2155-hi05b-inspector-crawler.mjs'
       - 'tests/gh2225-handout-pii-gate.mjs'
+      - 'home-next.html'
+      - 'css/home-reskin.css'
+      - 'js/home-reskin.js'
+      - 'tests/gh2598-home-next-staging.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
 permissions:
@@ -281,6 +289,8 @@ jobs:
         run: node tests/gh2155-hi05b-inspector-crawler.mjs
       - name: Handout PII/pixel gate -- code-only query string, validated code, no pixel, no Indiana claim, no paraphrased fee bullet, negative controls (gh2225)
         run: node tests/gh2225-handout-pii-gate.mjs
+      - name: /home-next staging page -- no ZIP in any URL, analytics only through the two gates, noindex, no canonical to /, unlinked, not in sitemap/llms, negative controls (gh2598-home-next-staging)
+        run: node tests/gh2598-home-next-staging.mjs
       - name: Install Playwright + Chromium from the tests/e2e lockfile (gh-2361 real-browser proof)
         working-directory: tests/e2e
         run: |

@@ -4,6 +4,8 @@
 (function () {
   'use strict';
   var d = document;
+  /* The hidden-until-animated state in the CSS applies only under .hr-js, which this script adds; if the file fails to load the words stay visible. */
+  d.documentElement.classList.add('hr-js');
   var $ = function (s, r) { return (r || d).querySelector(s); };
   var $$ = function (s, r) { return [].slice.call((r || d).querySelectorAll(s)); };
 
@@ -46,15 +48,17 @@
   if (replay) { replay.addEventListener('click', play); }
   play();
 
-  /* ---------- ZIP hand-off to /start (the role screen is skipped for this entry by slice 3) ---------- */
+  /* ---------- ZIP hand-off to /start (the /start slice, slice 6 in the #2598 decomposition, reads this entry and skips the role screen) ----------
+     The ZIP never goes in a URL: /start loads the Meta pixel, GA4 and Clarity, which record the page URL. It travels in sessionStorage under
+     ZIP_KEY. /start does not read ZIP_KEY yet; slice 6 reads it, prefills the field and removes the key. No analytics event carries the ZIP. */
+  var ZIP_KEY = 'oq_home_zip';
   var ATTR = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
-  function startUrl(zip) {
+  function startUrl() {
     var qs = [];
     try {
       var p = new URLSearchParams(window.location.search);
       ATTR.forEach(function (k) { var v = p.get(k); if (v) { qs.push(k + '=' + encodeURIComponent(v)); } });
     } catch (e) {}
-    if (/^\d{5}$/.test(zip)) { qs.push('zip=' + zip); }
     qs.push('entry=home');
     return '/start.html?' + qs.join('&');
   }
@@ -69,13 +73,28 @@
     });
     zip.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go('hero'); } });
   }
+  function stashZip() {
+    var v = zipValue();
+    try {
+      if (/^\d{5}$/.test(v)) { window.sessionStorage.setItem(ZIP_KEY, v); } else { window.sessionStorage.removeItem(ZIP_KEY); }
+    } catch (e) {}   /* storage blocked: navigate anyway, the ZIP is simply not carried */
+  }
   function go(loc) {
     track('hero_cta_click', { cta_location: loc, zip_present: /^\d{5}$/.test(zipValue()) ? 'yes' : 'no' });
-    window.location.href = startUrl(zipValue());
+    stashZip();
+    window.location.href = startUrl();
   }
   $$('[data-hr-go]').forEach(function (a) {
-    a.addEventListener('click', function (e) { e.preventDefault(); go(a.getAttribute('data-hr-go')); });
-    a.setAttribute('href', startUrl(''));   /* no-JS / crawler fallback is the plain /start entry */
+    a.addEventListener('click', function (e) {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (typeof e.button === 'number' && e.button !== 0)) {
+        /* modified click: let the browser open the link in a new tab/window; still record the event and hand the ZIP over (best effort) */
+        track('hero_cta_click', { cta_location: a.getAttribute('data-hr-go'), zip_present: /^\d{5}$/.test(zipValue()) ? 'yes' : 'no' });
+        stashZip();
+        return;
+      }
+      e.preventDefault(); go(a.getAttribute('data-hr-go'));
+    });
+    a.setAttribute('href', startUrl());   /* no-JS / crawler fallback is the plain /start entry */
   });
   $$('a[data-hr-phone]').forEach(function (a) {
     a.addEventListener('click', function () { track('phone_click', { cta_location: a.getAttribute('data-hr-phone') }); });

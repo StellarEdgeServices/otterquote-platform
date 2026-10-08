@@ -1,6 +1,7 @@
 /* gh-2598 slice 1: approved homepage reskin (design approved 2026-10-07, D-377). Tokens, header, hero, sample comparison card, phone sticky bar.
    Source of truth: Marketing/site-reskin-2026-10/ (README.md + Recommended-*.dc.html). Self-contained on purpose (like css/ho6.css):
-   does not load design-system.css or nav.css, so nothing here can leak into other pages. All selectors are prefixed hr-. */
+   does not load design-system.css or nav.css, so nothing here can leak into other pages. Every class selector is prefixed hr-; the file also sets
+   tokens on :root, box-sizing on * and text-size-adjust on html, so it must not be loaded next to another page's stylesheet without checking those three. */
 :root {
   --hr-navy: #0D1B2E; --hr-navy-foot: #0A1524; --hr-line-navy: #2A3C54;
   --hr-on-navy: #FFFFFF; --hr-on-navy-2: #C7D2DE;
@@ -14,7 +15,9 @@
 html { -webkit-text-size-adjust: 100%; }
 body.hr { margin: 0; font-family: var(--hr-font); color: var(--hr-ink); background: var(--hr-white); line-height: 1.5; }
 .hr a { color: var(--hr-navy); }
-.hr a:hover { color: var(--hr-amber-dark); }
+/* No blanket link hover colour: amber-dark on navy is 3.45:1 (below 4.5:1). Links on navy keep their colour and get an underline or a tint instead. */
+.hr .hr-phone:hover, .hr .hr-foot a:hover, .hr .hr-brand:hover .hr-brand-name { text-decoration: underline; }
+.hr .hr-btn-outline:hover { background: rgba(255, 255, 255, .14); }
 .hr-wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
 .hr-lab { font-size: 15px; font-weight: 600; color: var(--hr-on-navy); }
 
@@ -43,7 +46,8 @@ body.hr { margin: 0; font-family: var(--hr-font); color: var(--hr-ink); backgrou
 .hr-zipbox { display: flex; flex-direction: column; gap: 8px; }
 .hr-zip-row { display: flex; flex-wrap: wrap; gap: 12px; }
 .hr-zip { width: 170px; height: 58px; padding: 0 16px; font: inherit; font-size: 20px; color: var(--hr-ink); background: var(--hr-white); border: 2px solid var(--hr-white); border-radius: 6px; }
-.hr-zip:focus-visible, .hr a:focus-visible, .hr button:focus-visible { outline: 3px solid var(--hr-hot); outline-offset: 2px; }
+/* One focus ring for every surface: --hr-amber-dark is 5.02:1 on white and 3.45:1 on navy #0D1B2E (WCAG 1.4.11 asks 3:1). The old pale ring was 1.42:1 on white. */
+.hr-zip:focus-visible, .hr a:focus-visible, .hr button:focus-visible { outline: 3px solid var(--hr-amber-dark); outline-offset: 2px; }
 .hr .hr-go { display: flex; align-items: center; justify-content: center; height: 58px; background: var(--hr-amber); color: var(--hr-navy); font-weight: 800; font-size: 19px; padding: 0 30px; border-radius: 6px; text-decoration: none; }
 .hr .hr-go:hover { color: var(--hr-navy); filter: brightness(1.06); }
 .hr-reassure { font-size: 16px; color: var(--hr-on-navy-2); }
@@ -66,6 +70,7 @@ body.hr { margin: 0; font-family: var(--hr-font); color: var(--hr-ink); backgrou
 .hr-row.hr-plain [role="rowheader"] { font-weight: 600; color: var(--hr-slate); }
 .hr-row.hr-settled { background: var(--hr-settled); }
 .hr-row.hr-hot { background: var(--hr-hot); }
+.hr-short { display: none; }
 .hr-bar { height: 10px; border-radius: 5px; background: #8FA1B5; }
 .hr-plain .hr-bar { background: #C9D3DC; }
 .hr-explain { margin: 0; min-height: 44px; font-size: 15px; line-height: 1.45; color: var(--hr-slate); }
@@ -74,13 +79,15 @@ body.hr { margin: 0; font-family: var(--hr-font); color: var(--hr-ink); backgrou
 .hr-foot { background: var(--hr-navy-foot); border-top: 1px solid var(--hr-line-navy); color: var(--hr-on-navy-2); font-size: 15px; }
 .hr-foot .hr-wrap { padding-top: 24px; padding-bottom: 24px; display: flex; flex-wrap: wrap; gap: 8px 22px; }
 .hr .hr-foot a { color: var(--hr-on-navy); display: inline-flex; align-items: center; min-height: 48px; }
-@media (max-width: 767px) { .hr-foot .hr-wrap { padding-left: 16px; padding-right: 16px; } body.hr { padding-bottom: 64px; } }
+/* phones: the extra bottom padding sits inside the navy footer (room for the sticky bar), not on the white body */
+@media (max-width: 767px) { .hr-foot .hr-wrap { padding-left: 16px; padding-right: 16px; padding-bottom: 88px; } }
 
 /* phone sticky bar: appears once the hero button has scrolled out of view */
 .hr-sticky { display: none; }
 
 @media (max-width: 767px) {
   .hr-nav, .hr-phone-long, .hr-brand-tag, .hr-full { display: none; }
+  .hr-short { display: inline; }
   .hr-call-short { display: inline; }
   .hr-header .hr-wrap { padding: 8px 16px; flex-wrap: nowrap; gap: 12px; }
   .hr-brand { gap: 10px; }
