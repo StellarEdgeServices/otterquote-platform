@@ -205,13 +205,11 @@ function ManualMappingModal({ row, onClose, onResolved }: {
     }
     try {
       if (missingFields.length > 0) {
-        const { data: upRows, error: persistErr } = await supabase
+        const { error: persistErr } = await supabase
           .from('contractor_templates')
           .update({ manual_overrides: { ...overrides, _missing_fields: missingFields }, status: 'submitted_for_admin_review' })
-          .eq('id', row.id!)
-          .select('id');
+          .eq('id', row.id!);
         if (persistErr) throw persistErr;
-        if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: contractor_templates (admin review submit)');
         const { data: refreshed } = await supabase.from('contractor_templates').select('*').eq('id', row.id!).single();
         alert('Submitted for admin review. We will notify you once a member of the Otter Quotes team has looked at your template.');
         onResolved((refreshed as D199Row) ?? row);

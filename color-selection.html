@@ -649,7 +649,7 @@
             .from('claims')
             .select(`
               id,
-              homeowner_id,
+              user_id,
               selected_contractor_id,
               property_address,
               contractor:contractors(id, name, preferred_brand, phone, notification_phones, email),
@@ -658,7 +658,7 @@
               color_selected_at
             `)
             .eq('id', this.claimId)
-            .eq('homeowner_id', this.userId)
+            .eq('user_id', this.userId)
             .single();
 
           if (error) throw error;
@@ -1093,7 +1093,7 @@
               color_selected_at: new Date().toISOString()
             })
             .eq('id', this.claimId)
-            .eq('homeowner_id', this.userId)
+            .eq('user_id', this.userId)
             .select('id');
 
           if (error) throw error;

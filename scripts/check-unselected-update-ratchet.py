@@ -134,7 +134,7 @@ BASELINE: dict[str, int] = {
     "react-app/app/contractor/pre-approval/page.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/profile/ContractTemplates.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/profile/PcTemplates.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
-    "react-app/app/contractor/profile/d199-validation.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
+    "react-app/app/contractor/profile/d199-validation.tsx": 1,  # gh-2105: class (c) OPEN, server-side. status is rewritten to pending_validation by trigger contractor_templates_freeze_verdict, so a returned row does not prove the write persisted (same class as contractor-settings payment methods, 5964087934)
     "react-app/app/contractor/settings/StripePaymentMethods.tsx": 1,
     "react-app/app/contractor/settings/page.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/settings/utils.ts": 1,
