@@ -12,12 +12,20 @@
 -- The rule. For client callers (anon / authenticated, not service_role, not an admin), on a bid whose status
 -- is selected before or after the write, a change to any of these is refused 42501:
 --   total_price, fee_amount, fee_percentage, platform_fee_pct, platform_fee_basis, card_fee_cents,
---   decking_price_per_sheet, full_redeck_price, per_trade_breakdown.
--- The column list is the builder's proposal (D-369 left "which columns and statuses" open): the eight price
--- and fee columns named in ruling 6048924192 plus per_trade_breakdown, which holds the per-trade prices of a
--- multi-trade bid. Everything else the contractor's form sends (notes, scope, warranty, value adds) and both
--- signature stamps stay writable. A value re-sent unchanged is not a change, so "Update Bid" with the same
--- numbers still saves.
+--   decking_price_per_sheet, full_redeck_price, per_trade_breakdown,
+--   and, D-381 (extends D-369; Dustin 2026-10-08 "Freeze terms too (Recommended)"): trade_type, value_adds,
+--   workmanship_warranty_years, warranty_option_id, warranty_snapshot, scope_summary.
+-- The price and fee column list is the builder's proposal (D-369 left "which columns and statuses" open): the
+-- eight price and fee columns named in ruling 6048924192 plus per_trade_breakdown, which holds the per-trade
+-- prices of a multi-trade bid. The terms list is D-381's "trade, warranty and value-adds" translated to
+-- columns, plus two the CTO added and states in the PR body: warranty_snapshot (the stored text of the
+-- warranty option; leaving it free would let the warranty change under a locked warranty_option_id) and
+-- scope_summary (bids.html reads start date, completion time, brand and declarations out of it for the bid
+-- card the homeowner selects on, and create-docusign-envelope copies brand and start date from it into the
+-- contract, so it is what the homeowner selected on; D-381 left scope undecided, CEO 6050257042 asked the
+-- CTO to lock it only if so). Each is one line to remove. notes stays writable, as does auto_renew,
+-- supplement_acknowledged, fee_accepted_at and both signature stamps. A value re-sent unchanged is not a
+-- change, so "Update Bid" with the same numbers and terms still saves.
 -- The bid's own contractor's fee fields on a selected bid are pinned to their stored values, fee_amount
 -- included, before the check (the gh-2519 server-set step would otherwise recompute fee_amount).
 -- Who can still change a selected bid's price and fee: service_role (every Edge Function, including
@@ -199,8 +207,8 @@ BEGIN
         USING ERRCODE = '42501';
     END IF;
 
-    -- gh-2564 (D-369, Dustin 2026-10-06: "Lock (Recommended)"): once the homeowner has selected a bid, its
-    -- price and fee are frozen for every browser caller. A contractor who needs a different number rescinds
+    -- gh-2564 (D-369, Dustin 2026-10-06: "Lock (Recommended)"; D-381, Dustin 2026-10-08: "Freeze terms too
+    -- (Recommended)"): once the homeowner has selected a bid, its price, fee and terms are frozen for every browser caller. A contractor who needs a different number rescinds
     -- and re-bids. service_role (every Edge Function, the contract-price check in docusign-webhook included),
     -- admins and owner-level SECURITY DEFINER functions never reach this branch.
     IF (COALESCE(OLD.status IN ('selected', 'awarded'), false)
@@ -214,9 +222,16 @@ BEGIN
              OR (NEW.card_fee_cents IS DISTINCT FROM OLD.card_fee_cents)
              OR (NEW.decking_price_per_sheet IS DISTINCT FROM OLD.decking_price_per_sheet)
              OR (NEW.full_redeck_price IS DISTINCT FROM OLD.full_redeck_price)
-             OR (NEW.per_trade_breakdown IS DISTINCT FROM OLD.per_trade_breakdown),
+             OR (NEW.per_trade_breakdown IS DISTINCT FROM OLD.per_trade_breakdown)
+             -- gh-2564 / D-381: the terms the price buys
+             OR (NEW.trade_type IS DISTINCT FROM OLD.trade_type)
+             OR (NEW.value_adds IS DISTINCT FROM OLD.value_adds)
+             OR (NEW.workmanship_warranty_years IS DISTINCT FROM OLD.workmanship_warranty_years)
+             OR (NEW.warranty_option_id IS DISTINCT FROM OLD.warranty_option_id)
+             OR (NEW.warranty_snapshot IS DISTINCT FROM OLD.warranty_snapshot)
+             OR (NEW.scope_summary IS DISTINCT FROM OLD.scope_summary),
              true) THEN
-      RAISE EXCEPTION 'quotes: the price and fee of a selected bid are locked; to change them, rescind the bid and submit a new one (gh-2564)'
+      RAISE EXCEPTION 'quotes: the price, fee and terms of a selected bid are locked; to change them, rescind the bid and submit a new one (gh-2564)'
         USING ERRCODE = '42501';
     END IF;
 
@@ -252,6 +267,6 @@ END;
 $guard$;
 
 COMMENT ON FUNCTION public.quotes_guard_homeowner_columns() IS
-  'gh-2479 / gh-2519 / gh-2564: BEFORE INSERT OR UPDATE guard on public.quotes. Client roles (anon, authenticated) that are not admins: on INSERT can create only their own bid (contractor_id is a contractor row of the caller) born status submitted, bid_status active, not an auto-bid, not a renewal, with no signing, payment, test, envelope, cancellation, expiry or warranty-upload state, and the server sets platform_fee_pct, fee_percentage, platform_fee_basis and fee_amount from quotes_platform_fee_for() whatever the browser sent; on UPDATE cannot change claim_id or contractor_id, can change total_price only as the quote''s own contractor (whose three rate fields then keep their stored values and whose fee_amount is recomputed from total_price), cannot change the fee columns as anyone else, can change status only as the claim owner, only to selected or declined, and to selected only when no other bid on the claim is selected, and can change no column outside the caller''s allow-list (owner: status, homeowner_signed_at; contractor: the bid-form columns and contractor_signed_at). gh-2564 (D-369): on a selected bid no client caller can change total_price, fee_amount, fee_percentage, platform_fee_pct, platform_fee_basis, card_fee_cents, decking_price_per_sheet, full_redeck_price or per_trade_breakdown. Rejected 42501; an unchanged value is not a change. service_role, admins and owner-level (SECURITY DEFINER) sessions such as accept_bid() are untouched.';
+  'gh-2479 / gh-2519 / gh-2564: BEFORE INSERT OR UPDATE guard on public.quotes. Client roles (anon, authenticated) that are not admins: on INSERT can create only their own bid (contractor_id is a contractor row of the caller) born status submitted, bid_status active, not an auto-bid, not a renewal, with no signing, payment, test, envelope, cancellation, expiry or warranty-upload state, and the server sets platform_fee_pct, fee_percentage, platform_fee_basis and fee_amount from quotes_platform_fee_for() whatever the browser sent; on UPDATE cannot change claim_id or contractor_id, can change total_price only as the quote''s own contractor (whose three rate fields then keep their stored values and whose fee_amount is recomputed from total_price), cannot change the fee columns as anyone else, can change status only as the claim owner, only to selected or declined, and to selected only when no other bid on the claim is selected, and can change no column outside the caller''s allow-list (owner: status, homeowner_signed_at; contractor: the bid-form columns and contractor_signed_at). gh-2564 (D-369): on a selected bid no client caller can change total_price, fee_amount, fee_percentage, platform_fee_pct, platform_fee_basis, card_fee_cents, decking_price_per_sheet, full_redeck_price, per_trade_breakdown, or (D-381) trade_type, value_adds, workmanship_warranty_years, warranty_option_id, warranty_snapshot or scope_summary. Rejected 42501; an unchanged value is not a change. service_role, admins and owner-level (SECURITY DEFINER) sessions such as accept_bid() are untouched.';
 
 COMMIT;

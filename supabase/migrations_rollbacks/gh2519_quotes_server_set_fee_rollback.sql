@@ -4,7 +4,7 @@
 -- bid can again be set to selected, and the referral commission again reads the newest selected bid.
 -- Run gh2564_quotes_selected_price_lock_rollback.sql FIRST if gh2564_quotes_selected_price_lock.sql was applied (it re-creates this guard).
 -- It restores quotes_guard_homeowner_columns() to the body of 20261006170000_gh2519_quotes_fee_columns_guard.sql
--- (prosrc md5 f6102d1c…) and apply_referral_commission() to the body of
+-- (prosrc md5 f6102d1c…) and accept_bid() to the live body (prosrc md5 07ae60dd…) and apply_referral_commission() to the body of
 -- 20261005151842_gh2479_referral_guard_and_commission_checks.sql (prosrc md5 5cd19c8b…), byte for byte, with
 -- their comments, and drops the one function the migration added. The trigger is untouched. No data is lost:
 -- the migration changed no table. Fee values the server wrote while it was live stay as stored.
@@ -351,6 +351,61 @@ $function$;
 
 COMMENT ON FUNCTION public.apply_referral_commission() IS
   'Trigger function attached to claims AFTER UPDATE OF completion_date (after_claim_completed). On completion with a selected/awarded quote >= $10,000, inserts a pending_approval payout_approvals row for $200 to the referrer and, when forward-only recruit criteria pass, $50 to the recruiter. D-333 (gh-2155): a home_inspector referrer accrues NO referral fee and triggers no send-partner-status-email; a home_inspector recruiter accrues NO recruit bonus (the referrer''s own type does not gate the recruit bonus). Idempotent via commission_amount > 0 (referral fee) and recruit_commission_amount > 0 (recruit bonus), independently. SECURITY DEFINER; all commission-side errors are swallowed and logged.';
+
+-- accept_bid(): back to the live body (prosrc md5 07ae60dd…), byte for byte.
+CREATE OR REPLACE FUNCTION public.accept_bid(p_claim_id uuid, p_quote_id uuid)
+ RETURNS TABLE(out_claim_id uuid, out_quote_id uuid, out_contractor_id uuid, out_amount numeric, out_declined_count integer)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE v_uid uuid := auth.uid(); v_contractor uuid; v_amount numeric; v_declined integer; v_has_pm boolean;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'accept_bid: no authenticated user' USING ERRCODE='28000';
+  END IF;
+
+  -- Ownership check + row lock: only the claim's own homeowner may accept a bid on it,
+  -- and FOR UPDATE OF q takes the lock in the same statement that authorizes the caller,
+  -- so two simultaneous accepts on one claim serialize instead of racing.
+  SELECT q.contractor_id, q.total_price INTO v_contractor, v_amount
+    FROM quotes q JOIN claims c ON c.id = q.claim_id
+   WHERE q.id = p_quote_id AND q.claim_id = p_claim_id AND c.user_id = v_uid
+   FOR UPDATE OF q;
+
+  IF v_contractor IS NULL THEN
+    RAISE EXCEPTION 'accept_bid: quote % is not a bid on claim % owned by the caller',
+      p_quote_id, p_claim_id USING ERRCODE='42501';
+  END IF;
+
+  -- gh-1532: guard the money path -- a bid cannot be accepted for a contractor
+  -- with no payment method on file. The BEFORE UPDATE trigger above is the
+  -- enforcement point of record (it also covers the React direct-update path
+  -- this RPC's HTML callers do not use); this check exists so bids.html and
+  -- contractor-about.html get the same readable, ERRCODE-matchable refusal
+  -- before the UPDATE below rather than depending on how the trigger's
+  -- exception text surfaces back through this SECURITY DEFINER call.
+  SELECT has_payment_method INTO v_has_pm FROM contractors WHERE id = v_contractor;
+  IF v_has_pm IS NOT TRUE THEN
+    RAISE EXCEPTION 'contractor_no_payment_method: the selected contractor has not added a payment method, so this bid cannot be accepted yet'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  UPDATE claims SET selected_contractor_id = v_contractor,
+                    selected_bid_amount    = v_amount,
+                    status                 = 'awarded',
+                    updated_at             = now()
+   WHERE id = p_claim_id AND user_id = v_uid;
+
+  UPDATE quotes SET status = 'selected', updated_at = now() WHERE id = p_quote_id;
+
+  WITH d AS (UPDATE quotes q2 SET status = 'declined', updated_at = now()
+              WHERE q2.claim_id = p_claim_id AND q2.id <> p_quote_id
+                AND q2.status IN ('submitted','draft') RETURNING 1)
+  SELECT count(*)::int INTO v_declined FROM d;
+
+  RETURN QUERY SELECT p_claim_id, p_quote_id, v_contractor, v_amount, v_declined;
+END $function$;
 
 DROP FUNCTION IF EXISTS public.quotes_platform_fee_for(uuid, uuid);
 

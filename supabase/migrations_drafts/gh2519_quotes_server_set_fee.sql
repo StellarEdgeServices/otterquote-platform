@@ -7,8 +7,7 @@
 --
 -- Tier 3B, NOT the R-134 fast path: it rewrites what a live bid path stores (ruling 6049007305).
 -- What changes, for client callers only (current_user anon/authenticated, JWT role not service_role, not an
--- admin). service_role (every Edge Function), admins and owner-level SECURITY DEFINER functions such as
--- accept_bid() are untouched, exactly as today.
+-- admin). service_role (every Edge Function), admins and owner-level SECURITY DEFINER functions are untouched, exactly as today, except accept_bid(), which gains one refusal (item 4).
 --   1. INSERT: platform_fee_pct, fee_percentage and platform_fee_basis are written from the
 --      platform_fee_config row for the bid's contractor and claim, and fee_amount is computed from
 --      total_price. Whatever the browser sent in those four fields is overwritten, not refused, so both live
@@ -22,11 +21,17 @@
 --      warranty-upload columns must be born at their defaults.
 --   4. Residual 4: a client may set a bid to selected only when no other bid on that claim is selected, and
 --      apply_referral_commission() reads the bid of claims.selected_contractor_id, not the newest selected bid.
+--      The same rule holds through rpc accept_bid() (review 6050036561 B1, CEO ruling 6050104316): it is
+--      SECURITY DEFINER, so the guard cannot see the caller, and it now refuses itself (42501) when another bid
+--      on the claim is already selected. switch-contractor is the one re-award path.
 -- NOT here: the price-and-fee lock on a selected bid (D-369). That is gh2564_quotes_selected_price_lock.sql, its own change.
 --
 -- TIER C POINT LEFT OPEN BY THE RULING (which rate a REVISED bid carries if the configured rate changed after
 -- the bid was submitted): the constant c_revised_bid_takes_current_config_rate at the top of the guard
 -- function. false (built) = the stored rate stays; true = the revised bid takes the configured rate. One line.
+-- RULED by the CEO (6050104316): the stored rate stays; the constant stays false (D-214: the displayed fee is
+-- what the contractor accepted). Standing condition: platform_fee_config is not edited until both bid forms read
+-- and display the server's rate.
 --
 -- No fee, rate, basis or price rule is chosen in this file. Every number comes from public.platform_fee_config
 -- (one row on production: fee_pct 5.00, fee_basis bid_amount, effective 2026-05-06).
@@ -34,7 +39,7 @@
 -- One function is ADDED (quotes_platform_fee_for, a read of the fee config; needed because the config table
 -- is readable by admins only and the guard runs as the caller). No trigger is added: the rules live inside
 -- the existing quotes_guard_homeowner_columns(), and every earlier rule is kept verbatim.
--- Idempotent: CREATE OR REPLACE FUNCTION. No table, policy, trigger or data change.
+-- Three functions are replaced (guard, commission, accept_bid). Idempotent: CREATE OR REPLACE FUNCTION. No table, policy, trigger or data change.
 
 BEGIN;
 
@@ -524,5 +529,74 @@ $function$;
 
 COMMENT ON FUNCTION public.apply_referral_commission() IS
   'Trigger function attached to claims AFTER UPDATE OF completion_date (after_claim_completed). On completion, when the selected/awarded quote of the claim''s selected contractor (claims.selected_contractor_id; gh-2519) is >= $10,000, inserts a pending_approval payout_approvals row for $200 to the referrer and, when forward-only recruit criteria pass, $50 to the recruiter. D-333 (gh-2155): a home_inspector referrer accrues NO referral fee and triggers no send-partner-status-email; a home_inspector recruiter accrues NO recruit bonus (the referrer''s own type does not gate the recruit bonus). Idempotent via commission_amount > 0 (referral fee) and recruit_commission_amount > 0 (recruit bonus), independently. SECURITY DEFINER; all commission-side errors are swallowed and logged.';
+
+-- gh-2519, CEO ruling 6050104316 on PR #2612 (review 6050036561 finding B1): accept_bid() is the second award route.
+-- Live body (prosrc md5 07ae60dd…) plus the claim-row lock and ONE refusal, marked gh-2519. Owner, signature, grants and
+-- the rest of the body are unchanged; CREATE OR REPLACE keeps EXECUTE for authenticated.
+CREATE OR REPLACE FUNCTION public.accept_bid(p_claim_id uuid, p_quote_id uuid)
+ RETURNS TABLE(out_claim_id uuid, out_quote_id uuid, out_contractor_id uuid, out_amount numeric, out_declined_count integer)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE v_uid uuid := auth.uid(); v_contractor uuid; v_amount numeric; v_declined integer; v_has_pm boolean;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'accept_bid: no authenticated user' USING ERRCODE='28000';
+  END IF;
+
+  -- Ownership check + row lock: only the claim's own homeowner may accept a bid on it,
+  -- and FOR UPDATE OF q takes the lock in the same statement that authorizes the caller,
+  -- so two simultaneous accepts on one claim serialize instead of racing.
+  SELECT q.contractor_id, q.total_price INTO v_contractor, v_amount
+    FROM quotes q JOIN claims c ON c.id = q.claim_id
+   WHERE q.id = p_quote_id AND q.claim_id = p_claim_id AND c.user_id = v_uid
+   FOR UPDATE OF q;
+
+  IF v_contractor IS NULL THEN
+    RAISE EXCEPTION 'accept_bid: quote % is not a bid on claim % owned by the caller',
+      p_quote_id, p_claim_id USING ERRCODE='42501';
+  END IF;
+
+  -- gh-2519 (CEO ruling 6050104316 on PR #2612): one selected bid per claim holds through this route too.
+  -- This function is SECURITY DEFINER, so quotes_guard_homeowner_columns() does not see the caller as a client
+  -- and cannot refuse here. When another bid on the claim is already selected, refuse; the one re-award path is
+  -- switch-contractor. The claim row is locked first so two simultaneous accepts of different bids serialize.
+  PERFORM 1 FROM claims WHERE id = p_claim_id AND user_id = v_uid FOR UPDATE;
+  IF EXISTS (SELECT 1 FROM quotes q3
+              WHERE q3.claim_id = p_claim_id AND q3.id <> p_quote_id
+                AND q3.status IN ('selected', 'awarded')) THEN
+    RAISE EXCEPTION 'accept_bid: another bid on this claim is already selected; a second bid cannot be selected beside it (gh-2519)'
+      USING ERRCODE='42501';
+  END IF;
+
+  -- gh-1532: guard the money path -- a bid cannot be accepted for a contractor
+  -- with no payment method on file. The BEFORE UPDATE trigger above is the
+  -- enforcement point of record (it also covers the React direct-update path
+  -- this RPC's HTML callers do not use); this check exists so bids.html and
+  -- contractor-about.html get the same readable, ERRCODE-matchable refusal
+  -- before the UPDATE below rather than depending on how the trigger's
+  -- exception text surfaces back through this SECURITY DEFINER call.
+  SELECT has_payment_method INTO v_has_pm FROM contractors WHERE id = v_contractor;
+  IF v_has_pm IS NOT TRUE THEN
+    RAISE EXCEPTION 'contractor_no_payment_method: the selected contractor has not added a payment method, so this bid cannot be accepted yet'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  UPDATE claims SET selected_contractor_id = v_contractor,
+                    selected_bid_amount    = v_amount,
+                    status                 = 'awarded',
+                    updated_at             = now()
+   WHERE id = p_claim_id AND user_id = v_uid;
+
+  UPDATE quotes SET status = 'selected', updated_at = now() WHERE id = p_quote_id;
+
+  WITH d AS (UPDATE quotes q2 SET status = 'declined', updated_at = now()
+              WHERE q2.claim_id = p_claim_id AND q2.id <> p_quote_id
+                AND q2.status IN ('submitted','draft') RETURNING 1)
+  SELECT count(*)::int INTO v_declined FROM d;
+
+  RETURN QUERY SELECT p_claim_id, p_quote_id, v_contractor, v_amount, v_declined;
+END $function$;
 
 COMMIT;

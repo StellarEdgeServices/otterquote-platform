@@ -146,7 +146,7 @@ DECLARE
   before text; v text := '';
 BEGIN
   before := pg_temp.snap();
-  v := v || E'\nGUARDS ' || format('guard_triggers_on_quotes=%s guard_md5=%s commission_md5=%s server_sets_fee=%s second_selected_rule=%s allow_list=%s lock_gh2564=%s helper_quotes_platform_fee_for=%s commission_reads_selected_contractor=%s',
+  v := v || E'\nGUARDS ' || format('guard_triggers_on_quotes=%s guard_md5=%s commission_md5=%s server_sets_fee=%s second_selected_rule=%s allow_list=%s lock_gh2564=%s helper_quotes_platform_fee_for=%s commission_reads_selected_contractor=%s accept_bid_md5=%s accept_bid_refuses_second=%s lock_terms_d381=%s',
     (SELECT count(*) FROM pg_trigger WHERE tgrelid = 'public.quotes'::regclass AND tgname LIKE '%guard%' AND NOT tgisinternal),
     (SELECT left(md5(prosrc), 8) FROM pg_proc WHERE oid = 'public.quotes_guard_homeowner_columns()'::regprocedure),
     (SELECT left(md5(prosrc), 8) FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure),
@@ -155,7 +155,10 @@ BEGIN
     (SELECT prosrc LIKE '%v_allowed%' FROM pg_proc WHERE oid = 'public.quotes_guard_homeowner_columns()'::regprocedure),
     (SELECT prosrc LIKE '%(gh-2564)%' FROM pg_proc WHERE oid = 'public.quotes_guard_homeowner_columns()'::regprocedure),
     (SELECT count(*) FROM pg_proc WHERE proname = 'quotes_platform_fee_for' AND pronamespace = 'public'::regnamespace),
-    (SELECT prosrc LIKE '%contractor_id = NEW.selected_contractor_id%' FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure));
+    (SELECT prosrc LIKE '%contractor_id = NEW.selected_contractor_id%' FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure),
+    (SELECT left(md5(prosrc), 8) FROM pg_proc WHERE oid = 'public.accept_bid(uuid,uuid)'::regprocedure),
+    (SELECT prosrc LIKE '%a second bid cannot be selected beside it%' FROM pg_proc WHERE oid = 'public.accept_bid(uuid,uuid)'::regprocedure),
+    (SELECT prosrc LIKE '%NEW.scope_summary IS DISTINCT FROM OLD.scope_summary%' FROM pg_proc WHERE oid = 'public.quotes_guard_homeowner_columns()'::regprocedure));
   v := v || E'\nCFG   ' || format('platform_fee_config rows=%s | row for (contractor state IN, trade roofing): fee_pct=%s fee_basis=%s | rows a signed-in contractor can read through RLS=%s',
     (SELECT count(*) FROM public.platform_fee_config),
     (SELECT fee_pct FROM public.platform_fee_config WHERE state IS NULL AND trade IS NULL), (SELECT fee_basis FROM public.platform_fee_config WHERE state IS NULL AND trade IS NULL),
@@ -326,6 +329,34 @@ BEGIN
     RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
   EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
 
+  -- ===== X: the second award route, rpc accept_bid() (review 6050036561 B1; CEO ruling 6050104316) =====
+  BEGIN
+    v := v || E'\nX1a before: c2 is awarded to k1 (qw selected at 9000), ql is k2''s declined 12000 bid';
+    v := v || E'\nX1b CONTROL OWNER direct UPDATE ql SET status=selected (the route E4 proves): '
+      || pg_temp.try_as('authenticated', o, format('UPDATE public.quotes SET status=''selected'' WHERE id=%L', ql));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nX1c OWNER rpc accept_bid(c2, ql), the losing $12,000 bid, beside the selected winner qw: '
+      || pg_temp.try_as('authenticated', o, format('SELECT * FROM public.accept_bid(%L, %L)', c2, ql));
+    v := v || format(' -> qw=%s ql=%s | claim.selected_contractor=%s | selected bids on c2=%s', (SELECT status FROM public.quotes WHERE id = qw), (SELECT status FROM public.quotes WHERE id = ql),
+           (SELECT CASE selected_contractor_id WHEN k1 THEN 'k1' WHEN k2 THEN 'k2' ELSE 'other' END FROM public.claims WHERE id = c2),
+           (SELECT count(*) FROM public.quotes WHERE claim_id = c2 AND status = 'selected'));
+    v := v || E'\nX1d  ... then c2 is completed (service side): ' || pg_temp.complete(c2);
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nX2 CONTROL OWNER rpc accept_bid(c2, qw), the bid that is already the selected one (a repeated click): '
+      || pg_temp.try_as('authenticated', o, format('SELECT * FROM public.accept_bid(%L, %L)', c2, qw));
+    v := v || format(' -> qw=%s ql=%s', (SELECT status FROM public.quotes WHERE id = qw), (SELECT status FROM public.quotes WHERE id = ql));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nX3 CONTROL STRANGER rpc accept_bid(c2, ql) on a claim the caller does not own: '
+      || pg_temp.try_as('authenticated', x, format('SELECT * FROM public.accept_bid(%L, %L)', c2, ql));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+
   -- ===== S: the selected bid qs (gh-2564, D-369) =====
   BEGIN
     v := v || E'\nS0 CONTROL contractor k1 UPDATE total_price=15500 on q1, NOT yet selected: ' || pg_temp.try_as('authenticated', k1u, format('UPDATE public.quotes SET total_price=15500 WHERE id=%L', q1)) || pg_temp.st(q1);
@@ -363,9 +394,61 @@ BEGIN
     v := v || E'\nS7 OWNER UPDATE total_price=1 on qs, SELECTED: ' || pg_temp.try_as('authenticated', o, format('UPDATE public.quotes SET total_price=1 WHERE id=%L', qs)) || pg_temp.st(qs);
     RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
   EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  -- ===== T: the terms of a selected bid (D-381, extends D-369: trade, warranty, value-adds, and scope) =====
   BEGIN
-    v := v || E'\nS8 LEGIT CONTRACTOR k1 edits notes and scope only on qs, SELECTED (price and fee re-sent unchanged): '
-      || pg_temp.try_as('authenticated', k1u, format('UPDATE public.quotes SET total_price=15000, fee_percentage=5.0, fee_amount=750, platform_fee_pct=5, platform_fee_basis=''bid_amount'', notes=''start date moved'', scope_summary=''same scope'', updated_at=now() WHERE id=%L', qs));
+    v := v || E'\nT0 CONTROL contractor k1 UPDATE trade_type, value_adds, workmanship_warranty_years, warranty_option_id, warranty_snapshot, scope_summary on q1, NOT yet selected: '
+      || pg_temp.try_as('authenticated', k1u, format('UPDATE public.quotes SET trade_type=''siding'', value_adds=''{"gutters": true}''::jsonb, workmanship_warranty_years=10, warranty_option_id=%L, warranty_snapshot=''ten years'', scope_summary=''new scope'' WHERE id=%L', gen_random_uuid(), q1))
+      || format(' -> trade_type=%s workmanship_warranty_years=%s', (SELECT trade_type FROM public.quotes WHERE id = q1), (SELECT workmanship_warranty_years FROM public.quotes WHERE id = q1));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nT1 CONTRACTOR k1 UPDATE trade_type=siding on qs, SELECTED: ' || pg_temp.try_as('authenticated', k1u, format('UPDATE public.quotes SET trade_type=''siding'' WHERE id=%L', qs))
+      || format(' -> trade_type=%s', (SELECT trade_type FROM public.quotes WHERE id = qs));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nT2 CONTRACTOR k1 UPDATE value_adds on qs, SELECTED: ' || pg_temp.try_as('authenticated', k1u, format('UPDATE public.quotes SET value_adds=''{"gutters": true}''::jsonb WHERE id=%L', qs))
+      || format(' -> value_adds=%s', COALESCE((SELECT value_adds::text FROM public.quotes WHERE id = qs), 'NULL'));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nT3 CONTRACTOR k1 UPDATE workmanship_warranty_years=10 on qs, SELECTED: ' || pg_temp.try_as('authenticated', k1u, format('UPDATE public.quotes SET workmanship_warranty_years=10 WHERE id=%L', qs))
+      || format(' -> workmanship_warranty_years=%s', COALESCE((SELECT workmanship_warranty_years::text FROM public.quotes WHERE id = qs), 'NULL'));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nT4 CONTRACTOR k1 UPDATE warranty_option_id on qs, SELECTED: ' || pg_temp.try_as('authenticated', k1u, format('UPDATE public.quotes SET warranty_option_id=%L WHERE id=%L', gen_random_uuid(), qs))
+      || format(' -> warranty_option_id set=%s', (SELECT warranty_option_id IS NOT NULL FROM public.quotes WHERE id = qs));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nT5 CONTRACTOR k1 UPDATE warranty_snapshot on qs, SELECTED: ' || pg_temp.try_as('authenticated', k1u, format('UPDATE public.quotes SET warranty_snapshot=''lifetime'' WHERE id=%L', qs))
+      || format(' -> warranty_snapshot=%s', COALESCE((SELECT warranty_snapshot FROM public.quotes WHERE id = qs), 'NULL'));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nT6 CONTRACTOR k1 UPDATE scope_summary on qs, SELECTED: ' || pg_temp.try_as('authenticated', k1u, format('UPDATE public.quotes SET scope_summary=''new scope'' WHERE id=%L', qs))
+      || format(' -> scope_summary=%s', COALESCE((SELECT scope_summary FROM public.quotes WHERE id = qs), 'NULL'));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nT7 CONTRACTOR k1 change-bid payload on qs, SELECTED, price and fee re-sent unchanged, one term changed (value_adds): '
+      || pg_temp.try_as('authenticated', k1u, format('UPDATE public.quotes SET total_price=15000, fee_percentage=5.0, fee_amount=750, platform_fee_pct=5, platform_fee_basis=''bid_amount'', fee_accepted_at=now(), notes=''revised'', trade_type=''roofing'', value_adds=''{"gutters": true}''::jsonb, scope_summary=NULL, decking_price_per_sheet=80.00, full_redeck_price=4000.00, per_trade_breakdown=''{"roofing": 15000}''::jsonb, updated_at=now() WHERE id = %L', qs));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nT8 LEGIT service_role UPDATE trade_type=siding, value_adds on qs, SELECTED (a rescind-and-rebid fix, an Edge Function): '
+      || pg_temp.try_as('service_role', NULL, format('UPDATE public.quotes SET trade_type=''siding'', value_adds=''{"gutters": true}''::jsonb WHERE id=%L', qs));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nT9 LEGIT ADMIN UPDATE scope_summary on qs, SELECTED: '
+      || pg_temp.try_as('authenticated', o, format('UPDATE public.quotes SET scope_summary=''admin fix'' WHERE id=%L', qs), 'dustin@otterquote.com');
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nS8 LEGIT CONTRACTOR k1 edits notes only on qs, SELECTED (price and fee re-sent unchanged): '
+      || pg_temp.try_as('authenticated', k1u, format('UPDATE public.quotes SET total_price=15000, fee_percentage=5.0, fee_amount=750, platform_fee_pct=5, platform_fee_basis=''bid_amount'', notes=''start date moved'', updated_at=now() WHERE id=%L', qs));
     v := v || format(' -> notes=%s', (SELECT notes FROM public.quotes WHERE id = qs)) || pg_temp.st(qs);
     v := v || E'\nS9 LEGIT signature stamps on qs, SELECTED (owner, then contractor): ' || pg_temp.try_as('authenticated', o, format('UPDATE public.quotes SET homeowner_signed_at=now() WHERE id=%L', qs))
       || ' / ' || pg_temp.try_as('authenticated', k1u, format('UPDATE public.quotes SET contractor_signed_at=now() WHERE id=%L', qs));
