@@ -2142,7 +2142,8 @@
         console.error('[Otter Quotes] Project confirmation submit error:', err);
         submitBtn.disabled = false;
         submitBtn.textContent = 'Submit Project Confirmation →';
-        alert('There was an error submitting your confirmation: ' + err.message + '\n\nPlease try again or contact support.');
+        if (typeof Sentry !== 'undefined' && Sentry.captureException) Sentry.captureException(err);
+        alert('There was an error submitting your confirmation.\n\nPlease try again or contact support.');
       }
     }
 

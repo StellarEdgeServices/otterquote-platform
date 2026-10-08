@@ -220,7 +220,9 @@ function PageBody({
       await saveColorSelection({ claimId, userId, brand, colorName: name });
     } catch (err) {
       setSaving(false);
-      setSaveError(err instanceof Error ? err.message : 'Error saving color. Please try again.');
+      // Internal error text (e.g. update_zero_rows) is logged, never shown.
+      console.error('[color-selection] save failed:', err);
+      setSaveError('Error saving color. Please try again.');
       return;
     }
 

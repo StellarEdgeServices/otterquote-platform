@@ -1348,7 +1348,8 @@
 
             } catch (err) {
                 console.error('Repair submit error:', err);
-                alert('Something went wrong. Please try again.\n\n' + err.message);
+                if (typeof Sentry !== 'undefined' && Sentry.captureException) Sentry.captureException(err);
+                alert('Something went wrong. Please try again.');
                 btn.disabled = false;
                 btn.textContent = '✓ Submit for Contractor Review';
             }
