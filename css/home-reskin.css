@@ -1,0 +1,108 @@
+/* gh-2598 slice 1: approved homepage reskin (design approved 2026-10-07, D-377). Tokens, header, hero, sample comparison card, phone sticky bar.
+   Source of truth: Marketing/site-reskin-2026-10/ (README.md + Recommended-*.dc.html). Self-contained on purpose (like css/ho6.css):
+   does not load design-system.css or nav.css, so nothing here can leak into other pages. All selectors are prefixed hr-. */
+:root {
+  --hr-navy: #0D1B2E; --hr-navy-foot: #0A1524; --hr-line-navy: #2A3C54;
+  --hr-on-navy: #FFFFFF; --hr-on-navy-2: #C7D2DE;
+  --hr-amber: #F08C00;            /* ONLY the primary "Get my bids" button; never text on white (2.48:1) */
+  --hr-amber-dark: #B45309;       /* small labels and icons on white */
+  --hr-white: #FFFFFF; --hr-tint: #F4F6F9; --hr-border: #DCE2E8; --hr-ink: #14212E; --hr-slate: #3D4F60;
+  --hr-hot: #FBD38D; --hr-settled: #FFF4DC;
+  --hr-font: 'Libre Franklin', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body.hr { margin: 0; font-family: var(--hr-font); color: var(--hr-ink); background: var(--hr-white); line-height: 1.5; }
+.hr a { color: var(--hr-navy); }
+.hr a:hover { color: var(--hr-amber-dark); }
+.hr-wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+.hr-lab { font-size: 15px; font-weight: 600; color: var(--hr-on-navy); }
+
+/* header */
+.hr-header { background: var(--hr-navy); border-bottom: 1px solid var(--hr-line-navy); }
+.hr-header .hr-wrap { padding-top: 14px; padding-bottom: 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+.hr-brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+.hr-brand img { width: 28px; height: 44px; object-fit: contain; }
+.hr-brand-name { font-size: 21px; font-weight: 800; color: var(--hr-on-navy); line-height: 1.1; }
+.hr-brand-tag { font-size: 12px; font-weight: 600; color: var(--hr-on-navy-2); letter-spacing: .02em; margin-top: 2px; }
+.hr-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 28px; font-size: 16px; font-weight: 600; }
+.hr .hr-nav a, .hr .hr-phone { color: var(--hr-on-navy); text-decoration: none; padding: 12px 0; }
+.hr-header-right { display: flex; align-items: center; gap: 20px; }
+.hr-phone { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; }
+.hr .hr-btn-outline { border: 2px solid var(--hr-on-navy); color: var(--hr-on-navy); font-weight: 800; font-size: 16px; padding: 12px 18px; border-radius: 6px; text-decoration: none; min-height: 48px; display: inline-flex; align-items: center; }
+.hr-call-short { display: none; }
+
+/* hero */
+.hr-hero { background: var(--hr-navy); color: var(--hr-on-navy); }
+.hr-hero .hr-wrap { padding-top: 72px; padding-bottom: 80px; display: flex; flex-wrap: wrap; align-items: center; gap: 56px; }
+.hr-hero-copy { flex: 1 1 460px; min-width: 0; display: flex; flex-direction: column; gap: 22px; }
+.hr-cat { font-size: 15px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--hr-on-navy-2); }
+.hr-h1 { margin: 0; font-size: 58px; line-height: 1.05; font-weight: 800; color: var(--hr-on-navy); }
+.hr-sub { margin: 0; max-width: 520px; font-size: 20px; line-height: 1.5; color: var(--hr-on-navy-2); }
+.hr-zipbox { display: flex; flex-direction: column; gap: 8px; }
+.hr-zip-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.hr-zip { width: 170px; height: 58px; padding: 0 16px; font: inherit; font-size: 20px; color: var(--hr-ink); background: var(--hr-white); border: 2px solid var(--hr-white); border-radius: 6px; }
+.hr-zip:focus-visible, .hr a:focus-visible, .hr button:focus-visible { outline: 3px solid var(--hr-hot); outline-offset: 2px; }
+.hr .hr-go { display: flex; align-items: center; justify-content: center; height: 58px; background: var(--hr-amber); color: var(--hr-navy); font-weight: 800; font-size: 19px; padding: 0 30px; border-radius: 6px; text-decoration: none; }
+.hr .hr-go:hover { color: var(--hr-navy); filter: brightness(1.06); }
+.hr-reassure { font-size: 16px; color: var(--hr-on-navy-2); }
+
+/* comparison card */
+.hr-card { flex: 1 1 460px; min-width: 0; background: var(--hr-white); color: var(--hr-ink); border-radius: 10px; padding: 28px; display: flex; flex-direction: column; gap: 18px; }
+.hr-line { margin: 0; min-height: 68px; font-size: 28px; line-height: 1.2; font-weight: 800; color: var(--hr-navy); }
+.hr-w { display: inline-block; transition: opacity .45s ease, transform .45s ease; }
+.hr-js .hr-w { opacity: 0; transform: translateY(8px); }
+.hr-js .hr-w.hr-on { opacity: 1; transform: none; }
+.hr-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.hr-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.hr-tab { height: 48px; padding: 0 16px; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; border-radius: 24px; border: 2px solid var(--hr-navy); background: var(--hr-white); color: var(--hr-navy); transition: background .3s ease, color .3s ease; }
+.hr-tab[aria-pressed="true"] { background: var(--hr-navy); color: var(--hr-white); }
+.hr-replay { height: 48px; padding: 0 12px; font: inherit; font-size: 15px; font-weight: 600; color: var(--hr-slate); background: var(--hr-white); border: 0; border-radius: 6px; cursor: pointer; text-decoration: underline; }
+.hr-table { border: 1px solid var(--hr-border); border-radius: 8px; overflow: hidden; font-size: 15px; }
+.hr-row { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr; gap: 12px; align-items: center; padding: 14px 16px; border-top: 1px solid var(--hr-border); background: var(--hr-white); transition: background .45s ease; }
+.hr-row.hr-head { padding: 12px 16px; border-top: 0; background: var(--hr-tint); font-weight: 600; color: var(--hr-slate); }
+.hr-row [role="rowheader"] { font-weight: 800; }
+.hr-row.hr-plain [role="rowheader"] { font-weight: 600; color: var(--hr-slate); }
+.hr-row.hr-settled { background: var(--hr-settled); }
+.hr-row.hr-hot { background: var(--hr-hot); }
+.hr-bar { height: 10px; border-radius: 5px; background: #8FA1B5; }
+.hr-plain .hr-bar { background: #C9D3DC; }
+.hr-explain { margin: 0; min-height: 44px; font-size: 15px; line-height: 1.45; color: var(--hr-slate); }
+
+/* phone sticky bar: appears once the hero button has scrolled out of view */
+.hr-sticky { display: none; }
+
+@media (max-width: 767px) {
+  .hr-nav, .hr-phone-long, .hr-brand-tag { display: none; }
+  .hr-call-short { display: inline; }
+  .hr-header .hr-wrap { padding: 8px 16px; flex-wrap: nowrap; gap: 12px; }
+  .hr-brand { gap: 10px; }
+  .hr-brand img { width: 24px; height: 38px; }
+  .hr-brand-name { font-size: 19px; }
+  .hr .hr-phone { height: 48px; padding: 0 14px; border: 2px solid var(--hr-on-navy); border-radius: 6px; font-size: 16px; }
+  .hr .hr-btn-outline { display: none; }
+  .hr-hero .hr-wrap { padding: 26px 20px 28px; gap: 16px; flex-direction: column; align-items: stretch; }
+  .hr-hero-copy { flex: 0 0 auto; gap: 16px; }
+  .hr-cat { font-size: 13px; }
+  .hr-h1 { font-size: 36px; line-height: 1.08; }
+  .hr-sub { font-size: 17px; line-height: 1.45; }
+  .hr-zip { flex: 0 0 118px; width: 118px; height: 56px; padding: 0 14px; }
+  .hr-zip-row { flex-wrap: nowrap; gap: 10px; }
+  .hr .hr-go { flex: 1 1 auto; height: 56px; font-size: 18px; padding: 0 12px; }
+  .hr-card { flex: 0 0 auto; margin-top: 10px; padding: 18px 16px; gap: 14px; }
+  .hr-line { font-size: 23px; line-height: 1.25; min-height: 58px; }
+  .hr-controls { justify-content: flex-start; }
+  .hr-tabs { gap: 8px; }
+  .hr-table { font-size: 14px; }
+  .hr-row { grid-template-columns: 1.25fr 1fr 1fr 1fr; gap: 8px; padding: 12px; }
+  .hr-row.hr-head { padding: 10px 12px; }
+  .hr-bar { height: 9px; }
+  .hr-sticky { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: var(--hr-white); border-top: 1px solid var(--hr-border); padding: 8px 16px; gap: 10px; transform: translateY(110%); visibility: hidden; transition: transform .25s ease, visibility 0s linear .25s; }
+  .hr-sticky.hr-show { display: flex; transform: none; visibility: visible; transition: transform .25s ease; }
+  .hr-sticky { display: flex; }
+  .hr .hr-sticky .hr-go { height: 48px; }
+  .hr .hr-sticky-call { flex: 0 0 56px; display: flex; align-items: center; justify-content: center; height: 48px; border: 2px solid var(--hr-navy); border-radius: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hr-w, .hr-row, .hr-tab, .hr-sticky { transition: none !important; }
+}
