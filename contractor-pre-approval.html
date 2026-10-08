@@ -1138,25 +1138,9 @@
                 }
             }
 
-            // Sync contractor pre-approval data to HubSpot (D-210, D-218) — 15s limit, non-fatal
-            // Pre-fetched accessToken used here (avoids inline getSession hang)
-            try {
-                await withTimeout(fetch('/functions/v1/create-hubspot-contact', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${accessToken}`
-                    },
-                    body: JSON.stringify({
-                        mode: 'contractor',
-                        email: currentUser.email,
-                        contractor_id: contractor.id
-                    })
-                }), 15000, 'HubSpot sync');
-                console.log('HubSpot contact synced (wc_path, license_path, license_count, license_summary)');
-            } catch (e) {
-                console.warn('HubSpot sync failed (non-fatal):', e);
-            }
+            // gh-2426: the HubSpot contractor sync (D-210, D-218) that ran here is removed --
+            // HubSpot access ends 2026-10-16. (The relative /functions/v1/ URL it used had no
+            // Netlify proxy, so it never reached the function anyway.)
 
             // Send notification — 15s limit, non-fatal
             try {

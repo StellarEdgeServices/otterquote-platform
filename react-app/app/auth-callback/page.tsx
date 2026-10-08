@@ -15,13 +15,10 @@
  * Error handling: expired / invalid links show a friendly retry UI
  * that sends users back to /get-started.
  *
- * #405: HubSpot contact creation (D-189) also happens here, post-auth, for the
- * homeowner path. get-started/page.tsx used to fire create-hubspot-contact
- * before the magic link was clicked, when no session JWT existed yet — the
- * function's homeowner mode requires one (D-211 CODE-3 hardening, 86e1xdaxe #1),
- * so that pre-auth call always 401'd. The session is live by the time we reach
- * routeSession() below, so supabase.functions.invoke attaches a valid JWT
- * automatically (same pattern as contractor/pre-approval's HubSpot sync).
+ * gh-2426: HubSpot contact creation (D-189 / #405) used to be fired from here, post-auth,
+ * for the homeowner path. It is removed: HubSpot access ends 2026-10-16 and the call had
+ * created no contact since the property it sent was rejected (lead_source_detail does not
+ * exist in the portal). No page in the app invokes create-hubspot-contact any more.
  *
  * gh-1940: GA4 `sign_up` (Google path) also fires here, post-auth. This is
  * now the ONLY place a Google sign_up is counted — get-started/page.tsx no
@@ -70,9 +67,8 @@ import { adoptFirstTouchFromParam, recordFirstTouch } from '@/lib/attribution';
  * reach here with first_name/last_name both blank. Google's OAuth identity
  * carries the name Supabase would otherwise have made the visitor type
  * twice; recover it here, once, before anything downstream reads cs_signup
- * (fireHomeownerHubspotContact below, and trade-selector's profiles upsert
- * after the redirect this file issues — both origin-scoped localStorage
- * reads of the same key, so a write here reaches both).
+ * (trade-selector's profiles upsert after the redirect this file issues
+ * reads the same origin-scoped localStorage key, so a write here reaches it).
  *
  * Never overwrites a name half the visitor actually typed — only a blank
  * first_name or last_name is filled in, and only from this identity, not
@@ -114,44 +110,6 @@ function backfillNameFromGoogleIdentity(user: Session['user'] | null | undefined
   } catch {
     // Non-fatal — HubSpot/trade-selector simply see the pre-existing (possibly blank) names.
   }
-}
-
-// ─── HubSpot — D-189, fired post-auth (#405) ─────────────────────────────────
-
-/** Same payload shape create-hubspot-contact's homeowner mode always expected. */
-function buildHomeownerHubspotBody(email: string, signup: Record<string, unknown>) {
-  return {
-    email,
-    firstname: (signup.first_name as string) || '',
-    lastname: (signup.last_name as string) || '',
-    phone: (signup.phone as string) || '',
-    address: (signup.address as string) || '',
-  };
-}
-
-/**
- * Fire-and-forget HubSpot contact sync for the homeowner sign-up flow.
- * Reads the cs_signup payload get-started/page.tsx wrote to localStorage pre-auth.
- * Never overwrites a contractor's HubSpot record — skips if cs_signup is absent
- * or was tagged for the contractor role (mirrors js/auth.js's same guard).
- */
-function fireHomeownerHubspotContact(email: string | null | undefined) {
-  if (!email) return;
-  let signup: Record<string, unknown> = {};
-  try {
-    const raw = typeof localStorage !== 'undefined' ? readFreshSignupRaw() : null;
-    if (!raw) return;
-    signup = JSON.parse(raw);
-  } catch {
-    return;
-  }
-  if (signup.role === 'contractor') return;
-
-  supabase.functions
-    .invoke('create-hubspot-contact', { body: buildHomeownerHubspotBody(email, signup) })
-    .catch(() => {
-      // Intentionally fire-and-forget — D-189
-    });
 }
 
 // ─── Destinations ─────────────────────────────────────────────────────────────
@@ -412,9 +370,8 @@ export default function AuthCallbackPage() {
       // and for a Google sign-up that already has both name halves typed.
       backfillNameFromGoogleIdentity(session.user);
 
-      // Homeowner path confirmed (not a contractor record, no contractor intent) —
-      // safe to fire the post-auth HubSpot sync now that a session JWT exists (#405).
-      fireHomeownerHubspotContact(session.user.email);
+      // gh-2426: the post-auth HubSpot contact sync (D-189 / #405) that used to run here is
+      // removed -- HubSpot access ends 2026-10-16. Nothing on this path calls HubSpot now.
 
       // gh-1940 fix2: GA4 `sign_up` (Google path) — see
       // maybeFireGoogleSignUp's header for the full guard rationale
