@@ -24,6 +24,7 @@ body.hr { margin: 0; font-family: var(--hr-font); color: var(--hr-ink); backgrou
 .hr-brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
 .hr-brand img { width: 28px; height: 44px; object-fit: contain; }
 .hr-brand-name { font-size: 21px; font-weight: 800; color: var(--hr-on-navy); line-height: 1.1; }
+.hr-brand-name, .hr-brand-tag { display: block; }
 .hr-brand-tag { font-size: 12px; font-weight: 600; color: var(--hr-on-navy-2); letter-spacing: .02em; margin-top: 2px; }
 .hr-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 28px; font-size: 16px; font-weight: 600; }
 .hr .hr-nav a, .hr .hr-phone { color: var(--hr-on-navy); text-decoration: none; padding: 12px 0; }
@@ -73,7 +74,7 @@ body.hr { margin: 0; font-family: var(--hr-font); color: var(--hr-ink); backgrou
 .hr-sticky { display: none; }
 
 @media (max-width: 767px) {
-  .hr-nav, .hr-phone-long, .hr-brand-tag { display: none; }
+  .hr-nav, .hr-phone-long, .hr-brand-tag, .hr-full { display: none; }
   .hr-call-short { display: inline; }
   .hr-header .hr-wrap { padding: 8px 16px; flex-wrap: nowrap; gap: 12px; }
   .hr-brand { gap: 10px; }
