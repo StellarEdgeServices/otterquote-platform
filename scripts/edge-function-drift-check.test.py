@@ -108,20 +108,8 @@ def build_fixtures(repo: pathlib.Path, deployed: pathlib.Path):
     write(deployed, "docusign-webhook", "index.ts", wh)
     write(repo, "docusign-webhook", "verify.ts", "export const verify = () => true;\n")
 
-    # --- 9. gh-1295 RUN 62: files nothing reachable from index.ts imports -----
-    # meta-leadgen-webhook/email-footer.ts and send-partner-onboarding/
-    # claim-stage-sql-proof.ts (imported only by their tests) and
-    # validate-contract-template/__fixtures__/*.pdf (read only by a test) are never
-    # bundled; scheduled run 37652054968 flagged all three functions DRIFTED.
+    # --- 9. transitive: index -> used.ts -> deep.ts, deep.ts dropped from the deploy = real drift
     imp = "import { a } from './used.ts'\na()\n"
-    write(repo, "unref-ok", "index.ts", imp)
-    write(deployed, "unref-ok", "index.ts", imp)
-    write(repo, "unref-ok", "used.ts", "export const a = () => 1\n")
-    write(deployed, "unref-ok", "used.ts", "export const a = () => 1\n")
-    write(repo, "unref-ok", "email-footer.ts", "export const f = 'x'\n")
-    write(repo, "unref-ok", "email-footer.test.ts", "import { f } from './email-footer.ts'\n")
-    write(repo, "unref-ok", "__fixtures__/ref.pdf", "%PDF-fixture\n")
-    # transitive: index -> used.ts -> deep.ts, deep.ts dropped from the deploy = real drift
     write(repo, "transitive-drop", "index.ts", imp)
     write(deployed, "transitive-drop", "index.ts", imp)
     write(repo, "transitive-drop", "used.ts", "import { d } from './deep.ts'\nexport const a = d\n")
@@ -130,82 +118,167 @@ def build_fixtures(repo: pathlib.Path, deployed: pathlib.Path):
     # no entrypoint at all: nothing may be excused
     write(repo, "no-entry", "a.ts", "export const a = 1\n")
     write(deployed, "no-entry", "b.ts", "export const b = 1\n")
-    # an unreferenced file that EXISTS in the deploy but differs is still `differs`
+    # a file that is not imported by anything but is NOT on the allowlist is DRIFTED (gh-1295 RUN 63)
+    write(repo, "unlisted-orphan", "index.ts", same)
+    write(deployed, "unlisted-orphan", "index.ts", same)
+    write(repo, "unlisted-orphan", "email-footer.ts", "export const f = 'x'\n")
+    write(repo, "unlisted-orphan", "email-footer.test.ts", "import { f } from './email-footer.ts'\n")
+    # an unlisted file that EXISTS in the deploy but differs is `differs`
     write(repo, "unref-differs", "index.ts", same)
     write(deployed, "unref-differs", "index.ts", same)
     write(repo, "unref-differs", "orphan.ts", "export const o = 1\n")
     write(deployed, "unref-differs", "orphan.ts", "export const o = 2\n")
 
 
-# PR #2600 review (comment 6045665870, 12 cases B1-B12): each is a function whose index.ts
-# NEEDS a file that the deploy lacks. The import regex cannot see these shapes, so the
-# excuse must fail closed on a quoted mention of the file. Every one must read DRIFTED.
-REVIEWER_CASES = {
-    "B1 comment with apostrophe inside import braces":
-        ("need.ts", "import {\n  a, // don't drop this\n  b,\n} from './need.ts'\n"),
-    "B2 comment with paren inside import braces":
-        ("need.ts", "import {\n  a, /* used by handler (gh-1) */\n} from './need.ts'\n"),
-    "B3 import{a}from'./need.ts' (no spaces)":
-        ("need.ts", "import{a}from'./need.ts'\n"),
-    "B4 dynamic import with trailing comma":
-        ("need.ts", "await import(\n  './need.ts',\n)\n"),
-    "B5 dynamic import via template literal":
-        ("need.ts", "await import(`./need.ts`)\n"),
-    "B6 import-map alias @/need.ts":
-        ("need.ts", "import { a } from '@/need.ts'\n"),
-    "B7 leaves and re-enters the dir (../<slug>/need.ts)":
-        ("need.ts", "import { a } from '../SLUG/need.ts'\n"),
-    "B8 Deno.readTextFile of a code file":
-        ("widget.js", "await Deno.readTextFile(new URL('./widget.js', import.meta.url))\n"),
-    "B9 Worker URL":
-        ("worker.ts", "new Worker(new URL('./worker.ts', import.meta.url).href, { type: 'module' })\n"),
-    "B10 __fixtures__ file loaded by production code":
-        ("__fixtures__/ref.json", "import ref from './__fixtures__/ref.json' with { type: 'json' }\n"),
-    "B11 extensionless specifier":
-        ("need.ts", "import { a } from './need'\n"),
-    "B12 createRequire":
-        ("need.js", "createRequire(import.meta.url)('./need.js')\n"),
+# The exact set of repo paths the checked-in allowlist may name. Changing the allowlist means
+# changing this set in the same reviewed diff; a line added to the allowlist alone fails
+# pinned_allowlist_cases (gh-1295, CTO RUN 63).
+PINNED_ALLOWLIST = {
+    "supabase/functions/meta-leadgen-webhook/email-footer.ts",
+    "supabase/functions/send-partner-onboarding/claim-stage-sql-proof.ts",
+    "supabase/functions/validate-contract-template/__fixtures__/otterquote-v3-reference-roofing-retail.pdf",
+}
+
+REPO_ROOT = HERE.parent
+
+
+def make_root(tmp: pathlib.Path):
+    """(root, functions dir, deployed dir) with the real layout, so out-of-tree and allowlist
+    checks see the same relative paths production does."""
+    root = tmp / "root"
+    funcs = root / "supabase" / "functions"
+    funcs.mkdir(parents=True)
+    deployed = tmp / "deployed"
+    deployed.mkdir()
+    return root, funcs, deployed
+
+
+def allowlist_cases():
+    """The excuse is an exact path on a checked-in list, nothing else."""
+    print("\nAllowlist: only exact listed paths are excused")
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-allow-"))
+    try:
+        root, funcs, deployed = make_root(tmp)
+        idx = "import { a } from './used.ts'\na()\n"
+        for slug in ("fn", "other"):
+            for r in (funcs, deployed):
+                write(r, slug, "index.ts", idx)
+                write(r, slug, "used.ts", "export const a = () => 1\n")
+            write(funcs, slug, "email-footer.ts", "export const f = 'x'\n")  # in repo, absent from deploy
+        write(funcs, "fn", "email-footer.test.ts", "import { f } from './email-footer.ts'\n")
+        write(funcs, "fn", "__fixtures__/ref.pdf", "%PDF\n")
+        listed = {
+            "supabase/functions/fn/email-footer.ts": "test-only helper",
+            "supabase/functions/fn/__fixtures__/ref.pdf": "test-only fixture",
+        }
+
+        def run(allow):
+            return drift.build_report(funcs, deployed, ["fn", "other"], repo_slugs=["fn", "other"],
+                                      repo_root=root, allowlist=allow)
+
+        none = run({})
+        v = verdicts_of(none)
+        check("no allowlist: unreferenced email-footer.ts is DRIFTED (nothing is recognised)", v["fn"], drift.DRIFTED)
+        statuses = {f["path"]: f["status"] for f in none["functions"][0]["files"]}
+        check("no allowlist: statuses", (statuses["email-footer.ts"], statuses["__fixtures__/ref.pdf"]),
+              ("missing_in_deploy", "missing_in_deploy"))
+
+        rep = run(listed)
+        v = verdicts_of(rep)
+        check("listed: fn is IDENTICAL", v["fn"], drift.IDENTICAL)
+        check("listed: the same file name in ANOTHER function is still DRIFTED (exact path only)", v["other"], drift.DRIFTED)
+        check("listed: report names exactly the two excused files",
+              sorted((e["slug"], e["path"]) for e in rep["excused"]),
+              [("fn", "supabase/functions/fn/__fixtures__/ref.pdf"), ("fn", "supabase/functions/fn/email-footer.ts")])
+        check("listed: each excused file carries its reason", all(e["reason"] for e in rep["excused"]), True)
+        check("listed: no violations, no stale entries", (rep["allowlist_violations"], rep["allowlist_stale"]), ({}, []))
+        md = drift.render_markdown(rep)
+        check("excused files are printed in the summary (reason included)", "supabase/functions/fn/email-footer.ts" in md and "test-only helper" in md, True)
+        check("exit code with the unlisted function present -> 1", drift.report_exit_code(rep), 1)
+
+        # A listed file that IS deployed and differs is `differs`; being listed excuses absence only.
+        write(deployed, "fn", "email-footer.ts", "export const f = 'CHANGED'\n")
+        rep = run(listed)
+        st = {f["path"]: f["status"] for f in rep["functions"][0]["files"]}
+        check("listed but deployed and different -> differs", (st["email-footer.ts"], verdicts_of(rep)["fn"]), ("differs", drift.DRIFTED))
+        (deployed / "fn" / "email-footer.ts").unlink()
+
+        # Stale entry (names no file) is reported, never silently kept.
+        rep = drift.build_report(funcs, deployed, ["fn"], repo_slugs=["fn"], repo_root=root,
+                                 allowlist={**listed, "supabase/functions/fn/gone.ts": "was deleted"})
+        check("stale entry reported", rep["allowlist_stale"], ["supabase/functions/fn/gone.ts"])
+        check("stale entry printed", "supabase/functions/fn/gone.ts" in drift.render_markdown(rep), True)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print("\nAllowlist file format")
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-allowfmt-"))
+    try:
+        def load(text):
+            f = tmp / "a.txt"
+            f.write_text(text, encoding="utf-8")
+            try:
+                return drift.load_allowlist(f)
+            except drift.AllowlistError as exc:
+                return "ERR"
+        good = "supabase/functions/a/b.ts :: because\n"
+        check("good line parses", load("# c\n\n" + good), {"supabase/functions/a/b.ts": "because"})
+        for label, text in (
+            ("glob", "supabase/functions/a/*.ts :: x\n"),
+            ("directory", "supabase/functions/a/ :: x\n"),
+            ("no reason", "supabase/functions/a/b.ts\n"),
+            ("empty reason", "supabase/functions/a/b.ts :: \n"),
+            ("outside supabase/functions", "react-app/app/lib/t.ts :: x\n"),
+            ("path traversal", "supabase/functions/a/../b/c.ts :: x\n"),
+            ("duplicate", good + good),
+        ):
+            check(f"rejected: {label}", load(text), "ERR")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# Shapes that earlier attempts tried to recognise (PR #2600 reviews 1-3). None is recognised
+# any more, so every one must read DRIFTED when the needed file is missing from the deploy and
+# not on the allowlist. The point is not these twenty shapes; it is that no shape can excuse.
+SHAPES = {
+    "B1 comment with apostrophe inside import braces": b"import {\n  a, // don't drop this\n} from './need.ts'\n",
+    "B3 import{a}from'./need.ts'": b"import{a}from'./need.ts'\n",
+    "B4 dynamic import with trailing comma": b"await import(\n  './need.ts',\n)\n",
+    "B5 dynamic import via template literal": b"await import(`./need.ts`)\n",
+    "B6 import-map alias": b"import { a } from '@/need.ts'\n",
+    "B8 Deno.readTextFile": b"await Deno.readTextFile(new URL('./need.ts', import.meta.url))\n",
+    "B9 Worker URL": b"new Worker(new URL('./need.ts', import.meta.url).href, { type: 'module' })\n",
+    "B11 extensionless specifier": b"import { a } from './need'\n",
+    "B12 createRequire": b"createRequire(import.meta.url)('./need.ts')\n",
+    "R1 Latin-1 byte in index.ts": b"// caf\xe9\nimport './need.ts'\n",
+    "R6 index.ts saved as UTF-16": "import './need.ts'\n".encode("utf-16"),
+    "R2 computed import (concatenation)": b"await import('./' + 'need' + '.ts')\n",
+    "R3 computed import (template literal)": b"const k = 'need'\nawait import(`./${k}.ts`)\n",
+    "A5d block comment before computed import": b"/* c */ const m: any = await import('./' + k + '.ts')\n",
+    "A5e continuation line starting with *": b"const v = 2\n  * (await import('./' + k + '.ts')).n\n",
+    "A5f comment between import and paren": b"await import /* dyn */ ('./' + k + '.ts')\n",
+    "N1 computed Worker URL": b"new Worker(new URL('./' + name + '.ts', import.meta.url).href)\n",
+    "N2 computed readTextFile": b"Deno.readTextFile(new URL(`./${name}.ts`, import.meta.url))\n",
+    "N10 computed createRequire": b"createRequire(import.meta.url)('./' + kind)\n",
+    "N3 directory import": b"import { a } from './need'\n",
+    "no reference at all": b"console.log('hello')\n",
 }
 
 
-def reviewer_cases():
-    print("\nPR #2600 review cases B1-B12 (needed file missing from deploy -> must be DRIFTED)")
-    for label, (needed, index_src) in REVIEWER_CASES.items():
-        tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-rev-"))
+def no_shape_cases():
+    print("\nNo code shape can excuse a missing file (needed file absent from deploy, not listed -> DRIFTED)")
+    for label, index_src in SHAPES.items():
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-shape-"))
         try:
-            repo, deployed = tmp / "repo", tmp / "deployed"
-            src = index_src.replace("SLUG", "fn")
-            write(repo, "fn", "index.ts", src)
-            write(deployed, "fn", "index.ts", src)
-            write(repo, "fn", needed, "export const a = 1\n")
-            r = drift.build_report(repo, deployed, ["fn"], repo_slugs=["fn"])
-            row = r["functions"][0]
-            st = {f["path"]: f["status"] for f in row["files"]}[needed]
-            check(f"{label}: verdict", row["verdict"], drift.DRIFTED)
-            check(f"{label}: {needed} status", st, "missing_in_deploy")
+            root, funcs, deployed = make_root(tmp)
+            for r in (funcs, deployed):
+                write_bytes(r, "fn", "index.ts", index_src)
+            write_bytes(funcs, "fn", "need.ts", b"export const a = 1\n")
+            rep = drift.build_report(funcs, deployed, ["fn"], repo_slugs=["fn"], repo_root=root, allowlist={})
+            st = {f["path"]: f["status"] for f in rep["functions"][0]["files"]}
+            check(f"{label}", (rep["functions"][0]["verdict"], st["need.ts"]), (drift.DRIFTED, "missing_in_deploy"))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
-    # Controls: the two real false-positive shapes stay non-drift when nothing non-test names them.
-    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-rev-"))
-    try:
-        repo, deployed = tmp / "repo", tmp / "deployed"
-        idx = "import { a } from './used.ts'\na()\n"
-        for root in (repo, deployed):
-            write(root, "fn", "index.ts", idx)
-            write(root, "fn", "used.ts", "export const a = () => 1\n")
-        write(repo, "fn", "email-footer.ts", "export const f = 1\n")
-        write(repo, "fn", "email-footer.test.ts", "import { f } from './email-footer.ts'\n")
-        # an UNQUOTED comment mention (as in onboarding-stage.ts) must not count
-        write(repo, "fn", "used.ts", "// see ./email-footer.ts for the copy\nexport const a = () => 1\n")
-        write(repo, "fn", "__fixtures__/ref.pdf", "%PDF\n")
-        r = drift.build_report(repo, deployed, ["fn"], repo_slugs=["fn"])
-        st = {f["path"]: f["status"] for f in r["functions"][0]["files"]}
-        check("control: unreferenced email-footer.ts (unquoted comment only) still excused",
-              st["email-footer.ts"], "unreferenced_not_bundled")
-        check("control: __fixtures__ pdf nobody mentions still a test asset",
-              st["__fixtures__/ref.pdf"], "test_not_bundled")
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def write_bytes(root: pathlib.Path, slug: str, name: str, data: bytes):
@@ -214,68 +287,198 @@ def write_bytes(root: pathlib.Path, slug: str, name: str, data: bytes):
     (d / name).write_bytes(data)
 
 
-def second_review_cases():
-    """PR #2600 second review (comment 6047691653): shapes R1-R6 where the excuse failed open."""
-    print("\nPR #2600 review 2 cases R1-R6 (needed file missing from deploy -> must be DRIFTED)")
-    idx_need = "import { a } from './need.ts'\nimport { o } from './lib/other.ts'\n"
-    cases = {}
-    cases["R1 index.ts has a Latin-1 byte"] = (
-        {"index.ts": b"// caf\xe9\n" + idx_need.encode()}, {"need.ts": b"export const a = 1\n", "lib/other.ts": b"export const o = 1\n"}, "need.ts")
-    cases["R5 mid.ts has a cp1252 smart quote"] = (
-        {"index.ts": b"import './mid.ts'\n", "mid.ts": b"// it\x92s\nimport './need.ts'\n"}, {"need.ts": b"export const a = 1\n"}, "need.ts")
-    cases["R6 index.ts saved as UTF-16"] = (
-        {"index.ts": idx_need.encode("utf-16")}, {"need.ts": b"export const a = 1\n", "lib/other.ts": b"export const o = 1\n"}, "need.ts")
-    cases["R2 computed import (string concatenation)"] = (
-        {"index.ts": b"const kind = 'zz'\nawait import('./handlers/' + kind + '.ts')\n"}, {"handlers/a.ts": b"export default 1\n"}, "handlers/a.ts")
-    cases["R3 computed import (template literal)"] = (
-        {"index.ts": b"const kind = 'zz'\nawait import(`./handlers/${kind}.ts`)\n"}, {"handlers/a.ts": b"export default 1\n"}, "handlers/a.ts")
-    for label, (same_files, repo_only, needed) in cases.items():
-        tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-r2-"))
-        try:
-            repo, deployed = tmp / "repo", tmp / "deployed"
-            for name, data in same_files.items():
-                write_bytes(repo, "fn", name, data)
-                write_bytes(deployed, "fn", name, data)
-            for name, data in repo_only.items():
-                write_bytes(repo, "fn", name, data)
-            r = drift.build_report(repo, deployed, ["fn"], repo_slugs=["fn"])
-            st = {f["path"]: f["status"] for f in r["functions"][0]["files"]}
-            check(f"{label}: verdict", r["functions"][0]["verdict"], drift.DRIFTED)
-            check(f"{label}: {needed} status", st[needed], "missing_in_deploy")
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
-    # R4: a _shared file imports back into the function directory.
-    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-r2-"))
+def pinned_allowlist_cases():
+    """The checked-in allowlist cannot silently grow, and no listed file may be imported by
+    non-test code."""
+    print("\nChecked-in allowlist is pinned")
+    path = HERE / drift.ALLOWLIST_FILENAME
     try:
-        repo, deployed = tmp / "repo", tmp / "deployed"
-        idx = "import { run } from '../_shared/runner.ts'\nrun()\n"
-        for root in (repo, deployed):
-            write(root, "fn", "index.ts", idx)
-            write(root, "_shared", "runner.ts", "import { a } from '../fn/need.ts'\nexport const run = () => a\n")
-        write(repo, "fn", "need.ts", "export const a = 1\n")
-        r = drift.build_report(repo, deployed, ["fn"], repo_slugs=["fn"])
-        st = {f["path"]: f["status"] for f in r["functions"][0]["files"]}
-        check("R4 _shared imports back into the function: verdict", r["functions"][0]["verdict"], drift.DRIFTED)
-        check("R4 need.ts status", st["need.ts"], "missing_in_deploy")
+        real = drift.load_allowlist(path)
+    except drift.AllowlistError as exc:
+        real = {}
+        print(f"  FAIL  allowlist unreadable: {exc}")
+        FAILURES.append("allowlist unreadable")
+    check("allowlist is exactly the pinned set (add a line -> update PINNED_ALLOWLIST in the same reviewed diff)",
+          sorted(real), sorted(PINNED_ALLOWLIST))
+    check("every entry has a one-line reason", all(r and "\n" not in r for r in real.values()), True)
+    check("every entry names a file that exists in the repo", sorted(k for k in real if not (REPO_ROOT / k).is_file()), [])
+    check("no listed file is imported or read by non-test code in the real tree",
+          drift.allowlist_import_violations(real, REPO_ROOT), {})
+
+    print("\nA listed file that non-test code imports fails loudly")
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-viol-"))
+    try:
+        root, funcs, deployed = make_root(tmp)
+        target = "supabase/functions/fn/helper.ts"
+        write(funcs, "fn", "helper.ts", "export const h = 1\n")
+        write(funcs, "fn", "helper.test.ts", "import { h } from './helper.ts'\n")  # a test importing it is fine
+        allow = {target: "test-only"}
+        check("only a test imports it -> no violation", drift.allowlist_import_violations(allow, root), {})
+        for label, importer, src in (
+            ("same-dir relative import", "fn/index.ts", "import { h } from './helper.ts'\n"),
+            ("extensionless import", "fn/index.ts", "import { h } from './helper'\n"),
+            ("import from another function", "other/index.ts", "import { h } from '../fn/helper.ts'\n"),
+            ("_shared re-export", "_shared/x.ts", "export { h } from '../fn/helper.ts'\n"),
+            ("dynamic import", "fn/index.ts", "const m = await import('./helper.ts')\n"),
+            ("new URL read", "fn/index.ts", "new URL('./helper.ts', import.meta.url)\n"),
+            ("alias", "fn/index.ts", "import { h } from '@/lib/helper.ts'\n"),
+        ):
+            slug, name = importer.split("/", 1)
+            write(funcs, slug, name, src)
+            got = drift.allowlist_import_violations(allow, root)
+            check(f"{label} -> violation", got, {target: f"supabase/functions/{importer}"})
+            (funcs / slug / name).unlink()
+        rep = drift.build_report(funcs, deployed, [], repo_slugs=["fn"], repo_root=root, allowlist=allow)
+        check("no violation, nothing deployed -> exit 2 (zero measured)", drift.report_exit_code(rep), 2)
+        write(funcs, "fn", "index.ts", "import { h } from './helper.ts'\n")
+        for r in (deployed,):
+            write(r, "fn", "index.ts", "import { h } from './helper.ts'\n")
+        rep = drift.build_report(funcs, deployed, ["fn"], repo_slugs=["fn"], repo_root=root, allowlist=allow)
+        st = {f["path"]: f["status"] for f in rep["functions"][0]["files"]}
+        check("imported + listed + missing from deploy: entry NOT applied -> missing_in_deploy / DRIFTED",
+              (st["helper.ts"], rep["functions"][0]["verdict"]), ("missing_in_deploy", drift.DRIFTED))
+        check("imported + listed: violation reported and exit 2", (list(rep["allowlist_violations"]), drift.report_exit_code(rep)), ([target], 2))
+        check("imported + listed: summary says ALLOWLIST INVALID", "ALLOWLIST INVALID" in drift.render_markdown(rep), True)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    # Controls that must keep their excuse: a LITERAL dynamic import (trailing comma, template
-    # without ${}) and a clean _shared file do not disable the walker.
-    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-r2-"))
+
+
+def out_of_tree_cases():
+    """PR #2600 review 3, finding 1: files the deploy carries from outside supabase/functions/
+    must never read IDENTICAL unless they were actually compared."""
+    print("\nOut-of-tree files are compared, or reported missing; never skipped")
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-oot2-"))
     try:
-        repo, deployed = tmp / "repo", tmp / "deployed"
-        idx = "const m = await import(\n  './used.ts',\n)\nconst n = await import(`./used2.ts`)\n"
-        for root in (repo, deployed):
-            write(root, "fn", "index.ts", idx)
-            write(root, "fn", "used.ts", "export const a = 1\n")
-            write(root, "fn", "used2.ts", "export const b = 1\n")
-            write(root, "_shared", "clean.ts", "export const c = 1\n")
-        write(repo, "fn", "orphan.ts", "export const o = 1\n")
-        r = drift.build_report(repo, deployed, ["fn"], repo_slugs=["fn"])
-        st = {f["path"]: f["status"] for f in r["functions"][0]["files"]}
-        check("control: literal dynamic imports keep the walker on (orphan excused)", st["orphan.ts"], "unreferenced_not_bundled")
-        check("control: verdict IDENTICAL", r["functions"][0]["verdict"], drift.IDENTICAL)
+        root, funcs, deployed = make_root(tmp)
+        write(funcs, "fn", "index.ts", "import '../../../app/lib/types.ts'\n")
+        write(deployed, "fn", "index.ts", "import '../../../app/lib/types.ts'\n")
+        oot = deployed / drift.OUT_OF_TREE_DIR / "fn" / "app/lib"
+        oot.mkdir(parents=True)
+        (oot / "types.ts").write_bytes(b"export const T = 'STALE'\n")
+        rep = drift.build_report(funcs, deployed, ["fn"], repo_slugs=["fn"])  # no repo_root
+        check("no repo_root: out-of-tree file is NOT skipped -> DRIFTED", rep["functions"][0]["verdict"], drift.DRIFTED)
+        (root / "app/lib").mkdir(parents=True)
+        (root / "app/lib/types.ts").write_bytes(b"export const T = 'main'\n")
+        rep = drift.build_report(funcs, deployed, ["fn"], repo_slugs=["fn"], repo_root=root)
+        check("repo_root given, bytes differ -> DRIFTED", rep["functions"][0]["verdict"], drift.DRIFTED)
+        (root / "app/lib/types.ts").write_bytes(b"export const T = 'STALE'\n")
+        rep = drift.build_report(funcs, deployed, ["fn"], repo_slugs=["fn"], repo_root=root)
+        check("repo_root given, bytes equal -> IDENTICAL", rep["functions"][0]["verdict"], drift.IDENTICAL)
     finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def fetch_failed_cases():
+    """PR #2600 review 3, finding 3: a fetch-failed function appears ONCE, as COULD NOT MEASURE."""
+    print("\nA fetch-failed function is one FETCH_FAILED row, never also 'never deployed' or 'failing'")
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-ff-"))
+    try:
+        root, funcs, deployed = make_root(tmp)
+        for slug in ("alpha", "beta"):
+            write(funcs, slug, "index.ts", "ok()\n")
+        write(deployed, "alpha", "index.ts", "ok()\n")
+        rep = drift.build_report(funcs, deployed, ["alpha"], repo_slugs=["alpha", "beta"], repo_root=root,
+                                 fetch_failed={"beta": "CLI: exit 1: boom; Management API: URLError"})
+        rows = [r for r in rep["functions"] if r["slug"] == "beta"]
+        check("beta has exactly one row", [r["verdict"] for r in rows], [drift.FETCH_FAILED])
+        check("counts: no IN_REPO_NEVER_DEPLOYED", rep["counts"], {drift.IDENTICAL: 1, drift.FETCH_FAILED: 1})
+        md = drift.render_markdown(rep)
+        check("banner: COULD NOT MEASURE 1, with the reason", "COULD NOT MEASURE 1 function(s)" in md and "URLError" in md, True)
+        check("banner: not counted as 'measured and failing'", "measured and failing" not in md, True)
+        check("table: beta appears once", md.count("| `beta` |"), 1)
+        check("exit code stays 2", drift.report_exit_code(rep), 2)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def main_fetch_branch_selftest():
+    """End to end through the real main() and the real fetch branch, with a fake `supabase`
+    executable on PATH and the Management API stubbed to refuse. Catches main() losing the
+    FETCH_FAILED rows (the wiring unit tests on build_report cannot see). PR #2600 review 3."""
+    import contextlib
+    import io
+    import json
+
+    print("\nmain() through the fetch branch (fake supabase CLI, API down)")
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-main-"))
+    saved = (os.environ.get("PATH"), os.environ.get("SUPABASE_ACCESS_TOKEN"), sys.argv[:], drift._reclaim_tree,
+             drift.RETRY_BACKOFF_SECONDS, drift.urllib.request.urlopen)
+    try:
+        root, funcs, _ = make_root(tmp)
+        body = "export const handler = () => new Response('ok')\n"
+        for slug in ("alpha", "beta"):
+            write(funcs, slug, "index.ts", body)
+        write(funcs, "alpha", "excused.ts", "export const x = 1\n")  # in repo, never deployed, listed below
+        allow = tmp / "allow.txt"
+        allow.write_text("supabase/functions/alpha/excused.ts :: planted, listed on purpose\n", encoding="utf-8")
+        bindir = tmp / "bin"
+        bindir.mkdir()
+        fake = bindir / "supabase"
+        fake.write_text(
+            f"#!{sys.executable}\n"
+            "import json, os, pathlib, sys\n"
+            "a = sys.argv[1:]\n"
+            "slugs = os.environ['FAKE_SLUGS'].split(',')\n"
+            "if a[:2] == ['functions', 'list']:\n"
+            "    print(json.dumps([{'slug': s} for s in slugs])); sys.exit(0)\n"
+            "if a[:2] == ['functions', 'download']:\n"
+            "    slug = a[2]\n"
+            "    if slug in os.environ.get('FAKE_FAIL', '').split(','):\n"
+            "        sys.stderr.write('a real error line\\nTry rerunning the command with --debug to troubleshoot the error.\\n'); sys.exit(1)\n"
+            "    d = pathlib.Path('supabase/functions') / slug; d.mkdir(parents=True)\n"
+            "    (d / 'index.ts').write_text(os.environ['FAKE_BODY']); sys.exit(0)\n"
+            "sys.exit(9)\n",
+            encoding="utf-8",
+        )
+        fake.chmod(0o755)
+
+        def refuse(*_a, **_k):
+            raise drift.urllib.error.URLError("connection refused")
+
+        def run(fail):
+            out_md, out_json = tmp / "r.md", tmp / "r.json"
+            os.environ["PATH"] = str(bindir) + os.pathsep + saved[0]
+            os.environ["SUPABASE_ACCESS_TOKEN"] = "sbp_fake_marker_value"
+            os.environ.update(FAKE_SLUGS="alpha,beta", FAKE_FAIL=fail, FAKE_BODY=body)
+            sys.argv = ["drift", "--repo-root", str(root), "--project-ref", "ref", "--allowlist", str(allow),
+                        "--markdown-out", str(out_md), "--json-out", str(out_json)]
+            drift._reclaim_tree = lambda p: None  # no sudo in a unit test
+            drift.RETRY_BACKOFF_SECONDS = (0, 0)
+            drift.urllib.request.urlopen = refuse
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = drift.main()
+            return code, out.getvalue(), err.getvalue(), out_md.read_text(encoding="utf-8"), json.loads(out_json.read_text(encoding="utf-8"))
+
+        code, out, err, md, js = run(fail="")
+        check("all fetched, allowlisted file excused -> exit 0", code, 0)
+        check("excused file printed to stdout and the markdown report",
+              "supabase/functions/alpha/excused.ts" in out and "supabase/functions/alpha/excused.ts" in md, True)
+
+        code, out, err, md, js = run(fail="beta")
+        check("beta fetch fails on every route -> exit 2", code, 2)
+        rows = [r for r in js["functions"] if r["slug"] == "beta"]
+        check("JSON: beta is ONE FETCH_FAILED row", [r["verdict"] for r in rows], [drift.FETCH_FAILED])
+        check("JSON: counts", js["counts"], {drift.IDENTICAL: 1, drift.FETCH_FAILED: 1})
+        check("markdown: beta appears once in the table and is FETCH_FAILED",
+              [ln for ln in md.splitlines() if ln.startswith("| `beta` |")] and
+              len([ln for ln in md.splitlines() if ln.startswith("| `beta` |")]) == 1 and "FETCH_FAILED" in md, True)
+        check("markdown: never says beta was never deployed", "IN_REPO_NEVER_DEPLOYED" not in md, True)
+        check("markdown: not counted as measured and failing", "measured and failing" not in md, True)
+        check("markdown: reason is the real error line, not the CLI boilerplate",
+              "a real error line" in md and "could not measure: CLI: exit 1: a real error line" in md, True)
+        check("token value never appears in stdout, stderr or the report",
+              any("sbp_fake_marker_value" in t for t in (out, err, md, json.dumps(js))), False)
+    finally:
+        (os.environ.__setitem__("PATH", saved[0]))
+        for k in ("FAKE_SLUGS", "FAKE_FAIL", "FAKE_BODY"):
+            os.environ.pop(k, None)
+        if saved[1] is None:
+            os.environ.pop("SUPABASE_ACCESS_TOKEN", None)
+        else:
+            os.environ["SUPABASE_ACCESS_TOKEN"] = saved[1]
+        sys.argv = saved[2]
+        drift._reclaim_tree, drift.RETRY_BACKOFF_SECONDS, drift.urllib.request.urlopen = saved[3:]
         shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -434,16 +637,16 @@ def main():
         check("docusign-webhook (verify.ts missing from deploy)",
               v["docusign-webhook"], drift.DRIFTED)
 
-        check("unref-ok (unreferenced src + test + fixture not bundled)", v["unref-ok"], drift.IDENTICAL)
+        check("unlisted-orphan (unreferenced, not on the allowlist -> DRIFTED)", v["unlisted-orphan"], drift.DRIFTED)
         check("transitive-drop (reachable via used.ts, absent from deploy)", v["transitive-drop"], drift.DRIFTED)
         check("no-entry (no entrypoint: excuse nothing)", v["no-entry"], drift.DRIFTED)
-        check("unref-differs (unreferenced but deployed and different)", v["unref-differs"], drift.DRIFTED)
+        check("unref-differs (deployed and different)", v["unref-differs"], drift.DRIFTED)
 
         print("\nPer-file detail")
-        row = next(r for r in report["functions"] if r["slug"] == "unref-ok")
+        row = next(r for r in report["functions"] if r["slug"] == "unlisted-orphan")
         statuses = {f["path"]: f["status"] for f in row["files"]}
-        check("unref-ok email-footer.ts", statuses["email-footer.ts"], "unreferenced_not_bundled")
-        check("unref-ok __fixtures__/ref.pdf", statuses["__fixtures__/ref.pdf"], "test_not_bundled")
+        check("unlisted-orphan email-footer.ts", statuses["email-footer.ts"], "missing_in_deploy")
+        check("unlisted-orphan email-footer.test.ts (test file)", statuses["email-footer.test.ts"], "test_not_bundled")
         row = next(r for r in report["functions"] if r["slug"] == "transitive-drop")
         statuses = {f["path"]: f["status"] for f in row["files"]}
         check("transitive-drop deep.ts", statuses["deep.ts"], "missing_in_deploy")
@@ -525,9 +728,13 @@ def main():
         check("read-only download tree (incl. ancestors) removable after _reclaim_tree",
               removable, True)
 
-        reviewer_cases()
-        second_review_cases()
+        allowlist_cases()
+        no_shape_cases()
+        pinned_allowlist_cases()
+        out_of_tree_cases()
+        fetch_failed_cases()
         planted_drift_selftest()
+        main_fetch_branch_selftest()
         fetch_policy_cases()
 
         print()

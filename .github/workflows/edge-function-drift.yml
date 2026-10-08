@@ -101,11 +101,16 @@ on:
         description: 'Do not fail on functions that are on main but never deployed'
         type: boolean
         default: false
+      file_issue:
+        description: 'is-test guard: post its alarm comment on #1763 when it finds a disagreement (turn off for evidence runs on a branch)'
+        type: boolean
+        default: true
   push:
     branches: [main]
     paths:
       - 'scripts/edge-function-drift-check.py'
       - 'scripts/edge-function-drift-check.test.py'
+      - 'scripts/edge-function-drift-allowlist.txt'
       - 'scripts/edge-function-drift-remote.py'
       - 'scripts/edge-function-drift-remote.test.py'
       - 'scripts/is-test-cross-table-check.py'
@@ -328,4 +333,4 @@ jobs:
           python3 scripts/is-test-cross-table-check.py \
             --management-api \
             --project-ref "$SUPABASE_PROJECT_REF" \
-            --file-issue
+            ${{ (github.event_name != 'workflow_dispatch' || inputs.file_issue) && '--file-issue' || '' }}

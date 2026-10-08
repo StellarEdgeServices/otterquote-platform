@@ -73,12 +73,17 @@ USAGE
     --repo-root PATH       repo root (default: the script's parent's parent)
     --markdown-out PATH    write the drift table as Markdown
     --json-out PATH        write the full report as JSON
+    --allowlist PATH       files allowed to be absent from a deploy (default:
+                           scripts/edge-function-drift-allowlist.txt). Exact repo paths only;
+                           anything else missing from a deploy is DRIFTED. The excused files
+                           are printed in every report.
     --fetch-only-slugs a,b restrict to these slugs (debugging; NOT for CI)
 
   Exit codes:
     0  — every deployed function is byte-identical to `main`
     1  — drift found (or a deployed function has no counterpart in the repo)
-    2  — COULD NOT MEASURE: no token, no CLI, or a fetch failed. Never silent.
+    2  — COULD NOT MEASURE: no token, no CLI, a fetch failed, or the allowlist is invalid
+         (a listed file is named by non-test code). Never silent.
 
 Requires the Supabase CLI on PATH and SUPABASE_ACCESS_TOKEN in the environment
 (a Personal Access Token — the service-role key is NOT sufficient; the Management
@@ -160,145 +165,114 @@ FAILING_VERDICTS = {DRIFTED, DEPLOYED_NOT_IN_REPO, IN_REPO_NEVER_DEPLOYED}
 # The row is still PRINTED, only its verdict changes -- the same tightening
 # credential-sweep.py took on the sbp_ prefix (a narrowing that cannot hide a real
 # finding, because a test file that genuinely differs still reports `differs`).
-NON_DRIFT_STATUSES = frozenset({"same", "test_not_bundled", "unreferenced_not_bundled"})
+NON_DRIFT_STATUSES = frozenset({"same", "test_not_bundled", "allowlisted_not_bundled"})
 
 
-def is_test_path(rel: str, fixtures_are_tests: bool = True) -> bool:
-    """True for a repo file that is a test (or a test fixture) and therefore never deployed.
-
-    `fixtures_are_tests=False` is passed by compare_function when a non-test file mentions
-    `__fixtures__` (production code loads from it), so the directory is NOT a test asset."""
-    parts = rel.split("/")
-    name = parts[-1]
+def is_test_path(rel: str) -> bool:
+    """True for a repo file that is a test and therefore never deployed."""
+    name = rel.rsplit("/", 1)[-1]
     return (
         name.endswith((".test.ts", ".test.js", ".test.tsx", "_test.ts"))
         or name.startswith("test_")
-        or (fixtures_are_tests and "__fixtures__" in parts[:-1])
     )
 
 
-# gh-1295 (CTO RUN 62, cto-2026-10-07T17:47:04Z): the bundler ships what the entrypoint
-# imports, so a non-test file that NOTHING reachable from the entrypoint imports is never
-# deployed either -- exactly like a test file. Measured on scheduled run 37652054968
-# (2026-10-07): meta-leadgen-webhook/email-footer.ts and send-partner-onboarding/
-# claim-stage-sql-proof.ts are imported only by their *.test.ts files, so they read
-# `missing_in_deploy` and flipped two healthy functions to DRIFTED on every run.
-# What this does NOT excuse: a file the entrypoint DOES reach (directly or through other
-# files) but the deploy lacks -- the docusign-webhook/verify.ts shape -- stays
-# `missing_in_deploy` and stays DRIFTED. When there is no entrypoint to walk from, nothing
-# is excused (fail toward reporting drift).
-_REL_IMPORT = re.compile(
-    r"""(?:\bimport|\bexport)\s+(?:[^'"();]*?\bfrom\s*)?["'](\.{1,2}/[^"']+)["']"""
-    r"""|\bimport\(\s*["'](\.{1,2}/[^"']+)["']\s*\)"""
-)
-_CODE_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts")
-_ENTRYPOINTS = ("index.ts", "index.tsx", "index.js", "index.mjs", "mod.ts")
+# gh-1295 (CTO RUN 63, PR #2600 fourth attempt): the ONLY other file allowed to be absent from
+# a deployed bundle is one named in a checked-in allowlist of exact repo paths. Earlier
+# attempts tried to RECOGNISE such files (walk imports, search for quoted names, refuse on
+# computed imports); three independent reviews each found another code shape that made the
+# recogniser excuse a file the bundle really needed. The fix is to stop recognising. A file
+# not on the list that is missing from, or differs from, the deploy is DRIFTED, whatever it
+# looks like.
+ALLOWLIST_FILENAME = "edge-function-drift-allowlist.txt"
+ALLOWLIST_SEPARATOR = " :: "
 
 
-_TEXT_SUFFIXES = _CODE_SUFFIXES + (".json", ".jsonc")
-_CONFIG_NAMES = ("deno.json", "deno.jsonc", "import_map.json")
-# `import(` that is not a member call; a literal argument is one plain string followed by `,` or `)`.
-_DYN_IMPORT = re.compile(r"(?<![\w.$])import\s*\(")
-_DYN_LITERAL = re.compile(r"""\s*(?:'[^'\n]*'|"[^"\n]*"|`[^`$\n]*`)\s*[,)]""")
+class AllowlistError(ValueError):
+    """The allowlist file is malformed. Always fatal (exit 2): a list that cannot be read
+    must never silently become 'excuse nothing' or 'excuse everything'."""
 
 
-def _scan_texts(repo_dir: Path, rels):
-    """(texts, unsafe) for the fail-closed excuse.
+def load_allowlist(path: Path) -> dict:
+    """{exact repo-root-relative path: one-line reason}. Raises AllowlistError on any bad line."""
+    entries = {}
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise AllowlistError(f"cannot read allowlist {path}: {type(exc).__name__}") from None
+    for n, raw in enumerate(lines, 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        rel, sep, reason = line.partition(ALLOWLIST_SEPARATOR)
+        rel, reason = rel.strip(), reason.strip()
+        if not sep or not rel or not reason:
+            raise AllowlistError(f"{path}:{n}: expected '<repo path>{ALLOWLIST_SEPARATOR}<reason>'")
+        if (
+            not rel.startswith(FUNCTIONS_DIR + "/")
+            or rel.endswith("/")
+            or any(c in rel for c in "*?[]{}\\")
+            or any(part in ("", ".", "..") for part in rel.split("/"))
+        ):
+            raise AllowlistError(f"{path}:{n}: '{rel}' is not an exact file path under {FUNCTIONS_DIR}/")
+        if rel in entries:
+            raise AllowlistError(f"{path}:{n}: '{rel}' is listed twice")
+        entries[rel] = reason
+    return entries
 
-    texts  {key: text} of every non-test text/code file the function ships from: its own
-           directory, plus the sibling `_shared/` tree and any deno.json / import map next to
-           the function or its functions dir (PR #2600 review 2, finding 2: a reference that
-           lives OUTSIDE the function directory must be seen too). Tests never ship, so what
-           they mention proves nothing.
-    unsafe a reason string when the walker cannot be trusted for this function, else None:
-           - a code/config file does not decode as UTF-8 (finding 1: one stray byte, or a
-             UTF-16 file, must not make the file look like it imports nothing), or
-           - a dynamic `import(` has a computed (non-literal) specifier (finding 3).
-           When unsafe, nothing is excused for the function: every missing file is reported
-           as missing_in_deploy, i.e. the detector fails toward reporting drift."""
-    texts, bad, computed = {}, [], []
 
-    def take(key, path):
+_QUOTED = re.compile(r"""(['"`])([^'"`\n]{1,400})['"`]""")
+_SPECIFIER = re.compile(r"[\w@~:./-]+")
+_MODULE_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts", ".cjs", ".cts")
+
+
+def allowlist_import_violations(allowlist: dict, repo_root: Path) -> dict:
+    """{allowlisted path: first non-test file that quotes it}. An allowlisted file that
+    non-test code names is bundled, so its absence from a deploy would be real drift and the
+    entry is wrong. This is a tripwire on the list, not a recogniser: the excuse itself is
+    still the exact path. It resolves every quoted relative specifier (`./x`, `../y/x.ts`,
+    extensionless, directory index) against the importing file, and flags a non-relative
+    quoted string (an alias) whose last segment is the file's exact name. Computed paths
+    cannot be resolved and are not seen, which is why adding to the list is a reviewed act."""
+    root = Path(repo_root)
+    functions = root / FUNCTIONS_DIR
+    if not allowlist or not functions.is_dir():
+        return {}
+    targets = {}
+    for rel in allowlist:
+        base = rel.rsplit("/", 1)[-1]
+        stem = base[: base.rfind(".")] if "." in base else base
+        targets[rel] = (base, rel[: len(rel) - len(base) + len(stem)] if stem != base else rel)
+    found = {}
+    for path in sorted(functions.rglob("*")):
+        if not path.is_file() or path.is_symlink():
+            continue
+        importer = path.relative_to(root).as_posix()
+        if is_test_path(importer):
+            continue
         try:
-            texts[key] = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            bad.append(key)
+            text = path.read_bytes().decode("latin-1")  # never fails, never skips a file
         except OSError:
-            pass
-
-    for rel in rels:
-        if is_test_path(rel) or not rel.endswith(_TEXT_SUFFIXES):
             continue
-        take(rel, repo_dir / rel)
-    functions_dir = repo_dir.parent
-    shared = functions_dir / "_shared"
-    if shared.is_dir():
-        for path in sorted(shared.rglob("*")):
-            if path.is_file() and path.name.endswith(_TEXT_SUFFIXES):
-                key = "../_shared/" + path.relative_to(shared).as_posix()
-                if not is_test_path(key):
-                    take(key, path)
-    for base, prefix in ((repo_dir, ""), (functions_dir, "../"), (functions_dir.parent, "../../")):
-        for name in _CONFIG_NAMES:
-            if (base / name).is_file() and (prefix + name) not in texts:
-                take(prefix + name, base / name)
-    for key, text in texts.items():
-        if not key.endswith(_CODE_SUFFIXES):
-            continue
-        for m in _DYN_IMPORT.finditer(text):
-            line_start = text.rfind("\n", 0, m.start()) + 1
-            if text[line_start:m.start()].lstrip().startswith(("//", "*", "/*")):
-                continue  # prose in a comment line ("... no cross-directory import (same ..."), not a call
-            if not _DYN_LITERAL.match(text, m.end()):
-                computed.append(key)
-                break
-    if bad:
-        return texts, "undecodable (not UTF-8): " + ", ".join(sorted(bad))
-    if computed:
-        return texts, "computed dynamic import() specifier in: " + ", ".join(sorted(computed))
-    return texts, None
-
-
-def quoted_mention(rel: str, texts: dict) -> bool:
-    """True when ANY other non-test file names `rel` inside a quoted string ('...', "..." or
-    `...`): the file's basename or its extensionless stem, as a whole path segment. This is
-    the fail-closed half of the excuse (PR #2600 review, comment 6045665870): the import
-    regex cannot see comments inside import braces, `import{a}from`, template-literal or
-    multi-argument dynamic imports, import-map aliases, Deno.readTextFile / Worker / URL
-    reads, extensionless specifiers or createRequire -- but every one of them still quotes
-    the file name, so a quoted mention keeps the file reported as missing_in_deploy.
-    A commented-out import also counts: that errs toward reporting drift."""
-    base = rel.rsplit("/", 1)[-1]
-    stem = base.rsplit(".", 1)[0] if "." in base else base
-    pat = re.compile(
-        r"""['"`][^'"`\n]*?(?<![\w.-])(?:%s|%s)(?![\w-])[^'"`\n]*?['"`]"""
-        % (re.escape(base), re.escape(stem))
-    )
-    return any(pat.search(t) for k, t in texts.items() if k != rel)
-
-
-def reachable_from_entrypoint(repo_dir: Path, rels, fixtures_are_tests: bool = True) -> set:
-    """Repo-relative POSIX paths reachable from the function's entrypoint through
-    relative imports of non-test code files. Empty set when there is no entrypoint."""
-    present = set(rels)
-    queue = [e for e in _ENTRYPOINTS if e in present]
-    seen = set(queue)
-    while queue:
-        cur = queue.pop()
-        if not cur.endswith(_CODE_SUFFIXES):
-            continue
-        try:
-            src = (repo_dir / cur).read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        for m in _REL_IMPORT.finditer(src):
-            spec = m.group(1) or m.group(2)
-            tgt = posixpath.normpath(posixpath.join(posixpath.dirname(cur), spec))
-            if tgt.startswith("..") or tgt not in present or tgt in seen or is_test_path(tgt, fixtures_are_tests):
-                continue
-            seen.add(tgt)
-            queue.append(tgt)
-    return seen
+        for m in _QUOTED.finditer(text):
+            quote, spec = m.group(1), m.group(2)
+            if not _SPECIFIER.fullmatch(spec):
+                continue  # prose between two apostrophes in a comment, not a path
+            for rel, (base, extless) in targets.items():
+                if rel in found or importer == rel:
+                    continue
+                if spec.startswith(("./", "../")):
+                    resolved = posixpath.normpath(posixpath.join(posixpath.dirname(importer), spec))
+                    hit = resolved == rel or resolved == extless or any(
+                        resolved + suffix == rel or resolved + "/index" + suffix == rel for suffix in _MODULE_SUFFIXES
+                    )
+                else:
+                    # alias / import-map specifier. Backticks are skipped here: a `code span` in a
+                    # comment is far more common than an aliased template-literal import.
+                    hit = quote != "`" and spec.rsplit("/", 1)[-1] == base
+                if hit:
+                    found[rel] = importer
+    return found
 
 
 def sha256_file(path: Path) -> str:
@@ -323,41 +297,40 @@ def hash_tree(root: Path) -> dict:
     return out
 
 
-def compare_function(slug: str, repo_dir: Path, deployed_dir: Path, out_of_tree: dict = None) -> dict:
+def compare_function(slug: str, repo_dir: Path, deployed_dir: Path, out_of_tree: dict = None, allowlist: dict = None) -> dict:
     """Compare one function's deployed tree against its repo tree.
 
     Returns a row: {slug, verdict, files: [{path, status, repo_sha, deployed_sha}]}
-    where status is one of same | differs | missing_in_repo | missing_in_deploy.
+    where status is one of same | differs | missing_in_repo | missing_in_deploy, plus the two
+    non-drift statuses test_not_bundled (a *.test.* file) and allowlisted_not_bundled (the
+    file's exact repo path is on the allowlist; its reason is on the file entry).
 
     `out_of_tree` is {repo-root-relative path: (repo_sha256 or None, deployed_sha256)} for files
     the deployed bundle carries from OUTSIDE supabase/functions/ (e.g. react-app/app/lib/...),
     which the Supabase CLI refuses to extract; they are compared like any other file.
+
+    `allowlist` is {exact repo-root-relative path: reason}. It only ever excuses a file that
+    exists in the repo and is absent from the deploy; a listed file that is deployed and
+    differs is still `differs`.
     """
     repo_hashes = hash_tree(repo_dir)
     deployed_hashes = hash_tree(deployed_dir)
+    allowlist = allowlist or {}
 
-    texts, unsafe = _scan_texts(repo_dir, repo_hashes)
-    # `__fixtures__/` is a test asset only while no non-test file mentions it, and never when
-    # the scan is unsafe (an unreadable file might mention it).
-    fixtures_are_tests = unsafe is None and not any("__fixtures__" in t for t in texts.values())
-    # Unsafe scan (undecodable file / computed import): excuse nothing -> empty reachable set.
-    reachable = set() if unsafe else reachable_from_entrypoint(repo_dir, repo_hashes, fixtures_are_tests)
     files = []
     for rel in sorted(set(repo_hashes) | set(deployed_hashes)):
         repo_sha = repo_hashes.get(rel)
         deployed_sha = deployed_hashes.get(rel)
+        entry_extra = {}
         if repo_sha is None:
             status = "missing_in_repo"
         elif deployed_sha is None:
-            if is_test_path(rel, fixtures_are_tests):
+            repo_path = f"{FUNCTIONS_DIR}/{slug}/{rel}"
+            if is_test_path(rel):
                 status = "test_not_bundled"
-            elif (
-                reachable
-                and rel.endswith(_CODE_SUFFIXES)
-                and rel not in reachable
-                and not quoted_mention(rel, texts)
-            ):
-                status = "unreferenced_not_bundled"
+            elif repo_path in allowlist:
+                status = "allowlisted_not_bundled"
+                entry_extra = {"repo_path": repo_path, "reason": allowlist[repo_path]}
             else:
                 status = "missing_in_deploy"
         elif repo_sha == deployed_sha:
@@ -370,6 +343,7 @@ def compare_function(slug: str, repo_dir: Path, deployed_dir: Path, out_of_tree:
                 "status": status,
                 "repo_sha256": repo_sha,
                 "deployed_sha256": deployed_sha,
+                **entry_extra,
             }
         )
 
@@ -389,55 +363,96 @@ def compare_function(slug: str, repo_dir: Path, deployed_dir: Path, out_of_tree:
     else:
         verdict = DRIFTED
 
-    row = {"slug": slug, "verdict": verdict, "files": files}
-    if unsafe:
-        row["excuse_disabled"] = unsafe
-    return row
+    return {"slug": slug, "verdict": verdict, "files": files}
 
 
 # Where the Management API fallback parks deployed files that live OUTSIDE supabase/functions/.
 OUT_OF_TREE_DIR = "__out_of_tree__"
 
 
-def build_report(repo_functions_dir: Path, deployed_root: Path, deployed_slugs, repo_slugs=None, repo_root: Path = None) -> dict:
+def build_report(
+    repo_functions_dir: Path,
+    deployed_root: Path,
+    deployed_slugs,
+    repo_slugs=None,
+    repo_root: Path = None,
+    allowlist: dict = None,
+    fetch_failed: dict = None,
+) -> dict:
     """Compare every deployed slug against the repo, and note repo functions
     that are not deployed at all.
 
     `deployed_root` holds one subdirectory per slug, each mirroring the layout
     of `supabase/functions/<slug>/`.
+
+    `fetch_failed` is {slug: reason} for functions that are deployed but could not be
+    downloaded. Each gets exactly ONE row, FETCH_FAILED (could not measure), and is never
+    also reported as IN_REPO_NEVER_DEPLOYED: it is not in `deployed_slugs` (nothing was
+    fetched) but it is deployed.
+
+    `repo_root` is where out-of-tree files (react-app/..., fetched through the Management
+    API) are compared against. When a deployed function carries such files and `repo_root`
+    is None there is nothing to compare them to, so each is reported `missing_in_repo`
+    (DRIFTED): the report never reads IDENTICAL on a file it did not compare.
+
+    `allowlist` is {exact repo path: reason} (see load_allowlist). The report lists every file
+    it actually excused under "excused", every entry that names no file in the repo under
+    "allowlist_stale", and every entry that non-test code quotes under
+    "allowlist_violations"; a violating entry is NOT applied.
     """
     if repo_slugs is None:
         repo_slugs = discover_repo_slugs(repo_functions_dir)
+    fetch_failed = dict(fetch_failed or {})
+    allowlist = dict(allowlist or {})
+
+    scan_root = repo_root if repo_root is not None else repo_functions_dir.parent.parent
+    violations = allowlist_import_violations(allowlist, scan_root) if allowlist else {}
+    effective = {k: v for k, v in allowlist.items() if k not in violations}
+    stale = sorted(k for k in allowlist if not (scan_root / k).is_file())
 
     rows = []
     for slug in sorted(deployed_slugs):
         oot = {}
         oot_dir = deployed_root / OUT_OF_TREE_DIR / slug
-        if repo_root is not None and oot_dir.is_dir():
+        if oot_dir.is_dir():
             for rel, deployed_sha in hash_tree(oot_dir).items():
-                repo_file = repo_root / rel
-                oot[rel] = (sha256_file(repo_file) if repo_file.is_file() else None, deployed_sha)
+                repo_file = repo_root / rel if repo_root is not None else None
+                oot[rel] = (sha256_file(repo_file) if repo_file is not None and repo_file.is_file() else None, deployed_sha)
         rows.append(
             compare_function(
                 slug,
                 repo_functions_dir / slug,
                 deployed_root / slug,
                 out_of_tree=oot,
+                allowlist=effective,
             )
         )
 
-    for slug in sorted(set(repo_slugs) - set(deployed_slugs)):
+    for slug in sorted(set(repo_slugs) - set(deployed_slugs) - set(fetch_failed)):
         rows.append({"slug": slug, "verdict": IN_REPO_NEVER_DEPLOYED, "files": []})
+    for slug in sorted(fetch_failed):
+        rows.append({"slug": slug, "verdict": FETCH_FAILED, "files": [], "reason": fetch_failed[slug]})
 
     counts = {}
     for row in rows:
         counts[row["verdict"]] = counts.get(row["verdict"], 0) + 1
+
+    excused = [
+        {"slug": row["slug"], "path": f["repo_path"], "reason": f["reason"]}
+        for row in rows
+        for f in row["files"]
+        if f["status"] == "allowlisted_not_bundled"
+    ]
+    rows.sort(key=lambda r: r["slug"])
 
     return {
         "deployed_count": len(set(deployed_slugs)),
         "repo_count": len(set(repo_slugs)),
         "counts": counts,
         "functions": rows,
+        "excused": excused,
+        "allowlist_stale": stale,
+        "allowlist_violations": violations,
     }
 
 
@@ -464,6 +479,8 @@ def report_exit_code(report: dict, allow_undeployed: bool = False) -> int:
     verdicts = {row["verdict"] for row in report["functions"]}
     if verdicts & UNMEASURED_VERDICTS:
         return 2
+    if report.get("allowlist_violations"):
+        return 2  # the allowlist itself is wrong; nothing it excused can be trusted
     if report["deployed_count"] == 0:
         return 2
     failing = set(FAILING_VERDICTS)
@@ -493,15 +510,42 @@ def render_markdown(report: dict) -> str:
     if unmeasured:
         lines += [
             f"> **COULD NOT MEASURE {len(unmeasured)} function(s) - this is NOT a drift finding.** "
-            "Each was tried 3 times with backoff on the CLI and once through the Management API, "
-            "and none of those settled it. The run stays RED (exit 2) on purpose: a detector that "
-            "turns green when it could not measure is worse than a red one. Unmeasured: "
+            "Each was fetched through the Supabase CLI (retried with backoff when the failure looks "
+            "transient; a refusal to extract an out-of-tree file is tried once) and then through the "
+            "Management API, and none of those settled it. The run stays RED (exit 2) on purpose: a "
+            "detector that turns green when it could not measure is worse than a red one. Unmeasured: "
             + ", ".join(f"`{r['slug']}` ({r.get('reason') or 'no reason recorded'})" for r in unmeasured),
             "",
         ]
     drifted = [r for r in report["functions"] if r["verdict"] in FAILING_VERDICTS]
     if drifted:
         lines += [f"> **DRIFT: {len(drifted)} function(s) measured and failing** (see table).", ""]
+    violations = report.get("allowlist_violations") or {}
+    if violations:
+        lines += [
+            f"> **ALLOWLIST INVALID (exit 2): {len(violations)} listed file(s) are named by non-test code.** "
+            "Such a file is bundled, so its absence from a deploy is real drift and the entry is not applied. "
+            "Remove it from `scripts/" + ALLOWLIST_FILENAME + "`: "
+            + ", ".join(f"`{k}` (named in `{v}`)" for k, v in sorted(violations.items())),
+            "",
+        ]
+
+    # Always printed, even when every function is IDENTICAL: an excuse nobody can see is how a
+    # wrong one survives. Anything NOT listed here that is missing from a deploy is DRIFTED.
+    excused = report.get("excused") or []
+    lines += [
+        f"## Files excused by the allowlist ({len(excused)})",
+        "",
+        f"Exact repo paths in `scripts/{ALLOWLIST_FILENAME}` that are absent from the deployed bundle. "
+        "No other file is excused (test files named `*.test.*` aside).",
+        "",
+    ]
+    lines += [f"- `{e['path']}` ({e['slug']}): {e['reason']}" for e in excused] or ["- none"]
+    stale = report.get("allowlist_stale") or []
+    if stale:
+        lines += ["", "Allowlist entries that name no file in the repo (delete them): " + ", ".join(f"`{k}`" for k in stale)]
+    lines.append("")
+
     problems = [r for r in report["functions"] if r["verdict"] != IDENTICAL]
     if not problems:
         lines.append("Every deployed function is byte-identical to `main`.")
@@ -513,8 +557,6 @@ def render_markdown(report: dict) -> str:
         detail = ", ".join(f"`{f['path']}` ({f['status']})" for f in bad) or "—"
         if row.get("reason"):
             detail = "could not measure: " + row["reason"]
-        if row.get("excuse_disabled"):
-            detail += f" [excuses disabled: {row['excuse_disabled']}]"
         lines.append(f"| `{row['slug']}` | **{row['verdict']}** | {detail} |")
 
     lines += [
@@ -699,8 +741,12 @@ def _cli_download(cli: str, project_ref: str, slug: str, dest_root: Path):
         if proc.returncode != 0 or not produced.is_dir():
             err = proc.stderr.strip()
             # The refusal line is not always the LAST stderr line ("Try rerunning ..." follows it).
-            marker = next((ln for ln in err.splitlines() if CLI_OUT_OF_TREE_MARKER in ln), "")
-            tail = marker or (err.splitlines()[-1] if err else "no stderr")
+            lines = [ln for ln in err.splitlines() if ln.strip()]
+            marker = next((ln for ln in lines if CLI_OUT_OF_TREE_MARKER in ln), "")
+            # The CLI ends with a boilerplate "Try rerunning the command with --debug ..." line;
+            # the line before it is the actual error.
+            real = [ln for ln in lines if not ln.lstrip().startswith("Try rerunning")]
+            tail = marker or (real[-1] if real else (lines[-1] if lines else "no stderr"))
             return False, f"exit {proc.returncode}: {tail}"
         # Reclaim the WHOLE scratch tree, not just `produced`: removing or
         # renaming a directory entry needs write permission on its PARENT, not
@@ -850,6 +896,11 @@ def main() -> int:
     )
     parser.add_argument("--markdown-out")
     parser.add_argument("--json-out")
+    parser.add_argument(
+        "--allowlist",
+        default=str(Path(__file__).resolve().parent / ALLOWLIST_FILENAME),
+        help="Checked-in list of repo paths allowed to be absent from a deploy (default: next to this script).",
+    )
     parser.add_argument("--fetch-only-slugs", help="Comma-separated slugs; debugging only, NOT for CI.")
     parser.add_argument(
         "--allow-undeployed",
@@ -862,6 +913,10 @@ def main() -> int:
     repo_root = Path(args.repo_root).resolve()
     repo_functions_dir = repo_root / FUNCTIONS_DIR
     failed_fetches = []
+    try:
+        allowlist = load_allowlist(Path(args.allowlist))
+    except AllowlistError as exc:
+        die_unmeasured(str(exc))
 
     if args.deployed_dir:
         deployed_root = Path(args.deployed_dir).resolve()
@@ -885,13 +940,14 @@ def main() -> int:
         deployed_slugs, failed_fetches = fetch_all(cli, args.project_ref, slugs, deployed_root)
 
     try:
-        report = build_report(repo_functions_dir, deployed_root, deployed_slugs, repo_root=repo_root)
-        for slug in failed_fetches:
-            report["functions"].append(
-                {"slug": slug, "verdict": FETCH_FAILED, "files": [], "reason": FETCH_REASONS.get(slug)}
-            )
-            report["counts"][FETCH_FAILED] = report["counts"].get(FETCH_FAILED, 0) + 1
-        report["functions"].sort(key=lambda r: r["slug"])
+        report = build_report(
+            repo_functions_dir,
+            deployed_root,
+            deployed_slugs,
+            repo_root=repo_root,
+            allowlist=allowlist,
+            fetch_failed={slug: FETCH_REASONS.get(slug) for slug in failed_fetches},
+        )
 
         markdown = render_markdown(report)
         print()
@@ -912,9 +968,15 @@ def main() -> int:
                 )
             if failed_fetches:
                 print(
-                    f"COULD NOT MEASURE: {len(failed_fetches)} function(s) failed to download after "
-                    f"{RETRY_ATTEMPTS} CLI tries and a Management API attempt: {', '.join(failed_fetches)}\n"
+                    f"COULD NOT MEASURE: {len(failed_fetches)} function(s) failed to download through the "
+                    f"CLI and the Management API: {', '.join(failed_fetches)}\n"
                     "This is NOT a drift finding, and the run stays red on purpose.",
+                    file=sys.stderr,
+                )
+            if report.get("allowlist_violations"):
+                print(
+                    "COULD NOT TRUST THE ALLOWLIST: " + ", ".join(sorted(report["allowlist_violations"]))
+                    + " are named by non-test code. Remove them from the allowlist.",
                     file=sys.stderr,
                 )
         elif code == 1:
