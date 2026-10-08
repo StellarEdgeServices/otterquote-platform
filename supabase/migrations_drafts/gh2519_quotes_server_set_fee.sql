@@ -27,22 +27,29 @@
 --          contractor but leaves the old bid selected) or rescinded (bid_status leaves active) is not live and
 --          does not block a new award. The same definition is used by the guard (client UPDATE to selected) and by
 --          accept_bid() (SECURITY DEFINER, so the guard cannot see its caller).
---      (b) CLEAN-UP. When a client or accept_bid() selects a bid, any other bid left status selected and active that
---          is not live is set to declined in the same statement, so a switched-away bid does not stay "selected".
+--      (b) CLEAN-UP. When a client or accept_bid() selects a bid, EVERY other bid left status selected,
+--          whatever its bid_status (active, expired, cancelled, superseded), is set to declined in the same statement, so the claim ends with
+--          exactly one status = 'selected' row. Production's signing, charge and completion code reads the winner as status = 'selected'
+--          alone (docusign-webhook, create-payment-intent, mark-job-complete), so a leftover 'selected' row, even an expired one, would
+--          break them (review 6051777895 finding 1). A dead bid (rescinded, expired, superseded, switched away) is safe to decline.
 --      (c) INDEX. A partial unique index, quotes_one_selected_bid_per_claim, ON quotes (claim_id) WHERE
 --          status = 'selected' AND bid_status = 'active', closes every other route (two simultaneous direct
 --          UPDATEs, a direct UPDATE beside accept_bid(), service_role, the SQL editor). It cannot be defeated by a race.
 --      accept_bid() also takes the claim row lock FIRST (FOR NO KEY UPDATE), then the quote row, so two simultaneous
 --      accepts serialize without the deadlock the re-review reproduced, and returns without writing when the bid is
 --      already the live selected one (a repeated click no longer rewinds a signed claim to awarded).
---      The two exits are NOT changed here. Their defects, stated precisely:
+--      The three exits are NOT changed here. Their defects, stated precisely:
 --        - supabase/functions/switch-contractor/index.ts step 6 writes quotes.status = 'cancelled'; the check
 --          quotes_status_check allows only draft, submitted, selected, declined, expired, so the write is refused
 --          (logged "Non-fatal") and the old bid stays selected. A deployed Edge Function; not changed in this PR.
 --        - supabase/functions/rescind-bid/index.ts writes quotes.bid_status = 'rescinded'; quotes_bid_status_check
 --          allows only active, expired, superseded, cancelled, so the write is refused and the function answers 500
 --          "Failed to rescind bid": today NO bid can be rescinded. Even once repaired it leaves status selected.
---      With (a) and (b) a claim is never stranded after either exit.
+--        - supabase/functions/process-dunning/index.ts L674-701 ("homeowner chose a different contractor") resets the claim to bidding
+--          with selected_contractor_id NULL and restores declined bids to submitted; it then writes status declined and payment_status
+--          failed on the failed contractor's bid (L710-718), so that bid is normally not left selected; if that write is refused or
+--          matches no row, the bid stays selected and the clean-up above declines it at the next award. Same shape as switch-contractor.
+--      With (a) and (b) a claim is never stranded after any of the three exits.
 -- NOT here: the price-and-fee lock on a selected bid (D-369). That is gh2564_quotes_selected_price_lock.sql, its own change.
 --
 -- TIER C POINT LEFT OPEN BY THE RULING (which rate a REVISED bid carries if the configured rate changed after
@@ -65,6 +72,16 @@
 -- The DO block at the start of the transaction raises if it does not.
 
 BEGIN;
+
+-- gh-2564 order guard: the gh2564 lock lives inside quotes_guard_homeowner_columns(), the same function this file replaces.
+-- With the lock applied, this file would silently remove it (D-369). It refuses; run gh2564_quotes_selected_price_lock_rollback.sql first.
+DO $order$
+BEGIN
+  IF COALESCE((SELECT position('gh-2564' IN prosrc) FROM pg_proc WHERE oid = to_regprocedure('public.quotes_guard_homeowner_columns()')), 0) > 0 THEN
+    RAISE EXCEPTION '%: gh-2564 (the selected-bid price lock, D-369) is applied; this would silently remove it. Run gh2564_quotes_selected_price_lock_rollback.sql first', 'gh2519';
+  END IF;
+END
+$order$;
 
 -- gh-2519 pre-flight, in the transaction: the unique index below cannot be built over existing data that already
 -- breaks it. If any claim has two selected, active bids this raises and nothing is applied. Do not fix the data
@@ -261,7 +278,7 @@ BEGIN
     -- gh-2519 residual 4: one selected bid per claim. A client may set a bid to selected only when the claim has no
     -- LIVE selected bid: a bid with status selected, bid_status active, whose contractor is the claim's current
     -- selected contractor. A bid that was switched away from (the claim has no selected contractor, or another one)
-    -- or rescinded (bid_status not active) is not live and does not block; any such leftover selected, active bid is
+    -- or rescinded (bid_status not active) is not live and does not block; any such leftover selected bid (any bid_status) is
     -- set to declined here so that the partial unique index quotes_one_selected_bid_per_claim holds. Re-review
     -- 6051423781 findings 1 and 3. Two simultaneous selects are closed by that index, not by this check.
     IF COALESCE(NEW.status IN ('selected', 'awarded'), false)
@@ -279,7 +296,7 @@ BEGIN
       END IF;
       UPDATE public.quotes q3 SET status = 'declined', updated_at = now()
        WHERE q3.claim_id = OLD.claim_id AND q3.id <> OLD.id
-         AND q3.status = 'selected' AND q3.bid_status = 'active';
+         AND q3.status = 'selected';
     END IF;
 
     -- gh-2519 residual 3: column allow-list. Whatever else changed must be a column this caller's pages
@@ -656,10 +673,11 @@ BEGIN
       USING ERRCODE = 'P0001';
   END IF;
 
-  -- gh-2519: any other bid still selected and active is, after the refusal above, one that was switched away from.
-  -- Set it to declined so the partial unique index quotes_one_selected_bid_per_claim holds for the new selection.
+  -- gh-2519: any other bid still status selected, whatever its bid_status, is after the refusal above one that is not live (switched
+  -- away from, rescinded, expired, superseded). Set it to declined so the claim ends with exactly one status = 'selected' row and the
+  -- partial unique index quotes_one_selected_bid_per_claim holds for the new selection (review 6051777895 finding 1).
   UPDATE quotes SET status = 'declined', updated_at = now()
-   WHERE claim_id = p_claim_id AND id <> p_quote_id AND status = 'selected' AND bid_status = 'active';
+   WHERE claim_id = p_claim_id AND id <> p_quote_id AND status = 'selected';
 
   UPDATE claims SET selected_contractor_id = v_contractor,
                     selected_bid_amount    = v_amount,
@@ -685,6 +703,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS quotes_one_selected_bid_per_claim
   WHERE status = 'selected' AND bid_status = 'active';
 
 COMMENT ON INDEX public.quotes_one_selected_bid_per_claim IS
-  'gh-2519: at most one selected, active bid per claim. A switched-away bid is set to declined by accept_bid() / the quotes guard when the next bid is selected; a rescinded bid (bid_status not active) is outside the index.';
+  'gh-2519: at most one selected, active bid per claim. Every other status-selected bid on the claim (switched away, rescinded, expired) is set to declined by accept_bid() / the quotes guard when the next bid is selected; a rescinded bid (bid_status not active) is outside the index.';
 
 COMMIT;

@@ -35,29 +35,35 @@ SQL
 reset() { P -v ON_ERROR_STOP=1 -c "UPDATE public.quotes SET status='submitted', bid_status='active'; UPDATE public.claims SET status='bidding', selected_contractor_id=NULL, selected_bid_amount=NULL WHERE id='$C1'" >/dev/null; }
 # sess <name> <delay seconds> <hold seconds> <sql as the homeowner>
 sess() { { echo "BEGIN; SELECT set_config('request.jwt.claims', '{\"sub\":\"$O\",\"role\":\"authenticated\",\"email\":\"concurrency-proof@example.invalid\"}', true); SET LOCAL ROLE authenticated;"
-           echo "$4"; echo "SELECT pg_sleep($3); COMMIT;"; } > "$OUT/$1.sql"
+           echo "$4"; echo "SELECT pg_sleep($3); COMMIT; SELECT 'SESSION-DONE';"; } > "$OUT/$1.sql"
          ( sleep "$2"; P -v ON_ERROR_STOP=0 -v VERBOSITY=terse -f "$OUT/$1.sql" > "$OUT/$1.out" 2>&1 ) & }
-res() { if grep -q "ERROR" "$OUT/$1.out"; then grep -m1 "ERROR" "$OUT/$1.out" | sed 's/^[^E]*//' | cut -c1-140; else echo ok; fi; }
+# A session that printed SESSION-DONE ran every statement. Anything matching error, fatal, failed or could not (any case, so a psql
+# "connection to server ... failed" or "error:" line counts) is a failure; so is a session that printed neither (review 6051777895 finding 6).
+res() { if grep -qiE "error|fatal|failed|could not" "$OUT/$1.out"; then grep -m1 -iE "error|fatal|failed|could not" "$OUT/$1.out" | sed -E 's/^.*(ERROR|error|FATAL|fatal|connection)/\1/' | cut -c1-140
+        elif grep -q "SESSION-DONE" "$OUT/$1.out"; then echo ok; else echo "ERROR: no result from this session (not run)"; fi; }
 state() { P -At -c "SELECT 'selected AND active bids=' || (SELECT count(*) FROM public.quotes WHERE claim_id='$C1' AND status='selected' AND bid_status='active') || ' | q1=' || (SELECT status FROM public.quotes WHERE id='$Q1') || ' q2=' || (SELECT status FROM public.quotes WHERE id='$Q2')"; }
 check() { # <label> <condition description> <exit status of the test>
   if [ "$3" = 0 ]; then echo "  PASS $1: $2"; else echo "  FAIL $1: $2"; rc=1; fi; }
+infra_bad() { grep -qiE "could not connect|connection to server|server closed|FATAL" "$OUT/A.out" "$OUT/B.out" 2>/dev/null || { [ ! -s "$OUT/A.out" ] && [ ! -s "$OUT/B.out" ]; }; }
+nodl() { ! infra_bad && ! grep -qi "deadlock detected" "$OUT/A.out" "$OUT/B.out"; } # a connection failure is never a pass
 race() { # <name> <A sql> <A hold> <B sql> <B delay> <B hold> [third writer: 1]
   reset; echo "== $1"
   if [ "${7:-0}" = 1 ]; then { echo "BEGIN; UPDATE public.claims SET updated_at=now() WHERE id='$C1'; SELECT pg_sleep(2); COMMIT;"; } > "$OUT/C.sql"; ( P -f "$OUT/C.sql" >/dev/null 2>&1 ) & sleep 0.3; fi
   sess A 0 "$3" "$2"; sess B "$5" "$6" "$4"; wait
-  echo "  A: $(res A)"; echo "  B: $(res B)"; echo "  end: $(state)"; }
+  echo "  A: $(res A)"; echo "  B: $(res B)"; echo "  end: $(state)"
+  if infra_bad; then echo "  FAIL $1: a psql session did not connect or did not run (infrastructure failure, not a result)"; rc=1; fi; }
 ACC1="SELECT * FROM public.accept_bid('$C1','$Q1');"; ACC2="SELECT * FROM public.accept_bid('$C1','$Q2');"
 SEL1="UPDATE public.quotes SET status='selected' WHERE id='$Q1';"; SEL2="UPDATE public.quotes SET status='selected' WHERE id='$Q2';"
 
 race "C1 two accepts of different bids while a third writer holds the claim row" "$ACC1" 0 "$ACC2" 0.3 0 1
-grep -q "deadlock detected" "$OUT/A.out" "$OUT/B.out"; check C1 "no deadlock between the two accepts" $((1 - $? ))
+nodl; check C1 "no deadlock between the two accepts" $?
 [ "$(state | grep -c 'bids=1 ')" = 1 ]; check C1 "exactly one selected, active bid at the end" $?
 race "C2 two direct UPDATEs to selected, the first held open 2 s" "$SEL1" 2 "$SEL2" 0.5 0
 [ "$(state | grep -c 'bids=1 ')" = 1 ]; check C2 "exactly one selected, active bid at the end" $?
 race "C3 a direct UPDATE to selected held open 2 s, and rpc accept_bid of the other bid" "$SEL2" 2 "$ACC1" 0.5 0
 [ "$(state | grep -c 'bids=1 ')" = 1 ]; check C3 "exactly one selected, active bid at the end" $?
 race "C4 accept_bid held open 3 s, a second accept_bid of the other bid 0.5 s later" "$ACC1" 3 "$ACC2" 0.5 0
-grep -q "deadlock detected" "$OUT/A.out" "$OUT/B.out"; check C4 "no deadlock" $((1 - $? ))
+nodl; check C4 "no deadlock" $?
 grep -q "already selected" "$OUT/B.out"; check C4 "the second accept is refused (already selected)" $?
 [ "$(state | grep -c 'bids=1 ')" = 1 ]; check C4 "exactly one selected, active bid at the end" $?
 psql -q -d postgres -c "DROP DATABASE IF EXISTS $DB"; echo "outputs in $OUT"; exit $rc

@@ -403,6 +403,21 @@ BEGIN
     RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
   EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
 
+  -- P1 (re-review 6051423781 finding 1, blocking): switch-contractor as deployed, then the hourly expiry marks the leftover
+  -- bid expired (process-bid-expirations L470-473: the claim is bidding, so it is not exempt), then the owner awards another
+  -- bid. Production reads "the winner" as status = 'selected' alone (docusign-webhook, create-payment-intent, mark-job-complete),
+  -- so the end state must have exactly ONE row with status = 'selected' whatever its bid_status.
+  BEGIN
+    UPDATE public.quotes SET status = 'submitted', updated_at = now() WHERE id = ql; -- fixture: k2's bid on c2 is open
+    v := v || E'\nRP1 OWNER accept_bid(c2, ql) after switch (review P1)-contractor step 7 and the hourly expiry of the leftover winner qw (service_role bid_status=expired): '
+      || pg_temp.try_as('service_role', NULL, format('UPDATE public.claims SET status=''bidding'', selected_contractor_id=NULL WHERE id=%L', c2))
+      || ' / ' || pg_temp.try_as('service_role', NULL, format('UPDATE public.quotes SET bid_status=''expired'', updated_at=now() WHERE id=%L', qw))
+      || ' / ' || pg_temp.try_as('authenticated', o, format('SELECT * FROM public.accept_bid(%L, %L)', c2, ql)) || pg_temp.sel(c2);
+    v := v || format(' | status=selected rows=%s', (SELECT count(*) FROM public.quotes WHERE claim_id = c2 AND status = 'selected'))
+      || format(' | qw=%s/%s ql=%s/%s', (SELECT status FROM public.quotes WHERE id = qw), (SELECT bid_status FROM public.quotes WHERE id = qw), (SELECT status FROM public.quotes WHERE id = ql), (SELECT bid_status FROM public.quotes WHERE id = ql));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+
   -- ===== RB: the claim after the platform's second exit, rescind-bid, and the re-bid (D-369's way out) =====
   -- rescind-bid writes quotes.bid_status = 'rescinded', which quotes_bid_status_check refuses, and leaves status selected.
   -- 'cancelled' is the nearest value the constraint allows: what a repaired rescind-bid would have to write.
@@ -418,6 +433,14 @@ BEGIN
       || ' / ' || pg_temp.try_as('authenticated', k1u, format('INSERT INTO public.quotes %s VALUES (%L,%L,%L, 14000, 5.0, 700, ''scope'', NULL, NULL, NULL, false, ''roofing'', ''{}''::jsonb, NULL, false, true, NULL, NULL, NULL, 5, ''bid_amount'', now())', ins_cols, n1, c3, k1))
       || ' / ' || pg_temp.try_as('authenticated', o, format('SELECT * FROM public.accept_bid(%L, %L)', c3, n1)) || pg_temp.sel(c3);
     v := v || format(' | qs=%s/%s new=%s/%s', (SELECT status FROM public.quotes WHERE id = qs), (SELECT bid_status FROM public.quotes WHERE id = qs), (SELECT status FROM public.quotes WHERE id = n1), (SELECT bid_status FROM public.quotes WHERE id = n1));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  BEGIN
+    v := v || E'\nRP2 rescind (review P2; service_role, bid_status=cancelled on qs), k1 re-bids 14000 on c3, OWNER rpc accept_bid(c3, new bid): the end state must have exactly one status = selected row (re-review 6051423781 finding 1, blocking): '
+      || pg_temp.try_as('service_role', NULL, format('UPDATE public.quotes SET bid_status=''cancelled'', updated_at=now() WHERE id=%L', qs))
+      || ' / ' || pg_temp.try_as('authenticated', k1u, format('INSERT INTO public.quotes %s VALUES (%L,%L,%L, 14000, 5.0, 700, ''scope'', NULL, NULL, NULL, false, ''roofing'', ''{}''::jsonb, NULL, false, true, NULL, NULL, NULL, 5, ''bid_amount'', now())', ins_cols, n1, c3, k1))
+      || ' / ' || pg_temp.try_as('authenticated', o, format('SELECT * FROM public.accept_bid(%L, %L)', c3, n1)) || pg_temp.sel(c3);
+    v := v || format(' | status=selected rows=%s', (SELECT count(*) FROM public.quotes WHERE claim_id = c3 AND status = 'selected'));
     RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
   EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
   BEGIN
@@ -555,7 +578,7 @@ BEGIN
     RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
   EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
 
-  v := v || E'\nNOWRITE ' || format('rows of the seven tables before=%s after=%s unchanged=%s', before, pg_temp.snap(), before = pg_temp.snap());
+  v := v || E'\nNOWRITE ' || format('rows of the seven tables unchanged=%s', before = pg_temp.snap());
   RETURN v;
 END $s$;
 

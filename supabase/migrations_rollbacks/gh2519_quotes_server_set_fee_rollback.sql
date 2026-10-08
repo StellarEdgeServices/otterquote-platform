@@ -2,7 +2,8 @@
 -- WARNING: this RE-OPENS #2519's residuals: the bidding contractor can again store any fee rate, basis and fee
 -- amount on a bid, the claim owner can again write payment_status, is_test and the other columns, a second
 -- bid can again be set to selected, and the referral commission again reads the newest selected bid.
--- Run gh2564_quotes_selected_price_lock_rollback.sql FIRST if gh2564_quotes_selected_price_lock.sql was applied (it re-creates this guard).
+-- ORDER: run gh2564_quotes_selected_price_lock_rollback.sql FIRST if gh2564_quotes_selected_price_lock.sql was applied (it re-creates this guard).
+-- This file now REFUSES (RAISE EXCEPTION, nothing changes) while the live guard still carries the gh-2564 lock (review 6051777895 finding 7).
 -- It restores quotes_guard_homeowner_columns() to the body of 20261006170000_gh2519_quotes_fee_columns_guard.sql
 -- (prosrc md5 f6102d1c…) and accept_bid() to the live body (prosrc md5 07ae60dd…) and apply_referral_commission() to the body of
 -- 20261005151842_gh2479_referral_guard_and_commission_checks.sql (prosrc md5 5cd19c8b…), byte for byte, with
@@ -16,6 +17,16 @@
 -- 4f8b242d). Before the apply, compare it with production: SELECT left(md5(obj_description('public.apply_referral_commission()'::regprocedure,'pg_proc')),8)
 -- must read 4f8b242d; if not, correct the text in this file to production's before relying on this rollback.
 BEGIN;
+
+-- gh-2564 order guard: the gh2564 lock lives inside quotes_guard_homeowner_columns(), the same function this rollback restores.
+-- With the lock applied, this rollback would silently remove it (D-369). It refuses; run gh2564_quotes_selected_price_lock_rollback.sql first.
+DO $order$
+BEGIN
+  IF COALESCE((SELECT position('gh-2564' IN prosrc) FROM pg_proc WHERE oid = to_regprocedure('public.quotes_guard_homeowner_columns()')), 0) > 0 THEN
+    RAISE EXCEPTION '%: gh-2564 (the selected-bid price lock, D-369) is applied; this rollback would silently remove it. Run gh2564_quotes_selected_price_lock_rollback.sql first', 'gh2519 rollback';
+  END IF;
+END
+$order$;
 
 CREATE OR REPLACE FUNCTION public.quotes_guard_homeowner_columns()
 RETURNS trigger

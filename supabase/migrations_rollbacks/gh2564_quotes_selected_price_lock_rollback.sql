@@ -160,7 +160,7 @@ BEGIN
     -- gh-2519 residual 4: one selected bid per claim. A client may set a bid to selected only when the claim has no
     -- LIVE selected bid: a bid with status selected, bid_status active, whose contractor is the claim's current
     -- selected contractor. A bid that was switched away from (the claim has no selected contractor, or another one)
-    -- or rescinded (bid_status not active) is not live and does not block; any such leftover selected, active bid is
+    -- or rescinded (bid_status not active) is not live and does not block; any such leftover selected bid (any bid_status) is
     -- set to declined here so that the partial unique index quotes_one_selected_bid_per_claim holds. Re-review
     -- 6051423781 findings 1 and 3. Two simultaneous selects are closed by that index, not by this check.
     IF COALESCE(NEW.status IN ('selected', 'awarded'), false)
@@ -178,7 +178,7 @@ BEGIN
       END IF;
       UPDATE public.quotes q3 SET status = 'declined', updated_at = now()
        WHERE q3.claim_id = OLD.claim_id AND q3.id <> OLD.id
-         AND q3.status = 'selected' AND q3.bid_status = 'active';
+         AND q3.status = 'selected';
     END IF;
 
     -- gh-2519 residual 3: column allow-list. Whatever else changed must be a column this caller's pages

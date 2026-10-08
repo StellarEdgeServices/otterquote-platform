@@ -13,7 +13,8 @@
 # (accept_bid() refuses a second LIVE selected bid, X1c; a claim after switch-contractor or rescind-bid can be awarded
 # again, W3 W4 RB2, and the live selected bid still blocks, RB3; the partial unique index, N1; the terms of a selected bid
 # are locked, T1-T7) and the two apply gates of the gh2564 draft hold (it raises without gh2519, and while rescind-bid's
-# bid_status value is refused by quotes_bid_status_check). Pass 3 applies a copy of the gh2564 draft whose one constant
+# bid_status value is refused by quotes_bid_status_check), and the two order guards hold (the gh2519 rollback and a re-apply of the gh2519
+# draft refuse while the gh2564 lock is applied). Pass 3 applies a copy of the gh2564 draft whose one constant
 # c_rescind_bid_writes is set to 'cancelled', the value a repaired rescind-bid would write: the draft itself is untouched.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -35,11 +36,18 @@ gate "gh2564 while rescind-bid is refused by quotes_bid_status_check" "$D/gh2564
 sed "s/c_rescind_bid_writes CONSTANT text := 'rescinded'/c_rescind_bid_writes CONSTANT text := 'cancelled'/" "$D/gh2564_quotes_selected_price_lock.sql" > "$OUT/gh2564_with_cancelled.sql"
 cmp -s "$OUT/gh2564_with_cancelled.sql" "$D/gh2564_quotes_selected_price_lock.sql" && { echo "runner: the gh2564 constant was not found to replace"; rc=1; }
 apply "$OUT/gh2564_with_cancelled.sql";                      pass 3-AFTER-both
+# order hazards (review 6051777895 finding 7): with the gh2564 lock applied, both the gh2519 rollback and a re-apply of the gh2519 draft
+# would silently remove it; each must refuse and change nothing (pass 4 below, which must still equal pass 2, proves nothing changed).
+gate "gh2519 rollback while gh2564 is applied" "$RB/gh2519_quotes_server_set_fee_rollback.sql" "gh-2564 (the selected-bid price lock, D-369) is applied"
+gate "gh2519 draft re-applied while gh2564 is applied" "$D/gh2519_quotes_server_set_fee.sql" "gh-2564 (the selected-bid price lock, D-369) is applied"
 apply "$RB/gh2564_quotes_selected_price_lock_rollback.sql";  pass 4-ROLLBACK-gh2564
 apply "$RB/gh2519_quotes_server_set_fee_rollback.sql";       pass 5-ROLLBACK-gh2519
 diff -q "$OUT/2-AFTER-gh2519.txt" "$OUT/4-ROLLBACK-gh2564.txt" >/dev/null && echo "ROLLBACK gh2564: output identical to AFTER-gh2519" || { echo "ROLLBACK gh2564: OUTPUT DIFFERS"; rc=1; }
 diff -q "$OUT/1-TODAY.txt" "$OUT/5-ROLLBACK-gh2519.txt" >/dev/null && echo "ROLLBACK gh2519: output identical to TODAY" || { echo "ROLLBACK gh2519: OUTPUT DIFFERS"; rc=1; }
 for f in "$OUT"/[1-5]-*.txt; do grep -q '^NOWRITE .* unchanged=t$' "$f" || { echo "NOWRITE failed in $f"; rc=1; }; done
+# The pass outputs are deterministic (the NOWRITE line prints only unchanged=t, not the run-dependent row hashes), so these md5s
+# are the same on every run of this head; a different value means the proof text or the drafts changed.
+for f in "$OUT"/[1-5]-*.txt; do echo "md5 $(basename "$f" .txt) $(md5sum < "$f" | cut -c1-8)"; done
 # Expectations that make the proof fail on a head that lacks a rule (review 6050036561 B1, D-381): a line is read by its id.
 line() { grep -m1 "^$2 " "$OUT/$1.txt" || true; }
 expect() { # <pass> <line id> <ACCEPTED|REJECTED 42501>: the line must carry that outcome
@@ -61,6 +69,14 @@ for pn in $OLD $NEW; do
   has $pn RB2 "rows=1 ACCEPTED / rows=1 ACCEPTED / rows=1 ACCEPTED"; has $pn RB2 "selected AND active=1"
   has $pn N2 "rows=1 ACCEPTED / rows=1 ACCEPTED / rows=1 ACCEPTED"; has $pn N2 "selected AND active=1"
 done
+# P1 and P2 (re-review 6051423781 finding 1, blocking): after a re-award the claim has exactly ONE row with status = 'selected',
+# whatever its bid_status, because production's signing, charge and completion code reads the winner as status = 'selected' alone.
+# Failing controls: today's schema, the schema after the rollback, and the previous head (94d01006) end with 2.
+for pn in $NEW; do
+  has $pn RP1 "rows=1 ACCEPTED"; has $pn RP1 "selected bids (any bid_status)=1"; has $pn RP1 "status=selected rows=1"; has $pn RP1 "qw=declined/expired ql=selected/active"
+  has $pn RP2 "rows=1 ACCEPTED / rows=1 ACCEPTED / rows=1 ACCEPTED"; has $pn RP2 "selected bids (any bid_status)=1"; has $pn RP2 "status=selected rows=1"
+done
+for pn in $OLD; do has $pn RP1 "status=selected rows=2"; has $pn RP2 "status=selected rows=2"; done
 for pn in $OLD; do   # failing controls: today two selected bids stand
   has $pn W3 "selected AND active=2"; has $pn W4 "selected AND active=2";
   has $pn RB3 "selected AND active=2"; has $pn N1 "rows=1 ACCEPTED / rows=1 ACCEPTED"; has $pn X2b "status=awarded"

@@ -46,7 +46,8 @@ BEGIN;
 --       as read from supabase/functions/rescind-bid/index.ts (L197: 'rescinded'; production's constraint allows only
 --       active, expired, superseded, cancelled, so today this block raises). Whoever repairs rescind-bid sets this
 --       constant to the value the repaired function writes; (c) is necessary, not sufficient: the pre-flight still requires
---       a rescind of an is_test selected bid to be shown succeeding.
+--       a rescind of an is_test selected bid to be shown succeeding, the re-bid to be accepted, and exactly ONE status = 'selected' row
+--       on that claim afterwards (production's signing, charge and completion code reads the winner as status = 'selected' alone).
 DO $gate$
 DECLARE c_rescind_bid_writes CONSTANT text := 'rescinded';
 BEGIN
@@ -226,7 +227,7 @@ BEGIN
     -- gh-2519 residual 4: one selected bid per claim. A client may set a bid to selected only when the claim has no
     -- LIVE selected bid: a bid with status selected, bid_status active, whose contractor is the claim's current
     -- selected contractor. A bid that was switched away from (the claim has no selected contractor, or another one)
-    -- or rescinded (bid_status not active) is not live and does not block; any such leftover selected, active bid is
+    -- or rescinded (bid_status not active) is not live and does not block; any such leftover selected bid (any bid_status) is
     -- set to declined here so that the partial unique index quotes_one_selected_bid_per_claim holds. Re-review
     -- 6051423781 findings 1 and 3. Two simultaneous selects are closed by that index, not by this check.
     IF COALESCE(NEW.status IN ('selected', 'awarded'), false)
@@ -244,7 +245,7 @@ BEGIN
       END IF;
       UPDATE public.quotes q3 SET status = 'declined', updated_at = now()
        WHERE q3.claim_id = OLD.claim_id AND q3.id <> OLD.id
-         AND q3.status = 'selected' AND q3.bid_status = 'active';
+         AND q3.status = 'selected';
     END IF;
 
     -- gh-2564 (D-369, Dustin 2026-10-06: "Lock (Recommended)"; D-381, Dustin 2026-10-08: "Freeze terms too
