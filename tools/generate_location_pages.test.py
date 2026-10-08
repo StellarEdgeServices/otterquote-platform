@@ -1648,7 +1648,7 @@ class SourcesListTests(unittest.TestCase):
 
     def test_every_committed_county_page_has_a_non_empty_sources_list(self):
         pairs = self.committed_pairs()
-        self.assertEqual(len(pairs), 17)
+        self.assertEqual(len(pairs), 23)
         for state, county, trade, sources, _page in pairs:
             with self.subTest(f"{county}-{state}/{trade}"):
                 self.assertGreaterEqual(len(sources), 3)   # NOAA or Census plus at least one local source

@@ -124,6 +124,8 @@ const REDIRECT_MAP: Record<string, string> = {
   // trailing-slash URL (same class as /blog/index.html above).
   '/locations/allen-county-in/roofing/index.html':
     '/locations/allen-county-in/roofing/',
+  '/locations/butler-county-oh/roofing/index.html':
+    '/locations/butler-county-oh/roofing/',
   '/locations/cuyahoga-county-oh/roofing/index.html':
     '/locations/cuyahoga-county-oh/roofing/',
   '/locations/davidson-county-tn/roofing/index.html':
@@ -140,22 +142,32 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/knox-county-tn/roofing/',
   '/locations/lake-county-in/roofing/index.html':
     '/locations/lake-county-in/roofing/',
+  '/locations/lorain-county-oh/roofing/index.html':
+    '/locations/lorain-county-oh/roofing/',
   '/locations/lucas-county-oh/roofing/index.html':
     '/locations/lucas-county-oh/roofing/',
   '/locations/marion-county-in/roofing/index.html':
     '/locations/marion-county-in/roofing/',
   '/locations/montgomery-county-oh/roofing/index.html':
     '/locations/montgomery-county-oh/roofing/',
+  '/locations/montgomery-county-tn/roofing/index.html':
+    '/locations/montgomery-county-tn/roofing/',
   '/locations/rutherford-county-tn/roofing/index.html':
     '/locations/rutherford-county-tn/roofing/',
   '/locations/shelby-county-tn/roofing/index.html':
     '/locations/shelby-county-tn/roofing/',
   '/locations/st-louis-county-mo/roofing/index.html':
     '/locations/st-louis-county-mo/roofing/',
+  '/locations/stark-county-oh/roofing/index.html':
+    '/locations/stark-county-oh/roofing/',
   '/locations/summit-county-oh/roofing/index.html':
     '/locations/summit-county-oh/roofing/',
+  '/locations/sumner-county-tn/roofing/index.html':
+    '/locations/sumner-county-tn/roofing/',
   '/locations/williamson-county-tn/roofing/index.html':
     '/locations/williamson-county-tn/roofing/',
+  '/locations/wilson-county-tn/roofing/index.html':
+    '/locations/wilson-county-tn/roofing/',
 };
 
 export default async (req: Request, context: any) => {
