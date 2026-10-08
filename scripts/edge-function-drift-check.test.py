@@ -208,6 +208,200 @@ def reviewer_cases():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def write_bytes(root: pathlib.Path, slug: str, name: str, data: bytes):
+    d = root / slug
+    (d / name).parent.mkdir(parents=True, exist_ok=True)
+    (d / name).write_bytes(data)
+
+
+def second_review_cases():
+    """PR #2600 second review (comment 6047691653): shapes R1-R6 where the excuse failed open."""
+    print("\nPR #2600 review 2 cases R1-R6 (needed file missing from deploy -> must be DRIFTED)")
+    idx_need = "import { a } from './need.ts'\nimport { o } from './lib/other.ts'\n"
+    cases = {}
+    cases["R1 index.ts has a Latin-1 byte"] = (
+        {"index.ts": b"// caf\xe9\n" + idx_need.encode()}, {"need.ts": b"export const a = 1\n", "lib/other.ts": b"export const o = 1\n"}, "need.ts")
+    cases["R5 mid.ts has a cp1252 smart quote"] = (
+        {"index.ts": b"import './mid.ts'\n", "mid.ts": b"// it\x92s\nimport './need.ts'\n"}, {"need.ts": b"export const a = 1\n"}, "need.ts")
+    cases["R6 index.ts saved as UTF-16"] = (
+        {"index.ts": idx_need.encode("utf-16")}, {"need.ts": b"export const a = 1\n", "lib/other.ts": b"export const o = 1\n"}, "need.ts")
+    cases["R2 computed import (string concatenation)"] = (
+        {"index.ts": b"const kind = 'zz'\nawait import('./handlers/' + kind + '.ts')\n"}, {"handlers/a.ts": b"export default 1\n"}, "handlers/a.ts")
+    cases["R3 computed import (template literal)"] = (
+        {"index.ts": b"const kind = 'zz'\nawait import(`./handlers/${kind}.ts`)\n"}, {"handlers/a.ts": b"export default 1\n"}, "handlers/a.ts")
+    for label, (same_files, repo_only, needed) in cases.items():
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-r2-"))
+        try:
+            repo, deployed = tmp / "repo", tmp / "deployed"
+            for name, data in same_files.items():
+                write_bytes(repo, "fn", name, data)
+                write_bytes(deployed, "fn", name, data)
+            for name, data in repo_only.items():
+                write_bytes(repo, "fn", name, data)
+            r = drift.build_report(repo, deployed, ["fn"], repo_slugs=["fn"])
+            st = {f["path"]: f["status"] for f in r["functions"][0]["files"]}
+            check(f"{label}: verdict", r["functions"][0]["verdict"], drift.DRIFTED)
+            check(f"{label}: {needed} status", st[needed], "missing_in_deploy")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    # R4: a _shared file imports back into the function directory.
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-r2-"))
+    try:
+        repo, deployed = tmp / "repo", tmp / "deployed"
+        idx = "import { run } from '../_shared/runner.ts'\nrun()\n"
+        for root in (repo, deployed):
+            write(root, "fn", "index.ts", idx)
+            write(root, "_shared", "runner.ts", "import { a } from '../fn/need.ts'\nexport const run = () => a\n")
+        write(repo, "fn", "need.ts", "export const a = 1\n")
+        r = drift.build_report(repo, deployed, ["fn"], repo_slugs=["fn"])
+        st = {f["path"]: f["status"] for f in r["functions"][0]["files"]}
+        check("R4 _shared imports back into the function: verdict", r["functions"][0]["verdict"], drift.DRIFTED)
+        check("R4 need.ts status", st["need.ts"], "missing_in_deploy")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    # Controls that must keep their excuse: a LITERAL dynamic import (trailing comma, template
+    # without ${}) and a clean _shared file do not disable the walker.
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-r2-"))
+    try:
+        repo, deployed = tmp / "repo", tmp / "deployed"
+        idx = "const m = await import(\n  './used.ts',\n)\nconst n = await import(`./used2.ts`)\n"
+        for root in (repo, deployed):
+            write(root, "fn", "index.ts", idx)
+            write(root, "fn", "used.ts", "export const a = 1\n")
+            write(root, "fn", "used2.ts", "export const b = 1\n")
+            write(root, "_shared", "clean.ts", "export const c = 1\n")
+        write(repo, "fn", "orphan.ts", "export const o = 1\n")
+        r = drift.build_report(repo, deployed, ["fn"], repo_slugs=["fn"])
+        st = {f["path"]: f["status"] for f in r["functions"][0]["files"]}
+        check("control: literal dynamic imports keep the walker on (orphan excused)", st["orphan.ts"], "unreferenced_not_bundled")
+        check("control: verdict IDENTICAL", r["functions"][0]["verdict"], drift.IDENTICAL)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def planted_drift_selftest():
+    """End-to-end negative control through the real CLI entry point (--deployed-dir, no network):
+    the detector must PASS (exit 0) when the bytes are equal and FAIL (exit 1) when one byte
+    differs. A detector that cannot fail proves nothing."""
+    import subprocess
+    print("\nPlanted drift, end to end (negative control)")
+    script = str(HERE / "edge-function-drift-check.py")
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-plant-"))
+    try:
+        root = tmp / "root"
+        funcs = root / "supabase" / "functions"
+        deployed = tmp / "deployed"
+        body = "export const handler = () => new Response('ok')\n"
+        write(funcs, "planted", "index.ts", body)
+        write(deployed, "planted", "index.ts", body)
+
+        def run():
+            return subprocess.run([sys.executable, script, "--repo-root", str(root), "--deployed-dir", str(deployed)],
+                                  capture_output=True, text=True).returncode
+
+        check("equal bytes -> exit 0 (PASS)", run(), 0)
+        # one codepoint: U+0020 -> U+00A0 in the deployed copy (invisible to any normalizing diff)
+        write(deployed, "planted", "index.ts", body.replace("new Response", "new\u00a0Response"))
+        check("one byte differs -> exit 1 (FAIL)", run(), 1)
+        write(deployed, "planted", "index.ts", body)
+        check("restored -> exit 0 again", run(), 0)
+        (funcs / "planted" / "extra.ts").write_text("export const x = 1\n", encoding="utf-8")
+        write(funcs, "planted", "index.ts", body + "import './extra.ts'\n")
+        write(deployed, "planted", "index.ts", body + "import './extra.ts'\n")
+        check("reachable file missing from deploy -> exit 1 (FAIL)", run(), 1)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def fetch_policy_cases():
+    """Retry / fallback / loud-unmeasured policy of download_function (CTO RUN 63)."""
+    print("\nFetch policy: retry with backoff, API fallback, loud COULD NOT MEASURE")
+    sleeps = []
+
+    def flaky(fail_times):
+        calls = {"n": 0}
+
+        def cli(cli_path, ref, slug, dest):
+            calls["n"] += 1
+            if calls["n"] <= fail_times:
+                return False, "exit 1: connection reset"
+            (dest / slug).mkdir(parents=True, exist_ok=True)
+            (dest / slug / "index.ts").write_text("x\n", encoding="utf-8")
+            return True, ""
+        return cli, calls
+
+    def api_must_not_run(ref, slug, dest):
+        raise AssertionError("API fallback must not run when a CLI retry settles it")
+
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-fetch-"))
+    try:
+        cli, calls = flaky(2)
+        ok = drift.download_function("cli", "ref", "fn", tmp, sleep=sleeps.append, api_download=api_must_not_run, cli_download=cli)
+        check("transient failure settled on 3rd CLI try -> measured", ok, True)
+        check("exactly 3 CLI tries", calls["n"], 3)
+        check("backoff between tries (2 sleeps, growing)", sleeps == list(drift.RETRY_BACKOFF_SECONDS[:2]) and sleeps[0] < sleeps[1], True)
+
+        sleeps.clear()
+        cli, calls = flaky(99)
+
+        def api_fail(ref, slug, dest):
+            raise ValueError("Management API HTTP 503")
+        ok = drift.download_function("cli", "ref", "fn2", tmp, sleep=sleeps.append, api_download=api_fail, cli_download=cli)
+        check("retry cannot settle it -> FETCH failed (not clean)", ok, False)
+        check("3 CLI tries before giving up", calls["n"], 3)
+        check("reason recorded with both routes", "CLI:" in drift.FETCH_REASONS["fn2"] and "Management API" in drift.FETCH_REASONS["fn2"], True)
+        report = drift.build_report(tmp, tmp, ["fn"], repo_slugs=["fn"])
+        report["functions"].append({"slug": "fn2", "verdict": drift.FETCH_FAILED, "files": [], "reason": drift.FETCH_REASONS["fn2"]})
+        check("unmeasured function keeps the run RED (exit 2)", drift.report_exit_code(report), 2)
+        md = drift.render_markdown(report)
+        check("summary says COULD NOT MEASURE and 'NOT a drift finding'", "COULD NOT MEASURE 1 function(s)" in md and "NOT a drift finding" in md, True)
+        check("summary names the function and the reason", "`fn2`" in md and "HTTP 503" in md, True)
+
+        sleeps.clear()
+        cli_calls = {"n": 0}
+
+        def refuses(cli_path, ref, slug, dest):
+            cli_calls["n"] += 1
+            return False, "exit 1: refusing to extract Function file outside /x: source/react-app/a.ts"
+        api_calls = []
+        ok = drift.download_function("cli", "ref", "fn3", tmp, sleep=sleeps.append,
+                                     api_download=lambda ref, slug, dest: api_calls.append(slug), cli_download=refuses)
+        check("out-of-tree refusal is deterministic: 1 CLI try, no sleeps", (cli_calls["n"], sleeps), (1, []))
+        check("out-of-tree refusal falls back to the Management API and measures", (ok, api_calls), (True, ["fn3"]))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print("\nManagement API bundle: root conventions and out-of-tree comparison")
+    bundle = {"source/supabase/functions/fn/index.ts": b"i", "source/react-app/app/lib/t.ts": b"T",
+              "source/supabase/functions/_shared/s.ts": b"s", "source/supabase/functions/other/o.ts": b"o"}
+    inside, outside = drift.split_bundle("fn", bundle)
+    check("repo-rooted bundle: in-tree", sorted(inside), ["index.ts"])
+    check("repo-rooted bundle: out-of-tree", sorted(outside), ["react-app/app/lib/t.ts"])
+    inside, outside = drift.split_bundle("fn", {"source/functions/fn/index.ts": b"i", "source/functions/_shared/s.ts": b"s"})
+    check("supabase-rooted bundle", (sorted(inside), outside), (["index.ts"], {}))
+    inside, outside = drift.split_bundle("fn", {"fn/index.ts": b"i", "fn/lib/a.ts": b"a"})
+    check("functions-rooted bundle", (sorted(inside), outside), (["index.ts", "lib/a.ts"], {}))
+
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ef-drift-oot-"))
+    try:
+        repo_root = tmp / "root"
+        funcs = repo_root / "supabase" / "functions"
+        write(funcs, "fn", "index.ts", "import '../../../react-app/app/lib/t.ts'\n")
+        (repo_root / "react-app/app/lib").mkdir(parents=True)
+        (repo_root / "react-app/app/lib/t.ts").write_bytes(b"T")
+        os.environ["SUPABASE_ACCESS_TOKEN"] = "sbp_test_not_real"
+        for label, oot_bytes, want in (("out-of-tree equal", b"T", drift.IDENTICAL), ("out-of-tree planted drift", b"U", drift.DRIFTED)):
+            deployed = tmp / ("d-" + label.replace(" ", "-"))
+            body = {"source/supabase/functions/fn/index.ts": (funcs / "fn/index.ts").read_bytes(),
+                    "source/react-app/app/lib/t.ts": oot_bytes}
+            drift._api_download("ref", "fn", deployed, read_body=lambda ref, slug, token, b=body: b)
+            r = drift.build_report(funcs, deployed, ["fn"], repo_slugs=["fn"], repo_root=repo_root)
+            check(f"{label} (notify-admin-new-homeowner shape): verdict", r["functions"][0]["verdict"], want)
+    finally:
+        os.environ.pop("SUPABASE_ACCESS_TOKEN", None)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def verdicts_of(report):
     return {row["slug"]: row["verdict"] for row in report["functions"]}
 
@@ -332,6 +526,9 @@ def main():
               removable, True)
 
         reviewer_cases()
+        second_review_cases()
+        planted_drift_selftest()
+        fetch_policy_cases()
 
         print()
         if FAILURES:

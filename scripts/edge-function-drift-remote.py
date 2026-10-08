@@ -314,7 +314,9 @@ def check_project(
 
         report = efdc.build_report(repo_functions_dir, deployed_tmp, deployed_slugs)
         for slug in failed_fetches:
-            report["functions"].append({"slug": slug, "verdict": efdc.FETCH_FAILED, "files": []})
+            report["functions"].append(
+                {"slug": slug, "verdict": efdc.FETCH_FAILED, "files": [], "reason": efdc.FETCH_REASONS.get(slug)}
+            )
             report["counts"][efdc.FETCH_FAILED] = report["counts"].get(efdc.FETCH_FAILED, 0) + 1
         report["functions"].sort(key=lambda r: r["slug"])
 
