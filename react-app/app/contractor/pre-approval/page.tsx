@@ -387,7 +387,7 @@ function Step2Card({ contractor, userEmail, onLoading, onError, onAdvance }: {
       }
 
       // gh-2426: the HubSpot contact sync (create-hubspot-contact, contractor mode) that ran here
-      // is removed -- HubSpot access ends 2026-10-16. The submit no longer waits on HubSpot.
+      // is removed -- the paid HubSpot plan ends 2026-10-15/16. The submit no longer waits on HubSpot.
 
       // Admin notification (send-support-email) — admin-routed (no to_email), contract UNCHANGED, non-fatal.
       try {

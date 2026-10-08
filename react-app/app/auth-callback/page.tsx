@@ -16,7 +16,7 @@
  * that sends users back to /get-started.
  *
  * gh-2426: HubSpot contact creation (D-189 / #405) used to be fired from here, post-auth,
- * for the homeowner path. It is removed: HubSpot access ends 2026-10-16 and the call had
+ * for the homeowner path. It is removed: the paid HubSpot plan ends 2026-10-15/16 and the call had
  * created no contact since the property it sent was rejected (lead_source_detail does not
  * exist in the portal). No page in the app invokes create-hubspot-contact any more.
  *
@@ -108,7 +108,7 @@ function backfillNameFromGoogleIdentity(user: Session['user'] | null | undefined
   try {
     localStorage.setItem('cs_signup', JSON.stringify({ ...signup, first_name: nextFirst, last_name: nextLast }));
   } catch {
-    // Non-fatal — HubSpot/trade-selector simply see the pre-existing (possibly blank) names.
+    // Non-fatal — trade-selector simply sees the pre-existing (possibly blank) names.
   }
 }
 
@@ -371,7 +371,7 @@ export default function AuthCallbackPage() {
       backfillNameFromGoogleIdentity(session.user);
 
       // gh-2426: the post-auth HubSpot contact sync (D-189 / #405) that used to run here is
-      // removed -- HubSpot access ends 2026-10-16. Nothing on this path calls HubSpot now.
+      // removed -- the paid HubSpot plan ends 2026-10-15/16. Nothing on this path calls HubSpot now.
 
       // gh-1940 fix2: GA4 `sign_up` (Google path) — see
       // maybeFireGoogleSignUp's header for the full guard rationale

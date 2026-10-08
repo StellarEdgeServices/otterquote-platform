@@ -1,10 +1,10 @@
 /**
- * gh-2426: HubSpot access ends 2026-10-16. No browser surface may call the
+ * gh-2426: the company's paid HubSpot plan ends 2026-10-15/16. No browser surface may call the
  * create-hubspot-contact Edge Function any more (the function stays deployed as a
  * "disabled" stub so a stale tab gets a clean answer, but nothing in the app invokes it).
  *
  * Source scan, no network: walks react-app/app (excluding test files) and the static site
- * (root *.html and js/*.js). The pre-gh2426 code had a call in
+ * (root *.html and js/*.js). The pre-change code (main 6fc2b7a) had a call in
  *   react-app/app/auth-callback/page.tsx, react-app/app/contractor/pre-approval/page.tsx and
  *   contractor-pre-approval.html -- each makes this test fail.
  */

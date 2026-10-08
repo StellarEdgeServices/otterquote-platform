@@ -380,7 +380,7 @@ describe('auth-callback page — gh-1901 Option 2: Google name backfill', () => 
     expect(csSignup.first_name).toBe('Jane');
     expect(csSignup.last_name).toBe('Doe');
 
-    // gh-2426: HubSpot access ends 2026-10-16; the post-auth sync is removed. The old
+    // gh-2426: the paid HubSpot plan ends 2026-10-15/16; the post-auth sync is removed. The old
     // behaviour (invoke 'create-hubspot-contact' with the recovered names) now fails here.
     const invokedNames = (supabase.functions.invoke as unknown as Fn).mock.calls.map((c: unknown[]) => c[0]);
     expect(invokedNames).not.toContain('create-hubspot-contact');

@@ -20,8 +20,8 @@ export function isValidZip(zip: string): boolean {
 
 /**
  * gh-1993: recombine the four split address fields into the single-line
- * string existing readers still expect (auth-callback's HubSpot sync reads
- * `cs_signup.address`; nothing here reads it back apart from that and the
+ * string existing readers still expect (trade-selector reads
+ * `cs_signup.address` (the auth-callback HubSpot send was removed in PR #2624); nothing here reads it back apart from that and the
  * "We'll match your home..." Step 2 subtitle). Omits any blank segment
  * rather than emitting stray ", " runs.
  */

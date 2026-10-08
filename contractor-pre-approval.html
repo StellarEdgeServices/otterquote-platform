@@ -904,7 +904,7 @@
     // ── Step 2 submit ──────────────────────────────────────────────────────────
     // Performance fix (2026-05-16): prior implementation had zero timeouts on all
     // async operations. Sequential awaits on Supabase storage uploads, DB calls, and
-    // an inline sb.auth.getSession() inside the HubSpot fetch could each hang
+    // an inline sb.auth.getSession() inside the (since removed, PR #2624) HubSpot fetch could each hang
     // indefinitely, causing the "Continue to Agreements" button to appear permanently
     // frozen. Fix: withTimeout() wrapper on every async call.
     function withTimeout(promise, ms, label) {
@@ -936,12 +936,10 @@
         if (licenseState.entries.length === 0 && !licenseState.noLicense) { alert('Please add a contractor license or check "I don\'t have a license for this work".'); return; }
 
         // Pre-fetch auth token BEFORE showPanel('loading') — 10s timeout, non-fatal
-        let accessToken = '';
         let liveSession = null;
         try {
             const sessionResult = await withTimeout(sb.auth.getSession(), 10000, 'Auth token prefetch');
             liveSession = sessionResult?.data?.session || null;
-            accessToken = liveSession?.access_token || '';
         } catch (e) { console.warn('Auth token prefetch failed (non-fatal):', e.message); }
 
         if (advBtn) { advBtn.dataset.submitting = 'true'; advBtn.disabled = true; advBtn.style.opacity = '0.5'; advBtn.textContent = 'Saving…'; }
@@ -1139,7 +1137,7 @@
             }
 
             // gh-2426: the HubSpot contractor sync (D-210, D-218) that ran here is removed --
-            // HubSpot access ends 2026-10-16. (The relative /functions/v1/ URL it used had no
+            // The paid HubSpot plan ends 2026-10-15/16. (The relative /functions/v1/ URL it used had no
             // Netlify proxy, so it never reached the function anyway.)
 
             // Send notification — 15s limit, non-fatal

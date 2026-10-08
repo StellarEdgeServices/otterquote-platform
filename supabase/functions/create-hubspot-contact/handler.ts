@@ -1,7 +1,7 @@
 /**
  * create-hubspot-contact -- DISABLED (gh-2426).
  *
- * HubSpot access for the company ends 2026-10-16, and since the homeowner payload's
+ * The company's paid HubSpot plan ends 2026-10-15/16, and since the homeowner payload's
  * lead_source_detail property was rejected by HubSpot (PROPERTY_DOESNT_EXIST) this function
  * has created no contact. It is kept deployed so a stale caller (an old browser tab, a cached
  * page) gets a clean answer instead of a 404, but it makes NO HubSpot call, reads NO token,
@@ -10,8 +10,8 @@
  * Every POST answers HTTP 200 {success:false, disabled:true, reason:"hubspot_disabled"}:
  * the old callers all treated a non-success body as non-fatal, so nothing breaks.
  *
- * The previous implementation (homeowner, contractor and bootstrap modes) is preserved
- * verbatim in index.pre-gh2426.ts.txt next to this file.
+ * The previous implementation (homeowner, contractor and bootstrap modes) is in git
+ * history: supabase/functions/create-hubspot-contact/index.ts at main 6fc2b7a.
  */
 
 const ALLOWED_ORIGINS = [
