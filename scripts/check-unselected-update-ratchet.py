@@ -145,7 +145,6 @@ BASELINE: dict[str, int] = {
     "repair-intake.html": 2,
     "supabase/functions/admin-contractor-action/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     "supabase/functions/approve-warranty-drift/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
-    "supabase/functions/check-rate-limits/index.ts": 1,
     "supabase/functions/check-siding-design-completion/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     # gh-2105 batch 5: fixed all 4 remaining sites (gh-1400/gh-1842 envelope
     # pointer writes in handleContractorSign + the getEmbeddedSignLink resume

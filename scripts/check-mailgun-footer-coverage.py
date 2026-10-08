@@ -124,7 +124,6 @@ RATCHET_FOOTER = {
     "admin-contractor-action",
     "approve-payout",
     "approve-warranty-drift",
-    "check-rate-limits",
     "counter-sig-reminders",
     "mark-job-complete",
     "mark-payout-paid",
