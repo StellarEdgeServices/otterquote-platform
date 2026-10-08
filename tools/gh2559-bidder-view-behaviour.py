@@ -13,7 +13,7 @@ Negative control: pass --control <older view file> (CI passes none; the author r
 
 Run:  pip install pgserver psycopg2-binary && python3 tools/gh2559-bidder-view-behaviour.py
 """
-import json, os, re, shutil, sys, tempfile
+import json, os, re, shutil, sys, tempfile, time
 
 try:
     import pgserver, psycopg2
@@ -267,6 +267,76 @@ CAT_OK = [("GAF Timberline HD", "Charcoal"), ("Owens Corning Oakridge", "Weather
           ("TAMKO Heritage", "Black Walnut"), ("Atlas Pinnacle", "Estate Gray")]
 CAT_RESIDUAL = ["Rosalind Ketterby"]  # a plain name in the brand box is NOT caught; stated in the pre-flight
 
+# ---- PINNED BEHAVIOUR (task cap2578, from the delta review 6066637484). Each row records what the view does TODAY with one
+# shape the reviewer found; none of them is a requirement and none is changed by this PR. "removed" = the note comes back as
+# "[removed]" (the rule works); "removed-in-part" = only the street word goes ("we are on [removed]"; an older rule). "survives" = the note comes back as typed: ACCEPTED-OR-PENDING-CEO (the CEO closed the residual
+# list for this PR, ruling 6063622505; these go to him as questions on #2559, not as changes here). If the view ever changes
+# one of them, this test fails and says which, so the change is made on purpose. (label, claim address, note, outcome, expected text)
+Y_ADDR2 = "1234 North Yorkshire Circle, Westfield, IN 46074"
+OB_ADDR = "12 O'Brien Ln, Carmel, IN 46032"
+WS_ADDR = "9 Winston-Salem Rd, Carmel, IN 46032"
+PINNED = [
+ # possessive and plural of the street word
+ ("possessive: Yorkshire's", Y_ADDR2, "Yorkshire's roof is the one with the hail damage", "removed", "[removed]"),
+ ("plural glued: Yorkshires", Y_ADDR2, "the Yorkshires are away", "survives", "the Yorkshires are away"),
+ # apostrophe in the street name (the tokens are brien; o is under three letters)
+ ("apostrophe: O'Brien", OB_ADDR, "corner of O'Brien", "removed", "[removed]"),
+ ("apostrophe, curly: O\u2019Brien", OB_ADDR, "corner of O\u2019Brien", "removed", "[removed]"),
+ ("apostrophe, space: O Brien", OB_ADDR, "corner of O Brien", "removed", "[removed]"),
+ ("apostrophe dropped: OBrien", OB_ADDR, "corner of OBrien", "survives", "corner of OBrien"),
+ ("apostrophe dropped, lower case: Obrien", OB_ADDR, "corner of Obrien lane", "survives", "corner of Obrien lane"),
+ ("address without the apostrophe, note with it", "12 OBrien Ln, Carmel, IN 46032", "corner of O'Brien", "survives", "corner of O'Brien"),
+ # hyphenated street names (each half is a token)
+ ("hyphen: Winston-Salem", WS_ADDR, "on Winston-Salem", "removed", "[removed]"),
+ ("hyphen: one half alone", WS_ADDR, "on Salem", "removed", "[removed]"),
+ ("hyphen dropped: WinstonSalem", WS_ADDR, "on WinstonSalem", "survives", "on WinstonSalem"),
+ ("hyphen in the note only: juniper-bend", K_ADDR, "off juniper-bend, second drive", "removed", "[removed]"),
+ # the street word glued to another letter, digit or underscore (whole-word matching, ruling 6063622505 cites lines 249-250)
+ ("glued: JuniperBend", K_ADDR, "blue house on JuniperBend", "survives", "blue house on JuniperBend"),
+ ("glued: Juniper_Bend", K_ADDR, "blue house on Juniper_Bend", "survives", "blue house on Juniper_Bend"),
+ ("glued: Junipers", K_ADDR, "the Junipers cul-de-sac house", "survives", "the Junipers cul-de-sac house"),
+ ("glued: Juniper2718", K_ADDR, "Juniper2718 is us", "survives", "Juniper2718 is us"),
+ # a street NAMED with a word the view's street-word list leaves out (street type, compass word, unit word)
+ ("excluded word: North St", "120 North St, Westfield, IN 46074", "we are on north, by the school", "survives", "we are on north, by the school"),
+ ("excluded word: North St, spelled out", "120 North St, Westfield, IN 46074", "we are on North Street", "removed-in-part", "we are on [removed]"),
+ ("excluded word: Circle Dr", "900 Circle Dr, Westfield, IN 46074", "on circle, white house", "survives", "on circle, white house"),
+ ("excluded word: Circle Dr, capitalised", "900 Circle Dr, Westfield, IN 46074", "turn onto Circle, white house", "survives", "turn onto Circle, white house"),
+ # the first comma part of the address is not the street line
+ ("address: unit first", "Unit 3, 2718 Juniper Bend Ct, Westfield, IN 46074", "house on Juniper Bend", "survives", "house on Juniper Bend"),
+ ("address: bare number first", "2718, Juniper Bend Ct, Westfield, IN 46074", "house on Juniper Bend", "survives", "house on Juniper Bend"),
+ ("address: a name first", "The Ketterby Residence, 2718 Juniper Bend Ct, Westfield", "house on Juniper Bend", "survives", "house on Juniper Bend"),
+ ("address: null", None, "house on Juniper Bend", "survives", "house on Juniper Bend"),
+]
+
+# ---- LONG INPUTS (Major 1 of the delta review 6066637484). The claim's address, the homeowner's name and the claim number
+# become regular expressions inside the view. A very long value used to make the regular-expression compiler fail with
+# "regular expression is too complex" after about 36 seconds, which emptied every bidder's whole list. Each case below is read
+# ALONE (a failing row would otherwise hide the others), as a bidder, with a 10-second statement timeout. It must return
+# within 5 seconds, with the note either as typed or "[removed]", and no error. (label, owner profile name or None, claim fields)
+def _words(count, prefix="q"):
+    out, i = [], 0
+    while len(out) < count:
+        w, k = "", i
+        for _ in range(4): w, k = chr(97 + k % 26) + w, k // 26
+        out.append(prefix + w); i += 1
+    return out
+LONG_NOTE = "blue house on the corner, third from the end, steep back slope"
+LONG_CASES = [
+ ("address: one word of 100000 letters, house number", None, dict(property_address="2718 " + "x" * 100000 + ", Westfield, IN 46074")),
+ ("address: one word of 100000 letters, no house number", None, dict(property_address="x" * 100000 + ", Westfield, IN 46074")),
+ ("address: 100000 letters, no comma", None, dict(property_address="2718 Juniper " + "x" * 100000)),
+ ("address: 5000 short words", None, dict(property_address="2718 " + " ".join(_words(5000)) + ", Westfield, IN 46074")),
+ ("address: 5000 two-letter words", None, dict(property_address="2718 " + " ".join(["ab"] * 5000) + ", Westfield, IN 46074")),
+ ("address: a house number of 100000 digits", None, dict(property_address="7" * 100000 + " Juniper Bend Ct, Westfield, IN 46074")),
+ ("name: profile name, one word of 100000 letters", "y" * 100000, dict(property_address=K_ADDR)),
+ ("name: profile name, 5000 short words", " ".join(_words(5000, "z")), dict(property_address=K_ADDR)),
+ ("name: profile name, 100000 non-Latin characters", "\u0416" * 100000, dict(property_address=K_ADDR)),
+ ("name: claim homeowner_name, one word of 100000 letters", None, dict(property_address=K_ADDR, homeowner_name="y" * 100000)),
+ ("claim number of 100000 characters", None, dict(property_address=K_ADDR, claim_number="CLM-" * 25000)),
+ ("brand, colour and damage type of 100000 characters", None, dict(property_address=K_ADDR, existing_shingle_brand="b" * 100000, existing_shingle_color="c" * 100000, damage_type="d" * 100000)),
+ ("city column of 100000 characters", None, dict(property_address=K_ADDR, property_city="e" * 100000)),
+]
+
 BENIGN = "Tree fell on the back slope. Two layers of shingles, about 30 squares, 8/12 pitch. Dog in yard."
 
 
@@ -492,6 +562,53 @@ def run(view_sql, label):
         for (txt,) in allcols:
             for secret in (PHONE, EMAIL, "PROOF-CLAIM-0001", OWNER):
                 if secret in txt: leaks.append("row     a bidder's row holds %r" % secret)
+
+        # ---- pinned behaviour (what the view does today with the shapes the delta review found; nothing here is a requirement)
+        OWP = "00000000-0000-4000-8000-000000000093"
+        cur.execute("insert into profiles values (%s, %s)", (OWP, K_NAME))
+        pin = []
+        for lab, addr, text, outcome, expect in PINNED:
+            n += 1; pin.append((lab, text, outcome, expect, claim(n, user_id=OWP, homeowner_name=None, claim_number=None, property_address=addr, homeowner_notes=text)))
+        got5 = {r[0]: r[1] for r in read(BIDDER_U, "select v.id::text, v.homeowner_notes from public.bidder_claim_summary v")}
+        p_ok = p_surv = 0
+        for lab, text, outcome, expect, cid in pin:
+            v = got5.get(cid, "<row missing>")
+            if v == expect: p_ok += 1; p_surv += (outcome == "survives")
+            else: fails.append("PINNED behaviour changed: %-44s expected %r (%s), got %r" % (lab, expect, outcome, v))
+        print("[%s] pinned behaviour unchanged: %d of %d (%d of them are survivors, ACCEPTED-OR-PENDING-CEO, listed in the PR description)" % (label, p_ok, len(pin), p_surv))
+        # ---- long inputs: each case read alone as a bidder, 10 s statement timeout; must return in under 5 s without an error
+        OWL = "00000000-0000-4000-8000-000000000094"
+        def read_one(cid):
+            t0 = time.time()
+            try:
+                cur.execute("begin"); cur.execute("set local role authenticated"); cur.execute("set local statement_timeout = '10s'")
+                cur.execute("select set_config('request.jwt.claim.sub', %s, true)", (BIDDER_U,))
+                cur.execute("select v.homeowner_notes, v.location_city, v.damage_type from public.bidder_claim_summary v where v.id = %s", (cid,))
+                r = cur.fetchall(); cur.execute("rollback")
+                return time.time() - t0, r, None
+            except Exception as e:
+                try: cur.execute("rollback")
+                except Exception: pass
+                return time.time() - t0, None, str(e).strip().splitlines()[0]
+        timings = []
+        for i, (lab, pname, fields) in enumerate(LONG_CASES):
+            ow = "00000000-0000-4000-8000-0000000002%02d" % i
+            cur.execute("insert into profiles values (%s, %s)", (ow, pname if pname is not None else "Plain Person"))
+            n += 1; cid = claim(n, user_id=ow, **dict(dict(homeowner_name=None, claim_number=None, homeowner_notes=LONG_NOTE), **fields))
+            secs, r, err = read_one(cid)
+            timings.append((lab, secs, err))
+            if err: fails.append("LONG INPUT: %-52s raised after %.1f s: %s" % (lab, secs, err))
+            elif not r: fails.append("LONG INPUT: %-52s the row did not come back" % lab)
+            elif r[0][0] not in (LONG_NOTE, "[removed]"): fails.append("LONG INPUT: %-52s note came back as %r" % (lab, r[0][0]))
+            elif secs > 5: fails.append("LONG INPUT: %-52s took %.1f s (limit 5 s)" % (lab, secs))
+        # the cap must not cost a real street word: the first words of a padded address still count
+        n += 1; pad = claim(n, user_id=OWL, homeowner_name=None, claim_number=None, property_address="2718 Juniper Bend Ct " + " ".join(_words(5000)) + ", Westfield, IN 46074", homeowner_notes="blue house on Juniper, third from the corner")
+        cur.execute("insert into profiles values (%s, %s)", (OWL, K_NAME))
+        secs, r, err = read_one(pad)
+        timings.append(("padded address keeps its first street word", secs, err))
+        if err or not r or r[0][0] != "[removed]": fails.append("LONG INPUT: a padded address lost its own street word: %r %r" % (r, err))
+        for lab, secs, err in timings: print("   long input  %-56s %6.2f s  %s" % (lab, secs, err or "ok"))
+        print("[%s] long inputs: %d cases, slowest %.2f s, errors %d" % (label, len(timings), max(t[1] for t in timings), sum(1 for t in timings if t[2])))
         print("[%s] rows read by the bidder: %d | leaks: %d | other failures: %d" % (label, len(got), len(leaks), len(fails)))
         for x in leaks: print("   LEAK  " + x)
         for x in fails: print("   FAIL  " + x)

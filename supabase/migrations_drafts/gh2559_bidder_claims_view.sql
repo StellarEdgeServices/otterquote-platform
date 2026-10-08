@@ -1,6 +1,6 @@
 -- STATUS (gh-1438, as of 2026-10-08T02:59:56Z): NOT APPLIED
 -- FILE ROLE: forward file of set gh2559_bidder_claims_view, step 1 of 3 (see the apply order below; the STATUS is the set's)
--- EVIDENCE: written 2026-10-06T20:16:10Z; proved forward and rollback on production inside one rolled-back block (supabase/tests/gh2559_bidder_claims_view_proof.sql). pg_class read the same day: no view named bidder_claim_summary exists. No ledger row exists for this set. Changed 2026-10-07 and 2026-10-08 after REVIEW: FAIL 6025641188, 6047719061, 6049068071, 6050015567 and 6051111207 (and Ben 6050104102) on #2578; at the last change damage_type was put behind a closed list of damage words (anything else reads 'Other'); names, streets and notes are compared after one Unicode fold (NFKD, combining marks, zero-width, full-width) and a non-Latin name is removed as exact text; the brand and colour guard refuses a scheme-less web address and "x at gmail.com"; the street rules no longer blank ordinary quantities; this file can be run twice (CREATE OR REPLACE VIEW). This text was run verbatim on a throwaway Postgres 16 with planted addresses and notes (tools/gh2559-bidder-view-behaviour.py); it has NOT been run on production by the worker who changed it.
+-- EVIDENCE: written 2026-10-06T20:16:10Z; proved forward and rollback on production inside one rolled-back block (supabase/tests/gh2559_bidder_claims_view_proof.sql). pg_class read the same day: no view named bidder_claim_summary exists. No ledger row exists for this set. Changed 2026-10-07 and 2026-10-08 after REVIEW: FAIL 6025641188, 6047719061, 6049068071, 6050015567 and 6051111207 (and Ben 6050104102) on #2578; at the last change (2026-10-08, CEO ruling 6063622505) a note holding one of the claim's own street-name words of five letters or more is removed whole; before that damage_type was put behind a closed list of damage words (anything else reads 'Other'); names, streets and notes are compared after one Unicode fold (NFKD, combining marks, zero-width, full-width) and a non-Latin name is removed as exact text; the brand and colour guard refuses a scheme-less web address and "x at gmail.com"; the street rules no longer blank ordinary quantities; this file can be run twice (CREATE OR REPLACE VIEW); and (2026-10-08, review 6066637484, Major 1) the street words, the name words and the claim number are capped before they become regular expressions (see "idn cap" below), so no value a homeowner writes can make a bidder's read fail. This text was run verbatim on a throwaway Postgres 16 with planted addresses and notes (tools/gh2559-bidder-view-behaviour.py); it has NOT been run on production by the worker who changed it.
 -- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
@@ -174,7 +174,7 @@ LEFT JOIN LATERAL (
 -- idn: what identifies THIS claim's homeowner, worked out once per row for the redaction below.
 --   house        the house number of the claim's own address (leading digits of the first comma part)
 --   street_words the tokens of that first part (letters and digits) that hold a letter, are three characters
---                or more, and are not a street type, a unit word or a compass word ("123 N Main St Apt 4"
+--                or more, and are not one of the words excluded at line 207 ("123 N Main St Apt 4"
 --                gives main; "1420 E 96th St" gives 96th)
 --   name_long / name_short / name_caps  the words, three letters or more, of profiles.full_name (where
 --                production keeps the homeowner's name; claims.homeowner_name is empty on every real claim) and
@@ -200,26 +200,49 @@ LEFT JOIN LATERAL (
          normalize(replace(replace(replace(replace(replace(replace(replace(translate(regexp_replace(regexp_replace(normalize(c.existing_shingle_color, NFKD), U&'([A-Za-z])[\0300-\036F]+', '\1', 'g'), U&'[\00AD\034F\180E\200B-\200F\202A-\202E\2060-\2064\FE00-\FE0F\FEFF]', '', 'g'), U&'\0142\0141\00F8\00D8\0131\0111\0110\00F0\0127\0126', 'lLoOidDdhH'), U&'\00DF', 'ss'), U&'\00E6', 'ae'), U&'\00C6', 'AE'), U&'\0153', 'oe'), U&'\0152', 'OE'), U&'\00FE', 'th'), U&'\00DE', 'Th'), NFC) AS color
 ) fx ON true
 LEFT JOIN LATERAL (
-  SELECT substring(fx.st FROM '^\s*(\d+)')            AS house,
-         (SELECT string_agg(DISTINCT w, '|')
-            FROM regexp_split_to_table(lower(fx.st), '[^a-z0-9]+') AS w
-           WHERE length(w) >= 3 AND w ~ '[a-z]'
-             AND w !~ '^(st|str|street|ave|av|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place|cir|circle|ter|terrace|pkwy|parkway|hwy|highway|trl|trail|loop|pike|xing|crossing|alley|aly|north|south|east|west|unit|apt|apartment|suite|ste|lot|box|bldg|building|floor|room|trlr|trailer)$') AS street_words,
-         (SELECT string_agg(DISTINCT w, '|')
-            FROM regexp_split_to_table(lower(fx.nm), '[^a-z]+') AS w
-           WHERE length(w) >= 6)                                                                       AS name_long,
-         (SELECT string_agg(DISTINCT w, '|')
-            FROM regexp_split_to_table(lower(fx.nm), '[^a-z]+') AS w
-           WHERE length(w) BETWEEN 3 AND 5)                                                            AS name_short,
-         (SELECT string_agg(DISTINCT initcap(w), '|')
-            FROM regexp_split_to_table(lower(fx.nm), '[^a-z]+') AS w
-           WHERE length(w) BETWEEN 3 AND 5)                                                            AS name_caps,
-         (SELECT string_agg(DISTINCT m[1], '|')
-            FROM regexp_matches(lower(fx.nm), '([^\x01-\x7f\u3000-\u303f]+)', 'g') AS m
-           WHERE length(m[1]) >= 2 OR m[1] ~ U&'[\4E00-\9FFF\3040-\30FF\AC00-\D7AF]')                       AS name_nl
+  SELECT CASE WHEN length(substring(fx.st FROM '^\s*(\d+)')) <= 12 THEN substring(fx.st FROM '^\s*(\d+)') END AS house,
+         (SELECT string_agg(DISTINCT cap.w, '|') FROM (SELECT t.w AS w
+                    FROM regexp_split_to_table(lower(fx.st), '[^a-z0-9]+') WITH ORDINALITY AS t(w, n)
+                   WHERE length(t.w) BETWEEN 3 AND 40 AND t.w ~ '[a-z]'
+                     AND t.w !~ '^(st|str|street|ave|av|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place|cir|circle|ter|terrace|pkwy|parkway|hwy|highway|trl|trail|loop|pike|xing|crossing|alley|aly|north|south|east|west|unit|apt|apartment|suite|ste|lot|box|bldg|building|floor|room|trlr|trailer)$'
+                   GROUP BY 1 ORDER BY min(t.n) LIMIT 40) AS cap) AS street_words,
+         (SELECT string_agg(DISTINCT cap.w, '|')
+            FROM (SELECT t.w AS w
+                    FROM regexp_split_to_table(lower(fx.nm), '[^a-z]+') WITH ORDINALITY AS t(w, n)
+                   WHERE length(t.w) BETWEEN 6 AND 40
+                   GROUP BY 1 ORDER BY min(t.n) LIMIT 40) AS cap)                                  AS name_long,
+         (SELECT string_agg(DISTINCT cap.w, '|')
+            FROM (SELECT t.w AS w
+                    FROM regexp_split_to_table(lower(fx.nm), '[^a-z]+') WITH ORDINALITY AS t(w, n)
+                   WHERE length(t.w) BETWEEN 3 AND 5
+                   GROUP BY 1 ORDER BY min(t.n) LIMIT 40) AS cap)                                   AS name_short,
+         (SELECT string_agg(DISTINCT initcap(cap.w), '|')
+            FROM (SELECT t.w AS w
+                    FROM regexp_split_to_table(lower(fx.nm), '[^a-z]+') WITH ORDINALITY AS t(w, n)
+                   WHERE length(t.w) BETWEEN 3 AND 5
+                   GROUP BY 1 ORDER BY min(t.n) LIMIT 40) AS cap)                                  AS name_caps,
+         (SELECT string_agg(DISTINCT cap.w, '|')
+            FROM (SELECT t.m[1] AS w
+                    FROM regexp_matches(lower(fx.nm), '([^\x01-\x7f\u3000-\u303f]+)', 'g') WITH ORDINALITY AS t(m, n)
+                   WHERE length(t.m[1]) <= 40 AND (length(t.m[1]) >= 2 OR t.m[1] ~ U&'[\4E00-\9FFF\3040-\30FF\AC00-\D7AF]')
+                   GROUP BY 1 ORDER BY min(t.n) LIMIT 40) AS cap)  AS name_nl
 ) idn ON true
+-- idn cap (review 6066637484, Major 1). The address, the profile name and the claim number are text a homeowner writes, and
+--   above they become regular expressions. A 100000-letter word, or an address of thousands of words, made the pattern
+--   compiler fail ("regular expression is too complex", after about 36 seconds), which failed the whole statement and
+--   emptied every bidder's list. The cap is applied to the TOKENS, after the text is split, and not to the raw string:
+--   a cut through the middle of a word would leave a fragment that is no longer the whole word, so it could neither match
+--   the note nor be dropped, and the cut could land inside a street name that is a real street. So: a token longer than 40
+--   characters is dropped whole (no street or personal-name word in ordinary use comes near 40 characters; a longer run is not a word),
+--   and at most the first 40 distinct tokens in the order they were typed are kept (a street line has under ten).
+--   A house number longer than 12 digits is treated as no house number (the street-word rule then applies, which removes
+--   more, never less). The claim number is cut to its first 100 characters before it is escaped (a literal prefix, so it
+--   can only remove more of a note). The kept tokens are then sorted and joined exactly as before, so for any real address
+--   or name the patterns are character for character what they were (when this cap was added, every planted claim of
+--   tools/gh2559-bidder-view-behaviour.py was read through this file and through the file before it: every column of every
+--   row was identical).
 -- idn5: the claim's own street-name words of FIVE LETTERS OR MORE (CEO ruling 6063622505, item 1): the words in
---   idn.street_words (so never a street type, compass word or unit word) that hold five or more letters
+--   idn.street_words (so never one of the words excluded at line 207) that hold five or more letters
 --   ("2718 Juniper Bend Ct Unit 3" gives juniper; "1420 E 96th St" gives none). Used below with no house number needed.
 LEFT JOIN LATERAL (
   SELECT string_agg(DISTINCT w, '|') AS own5
@@ -276,7 +299,7 @@ LEFT JOIN LATERAL (
         v.raw,
         -- a. the claim number, when the row has one of four characters or more
         CASE WHEN length(btrim(coalesce(c.claim_number, ''))) >= 4
-             THEN regexp_replace(btrim(c.claim_number), '([^[:alnum:]])', '\\\1', 'g') ELSE '\A\Z\A' END, '[removed]', 'gi'),
+             THEN regexp_replace(left(btrim(c.claim_number), 100), '([^[:alnum:]])', '\\\1', 'g') ELSE '\A\Z\A' END, '[removed]', 'gi'),
         -- b. email and web
         '[[:alnum:]._%+-]+\s*@\s*[[:alnum:]-]+(\s*\.\s*[[:alnum:]-]+)*', '[removed]', 'g'),
         '[[:alnum:]._%+-]+\s*(?:[\(\[\{<]\s*at\s*[\)\]\}>]|\s+at\s+)\s*[[:alpha:]][[:alnum:]-]*(?:\s*(?:\.|[\(\[\{<]\s*dot\s*[\)\]\}>]|\s+dot\s+)\s*[[:alpha:]][[:alnum:]-]*)+', '[removed]', 'gi'),

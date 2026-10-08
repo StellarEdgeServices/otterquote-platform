@@ -62,6 +62,9 @@ ok(/normalize\(/.test(body) && /NFKD/.test(body) && /name_nl/.test(body), 'view:
 ok(/regexp_split_to_table\(idn\.street_words, '\[\|\]'\)/.test(body) && /length\(regexp_replace\(w, '\[\^a-z\]', '', 'g'\)\) >= 5/.test(body)
   && /WHEN idn5\.own5 IS NOT NULL\s+AND v\.raw ~\* \('\\m\(' \|\| idn5\.own5 \|\| '\)\\M'\) THEN '\[removed\]'/.test(body),
   'view: a note is removed whole when it holds one of the claim\'s own street-name words of five letters or more, house number or not (CEO ruling 6063622505)');
+ok((body.match(/ORDER BY min\(t\.n\) LIMIT 40\) AS cap/g) || []).length === 5 && /<= 12 THEN substring\(fx\.st FROM/.test(body) && /left\(btrim\(c\.claim_number\), 100\)/.test(body)
+  && (body.match(/length\(t\.(w|m\[1\])\) (BETWEEN \d+ AND (40|5)|<= 40)/g) || []).length === 5,
+  'view: the street words, the four name lists, the house number and the claim number are capped before they become regular expressions (review 6066637484, Major 1)');
 ok(/CREATE OR REPLACE VIEW public\.bidder_claim_summary/.test(body) && !/^\s*CREATE VIEW/m.test(body), 'view file is idempotent (CREATE OR REPLACE VIEW; a second run succeeds)');
 ok(!/substring\(c\.property_address FROM '\\d\{5\}'\)/.test(body), 'view: the zip is never the first five-digit run of the address');
 ok(!/bid-release gate/.test(sql), 'view SQL no longer rests the summary on a bid-release gate that does not exist');

@@ -331,8 +331,13 @@ altogether (the repair intake writes to the column without the "Notes for Contra
   word is a token of the address's first part that holds a letter and is three characters or more, so an ordinal
   ("96th", "2nd") counts (review 6050015567 finding 1).
   Also replaced whole, with or without a house number in the note: any note that holds one of the claim's own
-  street-name words of five letters or more (a street word as above, so never a type, compass or unit word; CEO
+  street-name words of five letters or more (a street word as above, so never one of the words excluded at line 207 of the view file; CEO
   ruling 6063622505, item 1), compared case-insensitively on word boundaries.
+- **Length cap** (review 6066637484, Major 1): the address, the profile name and the claim number become regular
+  expressions, so they are capped before that: a token longer than 40 characters is dropped whole, at most the first 40
+  distinct tokens are kept, a house number of more than 12 digits counts as no house number, and the claim number is cut
+  to its first 100 characters. No real address or name is affected. Without it a 100000-letter word in an address or a
+  name made the view fail for every bidder after about 36 seconds ("regular expression is too complex").
 - **Name**: the words (three letters or more) of `profiles.full_name`, where production keeps the homeowner's name,
   and of `claims.homeowner_name` (empty on every real claim): first name alone, last name alone, any order. Accents are
   folded on both sides by one Unicode step (review 6051111207 finding 2): NFKD, then the combining marks after a Latin letter and the zero-width, direction, soft-hyphen and variation characters are removed, a short table folds the letters NFKD leaves alone (l-stroke, o-slash, dotless i, d-stroke, h-stroke, sharp s, ae, oe, thorn), then NFC. So "Nguyen/Nguyễn", "Yildiz/Yıldız", "Dvorak/Dvořák", "Odegard/Ødegård", a name stored decomposed, full-width letters and digits, and a zero-width character inside a name or a phone number all meet their plain forms (the notes a bidder reads lose their accents). A name in a script with no Latin spelling (Cyrillic, Greek, CJK ...) is removed as an exact occurrence of each of its tokens (a CJK token of one character counts). A word of six letters or more is removed
