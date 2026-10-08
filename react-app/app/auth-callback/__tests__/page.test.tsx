@@ -368,7 +368,7 @@ describe('auth-callback page — gh-1901 Option 2: Google name backfill', () => 
     await waitFor(() => expect(hrefSpy).toHaveBeenCalled());
   }
 
-  it('fills blank cs_signup first/last name from given_name/family_name and forwards them to HubSpot', async () => {
+  it('fills blank cs_signup first/last name from given_name/family_name and does not forward them to HubSpot (gh-2426)', async () => {
     localStorage.setItem('cs_signup', JSON.stringify({ first_name: '', last_name: '', role: 'homeowner' }));
     localStorage.setItem('cs_signup_at', String(Date.now()));
 
@@ -380,10 +380,10 @@ describe('auth-callback page — gh-1901 Option 2: Google name backfill', () => 
     expect(csSignup.first_name).toBe('Jane');
     expect(csSignup.last_name).toBe('Doe');
 
-    expect(supabase.functions.invoke as unknown as Fn).toHaveBeenCalledWith(
-      'create-hubspot-contact',
-      { body: expect.objectContaining({ firstname: 'Jane', lastname: 'Doe' }) },
-    );
+    // gh-2426: the paid HubSpot plan ends 2026-10-15/16; the post-auth sync is removed. The old
+    // behaviour (invoke 'create-hubspot-contact' with the recovered names) now fails here.
+    const invokedNames = (supabase.functions.invoke as unknown as Fn).mock.calls.map((c: unknown[]) => c[0]);
+    expect(invokedNames).not.toContain('create-hubspot-contact');
   });
 
   it('falls back to splitting full_name when given_name/family_name are absent', async () => {

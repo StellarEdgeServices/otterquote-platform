@@ -47,7 +47,7 @@ import {
   evaluateProfileBasics, wcSatisfied, coiSatisfied, licenseSatisfied, step2Complete,
   validateLicenseEntry, licenseEntrySummary, buildLicenseInsert,
   docPath, wce1Path, licenseDocPath, buildStep2ContractorUpdate, buildStep2FallbackCreate,
-  buildHubspotContactBody, buildSupportEmailBody,
+  buildSupportEmailBody,
   buildAttestationPayload, step3Complete, buildStep3ContractorUpdate, buildRecordAttestationBody,
   validateTemplate, templateSlotKey, templateFilePath, buildContractTemplatesArray, buildFinishSubmitUpdate,
   type LicenseEntry, type WcChoice, type ContractTemplate,
@@ -322,7 +322,6 @@ function Step2Card({ contractor, userEmail, onLoading, onError, onAdvance }: {
       // contractor-documents RLS requires path segment[1] === auth.uid()).
       const { data: sess } = await supabase.auth.getSession();
       const liveUserId = sess.session?.user?.id;
-      const accessToken = sess.session?.access_token ?? '';
       if (!liveUserId) throw new Error('No active session — please sign in again and retry.');
 
       const nowMs = Date.now();
@@ -387,14 +386,8 @@ function Step2Card({ contractor, userEmail, onLoading, onError, onAdvance }: {
         }
       }
 
-      // Sync to HubSpot (create-hubspot-contact, contractor mode) — contract UNCHANGED, non-fatal.
-      // supabase.functions.invoke attaches the contractor's JWT automatically (the EF requires it),
-      // matching the static page's manual `Authorization: Bearer <accessToken>` without relying on a
-      // Netlify /functions/v1 proxy on the React origin.
-      try {
-        void accessToken; // session presence already validated above
-        await supabase.functions.invoke('create-hubspot-contact', { body: buildHubspotContactBody(userEmail, rec.id) });
-      } catch (e) { console.warn('HubSpot sync failed (non-fatal):', e); }
+      // gh-2426: the HubSpot contact sync (create-hubspot-contact, contractor mode) that ran here
+      // is removed -- the paid HubSpot plan ends 2026-10-15/16. The submit no longer waits on HubSpot.
 
       // Admin notification (send-support-email) — admin-routed (no to_email), contract UNCHANGED, non-fatal.
       try {
