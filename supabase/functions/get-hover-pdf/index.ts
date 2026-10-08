@@ -170,8 +170,8 @@ serve(async (req) => {
 
     // ── D-317 cl. 7 (#1339) / gh-1636 — the manual-fulfilment vendor PDF is
     // internal/admin records only and must NEVER be served to a contractor
-    // or homeowner. canAccessClaim() above authorizes CLAIM visibility (it
-    // mirrors the claims-table RLS SELECT boundary) — that is a different
+    // or homeowner. canAccessClaim() above authorizes the owner and the
+    // selected contractor (gh-2559 / D-370) — that is a different
     // audience than PDF-FILE visibility for this one asset, and until now
     // nothing enforced the narrower one. The Hover-sourced branch and the
     // "no file" branch are untouched pending a separate CTO ruling on
@@ -340,20 +340,13 @@ serve(async (req) => {
 
 // ── Authorization (D-211 Phase 16 Unit 2 — Hover IDOR fix) ─────────
 //
-// canAccessClaim mirrors the `claims`-table RLS SELECT boundary exactly — the
-// platform's canonical "which claims may this caller see" rule:
-//   (1) Homeowner who owns the claim          → claims.user_id = caller
-//   (2) Active contractor + released biddable → RLS "Contractors can view
-//       biddable claims" (sql/v10): ready_for_bids = true AND status IN
-//       ('active','bidding','pending') AND the caller has an active contractor
-//       record.
-//   (3) Contractor with an existing quote     → RLS "Contractors can view claims
-//       for their quotes" (sql/v20 + v21): a quote on this claim by one of the
-//       caller's contractor records.
-//
-// The opportunities trade / ZIP-distance / 6-bid filters are client-side DISPLAY
-// refinements, NOT an access boundary, so they are intentionally not replicated
-// here (replicating them would over-restrict and break legitimate browsing).
+// canAccessClaim (./pdf-source.ts) serves a claim's measurement PDF to:
+//   (1) the homeowner who owns the claim      → claims.user_id = caller
+//   (2) the contractor the homeowner SELECTED → claims.selected_contractor_id is
+//       one of the caller's contractor records, and that record is active.
+// gh-2559 / D-370 (CEO ruling, PR #2569 comment 6045857216): a contractor who is
+// only bidding (claim open for bids, or a quote on it) is REFUSED. It used to
+// mirror the claims-table RLS SELECT boundary and serve every such contractor.
 //
 // `supabase` is the service-role client; the predicate is enforced explicitly.
 // (gh-1538: moved to ./pdf-source.ts, unchanged, so it can be unit-tested

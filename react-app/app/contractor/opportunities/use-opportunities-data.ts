@@ -62,7 +62,7 @@ export function useOpportunitiesData(
 
         const contractorZip = (contractor.address_zip as string | null | undefined) ?? null;
         let opps: Opportunity[] = (data ?? []).map((claim) =>
-          mapClaimToOpportunity(claim as RawClaim, contractorZip),
+          mapClaimToOpportunity(claim as RawClaim, contractorZip, (contractor.id as string | null | undefined) ?? null),
         );
 
         // D-165 trade + release filter (only when the contractor has trades set).

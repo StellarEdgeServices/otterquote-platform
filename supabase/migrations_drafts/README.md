@@ -29,3 +29,9 @@ Statuses come from measurements recorded on issue #1438 and on PR #2237; this se
 | `v88_referral_agents_public_directory_optin` | forward, rollback, pre-flight | NOT APPLIED (superseded: the column is live via v101) | `referral_agents.public_directory_optin` live via `v101_referral_agents_public_directory_optin`, ledger version `20260808134406`: comment 5494221280; in ledger snapshot | `supabase/migrations/20260808134406_v101_referral_agents_public_directory_optin.sql` (a different migration from this draft); its rollback and pre-flight are `supabase/migrations_rollbacks/20260807223000_v101_…` (an earlier v101 version that is not in the ledger) |
 
 No set is marked `UNVERIFIED`: every set has a recorded measurement. Two sets are `NOT APPLIED` and were re-measured 2026-10-05T20:57Z (read-only): `c4` (`contractors.pitch_bands` absent) and `gh1026` (the `DROP VIEW` has not run; the view still exists). `gh1314`, `gh1961` and `gh2154` were `NOT APPLIED` / unversioned on earlier measurements and are now APPLIED, filed under their ledger versions (gh-1438 part 4).
+
+## Added 2026-10-06 (gh-2559 item 3, D-368): 3 files, 1 set, not counted in the table above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2559_claim_docs_summary_only` | forward, rollback, pre-flight | NOT APPLIED | no ledger row; live policy "Contractors can view biddable claim docs" is the world-fenced text of ledger version `20261006171747` (pg_policies and the ledger read 2026-10-06 after rolled-back forward and rollback proofs); cut down 2026-10-07 to the storage policy alone (the bid-open trigger is out, comment 6029315131 on #2569); waits for its R-097 window on #2559 | none; proof at `supabase/tests/gh2559_claim_docs_summary_only_proof.sql` |

@@ -3563,6 +3563,10 @@
               return;
             }
 
+            // gh-2559 / D-368: the Loss Sheet button depends on who the contractor is, and the
+            // claim loads (and first renders its document links) before the contractor does.
+            renderBidFormDocLinks();
+
             // D-170: contractor must have an accepted attestation and a current COI.
             // Mirrors the RLS policy (contractor_can_bid) so we fail fast in the UI
             // with a clear message rather than a generic RLS error at submit time.
@@ -4127,7 +4131,12 @@
       if (!el) return;
 
       const parts = [];
-      if (currentClaim.estimate_filename) {
+      // gh-2559 / D-368: before the homeowner selects a contractor, a bidding contractor sees only
+      // the parsed summary of the uploaded insurance estimate (the "Insurance Line Items" panel),
+      // not the files the homeowner uploaded (the estimate and the measurements slot, which can hold
+      // a copy of the estimate). The storage policy refuses every raw uploaded object to a bidder,
+      // so both buttons are offered only to the contractor the homeowner selected.
+      if (canOpenRawEstimate()) {
         parts.push('<button class="doc-link-btn-form" onclick="openBidFormEstimatePdf()">&#x1F4C4; View Loss Sheet</button>');
       }
       // Homeowner-uploaded measurement file — independent of the measurement PDF / hover_orders state.
@@ -4136,11 +4145,12 @@
       // sentinel on claims (see supabase/functions/hover-webhook/index.ts) that names no storage
       // object — the real measurement artifact is a PDF served by the measurement-PDF button below. Rendering off
       // a bare truthiness check therefore offers a link that can only fail. Guard on the sentinel.
-      if (currentClaim.measurements_filename && !isHoverMeasurementsSentinel(currentClaim.measurements_filename)) {
+      if (canOpenRawMeasurements()) {
         parts.push('<button class="doc-link-btn-form" onclick="openBidFormMeasurementsPdf()">&#x1F4D0; View Measurements</button>');
       }
-      // Always offer the measurement PDF — function handles gracefully if no measurement job exists
-      if (currentClaim.id && !CONFIG.DEMO_MODE) {
+      // gh-2559 / D-370 (CEO ruling 6045857216): the measurement report opens only for the contractor
+      // the homeowner selected; get-hover-pdf refuses a bidder. The measured quantities stay on the form.
+      if (currentClaim.id && !CONFIG.DEMO_MODE && canOpenMeasurementPdf()) {
         parts.push('<button class="doc-link-btn-form" id="bidFormHoverBtn" onclick="openBidFormHoverPdf()">&#x1F4CF; View Measurement PDF</button>');
       }
 
@@ -4154,8 +4164,29 @@
       `;
     }
 
+    // gh-2559 / D-368: true only for the contractor the homeowner selected on this claim.
+    function canOpenRawEstimate() {
+      return !!(currentClaim && currentClaim.estimate_filename
+        && currentContractor && currentContractor.id
+        && currentClaim.selected_contractor_id === currentContractor.id);
+    }
+
+    // gh-2559 / D-370: same rule for the platform's measurement PDF.
+    function canOpenMeasurementPdf() {
+      return !!(currentClaim && currentContractor && currentContractor.id
+        && currentClaim.selected_contractor_id === currentContractor.id);
+    }
+
+    // gh-2559 / D-368: same rule for the homeowner-uploaded measurements file (it can be a copy of the estimate).
+    function canOpenRawMeasurements() {
+      return !!(currentClaim && currentClaim.measurements_filename
+        && !isHoverMeasurementsSentinel(currentClaim.measurements_filename)
+        && currentContractor && currentContractor.id
+        && currentClaim.selected_contractor_id === currentContractor.id);
+    }
+
     async function openBidFormEstimatePdf() {
-      if (!currentClaim?.estimate_filename) return;
+      if (!canOpenRawEstimate()) return;
       try {
         const { data, error } = await sb.storage
           .from('claim-documents')
@@ -4176,8 +4207,7 @@
     }
 
     async function openBidFormMeasurementsPdf() {
-      if (!currentClaim?.measurements_filename) return;
-      if (isHoverMeasurementsSentinel(currentClaim.measurements_filename)) return;
+      if (!canOpenRawMeasurements()) return;
       try {
         const { data, error } = await sb.storage
           .from('claim-documents')
@@ -4192,6 +4222,7 @@
 
     async function openBidFormHoverPdf() {
       if (!currentClaim?.id) return;
+      if (!canOpenMeasurementPdf()) return;
       const btn = document.getElementById('bidFormHoverBtn');
       if (btn) { btn.disabled = true; btn.textContent = 'Loading\u2026'; }
       try {
