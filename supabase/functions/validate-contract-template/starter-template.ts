@@ -356,10 +356,39 @@ export function detectFilledProposal(
  *
  * We detect its absence and say so. We never supply its words.
  */
-export type CancellationNoticeState = "present" | "placeholder" | "absent";
+export type CancellationNoticeState = "present" | "placeholder" | "referenced" | "absent";
 
 /** The starter's own instruction block, so it cannot be mistaken for a notice. */
 export const NOTICE_PLACEHOLDER_HEAD = "REPLACE THIS BLOCK WITH YOUR NOTICE OF CANCELLATION";
+
+// [gh-1315, CTO ruling on #1315 posted 2026-10-06T16:54:48Z, finding 2] A terms sentence such as "see the
+// attached Notice of Cancellation" contains the phrase and carries no notice. Since D-351 and D-366 the
+// contractor's own template is the only source of the notice, so a pointer to a missing attachment must
+// not read as a pass. This reports what is IN the document; it never judges whether a notice is legally
+// sufficient and it supplies no words.
+const NOTICE_PHRASE_RE = /notice\s+of\s+cancell?ation/gi;
+// Words that make an occurrence a pointer to something else rather than the notice itself.
+const POINTER_WORDS = new Set([
+  "attached", "attach", "attaches", "attachment", "enclosed", "enclose", "encloses", "enclosure",
+  "accompanying", "accompanies", "accompany", "see", "separate", "separately", "appended", "annexed",
+  "referenced", "herewith", "per",
+]);
+// Cancellation-form language: a statement that the buyer may cancel, which a real notice block carries
+// and a one-line pointer does not.
+const CANCEL_STATEMENT_RE =
+  /you\s+may\s+cancel|right\s+to\s+cancel|cancel\s+this\s+(?:transaction|contract|agreement)|prior\s+to\s+midnight|before\s+midnight/i;
+
+/** True when this occurrence of the phrase is introduced by a pointer word within the three words before it. */
+function introducedByPointer(before: string): boolean {
+  // Only the current sentence counts: cut at the last sentence terminator or line break.
+  const cut = Math.max(
+    before.lastIndexOf("."), before.lastIndexOf(";"), before.lastIndexOf(":"),
+    before.lastIndexOf("!"), before.lastIndexOf("?"), before.lastIndexOf("\n"),
+  );
+  const tail = (cut >= 0 ? before.slice(cut + 1) : before.slice(-80))
+    .toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(Boolean).slice(-3);
+  return tail.some((w) => POINTER_WORDS.has(w));
+}
 
 export function cancellationNoticeState(pdfText: string): CancellationNoticeState {
   const text = String(pdfText || "");
@@ -369,7 +398,11 @@ export function cancellationNoticeState(pdfText: string): CancellationNoticeStat
   // an instruction to write one. Caught by running the detector against the
   // starter this same file generates.
   if (text.includes(NOTICE_PLACEHOLDER_HEAD)) return "placeholder";
-  return /notice\s+of\s+cancell?ation/i.test(text) ? "present" : "absent";
+  const hits = Array.from(text.matchAll(NOTICE_PHRASE_RE));
+  if (hits.length === 0) return "absent";
+  // At least one occurrence that is not a pointer, plus cancellation-form language in the same document.
+  const standalone = hits.some((m) => !introducedByPointer(text.slice(Math.max(0, (m.index ?? 0) - 120), m.index ?? 0)));
+  return standalone && CANCEL_STATEMENT_RE.test(text) ? "present" : "referenced";
 }
 
 /** Back-compat shim: true only when a real notice is present. */

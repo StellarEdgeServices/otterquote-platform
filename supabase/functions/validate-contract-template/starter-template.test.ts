@@ -15,6 +15,7 @@ import {
   detectFilledProposal,
   describeMissingMarkers,
   cancellationNoticeState,
+  hasCancellationNotice,
   fieldIdFromTag,
   type ManifestRequirement,
 } from "./starter-template.ts";
@@ -129,6 +130,29 @@ Deno.test("the starter's own placeholder is never mistaken for a Notice of Cance
   assertEquals(cancellationNoticeState(await extractPdfText(pdf)), "placeholder");
   assertEquals(cancellationNoticeState("... your NOTICE OF CANCELLATION ... you may cancel ..."), "present");
   assertEquals(cancellationNoticeState("Terms and conditions only."), "absent");
+});
+
+// [gh-1315] The fourth state. A terms sentence that only points at "the attached Notice of Cancellation"
+// carries no notice; on main before this change it read "present" and the contractor saw no warning.
+Deno.test("a template that only refers to a Notice of Cancellation reads 'referenced', not 'present'", () => {
+  const cases: Array<[string, string, string]> = [
+    ["terms cite the attached notice, no notice in the document",
+      "11. CANCELLATION. Buyer may cancel as provided in the attached Notice of Cancellation. 12. WARRANTY. Workmanship Warranty: 5 years.", "referenced"],
+    ["pointer plus a right-to-cancel sentence, still no notice block",
+      "Your right to cancel is described in the attached Notice of Cancellation. You may cancel within three business days.", "referenced"],
+    ["see / enclosed / accompanying / separate forms of the pointer",
+      "See Notice of Cancellation for details. The enclosed Notice of Cancellation applies. The accompanying notice of cancellation form. A separate Notice of Cancellation is provided.", "referenced"],
+    ["the bare heading with no cancellation-form language", "Terms apply. NOTICE OF CANCELLATION Customer: ____", "referenced"],
+    ["a real notice block", "Terms apply. NOTICE OF CANCELLATION You may cancel this transaction, without any penalty or obligation, within three business days from the above date. Date ____ Buyer signature ____", "present"],
+    ["a template that both cites and carries one",
+      "11. See the attached Notice of Cancellation. ... NOTICE OF CANCELLATION You may cancel this transaction within three business days. Buyer signature ____", "present"],
+    ["no mention at all", "Terms and conditions only. Workmanship Warranty: 5 years.", "absent"],
+    ["empty text", "", "absent"],
+  ];
+  for (const [name, text, want] of cases) assertEquals(cancellationNoticeState(text), want, name);
+  // The sentence the code comment at the old detector described, verbatim in shape.
+  assertEquals(hasCancellationNotice("see the attached Notice of Cancellation"), false);
+  assertEquals(hasCancellationNotice("NOTICE OF CANCELLATION You may cancel this transaction within three business days"), true);
 });
 
 Deno.test("every missing marker comes back with a name, a place and something to paste", () => {
