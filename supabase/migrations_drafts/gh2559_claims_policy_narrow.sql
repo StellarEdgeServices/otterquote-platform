@@ -1,5 +1,5 @@
 -- STATUS (gh-1438, as of 2026-10-06T20:16:10Z): NOT APPLIED
--- FILE ROLE: forward file of set gh2559_claims_policy_narrow, step 3 of 3 (see the apply order in gh2559_bidder_claims_view.sql; the STATUS is the set's)
+-- FILE ROLE: forward file of set gh2559_claims_policy_narrow, step 3 of 3 (see the apply order in supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql, now filed and applied; the STATUS is the set's)
 -- EVIDENCE: written 2026-10-06T20:16:10Z; proved forward and rollback on production inside one rolled-back block (supabase/tests/gh2559_bidder_claims_view_proof.sql). pg_policy read the same day: public.claims carries the 8 policies named in the pre-flight, including the two contractor SELECT policies this file replaces. No ledger row exists for this set.
 -- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
@@ -7,7 +7,7 @@
 -- Migration: gh2559_claims_policy_narrow
 -- GitHub: #2559 (claims-row half). Decision: D-368.
 -- Tier: 3B. It removes read access from every contractor who is not the one the homeowner selected. It waits
---   for its 24-hour notice (R-097) on #2559, and is applied only after (1) gh2559_bidder_claims_view.sql is live
+--   for its 24-hour notice (R-097) on #2559, and is applied only after (1) gh2559_bidder_claims_view.sql is live (APPLIED 2026-10-08, supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql)
 --   and (2) the page change that reads the view is PUBLISHED. Never applied from this directory.
 -- Rollback: supabase/migrations_drafts/gh2559_claims_policy_narrow_rollback.sql
 -- Pre-flight: supabase/migrations_drafts/gh2559_bidder_claims_view_pre-flight.md

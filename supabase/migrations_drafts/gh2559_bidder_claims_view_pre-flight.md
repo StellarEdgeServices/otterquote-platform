@@ -1,13 +1,13 @@
 <!--
-STATUS (gh-1438, as of 2026-10-08T02:59:56Z): NOT APPLIED
+STATUS (gh-1438, as of 2026-10-08T23:20:33Z): NOT APPLIED -- this file is now the pre-flight of set gh2559_claims_policy_narrow, which is NOT APPLIED. Set gh2559_bidder_claims_view (the other set it covers) is APPLIED to production (yeszghaspzwwstvsrioa) under R-097 by CTO RUN 64 (claim cto-2026-10-08T16:29:34Z) as ledger version 20261008231303, name gh2559_bidder_claims_view; evidence #2559 comment 6070932320. The text below is the pre-apply pre-flight, kept as written.
 FILE ROLE: pre-flight file of set gh2559_bidder_claims_view and set gh2559_claims_policy_narrow (the STATUS is the sets'; it describes the forward migrations)
 EVIDENCE: no ledger row for either set; no view named bidder_claim_summary exists; the two contractor SELECT policies on public.claims are live (pg_class, pg_policy and the ledger read 2026-10-06, before and after every proof run). Forward and rollback of both were run on production inside one rolled-back block (supabase/tests/gh2559_bidder_claims_view_proof.sql) at head f4bdedce. After REVIEW: FAIL 6025641188 the view's location_city and location_zip expressions were changed (2026-10-07); the new expressions were measured read-only against public.claims (section "Location" below) and the changed view and the proof rows L1 to L4 were NOT re-run on production by the worker who changed them. At the last change (after REVIEW: FAIL 6051111207) the view file was run twice and read as a bidder on a throwaway Postgres 16 only (tools/gh2559-bidder-view-behaviour.py); nothing was run on production.
-REPO COPY: none. When the forward files are applied, move this file to supabase/migrations_rollbacks/ under the first forward file's ledger version.
+REPO COPY: the view's forward file is supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql and its rollback is supabase/migrations_rollbacks/20261008231303_gh2559_bidder_claims_view_rollback.sql. This pre-flight STAYS here because it is also the pre-flight of the unapplied gh2559_claims_policy_narrow (and the applied view's COMMENT ON VIEW names this path); move it when the narrowing is applied.
 DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 -->
 # Pre-Flight: gh2559_bidder_claims_view + gh2559_claims_policy_narrow (the claims-row half of D-368)
 
-**Migrations**: `supabase/migrations_drafts/gh2559_bidder_claims_view.sql` (additive) and `supabase/migrations_drafts/gh2559_claims_policy_narrow.sql` (Tier 3B). NOT APPLIED.
+**Migrations**: `supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql` (additive; APPLIED 2026-10-08, ledger version `20261008231303`) and `supabase/migrations_drafts/gh2559_claims_policy_narrow.sql` (Tier 3B). NOT APPLIED (the narrowing).
 **Author**: worker for Marty (CTO RUN 61, claim `cto-2026-10-06T15:13:52Z`, tid `cto61-claims-view`).
 **GitHub**: Refs #2559. **Decision**: D-368 ("Summary only", Dustin, comment 6018744630). **Split out by**: PR #2569, comment 6024529507.
 
@@ -31,7 +31,7 @@ estimate file name, and the adjuster's name, email and phone, before being selec
 
 | step | what | tier | waits for |
 |---|---|---|---|
-| 1 | apply `gh2559_bidder_claims_view.sql` | additive; nothing changes for anyone; rollback = `DROP VIEW` | review of this PR |
+| 1 | apply `gh2559_bidder_claims_view.sql` | additive; nothing changes for anyone; rollback = `DROP VIEW` | review of this PR. DONE 2026-10-08 (ledger version 20261008231303) |
 | 2 | merge this PR, then PUBLISH the static pages and the React app (Netlify production is locked until published) | deploy | step 1 live (the new pages read the view) |
 | 3 | apply `gh2559_claims_policy_narrow.sql` | **3B**, R-097 24-hour notice | step 2 PUBLISHED; the notice window; REVIEW; LEGAL-READ; Ben's R-177 signature; Ben's answers to the open Q: lines on notice 6024524228 |
 
@@ -283,7 +283,7 @@ OR (b) the caller is selected on the claim; OR (c) the caller has a quote on the
 - **Stops seeing, before selection**: the homeowner's name, the claim number, the estimate and measurements file names, the adjuster's name, email and phone, the ingest email addresses, referral and click ids, payment and signing reference ids, and the street address (the bid form and the messaging labels used to show it; they show city and zip).
 - **Still sees**: the whole summary: carrier, date of loss, line items and totals, scope summary, RCV, ACV, deductible, squares, trades, damage type, material, urgency, the homeowner's notes, release and bid-window dates, whether an estimate and measurements exist. A selected contractor reads exactly what it reads today.
 - **What could go wrong**: (1) a page still running the old code after step 3 shows an empty list (hence the order); (2) a test contractor no longer sees real claims (QUESTION 1); (3) the dashboard's "Won" project list and messaging labels for a bid that is lost lose their full address (they show city and zip: lost bids never were entitled to it).
-- **Rollback**: `gh2559_claims_policy_narrow_rollback.sql` restores the two policies byte for byte from live (text read from `pg_policy`); `gh2559_bidder_claims_view_rollback.sql` drops the view. Order: narrowing first, then the view. Both were run in the proof.
+- **Rollback**: `gh2559_claims_policy_narrow_rollback.sql` restores the two policies byte for byte from live (text read from `pg_policy`); `supabase/migrations_rollbacks/20261008231303_gh2559_bidder_claims_view_rollback.sql` drops the view. Order: narrowing first, then the view. Both were run in the proof.
 
 ## Proof (one self-rolling-back block on production, role-switched reads)
 

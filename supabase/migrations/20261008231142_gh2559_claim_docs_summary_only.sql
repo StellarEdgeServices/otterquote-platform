@@ -1,8 +1,8 @@
--- STATUS (gh-1438, as of 2026-10-07T19:20:06Z): NOT APPLIED
+-- STATUS (gh-1438): APPLIED. APPLIED to production (yeszghaspzwwstvsrioa) under R-097 by CTO RUN 64 (claim cto-2026-10-08T16:29:34Z): supabase_migrations.schema_migrations version 20261008231142, name gh2559_claim_docs_summary_only; evidence #2559 comment 6070932320.
 -- FILE ROLE: forward file of set gh2559_claim_docs_summary_only (the STATUS is the set's; it describes the forward migration)
--- EVIDENCE: cut down 2026-10-07T19:20:06Z to the storage policy alone, after REVIEW: FAIL on #2569 (comment 6024856617, option A) and the CEO ruling (comment 6029315131, item A: the bid-open trigger is OUT of this PR). The CREATE POLICY statement below is byte-identical to the one at head c60b216f, which was proved forward and rollback on production inside rolled-back blocks (review 6024856617 finding 9; supabase/tests/gh2559_claim_docs_summary_only_proof.sql). The live policy is the world-fenced text of ledger version 20261006171747 (pg_policies read 2026-10-06). No ledger row exists for this set.
--- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- EVIDENCE: cut down 2026-10-07T19:20:06Z to the storage policy alone, after REVIEW: FAIL on #2569 (comment 6024856617, option A) and the CEO ruling (comment 6029315131, item A: the bid-open trigger is OUT of this PR). The CREATE POLICY statement below is byte-identical to the one at head c60b216f, which was proved forward and rollback on production inside rolled-back blocks (review 6024856617 finding 9; supabase/tests/gh2559_claim_docs_summary_only_proof.sql). The live policy is the world-fenced text of ledger version 20261006171747 (pg_policies read 2026-10-06). No ledger row existed for this set before the apply recorded in STATUS.
+-- REPO COPY: this file (ledger version 20261008231142). The rollback and pre-flight are supabase/migrations_rollbacks/20261008231142_gh2559_claim_docs_summary_only_rollback.sql and ..._pre-flight.md (moved there after the apply).
+-- NEVER RE-RUN by hand: this is the filed copy under the ledger version (moved from supabase/migrations_drafts/ after the apply; SQL statements unchanged, header comments only).
 --
 -- Migration: gh2559_claim_docs_summary_only
 -- GitHub: #2559 item 3. Decision: D-368 (Dustin, 2026-10-06, comment 6018744630, "Summary only (Recommended)"),
@@ -10,8 +10,8 @@
 -- Tier: 3B. It removes read access from contractors on real homeowners' files. It waits for its
 --   24-hour notice (R-097) on #2559 and is applied only after that window and the conditions of
 --   comment 6029315131 (item B), never from this directory.
--- Rollback: supabase/migrations_drafts/gh2559_claim_docs_summary_only_rollback.sql
--- Pre-flight: supabase/migrations_drafts/gh2559_claim_docs_summary_only_pre-flight.md
+-- Rollback: supabase/migrations_rollbacks/20261008231142_gh2559_claim_docs_summary_only_rollback.sql
+-- Pre-flight: supabase/migrations_rollbacks/20261008231142_gh2559_claim_docs_summary_only_pre-flight.md
 -- Proof (rolled back, role-switched): supabase/tests/gh2559_claim_docs_summary_only_proof.sql
 --
 -- ONE CHANGE: the storage policy "Contractors can view biddable claim docs". Nothing on public.claims.

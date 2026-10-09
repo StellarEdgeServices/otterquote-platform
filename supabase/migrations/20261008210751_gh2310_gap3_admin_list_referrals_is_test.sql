@@ -1,10 +1,10 @@
 -- gh-2310 Gap 3: admin_list_referrals() gets the missing is_test predicate (row 5a of Docs/is-test-steering-queries.md).
--- STATUS (gh-1438): NOT APPLIED. Replaces the body of an existing SECURITY DEFINER SQL function (same signature, same grants), additive in effect: it only hides rows.
--- Tier 3B by the CTO's ruling on #2310 (comment 6046227412) because it changes what the admin sees; R-097 notice on #2310 first. Do not apply, merge or deploy from this PR.
+-- STATUS (gh-1438): APPLIED. APPLIED to production (yeszghaspzwwstvsrioa) under R-097 by CTO RUN 64 (claim cto-2026-10-08T16:29:34Z): supabase_migrations.schema_migrations version 20261008210751, name gh2310_gap3_admin_list_referrals_is_test; evidence #2310 comment 6069081536. Replaces the body of an existing SECURITY DEFINER SQL function (same signature, same grants), additive in effect: it only hides rows.
+-- Tier 3B by the CTO's ruling on #2310 (comment 6046227412) because it changes what the admin sees.
 -- EVIDENCE: production body md5 9da71c08… (first 8 characters) (pg_get_functiondef, read-only 2026-10-07T20:28Z) equals sql/v98-admin-list-referrals.sql and the baseline migration body: no is_test anywhere.
 -- Rollback: supabase/migrations_rollbacks/gh2310_gap3_admin_list_referrals_is_test_rollback.sql (restores that body byte for byte)
 -- Test: tests/gh2310-static-admin-list-referrals.mjs (static, CI) and supabase/tests/gh2310_gap3_referrals_is_test_proof.sql (rolled back, human-run)
--- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3B path, then file it under supabase/migrations/<ledger version>_gh2310_gap3_admin_list_referrals_is_test.sql.
+-- NEVER RE-RUN by hand: this is the filed copy under the ledger version (moved from supabase/migrations_drafts/ after the apply; SQL statements unchanged, header comments only).
 --
 -- What changes: one added predicate pair in WHERE. A referral is listed only if its own flag is not true AND its agent's flag is not true.
 -- "IS NOT TRUE" keeps NULL-flag rows and keeps unattributed rows (referral_agent_id NULL => ra.* NULL), which the v98 header documents as the early-warning

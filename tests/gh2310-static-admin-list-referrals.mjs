@@ -4,7 +4,7 @@
  *
  * Before: sql/v98-admin-list-referrals.sql (the body live in production, md5 9da71c08...) has no is_test
  * predicate, so this script FAILS on it (negative control: `node tests/gh2310-static-admin-list-referrals.mjs sql/v98-admin-list-referrals.sql`).
- * After: the draft migration passes. The live proof is supabase/tests/gh2310_gap3_referrals_is_test_proof.sql
+ * After: the filed (applied) migration passes. The live proof is supabase/tests/gh2310_gap3_referrals_is_test_proof.sql
  * (rolled back, run by a human against production); CI never touches the database.
  * Run: node tests/gh2310-static-admin-list-referrals.mjs [function-file.sql]
  */
@@ -14,10 +14,13 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
-const DRAFTS = path.join(ROOT, 'supabase/migrations_drafts');
+const MIGS = path.join(ROOT, 'supabase/migrations');
 const RBK = path.join(ROOT, 'supabase/migrations_rollbacks');
 const FN = 'gh2310_gap3_admin_list_referrals_is_test';
 const BF = 'gh2310_gap3_backfill_referrals_is_test';
+// Filed under the version production's ledger recorded (applied 2026-10-08, #2310 comment 6069081536).
+const FN_FILE = '20261008210751_' + FN + '.sql';
+const BF_FILE = '20261008210737_' + BF + '.sql';
 
 let passed = 0, failed = 0;
 function ok(cond, msg) { if (cond) { passed++; console.log('PASS: ' + msg); } else { failed++; console.log('FAIL: ' + msg); } }
@@ -25,7 +28,7 @@ const norm = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--.*$/gm, '').re
 const read = (p) => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '');
 
 // ---- 1. the function predicate ----
-const fnPath = process.argv[2] ? path.resolve(process.argv[2]) : path.join(DRAFTS, FN + '.sql');
+const fnPath = process.argv[2] ? path.resolve(process.argv[2]) : path.join(MIGS, FN_FILE);
 ok(fs.existsSync(fnPath), `function file exists (${path.relative(ROOT, fnPath)})`);
 const fn = norm(read(fnPath));
 const body = (fn.match(/CREATE OR REPLACE FUNCTION public\.admin_list_referrals\(\).*\$function\$/i) || [''])[0];
@@ -45,7 +48,7 @@ const v98 = norm(read(path.join(ROOT, 'sql/v98-admin-list-referrals.sql')));
 ok(!/is_test/i.test(v98), 'before-state: the live-shaped v98 body has no is_test (the failing case)');
 
 // ---- 3. the backfill ----
-const bf = read(path.join(DRAFTS, BF + '.sql'));
+const bf = read(path.join(MIGS, BF_FILE));
 const bfn = norm(bf);
 const idsOf = (s) => [...(s.match(/ARRAY\[([^\]]*)\]/) || ['', ''])[1].matchAll(/'([0-9a-f-]{36})'::uuid/g)].map((m) => m[1]);
 const ids = idsOf(bfn);
@@ -68,7 +71,7 @@ const strayLines = proof.split('\n').filter((l) => /^CREATE OR REPLACE\b/i.test(
 ok(proof !== '' && strayLines.length === 0, 'proof file has no stray "CREATE OR REPLACE" header text outside a FUNCTION statement' + (strayLines.length ? ': ' + strayLines.join(' / ') : ''));
 
 // ---- 4. no staff address in the new files ----
-for (const f of [path.join(DRAFTS, BF + '.sql'), fnPath, path.join(RBK, BF + '_rollback.sql')]) {
+for (const f of [path.join(MIGS, BF_FILE), fnPath, path.join(RBK, BF + '_rollback.sql')]) {
   ok(!/[A-Za-z0-9._%+-]+@gmail\.com/i.test(read(f)), `no gmail literal in ${path.basename(f)}`);
 }
 

@@ -9,7 +9,7 @@
 -- claim open for bids, and every contractor with a bid on a claim reads its whole row. Run it only if the
 -- narrowing refuses a read a contractor needs, and say so on #2559.
 -- It restores the two policies exactly as they were live on 2026-10-06 (text read from pg_policy) and drops
--- the replacement. It does not touch the view (gh2559_bidder_claims_view_rollback.sql does that).
+-- the replacement. It does not touch the view (supabase/migrations_rollbacks/20261008231303_gh2559_bidder_claims_view_rollback.sql does that).
 BEGIN;
 
 SET LOCAL lock_timeout = '5s';

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """gh-2559 / D-368, D-371 -- BEHAVIOURAL test of the bidder view on a throwaway Postgres.
 
-The view file supabase/migrations_drafts/gh2559_bidder_claims_view.sql is run VERBATIM on an empty
+The view file supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql is run VERBATIM on an empty
 Postgres (pgserver: a private server in a temp directory, nothing shared, nothing kept). Claims are
 planted with a made-up name, phone, email and street in every shape review 6047719061 listed, a
 contractor who is only BIDDING reads every row through the view, and the test asserts that no street,
@@ -22,7 +22,7 @@ except ImportError as e:  # pragma: no cover
     sys.exit(0 if os.environ.get("GH2559_ALLOW_SKIP") else 1)
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-VIEW_FILE = os.path.join(ROOT, "supabase", "migrations_drafts", "gh2559_bidder_claims_view.sql")
+VIEW_FILE = os.path.join(ROOT, "supabase", "migrations", "20261008231303_gh2559_bidder_claims_view.sql")
 
 NAME, PHONE, EMAIL = "Zelda Quixote", "317-555-0142", "zelda.q@example.invalid"
 STREET = "4417 Larkspur Hollow Rd"

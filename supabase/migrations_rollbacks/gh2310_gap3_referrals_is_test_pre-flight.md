@@ -1,6 +1,6 @@
 # gh-2310 Gap 3 pre-flight: referrals backfill (9 rows) + admin_list_referrals is_test predicate
 
-Tier 3B. NOT APPLIED. Ruling: #2310 comment 6046227412. R-097 24-hour notice on #2310 first; this PR is a draft and nothing here has run against production.
+Tier 3B. APPLIED to production 2026-10-08 (CTO RUN 64) as ledger versions 20261008210737 (gh2310_gap3_backfill_referrals_is_test) and 20261008210751 (gh2310_gap3_admin_list_referrals_is_test); evidence #2310 comment 6069081536; the forward files are filed in supabase/migrations/ under those versions. Ruling: #2310 comment 6046227412. The text below is the pre-apply pre-flight, kept as written.
 
 ## What changes
 1. `gh2310_gap3_backfill_referrals_is_test.sql`: `UPDATE public.referrals SET is_test = true` for nine exact ids, only where the row is `is_test=false` and its `referral_agents` row is `is_test=true`. Guarded: the DO block raises unless exactly nine rows change. The only trigger on `referrals` (`referrals_update_stats`, AFTER UPDATE) acts on a status change; status does not change.

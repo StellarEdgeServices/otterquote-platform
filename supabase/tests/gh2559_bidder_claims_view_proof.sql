@@ -1,5 +1,5 @@
 -- gh-2559 claims-row half proof: the bidder-only view public.bidder_claim_summary and the narrowing of the two
--- contractor SELECT policies on public.claims (supabase/migrations_drafts/gh2559_bidder_claims_view.sql and
+-- contractor SELECT policies on public.claims (supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql (applied 2026-10-08, ledger version 20261008231303) and supabase/migrations_drafts/
 -- gh2559_claims_policy_narrow.sql; NOT APPLIED when this was written). Decision D-368.
 -- Run against production (yeszghaspzwwstvsrioa) as ONE statement. It is a single DO block whose last action is
 -- a deliberate RAISE EXCEPTION, so every fixture write and every DDL statement rolls back whatever the client

@@ -1,7 +1,7 @@
 name: Static gh2310 admin_list_referrals Tests
 
 # gh-2310 Gap 3 -- admin_list_referrals() keeps its is_test predicate and the nine-row referrals backfill
-# keeps its exact-id guard and rollback. Static check of the draft SQL text; the live proof is
+# keeps its exact-id guard and rollback. Static check of the applied SQL text filed under supabase/migrations/; the live proof is
 # supabase/tests/gh2310_gap3_referrals_is_test_proof.sql, a rolled-back run a human does against production.
 # `pull_request` + `push` to main, no secrets, read-only token.
 
@@ -9,14 +9,14 @@ on:
   pull_request:
     branches: [main, staging]
     paths:
-      - 'supabase/migrations_drafts/gh2310_gap3_*'
+      - 'supabase/migrations/*gh2310_gap3_*'
       - 'supabase/migrations_rollbacks/gh2310_gap3_*'
       - 'tests/gh2310-static-admin-list-referrals.mjs'
       - '.github/workflows/static-gh2310-admin-list-referrals-tests.yml'
   push:
     branches: [main]
     paths:
-      - 'supabase/migrations_drafts/gh2310_gap3_*'
+      - 'supabase/migrations/*gh2310_gap3_*'
       - 'supabase/migrations_rollbacks/gh2310_gap3_*'
       - 'tests/gh2310-static-admin-list-referrals.mjs'
       - '.github/workflows/static-gh2310-admin-list-referrals-tests.yml'

@@ -1,5 +1,5 @@
 -- gh-2559 item 3 proof: D-368 narrowing of the storage policy "Contractors can view biddable claim docs"
--- (supabase/migrations_drafts/gh2559_claim_docs_summary_only.sql; NOT APPLIED when this was written).
+-- (supabase/migrations/20261008231142_gh2559_claim_docs_summary_only.sql; NOT APPLIED when this was written, applied 2026-10-08 as ledger version 20261008231142).
 -- The bid-open trigger of the previous head was cut (comment 6029315131 item A); its rows G1 to G8 left with it.
 -- Run against production (yeszghaspzwwstvsrioa) as ONE statement. It is a single DO block whose last
 -- action is a deliberate RAISE EXCEPTION, so every fixture write (and, in forward-rollback mode, the

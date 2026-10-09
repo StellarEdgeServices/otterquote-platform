@@ -1,4 +1,4 @@
--- Rollback for gh2310_gap3_backfill_referrals_is_test (draft in supabase/migrations_drafts/).
+-- Rollback for gh2310_gap3_backfill_referrals_is_test (applied forward file: supabase/migrations/20261008210737_gh2310_gap3_backfill_referrals_is_test.sql, ledger version 20261008210737).
 -- Restores is_test=false ONLY for the 9 referrals ids measured as false on 2026-10-07 (a predicate-based rollback would also flip rows that were already true).
 -- The forward change touches referrals only, so this fully reverts it. Never move into supabase/migrations/ (the CLI would replay it forward).
 BEGIN;
