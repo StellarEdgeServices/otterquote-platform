@@ -1729,6 +1729,14 @@ class SourcesListTests(unittest.TestCase):
             text = (REPO_ROOT / "locations" / f"{slug}-county-oh" / "roofing" / "index.html").read_text(encoding="utf-8")
             self.assertIn(f'<li><a href="{url}" rel="noopener" target="_blank">', text)
 
+    def test_committed_middle_tennessee_pages_link_their_nws_documents_and_cite_no_statute(self):
+        # REVIEW: FAIL 6045269647 + Ben's ruling 6045865665: no unlinked statute, every figure's page linked
+        for slug in ("davidson", "montgomery", "rutherford", "sumner", "williamson", "wilson"):
+            text = (REPO_ROOT / "locations" / f"{slug}-county-tn" / "roofing" / "index.html").read_text(encoding="utf-8")
+            self.assertNotIn("Tennessee Code Annotated section 4-1-203", text)
+            for path in ("tornadoclimatology", "tntornadostats", "heavyprecipitationclimatology"):
+                self.assertIn(f'<a href="https://www.weather.gov/ohx/{path}" rel="noopener" target="_blank">', text)
+
     def test_page_without_sources_is_refused_when_sources_are_required(self):
         # negative control: county notes present, no county_sources -> the CLI path refuses and writes nothing
         self.fx_profile(with_sources=False)
