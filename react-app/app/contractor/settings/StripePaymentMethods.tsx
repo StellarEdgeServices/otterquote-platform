@@ -316,6 +316,7 @@ export function StripePaymentMethods({ contractorId, billingName, billingEmail }
       // gh-2105 (decision b, update-no-select-ok: clearing the previous
       // default legitimately matches zero rows when there was no prior
       // default — not a failure, so no .select()/throw is added here).
+      // update-no-select-ok: no prior default legitimately matches zero rows (gh-2105 decision b, see above)
       await supabase.from('contractor_payment_methods').update({ is_default: false }).eq('contractor_id', contractorId);
       const { data: defaultRows, error: defaultErr } = await supabase
         .from('contractor_payment_methods')

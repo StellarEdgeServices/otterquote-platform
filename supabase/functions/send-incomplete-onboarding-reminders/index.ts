@@ -24,6 +24,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { buildReminderEmail, buildReminderText } from "./templates.ts"; // gh-1824: footer moved to templates.ts (testable, no serve() import)
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts"; // gh-2105 batch 13 (remaining sites)
 
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
@@ -141,13 +142,20 @@ serve(async (req) => {
 
       if (ok) {
         // Stamp to prevent re-sending
-        const { error: updateErr } = await supabase
+        // gh-2105 (batch 2, decision a): a zero-row stamp means the email went out but the
+        // dedup stamp did not stick, so the next cron tick would re-send it. Count it as an
+        // error (cron_health + response `errors`) instead of `sent`.
+        const { data: stampRows, error: updateErr } = await supabase
           .from("contractors")
           .update({ partial_completion_email_sent_at: new Date().toISOString() })
-          .eq("id", contractor.id);
+          .eq("id", contractor.id)
+          .select("id");
 
         if (updateErr) {
           console.error(`Failed to stamp partial_completion_email_sent_at for ${contractor.id}:`, updateErr);
+          errors++;
+        } else if (!checkRowsWritten(stampRows).wroteRows) {
+          console.error(zeroRowWriteMessage("send-incomplete-onboarding-reminders", `contractors.partial_completion_email_sent_at for contractor ${contractor.id}`));
           errors++;
         } else {
           sent++;

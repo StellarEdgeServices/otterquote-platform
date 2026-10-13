@@ -30,6 +30,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { jobAddressFor, mayReceiveJobAddress } from "./job-address.ts";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts"; // gh-2105 batch 13 (remaining sites)
 
 const HOVER_API_BASE = "https://hover.to";
 
@@ -638,14 +639,22 @@ async function getValidAccessToken(supabase: any): Promise<string | null> {
     Date.now() + (newTokenData.expires_in || 7200) * 1000
   ).toISOString();
 
-  await supabase
+  // gh-2105 (batch 2, decision a/log): Hover rotates the refresh token, so a persist that
+  // matches zero rows (or errors) loses the NEW refresh token and the next refresh fails.
+  // The access token we just minted is still good for this request, so we return it, but the
+  // miss is logged with the shared gh-2105 message instead of vanishing as a silent success.
+  const { data: tokenRows, error: tokenErr } = await supabase
     .from("hover_tokens")
     .update({
       access_token: newTokenData.access_token,
       refresh_token: newTokenData.refresh_token || token.refresh_token,
       expires_at: newExpiresAt,
     })
-    .eq("id", token.id);
+    .eq("id", token.id)
+    .select("id");
+  if (tokenErr || !checkRowsWritten(tokenRows).wroteRows) {
+    console.error(zeroRowWriteMessage("get-hover-siding-data", `hover_tokens refresh persist for token ${token.id}`), tokenErr?.message ?? "");
+  }
 
   return newTokenData.access_token;
 }

@@ -80,10 +80,10 @@ ANNOTATION = "update-no-select-ok"
 # already idempotency-guarded by its own filter). Baselines below dropped by
 # 10 accordingly (create-payment-intent 2->1, the other three 1/2/6->0).
 BASELINE: dict[str, int] = {
-    "admin-contractors.html": 1,
+    "admin-contractors.html": 0,  # gh-2105 batch 13: annotated (b)
     "admin-cpa.html": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
     "admin-fee-config.html": 0,
-    "admin-measurements.html": 3,
+    "admin-measurements.html": 0,  # gh-2105 batch 13: fixed (see PR body)
     "admin-referrals.html": 0,  # gh-2105 batch 12: 3 fixed (a), 1 comment reworded
     "admin-template-review.html": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
     "bids.html": 2,
@@ -123,19 +123,19 @@ BASELINE: dict[str, int] = {
     "react-app/app/(homeowner)/help-measurements/use-help-measurements-data.ts": 1,
     "react-app/app/(homeowner)/project-confirmation/use-project-confirmation-data.ts": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/(homeowner)/repair-intake/use-repair-intake-data.ts": 1,  # gh-2105 batch 13: page/JS fixed (a)
-    "react-app/app/admin/contractors/page.tsx": 1,
+    "react-app/app/admin/contractors/page.tsx": 0,  # gh-2105 batch 13: annotated (b)
     "react-app/app/admin/fee-config/page.tsx": 0,
     "react-app/app/admin/referrals/page.tsx": 0,  # gh-2105 batch 12: 3 fixed (a), 3 comment mentions reworded
     "react-app/app/admin/referrals/utils.ts": 0,  # gh-2105 batch 12: comment mention reworded
     "react-app/app/admin/template-review/page.tsx": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
     "react-app/app/contractor/auto-bids/page.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/bid/[claimId]/bid-form.tsx": 0,
-    "react-app/app/contractor/dashboard/page.tsx": 2,
+    "react-app/app/contractor/dashboard/page.tsx": 0,  # gh-2105 batch 13: fixed (see PR body)
     "react-app/app/contractor/pre-approval/page.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/profile/ContractTemplates.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/profile/PcTemplates.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/profile/d199-validation.tsx": 1,  # gh-2105: class (c) OPEN, server-side. status is rewritten to pending_validation by trigger contractor_templates_freeze_verdict, so a returned row does not prove the write persisted (same class as contractor-settings payment methods, 5964087934)
-    "react-app/app/contractor/settings/StripePaymentMethods.tsx": 1,
+    "react-app/app/contractor/settings/StripePaymentMethods.tsx": 0,  # gh-2105 batch 13: annotated (b)
     "react-app/app/contractor/settings/page.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/settings/utils.ts": 1,
     "react-app/app/hooks/use-notification-count.ts": 1,
@@ -168,17 +168,17 @@ BASELINE: dict[str, int] = {
     # baseline capture appears to have missed or hand-adjusted for; that
     # comment is reworded in this same PR to stop tripping the scanner.
     "supabase/functions/docusign-webhook/index.ts": 0,
-    "supabase/functions/get-hover-pdf/index.ts": 1,
-    "supabase/functions/get-hover-siding-data/index.ts": 1,
+    "supabase/functions/get-hover-pdf/index.ts": 0,  # gh-2105 batch 13: fixed (see PR body)
+    "supabase/functions/get-hover-siding-data/index.ts": 0,  # gh-2105 batch 13: fixed (see PR body)
     "supabase/functions/hover-webhook/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     "supabase/functions/lead-next-step-optout/index.ts": 0,  # gh-2105 batch 7: decision-b annotated (see PR body)
     "supabase/functions/mark-job-complete/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     "supabase/functions/mark-loss-sheet-reviewed/index.ts": 0,  # gh-2105 batch 11: annotated (already selects)
     "supabase/functions/mark-payout-paid/index.ts": 0,
-    "supabase/functions/notify-admin-new-homeowner/index.ts": 1,
+    "supabase/functions/notify-admin-new-homeowner/index.ts": 0,  # gh-2105 batch 13: fixed (see PR body)
     "supabase/functions/notify-payout-pending/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
-    "supabase/functions/parse-hover-measurements/index.ts": 1,
-    "supabase/functions/parse-loss-sheet/index.ts": 1,
+    "supabase/functions/parse-hover-measurements/index.ts": 0,  # gh-2105 batch 13: fixed (see PR body)
+    "supabase/functions/parse-loss-sheet/index.ts": 0,  # gh-2105 batch 13: fixed (see PR body)
     "supabase/functions/partner-email-optout/index.ts": 0,  # gh-2105 batch 7: decision-b annotated (see PR body)
     "supabase/functions/platform-health-check/index.ts": 0,  # gh-2105 batch 11: decision b annotated
     "supabase/functions/process-bid-expirations/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
@@ -197,8 +197,8 @@ BASELINE: dict[str, int] = {
     "supabase/functions/resend-hover-link/index.ts": 0,  # gh-2105 batch 11: fixed log-only
     "supabase/functions/send-adjuster-email/index.ts": 0,  # gh-2105 batch 11: fixed log-only
     "supabase/functions/send-home-profile-prompt/index.ts": 0,  # gh-2105 batch 11: decision b annotated
-    "supabase/functions/send-incomplete-onboarding-reminders/index.ts": 1,
-    "supabase/functions/send-partner-onboarding/index.ts": 3,
+    "supabase/functions/send-incomplete-onboarding-reminders/index.ts": 0,  # gh-2105 batch 13: fixed (see PR body)
+    "supabase/functions/send-partner-onboarding/index.ts": 0,  # gh-2105 batch 13: fixed (see PR body)
     "supabase/functions/stripe-webhook/index.ts": 0,
     "supabase/functions/submit-partner-w9/index.ts": 0,
     "supabase/functions/switch-contractor/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered

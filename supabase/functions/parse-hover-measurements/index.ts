@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.104.0";
 import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@0.11.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts"; // gh-2105 batch 13 (remaining sites)
 
 // ============================================================================
 // parse-hover-measurements
@@ -294,13 +295,21 @@ serve(async (req: Request) => {
       areas_by_pitch: parsed.areas_by_pitch,
     };
 
-    const { error: upErr } = await supabase
+    const { data: upRows, error: upErr } = await supabase
       .from("claims")
       .update({ hover_measurements: measurements })
-      .eq("id", claimId);
+      .eq("id", claimId)
+      .select("id");
     if (upErr) {
       // Hard failure — DB write error.
       return jsonResponse(500, { ok: false, error: `claims update failed: ${upErr.message}` }, corsHeaders);
+    }
+    // gh-2105 (batch 2, decision a): error:null with zero rows is a write that did not happen
+    // (claim id not found); returning 200 { ok: true, measurements } would tell the caller the
+    // parsed measurements were saved. Same 500 shape as the error branch above.
+    if (!checkRowsWritten(upRows).wroteRows) {
+      console.error(zeroRowWriteMessage("parse-hover-measurements", `claims.hover_measurements for claim ${claimId}`));
+      return jsonResponse(500, { ok: false, error: "claims update failed: no claim row matched (gh-2105)" }, corsHeaders);
     }
 
     return jsonResponse(200, { ok: true, measurements }, corsHeaders);

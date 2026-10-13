@@ -118,6 +118,7 @@ import {
   isOutOfStateClaimAuthorized,
 } from "./notify-helpers.ts";
 import { handleOutOfStateClaim } from "./out-of-state.ts"; // gh-2421 (D-344)
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts"; // gh-2105 batch 13 (remaining sites)
 import {
   backfillDigestHtml,
   backfillDigestText,
@@ -424,15 +425,20 @@ async function handleRouterLead(
     // re-POST) can claim and send again, instead of the alert being lost
     // for good on a row that looks "already alerted" but never sent.
     console.error(`notify-admin-new-homeowner: mailgun send failed for lead_id=${leadId}, reverting alerted_at:`, mailErr);
-    const { error: revertErr } = await sb
+    const { data: revertRows, error: revertErr } = await sb
       .from("leads")
       .update({ alerted_at: null })
-      .eq("id", leadId);
+      .eq("id", leadId)
+      .select("id");
     if (revertErr) {
       console.error(
         `notify-admin-new-homeowner: failed to revert alerted_at for lead_id=${leadId} after mailgun failure:`,
         revertErr,
       );
+    } else if (!checkRowsWritten(revertRows).wroteRows) {
+      // gh-2105 (batch 2, decision a/log): the revert is what makes the alert retryable; a zero-row
+      // revert leaves the lead stamped "alerted" with no email sent. The response is already a 500.
+      console.error(zeroRowWriteMessage("notify-admin-new-homeowner", `leads.alerted_at revert for lead ${leadId}`));
     }
     return new Response(
       JSON.stringify({ error: "failed to send router lead alert email" }),
