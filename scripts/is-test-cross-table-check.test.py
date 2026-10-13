@@ -263,6 +263,8 @@ class ManagementApiTests(unittest.TestCase):
 
     def test_post_issue_comment_posts_to_the_gh1763_issue(self):
         def fake_urlopen(req, timeout=30):
+            if req.get_method() == "GET":  # state check: issue is open
+                return _FakeResponse(json.dumps({"state": "open"}).encode("utf-8"))
             self.assertIn(f"/issues/{guard.ALARM_ISSUE_NUMBER}/comments", req.full_url)
             self.assertEqual(req.get_header("Authorization"), "Bearer fake-gh-token")
             return _FakeResponse(json.dumps({"html_url": "https://github.com/x/y/issues/1763#c1"}).encode("utf-8"))
@@ -273,6 +275,52 @@ class ManagementApiTests(unittest.TestCase):
             success, detail = guard.post_issue_comment("body text")
         self.assertTrue(success)
         self.assertEqual(detail, "https://github.com/x/y/issues/1763#c1")
+
+    def test_post_issue_comment_skips_a_closed_issue(self):
+        """gh-1763 drift guard stops commenting on a closed issue: no POST is made."""
+        posted = []
+
+        def fake_urlopen(req, timeout=30):
+            if req.get_method() == "GET":
+                return _FakeResponse(json.dumps({"state": "closed"}).encode("utf-8"))
+            posted.append(req.full_url)
+            return _FakeResponse(b"{}")
+
+        with patch.dict(guard.os.environ, {"GITHUB_TOKEN": "fake-gh-token"}, clear=False), \
+             patch.object(guard.urllib.request, "urlopen", fake_urlopen), \
+             patch("sys.stderr", new_callable=io.StringIO):
+            success, detail = guard.post_issue_comment("body text")
+        self.assertFalse(success)
+        self.assertIn("is closed", detail)
+        self.assertEqual(posted, [])
+
+    def test_post_issue_comment_posts_when_state_unreadable(self):
+        """Fail open: if the issue state cannot be read, the alarm is still posted."""
+        posted = []
+
+        def fake_urlopen(req, timeout=30):
+            if req.get_method() == "GET":
+                raise OSError("network down")
+            posted.append(req.full_url)
+            return _FakeResponse(json.dumps({"html_url": "u"}).encode("utf-8"))
+
+        with patch.dict(guard.os.environ, {"GITHUB_TOKEN": "fake-gh-token"}, clear=False), \
+             patch.object(guard.urllib.request, "urlopen", fake_urlopen), \
+             patch("sys.stderr", new_callable=io.StringIO):
+            success, _ = guard.post_issue_comment("body text")
+        self.assertTrue(success)
+        self.assertEqual(len(posted), 1)
+
+    def test_disagreement_on_closed_issue_still_exits_1(self):
+        """Detection unchanged: a disagreement is still exit 1 when the comment is skipped."""
+        offender = [{"profile_id": "p1", "profile_is_test": False, "contractor_id": "c1", "contractor_is_test": True, "company_name": "X"}]
+        def fake_urlopen(req, timeout=30):
+            return _FakeResponse(json.dumps({"state": "closed"}).encode("utf-8"))
+        with patch.dict(guard.os.environ, {"GITHUB_TOKEN": "t"}, clear=False), \
+             patch.object(guard.urllib.request, "urlopen", fake_urlopen), \
+             patch("sys.stderr", new_callable=io.StringIO), patch("sys.stdout", new_callable=io.StringIO):
+            code = guard.run_management_api("ref", "pat", fetcher=lambda r, t: offender, file_issue=True)
+        self.assertEqual(code, 1)
 
     def test_main_routes_management_api_flag(self):
         """CLI wiring: --management-api --project-ref <ref> reads SUPABASE_ACCESS_TOKEN,
