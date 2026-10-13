@@ -411,10 +411,32 @@ def render_county_text(text: str) -> str:
 _SOURCE_URL = re.compile(r"^https://[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}(?::\d+)?(?:[/?#][A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]*)?$")
 
 
+def _clean_source_list(items, where, bad) -> list:
+    """Validate a list of {"label", "url"} objects (county_sources and region sources)."""
+    if not (isinstance(items, list) and items):
+        raise bad(f"{where} must be a non-empty list of {{label, url}} objects")
+    seen, clean = set(), []
+    for i, item in enumerate(items):
+        if not (isinstance(item, dict) and set(item) == {"label", "url"}
+                and all(isinstance(item[k], str) for k in item)):
+            raise bad(f'{where}[{i}] must be an object with exactly "label" and "url" strings')
+        label, url = item["label"].strip(), item["url"]
+        if not label:
+            raise bad(f"{where}[{i}] has an empty label")
+        _require_plain_text(label, bad, f"{where}[{i}] label")
+        if not _SOURCE_URL.match(url):
+            raise bad(f"{where}[{i}] url must be an absolute https URL with no spaces, quotes or markup: {url!r}")
+        if url in seen:
+            raise bad(f"{where}[{i}] repeats the url {url}")
+        seen.add(url)
+        clean.append({"label": label, "url": url})
+    return clean
+
+
 def load_profile(state: str, profiles_dir=None) -> dict:
     """Load and validate data/location-state-profiles/<state>.json.
 
-    Returns {"name", "county_region", "region_label", "region_climate", "county_content", "county_sources"}.
+    Returns {"name", "county_region", "region_label", "region_climate", "region_sources", "county_content", "county_sources"}.
     A missing or malformed profile raises StateConfigError (never a silent
     skip, never a traceback from deep inside page building).
     """
@@ -445,7 +467,7 @@ def load_profile(state: str, profiles_dir=None) -> dict:
     if not (isinstance(regions, dict) and regions):
         raise bad('"regions" must be a non-empty object')
 
-    county_region, region_label, region_climate = {}, {}, {}
+    county_region, region_label, region_climate, region_sources = {}, {}, {}, {}
     for key, reg in regions.items():
         if not isinstance(reg, dict):
             raise bad(f'region "{key}" must be an object')
@@ -473,6 +495,10 @@ def load_profile(state: str, profiles_dir=None) -> dict:
             county_region[c] = key
         region_label[key] = label
         region_climate[key] = climate
+        # Optional: the documents the region's climate paragraphs cite. Appended to the
+        # Sources list of every county page in the region (gh-2423, REVIEW: FAIL 6045262604).
+        if "sources" in reg:
+            region_sources[key] = _clean_source_list(reg["sources"], f'region "{key}" sources', bad)
 
     county_content = {}
     raw_cc = data.get("county_content", {})
@@ -511,26 +537,11 @@ def load_profile(state: str, profiles_dir=None) -> dict:
             where = f'county_sources["{county}"]["{trade}"]'
             if trade not in ELIGIBLE_TRADES:
                 raise bad(f'county_sources["{county}"]: unknown trade "{trade}" (use {list(ELIGIBLE_TRADES)})')
-            if not (isinstance(items, list) and items):
-                raise bad(f"{where} must be a non-empty list of {{label, url}} objects")
-            seen, clean = set(), []
-            for i, item in enumerate(items):
-                if not (isinstance(item, dict) and set(item) == {"label", "url"}
-                        and all(isinstance(item[k], str) for k in item)):
-                    raise bad(f'{where}[{i}] must be an object with exactly "label" and "url" strings')
-                label, url = item["label"].strip(), item["url"]
-                if not label:
-                    raise bad(f"{where}[{i}] has an empty label")
-                _require_plain_text(label, bad, f"{where}[{i}] label")
-                if not _SOURCE_URL.match(url):
-                    raise bad(f"{where}[{i}] url must be an absolute https URL with no spaces, quotes or markup: {url!r}")
-                if url in seen:
-                    raise bad(f"{where}[{i}] repeats the url {url}")
-                seen.add(url)
-                clean.append({"label": label, "url": url})
+            clean = _clean_source_list(items, where, bad)
             county_sources[county][trade] = clean
     return {"name": name, "county_region": county_region,
             "region_label": region_label, "region_climate": region_climate,
+            "region_sources": region_sources,
             "county_content": county_content, "county_sources": county_sources}
 
 
@@ -1433,6 +1444,16 @@ TRADE_EXTRA_LINKS = {
 
 
 
+def page_sources(profile: dict, county: str, trade: str) -> list:
+    """The Sources rows a county page lists: its own county_sources, then the sources of
+    its region (the documents the region's climate paragraphs cite), no duplicate urls."""
+    sources = list((profile.get("county_sources") or {}).get(county, {}).get(trade, []))
+    have = {src["url"] for src in sources}
+    region = (profile.get("county_region") or {}).get(county)
+    sources += [src for src in (profile.get("region_sources") or {}).get(region, []) if src["url"] not in have]
+    return sources
+
+
 def build_page(county: str, trade: str, generated_on: str, state: str = "IN", profile: dict = None) -> str:
     profile = profile or load_profile(state)
     state_name = profile["name"]
@@ -1463,7 +1484,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     county_notes = (f"<h2>{county_esc} County notes</h2>\n    {render_county_text(county_text)}"
                     if county_text.strip() else "")
 
-    sources = (profile.get("county_sources") or {}).get(county, {}).get(trade, [])
+    sources = page_sources(profile, county, trade)
     sources_block = ""
     if sources:
         items = "\n".join(
