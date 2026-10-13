@@ -1,17 +1,17 @@
 /**
- * Render + flow tests for the homeowner help-measurements page (D-211 Phase 28, PR 2/2).
+ * Render + flow tests for the homeowner help-measurements page.
  *
- * Mirrors color-selection-page.test.tsx (H5): mock the shell's auth + notification hooks,
- * the supabase singleton, the data layer, and the Stripe card form — drive the data hook's
- * return value directly. Asserts the brief's render + flow self-verify points: path
- * selection, the two happy paths (Hover paid → order; adjuster email → success), the
- * graceful EF-pending vs error branches, the already-sent note, and the locked email-preview
- * placeholder. No real Supabase/Stripe/EF is touched.
- *
- * gh-951 section (bottom of this file) covers the charge→order reload-persistence fix:
- * ../hover-charge-storage is NOT mocked — tests seed/inspect real jsdom sessionStorage via
- * its exported helpers, exercising the actual persist/resume/clear behaviour rather than a
- * stub.
+ * gh-1873 (Hover retirement): the paid vendor-report path (PaymentIntent -> card form -> create-hover-order) was removed
+ * from this page. These tests pin the replacement behaviour:
+ *   - the select view shows a "temporarily unavailable" notice and ONLY the free Ask-Adjuster card;
+ *   - nothing on the page can create a PaymentIntent, mount the card form or call create-hover-order, so no homeowner is
+ *     charged for a report that cannot be delivered (NEGATIVE CONTROL: against main's page.tsx the Hover card renders and
+ *     "Purchase Property Data File" creates a PaymentIntent, so the first three tests fail);
+ *   - a resume pointer left in sessionStorage by an earlier visit (gh-951) is cleared and the homeowner is told to contact
+ *     support; no Edge Function is called;
+ *   - the Ask-Adjuster email path (unchanged) and the gh-2121 already-signed-in lead link keep working.
+ * The removed gh-2078 measurement_purchase opt-out tests exercised the page's handlePaid/resume routes, which no longer exist;
+ * the opt-out gate itself (lib/ad-optout) keeps its own tests.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -22,100 +22,29 @@ vi.mock('@/hooks/use-notification-count', () => ({
   useNotificationCount: () => ({ count: 0, loading: false, error: null }),
 }));
 vi.mock('@/lib/supabase', () => ({
-  // status: 200 — linkPendingLeadOnce (gh-2121 M3, comment 5823511418) only
-  // clears the sessionStorage capture on a definitive 200-499 HTTP
-  // response; a mock resolving without `status` matches nothing supabase-js
-  // actually returns and would leave the capture stuck for this test.
+  // status: 200 -- linkPendingLeadOnce (gh-2121 M3) only clears the sessionStorage capture on a definitive 200-499 answer.
   supabase: {
     from: vi.fn(),
-    // gh-2078 LEGAL-READ FAIL 5973345257: the page reads the signed-in account's stored ad opt-out at fire time.
     auth: { getSession: vi.fn() },
     functions: { invoke: vi.fn() },
     rpc: vi.fn(() => Promise.resolve({ data: true, error: null, status: 200 })),
   },
 }));
 
-// Mock the data layer — the page test drives its return values directly.
+// Mock the data layer. After gh-1873 it exports only the reads and the adjuster email.
 vi.mock('../use-help-measurements-data', () => ({
   useHelpMeasurementsData: vi.fn(),
-  requestHoverPaymentIntent: vi.fn(),
-  placeHoverOrder: vi.fn(),
   sendMeasurementRequest: vi.fn(),
-}));
-
-// gh-2078 / LEGAL-READ: FAIL 5973374792 point 3: what the (mocked) Stripe confirmation reports as charged. null = the payment object carried no amount.
-const chargedMock = vi.hoisted(() => ({ value: { amountCents: 1500, currency: 'usd' } as { amountCents: number; currency: string } | null }));
-
-// Mock the Stripe card form so the test can drive onPaid/onCancel without Stripe.js.
-vi.mock('../HoverPaymentForm', () => ({
-  isStripeConfigured: vi.fn(() => true),
-  HoverPaymentForm: ({
-    onPaid,
-    onCancel,
-  }: {
-    onPaid: (id: string, charged?: { amountCents: number; currency: string }) => void | Promise<void>;
-    onCancel: () => void;
-  }) => (
-    <div data-testid="hover-payment-form">
-      <button
-        data-testid="pay-now"
-        onClick={async () => {
-          try {
-            if (chargedMock.value) await onPaid('pi_test_123', chargedMock.value);
-            else await onPaid('pi_test_123');
-          } catch {
-            /* the real form surfaces this; swallow in the stub */
-          }
-        }}
-      >
-        Pay
-      </button>
-      <button data-testid="cancel-pay" onClick={onCancel}>
-        Cancel
-      </button>
-    </div>
-  ),
 }));
 
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase as sbMock } from '@/lib/supabase';
-import {
-  useHelpMeasurementsData,
-  requestHoverPaymentIntent,
-  placeHoverOrder,
-  sendMeasurementRequest,
-} from '../use-help-measurements-data';
-import { isStripeConfigured } from '../HoverPaymentForm';
+import { useHelpMeasurementsData, sendMeasurementRequest } from '../use-help-measurements-data';
 import { MEASUREMENTS_COPY as M } from '../copy';
-import HelpMeasurementsPage, { RESUME_COPY } from '../page';
-import {
-  saveHoverChargeRecord,
-  readHoverChargeRecord,
-  clearHoverChargeRecord,
-  hasFiredMeasurementPurchase,
-} from '../hover-charge-storage';
+import HelpMeasurementsPage, { RESUME_COPY, HOVER_RETIRED_COPY } from '../page';
+import { saveHoverChargeRecord, readHoverChargeRecord, clearHoverChargeRecord } from '../hover-charge-storage';
 
 type Fn = ReturnType<typeof vi.fn>;
-
-// gh-2078 fire-time opt-out: drive what the account read returns. true / false = profiles.ad_sharing_opt_out;
-// 'error' = the profile read answers an error; 'throw' = the read throws (network down); 'no_session' = signed out.
-function setAccountOptOut(v: boolean | 'error' | 'throw' | 'no_session') {
-  (sbMock.auth.getSession as unknown as Fn).mockResolvedValue({
-    data: { session: v === 'no_session' ? null : { user: { id: 'u1' } } },
-    error: null,
-  });
-  (sbMock.from as unknown as Fn).mockImplementation(() => ({
-    select: () => ({
-      eq: () => ({
-        maybeSingle: () => {
-          if (v === 'throw') return Promise.reject(new Error('network down'));
-          if (v === 'error') return Promise.resolve({ data: null, error: { message: 'boom' } });
-          return Promise.resolve({ data: { ad_sharing_opt_out: v === true }, error: null });
-        },
-      }),
-    }),
-  }));
-}
 
 const authed = (over: Record<string, unknown> = {}) => ({
   user: { id: 'u1', email: 'jane@example.com' },
@@ -146,40 +75,38 @@ const readyData = (over: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   (useAuthReady as unknown as Fn).mockReturnValue(authed());
   (useHelpMeasurementsData as unknown as Fn).mockReturnValue(readyData());
-  (isStripeConfigured as unknown as Fn).mockReturnValue(true);
-  // gh-951: a realistic `pi_..._secret_...` shape so paymentIntentIdFromClientSecret (the
-  // resume-pointer write in purchaseHover) round-trips in tests that don't override this.
-  (requestHoverPaymentIntent as unknown as Fn).mockResolvedValue({
-    client_secret: 'pi_test_secret_cs_test',
-  });
-  (placeHoverOrder as unknown as Fn).mockResolvedValue({ order_id: 'o1', capture_link: null });
   (sendMeasurementRequest as unknown as Fn).mockResolvedValue(undefined);
-  // gh-951: start every test with a clean resume pointer (real sessionStorage, not mocked).
   clearHoverChargeRecord();
-  // gh-2078: default account state = signed in, stored opt-out false (the normal buyer).
-  setAccountOptOut(false);
 });
 
 afterEach(() => {
   vi.clearAllMocks();
   clearHoverChargeRecord();
-  // PR #2092 review fix 1's test below marks this id fired in real
-  // localStorage — clean it up so a re-run of this file (watch mode)
-  // doesn't start from a pre-fired state.
-  localStorage.removeItem('oq_ga4_measurement_purchase_fired_v1:pi_resume_conversion_1');
 });
 
 // ── 1. Render: header + path selection ─────────────────────────────────────────
 
-describe('help-measurements page — render', () => {
-  it('renders the header and both path cards', async () => {
+describe('help-measurements page — render (gh-1873)', () => {
+  it('renders the header, the temporarily-unavailable notice and ONLY the Ask-Adjuster card', async () => {
     render(<HelpMeasurementsPage />);
     expect(await screen.findByText(M.pageTitle)).toBeTruthy();
     expect(screen.getByText(M.pathIntroTitle)).toBeTruthy();
-    expect(screen.getByText(M.hoverCardTitle)).toBeTruthy();
+    expect(screen.getByTestId('hover-retired-notice').textContent).toContain(HOVER_RETIRED_COPY.title);
+    expect(screen.getByTestId('hover-retired-notice').textContent).toContain('you will not be charged');
     expect(screen.getByText(M.adjusterCardTitle)).toBeTruthy();
-    // The D-205 price line renders verbatim.
-    expect(screen.getByText(M.hoverCardPrice)).toBeTruthy();
+    // The paid vendor-report card, its price line and its purchase button are gone.
+    expect(screen.queryByText(M.hoverCardTitle)).toBeNull();
+    expect(screen.queryByText(M.hoverCardPrice)).toBeNull();
+    expect(screen.queryByText(M.hoverPurchaseButton)).toBeNull();
+    expect(screen.getAllByText(M.cardSelectButton)).toHaveLength(1);
+  });
+
+  it('never touches an Edge Function or the card form while rendering and while choosing the adjuster path', async () => {
+    render(<HelpMeasurementsPage />);
+    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
+    expect(await screen.findByText(M.emailPreviewHeading)).toBeTruthy();
+    expect(sbMock.functions.invoke as unknown as Fn).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('hover-payment-form')).toBeNull();
   });
 
   it('shows a boot spinner while data is loading', () => {
@@ -189,81 +116,17 @@ describe('help-measurements page — render', () => {
   });
 });
 
-// ── 2. Path A (Hover) happy path: PI → card form → pay → order → success ────────
-
-describe('help-measurements page — Hover paid path', () => {
-  it('creates the PaymentIntent, shows the card form, then places the order on success', async () => {
-    render(<HelpMeasurementsPage />);
-
-    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]); // Hover card
-    expect(await screen.findByText(M.hoverSectionTitle)).toBeTruthy();
-
-    fireEvent.click(screen.getByText(M.hoverPurchaseButton));
-
-    await waitFor(() =>
-      expect(requestHoverPaymentIntent as unknown as Fn).toHaveBeenCalledTimes(1),
-    );
-    // Card form appears only after a client_secret comes back.
-    expect(await screen.findByTestId('hover-payment-form')).toBeTruthy();
-
-    fireEvent.click(screen.getByTestId('pay-now'));
-
-    await waitFor(() => expect(placeHoverOrder as unknown as Fn).toHaveBeenCalledTimes(1));
-    expect((placeHoverOrder as unknown as Fn).mock.calls[0][0]).toMatchObject({
-      claim: { id: 'c1' },
-      paymentIntentId: 'pi_test_123',
-    });
-    // Hover success state.
-    expect(await screen.findByText(M.hoverSuccessTitle)).toBeTruthy();
-  });
-
-  it('surfaces an init error and does NOT show the card form when no client_secret returns', async () => {
-    (requestHoverPaymentIntent as unknown as Fn).mockResolvedValue({ client_secret: null });
-    render(<HelpMeasurementsPage />);
-    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
-    fireEvent.click(await screen.findByText(M.hoverPurchaseButton));
-
-    expect(await screen.findByText(M.statusPaymentInitError)).toBeTruthy();
-    expect(screen.queryByTestId('hover-payment-form')).toBeNull();
-  });
-
-  it('gates on Stripe config: no key → init error, no PaymentIntent created', async () => {
-    (isStripeConfigured as unknown as Fn).mockReturnValue(false);
-    render(<HelpMeasurementsPage />);
-    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
-    fireEvent.click(await screen.findByText(M.hoverPurchaseButton));
-
-    expect(await screen.findByText(M.statusPaymentInitError)).toBeTruthy();
-    expect(requestHoverPaymentIntent as unknown as Fn).not.toHaveBeenCalled();
-  });
-
-  it('keeps the user on the card form (no success) when the order placement throws', async () => {
-    (placeHoverOrder as unknown as Fn).mockRejectedValue(new Error('order failed'));
-    render(<HelpMeasurementsPage />);
-    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
-    fireEvent.click(await screen.findByText(M.hoverPurchaseButton));
-    fireEvent.click(await screen.findByTestId('pay-now'));
-
-    await waitFor(() => expect(placeHoverOrder as unknown as Fn).toHaveBeenCalledTimes(1));
-    // Order threw → success NOT shown; card form still present.
-    expect(screen.queryByText(M.hoverSuccessTitle)).toBeNull();
-    expect(screen.getByTestId('hover-payment-form')).toBeTruthy();
-  });
-});
-
-// ── 3. Path B (Adjuster) happy path + branches ──────────────────────────────────
-
 describe('help-measurements page — adjuster email path', () => {
   it('renders the locked email-preview placeholder (no fabricated body)', async () => {
     render(<HelpMeasurementsPage />);
-    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[1]); // Adjuster card
+    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]); // the only card now: Ask Adjuster
     expect(await screen.findByText(M.emailPreviewHeading)).toBeTruthy();
     expect(screen.getByText(M.emailPreviewLoading)).toBeTruthy();
   });
 
   it('sends the request and advances to the email success state', async () => {
     render(<HelpMeasurementsPage />);
-    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[1]);
+    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
 
     const email = (await screen.findByPlaceholderText(
       M.adjusterEmailPlaceholder,
@@ -282,7 +145,7 @@ describe('help-measurements page — adjuster email path', () => {
 
   it('disables Send until a valid email is entered', async () => {
     render(<HelpMeasurementsPage />);
-    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[1]);
+    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
     const btn = (await screen.findByText(M.sendMeasurementEmailButton)) as HTMLButtonElement;
     expect(btn.disabled).toBe(true);
 
@@ -294,7 +157,7 @@ describe('help-measurements page — adjuster email path', () => {
   it('surfaces an error and stays on the form when the send fails', async () => {
     (sendMeasurementRequest as unknown as Fn).mockRejectedValue(new Error('send failed'));
     render(<HelpMeasurementsPage />);
-    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[1]);
+    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
     const email = screen.getByPlaceholderText(M.adjusterEmailPlaceholder) as HTMLInputElement;
     fireEvent.change(email, { target: { value: 'john@insurance.com' } });
     fireEvent.click(screen.getByText(M.sendMeasurementEmailButton));
@@ -306,7 +169,7 @@ describe('help-measurements page — adjuster email path', () => {
   it('shows the already-sent note when a combined request already exists', async () => {
     (useHelpMeasurementsData as unknown as Fn).mockReturnValue(readyData({ alreadySentBoth: true }));
     render(<HelpMeasurementsPage />);
-    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[1]);
+    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
     expect(await screen.findByText(M.alreadySentEstimateNote)).toBeTruthy();
   });
 
@@ -323,7 +186,7 @@ describe('help-measurements page — adjuster email path', () => {
       }),
     );
     render(<HelpMeasurementsPage />);
-    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[1]);
+    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
     const email = (await screen.findByPlaceholderText(
       M.adjusterEmailPlaceholder,
     )) as HTMLInputElement;
@@ -334,132 +197,39 @@ describe('help-measurements page — adjuster email path', () => {
   });
 });
 
-// ── 4. gh-951 — charge→order reload persistence ─────────────────────────────────
+// ── 4. gh-951 pointer left by an earlier visit: cleared, never retried (gh-1873) ──────────────────────────
 
-describe('help-measurements page — gh-951 resume after a full-page reload', () => {
-  it('persists a resume pointer the moment the PaymentIntent is created, before any charge', async () => {
-    (requestHoverPaymentIntent as unknown as Fn).mockResolvedValue({
-      client_secret: 'pi_new_charge_secret_abc123',
-    });
-    render(<HelpMeasurementsPage />);
-    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
-    fireEvent.click(await screen.findByText(M.hoverPurchaseButton));
-
-    await screen.findByTestId('hover-payment-form');
-    // The card was never charged yet (no Pay click) — the pointer must already exist.
-    expect(readHoverChargeRecord()).toMatchObject({
-      claimId: 'c1',
-      paymentIntentId: 'pi_new_charge',
-    });
-  });
-
-  it('clears the resume pointer once the order is placed via the normal (non-reload) flow', async () => {
-    render(<HelpMeasurementsPage />);
-    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
-    fireEvent.click(await screen.findByText(M.hoverPurchaseButton));
-    await screen.findByTestId('hover-payment-form');
-    expect(readHoverChargeRecord()).not.toBeNull();
-
-    fireEvent.click(screen.getByTestId('pay-now'));
-    await waitFor(() => expect(placeHoverOrder as unknown as Fn).toHaveBeenCalledTimes(1));
-    expect(readHoverChargeRecord()).toBeNull();
-  });
-
-  it('clears the resume pointer when the user cancels before charging', async () => {
-    render(<HelpMeasurementsPage />);
-    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
-    fireEvent.click(await screen.findByText(M.hoverPurchaseButton));
-    await screen.findByTestId('hover-payment-form');
-    expect(readHoverChargeRecord()).not.toBeNull();
-
-    fireEvent.click(screen.getByTestId('cancel-pay'));
-    expect(readHoverChargeRecord()).toBeNull();
-  });
-
-  it('on mount, resumes automatically and lands on the success screen when the order confirms', async () => {
+describe('help-measurements page — a leftover vendor-report order pointer (gh-951 / gh-1873)', () => {
+  it('clears a pointer for the loaded claim, tells the homeowner to contact support, and calls no Edge Function', async () => {
     saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_resume_1', ts: Date.now() });
-    (placeHoverOrder as unknown as Fn).mockResolvedValue({
-      order_id: 'o1',
-      capture_link: 'https://hover.example/capture/1',
-      capture_request_id: 'cap_1',
-    });
 
     render(<HelpMeasurementsPage />);
 
-    await waitFor(() => expect(placeHoverOrder as unknown as Fn).toHaveBeenCalledTimes(1));
-    expect((placeHoverOrder as unknown as Fn).mock.calls[0][0]).toMatchObject({
-      claim: { id: 'c1' },
-      paymentIntentId: 'pi_resume_1',
-    });
-    expect(await screen.findByText(M.hoverSuccessTitle)).toBeTruthy();
-    // No path-selection flash left behind, and the pointer is gone either way.
-    expect(screen.queryByText(M.pathIntroTitle)).toBeNull();
-    expect(readHoverChargeRecord()).toBeNull();
-  });
-
-  it('PR #2092 review fix 1: fires measurement_purchase on a RESUMED order too (tab reload between charge and order), not just the handlePaid path', async () => {
-    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_resume_conversion_1', ts: Date.now(), amountCents: 1500, currency: 'usd' });
-    (placeHoverOrder as unknown as Fn).mockResolvedValue({
-      order_id: 'o1',
-      capture_link: 'https://hover.example/capture/1',
-      capture_request_id: 'cap_1',
-    });
-
-    expect(hasFiredMeasurementPurchase('pi_resume_conversion_1')).toBe(false);
-
-    render(<HelpMeasurementsPage />);
-
-    await screen.findByText(M.hoverSuccessTitle);
-    // the fire-time opt-out read is not awaited by the success screen
-    await waitFor(() => expect(hasFiredMeasurementPurchase('pi_resume_conversion_1')).toBe(true));
-  });
-
-  it('shows the neutral resume-unresolved message (not a false success) when the order does not confirm', async () => {
-    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_resume_2', ts: Date.now() });
-    // Mirrors create-hover-order's D-181 guard shape: it resolves (does not throw) with
-    // `placeholder: true` and no capture_request_id when the PaymentIntent never succeeded.
-    (placeHoverOrder as unknown as Fn).mockResolvedValue({
-      order_id: 'o1',
-      capture_link: null,
-      placeholder: true,
-      message: 'Measurement order creation failed. Please try again.',
-    });
-
-    render(<HelpMeasurementsPage />);
-
-    await waitFor(() => expect(placeHoverOrder as unknown as Fn).toHaveBeenCalledTimes(1));
     expect(await screen.findByText(RESUME_COPY.unresolved)).toBeTruthy();
+    expect(readHoverChargeRecord()).toBeNull();
+    expect(sbMock.functions.invoke as unknown as Fn).not.toHaveBeenCalled();
+    // The page is usable afterwards: the select view renders and no success screen was shown.
+    expect(await screen.findByText(M.pathIntroTitle)).toBeTruthy();
     expect(screen.queryByText(M.hoverSuccessTitle)).toBeNull();
-    expect(readHoverChargeRecord()).toBeNull();
   });
 
-  it('clears the pointer and surfaces the unresolved message when the order step throws', async () => {
-    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_resume_3', ts: Date.now() });
-    (placeHoverOrder as unknown as Fn).mockRejectedValue(new Error('network blip'));
-
-    render(<HelpMeasurementsPage />);
-
-    await waitFor(() => expect(placeHoverOrder as unknown as Fn).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText(RESUME_COPY.unresolved)).toBeTruthy();
-    expect(readHoverChargeRecord()).toBeNull();
-  });
-
-  it('ignores a pending pointer left over from a different claim — no resume attempt', async () => {
+  it('clears a pointer left over from a different claim without a message', async () => {
     saveHoverChargeRecord({ claimId: 'some-other-claim', paymentIntentId: 'pi_stale', ts: Date.now() });
 
     render(<HelpMeasurementsPage />);
 
     expect(await screen.findByText(M.pathIntroTitle)).toBeTruthy();
-    expect(placeHoverOrder as unknown as Fn).not.toHaveBeenCalled();
-    // A mismatched pointer is left alone (harmless in sessionStorage; it never matches).
-    expect(readHoverChargeRecord()).toMatchObject({ claimId: 'some-other-claim' });
+    expect(screen.queryByText(RESUME_COPY.unresolved)).toBeNull();
+    expect(readHoverChargeRecord()).toBeNull();
+    expect(sbMock.functions.invoke as unknown as Fn).not.toHaveBeenCalled();
   });
 
   it('does nothing when there is no pending pointer at all', async () => {
     render(<HelpMeasurementsPage />);
 
     expect(await screen.findByText(M.pathIntroTitle)).toBeTruthy();
-    expect(placeHoverOrder as unknown as Fn).not.toHaveBeenCalled();
+    expect(screen.queryByText(RESUME_COPY.unresolved)).toBeNull();
+    expect(sbMock.functions.invoke as unknown as Fn).not.toHaveBeenCalled();
   });
 });
 
@@ -468,8 +238,6 @@ describe('help-measurements page — gh-951 resume after a full-page reload', ()
 // never goes through get-started/page.tsx's signUp() — this page (rendered
 // only once HomeownerShell has resolved a real `user`) is where that case
 // is linked instead. See app/lib/lead-capture.ts.
-import { supabase } from '@/lib/supabase';
-
 describe('help-measurements page — gh-2121 already-signed-in lead link', () => {
   afterEach(() => {
     sessionStorage.removeItem('oq_pending_lead');
@@ -481,7 +249,7 @@ describe('help-measurements page — gh-2121 already-signed-in lead link', () =>
     render(<HelpMeasurementsPage />);
 
     await waitFor(() =>
-      expect(supabase.rpc).toHaveBeenCalledWith('set_lead_converted', { p_lead_id: 'lead-already-signed-in' }),
+      expect(sbMock.rpc).toHaveBeenCalledWith('set_lead_converted', { p_lead_id: 'lead-already-signed-in' }),
     );
     expect(sessionStorage.getItem('oq_pending_lead')).toBeNull();
   });
@@ -490,153 +258,7 @@ describe('help-measurements page — gh-2121 already-signed-in lead link', () =>
     render(<HelpMeasurementsPage />);
 
     await screen.findByText(M.pathIntroTitle);
-    expect(supabase.rpc).not.toHaveBeenCalled();
+    expect(sbMock.rpc).not.toHaveBeenCalled();
   });
 });
 
-// ── gh-2078 / LEGAL-READ: FAIL 5973345257: the opt-out is resolved at FIRE time, account-stored value included ──────────────
-
-describe('help-measurements page — measurement_purchase honours the advertising-sharing opt-out at fire time', () => {
-  const PI = 'pi_test_123';
-  let gtag: ReturnType<typeof vi.fn>;
-  let fbq: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    gtag = vi.fn();
-    fbq = vi.fn();
-    (window as unknown as { gtag: unknown }).gtag = gtag;
-    (window as unknown as { fbq: unknown }).fbq = fbq;
-    document.cookie = 'oq_ad_optout=; max-age=0; path=/';
-    localStorage.removeItem('oq_ga4_measurement_purchase_fired_v1:' + PI);
-    chargedMock.value = { amountCents: 1500, currency: 'usd' };
-    Object.defineProperty(navigator, 'globalPrivacyControl', { value: undefined, configurable: true });
-  });
-  afterEach(() => {
-    chargedMock.value = { amountCents: 1500, currency: 'usd' };
-    delete (window as unknown as { gtag?: unknown }).gtag;
-    delete (window as unknown as { fbq?: unknown }).fbq;
-    document.cookie = 'oq_ad_optout=; max-age=0; path=/';
-    localStorage.removeItem('oq_ga4_measurement_purchase_fired_v1:' + PI);
-    Object.defineProperty(navigator, 'globalPrivacyControl', { value: undefined, configurable: true });
-  });
-
-  async function payThroughHandlePaid() {
-    render(<HelpMeasurementsPage />);
-    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
-    expect(await screen.findByText(M.hoverSectionTitle)).toBeTruthy();
-    fireEvent.click(screen.getByText(M.hoverPurchaseButton));
-    await screen.findByTestId('hover-payment-form');
-    fireEvent.click(screen.getByTestId('pay-now'));
-    await waitFor(() => expect(placeHoverOrder as unknown as Fn).toHaveBeenCalledTimes(1));
-    await screen.findByText(M.hoverSuccessTitle);
-    // let the (un-awaited) fire-time read settle
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  // The purchase conversion only: the page's pre-existing GA4 help_tool_used engagement event is outside this fix (see PR comment).
-  const events = () => gtag.mock.calls.filter((c) => c[0] === 'event' && c[1] === 'measurement_purchase');
-
-  it('CONTROL not opted out (stored flag false): exactly one GA4 measurement_purchase and one Meta Purchase with the shared event id', async () => {
-    setAccountOptOut(false);
-    await payThroughHandlePaid();
-    expect(events().length).toBe(1);
-    expect(events()[0][1]).toBe('measurement_purchase');
-    const purchases = fbq.mock.calls.filter((c) => c[0] === 'track' && c[1] === 'Purchase');
-    expect(purchases.length).toBe(1);
-    expect(purchases[0][3]).toEqual({ eventID: 'measurement_purchase:' + PI });
-    expect(events()[0][2]).toMatchObject({ value: 15, currency: 'USD' });
-    expect(purchases[0][2]).toMatchObject({ value: 15, currency: 'USD' });
-    expect(hasFiredMeasurementPurchase(PI)).toBe(true);
-  });
-
-  it('gh-2078 value from the confirmed payment: a charge of 2500 cents ($25.00) sends value 25 USD to GA4 and Meta (identical)', async () => {
-    setAccountOptOut(false);
-    chargedMock.value = { amountCents: 2500, currency: 'usd' };
-    await payThroughHandlePaid();
-    expect(events().length).toBe(1);
-    expect(events()[0][2]).toMatchObject({ value: 25, currency: 'USD' });
-    const purchases = fbq.mock.calls.filter((c) => c[0] === 'track' && c[1] === 'Purchase');
-    expect(purchases.length).toBe(1);
-    expect(purchases[0][2]).toMatchObject({ value: 25, currency: 'USD' });
-    expect(purchases[0][3]).toEqual({ eventID: 'measurement_purchase:' + PI });
-  });
-
-  it('gh-2078 value from the confirmed payment: no amount on the confirmed payment -> NO purchase event, the order still completes, no marker', async () => {
-    setAccountOptOut(false);
-    chargedMock.value = null;
-    await payThroughHandlePaid();
-    expect(events().length).toBe(0);
-    expect(fbq).not.toHaveBeenCalled();
-    expect(hasFiredMeasurementPurchase(PI)).toBe(false);
-  });
-
-  it.each([[0], [-1500], [15.5], [Number.NaN]])('gh-2078 value from the confirmed payment: amount %s is not a positive whole number of cents -> NO purchase event', async (bad) => {
-    setAccountOptOut(false);
-    chargedMock.value = { amountCents: bad as number, currency: 'usd' };
-    await payThroughHandlePaid();
-    expect(events().length).toBe(0);
-    expect(fbq).not.toHaveBeenCalled();
-  });
-
-  it('gh-2078: the RESUME route sends the amount stored from the confirmed payment (2500 cents -> value 25)', async () => {
-    setAccountOptOut(false);
-    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: PI, ts: Date.now(), amountCents: 2500, currency: 'usd' });
-    (placeHoverOrder as unknown as Fn).mockResolvedValue({ order_id: 'o1', capture_link: 'x', capture_request_id: 'cap_1' });
-    render(<HelpMeasurementsPage />);
-    await screen.findByText(M.hoverSuccessTitle);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(events().length).toBe(1);
-    expect(events()[0][2]).toMatchObject({ value: 25, currency: 'USD' });
-    expect(fbq.mock.calls.filter((c) => c[0] === 'track' && c[1] === 'Purchase')[0][2]).toMatchObject({ value: 25, currency: 'USD' });
-  });
-
-  it('gh-2078: the RESUME route with no stored amount (page reloaded before it was written) -> NO purchase event', async () => {
-    setAccountOptOut(false);
-    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: PI, ts: Date.now() });
-    (placeHoverOrder as unknown as Fn).mockResolvedValue({ order_id: 'o1', capture_link: 'x', capture_request_id: 'cap_1' });
-    render(<HelpMeasurementsPage />);
-    await screen.findByText(M.hoverSuccessTitle);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(events().length).toBe(0);
-    expect(fbq).not.toHaveBeenCalled();
-  });
-
-  it('signed in, account opt-out stored, NO cookie, NO GPC: zero vendor requests (no GA4, no Meta) and the order still completes', async () => {
-    setAccountOptOut(true);
-    await payThroughHandlePaid();
-    expect(events().length).toBe(0);
-    expect(fbq).not.toHaveBeenCalled();
-    expect(hasFiredMeasurementPurchase(PI)).toBe(false);
-  });
-
-  it('account state unreadable (profile read errors): zero vendor requests (fail closed)', async () => {
-    setAccountOptOut('error');
-    await payThroughHandlePaid();
-    expect(events().length).toBe(0);
-    expect(fbq).not.toHaveBeenCalled();
-  });
-
-  it('account state unreadable (read throws / network down): zero vendor requests (fail closed)', async () => {
-    setAccountOptOut('throw');
-    await payThroughHandlePaid();
-    expect(events().length).toBe(0);
-    expect(fbq).not.toHaveBeenCalled();
-  });
-
-  it('oq_ad_optout cookie present: zero vendor requests', async () => {
-    document.cookie = 'oq_ad_optout=1; path=/';
-    await payThroughHandlePaid();
-    expect(events().length).toBe(0);
-    expect(fbq).not.toHaveBeenCalled();
-  });
-
-  it('the RESUME route is gated the same way: stored opt-out, no cookie, no GPC -> zero vendor requests', async () => {
-    setAccountOptOut(true);
-    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: PI, ts: Date.now(), amountCents: 1500, currency: 'usd' });
-    (placeHoverOrder as unknown as Fn).mockResolvedValue({ order_id: 'o1', capture_link: 'x', capture_request_id: 'cap_1' });
-    render(<HelpMeasurementsPage />);
-    await screen.findByText(M.hoverSuccessTitle);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(events().length).toBe(0);
-    expect(fbq).not.toHaveBeenCalled();
-  });
-});

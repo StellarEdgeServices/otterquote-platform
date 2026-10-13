@@ -143,11 +143,13 @@ const EDGE_FUNCTIONS_TO_PING: string[] = [
 //   successful run. If that call is dropped (e.g., in a deploy), this monitor will
 //   fire false stale-cron alerts within the threshold window.
 //   Self-reporting jobs: process-coi-reminders, process-bid-expirations,
-//                        process-payout-reminders, check-siding-design-completion
+//                        process-payout-reminders
+//   (gh-1873: check-siding-design-completion was removed from this list and from the map below. Its function is a
+//   disabled stub that no longer writes a cron_health row, so keeping the entry would raise a stale-cron alert within
+//   45 minutes of the stub's deploy. Deploy this function BEFORE the stub.)
 //   (86e194gtz — 2026-05-07: process-coi-reminders writer was missing; fixed)
 const CRON_STALENESS_THRESHOLDS: Record<string, number> = {
   "process-bid-expirations":       2 * 60 * 60 * 1000,   // 2 hours
-  "check-siding-design-completion": 45 * 60 * 1000,       // 45 minutes
   "process-coi-reminders":         25 * 60 * 60 * 1000,  // 25 hours
   "process-payout-reminders":      25 * 60 * 60 * 1000,  // 25 hours
   "public-path-home":              30 * 60 * 1000,        // 30 minutes

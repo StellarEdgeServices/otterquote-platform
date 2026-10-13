@@ -49,7 +49,7 @@ const dash = rd('dashboard.html');
 ok(/if \(currentClaim\?\.property_state\) \{/.test(dash) && /address_state:\s*signupData\.address_state \|\| null/.test(dash), 'dashboard.html: gate runs only on a set property_state; profile state falls to null');
 const utils = rd('react-app/app/(homeowner)/dashboard/utils.ts');
 ok(/return !!state && blockedStates\.includes/.test(utils), 'react isStateGated: NULL state is not gated and is never coerced to IN');
-ok(/address_state:\s*profile\?\.address_state \|\| ''/.test(rd('react-app/app/(homeowner)/help-measurements/utils.ts')), 'help-measurements: NULL state becomes empty string');
+ok(!/address_state:\s*profile\?\.address_state/.test(rd('react-app/app/(homeowner)/help-measurements/utils.ts')), 'help-measurements: no reader of profile.address_state remains (the only one built the vendor order address and was removed with create-hover-order, gh-1873), so a NULL state cannot become anything');
 ok(/\[homeownerProfileRow\?\.address_state, homeownerProfileRow\?\.address_zip\]\.filter\(Boolean\)/.test(rd('supabase/functions/create-docusign-envelope/index.ts')), 'create-docusign-envelope: customer_city_zip skips a NULL state');
 ok(/\[p\.address_city, p\.address_state, p\.address_zip\]\.filter\(Boolean\)/.test(rd('supabase/functions/notify-admin-new-homeowner/templates.ts')), 'notify-admin-new-homeowner: location line skips a NULL state');
 // no reader of a profile row falls back to IN

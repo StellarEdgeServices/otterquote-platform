@@ -12,10 +12,8 @@
  *   2. stale CPA                          → enforceCpaRedirect (anti-loop, → /contractor/dashboard)
  *   3. D-178 state not in OPEN_STATES     → parked-state UI (no redirect)
  *
- * Folded §6.1 finding: the get-hover-pdf IDOR is a BACKEND gate item (Tier-3,
- * filed for migration-author/EF). This page calls get-hover-pdf with its contract
- * UNCHANGED — the supabase.functions.invoke({ claim_id, format:'url' }) shape is
- * preserved exactly; no client-side change can or should address the backend IDOR.
+ * gh-1873: the measurement vendor (Hover) is retired. The Measurement PDF button no longer calls any
+ * back-end function; it tells the contractor the vendor PDF is no longer available.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -173,7 +171,6 @@ function FilterSelect({ label, value, options, onChange }: {
 function OpportunityCard({ opp, onDetails }: { opp: Opportunity; onDetails: () => void }) {
   const [scopeOpen, setScopeOpen] = useState(false);
   const [lossBusy, setLossBusy] = useState(false);
-  const [hoverBusy, setHoverBusy] = useState(false);
   const [measurementsBusy, setMeasurementsBusy] = useState(false);
 
   const fees = calcFees(opp);
@@ -222,23 +219,10 @@ function OpportunityCard({ opp, onDetails }: { opp: Opportunity; onDetails: () =
     }
   };
 
-  // get-hover-pdf — contract UNCHANGED (the IDOR is a backend/Tier-3 gate item).
-  const openHoverPdf = async () => {
-    setHoverBusy(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('get-hover-pdf', {
-        body: { claim_id: opp.id, format: 'url' },
-      });
-      if (error) throw error;
-      const url = (data as { url?: string } | null)?.url;
-      if (!url) throw new Error('No PDF URL returned');
-      window.open(url, '_blank');
-    } catch (err) {
-      console.error('Failed to open Hover PDF:', err);
-      alert(T.hoverPdfError);
-    } finally {
-      setHoverBusy(false);
-    }
+  // gh-1873: the measurement vendor (Hover) is retired. No back-end function is called; the contractor is told
+  // the vendor PDF is gone. The homeowner's uploaded measurements file (View Measurements) is unchanged.
+  const openHoverPdf = () => {
+    alert('The vendor measurement PDF is no longer available. Use the measurements the homeowner uploaded, or contact support if you need a measurement report for this project.');
   };
 
   return (
@@ -324,8 +308,8 @@ function OpportunityCard({ opp, onDetails }: { opp: Opportunity; onDetails: () =
           )}
           {/* gh-2559 / D-370: the measurement report opens only for the selected contractor */}
           {opp.measurementsAvailable && opp.isSelectedContractor && (
-            <button type="button" className="oqo-doc-btn" disabled={hoverBusy} onClick={openHoverPdf}>
-              {hoverBusy ? T.loadingLabel : T.hoverPdfBtn}
+            <button type="button" className="oqo-doc-btn" onClick={openHoverPdf}>
+              {T.hoverPdfBtn}
             </button>
           )}
         </div>

@@ -2791,68 +2791,16 @@
     const HOVER_PHOTOS_TTL = 10 * 60 * 1000;
 
     async function initHoverHomePhotos(claimId) {
+      // gh-1873: the measurement vendor (Hover) is retired; no back-end call is made. The card shows its
+      // empty state, and a cached vendor payload from an earlier visit is no longer rendered.
       if (!claimId) return;
-
       const card = document.getElementById('hoverHomePhotosCard');
       if (!card) return;
-
-      // Always show the card — empty state handles no-photo case
       card.style.display = 'block';
-
-      // Check sessionStorage cache
-      let cached = null;
-      try {
-        const raw = sessionStorage.getItem('hover_photos_' + claimId);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          // gh-2060 item 7: a future-dated ts (negative age) is not "fresh".
-          const hpAge = Date.now() - parsed.ts;
-          if (hpAge >= 0 && hpAge < HOVER_PHOTOS_TTL) {
-            cached = parsed;
-          }
-        }
-      } catch (e) { /* ignore */ }
-
-      if (cached) {
-        renderHoverPhotos(cached, claimId);
-        return;
-      }
-
-      // Fetch from Edge Function
-      try {
-        const { data: { session } } = await sb.auth.getSession();
-        const resp = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/get-hover-siding-data', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + (session?.access_token || ''),
-            'apikey': CONFIG.SUPABASE_ANON,
-          },
-          body: JSON.stringify({ claim_id: claimId }),
-        });
-
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const data = await resp.json();
-
-        const payload = {
-          ts: Date.now(),
-          images: data.design_images || [],
-          hover_job_id: data.hover_job_id || null,
-          // gh-2559 / D-371: the bid form never keeps or prints the job's street address (a bidder
-          // sees city and zip only; the Location line comes from the claim summary view).
-          job_address: null,
-        };
-
-        // Cache result
-        try { sessionStorage.setItem('hover_photos_' + claimId, JSON.stringify(payload)); } catch (e) { /* ignore */ }
-
-        renderHoverPhotos(payload, claimId);
-      } catch (err) {
-        console.warn('[Home Photos] fetch error:', err);
-        // Show empty state on failure
-        document.getElementById('hoverPhotosLoading').style.display = 'none';
-        document.getElementById('hoverPhotosEmpty').style.display = 'block';
-      }
+      const loadingEl = document.getElementById('hoverPhotosLoading');
+      const emptyEl   = document.getElementById('hoverPhotosEmpty');
+      if (loadingEl) loadingEl.style.display = 'none';
+      if (emptyEl) emptyEl.style.display = 'block';
     }
 
     function renderHoverPhotos(payload, claimId) {
@@ -2965,163 +2913,15 @@
 
     // ── Siding Design Data Loader ──
     async function loadHoverSidingData() {
+      // gh-1873: the measurement vendor (Hover) is retired; no back-end call is made.
       const btn        = document.getElementById('loadHoverSidingDataBtn');
       const content    = document.getElementById('hoverDesignContent');
-      const imagesDiv  = document.getElementById('hoverDesignImages');
-      const wallDiv    = document.getElementById('hoverWallSummary');
       const noDataHelp = document.getElementById('hoverNoDesignHelp');
       if (!currentClaim || !btn || !content) return;
-
       btn.disabled = true;
-      btn.textContent = 'Loading…';
-      content.innerHTML = '<span style="color:#6B7280;">Fetching design data…</span>';
+      btn.textContent = 'Unavailable';
+      content.innerHTML = '<span style="color:#6B7280;">Vendor siding design data is no longer available. Use the homeowner\'s uploaded measurements, or enter your own.</span>';
       if (noDataHelp) noDataHelp.style.display = 'none';
-
-      try {
-        const { data: { session } } = await sb.auth.getSession();
-        const resp = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/get-hover-siding-data', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + (session?.access_token || ''),
-            'apikey': CONFIG.SUPABASE_ANON,
-          },
-          body: JSON.stringify({ claim_id: currentClaim.id }),
-        });
-
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const data = await resp.json();
-
-        // ── Address line ──────────────────────────────────────────────
-        // gh-2559 / D-371: no street address on the bid form.
-        {
-          const addrEl = document.getElementById('hoverJobAddressLine');
-          if (addrEl) addrEl.textContent = '';
-        }
-
-        // ── Rendered images gallery ───────────────────────────────────
-        if (imagesDiv && data.design_images && data.design_images.length > 0) {
-          imagesDiv.innerHTML = '';
-          const gallery = document.createElement('div');
-          gallery.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;';
-          data.design_images.forEach((url, idx) => {
-            const wrapper = document.createElement('div');
-            wrapper.style.cssText = 'position:relative;border-radius:8px;overflow:hidden;border:1px solid #BAE6FD;background:#E0F2FE;aspect-ratio:4/3;';
-            const img = document.createElement('img');
-            img.src = url;
-            img.alt = 'Property view ' + (idx + 1);
-            img.style.cssText = 'width:100%;height:100%;object-fit:cover;cursor:pointer;transition:transform 0.2s;';
-            img.onclick = () => window.open(url, '_blank');
-            img.onerror = () => { wrapper.style.display = 'none'; };
-            wrapper.appendChild(img);
-            gallery.appendChild(wrapper);
-          });
-          imagesDiv.appendChild(gallery);
-          imagesDiv.style.display = 'block';
-        }
-
-        // ── Wall area summary ─────────────────────────────────────────
-        if (wallDiv && (data.wall_squares || data.wall_sqft)) {
-          let wallText = '📐 ';
-          if (data.wall_squares) wallText += '<strong>' + data.wall_squares + ' squares</strong> of siding wall area';
-          if (data.wall_sqft)    wallText += ' (' + data.wall_sqft.toLocaleString() + ' sq ft)';
-          wallDiv.innerHTML = wallText;
-          wallDiv.style.display = 'block';
-
-          // Store for fee-calculator math; update per-square note
-          sidingWallSquares = parseFloat(data.wall_squares) || 0;
-          const note = document.getElementById('sidingSquaresNote');
-          if (note) note.textContent = 'Measurements report ' + data.wall_squares + ' squares of siding area';
-          syncSidingTotal();
-        }
-
-        // ── Material list table ───────────────────────────────────────
-        const hasMaterials = data.siding_materials && data.siding_materials.length > 0;
-        const hasLabor     = data.labor_items && data.labor_items.length > 0;
-
-        if (hasMaterials || hasLabor) {
-          const showCost = data.siding_materials.some(m => m.unit_cost != null || m.total_cost != null);
-
-          const thStyle = 'text-align:left;padding:5px 8px;border-bottom:2px solid #BAE6FD;color:#0369A1;font-size:0.78rem;white-space:nowrap;';
-          const thR     = thStyle + 'text-align:right;';
-          const tdStyle = 'padding:5px 8px;border-bottom:1px solid #E0F2FE;font-size:0.82rem;vertical-align:top;';
-          const tdR     = tdStyle + 'text-align:right;';
-          const tdMuted = tdStyle + 'color:#6B7280;font-size:0.75rem;';
-
-          let html = '<div style="overflow-x:auto;">';
-          html += '<table style="width:100%;border-collapse:collapse;min-width:520px;">';
-
-          // Header
-          html += '<thead><tr>'
-               + '<th style="' + thStyle + '">Group / Product</th>'
-               + '<th style="' + thStyle + '">Color</th>'
-               + '<th style="' + thR + '">Qty</th>'
-               + '<th style="' + thStyle + '">Units</th>'
-               + (showCost ? '<th style="' + thR + '">Waste</th><th style="' + thR + '">Unit $</th><th style="' + thR + '">Subtotal</th>' : '')
-               + '</tr></thead><tbody>';
-
-          // Helper: format a material row
-          const renderRow = (m, isLabor = false) => {
-            const rowBg = isLabor ? 'background:#F0FDF4;' : '';
-            const qty = m.calculated_quantity ?? m.quantity;
-            const qtyFmt = qty != null ? parseFloat(qty).toFixed(1) : '—';
-            const wasteLabel = m.waste_factor != null ? (parseFloat(m.waste_factor) * 100).toFixed(0) + '%' : '—';
-            const unitCostFmt = m.unit_cost != null ? '$' + parseFloat(m.unit_cost).toFixed(2) : '—';
-            const subtotalFmt = m.total_cost != null ? '$' + parseFloat(m.total_cost).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
-            const nameDisplay = m.product_name || (isLabor ? 'Labor' : '—');
-            const groupDisplay = m.group_name && m.group_name !== m.product_name ? escHtmlBid(m.group_name) : '';
-            const typeLabel = isLabor ? ' <span style="font-size:0.7rem;color:#166534;background:#DCFCE7;padding:1px 5px;border-radius:3px;margin-left:4px;">LABOR</span>' : '';
-            return '<tr style="' + rowBg + '">'
-                 + '<td style="' + tdStyle + '">'
-                 + (groupDisplay ? '<div style="font-size:0.72rem;color:#94A3B8;margin-bottom:1px;">' + groupDisplay + '</div>' : '')
-                 + escHtmlBid(nameDisplay) + typeLabel + '</td>'
-                 + '<td style="' + tdStyle + '">' + escHtmlBid(m.color || '—') + '</td>'
-                 + '<td style="' + tdR + '">' + qtyFmt + '</td>'
-                 + '<td style="' + tdMuted + '">' + escHtmlBid(m.units || '') + '</td>'
-                 + (showCost ? '<td style="' + tdR + ';color:#6B7280;">' + wasteLabel + '</td>'
-                             + '<td style="' + tdR + '">' + unitCostFmt + '</td>'
-                             + '<td style="' + tdR + ';font-weight:600;">' + subtotalFmt + '</td>' : '')
-                 + '</tr>';
-          };
-
-          if (hasMaterials) {
-            data.siding_materials.forEach(m => { html += renderRow(m, false); });
-          }
-          if (hasLabor) {
-            data.labor_items.forEach(m => { html += renderRow(m, true); });
-          }
-
-          // Totals row if we have cost data
-          if (showCost && data.material_total != null) {
-            html += '<tr style="background:#E0F2FE;">'
-                 + '<td colspan="' + (showCost ? '6' : '3') + '" style="' + tdStyle + 'font-weight:700;color:#0369A1;">Material Total</td>'
-                 + '<td style="' + tdR + 'font-weight:700;color:#0369A1;">$' + parseFloat(data.material_total).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</td>'
-                 + '</tr>';
-          }
-
-          html += '</tbody></table></div>';
-          content.innerHTML = html;
-          if (noDataHelp) noDataHelp.style.display = 'none';
-
-        } else if (data.wall_squares || data.wall_sqft) {
-          // We have measurements but no product selections
-          content.innerHTML = '<span style="color:#6B7280;">Measurements loaded. No specific products selected yet — see note below.</span>';
-          if (noDataHelp) noDataHelp.style.display = 'block';
-
-        } else {
-          content.innerHTML = data.message
-            ? '<span style="color:#6B7280;">' + escHtmlBid(data.message) + '</span>'
-            : '<span style="color:#6B7280;">No property design data available for this project.</span>';
-        }
-
-        btn.textContent = 'Refresh';
-        btn.disabled = false;
-      } catch (err) {
-        console.warn('loadHoverSidingData error:', err);
-        content.innerHTML = '<span style="color:#DC2626;">Could not load design data. Please try again.</span>';
-        btn.textContent = 'Retry';
-        btn.disabled = false;
-      }
     }
 
     // ── Job-Type Customizations ──
@@ -3320,71 +3120,13 @@
 
     // ── Roofing Measurements Loader (86e10t2cb) ──
     async function loadHoverRoofingData() {
+      // gh-1873: the measurement vendor (Hover) is retired; no back-end call is made.
       const btn     = document.getElementById('loadHoverRoofingBtn');
       const content = document.getElementById('hoverRoofingContent');
       if (!currentClaim || !btn || !content) return;
-
       btn.disabled = true;
-      btn.textContent = 'Loading…';
-      content.innerHTML = '<span style="color:#6B7280;">Fetching roofing measurements…</span>';
-
-      try {
-        const { data: { session } } = await sb.auth.getSession();
-        const resp = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/get-hover-siding-data', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + (session?.access_token || ''),
-            'apikey': CONFIG.SUPABASE_ANON,
-          },
-          body: JSON.stringify({ claim_id: currentClaim.id }),
-        });
-
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const data = await resp.json();
-
-        // gh-2559 / D-371: no street address on the bid form.
-        {
-          const addrEl = document.getElementById('hoverRoofingAddressLine');
-          if (addrEl) addrEl.textContent = '';
-        }
-
-        // Try to extract roofing-specific measurements from the vendor payload
-        const totalSquares  = data.total_squares  || data.roof_squares  || null;
-        const ridgeLength   = data.ridge_length   || null;
-        const hipLength     = data.hip_length     || null;
-        const valleyLength  = data.valley_length  || null;
-        const eaveLength    = data.eave_length    || data.eaves_length  || null;
-        const pitchInfo     = data.predominant_pitch || data.primary_pitch || null;
-
-        const hasRoofingData = totalSquares || ridgeLength || hipLength || valleyLength || eaveLength;
-
-        if (hasRoofingData) {
-          const fmt = (val, unit) => val != null ? `<strong>${parseFloat(val).toLocaleString('en-US', {maximumFractionDigits:1})}</strong> ${unit}` : '—';
-          let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:var(--sp-3);">';
-          if (totalSquares) html += `<div style="background:#E0F2FE;padding:var(--sp-3);border-radius:var(--radius-sm);"><div style="font-size:0.7rem;color:#0369A1;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Total Squares</div><div style="font-size:1.1rem;font-weight:700;color:#0C4A6E;">${parseFloat(totalSquares).toFixed(1)} sq</div></div>`;
-          if (ridgeLength)  html += `<div style="background:#F0F9FF;padding:var(--sp-3);border-radius:var(--radius-sm);"><div style="font-size:0.7rem;color:#0369A1;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Ridge</div><div style="font-size:1rem;font-weight:600;color:#0C4A6E;">${fmt(ridgeLength,'LF')}</div></div>`;
-          if (hipLength)    html += `<div style="background:#F0F9FF;padding:var(--sp-3);border-radius:var(--radius-sm);"><div style="font-size:0.7rem;color:#0369A1;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Hips</div><div style="font-size:1rem;font-weight:600;color:#0C4A6E;">${fmt(hipLength,'LF')}</div></div>`;
-          if (valleyLength) html += `<div style="background:#F0F9FF;padding:var(--sp-3);border-radius:var(--radius-sm);"><div style="font-size:0.7rem;color:#0369A1;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Valleys</div><div style="font-size:1rem;font-weight:600;color:#0C4A6E;">${fmt(valleyLength,'LF')}</div></div>`;
-          if (eaveLength)   html += `<div style="background:#F0F9FF;padding:var(--sp-3);border-radius:var(--radius-sm);"><div style="font-size:0.7rem;color:#0369A1;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Eaves</div><div style="font-size:1rem;font-weight:600;color:#0C4A6E;">${fmt(eaveLength,'LF')}</div></div>`;
-          if (pitchInfo)    html += `<div style="background:#F0F9FF;padding:var(--sp-3);border-radius:var(--radius-sm);"><div style="font-size:0.7rem;color:#0369A1;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Pitch</div><div style="font-size:1rem;font-weight:600;color:#0C4A6E;">${escHtmlBid(pitchInfo)}</div></div>`;
-          html += '</div>';
-          content.innerHTML = html;
-        } else {
-          content.innerHTML = '<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:var(--radius-sm);padding:var(--sp-3) var(--sp-4);font-size:0.85rem;color:#92400E;">'
-            + '<strong>No roofing measurement data yet.</strong> Professional measurements are pending for this project. '
-            + 'Once measurements are complete, roofing squares, ridge, hip, valley, and eave lengths will appear here.'
-            + '</div>';
-        }
-
-        btn.textContent = 'Refresh';
-        btn.disabled = false;
-      } catch (err) {
-        console.warn('loadHoverRoofingData error:', err);
-        content.innerHTML = '<span style="color:#DC2626;">Could not load roofing measurements. Please try again.</span>';
-        btn.textContent = 'Retry';
-        btn.disabled = false;
-      }
+      btn.textContent = 'Unavailable';
+      content.innerHTML = '<span style="color:#6B7280;">Vendor roofing measurements are no longer available. Use the homeowner\'s uploaded measurements, or enter your own.</span>';
     }
 
     // ── Wizard: capture current trade price before navigating (86e10t285) ──
@@ -4225,59 +3967,13 @@
       }
     }
 
+    // gh-1873: the measurement vendor (Hover) is retired. This button no longer calls any back-end function;
+    // it tells the contractor the vendor PDF is gone. The homeowner's uploaded measurements file (View
+    // Measurements) and the measured quantities on the form are unchanged.
     async function openBidFormHoverPdf() {
       if (!currentClaim?.id) return;
       if (!canOpenMeasurementPdf()) return;
-      const btn = document.getElementById('bidFormHoverBtn');
-      if (btn) { btn.disabled = true; btn.textContent = 'Loading\u2026'; }
-      try {
-        const { data, error } = await sb.functions.invoke('get-hover-pdf', {
-          body: { claim_id: currentClaim.id, format: 'url' }
-        });
-        if (error) throw error;
-        if (!data?.url) throw new Error('No PDF URL');
-        // Defensive: anchor click-through instead of window.open() to avoid
-        // popup-blocker/native-dialog conditions (gh-751). Refs #751.
-        const hoverPdfLink = document.createElement('a');
-        hoverPdfLink.href = data.url;
-        hoverPdfLink.target = '_blank';
-        hoverPdfLink.rel = 'noopener';
-        document.body.appendChild(hoverPdfLink);
-        hoverPdfLink.click();
-        document.body.removeChild(hoverPdfLink);
-      } catch (err) {
-        console.error('Failed to open measurement PDF:', err);
-        // gh-1748: get-hover-pdf returns 403 from TWO different refusals —
-        // (a) the D-317 cl. 7 / #1636 manual-fulfilment gate (index.ts:~177),
-        // an internal-artifact policy refusal, and (b) an ordinary
-        // canAccessClaim() denial (index.ts:~106) — bid window closed,
-        // contractor not yet quoted, etc. Both used to return the same
-        // status with a byte-identical body, so the client could not tell
-        // them apart and showed the internal-artifact copy for both,
-        // including the everyday (b) case where it is false. The server now
-        // sets `reason` on each; only "internal_artifact" gets that copy.
-        if (err?.context?.status === 403) {
-          let reason = null;
-          try {
-            const body = await err.context.clone().json();
-            reason = body?.reason ?? null;
-          } catch (parseErr) {
-            console.error('Failed to parse 403 response body:', parseErr);
-          }
-          if (reason === 'internal_artifact') {
-            alert('The measurement report is internal to the homeowner\'s file and not part of the bid packet.');
-          } else {
-            // Covers reason === 'access_denied' and any unrecognized/missing
-            // reason (parse failure, older cached response, etc.) — never
-            // assert the internal-artifact copy without the reason to back it.
-            alert('You do not have access to this claim\'s measurement report.');
-          }
-        } else {
-          alert('The measurement PDF is not available for this project yet. The measurement may still be in progress.');
-        }
-      } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F4CF; View Measurement PDF'; }
-      }
+      alert('The vendor measurement PDF is no longer available. Use the measurements and photos the homeowner uploaded, or contact support if you need a measurement report for this project.');
     }
 
     // ── Insurance Line Items Panel ──

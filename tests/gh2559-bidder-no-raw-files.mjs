@@ -123,7 +123,7 @@ ok(!/Insurance Estimate \u2713/.test(reactCard) && /opp\.estimateSummaryAvailabl
 ok(!/>Measurements \u2713</.test(reactCard) && />Measurements on File \u2713</.test(reactCard),
   'React opportunities card: Measurements on File badge');
 
-ok(/\{opp\.measurementsAvailable && opp\.isSelectedContractor && \(\s*<button type="button" className="oqo-doc-btn" disabled=\{hoverBusy\}/.test(reactCard),
+ok(/\{opp\.measurementsAvailable && opp\.isSelectedContractor && \(\s*<button type="button" className="oqo-doc-btn" onClick=\{openHoverPdf\}/.test(reactCard),
   'React opportunities card: the Measurement PDF button only for the selected contractor');
 const reactBid = read('react-app/app/contractor/bid/[claimId]/bid-form.tsx');
 ok(/\{canOpenMeasurementPdf && <button type="button" className="oqb-doclink" onClick=\{openHoverPdf\}>/.test(reactBid) && /if \(!canOpenMeasurementPdf\) return;/.test(reactBid),

@@ -108,33 +108,6 @@ export interface CreateContractEnvelopeResult {
   placeholder?: boolean;
 }
 
-export interface CreateHoverOrderParams {
-  claim_id: string;
-  user_id: string;
-  address_line_1: string;
-  address_city: string;
-  address_state: string;
-  address_zip: string;
-  homeowner_name: string;
-  homeowner_email: string;
-  homeowner_phone?: string | null;
-  amount_charged: number;
-  /** REQUIRED per D-205. Must be 2 (Roof Only) or 3 (Complete). No default. */
-  deliverable_type_id: number;
-  /** D-181: required — Stripe PaymentIntent for the Hover fee. */
-  payment_intent_id?: string;
-}
-
-export interface CreateHoverOrderResult {
-  order_id: string;
-  capture_link: string | null;
-  capture_request_id?: string;
-  identifier?: string;
-  pending_job_id?: string;
-  placeholder?: boolean;
-  message?: string;
-}
-
 export interface AdjusterRecord {
   id: string;
   adjuster_name: string;
@@ -442,98 +415,7 @@ async function createContractEnvelope(
   }
 }
 
-// ── Hover — Measurement Orders (D-036, D-047) ───────────────────────────────
-
-/**
- * Create a Hover measurement order and get the photo capture link.
- * Uses OAuth-authenticated capture-requests API (v2) via the create-hover-order EF.
- */
-async function createHoverOrder(
-  params: CreateHoverOrderParams,
-): Promise<CreateHoverOrderResult> {
-  const {
-    claim_id,
-    user_id,
-    address_line_1,
-    address_city,
-    address_state,
-    address_zip,
-    homeowner_name,
-    homeowner_email,
-    homeowner_phone,
-    amount_charged,
-    deliverable_type_id,
-    payment_intent_id, // D-181: required — Stripe PaymentIntent for the Hover fee
-  } = params;
-
-  if (!payment_intent_id) {
-    throw new Error('Missing payment_intent_id — payment must complete before ordering (D-181).');
-  }
-  // D-205: deliverable_type_id is required and must be 2 or 3. Fail loud at the client too.
-  if (deliverable_type_id !== 2 && deliverable_type_id !== 3) {
-    throw new Error('Missing or invalid deliverable_type_id — must be 2 (Roof Only) or 3 (Complete) per D-205.');
-  }
-
-  // Save order to database first
-  const { data: order, error } = await supabase
-    .from('hover_orders')
-    .insert({
-      claim_id,
-      user_id,
-      status: 'pending',
-      amount_charged,
-      deliverable_type_id,
-      capturing_user_email: homeowner_email,
-      capturing_user_phone: homeowner_phone || null,
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  // Call Edge Function to create Hover capture request via OAuth API
-  try {
-    const { data: hoverData, error: hoverError } = await supabase.functions.invoke(
-      'create-hover-order',
-      {
-        body: {
-          order_id: order.id,
-          claim_id,
-          address_line_1,
-          address_city,
-          address_state,
-          address_zip,
-          homeowner_name,
-          homeowner_email,
-          homeowner_phone,
-          deliverable_type_id,
-          payment_intent_id, // D-181
-        },
-      },
-    );
-
-    if (hoverError) {
-      console.warn('Hover order creation failed:', hoverError);
-      return {
-        order_id: order.id,
-        capture_link: null,
-        placeholder: true,
-        message: 'Measurement order creation failed. Please try again.',
-      };
-    }
-
-    return {
-      order_id: order.id,
-      capture_link: hoverData.capture_link,
-      capture_request_id: hoverData.capture_request_id,
-      identifier: hoverData.identifier,
-      pending_job_id: hoverData.pending_job_id,
-    };
-  } catch (err) {
-    console.warn('Hover API call failed:', err);
-    return { order_id: order.id, capture_link: null, placeholder: true };
-  }
-}
+// gh-1873: createHoverOrder() (the create-hover-order caller) was removed with the measurement vendor.
 
 // ── Lookups (D-046) ─────────────────────────────────────────────────────────
 
@@ -608,7 +490,6 @@ export const Services = {
   createHoverPaymentIntent,
   createDeductiblePaymentIntent,
   createContractEnvelope,
-  createHoverOrder,
   getCarrierHelp,
   findOrCreateAdjuster,
   _normalizePhone: normalizePhone,
@@ -621,7 +502,6 @@ export {
   createHoverPaymentIntent,
   createDeductiblePaymentIntent,
   createContractEnvelope,
-  createHoverOrder,
   getCarrierHelp,
   findOrCreateAdjuster,
   normalizePhone,

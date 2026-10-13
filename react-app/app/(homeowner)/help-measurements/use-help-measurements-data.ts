@@ -17,23 +17,16 @@
  *   • checkExistingEstimateRequest (826-840) → adjuster_email_requests where claim_id +
  *                                            request_type='both' → alreadySentBoth flag.
  *
- * Tier-3 boundary: the three Services.* calls hit the ALREADY-DEPLOYED Edge Functions
- * (create-payment-intent, create-hover-order, send-adjuster-email) with their contracts
- * UNCHANGED. No EF, SQL, price, or idempotency change is made here.
+ * Tier-3 boundary: the Services.* call hits the ALREADY-DEPLOYED send-adjuster-email Edge Function
+ * with its contract UNCHANGED (the paid vendor path was removed in gh-1873). No EF, SQL, price, or idempotency change is made here.
  */
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import {
-  createHoverPaymentIntent,
-  createHoverOrder,
   sendAdjusterEmail,
-  type PaymentIntentResult,
-  type CreateHoverOrderResult,
 } from '@/lib/services';
 import {
-  buildHoverPaymentIntentParams,
-  buildHoverOrderParams,
   buildAdjusterEmailParams,
   buildAdjusterClaimWriteback,
   type HomeownerProfile,
@@ -147,41 +140,9 @@ export function useHelpMeasurementsData(
   return data;
 }
 
-// ── Path A: Hover (paid) ────────────────────────────────────────────────────────────
-
-/**
- * Step 1 — create the Stripe PaymentIntent for the $15 Hover fee (D-291, repricing D-205's
- * now-superseded $150) (NO charge yet).
- * Calls create-payment-intent via Services with its contract UNCHANGED. Returns the
- * PaymentIntentResult ({ client_secret }); the page mounts the card form only when a
- * client_secret comes back (static purchaseHover 885-907).
- *
- * gh-2078c / D-330 reconciliation: `variant` (the caller's persisted router
- * arm, `lib/variant.ts`'s `getVariant()`) is an optional pass-through onto
- * the PaymentIntent metadata — see `buildHoverPaymentIntentParams`'s own
- * header for why it is threaded as a parameter rather than read in this
- * data layer directly.
- */
-export function requestHoverPaymentIntent(
-  claim: MeasurementsClaim,
-  variant?: string,
-): Promise<PaymentIntentResult> {
-  return createHoverPaymentIntent(buildHoverPaymentIntentParams(claim, variant));
-}
-
-/**
- * Step 2 — create the Hover order AFTER the card payment has succeeded. Calls
- * create-hover-order via Services UNCHANGED; payment_intent_id is the D-181 guard the
- * EF re-validates server-side (static confirmHoverPayment 969-990).
- */
-export function placeHoverOrder(args: {
-  profile: HomeownerProfile | null;
-  claim: MeasurementsClaim;
-  user: MeasurementsUser | null;
-  paymentIntentId: string;
-}): Promise<CreateHoverOrderResult> {
-  return createHoverOrder(buildHoverOrderParams(args));
-}
+// ── Path A: Hover (paid) -- REMOVED (gh-1873) ───────────────────────────────────────────
+// requestHoverPaymentIntent() and placeHoverOrder() were removed with the measurement vendor (Hover): the page no
+// longer creates a PaymentIntent for the vendor report or calls create-hover-order.
 
 // ── Path B: Ask Adjuster (free) ──────────────────────────────────────────────────────
 

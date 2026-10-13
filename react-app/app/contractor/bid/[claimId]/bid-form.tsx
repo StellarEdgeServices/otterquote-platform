@@ -546,11 +546,10 @@ function DocLinks({ claim, contractorId }: { claim: Record<string, unknown>; con
   }
   // gh-2559 / D-370: the measurement report opens only for the contractor the homeowner selected.
   const canOpenMeasurementPdf = !!claim.id && !!contractorId && claim.selected_contractor_id === contractorId;
+  // gh-1873: the measurement vendor (Hover) is retired; no back-end function is called.
   async function openHoverPdf() {
     if (!canOpenMeasurementPdf) return;
-    const { data, error } = await supabase.functions.invoke('get-hover-pdf', { body: { claim_id: claim.id, format: 'url' } });
-    if (error || !data?.url) { alert('The measurement PDF is not available for this project yet. The measurement may still be in progress.'); return; }
-    window.open(data.url, '_blank');
+    alert('The vendor measurement PDF is no longer available. Use the measurements and photos the homeowner uploaded, or contact support if you need a measurement report for this project.');
   }
   return (
     <div className="oqb-doclinks">

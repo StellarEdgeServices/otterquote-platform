@@ -267,30 +267,4 @@ export async function acknowledgeBidUpdatedNotifications(ids: string[]): Promise
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
-export interface HoverSidingData {
-  hover_job_id?: string | null;
-  job_address?: string | null;
-  design_images?: string[];
-  wall_squares?: number | null;
-  wall_sqft?: number | null;
-  siding_materials?: unknown[];
-  message?: string | null;
-  [key: string]: unknown;
-}
-
-/**
- * get-hover-siding-data (bids.html:970-979) — siding design/material data for a
- * siding job with measurements. EF is JWT + claim-ownership hardened (Phase 16
- * Unit 2); called AS-IS via invoke. Returns null on error.
- */
-export async function loadHoverSidingData(claimId: string): Promise<HoverSidingData | null> {
-  try {
-    const { data, error } = await supabase.functions.invoke('get-hover-siding-data', {
-      body: { claim_id: claimId },
-    });
-    if (error || !data) return null;
-    return data as HoverSidingData;
-  } catch {
-    return null;
-  }
-}
+// gh-1873: loadHoverSidingData() (the get-hover-siding-data caller) was removed with the measurement vendor.

@@ -39,14 +39,13 @@ vi.mock('@/lib/supabase', () => ({
 import { HomePhotosCard } from '../home-photos-card';
 import { WarrantyCard } from '../warranty-card';
 
-const TEN_MIN = 10 * 60 * 1000;
 const FIVE_MIN = 5 * 60 * 1000;
 
 function photosPayload(imgs: string[], ts: number) {
   return JSON.stringify({ ts, images: imgs, hover_job_id: null, job_address: null });
 }
 
-describe('hover_photos_<claimId> — stale sessionStorage cache (home-photos-card.tsx)', () => {
+describe('home-photos-card.tsx after the Hover retirement (gh-1873)', () => {
   beforeEach(() => {
     sessionStorage.clear();
     localStorage.clear();
@@ -54,56 +53,29 @@ describe('hover_photos_<claimId> — stale sessionStorage cache (home-photos-car
   });
   afterEach(cleanup);
 
-  it("does not show another claim's cached photos on this claim - it fetches its own", async () => {
-    invokeMock.mockResolvedValue({ data: { design_images: ['https://img.test/mine.jpg'] }, error: null });
-    seedStaleStorage({
-      sessionStorage: { hover_photos_claim_other: photosPayload(['https://img.test/other.jpg'], Date.now()) },
-    });
+  it('makes no back-end call and shows the empty state', async () => {
     render(<HomePhotosCard claimId="claim_mine" isSiding={false} />);
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
-    expect(invokeMock).toHaveBeenCalledWith('get-hover-siding-data', { body: { claim_id: 'claim_mine' } });
-    const img = await screen.findByAltText('Property view 1');
-    expect(img.getAttribute('src')).toBe('https://img.test/mine.jpg');
-  });
-
-  it('refetches when this claim cache entry is past the 10-minute TTL', async () => {
-    invokeMock.mockResolvedValue({ data: { design_images: ['https://img.test/new.jpg'] }, error: null });
-    seedStaleStorage({
-      sessionStorage: { hover_photos_claim_mine: photosPayload(['https://img.test/old.jpg'], Date.now() - TEN_MIN - 1000) },
-    });
-    render(<HomePhotosCard claimId="claim_mine" isSiding={false} />);
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
-    const img = await screen.findByAltText('Property view 1');
-    expect(img.getAttribute('src')).toBe('https://img.test/new.jpg');
-  });
-
-  it('a FUTURE-dated entry (negative age) is not "fresh" - it is refetched, not trusted (gh-2060 item 7)', async () => {
-    invokeMock.mockResolvedValue({ data: { design_images: ['https://img.test/new.jpg'] }, error: null });
-    seedStaleStorage({
-      sessionStorage: { hover_photos_claim_mine: photosPayload(['https://img.test/future.jpg'], Date.now() + 24 * 60 * 60 * 1000) },
-    });
-    render(<HomePhotosCard claimId="claim_mine" isSiding={false} />);
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
-    const img = await screen.findByAltText('Property view 1');
-    expect(img.getAttribute('src')).toBe('https://img.test/new.jpg');
-  });
-
-  it('a cache entry with no timestamp (older app version shape) is not trusted', async () => {
-    invokeMock.mockResolvedValue({ data: { design_images: [] }, error: null });
-    seedStaleStorage({ sessionStorage: { hover_photos_claim_mine: JSON.stringify({ images: ['https://img.test/legacy.jpg'] }) } });
-    render(<HomePhotosCard claimId="claim_mine" isSiding={false} />);
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
-    expect(screen.queryByAltText('Property view 1')).toBeNull();
-  });
-
-  it('POSITIVE CONTROL: a fresh entry for this claim is used without a network call', async () => {
-    seedStaleStorage({
-      sessionStorage: { hover_photos_claim_mine: photosPayload(['https://img.test/cached.jpg'], Date.now() - 1000) },
-    });
-    render(<HomePhotosCard claimId="claim_mine" isSiding={false} />);
-    const img = await screen.findByAltText('Property view 1');
-    expect(img.getAttribute('src')).toBe('https://img.test/cached.jpg');
+    expect(await screen.findByText('No property photos are available for this project yet.')).toBeTruthy();
     expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("never shows a cached vendor payload - not another claim's, not a fresh one for this claim, not a future-dated one (gh-2060 items stay safe)", async () => {
+    seedStaleStorage({
+      sessionStorage: {
+        hover_photos_claim_other: photosPayload(['https://img.test/other.jpg'], Date.now()),
+        hover_photos_claim_mine: photosPayload(['https://img.test/cached.jpg'], Date.now() - 1000),
+      },
+    });
+    render(<HomePhotosCard claimId="claim_mine" isSiding={true} />);
+    expect(await screen.findByText('No property photos are available for this project yet.')).toBeTruthy();
+    expect(screen.queryByAltText('Property view 1')).toBeNull();
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('shows no link to the vendor site, even for a siding claim', async () => {
+    render(<HomePhotosCard claimId="claim_mine" isSiding={true} />);
+    await screen.findByText('No property photos are available for this project yet.');
+    expect(screen.queryByText(/property design/i)).toBeNull();
   });
 });
 

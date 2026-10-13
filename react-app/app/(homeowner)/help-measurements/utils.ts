@@ -49,7 +49,6 @@
 
 import type {
   CreateHoverPaymentIntentParams,
-  CreateHoverOrderParams,
   SendAdjusterEmailParams,
 } from '../../lib/services';
 
@@ -174,39 +173,7 @@ export function paymentIntentIdFromClientSecret(
   return id && id.startsWith('pi_') ? id : null;
 }
 
-// ── Hover order params (help-measurements.html:976-990) ────────────────────────────
-
-/**
- * Assemble the createHoverOrder params from loaded profile/claim/user + the confirmed Stripe
- * PaymentIntent id. amount_charged (15.00) and deliverable_type_id (3) are the D-291/D-205
- * values; the EF re-validates them. payment_intent_id is the D-181 verification guard.
- */
-export function buildHoverOrderParams({
-  profile,
-  claim,
-  user,
-  paymentIntentId,
-}: {
-  profile: HomeownerProfile | null | undefined;
-  claim: MeasurementsClaim;
-  user: MeasurementsUser | null | undefined;
-  paymentIntentId: string;
-}): CreateHoverOrderParams {
-  return {
-    claim_id: claim.id,
-    user_id: user?.id || '',
-    address_line_1: resolveAddressLine1(profile, claim),
-    address_city: profile?.address_city || '',
-    address_state: profile?.address_state || '',
-    address_zip: profile?.address_zip || '',
-    homeowner_name: resolveHomeownerName(profile),
-    homeowner_email: user?.email || '',
-    homeowner_phone: profile?.phone || '',
-    amount_charged: HOVER_AMOUNT_DOLLARS,
-    deliverable_type_id: HOVER_DELIVERABLE_TYPE_ID,
-    payment_intent_id: paymentIntentId,
-  };
-}
+// gh-1873: buildHoverOrderParams() was removed with the create-hover-order caller.
 
 // ── Adjuster email params (help-measurements.html:1060-1068) ───────────────────────
 

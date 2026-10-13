@@ -18,7 +18,6 @@ import {
   resolveHomeownerName,
   resolveAddressLine1,
   buildHoverPaymentIntentParams,
-  buildHoverOrderParams,
   buildAdjusterEmailParams,
   buildAdjusterClaimWriteback,
   isAdjusterFormValid,
@@ -110,71 +109,7 @@ describe('buildHoverPaymentIntentParams', () => {
   });
 });
 
-describe('buildHoverOrderParams', () => {
-  const profile = {
-    full_name: 'Jane Roof',
-    phone: '(317) 555-1234',
-    address_line1: '123 Main St',
-    address_city: 'Carmel',
-    address_state: 'IN',
-    address_zip: '46032',
-  };
-  const claim = { id: 'claim-1', property_address: '123 Main St, Carmel, IN 46032' };
-  const user = { id: 'user-9', email: 'jane@example.com' };
-
-  it('assembles a full order from loaded state', () => {
-    expect(
-      buildHoverOrderParams({ profile, claim, user, paymentIntentId: 'pi_abc' }),
-    ).toEqual({
-      claim_id: 'claim-1',
-      user_id: 'user-9',
-      address_line_1: '123 Main St',
-      address_city: 'Carmel',
-      address_state: 'IN',
-      address_zip: '46032',
-      homeowner_name: 'Jane Roof',
-      homeowner_email: 'jane@example.com',
-      homeowner_phone: '(317) 555-1234',
-      amount_charged: 15.0,
-      deliverable_type_id: 3,
-      payment_intent_id: 'pi_abc',
-    });
-  });
-
-  it('uses resolveHomeownerName (first+last) when full_name is absent', () => {
-    const out = buildHoverOrderParams({
-      profile: { first_name: 'Jane', last_name: 'Roof' },
-      claim,
-      user,
-      paymentIntentId: 'pi_abc',
-    });
-    expect(out.homeowner_name).toBe('Jane Roof');
-  });
-
-  it('defaults address/email/phone to empty strings when state is missing', () => {
-    const out = buildHoverOrderParams({
-      profile: null,
-      claim: { id: 'claim-2' },
-      user: null,
-      paymentIntentId: 'pi_x',
-    });
-    expect(out.address_line_1).toBe('');
-    expect(out.address_city).toBe('');
-    expect(out.address_state).toBe('');
-    expect(out.address_zip).toBe('');
-    expect(out.homeowner_email).toBe('');
-    expect(out.homeowner_phone).toBe('');
-    expect(out.homeowner_name).toBe('Homeowner');
-    expect(out.user_id).toBe('');
-  });
-
-  it('always carries the D-291 amount/deliverable + the D-181 payment_intent_id', () => {
-    const out = buildHoverOrderParams({ profile, claim, user, paymentIntentId: 'pi_guard' });
-    expect(out.amount_charged).toBe(15.0);
-    expect(out.deliverable_type_id).toBe(3);
-    expect(out.payment_intent_id).toBe('pi_guard');
-  });
-});
+// gh-1873: the buildHoverOrderParams tests were removed with the create-hover-order caller.
 
 describe('buildAdjusterEmailParams (adjuster path — simpler full_name || Homeowner)', () => {
   const claim = { id: 'claim-1', claim_number: 'CLM-2024-00001' };

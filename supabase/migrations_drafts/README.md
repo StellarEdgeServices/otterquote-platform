@@ -43,3 +43,9 @@ No set is marked `UNVERIFIED`: every set has a recorded measurement. Two sets ar
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2491_claims_platform_fee_charged_guard` | forward (rollback and pre-flight in `supabase/migrations_rollbacks/`, the throwaway-Postgres proof in `supabase/tests/`) | NOT APPLIED | drafted 2026-10-13 as the precondition for applying `gh2491_message_counterpart`; production read-only 2026-10-13T20:02Z (CLOSE-REVIEW 6154236621): no trigger on `public.claims` mentions `platform_fee_charged`, `authenticated` holds column UPDATE. Tier 3B, applies only after an R-097 24-hour notice | none |
+
+## Added 2026-10-13 (gh-1873, Hover retirement step 2): 1 file, 1 set, not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh1873_unschedule_check_siding_design_completion` | forward (rollback and pre-flight live in `supabase/migrations_rollbacks/`) | NOT APPLIED | drafted 2026-10-13 under #1873 (plan, comment 6051733882); pg_cron job 6 `check-siding-design-completion` read by name and schedule on 2026-10-08, not re-measured since; Tier 3B, applies only after an R-097 24-hour notice and Ben's ruling on how retail-siding bids are released without Hover. Never touches job 10 `process-hover-rebate-scan` (homeowner refunds) | none |
