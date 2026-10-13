@@ -40,6 +40,20 @@
     "A regional summary for the North Central division, prepared with the Midwest Regional Climate Center, calls its climate primarily continental, with larger temperature ranges than places at the same latitude beside the Great Lakes. It places the division in the snowbelt of northern Ohio, where significant lake-effect snow can occur, and says Lake Erie somewhat tempers temperatures. NOAA's county list assigns {county} County to this division.",
     "NOAA's Ohio state climate summary describes lake-effect snow as the result of arctic air masses warmed and moistened as they cross the Great Lakes. The same summary records that Ohio's deadliest tornado, on June 28, 1924, struck the towns of Sandusky and Lorain, which lie in the North Central division with {county} County. It also states that dangerous storms can occur in every season.",
     "The division summary adds that precipitation is well distributed through the year, with slightly more rain in late spring and early summer. NWS Cleveland's study of El Nino winters found that lake effect snow and orographic effects may mask the El Nino signal in some years at stations near the Great Lakes and the Appalachian Mountains. That study covers the lower Great Lakes, which includes {county} County."
+   ],
+   "sources": [
+    {
+     "label": "GLISA, with the Midwest Regional Climate Center: North Central Ohio climate division summary",
+     "url": "https://glisa.umich.edu/division/north-central-ohio/"
+    },
+    {
+     "label": "NOAA State Climate Summaries: Ohio",
+     "url": "https://statesummaries.ncics.org/chapter/oh/"
+    },
+    {
+     "label": "NWS Cleveland: El Nino and the Lower Great Lakes and Ohio Valley",
+     "url": "https://www.weather.gov/cle/research_ENSO_GtLakes"
+    }
    ]
   },
   "northeast": {
@@ -130,6 +144,16 @@
     "NWS Pittsburgh's severe weather climatology includes the Ohio counties of Carroll, Columbiana and Harrison, all part of the Northeast Hills division that also contains {county} County. It counts tornadoes from 1950 to 2020, severe winds of 58 mph or greater from 1955 to 2019, and large hail from 1955 to 2019. It also covers Jefferson County in Ohio, and it analyzes each severe weather element by month, by time of day and by year.",
     "The Pittsburgh office notes that the threshold for severe hail changed in 2010 from 0.75 inch to 1.00 inch in diameter, though it still collects reports of hail above 0.75 inch. It states that it remains diligent in documenting every occurrence of severe weather but understands that a lot of cases go unrecorded. Any count for {county} County therefore reflects reports received, not every storm.",
     "NWS Cleveland's El Nino study says lake effect snow and orographic effects may mask the El Nino signal in some years at stations near the Great Lakes and the Appalachian Mountains. The study also found warmer than normal winters across the Ohio Valley and lower Great Lakes during the events it examined. {county} County is within the Northeast Hills division of NOAA's climate list."
+   ],
+   "sources": [
+    {
+     "label": "NWS Pittsburgh: severe weather climatology",
+     "url": "https://www.weather.gov/pbz/svrclimo"
+    },
+    {
+     "label": "NWS Cleveland: El Nino and the Lower Great Lakes and Ohio Valley",
+     "url": "https://www.weather.gov/cle/research_ENSO_GtLakes"
+    }
    ]
   },
   "southwest": {
@@ -150,6 +174,16 @@
     "NOAA's Ohio state climate summary records that the Xenia tornado, rated F5, was part of the Super Outbreak of 1974. Xenia is in Greene County, in the Southwest division that also contains {county} County. The same summary calls the Great Flood of 1913 Ohio's greatest weather disaster, and it states that dangerous storms can occur in every season. It also lists snowstorms and ice storms as winter weather in Ohio.",
     "NWS Wilmington's summary of May 10, 2020 says thunderstorms developed along a cold front in Indiana and moved east across Ohio during the afternoon and early evening. It reports that the storms became strong to severe in many locations, and that additional thunderstorms produced hail across southern Ohio and northern Kentucky. It notes that temperatures were only in the upper 50s to lower 60s, even as the storms became strong to severe. The event covers southern Ohio, which includes {county} County.",
     "NOAA's Ohio state climate summary says a prolonged heat wave affected the Ohio River Valley from July 17 to 24, 2011. It also says high temperatures combined with high humidity can create dangerous heat index values. The summary names extreme heat as a particular concern for the state's urban areas. {county} County is in the Southwest division of NOAA's Ohio climate divisions."
+   ],
+   "sources": [
+    {
+     "label": "NOAA State Climate Summaries: Ohio",
+     "url": "https://statesummaries.ncics.org/chapter/oh/"
+    },
+    {
+     "label": "NWS Wilmington: May 10, 2020 severe weather summary",
+     "url": "https://www.weather.gov/iln/20200510"
+    }
    ]
   },
   "south_central": {
