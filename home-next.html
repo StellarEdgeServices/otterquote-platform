@@ -36,8 +36,11 @@
       <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes logo" width="28" height="44">
       <span><span class="hr-brand-name">Otter Quotes</span><span class="hr-brand-tag">Contractors Compete. Homeowners Win.</span></span>
     </a>
-    <!-- gh-2598 slice 1: the design's header links (How it works, How we're paid, Questions) are left out here because their sections do not exist yet.
-         Slice 2 adds How it works and Questions, slice 3 adds How we're paid; the links come back with the section each one points at. -->
+    <!-- gh-2598 slice 2: How it works and Questions come back with the sections they point at. How we're paid returns with its section in slice 3. -->
+    <nav class="hr-nav" aria-label="Main">
+      <a href="#how">How it works</a>
+      <a href="#questions">Questions</a>
+    </nav>
     <div class="hr-header-right">
       <a class="hr-phone" href="tel:+18448753412" data-hr-phone="header" aria-label="Call Otter Quotes at 844 875 3412"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg><span class="hr-phone-long">(844) 875-3412</span><span class="hr-call-short">Call</span></a>
       <a class="hr-btn-outline" href="/start.html" data-hr-go="header">Get my bids</a>
@@ -84,7 +87,113 @@
     </div>
   </div>
 </section>
-<!-- gh-2598: slices 2 to 4 add the sections below the hero (three facts, how it works, contractor info, how we're paid, change-your-mind band, questions, closing band, footer). -->
+<!-- gh-2598 slice 2: reading sections, strings verbatim from the two design files (checked by tests/gh2598-home-next-sections.mjs).
+     Slice 3 adds How we're paid, What we do not do and the change-your-mind band between the contractor section and Questions; slice 4 replaces the footer. -->
+<section class="hr-sec hr-facts" id="facts">
+  <div class="hr-wrap hr-facts-grid">
+    <div class="hr-fact">
+      <svg class="hr-ico" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      <div class="hr-fact-body">
+        <div class="hr-fact-title">Your details stay yours</div>
+        <div class="hr-fact-text">Contractors do not see your name, phone number or street address until you choose one.</div>
+      </div>
+    </div>
+    <div class="hr-fact">
+      <svg class="hr-ico" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>
+      <div class="hr-fact-body">
+        <div class="hr-fact-title">No salesperson in your home</div>
+        <div class="hr-fact-text">Multiple bids without the time spent with salespeople and without high-pressure sales tactics.</div>
+      </div>
+    </div>
+    <div class="hr-fact">
+      <svg class="hr-ico" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9"/></svg>
+      <div class="hr-fact-body">
+        <div class="hr-fact-title">Reviews and licensing beside your bids</div>
+        <div class="hr-fact-text">Compare all of your bids online, next to reviews and licensing information.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="hr-sec hr-how" id="how">
+  <div class="hr-wrap hr-stack">
+    <h2 class="hr-h2">How it works</h2>
+    <div class="hr-steps">
+      <div class="hr-stepcard">
+        <div class="hr-steplab">Step 1</div>
+        <h3 class="hr-h3">One statement of work</h3>
+        <p class="hr-p">We create a scope of work for your job and submit it to multiple contractors.</p>
+      </div>
+      <div class="hr-stepcard">
+        <div class="hr-steplab">Step 2</div>
+        <h3 class="hr-h3">Contractors compete online</h3>
+        <p class="hr-p">When contractors know they are competing for your business, they are more likely to include better materials and warranties.</p>
+      </div>
+      <div class="hr-stepcard">
+        <div class="hr-steplab">Step 3</div>
+        <h3 class="hr-h3">You compare and sign online</h3>
+        <p class="hr-p">See every bid side by side, choose the one you want and sign online. Nobody sits at your kitchen table.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="hr-sec hr-contractor" id="contractor">
+  <div class="hr-wrap hr-split">
+    <div class="hr-split-a">
+      <h2 class="hr-h2">What you see about each contractor</h2>
+      <ul class="hr-list">
+        <li>Their bid on your statement of work</li>
+        <li>The materials they propose</li>
+        <li>The warranty they offer</li>
+        <li>Public reviews</li>
+        <li>Licensing information</li>
+      </ul>
+    </div>
+    <div class="hr-split-b">
+      <h3 class="hr-h3">We help you understand what you're offered</h3>
+      <p class="hr-p"><span class="hr-full">We will do our best to explain the costs and benefits of the products that go on your home so you can make informed decisions about what is best for you. </span>Our goal isn't to sell you upgrades. It's to help you negotiate the best products you can for your home.</p>
+    </div>
+  </div>
+</section>
+
+<section class="hr-sec hr-questions" id="questions">
+  <div class="hr-wrap hr-stack">
+    <h2 class="hr-h2">Questions</h2>
+    <div class="hr-qgrid">
+      <div class="hr-q">
+        <h3 class="hr-h3q">Do you work with my insurance company?</h3>
+        <p class="hr-pq">No. But we can read a loss sheet and tell you what is and is not covered.</p>
+      </div>
+      <div class="hr-q">
+        <h3 class="hr-h3q">Will you inspect my roof?</h3>
+        <p class="hr-pq">No. We do not offer free inspections or assessments of your roof.</p>
+      </div>
+      <div class="hr-q">
+        <h3 class="hr-h3q">Do I have to hire one of the contractors?</h3>
+        <p class="hr-pq">No. There is no obligation to work with our contractors.</p>
+      </div>
+      <div class="hr-q">
+        <h3 class="hr-h3q">Who bids on my job?</h3>
+        <p class="hr-pq">You can choose from local, well-known contractors or work directly with the subcontractors who do the work.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="hr-sec hr-closing" id="start">
+  <div class="hr-wrap hr-closing-in">
+    <h2 class="hr-h2c">Contractors Compete. Homeowners Win.</h2>
+    <div class="hr-zipbox hr-zipbox-c">
+      <label class="hr-lab" for="hr-zip-end">ZIP code of the home</label>
+      <div class="hr-zip-row">
+        <input id="hr-zip-end" class="hr-zip" type="text" inputmode="numeric" autocomplete="postal-code" maxlength="5">
+        <a class="hr-go" href="/start.html" data-hr-go="closing">Get my bids</a>
+      </div>
+    </div>
+    <a class="hr-closing-call" href="tel:+18448753412" data-hr-phone="closing">Questions first? Call (844) 875-3412</a>
+  </div>
+</section>
 </main>
 
 <!-- gh-2598 slice 1: minimal footer carrying the legal links (the Do Not Sell or Share control is required on every page that loads an ad-tag gate, gh-1925 / D-336). Slice 4 replaces this with the full footer. -->
