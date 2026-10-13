@@ -8,6 +8,9 @@
 -- inserted as the table owner and carry is_test = true. Contractors: kA has a payment method and a live bid of
 -- 1000 on the claim; kC has a live bid of 900 and NO payment method; kB has a payment method and NO bid; kE has a
 -- payment method and an EXPIRED bid of 800.
+-- Review 6155135164 (F1/F2) lines: W1 to W4 are the owner's accept_bid() calls (expired bid, contract_signed claim, draft
+-- claim, withdrawn bid), V1 to V4 the owner reviving a quote through the quotes UPDATE policy and then awarding it; Q1/S2
+-- are the contractor's own and service_role's quote writes, which must stay accepted; R7 is accept_bid() on an active claim.
 \set ON_ERROR_STOP on
 BEGIN;
 CREATE TEMP TABLE proof_log(n serial, line text) ON COMMIT DROP;
@@ -38,7 +41,7 @@ BEGIN
   INSERT INTO fx VALUES ('claim', c);
   INSERT INTO public.claims(user_id, status, is_test) VALUES (owner_id, 'draft', true) RETURNING id INTO cd;
   INSERT INTO fx VALUES ('claim_draft', cd);
-  INSERT INTO public.contractors(user_id, company_name, contact_name, email, is_test, has_payment_method, stripe_payment_method_id, stripe_payment_method_last4, status) VALUES (gen_random_uuid(), 'Proof A', 'A', 'a@example.invalid', true, true, 'pm_proof_a', '4242', 'active') RETURNING id INTO v_k; INSERT INTO fx VALUES ('kA', v_k);
+  INSERT INTO public.contractors(user_id, company_name, contact_name, email, is_test, has_payment_method, stripe_payment_method_id, stripe_payment_method_last4, status) VALUES (gen_random_uuid(), 'Proof A', 'A', 'a@example.invalid', true, true, 'pm_proof_a', '4242', 'active') RETURNING id INTO v_k; INSERT INTO fx VALUES ('kA', v_k); INSERT INTO fx SELECT 'uA', user_id FROM public.contractors WHERE id = v_k;
   INSERT INTO public.contractors(user_id, company_name, contact_name, email, is_test, has_payment_method, stripe_payment_method_id, stripe_payment_method_last4, status) VALUES (gen_random_uuid(), 'Proof B', 'B', 'b@example.invalid', true, true, 'pm_proof_b', '4242', 'active') RETURNING id INTO v_k; INSERT INTO fx VALUES ('kB', v_k);
   INSERT INTO public.contractors(user_id, company_name, contact_name, email, is_test, has_payment_method, status) VALUES (gen_random_uuid(), 'Proof C', 'C', 'c@example.invalid', true, false, 'active') RETURNING id INTO v_k; INSERT INTO fx VALUES ('kC', v_k);
   INSERT INTO public.contractors(user_id, company_name, contact_name, email, is_test, has_payment_method, stripe_payment_method_id, stripe_payment_method_last4, status) VALUES (gen_random_uuid(), 'Proof E', 'E', 'e@example.invalid', true, true, 'pm_proof_e', '4242', 'active') RETURNING id INTO v_k; INSERT INTO fx VALUES ('kE', v_k);
@@ -52,7 +55,8 @@ CREATE FUNCTION pg_temp.reset() RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
   UPDATE public.claims SET status = 'bidding', selected_contractor_id = NULL, selected_bid_amount = NULL WHERE id = pg_temp.fx('claim');
   UPDATE public.claims SET status = 'draft', selected_contractor_id = NULL, selected_bid_amount = NULL WHERE id = pg_temp.fx('claim_draft');
-  UPDATE public.quotes SET status = 'submitted' WHERE id IN (pg_temp.fx('qA'), pg_temp.fx('qC'), pg_temp.fx('qE'), pg_temp.fx('qAd'));
+  UPDATE public.quotes SET status = 'submitted', bid_status = 'active' WHERE id IN (pg_temp.fx('qA'), pg_temp.fx('qC'), pg_temp.fx('qAd'));
+  UPDATE public.quotes SET status = 'submitted', bid_status = 'expired' WHERE id = pg_temp.fx('qE');
 END $$;
 -- att: run one SQL text as a role, log the outcome and the claim's resulting award columns, then reset
 CREATE FUNCTION pg_temp.att(p_label text, p_role text, p_sub uuid, p_email text, p_sql text, p_claim text DEFAULT 'claim') RETURNS void LANGUAGE plpgsql AS $$
@@ -71,6 +75,17 @@ BEGIN
   END;
   SELECT format('status=%s selected=%s amount=%s', status, coalesce((SELECT company_name FROM public.contractors WHERE id = selected_contractor_id), 'NULL'), coalesce(selected_bid_amount::text, 'NULL')) INTO st FROM public.claims WHERE id = pg_temp.fx(p_claim);
   INSERT INTO proof_log(line) VALUES (p_label || ': ' || res || ' | claim now ' || st);
+  PERFORM pg_temp.reset();
+END $$;
+
+-- seq2: two writes in a row as the same caller (revive a quote, then try to award it), logged on one line
+CREATE FUNCTION pg_temp.seq2(p_label text, p_role text, p_sub uuid, p_email text, p_sql1 text, p_sql2 text) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE r1 text; r2 text; st text;
+BEGIN
+  r1 := pg_temp.try_as(p_role, p_sub, p_email, p_sql1);
+  r2 := pg_temp.try_as(p_role, p_sub, p_email, p_sql2);
+  SELECT format('status=%s selected=%s amount=%s', status, coalesce((SELECT company_name FROM public.contractors WHERE id = selected_contractor_id), 'NULL'), coalesce(selected_bid_amount::text, 'NULL')) INTO st FROM public.claims WHERE id = pg_temp.fx('claim');
+  INSERT INTO proof_log(line) VALUES (p_label || ': ' || r1 || ' ; then ' || r2 || ' | claim now ' || st);
   PERFORM pg_temp.reset();
 END $$;
 
@@ -104,6 +119,39 @@ UPDATE public.claims SET status = 'bidding', selected_contractor_id = NULL, sele
 SELECT pg_temp.att('S1 service_role sets the selected contractor to kB (switch-contractor style Edge Function write)', 'service_role', NULL, NULL, format('UPDATE public.claims SET selected_contractor_id = %L, selected_bid_amount = 5 WHERE id = %L', pg_temp.fx('kB'), pg_temp.fx('claim')));
 SELECT pg_temp.att('A1 admin session awards kB without a bid', 'authenticated', pg_temp.fx('other'), 'dustinstohler1@gmail.com', format('UPDATE public.claims SET selected_contractor_id = %L, selected_bid_amount = 5, status = ''awarded'' WHERE id = %L', pg_temp.fx('kB'), pg_temp.fx('claim')));
 SELECT pg_temp.att('X1 a stranger tries the same direct write on the owner''s claim (RLS: no row)', 'authenticated', pg_temp.fx('other'), 'stranger@example.invalid', format('UPDATE public.claims SET selected_contractor_id = %L, selected_bid_amount = 5, status = ''awarded'' WHERE id = %L', pg_temp.fx('kB'), pg_temp.fx('claim')));
+
+-- F1 (review 6155135164): the owner's accept_bid() calls. ACCEPTED today (and after #2623 alone), REJECTED P0001 after.
+SELECT pg_temp.att('W1 owner calls accept_bid on kE''s expired bid (bid_status expired)', 'authenticated', pg_temp.fx('owner'), 'owner@example.invalid', format('SELECT * FROM public.accept_bid(%L, %L)', pg_temp.fx('claim'), pg_temp.fx('qE')));
+UPDATE public.claims SET status = 'contract_signed', selected_contractor_id = pg_temp.fx('kA'), selected_bid_amount = 1000 WHERE id = pg_temp.fx('claim');
+SELECT pg_temp.att('W2 owner calls accept_bid(kA live bid) on a contract_signed claim (un-sign)', 'authenticated', pg_temp.fx('owner'), 'owner@example.invalid', format('SELECT * FROM public.accept_bid(%L, %L)', pg_temp.fx('claim'), pg_temp.fx('qA')));
+UPDATE public.claims SET status = 'bidding', selected_contractor_id = NULL, selected_bid_amount = NULL WHERE id = pg_temp.fx('claim');
+SELECT pg_temp.att('W3 owner calls accept_bid on a draft claim', 'authenticated', pg_temp.fx('owner'), 'owner@example.invalid', format('SELECT * FROM public.accept_bid(%L, %L)', pg_temp.fx('claim_draft'), pg_temp.fx('qAd')), 'claim_draft');
+UPDATE public.quotes SET bid_status = 'cancelled' WHERE id = pg_temp.fx('qA');
+SELECT pg_temp.att('W4 owner calls accept_bid on kA''s withdrawn bid (bid_status cancelled)', 'authenticated', pg_temp.fx('owner'), 'owner@example.invalid', format('SELECT * FROM public.accept_bid(%L, %L)', pg_temp.fx('claim'), pg_temp.fx('qA')));
+
+-- F2: the owner revives a quote through the quotes UPDATE policy, then awards it. ACCEPTED today, REJECTED after (both steps)
+SELECT pg_temp.seq2('V1 owner sets qE.bid_status=active, then awards kE at 800', 'authenticated', pg_temp.fx('owner'), 'owner@example.invalid',
+  format('UPDATE public.quotes SET bid_status = ''active'' WHERE id = %L', pg_temp.fx('qE')),
+  format('UPDATE public.claims SET selected_contractor_id = %L, selected_bid_amount = 800, status = ''awarded'' WHERE id = %L', pg_temp.fx('kE'), pg_temp.fx('claim')));
+UPDATE public.quotes SET bid_status = 'cancelled', status = 'declined' WHERE id = pg_temp.fx('qA');
+SELECT pg_temp.seq2('V2 kA bid withdrawn+declined; owner sets bid_status=active,status=selected, then awards kA at 1000', 'authenticated', pg_temp.fx('owner'), 'owner@example.invalid',
+  format('UPDATE public.quotes SET bid_status = ''active'', status = ''selected'' WHERE id = %L', pg_temp.fx('qA')),
+  format('UPDATE public.claims SET selected_contractor_id = %L, selected_bid_amount = 1000, status = ''awarded'' WHERE id = %L', pg_temp.fx('kA'), pg_temp.fx('claim')));
+UPDATE public.quotes SET status = 'declined' WHERE id = pg_temp.fx('qA');
+SELECT pg_temp.seq2('V3 owner moves a declined (bid_status active) quote back to selected, then awards it', 'authenticated', pg_temp.fx('owner'), 'owner@example.invalid',
+  format('UPDATE public.quotes SET status = ''selected'' WHERE id = %L', pg_temp.fx('qA')),
+  format('UPDATE public.claims SET selected_contractor_id = %L, selected_bid_amount = 1000, status = ''awarded'' WHERE id = %L', pg_temp.fx('kA'), pg_temp.fx('claim')));
+UPDATE public.quotes SET bid_status = 'cancelled' WHERE id = pg_temp.fx('qA');
+SELECT pg_temp.seq2('V4 kA bid withdrawn (status still submitted); owner sets status=selected only, then awards it', 'authenticated', pg_temp.fx('owner'), 'owner@example.invalid',
+  format('UPDATE public.quotes SET status = ''selected'' WHERE id = %L', pg_temp.fx('qA')),
+  format('UPDATE public.claims SET selected_contractor_id = %L, selected_bid_amount = 1000, status = ''awarded'' WHERE id = %L', pg_temp.fx('kA'), pg_temp.fx('claim')));
+
+-- Paths that must stay ACCEPTED after the new rules
+UPDATE public.claims SET status = 'active' WHERE id = pg_temp.fx('claim');
+SELECT pg_temp.att('R7 owner calls accept_bid on a live bid of an ACTIVE claim (the other awardable status)', 'authenticated', pg_temp.fx('owner'), 'owner@example.invalid', format('SELECT * FROM public.accept_bid(%L, %L)', pg_temp.fx('claim'), pg_temp.fx('qA')));
+SELECT pg_temp.att('Q1 the bidding contractor (kA) changes its own bid_status to superseded (contractor path, untouched)', 'authenticated', pg_temp.fx('uA'), 'a@example.invalid', format('UPDATE public.quotes SET bid_status = ''superseded'' WHERE id = %L', pg_temp.fx('qA')));
+SELECT pg_temp.att('S2 service_role sets kE''s bid_status to active (process-bid-expirations / rescind-bid style write, untouched)', 'service_role', NULL, NULL, format('UPDATE public.quotes SET bid_status = ''active'' WHERE id = %L', pg_temp.fx('qE')));
+SELECT pg_temp.att('R8 owner selects a submitted, active bid (the quote step of the React award)', 'authenticated', pg_temp.fx('owner'), 'owner@example.invalid', format('UPDATE public.quotes SET status = ''selected'' WHERE id = %L', pg_temp.fx('qA')));
 
 -- Whole React sequence (claim, winning quote, decline the others) for the app-award-still-succeeds line
 DO $seq$
