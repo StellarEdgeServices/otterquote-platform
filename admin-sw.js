@@ -39,7 +39,8 @@ const ADMIN_PAGES = [
   '/admin-fee-config.html',
   '/admin-incomplete-profiles.html',
   '/admin-template-review.html',
-  '/admin-warranty-drift.html'
+  '/admin-warranty-drift.html',
+  '/admin-halted-contracts.html'
 ];
 
 // Same gh-831 reasoning as partner-sw.js: auth-critical -- must never be

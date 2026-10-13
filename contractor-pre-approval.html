@@ -1207,7 +1207,7 @@
         };
 
         try {
-            const { error } = await sb.from('contractors')
+            const { data: upRows, error } = await sb.from('contractors')
                 .update({
                     cpa_accepted_at:          now,
                     cpa_version:              'v1-2026-04',
@@ -1222,9 +1222,11 @@
                     onboarding_step:          3,
                     updated_at:               now,
                 })
-                .eq('user_id', currentUser.id);
+                .eq('user_id', currentUser.id)
+                .select('id');
 
             if (error) throw error;
+            if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: contractors (step 3 agreements)');
 
             // Call record-attestation Edge Function for server-side IP capture
             try {
@@ -1315,16 +1317,18 @@
 
     async function finishAndSubmit(contractTemplates) {
         try {
-            const { error } = await sb.from('contractors')
+            const { data: upRows, error } = await sb.from('contractors')
                 .update({
                     contract_templates: contractTemplates,
                     status:             'pending_approval',
                     onboarding_step:    4,
                     updated_at:         new Date().toISOString(),
                 })
-                .eq('user_id', currentUser.id);
+                .eq('user_id', currentUser.id)
+                .select('id');
 
             if (error) throw error;
+            if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: contractors (submit application)');
 
             // GA4
             if (typeof gtag === 'function') {

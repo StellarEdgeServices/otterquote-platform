@@ -123,6 +123,33 @@ export function profileIncompleteRedirect(c: BidGateContractor | null | undefine
 // TRADE / PATH FLAGS (contractor-bid-form.html:3123-3128)
 // =============================================================================
 
+/**
+ * gh-2559 / D-368: the columns the bid form reads from public.bidder_claim_summary (the claim SUMMARY view; the
+ * base claims row is not readable to a bidder once the narrowing migration is applied). The view has no street
+ * address, homeowner identity or user id: location is city and zip, and the estimate and measurements file names
+ * are returned to the contractor the homeowner selected only. tests/gh2559-bidder-claims-view.mjs checks this
+ * string equals contractor-bid-form.html's and the proof file's.
+ */
+export const BIDDER_CLAIM_BID_COLS =
+  'id, trades, job_type, funding_type, damage_type, material_category, shingle_type, impact_class, designer_product, designer_manufacturer, rcv_amount, parsed_line_items, siding_bid_released_at, location_city, location_zip, carrier_profile_name, estimate_filename, measurements_filename, selected_contractor_id';
+
+/** City and zip of a claim read from the summary view, e.g. "Carmel, IN 46032" (D-074: never the street). */
+export function claimLocationLabel(claim: Record<string, unknown> | null | undefined): string {
+  const city = typeof claim?.location_city === 'string' ? claim.location_city.trim() : '';
+  const zip = typeof claim?.location_zip === 'string' ? claim.location_zip.trim() : '';
+  if (!city) return zip;
+  return zip ? `${city}, IN ${zip}` : city;
+}
+
+/**
+ * The view returns the carrier's name as carrier_profile_name; the form reads claim.carrier_profiles.carrier_name
+ * (the shape the old claims + carrier_profiles join gave). Rebuild that shape so nothing else changes.
+ */
+export function withCarrierProfile<T extends Record<string, unknown>>(row: T): T & { carrier_profiles: { carrier_name: string } | null } {
+  const name = typeof row.carrier_profile_name === 'string' && row.carrier_profile_name ? row.carrier_profile_name : null;
+  return { ...row, carrier_profiles: name ? { carrier_name: name } : null };
+}
+
 export interface BidClaim {
   id?: string;
   user_id?: string | null;

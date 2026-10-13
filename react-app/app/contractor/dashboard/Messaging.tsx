@@ -49,17 +49,35 @@ export function Messaging({ userId }: { userId: string }) {
       const { data: contractor } = await supabase
         .from('contractors').select('id').eq('user_id', userId).single();
       if (!contractor || !active) return;
+      // gh-2559 / D-368: a project's label is the full address only once the contractor is selected on it
+      // (quote status selected, awarded or completed); before that it is the city and zip from the claim
+      // SUMMARY view (the base claims row is readable to the selected contractor only).
       const { data: quotes } = await supabase
         .from('quotes')
-        .select('claim_id, claims:claim_id(id, property_address)')
+        .select('claim_id, status, claims:claim_id(id, property_address)')
         .eq('contractor_id', contractor.id);
+      if (!active) return;
+      const quoteClaimIds = (quotes || []).map((q: Record<string, unknown>) => String(q.claim_id));
+      const summaryById: Record<string, Record<string, unknown>> = {};
+      if (quoteClaimIds.length > 0) {
+        const { data: summaries } = await supabase
+          .from('bidder_claim_summary')
+          .select('id, location_city, location_zip')
+          .in('id', quoteClaimIds);
+        (summaries || []).forEach((s: Record<string, unknown>) => { summaryById[String(s.id)] = s; });
+      }
       if (!active) return;
       const opts: ClaimOption[] = (quotes || []).map((q: Record<string, unknown>) => {
         const claim = (q.claims as Record<string, unknown>) || {};
         const claimId = String(q.claim_id);
+        const won = ['selected', 'awarded', 'completed'].includes(String(q.status));
+        const summary = summaryById[claimId];
+        const where = summary && summary.location_city
+          ? `${summary.location_city as string}${summary.location_zip ? `, IN ${summary.location_zip as string}` : ''}`
+          : '';
         return {
           claimId,
-          label: (claim.property_address as string) || `Claim ${claimId.substring(0, 8)}`,
+          label: (won && (claim.property_address as string)) || where || `Claim ${claimId.substring(0, 8)}`,
         };
       });
       setClaims(opts);

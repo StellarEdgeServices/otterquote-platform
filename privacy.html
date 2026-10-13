@@ -540,21 +540,39 @@
           var body = { ad_sharing_opt_out: true, ad_sharing_opt_out_at: new Date().toISOString(), ad_sharing_opt_out_source: 'in_page_button' };
           // Deploy-order safety: until migration 20261003011500_gh1925 widens the CHECK, PostgREST rejects the source value with
           // code 23514 (check_violation). On exactly that error, retry ONCE without the source so the opt-out flag itself always lands.
-          fetch(url, { method: 'PATCH', headers: headers, body: JSON.stringify(body) }).then(function (res) {
+          return fetch(url, { method: 'PATCH', headers: headers, body: JSON.stringify(body), keepalive: true }).then(function (res) {
             if (!res || res.ok || typeof res.json !== 'function') { return; }
             return res.json().then(function (err) { return err; }, function () { return null; }).then(function (err) {
               if (!err || err.code !== '23514') { return; }
               try { console.warn('oq opt-out: source rejected by CHECK (23514); retrying without ad_sharing_opt_out_source'); } catch (e) { /* no console */ }
               var fallback = { ad_sharing_opt_out: body.ad_sharing_opt_out, ad_sharing_opt_out_at: body.ad_sharing_opt_out_at };
-              return fetch(url, { method: 'PATCH', headers: headers, body: JSON.stringify(fallback) });
+              return fetch(url, { method: 'PATCH', headers: headers, body: JSON.stringify(fallback), keepalive: true });
             });
           }).catch(function () { /* best effort */ });
         } catch (e) { /* never break a page over the profile write */ }
       }
+      // gh-1925 stop-and-reload (Ben 6029316903, spec 6025412221): the cookie only gates tags on the NEXT page load, so on the press the
+      // already-loaded GA4 and Clarity tags are stopped here, then the page reloads once so every gate re-reads the opt-out. The reload waits
+      // for the signed-in profile PATCH, capped at 1.5 s; both PATCHes carry keepalive:true so the browser finishes them even if the cap reloads first. No visible wording changes.
+      function stopLoadedTrackers() {
+        try { window['ga-disable-G-D1Y1TLGEFY'] = true; } catch (e) { /* never break a page over a tracker flag */ }
+        try { if (typeof window.clarity === 'function') { window.clarity('stop'); } } catch (e) { /* no clarity */ }
+      }
       btn.addEventListener('click', function () {
         writeCookie();
-        persistProfileFlag();
+        stopLoadedTrackers();
+        var pending = persistProfileFlag();
         btn.disabled = true;
+        var reloaded = false;
+        function reloadOnce() {
+          if (reloaded) { return; }
+          reloaded = true;
+          try { if (window.location && typeof window.location.reload === 'function') { window.location.reload(); } } catch (e) { /* stay on the page */ }
+        }
+        try {
+          if (pending && typeof pending.then === 'function') { pending.then(reloadOnce, reloadOnce); } else { reloadOnce(); }
+          if (typeof setTimeout === 'function') { setTimeout(reloadOnce, 1500); }
+        } catch (e) { reloadOnce(); }
       });
     })();
     </script>

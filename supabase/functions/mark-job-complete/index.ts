@@ -27,7 +27,7 @@
  *   401 — missing or invalid JWT
  *   403 — contractor has no 'selected'/'awarded' quote on this claim
  *   404 — claim not found
- *   409 — claim is not in a completable state (not contract_signed or awarded)
+ *   409 — claim is not in a completable state (only contract_signed; gh-2479)
  *   500 — internal error
  *
  * Downstream listeners (D-228 + D-231 + #856 wired in this build):
@@ -47,9 +47,13 @@ import { jobCompleteEmailText, jobCompleteEmailHtml } from "./templates.ts"; // 
 const FUNCTION_NAME = "mark-job-complete";
 
 // States in which a contractor is allowed to mark a job complete.
-// Other states (bidding, draft, submitted) mean no contractor has been
-// selected yet — completing makes no sense.
-const COMPLETABLE_STATES = ["contract_signed", "awarded"];
+// gh-2479 (CTO ruling 6049009981): ONLY 'contract_signed'. Since #2541 only the server can
+// set contract_signed, at the point the contract is signed. 'awarded' used to be accepted
+// too, which let a user who is both the claim owner and an active contractor create a bid,
+// select it, and complete a job that never had a signed contract (and so accrue a referral
+// commission). Other states (bidding, draft, submitted, awarded) mean there is no signed
+// contract yet, so completing makes no sense.
+const COMPLETABLE_STATES = ["contract_signed"];
 
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",

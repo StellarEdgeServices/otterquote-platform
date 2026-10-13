@@ -467,7 +467,9 @@ function FormContent({
       await saveProjectConfirmation(claimId, payload);
     } catch (saveErr) {
       setSubmitting(false);
-      setSubmitError(saveErr instanceof Error ? saveErr.message : 'Failed to save project confirmation.');
+      // Internal error text (e.g. update_zero_rows) is logged, never shown.
+      console.error('[project-confirmation] save failed:', saveErr);
+      setSubmitError('Failed to save project confirmation.');
       return;
     }
 

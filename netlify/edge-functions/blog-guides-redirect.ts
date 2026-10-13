@@ -117,6 +117,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/show-contractor-insurance-estimate.html',
   '/guides/window-replacement-bid-comparison':
     '/guides/window-replacement-bid-comparison.html',
+  '/guides/siding-replacement-cost-factors':
+    '/guides/siding-replacement-cost-factors.html',
   '/guides/hail-damage-found-months-later':
     '/guides/hail-damage-found-months-later.html',
 

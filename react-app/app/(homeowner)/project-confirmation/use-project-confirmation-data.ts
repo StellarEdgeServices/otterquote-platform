@@ -228,13 +228,17 @@ export async function saveProjectConfirmation(
   claimId: string,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  const { error } = await supabase
+  const { data: upRows, error } = await supabase
     .from('claims')
     .update({ project_confirmation: payload })
-    .eq('id', claimId);
+    .eq('id', claimId)
+    .select('id');
 
   if (error) {
     throw new Error('Failed to save project confirmation: ' + error.message);
+  }
+  if (!Array.isArray(upRows) || upRows.length === 0) {
+    throw new Error('Failed to save project confirmation: update_zero_rows');
   }
 }
 
