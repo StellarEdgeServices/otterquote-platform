@@ -1,8 +1,8 @@
 // gh-2154 P-3 review round 3 (REVIEW FAIL 5833567534) — fail-first test.
 //
 // The review found: the trigger migration
-// (20260924200316_gh2154_p3_partner_new_alert_trigger.sql) sorts BEFORE the
-// column migration (20260925131429_gh2154_p3_notifications_referral_agent_id.sql)
+// (now 20260925180241_gh2154_p3_partner_new_alert_trigger.sql) sorted BEFORE the
+// column migration (now 20260925180145_gh2154_p3_notifications_referral_agent_id.sql)
 // that adds the column its Edge Function dedupe query needs, and had no
 // guard against being applied first. It also found the notifications RLS
 // policies were not tightened (a signed-in user could forge/suppress a
@@ -19,8 +19,8 @@
 
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
-const TRIGGER_MIGRATION_PATH = "supabase/migrations/20260924200316_gh2154_p3_partner_new_alert_trigger.sql";
-const COLUMN_MIGRATION_PATH  = "supabase/migrations/20260925131429_gh2154_p3_notifications_referral_agent_id.sql";
+const TRIGGER_MIGRATION_PATH = "supabase/migrations/20260925180241_gh2154_p3_partner_new_alert_trigger.sql";
+const COLUMN_MIGRATION_PATH  = "supabase/migrations/20260925180145_gh2154_p3_notifications_referral_agent_id.sql";
 const PROOF_SQL_PATH         = "supabase/tests/gh2154_p3_proof.sql";
 const SCHEMA_PENDING_PATH    = "sql/schema-pending.json";
 
@@ -28,13 +28,15 @@ async function read(path: string): Promise<string> {
   return await Deno.readTextFile(path);
 }
 
-Deno.test("(a) trigger migration filename still sorts before the column migration filename (unguarded ordering hazard exists at the filesystem level)", () => {
-  // This is true both before and after the fix -- the guard, not a
-  // rename, is what makes the wrong order safe. Documents the hazard the
-  // guard exists to cover.
+Deno.test("(a) column migration filename now sorts BEFORE the trigger migration filename (gh-1438 part 5: both files carry their real applied ledger versions, so the filesystem order equals the safe go-live order)", () => {
+  // gh-1438 part 5 renamed the pair to the versions recorded in
+  // supabase_migrations.schema_migrations (column 20260925180145, trigger
+  // 20260925180241). Before the rename the trigger file sorted first (an
+  // ordering hazard covered only by the guard in (b)); after it the sort
+  // order IS the safe order. The guard in (b) stays as defence in depth.
   const triggerStamp = TRIGGER_MIGRATION_PATH.match(/(\d{14})/)![1];
   const columnStamp  = COLUMN_MIGRATION_PATH.match(/(\d{14})/)![1];
-  assertEquals(triggerStamp < columnStamp, true);
+  assertEquals(columnStamp < triggerStamp, true);
 });
 
 Deno.test("(b) trigger migration RAISEs an EXCEPTION if notifications.referral_agent_id is missing", async () => {

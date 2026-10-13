@@ -49,10 +49,12 @@ export function PcTemplates({ contractorId }: { contractorId: string }) {
       // Merge into the freshest JSONB to avoid clobbering concurrent slot writes.
       const { data: fresh } = await supabase.from('contractors').select('color_confirmation_template').eq('id', contractorId).single();
       const updated = mergePcTemplate((fresh?.color_confirmation_template as PcTemplateMap) ?? {}, slotKey, filePath, new Date().toISOString());
-      const { error: dbErr } = await supabase.from('contractors')
+      const { data: upRows, error: dbErr } = await supabase.from('contractors')
         .update({ color_confirmation_template: updated, pc_template_migration_pending: false, updated_at: new Date().toISOString() })
-        .eq('id', contractorId);
+        .eq('id', contractorId)
+        .select('id');
       if (dbErr) throw dbErr;
+      if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: contractors (color confirmation template)');
       setMap(updated);
     } catch (err2) {
       console.error('Error uploading PC template:', err2);

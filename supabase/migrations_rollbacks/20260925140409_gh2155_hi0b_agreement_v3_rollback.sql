@@ -1,4 +1,4 @@
--- Rollback for: 20260925012956_gh2155_hi0b_agreement_v3.sql
+-- Rollback for: 20260925140409_gh2155_hi0b_agreement_v3.sql
 -- GitHub: #2155 (HI-0b)
 --
 -- Restores the pre-migration LIVE register_partner body byte-identical to

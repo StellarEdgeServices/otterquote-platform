@@ -3,8 +3,11 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import {
+  BIDDER_CLAIM_DASH_COLS,
+  BIDDER_CLAIM_PEND_COLS,
   buildLocation,
   buildMaterial,
+  buildPendingLocation,
   contractorNeedsToSign,
   filterOpportunities,
   formatActivityTime,
@@ -108,9 +111,10 @@ export function useDashboardData(
       try {
         // 1) Available opportunities (same filter as the opportunities page).
         try {
+          // gh-2559 / D-368: the claim SUMMARY view, not the base claims row.
           const { data: oppClaims } = await supabase
-            .from('claims')
-            .select('*')
+            .from('bidder_claim_summary')
+            .select(BIDDER_CLAIM_DASH_COLS)
             .eq('ready_for_bids', true)
             .in('status', ['active', 'bidding', 'pending'])
             .order('created_at', { ascending: false })
@@ -173,15 +177,30 @@ export function useDashboardData(
           .order('created_at', { ascending: false })
           .limit(50);
 
+        // gh-2559 / D-368: a bid that has not been selected shows its claim's city, zip and damage type from the
+        // claim SUMMARY view (the base claims row is readable only to the selected contractor).
+        const pendingIds = (allQuotes || [])
+          .filter((q: Record<string, unknown>) => String(q.status) === 'submitted')
+          .map((q: Record<string, unknown>) => String(q.claim_id));
+        const summaryById: Record<string, Record<string, unknown>> = {};
+        if (pendingIds.length > 0) {
+          const { data: summaries } = await supabase
+            .from('bidder_claim_summary')
+            .select(BIDDER_CLAIM_PEND_COLS)
+            .in('id', pendingIds);
+          (summaries || []).forEach((s: Record<string, unknown>) => { summaryById[String(s.id)] = s; });
+        }
+
         (allQuotes || []).forEach((q: Record<string, unknown>) => {
           const claim = (q.claims as Record<string, unknown>) || {};
           const status = String(q.status);
           if (status === 'submitted') {
+            const summary = summaryById[String(q.claim_id)] || {};
             pendingBids.push({
               quoteId: String(q.id),
               claimId: String(q.claim_id),
-              location: buildLocation(claim.property_address as string, status),
-              damageType: titleCase(claim.damage_type as string, 'Roofing'),
+              location: buildPendingLocation(summary.location_city as string, summary.location_zip as string),
+              damageType: titleCase((summary.damage_type as string) || (claim.damage_type as string), 'Roofing'),
               bidAmount: formatMoney(q.total_price as number),
               submittedDate: new Date(String(q.created_at)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
               bidStatus: (q.bid_status as string) || null,

@@ -26,6 +26,7 @@ Run: python3 tools/generate_location_pages.test.py
 """
 
 import contextlib
+import html
 import importlib.util
 import io
 import json
@@ -1593,6 +1594,153 @@ class LintTests(unittest.TestCase):
 
     def test_lint_does_not_false_positive_on_the_required_copy(self):
         self.lint("A contractor's estimate. Local contractors set their own prices. css a:hover { color: red }")
+
+
+class SourcesListTests(unittest.TestCase):
+    """gh-2423: every county page lists, with real links, the sources its prose cites."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = pathlib.Path(self._tmp.name)
+        self.out = self.tmp / "locations"
+        self.sitemap = self.tmp / "sitemap.xml"
+        self.sitemap.write_text(SITEMAP_SEED, encoding="utf-8")
+        self.fx_counties = self.tmp / "us-counties.json"
+        self.fx_counties.write_text(json.dumps(FIXTURE_COUNTIES), encoding="utf-8")
+        self.fx_profiles = self.tmp / "profiles"
+        self.fx_profiles.mkdir()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def fx_profile(self, with_sources=True, mutate=None):
+        prof = json.loads(json.dumps(FIXTURE_PROFILE))
+        if with_sources:
+            prof["county_sources"] = {
+                c: {t: [
+                    {"label": "NOAA Storm Events bulk data files", "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/"},
+                    {"label": f"{c} County permits", "url": f"https://example.gov/{c.lower()}/permits?a=1&b=2"},
+                ] for t in ("roofing", "siding", "gutters", "windows")}
+                for c in ("Alpha", "Beta", "Gamma")
+            }
+        if mutate:
+            mutate(prof)
+        (self.fx_profiles / "ZZ.json").write_text(json.dumps(prof), encoding="utf-8")
+
+    def run_fx(self, **kw):
+        return quiet(glp.generate, ["ZZ"], out_dir=self.out, sitemap_path=self.sitemap,
+                     counties_path=self.fx_counties, profiles_dir=self.fx_profiles, **kw)
+
+    @staticmethod
+    def committed_pairs():
+        """(state, county, trade, sources, page path) for every committed generated page."""
+        pairs = []
+        for page in sorted((REPO_ROOT / "locations").glob("*/*/index.html")):
+            slug, trade = page.parent.parent.name, page.parent.name
+            m = re.match(r"(.+)-county-([a-z]{2})$", slug)
+            if not m:
+                continue
+            state = m.group(2).upper()
+            prof = glp.load_profile(state)
+            county = next(c for c in prof["county_region"] if glp.county_slug(c, state) == slug)
+            pairs.append((state, county, trade, prof["county_sources"].get(county, {}).get(trade, []), page))
+        return pairs
+
+    def test_every_committed_county_page_has_a_non_empty_sources_list(self):
+        pairs = self.committed_pairs()
+        self.assertEqual(len(pairs), 17)
+        for state, county, trade, sources, _page in pairs:
+            with self.subTest(f"{county}-{state}/{trade}"):
+                self.assertGreaterEqual(len(sources), 3)   # NOAA or Census plus at least one local source
+
+    def test_every_url_is_https_absolute_and_unique_per_page(self):
+        for state, county, trade, sources, _page in self.committed_pairs():
+            with self.subTest(f"{county}-{state}/{trade}"):
+                urls = [s["url"] for s in sources]
+                self.assertEqual(len(urls), len(set(urls)))
+                for u in urls:
+                    self.assertRegex(u, r"^https://[A-Za-z0-9.-]+\.[a-z]{2,}/")
+                    self.assertNotRegex(u, r"\s")
+                    self.assertNotRegex(u, r"(?i)google\.[a-z]+/search|bing\.com/search|duckduckgo\.com/\?q=|[?&]q=")
+
+    def test_committed_pages_render_exactly_the_profile_sources(self):
+        for state, county, trade, sources, page in self.committed_pairs():
+            with self.subTest(f"{county}-{state}/{trade}"):
+                text = page.read_text(encoding="utf-8")
+                self.assertEqual(text.count("<h2>Sources</h2>"), 1)
+                block = re.search(r"<h2>Sources</h2>\s*<ul>(.*?)</ul>", text, re.S).group(1)
+                found = re.findall(r'<li><a href="([^"]+)" rel="noopener" target="_blank">([^<]+)</a></li>', block)
+                self.assertEqual(len(found), len(sources))
+                for (href, label), src in zip(found, sources):
+                    self.assertEqual(html.unescape(href), src["url"])
+                    self.assertEqual(html.unescape(label), src["label"])
+                # the Sources section sits after the county notes and before the boilerplate guides
+                self.assertLess(text.index("County notes</h2>"), text.index("<h2>Sources</h2>"))
+                self.assertLess(text.index("<h2>Sources</h2>"), text.index("<h2>Homeowner guides</h2>"))
+
+    def test_generator_renders_links_with_noopener_and_escapes_the_url(self):
+        self.fx_profile()
+        self.run_fx(require_sources=True)
+        page = (self.out / glp.county_slug("Alpha", "ZZ") / "roofing" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("<h2>Sources</h2>", page)
+        self.assertIn('<a href="https://example.gov/alpha/permits?a=1&amp;b=2" rel="noopener" target="_blank">Alpha County permits</a>', page)
+        block = re.search(r"<h2>Sources</h2>.*?</ul>", page, re.S).group(0)
+        self.assertEqual(len(re.findall(r'<li><a href="https://', block)), 2)
+        # a trade with no sources entry renders no Sources section
+        prof = glp.load_profile("ZZ", self.fx_profiles)
+        del prof["county_sources"]["Alpha"]["siding"]
+        self.assertNotIn("<h2>Sources</h2>", glp.build_page("Alpha", "siding", "2026-01-01", "ZZ", profile=prof))
+        self.assertIn("<h2>Sources</h2>", glp.build_page("Alpha", "roofing", "2026-01-01", "ZZ", profile=prof))
+
+    def test_page_without_sources_is_refused_when_sources_are_required(self):
+        # negative control: county notes present, no county_sources -> the CLI path refuses and writes nothing
+        self.fx_profile(with_sources=False)
+        with self.assertRaises(glp.ComplianceError):
+            self.run_fx(require_sources=True)
+        self.assertFalse(self.out.exists())
+        # the same data still builds when the requirement is off (library and fixture use)
+        self.assertGreater(self.run_fx()["written"], 0)
+
+    def test_committed_pages_fail_the_requirement_once_their_sources_are_removed(self):
+        _state, _county, _trade, _sources, page = self.committed_pairs()[0]
+        text = page.read_text(encoding="utf-8")
+        glp.require_sources_list(text, "ok")   # passes as committed
+        stripped = re.sub(r"<h2>Sources</h2>\s*<ul>.*?</ul>\s*", "", text, flags=re.S)
+        self.assertNotEqual(stripped, text)
+        with self.assertRaises(glp.ComplianceError):
+            glp.require_sources_list(stripped, "stripped")
+        with self.assertRaises(glp.ComplianceError):   # a Sources heading with no external link is not enough
+            glp.require_sources_list(re.sub(r"<li>.*?</li>", "", text, flags=re.S), "no-links")
+
+    def test_malformed_county_sources_are_explicit_errors(self):
+        good = {"label": "Ok", "url": "https://example.gov/a"}
+
+        def set_first(**over):
+            return lambda p: p["county_sources"]["Alpha"]["roofing"].__setitem__(0, {**good, **over})
+
+        def dup(p):
+            p["county_sources"]["Alpha"]["roofing"][:] = [dict(good), dict(good)]
+
+        cases = {
+            "http url": set_first(url="http://example.gov/a"),
+            "relative url": set_first(url="/a"),
+            "url with space": set_first(url="https://example.gov/a b"),
+            "url with quote": set_first(url='https://example.gov/a"x'),
+            "duplicate url": dup,
+            "markup label": set_first(label="<b>x</b>"),
+            "empty label": set_first(label=" "),
+            "extra key": set_first(note="x"),
+            "empty list": lambda p: p["county_sources"]["Alpha"].update(roofing=[]),
+            "unknown county": lambda p: p["county_sources"].update(Nowhere={"roofing": [good]}),
+            "unknown trade": lambda p: p["county_sources"]["Alpha"].update(plumbing=[good]),
+            "not an object": lambda p: p.update(county_sources=["x"]),
+        }
+        for label, mutate in cases.items():
+            with self.subTest(label):
+                self.fx_profile(mutate=mutate)
+                with self.assertRaises(glp.StateConfigError):
+                    self.run_fx()
+                self.assertFalse(self.out.exists())
 
 
 if __name__ == "__main__":

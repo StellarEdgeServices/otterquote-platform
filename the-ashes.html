@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ashes | Experienced executives building what's next, Zionsville, Indiana</title>
+<meta name="description" content="The Ashes is a small in-person circle of experienced executives in the Zionsville, Indiana area, out of work or underused, who would rather build something together than settle. No dues. No agenda." />
+<link rel="canonical" href="https://stellaredgeservices.com/the-ashes" />
+<meta property="og:title" content="The Ashes" />
+<meta property="og:description" content="Experienced executives in the Zionsville area, between chapters, building our own next thing together. No dues. No agenda." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://stellaredgeservices.com/the-ashes" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0E0F12;
+    --bg-2: #15171C;
+    --card: #1A1D23;
+    --line: rgba(255,255,255,0.09);
+    --text: #F3F1EC;
+    --muted: #A9A59C;
+    --dim: #7B786F;
+    --ember: #E8823A;
+    --ember-hi: #F5A65B;
+    --ember-dim: rgba(232,130,58,0.13);
+    --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --sans: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+  html { scroll-behavior: smooth; }
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); line-height: 1.6; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+  .narrow { max-width: 720px; }
+
+  /* NAV */
+  nav { position: sticky; top: 0; z-index: 50; background: rgba(14,15,18,.86); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
+  .brand { display: flex; align-items: baseline; gap: 14px; min-width: 0; }
+  .wordmark { font-family: var(--serif); font-size: 21px; font-weight: 500; letter-spacing: .01em; white-space: nowrap; }
+  .wordmark em { font-style: normal; color: var(--ember); }
+  .byline { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
+  .btn { display: inline-block; background: var(--ember); color: #1A1005; font-weight: 600; font-size: 15px; padding: 13px 24px; border-radius: 6px; border: 0; cursor: pointer; text-decoration: none; font-family: var(--sans); transition: background .15s; }
+  .btn:hover { background: var(--ember-hi); }
+  .btn.sm { padding: 9px 16px; font-size: 13px; white-space: nowrap; }
+  .btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+
+  /* HERO */
+  .hero { position: relative; padding: 104px 0 96px; border-bottom: 1px solid var(--line); overflow: hidden; }
+  .hero::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 70% 60% at 50% 115%, rgba(232,130,58,.26) 0%, rgba(232,130,58,.06) 45%, transparent 70%); pointer-events: none; }
+  .hero .wrap { position: relative; }
+  .eyebrow { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--ember); font-weight: 600; margin-bottom: 22px; }
+  h1 { font-family: var(--serif); font-weight: 500; font-size: clamp(38px, 6.4vw, 68px); line-height: 1.06; letter-spacing: -.015em; max-width: 15ch; }
+  .lede { margin-top: 26px; font-size: clamp(17px, 2.1vw, 20px); color: var(--muted); max-width: 56ch; }
+  .hero-cta { margin-top: 36px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .hero-cta span { font-size: 14px; color: var(--dim); }
+
+  section { padding: 84px 0; border-bottom: 1px solid var(--line); }
+  h2 { font-family: var(--serif); font-weight: 500; font-size: clamp(27px, 3.6vw, 38px); line-height: 1.15; letter-spacing: -.01em; margin-bottom: 22px; }
+  .kicker { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); font-weight: 600; margin-bottom: 14px; }
+
+  /* LETTER */
+  .letter p { font-size: 18px; color: #D9D5CC; margin-bottom: 18px; }
+  .letter p strong { color: var(--text); font-weight: 600; }
+  .sig { margin-top: 28px; font-family: var(--serif); font-size: 20px; }
+  .sig small { display: block; font-family: var(--sans); font-size: 13px; color: var(--dim); margin-top: 2px; }
+
+  /* PRINCIPLES */
+  .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 34px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 28px 24px; }
+  .tile h3 { font-family: var(--serif); font-weight: 500; font-size: 24px; margin-bottom: 8px; }
+  .tile h3 em { font-style: normal; color: var(--ember); }
+  .tile p { font-size: 15px; color: var(--muted); }
+
+  /* WHO */
+  .who { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: start; }
+  .checks { list-style: none; }
+  .checks li { position: relative; padding: 14px 0 14px 34px; border-bottom: 1px solid var(--line); font-size: 16px; color: #D9D5CC; }
+  .checks li:last-child { border-bottom: 0; }
+  .checks li::before { content: ''; position: absolute; left: 4px; top: 22px; width: 12px; height: 7px; border-left: 2px solid var(--ember); border-bottom: 2px solid var(--ember); transform: rotate(-45deg); }
+  .who p.body { color: var(--muted); font-size: 17px; }
+
+  /* STEPS */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 34px; counter-reset: s; }
+  .step { counter-increment: s; border-top: 2px solid var(--ember); padding-top: 18px; }
+  .step::before { content: '0' counter(s); font-family: var(--serif); font-size: 15px; color: var(--ember); }
+  .step h3 { font-size: 18px; font-weight: 600; margin: 6px 0; }
+  .step p { font-size: 15px; color: var(--muted); }
+
+  /* FORM */
+  #join { background: var(--bg-2); }
+  .form-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 36px; margin-top: 30px; }
+  .progress { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--dim); margin-bottom: 26px; }
+  .progress .bar { flex: 1; height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+  .progress .bar i { display: block; height: 100%; width: 50%; background: var(--ember); transition: width .3s; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .field { margin-bottom: 18px; }
+  label, legend { display: block; font-size: 13px; font-weight: 600; color: #D9D5CC; margin-bottom: 7px; }
+  label small, legend small { font-weight: 400; color: var(--dim); }
+  input[type=text], input[type=email], input[type=tel], input[type=url], select {
+    width: 100%; background: #101216; border: 1px solid rgba(255,255,255,.14); color: var(--text); border-radius: 6px; padding: 12px 13px; font-size: 16px; font-family: var(--sans);
+  }
+  input:focus, select:focus { outline: 2px solid var(--ember); outline-offset: 1px; border-color: transparent; }
+  fieldset { border: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips label { margin: 0; cursor: pointer; }
+  .chips input { position: absolute; opacity: 0; pointer-events: none; }
+  .chips span { display: inline-block; padding: 9px 14px; border: 1px solid rgba(255,255,255,.14); border-radius: 999px; font-size: 14px; font-weight: 500; color: var(--muted); transition: all .12s; }
+  .chips input:checked + span { background: var(--ember-dim); border-color: var(--ember); color: var(--ember-hi); }
+  .chips input:focus-visible + span { outline: 2px solid var(--ember); outline-offset: 2px; }
+  .form-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 8px; flex-wrap: wrap; }
+  .fine { font-size: 12.5px; color: var(--dim); max-width: 44ch; }
+  .hp { position: absolute; left: -9999px; height: 0; overflow: hidden; }
+  .err { color: #F2A08A; font-size: 14px; margin-top: 14px; min-height: 1px; }
+  .btn[disabled] { opacity: .6; cursor: default; }
+  .pane { display: none; }
+  .pane.on { display: block; }
+  .done { text-align: center; padding: 20px 0; }
+  .done h3 { font-family: var(--serif); font-weight: 500; font-size: 28px; margin-bottom: 10px; }
+  .done p { color: var(--muted); }
+
+  footer { padding: 40px 0 56px; font-size: 13px; color: var(--dim); }
+  footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+  @media (max-width: 760px) {
+    .byline { display: none; }
+    .hero { padding: 68px 0 64px; }
+    section { padding: 60px 0; }
+    .three, .steps, .who, .grid2 { grid-template-columns: 1fr; }
+    .who { gap: 28px; }
+    .form-card { padding: 24px 18px; }
+    .grid2 { gap: 0; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="brand">
+      <div class="wordmark">The <em>Ashes</em></div>
+      <div class="byline">Zionsville, Indiana</div>
+    </div>
+    <a class="btn sm" href="#join">Raise your hand</a>
+  </div>
+</nav>
+
+<!-- 1. HERO -->
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">For experienced executives between chapters</div>
+    <h1>The ashes are where the rising starts.</h1>
+    <p class="lede">A small circle of seasoned executives in the Zionsville area, out of work or underused in the work we have, meeting in person to build our own next thing together.</p>
+    <div class="hero-cta">
+      <a class="btn" href="#join">Raise your hand</a>
+      <span>Takes about a minute. No dues, no pitch.</span>
+    </div>
+  </div>
+</header>
+
+<!-- 2. WHY THIS EXISTS -->
+<section>
+  <div class="wrap narrow letter">
+    <div class="kicker">Why this exists</div>
+    <h2>I'm an unemployed executive looking for people to build with.</h2>
+    <p>I'm Dustin Stohler. I've been a lawyer, a general counsel, and a co-founder who took a company from zero to eight figures. Right now I'm between things, and I know I'm not the only one.</p>
+    <p>There are a lot of us: people with twenty-plus years of experience running teams, budgets, and companies, who are either out of work or doing work far below what we can do. The usual advice is to take whatever is offered. <strong>I'd rather build something.</strong></p>
+    <p>We're at the point where we have all the experience and talent it takes to start from scratch. What most of us are missing is each other. Together we can build something bigger than any of us could alone.</p>
+    <p>The name comes from the phoenix. The ashes are simply the place we're rising from.</p>
+    <div class="sig">Dustin Stohler<small>Zionsville, Indiana</small></div>
+  </div>
+</section>
+
+<!-- 3. PRINCIPLES -->
+<section>
+  <div class="wrap">
+    <div class="kicker">How it runs</div>
+    <h2>Deliberately simple.</h2>
+    <div class="three">
+      <div class="tile"><h3>No <em>dues</em>.</h3><p>Nobody is selling you coaching, a course, or a membership. It costs your time and nothing else.</p></div>
+      <div class="tile"><h3>No <em>agenda</em>.</h3><p>We get capable people in a room and see what ideas come out of it. The best idea wins, wherever it comes from.</p></div>
+      <div class="tile"><h3>No <em>owner</em>.</h3><p>I started this, but I'm not looking to run it. I have a few ideas. I'm hoping yours are better.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 4. WHO IT'S FOR -->
+<section>
+  <div class="wrap who">
+    <div>
+      <div class="kicker">Who it's for</div>
+      <h2>You'll fit if this sounds like you.</h2>
+      <p class="body">The goal is a group where everyone at the table has run something real, and where the work we take on makes the most of what we can contribute to our community, our families, and ourselves.</p>
+    </div>
+    <ul class="checks">
+      <li>You have 20+ years of experience, including senior leadership.</li>
+      <li>You're unemployed, or employed well below your ability.</li>
+      <li>You would rather build something than settle for less.</li>
+      <li>You're close enough to Zionsville to meet in person.</li>
+      <li>You want partners, not a networking event.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 5. HOW IT WORKS -->
+<section>
+  <div class="wrap">
+    <div class="kicker">What happens next</div>
+    <h2>Three steps, no pressure.</h2>
+    <div class="steps">
+      <div class="step"><h3>Raise your hand</h3><p>Leave your contact information and a good time to talk. It takes about a minute.</p></div>
+      <div class="step"><h3>A short video call</h3><p>Fifteen minutes with me, so we each know who we're dealing with.</p></div>
+      <div class="step"><h3>Meet in person</h3><p>Once there are enough of us, we get in a room near Zionsville and start talking about what to build.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 6. FORM -->
+<section id="join">
+  <div class="wrap narrow">
+    <div class="kicker">Raise your hand</div>
+    <h2>Tell me how to reach you.</h2>
+    <div class="form-card">
+      <div class="progress" id="prog"><span id="progText">Step 1 of 2</span><div class="bar"><i id="progBar"></i></div></div>
+
+      <form class="pane on" id="p1" name="ashes-interest" method="POST" action="/the-ashes" data-netlify="true" netlify-honeypot="bot-field">
+        <input type="hidden" name="form-name" value="ashes-interest" />
+        <p class="hp"><label>Leave this empty <input name="bot-field" tabindex="-1" autocomplete="off" /></label></p>
+        <input type="hidden" name="call-times" id="callTimes" />
+        <div class="grid2">
+          <div class="field"><label for="fn">First name</label><input id="fn" name="first-name" type="text" autocomplete="given-name" required /></div>
+          <div class="field"><label for="ln">Last name</label><input id="ln" name="last-name" type="text" autocomplete="family-name" required /></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label for="em">Email</label><input id="em" name="email" type="email" autocomplete="email" required /></div>
+          <div class="field"><label for="ph">Mobile <small>(optional)</small></label><input id="ph" name="mobile" type="tel" autocomplete="tel" /></div>
+        </div>
+        <div class="field"><label for="ct">City or town</label><input id="ct" name="city" type="text" autocomplete="address-level2" placeholder="e.g. Carmel" required /></div>
+        <fieldset class="field">
+          <legend>Best time for a 15-minute video call <small>(pick any that work)</small></legend>
+          <div class="chips">
+            <label><input type="checkbox" class="t" value="Weekday mornings" /><span>Weekday mornings</span></label>
+            <label><input type="checkbox" class="t" value="Weekday midday" /><span>Weekday midday</span></label>
+            <label><input type="checkbox" class="t" value="Weekday afternoons" /><span>Weekday afternoons</span></label>
+            <label><input type="checkbox" class="t" value="Weekday evenings" /><span>Weekday evenings</span></label>
+            <label><input type="checkbox" class="t" value="Weekends" /><span>Weekends</span></label>
+          </div>
+        </fieldset>
+        <div class="form-foot">
+          <p class="fine">Used only to contact you about The Ashes. Never sold or shared.</p>
+          <button class="btn" type="submit">Continue</button>
+        </div>
+        <p class="err" id="e1" role="alert"></p>
+      </form>
+
+      <form class="pane" id="p2" name="ashes-profile" method="POST" action="/the-ashes" data-netlify="true" netlify-honeypot="bot-field">
+        <input type="hidden" name="form-name" value="ashes-profile" />
+        <p class="hp"><label>Leave this empty <input name="bot-field" tabindex="-1" autocomplete="off" /></label></p>
+        <input type="hidden" name="email" id="p2email" />
+        <input type="hidden" name="name" id="p2name" />
+        <p style="color:var(--muted);margin-bottom:20px;">Thanks, I have your contact information. Two quick questions so I know a little about you before we talk.</p>
+        <div class="field">
+          <label for="ed">Highest level of education</label>
+          <select id="ed" name="education" required>
+            <option value="">Select one</option>
+            <option>High school</option>
+            <option>Some college</option>
+            <option>Associate degree</option>
+            <option>Bachelor's degree</option>
+            <option>Master's degree (MBA, MS, MA)</option>
+            <option>Doctorate or professional degree (JD, MD, PhD)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="ti">Highest title you've held</label>
+          <select id="ti" name="highest-title" required>
+            <option value="">Select one</option>
+            <option>Founder or owner</option>
+            <option>CEO or President</option>
+            <option>Other C-suite (COO, CFO, CTO, CMO, GC)</option>
+            <option>EVP or SVP</option>
+            <option>Vice President</option>
+            <option>Director</option>
+            <option>Senior Manager</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="field"><label for="li">LinkedIn profile <small>(optional)</small></label><input id="li" name="linkedin" type="text" inputmode="url" placeholder="https://linkedin.com/in/..." /></div>
+        <div class="form-foot">
+          <button class="btn ghost" type="button" id="skip">Skip</button>
+          <button class="btn" type="submit">Send it</button>
+        </div>
+        <p class="err" id="e2" role="alert"></p>
+      </form>
+
+      <div class="pane done" id="p3">
+        <h3>Got it. Thank you.</h3>
+        <p>I'll reach out personally within a few days to set up a call.<br />— Dustin</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>The Ashes · Zionsville, Indiana</div>
+    <div>Hosted by <a href="/" style="color:inherit">Stellar Edge Services, LLC</a></div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  function show(n) {
+    [1, 2, 3].forEach(function (i) { $('p' + i).classList.toggle('on', i === n); });
+    $('prog').style.display = n === 3 ? 'none' : 'flex';
+    $('progText').textContent = 'Step ' + n + ' of 2';
+    $('progBar').style.width = (n * 50) + '%';
+    $('join').scrollIntoView({ behavior: 'smooth' });
+  }
+  function send(form, errEl, next) {
+    var btn = form.querySelector('button[type=submit]');
+    var label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Sending…'; errEl.textContent = '';
+    fetch('/the-ashes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(new FormData(form)).toString()
+    }).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      next();
+    }).catch(function () {
+      errEl.textContent = 'That did not go through. Please try again in a moment.';
+    }).then(function () { btn.disabled = false; btn.textContent = label; });
+  }
+  $('p1').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var times = [].slice.call(document.querySelectorAll('input.t:checked')).map(function (c) { return c.value; });
+    $('callTimes').value = times.join(', ');
+    $('p2email').value = $('em').value;
+    $('p2name').value = $('fn').value + ' ' + $('ln').value;
+    send(e.target, $('e1'), function () { show(2); });
+  });
+  $('p2').addEventListener('submit', function (e) {
+    e.preventDefault();
+    send(e.target, $('e2'), function () { show(3); });
+  });
+  $('skip').addEventListener('click', function () { show(3); });
+})();
+</script>
+
+</body>
+</html>

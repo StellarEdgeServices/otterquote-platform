@@ -1,0 +1,53 @@
+name: Static Message Counterpart Tests
+
+# gh-2491 -- messaging labels the other party through the narrow SECURITY DEFINER rpc
+# get_message_counterpart, never through a profiles/contractors read (RLS hides those rows
+# by design). A contractor sees the literal "the homeowner" until the platform fee is
+# collected (Contractor Agreement 6.2 / D-277). This runs each page's real messaging script
+# in a node vm and fails if the "--" placeholder, a pre-fee homeowner name, or the dead
+# duplicate Messages panel comes back. `pull_request` only, no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'dashboard.html'
+      - 'contractor-dashboard.html'
+      - 'supabase/migrations_drafts/gh2491_message_counterpart.sql'
+      - 'supabase/migrations_rollbacks/gh2491_message_counterpart_rollback.sql'
+      - 'tests/gh2491-message-counterpart.mjs'
+      - '.github/workflows/static-message-counterpart-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'dashboard.html'
+      - 'contractor-dashboard.html'
+      - 'supabase/migrations_drafts/gh2491_message_counterpart.sql'
+      - 'supabase/migrations_rollbacks/gh2491_message_counterpart_rollback.sql'
+      - 'tests/gh2491-message-counterpart.mjs'
+      - '.github/workflows/static-message-counterpart-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-message-counterpart-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-message-counterpart-tests:
+    name: Message counterpart label (dashboard.html, contractor-dashboard.html)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Counterpart label, dead panel gone, migration shape (gh2491)
+        run: node tests/gh2491-message-counterpart.mjs
