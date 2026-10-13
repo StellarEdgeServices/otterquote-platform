@@ -11,6 +11,8 @@
 -- Review 6155135164 (F1/F2) lines: W1 to W4 are the owner's accept_bid() calls (expired bid, contract_signed claim, draft
 -- claim, withdrawn bid), V1 to V4 the owner reviving a quote through the quotes UPDATE policy and then awarding it; Q1/S2
 -- are the contractor's own and service_role's quote writes, which must stay accepted; R7 is accept_bid() on an active claim.
+-- Review 6155821752 (B1/B2) lines: Z2/Z3 re-award a switched-away (selected, refunded) quote through accept_bid() and a direct write; Z6 relabels a
+-- draft quote declined and then accepts it. ACCEPTED before, REJECTED after.
 \set ON_ERROR_STOP on
 BEGIN;
 CREATE TEMP TABLE proof_log(n serial, line text) ON COMMIT DROP;
@@ -145,6 +147,23 @@ UPDATE public.quotes SET bid_status = 'cancelled' WHERE id = pg_temp.fx('qA');
 SELECT pg_temp.seq2('V4 kA bid withdrawn (status still submitted); owner sets status=selected only, then awards it', 'authenticated', pg_temp.fx('owner'), 'owner@example.invalid',
   format('UPDATE public.quotes SET status = ''selected'' WHERE id = %L', pg_temp.fx('qA')),
   format('UPDATE public.claims SET selected_contractor_id = %L, selected_bid_amount = 1000, status = ''awarded'' WHERE id = %L', pg_temp.fx('kA'), pg_temp.fx('claim')));
+
+-- Review 6155821752: B1 (Z2, Z3) a switched-away, refunded 'selected' quote re-awarded; B2 (Z6) a never-submitted draft relabelled declined, then accepted.
+-- switch-contractor's quotes.status='cancelled' write fails quotes_status_check, so the switched-away quote stays selected / active / refunded.
+-- ACCEPTED today (and after #2623 alone), REJECTED after.
+UPDATE public.claims SET status = 'bidding', selected_contractor_id = NULL, selected_bid_amount = NULL WHERE id = pg_temp.fx('claim');
+UPDATE public.quotes SET status = 'selected', bid_status = 'active', payment_status = 'refunded' WHERE id = pg_temp.fx('qA');
+SELECT pg_temp.att('Z2 after a switch, owner calls accept_bid on the switched-away (selected, refunded) quote of kA', 'authenticated', pg_temp.fx('owner'), 'owner@example.invalid', format('SELECT * FROM public.accept_bid(%L, %L)', pg_temp.fx('claim'), pg_temp.fx('qA')));
+UPDATE public.quotes SET status = 'selected', bid_status = 'active', payment_status = 'refunded' WHERE id = pg_temp.fx('qA');
+SELECT pg_temp.att('Z3 after a switch, owner direct-awards kA at 1000 (the switched-away, selected, refunded quote)', 'authenticated', pg_temp.fx('owner'), 'owner@example.invalid', format('UPDATE public.claims SET selected_contractor_id = %L, selected_bid_amount = 1000, status = ''awarded'' WHERE id = %L', pg_temp.fx('kA'), pg_temp.fx('claim')));
+UPDATE public.quotes SET status = 'submitted', bid_status = 'active', payment_status = NULL WHERE id = pg_temp.fx('qA');
+INSERT INTO public.quotes(claim_id, contractor_id, total_price, fee_percentage, fee_amount, status, bid_status, is_test) VALUES (pg_temp.fx('claim'), pg_temp.fx('kB'), 700, 5, 35, 'draft', 'active', true);
+INSERT INTO fx SELECT 'qB', id FROM public.quotes WHERE claim_id = pg_temp.fx('claim') AND contractor_id = pg_temp.fx('kB');
+SELECT pg_temp.seq2('Z6 owner relabels kB''s DRAFT (never submitted) quote declined, then accept_bid on it', 'authenticated', pg_temp.fx('owner'), 'owner@example.invalid',
+  format('UPDATE public.quotes SET status = ''declined'' WHERE id = %L', pg_temp.fx('qB')),
+  format('SELECT * FROM public.accept_bid(%L, %L)', pg_temp.fx('claim'), pg_temp.fx('qB')));
+DELETE FROM public.quotes WHERE id = pg_temp.fx('qB');
+DELETE FROM fx WHERE k = 'qB';
 
 -- Paths that must stay ACCEPTED after the new rules
 UPDATE public.claims SET status = 'active' WHERE id = pg_temp.fx('claim');

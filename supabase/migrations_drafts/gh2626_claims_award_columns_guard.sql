@@ -34,7 +34,7 @@
 --   2. moves status to 'awarded' from any status other than 'active' or 'bidding';
 --   3. changes selected_contractor_id or selected_bid_amount, or moves status to 'awarded', unless the
 --      resulting selected_contractor_id has a live quote on this claim whose total_price equals
---      selected_bid_amount. Live = quotes.status in ('submitted','selected') and quotes.bid_status 'active'
+--      selected_bid_amount. Live = quotes.status 'submitted' and quotes.bid_status 'active'
 --      (or NULL). A change that leaves selected_contractor_id NULL is allowed only if selected_bid_amount is NULL
 --      and the status is not 'awarded'; clearing an existing selected_contractor_id is refused.
 -- A value re-sent unchanged is not a change. The owner reads the claim's quotes through the existing policy
@@ -59,14 +59,18 @@
 --   * quotes_guard_homeowner_columns() (the one guard trigger on quotes): a client caller cannot change
 --     quotes.bid_status unless it is the quote's own contractor (the owner, who holds UPDATE on every column through the
 --     policy "Homeowners can update quotes for their claims", could revive an expired or withdrawn bid, review F2), and
---     the claim owner can set status to selected only from a submitted bid whose bid_status is active. service_role,
+--     the claim owner can set status to selected only from a submitted bid whose bid_status is active, and to declined
+--     only from a submitted or selected bid (review 6155821752 B2). service_role,
 --     admins, owner-level definer sessions and the bidding contractor's own paths are untouched.
--- WHAT "LIVE" MEANS, exactly (review F3). In the claims guard (rule 3) a quote is live when status is submitted or
--- selected and bid_status is active or NULL. In accept_bid() it is awardable when bid_status is active or NULL and status
--- is submitted, selected or declined (declined is kept: switch-contractor leaves the losers of the first award declined
+-- WHAT "LIVE" MEANS, exactly (review F3). In the claims guard (rule 3) a quote is live when status is submitted and
+-- bid_status is active or NULL. In accept_bid() it is awardable when bid_status is active or NULL and status
+-- is submitted or declined ('selected' is refused in both: a switched-away, refunded contractor stays selected, review
+-- 6155821752 B1; declined is kept: switch-contractor leaves the losers of the first award declined
 -- and puts the claim back in bidding, so refusing them would break a re-award; PR body question 1). The two quote guards
 -- close the path that made "live" beatable: nobody but the bidding contractor, service_role or an admin can move
--- bid_status, and the owner cannot move an expired, cancelled, superseded or declined quote back to selected.
+-- bid_status, and the owner cannot move an expired, cancelled, superseded or declined quote back to selected, nor a draft or expired
+-- quote to declined (B2). Known difference (B3): after a switch the earlier bidders are declined, so bids.html (accept_bid)
+-- can re-award one, while the React direct write is refused by the claims guard (declined is not submitted).
 --
 -- CONFLICT WITH THE UNAPPLIED DRAFTS (disclosed, not resolved here). gh2519_quotes_server_set_fee.sql and
 -- gh2564_quotes_selected_price_lock.sql also CREATE OR REPLACE quotes_guard_homeowner_columns() (gh2519 also accept_bid())
@@ -119,7 +123,7 @@ BEGIN
                SELECT 1 FROM public.quotes q
                 WHERE q.claim_id = OLD.id
                   AND q.contractor_id = NEW.selected_contractor_id
-                  AND q.status IN ('submitted', 'selected')
+                  AND q.status = 'submitted'
                   AND COALESCE(q.bid_status, 'active') = 'active'
                   AND q.total_price = NEW.selected_bid_amount), false) THEN
         RAISE EXCEPTION 'claims: the selected contractor can only be set to a contractor with a live bid on this claim, at that bid''s price (gh-2626)'
@@ -167,9 +171,10 @@ BEGIN
 
   -- gh-2626 (Ben, DECIDED 1): an expired, withdrawn (cancelled), superseded or otherwise not-active bid is not
   -- awardable by anyone. A bid is awardable only while its bid_status is active (or NULL) and its status is
-  -- submitted, selected (a switched-away bid back in open bidding) or declined (the losers of an earlier award
-  -- in a switched claim). An expired quote (status expired) and a draft are refused.
-  IF COALESCE(v_q_status, '') NOT IN ('submitted', 'selected', 'declined')
+  -- submitted or declined (declined = the losers of an earlier award in a switched claim). A selected quote is
+  -- refused (review 6155821752 B1: a switched-away, refunded contractor stays selected because switch-contractor's
+  -- 'cancelled' write fails quotes_status_check, and must not be re-awarded). An expired quote and a draft are refused.
+  IF COALESCE(v_q_status, '') NOT IN ('submitted', 'declined')
      OR COALESCE(v_q_bid_status, 'active') <> 'active' THEN
     RAISE EXCEPTION 'bid_not_awardable: this bid is expired, withdrawn or no longer active, so it cannot be accepted'
       USING ERRCODE = 'P0001';
@@ -308,12 +313,20 @@ BEGIN
       RAISE EXCEPTION 'quotes: only a submitted, active bid can be selected by the claim owner (gh-2626)'
         USING ERRCODE = '42501';
     END IF;
+
+    -- gh-2626 (review 6155821752 B2): the owner may mark a bid declined only from submitted or selected. A draft
+    -- (never submitted) or expired quote cannot be relabelled declined and then accepted through accept_bid().
+    IF NEW.status = 'declined' AND OLD.status IS DISTINCT FROM 'declined'
+       AND COALESCE(OLD.status NOT IN ('submitted', 'selected'), true) THEN
+      RAISE EXCEPTION 'quotes: only a submitted or selected bid can be declined by the claim owner (gh-2626)'
+        USING ERRCODE = '42501';
+    END IF;
   END IF;
   RETURN NEW;
 END;
 $guard$;
 
 COMMENT ON FUNCTION public.quotes_guard_homeowner_columns() IS
-  'gh-2479 / gh-2519: BEFORE INSERT OR UPDATE guard on public.quotes. Client roles (anon, authenticated) that are not admins: on INSERT can create only their own bid (contractor_id is a contractor row of the caller) born status submitted, bid_status active, not an auto-bid, not a renewal, with no signing or payment state; on UPDATE cannot change claim_id or contractor_id, can change total_price, fee_amount, fee_percentage, platform_fee_pct and platform_fee_basis only as the quote''s own contractor, and can change status only as the claim owner and only to selected (and to selected only from a submitted bid whose bid_status is active) or declined, and can change bid_status only as the quote''s own contractor (gh-2626). Rejected 42501; an unchanged value is not a change. service_role, admins and owner-level (SECURITY DEFINER) sessions such as accept_bid() are untouched.';
+  'gh-2479 / gh-2519: BEFORE INSERT OR UPDATE guard on public.quotes. Client roles (anon, authenticated) that are not admins: on INSERT can create only their own bid (contractor_id is a contractor row of the caller) born status submitted, bid_status active, not an auto-bid, not a renewal, with no signing or payment state; on UPDATE cannot change claim_id or contractor_id, can change total_price, fee_amount, fee_percentage, platform_fee_pct and platform_fee_basis only as the quote''s own contractor, and can change status only as the claim owner and only to selected (and to selected only from a submitted bid whose bid_status is active) or declined (to declined only from a submitted or selected bid), and can change bid_status only as the quote''s own contractor (gh-2626). Rejected 42501; an unchanged value is not a change. service_role, admins and owner-level (SECURITY DEFINER) sessions such as accept_bid() are untouched.';
 
 COMMIT;

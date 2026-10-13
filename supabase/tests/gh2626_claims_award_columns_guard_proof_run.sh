@@ -8,7 +8,7 @@
 #   4 WITH-2623          + supabase/migrations_drafts/gh2620_claims_payment_guard_security_definer.sql (PR #2623)
 #   5 WITH-2623-AND-GUARD+ the gh2626 forward file
 #   6 ROLLBACK-GUARD     + its rollback           (must equal pass 4)
-# Passes 1/4 show the F1 (accept_bid) and F2 (revive a quote) paths ACCEPTED; passes 2/5 show them REJECTED.
+# Passes 1/4 show the F1 (accept_bid), F2 (revive a quote) and B1/B2 (Z2, Z3, Z6) paths ACCEPTED; passes 2/5 show them REJECTED.
 # Exit 0 only if passes 3 and 6 match 1 and 4, and the EXPECT lines hold.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -40,6 +40,12 @@ has 5-WITH-2623-AND-GUARD '^S1 .*ACCEPTED'; has 5-WITH-2623-AND-GUARD '^A1 .*ACC
 # review 6155135164: F1 (W1 to W4, accept_bid) and F2 (V1 to V4, revive then award) ACCEPTED before, REJECTED after
 for k in W1 W2 W3 W4; do has 1-TODAY "^$k .*ACCEPTED"; has 4-WITH-2623 "^$k .*ACCEPTED"; has 2-GUARD-ONLY "^$k .*REJECTED P0001"; has 5-WITH-2623-AND-GUARD "^$k .*REJECTED P0001"; done
 for k in V1 V2 V3 V4; do has 1-TODAY "^$k [^:]*: rows=1 ACCEPTED ; then"; has 4-WITH-2623 "^$k .*ACCEPTED.*; then rows=1 ACCEPTED"; has 2-GUARD-ONLY "^$k .*REJECTED 42501.*; then REJECTED 42501"; has 5-WITH-2623-AND-GUARD "^$k .*REJECTED 42501.*; then REJECTED 42501"; done
+# review 6155821752: B1 (Z2 accept_bid, Z3 direct write) and B2 (Z6 draft relabelled declined, then accepted) ACCEPTED before, REJECTED after
+has 1-TODAY "^Z2 .*ACCEPTED"; has 4-WITH-2623 "^Z2 .*ACCEPTED"; has 4-WITH-2623 "^Z3 .*ACCEPTED"  # Z3 is a direct write: today the payment guard (gh-2620) blocks it by accident, so ACCEPTED only once #2623 is applied (as D2/D3)
+has 2-GUARD-ONLY '^Z2 .*REJECTED P0001'; has 5-WITH-2623-AND-GUARD '^Z2 .*REJECTED P0001'
+has 2-GUARD-ONLY '^Z3 .*REJECTED 42501'; has 5-WITH-2623-AND-GUARD '^Z3 .*REJECTED 42501'
+has 1-TODAY '^Z6 [^:]*: rows=1 ACCEPTED ; then rows=1 ACCEPTED'; has 4-WITH-2623 '^Z6 [^:]*: rows=1 ACCEPTED ; then rows=1 ACCEPTED'
+has 2-GUARD-ONLY '^Z6 .*REJECTED 42501.*; then REJECTED P0001'; has 5-WITH-2623-AND-GUARD '^Z6 .*REJECTED 42501.*; then REJECTED P0001'
 # the app's own paths and the contractor/service_role quote writes still succeed after
 for k in R7 Q1 S2 R8; do has 2-GUARD-ONLY "^$k .*ACCEPTED"; has 5-WITH-2623-AND-GUARD "^$k .*ACCEPTED"; done
 diff <(sed '/^GUARD /d' "$OUT/1-TODAY.txt") <(sed '/^GUARD /d' "$OUT/3-ROLLBACK-GUARD.txt") >/dev/null && echo "pass 3 matches pass 1 (GUARD line excluded)" || { echo "pass 3 differs from pass 1"; rc=1; }
