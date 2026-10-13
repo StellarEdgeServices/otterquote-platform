@@ -31,6 +31,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { paidEmailText, paidEmailHtml, formatCurrency, formatPayoutType } from "./templates.ts"; // gh-1824: email bodies moved to templates.ts (testable, no serve() import)
+import { isW9GateHeld, readW9GateFlag, w9GateHeldReason, W9_GATE_FLAG_KEY } from "./w9-gate.ts"; // D-319 (gh-1509): W-9 gate flag, per-function copy of approve-payout/w9-gate.ts
 
 const FUNCTION_NAME     = "mark-payout-paid";
 // Same admin allow-list as approve-payout / reject-payout (D-211 Phase 18 Unit 2).
@@ -218,13 +219,18 @@ serve(async (req: Request) => {
       return heldResponse("Held — partner record not found; cannot verify W-9");
     }
 
-    if (agent.payments_blocked !== false || agent.w9_verified_at == null) {
-      console.log(`[${FUNCTION_NAME}] HELD ${payoutApprovalId} — partner ${approval.partner_id} payments_blocked=${agent.payments_blocked} w9_verified_at=${agent.w9_verified_at}`);
-      return heldResponse(
-        agent.payments_blocked !== false
-          ? "Held — partner payments are blocked (W-9 not on file)"
-          : "Held — partner W-9 not on file"
-      );
+    // D-319 (gh-1509 slot a): honor platform_settings.w9_gate_retired exactly as
+    // approve-payout does. Flag OFF / missing / read error = gate ENFORCED
+    // (byte-identical to the prior inline guard). Flag ON retires ONLY the
+    // w9_verified_at condition; payments_blocked still holds.
+    const w9GateRetired = await readW9GateFlag(
+      async () => await supabase.from("platform_settings").select("value").eq("key", W9_GATE_FLAG_KEY).maybeSingle(),
+      (msg) => console.error(`[${FUNCTION_NAME}] ${msg}`)
+    );
+
+    if (isW9GateHeld(agent, w9GateRetired)) {
+      console.log(`[${FUNCTION_NAME}] HELD ${payoutApprovalId} — partner ${approval.partner_id} payments_blocked=${agent.payments_blocked} w9_verified_at=${agent.w9_verified_at} w9_gate_retired=${w9GateRetired}`);
+      return heldResponse(w9GateHeldReason(agent));
     }
 
     const now = new Date().toISOString();

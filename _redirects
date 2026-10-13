@@ -24,6 +24,18 @@ https://jade-alpaca-b82b5e.netlify.app/* https://otterquote.com/:splat 301!
 # incoming query string when the "to" target has no query string of its
 # own, and our target must always carry ?code= (#630, 2026-08-06). The edge
 # function forwards every incoming param; see netlify.toml [[edge_functions]].
+# The Ashes (the-ashes.html) is a Stellar Edge Services page, not an Otter
+# Quotes page. It is served at stellaredgeservices.com/the-ashes by the static
+# file itself (Pretty URLs); these forced rules keep it off the Otter Quotes
+# domain so it never appears under that brand.
+https://otterquote.com/the-ashes* https://stellaredgeservices.com/the-ashes 301!
+
+# stellaredgeservices.com root: index.html (the Otter Quotes homepage) exists as
+# a static file and shadowed the unforced wildcard below, so the bare domain
+# showed the Otter Quotes homepage. Forced, root path only; every other static
+# file on this host is still served as before.
+https://stellaredgeservices.com/ /stellar-edge.html 200!
+https://www.stellaredgeservices.com/ /stellar-edge.html 200!
 https://stellaredgeservices.com/* /stellar-edge.html 200
 https://www.stellaredgeservices.com/* /stellar-edge.html 200
 
@@ -148,6 +160,7 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 /guides/prove-date-of-loss-hail /guides/prove-date-of-loss-hail.html 301
 /guides/show-contractor-insurance-estimate /guides/show-contractor-insurance-estimate.html 301
 /guides/window-replacement-bid-comparison /guides/window-replacement-bid-comparison.html 301
+/guides/siding-replacement-cost-factors /guides/siding-replacement-cost-factors.html 301
 
 # gh-1795: twelve blog articles promoted from otterquote-deploy/blog/ (a committed
 # May-2026 working-directory mirror, unstyled, canonicalising to a 404) to the real

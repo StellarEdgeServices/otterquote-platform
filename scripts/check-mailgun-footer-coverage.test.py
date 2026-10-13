@@ -192,10 +192,12 @@ def main():
     original_functions_dir = mod.FUNCTIONS_DIR
     original_required = mod.REQUIRED_FOOTER
     original_ratchet = mod.RATCHET_FOOTER
+    original_exempt = mod.EXEMPT_FOOTER
     try:
         mod.FUNCTIONS_DIR = str(tmp_root)
         mod.REQUIRED_FOOTER = {"fake-sender"}
         mod.RATCHET_FOOTER = set()
+        mod.EXEMPT_FOOTER = {}
 
         print("setup: a compliant fixture function (Mode A -- wrapper + real call)")
         write_fixture(tmp_root)
@@ -251,6 +253,34 @@ def main():
         mod.RATCHET_FOOTER = set()
 
         print()
+        print("(g) D-380 named exemption (gh-1824): exactly one name, exempt by name only")
+        check("(g) the shipped EXEMPT_FOOTER is exactly {send-adjuster-email}",
+              set(original_exempt), {"send-adjuster-email"})
+        # a footer-less sender that IS exempt passes and is reported as exempt
+        write_fixture(tmp_root, index_ts=INDEX_TS_NO_CALL)
+        mod.REQUIRED_FOOTER = set()
+        mod.EXEMPT_FOOTER = {"fake-sender": "test exemption"}
+        code, out = run_guard()
+        check("(g) exempt sender with no footer exit code (PASS)", code, 0)
+        check("(g) exempt sender is reported as exempt, not as a gap",
+              "[-] fake-sender" in out and "[ ] fake-sender" not in out, True)
+        # NEGATIVE CONTROL: the same footer-less sender, NOT exempt and required, still FAILS
+        mod.REQUIRED_FOOTER = {"fake-sender"}
+        mod.EXEMPT_FOOTER = {"some-other-sender": "test exemption"}
+        code, out = run_guard()
+        check("(g) negative control: required sender with footer removed, exemption names a different sender (FAIL)", code, 1)
+        check("(g) negative control names fake-sender", "fake-sender" in out, True)
+        # NEGATIVE CONTROL: an exemption does not stay valid for a sender that stopped sending via Mailgun
+        mod.REQUIRED_FOOTER = set()
+        mod.EXEMPT_FOOTER = {"ghost-sender": "test exemption"}
+        code, out = run_guard()
+        check("(g) stale exemption (names a function that does not send via Mailgun) exit code (FAIL)", code, 1)
+        check("(g) stale exemption names ghost-sender", "ghost-sender" in out, True)
+        mod.REQUIRED_FOOTER = {"fake-sender"}
+        mod.EXEMPT_FOOTER = {}
+        write_fixture(tmp_root)
+
+        print()
         print("(f) MODE D (partner-invite footer: street constant + opt-out link)")
         write_mode_d(tmp_root, FOOTER_D)
         code, out = run_guard()
@@ -298,6 +328,7 @@ def main():
         mod.FUNCTIONS_DIR = original_functions_dir
         mod.REQUIRED_FOOTER = original_required
         mod.RATCHET_FOOTER = original_ratchet
+        mod.EXEMPT_FOOTER = original_exempt
         shutil.rmtree(tmp_root, ignore_errors=True)
 
     print()
@@ -306,7 +337,7 @@ def main():
         return 1
     print(
         "check-mailgun-footer-coverage: all assertions passed (negative controls "
-        "(a)/(b)/(c)/(e)/(f), incl. gh-2439 holes 1-3, observed FAILING; baseline and restore observed PASSING)."
+        "(a)/(b)/(c)/(e)/(f)/(g), incl. gh-2439 holes 1-3, observed FAILING; baseline and restore observed PASSING)."
     )
     return 0
 

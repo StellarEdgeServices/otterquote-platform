@@ -659,10 +659,12 @@ function Step3Card({ contractor, onAdvance }: { contractor: ContractorRecord; on
     const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
     const payload = buildAttestationPayload(ua, nowIso);
     try {
-      const { error } = await supabase.from('contractors')
+      const { data: upRows, error } = await supabase.from('contractors')
         .update(buildStep3ContractorUpdate(contractor, payload, tcpa, nowIso))
-        .eq('user_id', contractor.user_id);
+        .eq('user_id', contractor.user_id)
+        .select('id');
       if (error) throw error;
+      if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: contractors (step 3 agreements)');
 
       // Server-side IP capture (record-attestation) — contract UNCHANGED, non-fatal (parity:
       // the static page sends this same payload, which the EF rejects 400; the authoritative
@@ -759,10 +761,12 @@ function Step4Card({ contractor, onSubmitted }: { contractor: ContractorRecord; 
       const existing = (contractor.contract_templates as ContractTemplate[] | undefined) ?? [];
       const updated = buildContractTemplatesArray(existing, trade, funding, filePath, new Date().toISOString());
 
-      const { error } = await supabase.from('contractors')
+      const { data: upRows, error } = await supabase.from('contractors')
         .update(buildFinishSubmitUpdate(updated, new Date().toISOString()))
-        .eq('user_id', contractor.user_id);
+        .eq('user_id', contractor.user_id)
+        .select('id');
       if (error) throw error;
+      if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: contractors (submit application)');
 
       fireGtag('contractor_signup_complete', { event_category: 'contractor_funnel' });
       onSubmitted();

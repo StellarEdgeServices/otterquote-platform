@@ -518,6 +518,9 @@ test.describe('contractor-opportunities.html entry points', () => {
     existingShingle: null,
     estimateAvailable: true,
     measurementsAvailable: true,
+    // gh-2559 / D-370: the Measurement PDF button (doc-hover) is offered only to the contractor the
+    // homeowner selected; this fixture is that contractor's view of the card.
+    isSelectedContractor: true,
     // gh-1411: a numeric hoverSquares + non-'full' measurementShape is what
     // makes getUpgradePurchaseHtml() render the Buy button at all.
     hoverSquares: 30,

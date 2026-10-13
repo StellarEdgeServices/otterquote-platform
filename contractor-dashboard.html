@@ -1077,27 +1077,41 @@
         }
 
         // gh-2444: shared acceptance evidence for first acceptance AND re-acceptance.
-        // Call only after the row-checked contractors update succeeded. Both steps
-        // are non-fatal so a logging failure never blocks an accepted agreement.
+        // Call only after the row-checked contractors update succeeded. supabase-js
+        // RETURNS {error} (it does not throw), so both results are checked. Returns
+        // null on success or the first error; a failed evidence write must NOT be
+        // treated as a successful acceptance. Stops at the first failure so a retry
+        // does not duplicate an activity_log row.
         async function recordCpaAcceptanceEvidence(now, title) {
-            // Record server-side IP via SECURITY DEFINER function (non-fatal)
+            // Record server-side IP via SECURITY DEFINER function
             try {
-                await sb.rpc('record_cpa_ip', { p_contractor_id: currentContractor.id });
-            } catch (ipErr) {
-                console.warn('record_cpa_ip failed (non-fatal):', ipErr);
+                const { error: ipErr } = await sb.rpc('record_cpa_ip', { p_contractor_id: currentContractor.id });
+                if (ipErr) {
+                    console.error('record_cpa_ip failed:', ipErr);
+                    return ipErr;
+                }
+            } catch (ipThrown) {
+                console.error('record_cpa_ip failed:', ipThrown);
+                return ipThrown;
             }
 
-            // Log to activity_log (non-fatal)
+            // Log to activity_log
             try {
-                await sb.from('activity_log').insert({
+                const { error: logErr } = await sb.from('activity_log').insert({
                     user_id:    currentUser.id,
                     event_type: 'cpa_accepted',
                     title:      title,
                     created_at: now,
                 });
-            } catch (logErr) {
-                console.warn('Activity log failed (non-fatal):', logErr);
+                if (logErr) {
+                    console.error('Activity log failed:', logErr);
+                    return logErr;
+                }
+            } catch (logThrown) {
+                console.error('Activity log failed:', logThrown);
+                return logThrown;
             }
+            return null;
         }
 
         // Handle agreement modal checkbox and button
@@ -1116,6 +1130,9 @@
             if (button) {
                 button.addEventListener('click', async () => {
                     if (!currentContractor || !checkbox || !checkbox.checked || !sb) return;
+                    // gh-2444: block a double click while the write is in flight.
+                    if (button.disabled) return;
+                    button.disabled = true;
 
                     try {
                         const today = new Date().toISOString().split('T')[0];
@@ -1137,7 +1154,13 @@
                         const error = acceptErr || (!Array.isArray(acceptedRows) || acceptedRows.length === 0 ? new Error('zero_rows_updated') : null);
 
                         if (!error) {
-                            await recordCpaAcceptanceEvidence(now, `Accepted Contractor Partner Agreement (${CURRENT_CPA_VERSION})`);
+                            const evidenceErr = await recordCpaAcceptanceEvidence(now, `Accepted Contractor Partner Agreement (${CURRENT_CPA_VERSION})`);
+                            if (evidenceErr) {
+                                // gh-2444: evidence write failed -> not a successful acceptance; existing error copy, retry allowed.
+                                alert('Error accepting agreement. Please try again.');
+                                button.disabled = false;
+                                return;
+                            }
                             currentContractor.agreement_accepted_at = now;
                             currentContractor.agreement_version = today;
                             currentContractor.cpa_version     = CURRENT_CPA_VERSION;
@@ -1146,10 +1169,12 @@
                             location.reload();
                         } else {
                             alert('Error accepting agreement. Please try again.');
+                            button.disabled = false;
                         }
                     } catch (err) {
                         console.error('Error accepting agreement:', err);
                         alert('An error occurred. Please try again.');
+                        button.disabled = false;
                     }
                 });
             }
@@ -1194,8 +1219,14 @@
                             return;
                         }
 
-                        // 2. Record server-side IP + log to activity_log (shared with first acceptance, non-fatal)
-                        await recordCpaAcceptanceEvidence(now, `Accepted updated Contractor Partner Agreement (${CURRENT_CPA_VERSION})`);
+                        // 2. Record server-side IP + log to activity_log (shared with first acceptance; a returned error is a failure)
+                        const evidenceErr = await recordCpaAcceptanceEvidence(now, `Accepted updated Contractor Partner Agreement (${CURRENT_CPA_VERSION})`);
+                        if (evidenceErr) {
+                            alert('Error saving agreement acceptance. Please try again.');
+                            button.disabled = false;
+                            button.textContent = 'Accept and Continue';
+                            return;
+                        }
 
                         // 4. Update in-memory state
                         currentContractor.cpa_version              = CURRENT_CPA_VERSION;
@@ -1263,9 +1294,12 @@
                 // Load opportunities count — must match contractor-opportunities.html logic exactly
                 let availableCount = 0;
                 try {
+                  // gh-2559 / D-368: the claim SUMMARY view, not the base claims row (see
+                  // contractor-opportunities.html). Only id, trades and status are needed for the count.
+                  const BIDDER_CLAIM_DASH_COLS = 'id, trades, status';
                   const { data: oppClaims } = await sb
-                    .from('claims')
-                    .select('*')
+                    .from('bidder_claim_summary')
+                    .select(BIDDER_CLAIM_DASH_COLS)
                     .eq('ready_for_bids', true)
                     .in('status', ['active', 'bidding', 'pending'])
                     .order('created_at', { ascending: false })
@@ -1368,18 +1402,27 @@
                   .limit(50);
 
                 if (allQuotes && allQuotes.length > 0) {
+                  // gh-2559 / D-368: a bid not yet selected shows its claim's city, zip and damage type from
+                  // the claim SUMMARY view; the base claims row is readable to the selected contractor only.
+                  const pendingIds = allQuotes.filter(q => q.status === 'submitted').map(q => q.claim_id);
+                  const summaryById = {};
+                  if (pendingIds.length > 0) {
+                    const BIDDER_CLAIM_PEND_COLS = 'id, location_city, location_zip, damage_type';
+                    const { data: summaries } = await sb
+                      .from('bidder_claim_summary')
+                      .select(BIDDER_CLAIM_PEND_COLS)
+                      .in('id', pendingIds);
+                    (summaries || []).forEach(s => { summaryById[s.id] = s; });
+                  }
                   // Helper: build location string with privacy control
-                  function buildLocation(claim, status) {
-                    const addr = claim.property_address || '';
+                  function buildLocation(claim, status, summary) {
                     // For awarded/completed: show full address. For pending bids: city + zip only.
                     if (status === 'awarded' || status === 'completed' || status === 'selected') {
-                      return addr || 'Unknown';
+                      return claim.property_address || 'Unknown';
                     }
-                    // city + zip only for pending bids
-                    const parts = addr.split(',');
-                    const city = parts.length >= 2 ? parts[1].trim() : (parts[0]?.trim() || 'Unknown');
-                    const zip = addr.match(/\d{5}/)?.[0] || '';
-                    return zip ? `${city}, IN ${zip}` : city || 'Unknown';
+                    const city = (summary && summary.location_city) || 'Unknown';
+                    const zip = (summary && summary.location_zip) || '';
+                    return zip ? `${city}, IN ${zip}` : city;
                   }
                   // Helper: build material label from correct DB columns
                   function buildMaterial(claim) {
@@ -1397,11 +1440,13 @@
                   allQuotes.forEach(q => {
                     const claim = q.claims || {};
                     if (q.status === 'submitted') {
+                      const summary = summaryById[q.claim_id] || {};
+                      const pendingDamage = summary.damage_type || claim.damage_type;
                       pendingBids.push({
                         quoteId: q.id,
                         claimId: q.claim_id,
-                        location: buildLocation(claim, q.status),
-                        damageType: claim.damage_type ? (claim.damage_type.charAt(0).toUpperCase() + claim.damage_type.slice(1)) : 'Roofing',
+                        location: buildLocation(claim, q.status, summary),
+                        damageType: pendingDamage ? (pendingDamage.charAt(0).toUpperCase() + pendingDamage.slice(1)) : 'Roofing',
                         bidAmount: q.total_price ? '$' + Number(q.total_price).toLocaleString() : '—',
                         submittedDate: new Date(q.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
                         status: 'Pending Decision',
@@ -1414,7 +1459,7 @@
                         id: claim.id ? String(claim.id).slice(0, 8) : q.claim_id?.slice(0, 8) || '—',
                         fullId: q.claim_id,
                         quoteId: q.id,
-                        location: buildLocation(claim, q.status),
+                        location: buildLocation(claim, q.status, null),
                         damageType: claim.damage_type ? (claim.damage_type.charAt(0).toUpperCase() + claim.damage_type.slice(1)) : 'Unknown',
                         material: buildMaterial(claim),
                         estimatedValue: q.total_price ? '$' + Number(q.total_price).toLocaleString() : (claim.rcv_amount ? '$' + Number(claim.rcv_amount).toLocaleString() : '—'),
@@ -2035,48 +2080,7 @@
         }
     </script>
 
-<!-- Messaging Thread UI Section for contractor-dashboard.html -->
-<!-- Insert this after the "Claims" card section, before closing main -->
-
-<div class="card messages-section" style="margin-top: 32px;">
-  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-    <h3 style="margin: 0; font-size: 18px; font-weight: 600; color: var(--navy);">Messages</h3>
-  </div>
-
-  <!-- Claim Selector -->
-  <div style="margin-bottom: 20px;">
-    <label style="display: block; font-size: 14px; font-weight: 500; color: var(--navy); margin-bottom: 8px;">Select a project:</label>
-    <select id="messagingClaimSelect" style="width: 100%; padding: 8px 12px; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 14px; font-family: inherit;">
-      <option value="">-- No projects with messages yet --</option>
-    </select>
-  </div>
-
-  <!-- Message Thread Container -->
-  <div id="messagingThreadContainer" style="display: none;">
-    <!-- Messages List -->
-    <div id="messagesList" style="border: 1px solid #E2E8F0; border-radius: 6px; padding: 16px; height: 300px; overflow-y: auto; margin-bottom: 16px; background: #FAFBFC;">
-      <p style="color: #94A3B8; text-align: center; margin: 0;">No messages yet.</p>
-    </div>
-
-    <!-- Message Input -->
-    <div style="display: flex; gap: 12px; margin-bottom: 16px;">
-      <textarea
-        id="messageBody"
-        placeholder="Type your message..."
-        style="flex: 1; padding: 12px; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 14px; font-family: inherit; resize: vertical; min-height: 60px;"
-      ></textarea>
-      <button
-        id="messageSendBtn"
-        style="align-self: flex-end; padding: 12px 24px; background: var(--navy); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;"
-      >
-        Send
-      </button>
-    </div>
-
-    <!-- Status Message -->
-    <div id="messageStatus" style="font-size: 12px; color: #64748B; text-align: center;"></div>
-  </div>
-</div>
+<!-- gh-2491: the second, dead Messages panel (duplicate ids; getElementById resolves to the first panel above) was removed. -->
 
 <script>
 // Messaging — contractor-dashboard.html (v74, F-007 compliant)
@@ -2102,9 +2106,12 @@
     const claimSelect = document.getElementById("messagingClaimSelect");
     const threadContainer = document.getElementById("messagingThreadContainer");
 
+    // gh-2559 / D-368: the label is the full address only once the contractor is selected on the project
+    // (quote status selected, awarded or completed); before that it is the city and zip from the claim SUMMARY
+    // view. The base claims row is readable to the selected contractor only, and user_id is not read here.
     const { data: quotes } = await sb
       .from("quotes")
-      .select("claim_id, claims:claim_id(id, user_id, property_address)")
+      .select("claim_id, status, claims:claim_id(id, property_address)")
       .eq("contractor_id", contractorData.id);
 
     if (!quotes || quotes.length === 0) {
@@ -2113,11 +2120,23 @@
       return;
     }
 
+    const messagingSummaryById = {};
+    {
+      const { data: messagingSummaries } = await sb
+        .from("bidder_claim_summary")
+        .select("id, location_city, location_zip")
+        .in("id", quotes.map((q) => q.claim_id));
+      (messagingSummaries || []).forEach((s) => { messagingSummaryById[s.id] = s; });
+    }
+
     claimSelect.innerHTML = '<option value="">-- Select a project --</option>';
     quotes.forEach((q) => {
       const option = document.createElement("option");
       option.value = q.claim_id;
-      option.textContent = q.claims.property_address || "Claim " + q.claim_id.substring(0, 8);
+      const won = ["selected", "awarded", "completed"].includes(q.status);
+      const sm = messagingSummaryById[q.claim_id];
+      const where = sm && sm.location_city ? sm.location_city + (sm.location_zip ? ", IN " + sm.location_zip : "") : "";
+      option.textContent = (won && q.claims && q.claims.property_address) || where || "Claim " + q.claim_id.substring(0, 8);
       claimSelect.appendChild(option);
     });
 
@@ -2137,8 +2156,30 @@
     document.getElementById("messageSendBtn").addEventListener("click", sendMessage);
   }
 
+  let counterpart = null; // { counterpart_user_id, counterpart_role, display_label } or null
+  const HOMEOWNER_LABEL = "the homeowner"; // Contractor Agreement 6.2 / D-277: no PII before the fee
+
+  async function loadCounterpart() {
+    counterpart = null;
+    try {
+      const { data, error } = await sb.rpc("get_message_counterpart", { p_claim_id: currentClaimId });
+      if (error) console.warn("[Messaging] get_message_counterpart:", error.message || error);
+      else if (Array.isArray(data) && data.length > 0) counterpart = data[0];
+    } catch (e) { console.warn("[Messaging] get_message_counterpart threw:", e); }
+  }
+
+  // Label for one message. The homeowner is "the homeowner" until the server-side rpc
+  // (get_message_counterpart) says the fee is collected and returns the name; this page
+  // never reads the homeowner's profiles row, and never shows a name the rpc did not return.
+  function senderLabel(msg, isOwn) {
+    if (isOwn) return (msg.profiles && msg.profiles.full_name) ? msg.profiles.full_name + " (You)" : "You";
+    if (counterpart && msg.sender_id === counterpart.counterpart_user_id && counterpart.display_label) return counterpart.display_label;
+    return msg.sender_role === "contractor" ? "Another contractor" : HOMEOWNER_LABEL;
+  }
+
   async function loadMessages() {
     if (!currentClaimId) return;
+    await loadCounterpart();
     const { data: messages, error } = await sb
       .from("messages")
       .select("id, sender_id, sender_role, body, created_at, profiles:sender_id(full_name)")
@@ -2157,7 +2198,7 @@
       const isOwn = msg.sender_id === userId;
       const timestamp = new Date(msg.created_at).toLocaleString();
       return '<div style="margin-bottom:12px;padding:12px;background:' + (isOwn ? "#EFF6FF" : "#F1F5F9") + ';border-radius:6px;border-left:3px solid ' + (isOwn ? "var(--navy)" : "var(--amber)") + ';">' +
-        '<div style="font-weight:600;font-size:13px;color:var(--navy);margin-bottom:4px;">' + escapeHtml((msg.profiles && msg.profiles.full_name) || "--") + (isOwn ? " (You)" : "") + '</div>' +
+        '<div style="font-weight:600;font-size:13px;color:var(--navy);margin-bottom:4px;">' + escapeHtml(senderLabel(msg, isOwn)) + '</div>' +
         '<div style="font-size:13px;color:#333;margin-bottom:8px;word-wrap:break-word;">' + escapeHtml(msg.body) + '</div>' +
         '<div style="font-size:11px;color:#94A3B8;">' + timestamp + '</div></div>';
     }).join("");

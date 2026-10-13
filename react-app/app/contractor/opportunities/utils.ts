@@ -184,9 +184,24 @@ export function computeZipDistance(
 
 // ── claim -> opportunity mapping ────────────────────────────────────────────
 
+/**
+ * gh-2559 / D-368: the columns a bidding contractor reads from public.bidder_claim_summary (the claim SUMMARY
+ * view; the base claims row is not readable to a bidder once the narrowing migration is applied).
+ * tests/gh2559-bidder-claims-view.mjs checks this string equals the one in contractor-opportunities.html and
+ * in supabase/tests/gh2559_bidder_claims_view_proof.sql.
+ */
+export const BIDDER_CLAIM_OPP_COLS =
+  'id, status, ready_for_bids, created_at, trades, job_type, funding_type, damage_type, existing_shingle_brand, existing_shingle_color, rcv_amount, acv_amount, deductible_amount, roof_squares, repair_squares, measured_squares, measurement_shape, contractor_scope_summary, parsed_line_items, urgency, urgency_deadline, homeowner_notes, roofing_bid_released_at, gutters_bid_released_at, siding_bid_released_at, windows_bid_released_at, bid_window_expires_at, has_estimate, has_measurements, location_city, location_zip, estimate_filename, measurements_filename, selected_contractor_id';
+
 /** Loose shape of a `claims` row (only the columns the page reads). */
 export interface RawClaim {
   id: string;
+  // gh-2559 / D-368: a bidding contractor reads the claim SUMMARY view (bidder_claim_summary), which has no
+  // street address, homeowner name or file names (the selected contractor's file names excepted). City and
+  // zip come from the view; has_estimate / has_measurements / measured_squares are its folded flags.
+  location_city?: string | null;
+  location_zip?: string | null;
+  measured_squares?: number | null;
   property_address?: string | null;
   address_city?: string | null;
   address_zip?: string | null;
@@ -206,13 +221,14 @@ export interface RawClaim {
   existing_shingle_brand?: string | null;
   existing_shingle_color?: string | null;
   estimate_filename?: string | null;
+  selected_contractor_id?: string | null;
+  parsed_line_items?: unknown;
   has_estimate?: boolean | null;
   measurements_filename?: string | null;
   has_measurements?: boolean | null;
   created_at?: string | null;
   urgency?: string | null;
   urgency_deadline?: string | null;
-  urgency_reason?: string | null;
   homeowner_notes?: string | null;
   contractor_scope_summary?: string | null;
   funding_type?: string | null;
@@ -251,6 +267,10 @@ export interface Opportunity {
   totalSquares: number | null;
   existingShingle: string | null;
   estimateAvailable: boolean;
+  /** gh-2559: a scope summary exists AND the parsed estimate has at least one line item. */
+  estimateSummaryAvailable?: boolean;
+  /** gh-2559 / D-370: the viewing contractor is the one the homeowner selected. */
+  isSelectedContractor?: boolean;
   measurementsAvailable: boolean;
   claimFiledDate: string | null;
   distance: number | null;
@@ -279,15 +299,24 @@ export function isHoverMeasurementsSentinel(filename: string | null | undefined)
 }
 
 /** Map a raw `claims` row to an Opportunity. Ported from :523-573. */
+/** gh-2559: true when the parsed estimate has at least one section with at least one line item. */
+export function estimateSummaryHasLineItems(parsed: unknown): boolean {
+  const sections = (parsed as { sections?: unknown } | null | undefined)?.sections;
+  if (!Array.isArray(sections)) return false;
+  return sections.some((s) => {
+    const sec = s as { line_items?: unknown; items?: unknown } | null;
+    const items = sec?.line_items ?? sec?.items;
+    return Array.isArray(items) && items.length > 0;
+  });
+}
+
 export function mapClaimToOpportunity(
   claim: RawClaim,
   contractorZip: string | null | undefined,
+  contractorId?: string | null,
 ): Opportunity {
-  const addressParts = (claim.property_address || '').split(',');
-  const city =
-    claim.address_city || addressParts[1]?.trim() || addressParts[0]?.trim() || 'Unknown';
-  const zip =
-    claim.address_zip || claim.property_address?.match(/\d{5}/)?.[0] || '';
+  const city = claim.location_city || 'Unknown';
+  const zip = claim.location_zip || '';
 
   const rawTrades = claim.selected_trades || claim.trades || ['roofing'];
   const trades = Array.isArray(rawTrades) ? rawTrades : [rawTrades];
@@ -301,7 +330,7 @@ export function mapClaimToOpportunity(
 
   return {
     id: claim.id,
-    propertyAddress: claim.property_address || null,
+    propertyAddress: null, // gh-2559: the street address is not given to a bidder
     location: city,
     zip,
     state: claim.address_state || 'IN',
@@ -321,22 +350,36 @@ export function mapClaimToOpportunity(
       ? `${claim.existing_shingle_brand} - ${claim.existing_shingle_color}`
       : null,
     estimateAvailable: !!(claim.estimate_filename || claim.has_estimate),
+    estimateSummaryAvailable:
+      !!claim.contractor_scope_summary && estimateSummaryHasLineItems(claim.parsed_line_items),
+    isSelectedContractor: !!contractorId && claim.selected_contractor_id === contractorId,
     measurementsAvailable: !!(claim.measurements_filename || claim.has_measurements),
     claimFiledDate: claim.created_at ?? null,
     distance: computeZipDistance(contractorZip, zip),
     urgency: claim.urgency || 'flexible',
     urgencyDeadline: claim.urgency_deadline ?? null,
-    urgencyReason: claim.urgency_reason ?? null,
+    urgencyReason: null,
     homeownerNotes: (claim.homeowner_notes as string) ?? null,
     contractorScopeSummary: claim.contractor_scope_summary || null,
     fundingType:
       claim.funding_type || (claim.job_type?.startsWith('insurance') ? 'insurance' : 'cash'),
     releasedTrades,
     bidWindowExpiresAt: claim.bid_window_expires_at || null,
-    estimateFilename: claim.estimate_filename || null,
+    // gh-2559 / D-368: before selection a bidding contractor sees only the parsed summary of
+    // the uploaded estimate (contractorScopeSummary), not the file; the storage policy refuses
+    // it. Only the contractor the homeowner selected gets the path.
+    estimateFilename:
+      claim.estimate_filename && !!contractorId && claim.selected_contractor_id === contractorId
+        ? claim.estimate_filename
+        : null,
     // gh-484: only expose a real storage path — never the Hover completion sentinel.
+    // gh-2559 / D-368: and, like the estimate, only to the selected contractor: the uploaded
+    // measurements file is a raw homeowner upload (it can be a copy of the estimate).
     measurementsFilename:
-      claim.measurements_filename && !isHoverMeasurementsSentinel(claim.measurements_filename)
+      claim.measurements_filename &&
+      !isHoverMeasurementsSentinel(claim.measurements_filename) &&
+      !!contractorId &&
+      claim.selected_contractor_id === contractorId
         ? claim.measurements_filename
         : null,
   };

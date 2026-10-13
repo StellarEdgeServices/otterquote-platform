@@ -34,7 +34,7 @@ import { RescindCard, type RescindQuote } from './rescind-card';
 import {
   type BidClaim, type BidGateContractor, type BidMode,
   resolveClaimId, resolveBidMode, preCpaBidGate, profileIncompleteRedirect,
-  deriveTradeFlags, BID_GATE_ROUTES,
+  deriveTradeFlags, BID_GATE_ROUTES, BIDDER_CLAIM_BID_COLS, withCarrierProfile,
 } from './utils';
 
 type LoadedClaim = BidClaim & Record<string, unknown> & { siding_bid_released_at?: string | null };
@@ -96,20 +96,22 @@ function BidPageContent() {
     setGateResolved(true);
   }, [contractor, router]);
 
-  // ── Load the claim (with carrier name), once we have a claimId. ──
+  // ── Load the claim summary (with carrier name), once we have a claimId. ──
   useEffect(() => {
     if (!claimId) { setClaimChecked(true); return; }
     let active = true;
     (async () => {
       try {
+        // gh-2559 / D-368: the claim SUMMARY view (no street address, homeowner identity or user id), not the
+        // base claims row. The view returns the carrier's name as carrier_profile_name.
         const { data, error } = await supabase
-          .from('claims')
-          .select('*, carrier_profiles(carrier_name)')
+          .from('bidder_claim_summary')
+          .select(BIDDER_CLAIM_BID_COLS)
           .eq('id', claimId)
           .single();
         if (!active) return;
         if (error) { console.error('Error loading claim:', error); setClaim(null); }
-        else setClaim((data as LoadedClaim) ?? null);
+        else setClaim(data ? (withCarrierProfile(data as unknown as Record<string, unknown>) as LoadedClaim) : null);
       } catch (err) {
         if (active) { console.error('Error loading claim:', err); setClaim(null); }
       } finally {

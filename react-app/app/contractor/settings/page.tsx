@@ -117,8 +117,9 @@ function SettingsView({ record, setRecord, userId }: {
     };
     const payload = buildSettingsPayload(form, new Date().toISOString());
     try {
-      const { error } = await supabase.from('contractors').update(payload).eq('id', record.id);
+      const { data: upRows, error } = await supabase.from('contractors').update(payload).eq('id', record.id).select('id');
       if (error) throw error;
+      if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: contractors (settings)');
       setRecord({ ...record, ...payload } as ContractorRecord);
       setSaveState('saved');
     } catch (err) {

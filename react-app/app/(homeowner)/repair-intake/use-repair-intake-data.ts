@@ -138,12 +138,14 @@ export async function submitRepairIntake(
     // gh-2004: no claim id in hand — see MissingClaimError above.
     throw new MissingClaimError();
   } else {
-    const { error } = await supabase
+    const { data: upRows, error } = await supabase
       .from('claims')
       .update(buildClaimUpdate(submission))
       .eq('id', claimId)
-      .eq('user_id', user.id);
+      .eq('user_id', user.id)
+      .select('id');
     if (error) throw new Error(error.message);
+    if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: claims (repair intake)');
   }
 
   // 4. Upload photos — RLS-compliant UID-first path, {upsert:false}.
