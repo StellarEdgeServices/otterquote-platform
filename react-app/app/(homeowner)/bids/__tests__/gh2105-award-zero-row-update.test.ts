@@ -63,6 +63,9 @@ const { ZERO_ROWS, ONE_ROW, makeSupabaseMock } = vi.hoisted(() => {
             eq: () => ({
               select: () => Promise.resolve(winUpdate),
               neq: () => ({
+                // gh-2626 B4: the reject-others write now also chains
+                // .eq('status','submitted') before .select().
+                eq: () => ({ select: () => Promise.resolve(rejectUpdate) }),
                 select: () => Promise.resolve(rejectUpdate),
               }),
             }),

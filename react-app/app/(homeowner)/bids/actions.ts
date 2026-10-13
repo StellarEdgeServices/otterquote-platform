@@ -153,6 +153,11 @@ export async function awardClaimToContractor(params: {
     .update({ status: 'declined' })
     .eq('claim_id', claim.id)
     .neq('id', bid.id)
+    // gh-2626 (B4, DECIDED by Ben 6156405895): only submitted siblings are
+    // declined. The claims/quotes award guard refuses the whole statement if
+    // it touches a draft or expired sibling bid (42501), which would fail the
+    // award. Draft/expired siblings are not live bids; leave them as they are.
+    .eq('status', 'submitted')
     .select('id');
   if (rejectErr) return { ok: false, error: rejectErr.message };
   // gh-2105 (decision b, NOT an error): a claim can legitimately have only

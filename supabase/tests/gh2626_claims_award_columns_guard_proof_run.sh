@@ -34,7 +34,12 @@ has 4-WITH-2623 '^D1 .*ACCEPTED'; has 4-WITH-2623 '^D2 .*ACCEPTED'; has 4-WITH-2
 for k in D1 D2 D3 D4 D5 D6 D7 D8; do has 2-GUARD-ONLY "^$k .*REJECTED 42501"; has 5-WITH-2623-AND-GUARD "^$k .*REJECTED 42501"; done
 # the app's own award still succeeds
 has 2-GUARD-ONLY '^R3 .*ACCEPTED'; has 5-WITH-2623-AND-GUARD '^R1 .*ACCEPTED'; has 5-WITH-2623-AND-GUARD '^R3 .*ACCEPTED'
-has 5-WITH-2623-AND-GUARD '^R5 .*ACCEPTED'; has 5-WITH-2623-AND-GUARD '^R4 .*ACCEPTED'; has 5-WITH-2623-AND-GUARD '^R6 .*claim ACCEPTED | winning quote ACCEPTED | decline others ACCEPTED'
+has 5-WITH-2623-AND-GUARD '^R5 .*ACCEPTED'; has 5-WITH-2623-AND-GUARD '^R4 .*ACCEPTED'; has 5-WITH-2623-AND-GUARD '^R6 .*claim ACCEPTED | winning quote ACCEPTED | decline others (submitted only) ACCEPTED'
+# B4 (DECIDED 6156405895): R6 now has a sibling expired and a sibling draft quote; the filtered statement leaves them untouched and declines the submitted one
+has 5-WITH-2623-AND-GUARD '^R6 .*qA=selected,qC=declined,qD=draft,qE=expired'; has 2-GUARD-ONLY '^R6 .*qA=selected,qC=declined,qD=draft,qE=expired'
+# negative control: the old unfiltered statement is ACCEPTED without the guard and REJECTED 42501 with it
+has 4-WITH-2623 '^R6b .*unfiltered decline-others ACCEPTED'; has 1-TODAY '^R6b .*unfiltered decline-others ACCEPTED'
+has 5-WITH-2623-AND-GUARD '^R6b .*unfiltered decline-others REJECTED 42501'; has 2-GUARD-ONLY '^R6b .*unfiltered decline-others REJECTED 42501'
 has 5-WITH-2623-AND-GUARD '^R2 .*REJECTED P0001'
 has 5-WITH-2623-AND-GUARD '^S1 .*ACCEPTED'; has 5-WITH-2623-AND-GUARD '^A1 .*ACCEPTED'; has 5-WITH-2623-AND-GUARD '^X1 .*(no row)'
 # review 6155135164: F1 (W1 to W4, accept_bid) and F2 (V1 to V4, revive then award) ACCEPTED before, REJECTED after

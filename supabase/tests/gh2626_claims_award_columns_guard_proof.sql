@@ -172,11 +172,30 @@ SELECT pg_temp.att('Q1 the bidding contractor (kA) changes its own bid_status to
 SELECT pg_temp.att('S2 service_role sets kE''s bid_status to active (process-bid-expirations / rescind-bid style write, untouched)', 'service_role', NULL, NULL, format('UPDATE public.quotes SET bid_status = ''active'' WHERE id = %L', pg_temp.fx('qE')));
 SELECT pg_temp.att('R8 owner selects a submitted, active bid (the quote step of the React award)', 'authenticated', pg_temp.fx('owner'), 'owner@example.invalid', format('UPDATE public.quotes SET status = ''selected'' WHERE id = %L', pg_temp.fx('qA')));
 
--- Whole React sequence (claim, winning quote, decline the others) for the app-award-still-succeeds line
+-- Whole React sequence (claim, winning quote, decline the others) for the app-award-still-succeeds line.
+-- B4 (6156232136; DECIDED 6156405895): the claim also has a sibling quote with status 'expired' (qE, relabelled
+-- here) and a sibling DRAFT quote (kB), as the common real case. R6b runs the OLD unfiltered decline-others
+-- statement (negative control: REJECTED 42501 once the guard is applied, ACCEPTED before); R6 runs the sequence
+-- with the fixed statement (status = 'submitted' filter, react-app/app/(homeowner)/bids/actions.ts) and must be ACCEPTED.
 DO $seq$
-DECLARE a text; b text; c text; st text;
+DECLARE a text; b text; c text; st text; sib text; ub text;
   v_owner uuid := pg_temp.fx('owner'); v_claim uuid := pg_temp.fx('claim'); v_kA uuid := pg_temp.fx('kA'); v_qA uuid := pg_temp.fx('qA');
+  v_qE uuid := pg_temp.fx('qE'); v_qD uuid;
 BEGIN
+  UPDATE public.quotes SET status = 'expired', bid_status = 'expired' WHERE id = v_qE;
+  INSERT INTO public.quotes(claim_id, contractor_id, total_price, fee_percentage, fee_amount, status, bid_status, is_test) VALUES (v_claim, pg_temp.fx('kB'), 700, 5, 35, 'draft', 'active', true) RETURNING id INTO v_qD;
+  -- R6b: old unfiltered statement (React L153 before the fix), rolled back by a sentinel exception either way
+  BEGIN
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated', 'email', 'owner@example.invalid')::text, true);
+    PERFORM set_config('role', 'authenticated', true);
+    UPDATE public.quotes SET status = 'declined' WHERE claim_id = v_claim AND id <> v_qA;
+    ub := 'unfiltered decline-others ACCEPTED';
+    RAISE EXCEPTION 'rollback-r6b' USING ERRCODE = 'ZZ999';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLSTATE <> 'ZZ999' THEN ub := 'unfiltered decline-others REJECTED ' || SQLSTATE || ' ' || left(SQLERRM, 90); END IF;
+  END;
+  EXECUTE 'RESET ROLE';
+  INSERT INTO proof_log(line) VALUES ('R6b old unfiltered decline-others with a sibling expired quote and a sibling draft quote: ' || ub);
   PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated', 'email', 'owner@example.invalid')::text, true);
   PERFORM set_config('role', 'authenticated', true);
   BEGIN
@@ -184,14 +203,16 @@ BEGIN
     a := 'claim ACCEPTED';
     UPDATE public.quotes SET status = 'selected' WHERE id = v_qA;
     b := 'winning quote ACCEPTED';
-    UPDATE public.quotes SET status = 'declined' WHERE claim_id = v_claim AND id <> v_qA;
-    c := 'decline others ACCEPTED';
+    UPDATE public.quotes SET status = 'declined' WHERE claim_id = v_claim AND id <> v_qA AND status = 'submitted';
+    c := 'decline others (submitted only) ACCEPTED';
   EXCEPTION WHEN OTHERS THEN
     a := coalesce(a, 'claim REJECTED ' || SQLSTATE || ' ' || left(SQLERRM, 90));
+    IF b IS NOT NULL AND c IS NULL THEN c := 'decline others REJECTED ' || SQLSTATE || ' ' || left(SQLERRM, 90); END IF;
   END;
   EXECUTE 'RESET ROLE';
   SELECT format('claim status=%s', status) INTO st FROM public.claims WHERE id = v_claim;
-  INSERT INTO proof_log(line) VALUES ('R6 full React sequence: ' || concat_ws(' | ', a, b, c, st));
+  SELECT string_agg(format('%s=%s', x.k, q.status), ',' ORDER BY x.k) INTO sib FROM public.quotes q JOIN (VALUES ('qA', v_qA), ('qC', pg_temp.fx('qC')), ('qE', v_qE), ('qD', v_qD)) AS x(k, id) ON x.id = q.id;
+  INSERT INTO proof_log(line) VALUES ('R6 full React sequence: ' || concat_ws(' | ', a, b, c, st) || ' | quote statuses after: ' || sib);
 END $seq$;
 
 SELECT line FROM proof_log ORDER BY n;
