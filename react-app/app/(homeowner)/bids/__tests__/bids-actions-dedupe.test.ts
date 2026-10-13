@@ -32,7 +32,11 @@ vi.mock('@/lib/supabase', () => {
     select: vi.fn(() => Promise.resolve(result)),
   });
   const eqThenNeq = (result: { data: unknown; error: null | { message: string } }) => {
-    return Object.assign(withSelect(result), { neq: vi.fn(() => withSelect(result)) });
+    // gh-2626 (B4): the decline-others write is now
+    // .update().eq('claim_id').neq('id').eq('status','submitted').select(),
+    // so the .neq() result must itself expose .eq() as well as .select().
+    const afterNeq = Object.assign(withSelect(result), { eq: vi.fn(() => withSelect(result)) });
+    return Object.assign(withSelect(result), { neq: vi.fn(() => afterNeq) });
   };
   return {
     supabase: {
