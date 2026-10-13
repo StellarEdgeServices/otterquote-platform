@@ -29,9 +29,23 @@
     "Weakley"
    ],
    "climate": [
-    "{county} County is part of the Western Grand Division defined in Tennessee Code Annotated section 4-1-204. NWS Memphis says June is the most active month for thunderstorm wind events in its warning area, and that the majority of those events occur between March and July. It says hail occurs most frequently from March through June, with May the most active month.",
+    "NWS Memphis says June is the most active month for thunderstorm wind events in its warning area, and that the majority of those events occur between March and July. It says hail occurs most frequently from March through June, with May the most active month. These are findings for the Memphis warning area, which includes {county} County's region.",
     "NWS Memphis studied tornadoes from 2007 to 2020 in its warning area and found that April accounted for 57 of 276 tornadoes, with May next at 50. The study reports that tornadoes occurred most frequently between 5:00 and 6:00 PM, with 40 of the 276 in that hour. It adds that tornado activity dramatically lowers from June through November. NWS Memphis also says severe weather reports peak in the late afternoon and early evening hours, and the Memphis warning area includes {county} County's region.",
     "NOAA's Tennessee state climate summary says summers are warm and humid for most of the state, while winters are cool with occasional episodes of very cold arctic air. It states that total annual precipitation has been mostly above average since 1990. It describes summer average high temperatures as warmer in western and central Tennessee than in the eastern portion of the state. It adds that winter weather includes occasional snow and ice storms, a statewide statement that includes {county} County."
+   ],
+   "sources": [
+    {
+     "label": "NWS Memphis: Severe Weather Climatology for the NWSFO Memphis County Warning Area",
+     "url": "https://www.weather.gov/meg/severewxclimatology"
+    },
+    {
+     "label": "NWS Memphis: Mid-South Tornado Climatology Study (Office Note 2021-01)",
+     "url": "https://www.weather.gov/media/meg/research/NWSMEG_OfficeNote2021_01.pdf"
+    },
+    {
+     "label": "NOAA State Climate Summaries: Tennessee",
+     "url": "https://statesummaries.ncics.org/chapter/tn/"
+    }
    ]
   },
   "middle": {
@@ -137,9 +151,23 @@
     "Washington"
    ],
    "climate": [
-    "{county} County is part of the Eastern Grand Division defined in Tennessee Code Annotated section 4-1-202. NOAA's Tennessee state climate summary says temperatures decrease as elevation increases, averaging a 3 degree F decline per 1,000 feet. It describes the Cumberland Plateau as averaging 2,000 feet in elevation and Smoky Mountains peaks as reaching 6,000 feet, and it says these higher areas are cooler than lower-elevation areas.",
+    "NOAA's Tennessee state climate summary says temperatures decrease as elevation increases, averaging a 3 degree F decline per 1,000 feet. It describes the Cumberland Plateau as averaging 2,000 feet in elevation and Smoky Mountains peaks as reaching 6,000 feet, and it says these higher areas are cooler than lower-elevation areas. These are statewide statements that include {county} County.",
     "NWS Morristown's snowfall records show how elevation matters in East Tennessee. For March 12 to 14, 1993, the office lists widespread 24 to 36 inch amounts in the mountains and 40 to 60 inches on the highest peaks of Sevier County. For February 12 to 14, 1960, it lists 10 to 15 inches in the mountains and 5 to 10 inches across the southern valley, an example from the region that includes {county} County.",
     "An NWS Morristown study of supercells over the eastern Tennessee River Valley says the topography of the Great Tennessee Valley may have enhanced the pooling of moisture across central east Tennessee. It also says the higher elevations of the northern Cumberland Plateau appeared to influence the development of some tornadoes by enhancing an outflow boundary. The study covers East Tennessee, where {county} County is located."
+   ],
+   "sources": [
+    {
+     "label": "NOAA State Climate Summaries: Tennessee",
+     "url": "https://statesummaries.ncics.org/chapter/tn/"
+    },
+    {
+     "label": "NWS Morristown: Top Snowfalls in the WFO Morristown County Warning Area",
+     "url": "https://www.weather.gov/mrx/snow"
+    },
+    {
+     "label": "NWS Morristown: An examination of varying supercell environments over the complex terrain of the eastern Tennessee River Valley",
+     "url": "https://www.weather.gov/mrx/tornadostudy"
+    }
    ]
   }
  },

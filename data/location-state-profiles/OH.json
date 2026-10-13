@@ -22,6 +22,20 @@
     "{county} County is in the Northwest division of NOAA's ten Ohio climate divisions. A division summary prepared with the Midwest Regional Climate Center describes the climate as continental and driven by the movement of pressure systems across the country. It says summers are generally quite warm in the inland areas and that winters can be cold with moderate to heavy snowfall. The same summary says lake effect reaches the northeastern corner of the division, near Toledo, when winds are easterly.",
     "NOAA's Ohio state climate summary says annual precipitation varies regionally and places the northwestern part of the state, where {county} County sits, on the drier side compared with the southern part. It notes that winter can bring snowstorms and ice storms, and it calls thunderstorms, flood-producing rainstorms, hail and tornadoes common in the warmer months. The summary also reports a significant increase in heavy rain events across Ohio.",
     "NWS Cleveland's report on a January 2016 lake effect event gives snowfall totals ranging from a trace in Toledo to several inches across the snowbelt of northeast Ohio and northwest Pennsylvania. The same report says most of northern Ohio received a light coating of snow from that system. For {county} County, the division summary and this event report together describe a region where lake influence is limited."
+   ],
+   "sources": [
+    {
+     "label": "GLISA, with the Midwest Regional Climate Center: Northwest Ohio climate division summary",
+     "url": "https://glisa.umich.edu/division/northwest-ohio/"
+    },
+    {
+     "label": "NOAA State Climate Summaries: Ohio",
+     "url": "https://statesummaries.ncics.org/chapter/oh/"
+    },
+    {
+     "label": "NWS Cleveland: January 17-19, 2016 Snow Event",
+     "url": "https://www.weather.gov/cle/event_20160118_LESnow"
+    }
    ]
   },
   "north_central": {
@@ -72,6 +86,20 @@
     "The Northeast division, which includes {county} County, has a continental climate with four distinct seasons, according to a summary prepared with the Midwest Regional Climate Center. It describes hot and humid summers and cold, snowy winters. The summary says the division receives abundant lake effect snow from mid-November until ice covers the surface of Lake Erie, which it places in late January or early February.",
     "NWS Cleveland's report on the January 2016 lake effect event says the highest Ohio snowfall totals were recorded in Geauga County, which is in the same NOAA climate division as {county} County. It describes Lake Erie as mostly ice free east of the islands, which supplied moisture for a prolonged period of snow under west to northwest winds. It also says lake effect bands vary quickly in intensity over short distances.",
     "In its summary of the 2022-23 winter, NWS Cleveland reports that snowbelt counties east of Cleveland received 30 to 60 inches that winter, against normal amounts of 70 to over 100 inches in those areas. The same summary says the mild winter inhibited ice formation on Lake Erie, and that a mid-March lake effect event added 6 to 10 inches across eastern counties. {county} County is one of the Northeast division counties in NOAA's list."
+   ],
+   "sources": [
+    {
+     "label": "GLISA, with the Midwest Regional Climate Center: Northeastern Ohio climate division summary",
+     "url": "https://glisa.umich.edu/division/northeastern-ohio/"
+    },
+    {
+     "label": "NWS Cleveland: January 17-19, 2016 Snow Event",
+     "url": "https://www.weather.gov/cle/event_20160118_LESnow"
+    },
+    {
+     "label": "NWS Cleveland: Winter 2022-2023 Review",
+     "url": "https://www.weather.gov/cle/Climate_Snowfall_2022-23"
+    }
    ]
   },
   "west_central": {
@@ -111,6 +139,20 @@
     "A summary for the Central division, prepared with the Midwest Regional Climate Center, describes a humid continental climate with hot and humid summers and cool to cold winters. It calls precipitation in Ohio moderate compared with the rest of the country, and relatively consistent year-round. It also says severe weather is not uncommon in the division, including tornado threats, and {county} County is one of its counties.",
     "The same Central division summary says gorge-like river valleys near Columbus, particularly along the Scioto and Olentangy, create microclimates that experience distinct weather from the surrounding areas. NOAA's Ohio state climate summary reports that since 2000 Columbus has averaged 22 warm nights per year, against 9 in the 1950s through 1970s. {county} County lies in the same division as Columbus.",
     "NWS Wilmington's summary of April 17, 2024 confirms an EF1 tornado in Delaware County, which is in the Central division with {county} County. NOAA's Ohio state climate summary says dangerous storms can occur in every season, and it lists snowstorms and ice storms among winter weather. It lists thunderstorms, flood-producing rainstorms, hail and tornadoes among the convective storms it calls common in the warmer months."
+   ],
+   "sources": [
+    {
+     "label": "GLISA, with the Midwest Regional Climate Center: Central Ohio climate division summary",
+     "url": "https://glisa.umich.edu/division/central-ohio/"
+    },
+    {
+     "label": "NOAA State Climate Summaries: Ohio",
+     "url": "https://statesummaries.ncics.org/chapter/oh/"
+    },
+    {
+     "label": "NWS Wilmington: April 17, 2024 severe storms and tornadoes",
+     "url": "https://www.weather.gov/iln/20240417"
+    }
    ]
   },
   "central_hills": {
