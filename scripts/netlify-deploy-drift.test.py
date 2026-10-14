@@ -2138,7 +2138,7 @@ def main():
     # -------------------------------------------------------------------------------
     print("\ngh-2289: Cloudflare-injected Web Analytics beacon must not move the content hash")
     # -------------------------------------------------------------------------------
-    page_path = HERE / "netlify-drift-fixtures" / "stohlerroof-bridge.page.html"
+    page_path = HERE / "netlify-drift-fixtures" / "stohlerroof-bridge.page.txt"
     clean = page_path.read_bytes()
     beacon_a = (b'        <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vAAAA1"'
                 b' integrity="sha512-AAAA" data-cf-beacon=\'{"version":"2024.11.0","token":"tok-a","r":1,"spa":2}\''
@@ -2160,6 +2160,18 @@ def main():
           h(changed) != h(clean) and h(variant_a.replace(b"Dustin Stohler", b"Someone Else")) != h(clean), True)
     check("gh-2289 negative control: an extra non-Cloudflare script is NOT stripped",
           h(clean.replace(b"</body>", b'<script src="https://evil.example/x.js"></script></body>', 1)) != h(clean), True)
+    cf = b"https://static.cloudflareinsights.com/beacon.min.js"
+    decoys = {
+        "data-src + evil src": b'<script data-src="' + cf + b'" src="https://evil.example/x.js"></script>',
+        "evil src first, CF src second": b'<script src="https://evil.example/x.js" src="' + cf + b'"></script>',
+        "x-src + evil src": b'<script x-src="' + cf + b'" src="https://evil.example/x.js"></script>',
+    }
+    for name, tag in decoys.items():
+        check("gh-2289 negative control: decoy NOT stripped (%s)" % name,
+              h(clean.replace(b"</body>", tag + b"</body>", 1)) != h(clean), True)
+    beacon_defer = b'<script defer src="' + cf + b'/vXXXX" data-cf-beacon=\'{"token":"tok-c"}\'></script>'
+    check("gh-2289: real beacon, defer shape, still stripped",
+          h(clean.replace(b"</body>", beacon_defer + b"</body>", 1)), h(clean))
     visible = re.sub(rb"<[^>]+>", b"", nd.normalise_page_bytes(variant_a))
     visible = re.sub(rb"\s+", b" ", visible)
     check("gh-2289: D-174 disclosure 'operated by Dustin Stohler personally' survives normalisation",

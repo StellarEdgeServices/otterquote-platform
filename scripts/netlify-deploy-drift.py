@@ -1861,9 +1861,25 @@ _CF_BEACON_RE = re.compile(
 )
 
 
+_ANY_SRC_ATTR_RE = re.compile(rb"src\s*=", re.IGNORECASE)
+_CF_SRC_ATTR_RE = re.compile(
+    rb"\ssrc=[\"']https://static\.cloudflareinsights\.com/beacon\.min\.js[^\"']*[\"']", re.IGNORECASE
+)
+
+
+def _strip_cf_beacon(match):
+    """Strip a candidate tag only if it has exactly ONE src-like attribute and that attribute
+    is a whitespace-preceded src= on static.cloudflareinsights.com (rejects data-src/x-src
+    decoys and tags carrying a second src=)."""
+    tag = match.group(0)
+    if len(_ANY_SRC_ATTR_RE.findall(tag)) == 1 and _CF_SRC_ATTR_RE.search(tag):
+        return b""
+    return tag
+
+
 def normalise_page_bytes(raw):
     """gh-2289: raw page bytes with Cloudflare's injected Web Analytics beacon tag removed."""
-    return _CF_BEACON_RE.sub(b"", raw)
+    return _CF_BEACON_RE.sub(_strip_cf_beacon, raw)
 
 
 def fetch_url_content(url, timeout=TIMEOUT_SECONDS):
