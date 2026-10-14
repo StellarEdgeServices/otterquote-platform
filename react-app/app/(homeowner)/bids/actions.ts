@@ -136,7 +136,7 @@ export async function awardClaimToContractor(params: {
     .update({ status: 'selected' })
     .eq('id', bid.id)
     .select('id');
-  if (winErr) return { ok: false, error: winErr.message };
+  if (winErr) return { ok: false, error: mapAwardError(winErr.message) };
   // gh-2105 (decision a): same zero-row-silent-success gap as the claim
   // write above -- the winning bid must actually flip to 'selected'.
   if (!Array.isArray(winRows) || winRows.length === 0) {
@@ -153,8 +153,13 @@ export async function awardClaimToContractor(params: {
     .update({ status: 'declined' })
     .eq('claim_id', claim.id)
     .neq('id', bid.id)
+    // gh-2626 (B4, DECIDED by Ben 6156405895): only submitted siblings are
+    // declined. The claims/quotes award guard refuses the whole statement if
+    // it touches a draft or expired sibling bid (42501), which would fail the
+    // award. Draft/expired siblings are not live bids, so leave them as they are.
+    .eq('status', 'submitted')
     .select('id');
-  if (rejectErr) return { ok: false, error: rejectErr.message };
+  if (rejectErr) return { ok: false, error: mapAwardError(rejectErr.message) };
   // gh-2105 (decision b, NOT an error): a claim can legitimately have only
   // one bid (the winner), so there may be nothing left to decline -- zero
   // rows here is an expected outcome, not a silent-failure signal. `.select()`

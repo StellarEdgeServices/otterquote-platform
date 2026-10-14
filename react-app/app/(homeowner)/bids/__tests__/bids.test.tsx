@@ -23,6 +23,9 @@ import {
   EXPIRY_TOOLTIP,
   EMPTY_STATE,
   mapAwardError,
+  BID_NOT_AWARDABLE_MESSAGE,
+  CLAIM_NOT_AWARDABLE_MESSAGE,
+  AWARD_NOT_ALLOWED_MESSAGE,
   NO_PAYMENT_METHOD_MESSAGE,
   NO_PAYMENT_METHOD_SENTINEL,
 } from '../utils';
@@ -363,6 +366,55 @@ describe('(f) award-refusal copy (gh-1532)', () => {
       'permission denied for table claims',
     );
     expect(mapAwardError(null)).toBe('');
+  });
+});
+
+// ── (g) gh-2626 award-guard refusals (C3) ──────────────────────────────────
+describe('award-guard refusals map to homeowner wording (gh-2626 C3)', () => {
+  it('accept_bid() bid_not_awardable (P0001) -> expired or withdrawn sentence', () => {
+    const raw = 'bid_not_awardable: this bid is expired, withdrawn or no longer active, so it cannot be accepted';
+    expect(mapAwardError(raw)).toBe(
+      'This bid can no longer be awarded \u2014 it has expired or was withdrawn. Pick another bid or ask the contractor to re-bid.',
+    );
+    expect(mapAwardError(raw)).toBe(BID_NOT_AWARDABLE_MESSAGE);
+  });
+
+  it('accept_bid() claim_not_awardable (P0001) -> claim sentence', () => {
+    const raw = 'claim_not_awardable: this claim is not open for bids, so a bid cannot be accepted on it';
+    expect(mapAwardError(raw)).toBe('This claim is not open for awarding right now.');
+    expect(mapAwardError(raw)).toBe(CLAIM_NOT_AWARDABLE_MESSAGE);
+  });
+
+  it('trigger 42501: selected contractor without a live bid -> bid sentence', () => {
+    const raw = "claims: the selected contractor can only be set to a contractor with a live bid on this claim, at that bid's price (gh-2626)";
+    expect(mapAwardError(raw)).toBe(BID_NOT_AWARDABLE_MESSAGE);
+  });
+
+  it('trigger 42501: quote selected from a non-live bid -> bid sentence', () => {
+    const raw = 'quotes: only a submitted, active bid can be selected by the claim owner (gh-2626)';
+    expect(mapAwardError(raw)).toBe(BID_NOT_AWARDABLE_MESSAGE);
+  });
+
+  it('trigger 42501: award on a claim that is not open, or a signed claim moved -> claim sentence', () => {
+    expect(mapAwardError('claims: a claim can only be awarded while it is open for bids (gh-2626)')).toBe(CLAIM_NOT_AWARDABLE_MESSAGE);
+    expect(mapAwardError('claims: a signed claim cannot be moved to another status by the claim owner (gh-2626)')).toBe(CLAIM_NOT_AWARDABLE_MESSAGE);
+  });
+
+  it('trigger 42501: declined from a non-submitted bid and other gh-2626 refusals -> generic sentence', () => {
+    const raw = 'quotes: only a submitted bid can be declined by the claim owner (gh-2626)';
+    expect(mapAwardError(raw)).toBe(AWARD_NOT_ALLOWED_MESSAGE);
+    expect(mapAwardError('quotes: bid_status can only be changed by the bidding contractor, service_role or an admin (gh-2626)')).toBe(AWARD_NOT_ALLOWED_MESSAGE);
+  });
+
+  it('never shows an internal identifier or trigger text to the homeowner', () => {
+    for (const m of [BID_NOT_AWARDABLE_MESSAGE, CLAIM_NOT_AWARDABLE_MESSAGE, AWARD_NOT_ALLOWED_MESSAGE]) {
+      expect(m).not.toMatch(/gh-2626|42501|P0001|_awardable|claims:|quotes:/);
+    }
+  });
+
+  // Negative control: an unrelated error still passes through unchanged.
+  it('passes an unrelated error through unchanged', () => {
+    expect(mapAwardError('permission denied for table claims')).toBe('permission denied for table claims');
   });
 });
 
