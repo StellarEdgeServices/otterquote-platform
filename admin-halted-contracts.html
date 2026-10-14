@@ -112,7 +112,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
     and the claim stays at <code>awarded</code>. The e-signature service still holds a fully signed document, so both
     parties may believe signing finished.
     <strong>Re-issue</strong> detaches that document from the claim so a corrected one can be sent. It never deletes
-    the signed document, never claims to void a completed one, and sends no message to either party.
+    the signed document, never claims to void a completed one. Otter Quotes sends no message itself, but if the document is revoked the e-signature service emails both signers to say so.
     The first click is a dry run; nothing is written until you confirm.
   </div>
   <div class="action-note" id="actionNote" role="status"></div>
@@ -162,7 +162,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
  * as a dry run (confirm:false, writes nothing), then, only after the admin
  * accepts the plan, with confirm:true. This page itself still makes no table
  * write: every write is the Edge Function's, under the admin's own JWT.
- * The function never deletes a document and sends no message to a party.
+ * The function never deletes a document and sends no message itself; a revoke makes the e-signature service email both signers.
  *
  * gh-2543 part 1 -- list of claims the signed-price reconciliation
  * halted (signing webhook, price-verify.ts, gh-1314).
@@ -252,7 +252,8 @@ function describePlan(b) {
     'Document status at the e-signature service: ' + b.document_status + '\n' +
     'Action at the e-signature service: ' + (b.vendor_action === 'revoke' ? 'revoke (the document is not finished)' : 'none; the signed document is retained, never deleted') + '\n' +
     'Quotes detached from it: ' + n + '\n\n' +
-    'Then the claim and its halt markers are cleared so a corrected document can be sent. No message goes to either party.\n\n' +
+    'Then the claim and its halt markers are cleared so a corrected document can be sent. ' +
+    (b.vendor_action === 'revoke' ? 'Otter Quotes sends no message, but revoking makes the e-signature service email both signers that the document was revoked.' : 'No message goes to either party.') + '\n\n' +
     'Press OK to re-issue now.';
 }
 
@@ -278,7 +279,7 @@ async function onReissueClick(btn) {
     if (!dry.ok || !dry.body || dry.body.dry_run !== true) { showNote(describeRefusal(dry), true); return; }
     if (!window.confirm(describePlan(dry.body))) { showNote('Cancelled. Nothing was written.', false); return; }
     var done = await callReissue(claimId, envId, true);
-    if (!done.ok || !done.body || done.body.success !== true) { showNote(describeRefusal(done), true); return; }
+    if (!done.ok || !done.body || done.body.success !== true) { showNote(describeRefusal(done), true); await loadHalted(); return; }
     showNote(describeDone(done.body), false);
     await loadHalted();
   } catch (e) {

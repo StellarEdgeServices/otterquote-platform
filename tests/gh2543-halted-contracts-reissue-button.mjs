@@ -99,11 +99,22 @@ const DONE = { ok: true, status: 200, body: { success: true, audit_written: true
   await w.ctx.__onClick(w.btn);
   ok(w.calls.length === 0 && /Not signed in/.test(w.note.textContent), 'no session sends no request');
 }
-// 6. confirm step fails (500): not reported as success, list not reloaded
+// 6. confirm step fails (500): not reported as success, list reloaded so the admin sees current state
 {
   const w = world({ responses: [DRY, { ok: false, status: 500, body: { error: 'boom' } }] });
   await w.ctx.__onClick(w.btn);
-  ok(/boom/.test(w.note.textContent) && w.reloaded() === 0 && !/Re-issued/.test(w.note.textContent), 'a failed confirm is not reported as success');
+  ok(/boom/.test(w.note.textContent) && w.reloaded() === 1 && !/Re-issued/.test(w.note.textContent), 'a failed confirm is not reported as success and reloads the list');
+}
+// 6b. dialog wording: the revoke branch must say the e-signature service emails the signers
+{
+  const rev = { ...DRY, body: { ...DRY.body, vendor_action: 'revoke' } };
+  const w1 = world({ responses: [rev] });
+  await w1.ctx.__onClick(w1.btn);
+  ok(/email both signers/.test(w1.ctx.__confirmText) && !/No message goes to either party/.test(w1.ctx.__confirmText), 'revoke plan tells the admin the signers are emailed');
+  const w2 = world({ responses: [DRY] });
+  await w2.ctx.__onClick(w2.btn);
+  ok(/No message goes to either party/.test(w2.ctx.__confirmText), 'non-revoke plan says no message goes out');
+  ok(!/sends no message to either party/.test(html), 'banner no longer claims no message is sent when a document is revoked');
 }
 // 7. row rendering
 {
