@@ -23,7 +23,7 @@ import {
   buildScopeSummary, buildQuoteInsert, buildQuoteUpdate, BID_RENEWAL_WINDOW_MS,
   applyCustomWarrantyReview, CUSTOM_WARRANTY_REVIEW_NOTE,
   buildFeeAcceptanceInsert, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
-  RESCINDABLE_STATUSES, isRescindable, buildRescindRequest,
+  RESCINDABLE_STATUSES, isRescindable, buildRescindRequest, isBidSelected, readBidSelectedRefusal,
   resolveClaimId, resolveBidMode, wroteRow,
   type BidGateContractor, type BidClaim,
   BIDDER_CLAIM_BID_COLS, claimLocationLabel, withCarrierProfile,
@@ -311,11 +311,26 @@ describe('quote + acceptance + notify payloads', () => {
 
   it('buildQuoteUpdate renewal resets the 14-day window + increments renewals_count', () => {
     const u = buildQuoteUpdate({ ...common, renewMode: true, existingRenewalsCount: 2, now: NOW });
-    expect(u.bid_status).toBe('submitted');
+    expect(u.bid_status).toBe('active'); // gh-2564: 'submitted' is refused by quotes_bid_status_check
     expect(u.expired_at).toBeNull();
     expect(u.expires_at).toBe(new Date(NOW.getTime() + BID_RENEWAL_WINDOW_MS).toISOString());
     expect(u.renewals_count).toBe(3);
     expect(BID_RENEWAL_WINDOW_MS).toBe(14 * 24 * 60 * 60 * 1000);
+  });
+
+  it('gh-2564 Change Bid on a withdrawn (cancelled) quote sets bid_status back to active, with a fresh window', () => {
+    const u = buildQuoteUpdate({ ...common, renewMode: false, existingBidStatus: 'cancelled', existingRenewalsCount: 2, now: NOW });
+    expect(u.bid_status).toBe('active');
+    expect(u.expired_at).toBeNull();
+    expect(u.expires_at).toBe(new Date(NOW.getTime() + BID_RENEWAL_WINDOW_MS).toISOString());
+    expect(u).not.toHaveProperty('renewals_count'); // not an auto-renewal
+  });
+
+  it('gh-2564 NEGATIVE CONTROL: Change Bid on a live quote still leaves bid_status alone', () => {
+    for (const s of ['active', 'expired', null, undefined]) {
+      const u = buildQuoteUpdate({ ...common, renewMode: false, existingBidStatus: s, now: NOW });
+      expect(u).not.toHaveProperty('bid_status');
+    }
   });
 
   it('applyCustomWarrantyReview flags only custom warranties', () => {
@@ -367,7 +382,8 @@ describe('quote + acceptance + notify payloads', () => {
 // =============================================================================
 describe('rescind (:5746-5793)', () => {
   it('RESCINDABLE statuses', () => {
-    expect([...RESCINDABLE_STATUSES]).toEqual(['submitted', 'pending', 'under_review']);
+    expect([...RESCINDABLE_STATUSES]).toEqual(['active', 'submitted', 'pending', 'under_review']);
+    expect(isRescindable('active')).toBe(true);
     expect(isRescindable('submitted')).toBe(true);
     expect(isRescindable('under_review')).toBe(true);
     expect(isRescindable('signed')).toBe(false);
@@ -379,6 +395,49 @@ describe('rescind (:5746-5793)', () => {
   });
   it('notRescindable copy renders status as text', () => {
     expect(BID_COPY.rescind.notRescindable('signed')).toContain('Bid status: signed');
+  });
+  it('gh-2564 point 6: notRescindable copy matches contractor-bid-form.html:5962 word for word', () => {
+    const html = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../../contractor-bid-form.html'), 'utf8');
+    const sentence = 'This bid cannot be withdrawn at its current stage. Only active, submitted, pending, or under-review bids can be rescinded.';
+    expect(html).toContain(sentence);
+    expect(BID_COPY.rescind.notRescindable('signed')).toContain(sentence);
+  });
+  it('gh-2564 C7: no file still tells a bidder its bid "was already selected"; the neutral sentence is in all three places', () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const root = resolve(here, '../../../../../..');
+    const neutral = 'This bid can no longer be withdrawn here because the homeowner has already chosen a contractor. Contact support for help.';
+    const places = [
+      readFileSync(resolve(root, 'supabase/functions/rescind-bid/status.ts'), 'utf8'),
+      readFileSync(resolve(root, 'contractor-bid-form.html'), 'utf8'),
+      readFileSync(resolve(root, 'react-app/app/contractor/bid/[claimId]/copy.ts'), 'utf8'),
+    ];
+    for (const p of places) {
+      expect(p).toContain(neutral);
+      expect(p).not.toContain('was already selected by the homeowner'); // NEGATIVE CONTROL: the old, false-for-losers sentence
+    }
+    expect(BID_COPY.rescind.bidSelected).toBe(neutral);
+  });
+  it('gh-2564 bidSelected copy is the EF refusal message, verbatim', () => {
+    const msg = 'This bid can no longer be withdrawn here because the homeowner has already chosen a contractor. Contact support for help.';
+    expect(BID_COPY.rescind.bidSelected).toBe(msg);
+    expect(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../../contractor-bid-form.html'), 'utf8')).toContain(msg);
+    expect(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../../supabase/functions/rescind-bid/status.ts'), 'utf8')).toContain(msg);
+  });
+  it('gh-2564 isBidSelected: quote selected, or the claim selected this contractor; a live bid is not', () => {
+    expect(isBidSelected('selected', null, 'c1')).toBe(true);
+    expect(isBidSelected('submitted', 'c1', 'c1')).toBe(true);
+    expect(isBidSelected('submitted', 'c2', 'c1')).toBe(false); // NEGATIVE CONTROL
+    expect(isBidSelected('submitted', null, null)).toBe(false);
+  });
+  it('gh-2564 readBidSelectedRefusal reads the 409 body; any other error is not the refusal', async () => {
+    const refusal = { context: new Response(JSON.stringify({ error: 'bid_selected', message: 'M' }), { status: 409 }) };
+    expect(await readBidSelectedRefusal(refusal, 'fallback')).toBe('M');
+    const noMsg = { context: new Response(JSON.stringify({ error: 'bid_selected' }), { status: 409 }) };
+    expect(await readBidSelectedRefusal(noMsg, 'fallback')).toBe('fallback');
+    const other = { context: new Response(JSON.stringify({ error: 'Bid cannot be rescinded in current status' }), { status: 409 }) };
+    expect(await readBidSelectedRefusal(other, 'fallback')).toBeNull();
+    expect(await readBidSelectedRefusal(new Error('network'), 'fallback')).toBeNull();
+    expect(await readBidSelectedRefusal(null, 'fallback')).toBeNull();
   });
 });
 

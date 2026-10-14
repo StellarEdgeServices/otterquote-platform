@@ -161,6 +161,44 @@ describe('action button state machine', () => {
     expect(a.kind).toBe('select');
     expect(a.label).toBe('Select This Contractor');
   });
+  it('gh-2564: a withdrawn (cancelled) bid is shown withdrawn, with no Accept and no renewal', () => {
+    const a = deriveBidAction({ id: 'c1', user_id: 'u1', status: 'active' }, bid({ bid_status: 'cancelled' }));
+    expect(a.kind).toBe('withdrawn');
+    expect(a.label).toBe('Bid Withdrawn');
+    expect(a.disabled).toBe(true);
+    // NEGATIVE CONTROL: the same bid, live, still offers Select
+    expect(deriveBidAction({ id: 'c1', user_id: 'u1', status: 'active' }, bid({ bid_status: 'active' })).kind).toBe('select');
+  });
+
+  it('gh-2564: a cancelled bid has the withdrawn expiry state, does not compete, and cannot be Best Price', () => {
+    expect(deriveBidExpiry(bid({ bid_status: 'cancelled', expires_at: '2026-07-30' }), NOW).state).toBe('withdrawn');
+    const live = bid({ id: 'b1', total_price: 5000 });
+    const gone = bid({ id: 'b2', contractor_id: 'k2', total_price: 100, bid_status: 'cancelled' });
+    const live2 = bid({ id: 'b3', contractor_id: 'k3', total_price: 6000 });
+    expect(isLowestPrice(gone, [live, gone, live2])).toBe(false);
+    expect(isLowestPrice(live, [live, gone, live2])).toBe(true);
+    expect(showCompareToggle([live, gone])).toBe(false);
+  });
+
+  it('gh-2564: the card renders "Withdrawn" with the withdrawn notice and a disabled button, never Select', () => {
+    render(
+      <BidCard
+        bid={bid({ bid_status: 'cancelled' })}
+        bids={[bid({ bid_status: 'cancelled' })]}
+        claim={{ id: 'c1', user_id: 'u1', status: 'active', job_type: 'retail' }}
+        contractor={{ id: 'k1', company_name: 'Acme Roofing' }}
+        onSelect={vi.fn()}
+        onRenew={vi.fn()}
+        now={NOW}
+      />,
+    );
+    expect(screen.getByText('Withdrawn')).toBeInTheDocument();
+    expect(screen.getByText('This contractor withdrew this bid.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Bid Withdrawn' })).toBeDisabled();
+    expect(screen.queryByText('Select This Contractor')).not.toBeInTheDocument();
+    expect(screen.queryByText('Request Updated Bid')).not.toBeInTheDocument();
+  });
+
   it('offers renewal on an expired bid', () => {
     const a = deriveBidAction({ id: 'c1', user_id: 'u1', status: 'active' }, bid({ bid_status: 'expired' }));
     expect(a.kind).toBe('renew');

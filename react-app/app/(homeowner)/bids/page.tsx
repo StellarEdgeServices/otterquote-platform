@@ -85,7 +85,8 @@ function BidsContent() {
     track('bids_viewed', { bid_count: bids.length });
   }, [claimLoading, bidsLoading, claimId, bids.length]);
 
-  const onSelect = useCallback((bid: BidRow) => setPending(bid), []);
+  // gh-2564: a withdrawn ('cancelled') bid can never be selected, whichever control fired.
+  const onSelect = useCallback((bid: BidRow) => { if (bid.bid_status !== 'cancelled') setPending(bid); }, []);
   const onCredentials = useCallback((contractorId: string) => setEduContractorId(contractorId), []);
 
   const onRenew = useCallback(

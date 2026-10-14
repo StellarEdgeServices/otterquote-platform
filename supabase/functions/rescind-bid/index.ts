@@ -1,4 +1,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import {
+  BID_SELECTED_ERROR,
+  BID_SELECTED_MESSAGE,
+  isBidSelectedOrAwarded,
+  RESCINDABLE_STATUSES,
+  RESCINDED_BID_STATUS,
+  SELECTED_QUOTE_STATUS,
+} from "./status.ts";
+import { mailgunSender, notifyHomeownerOfWithdrawal } from "./notify.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -30,12 +39,8 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
-// Statuses that permit rescission.
-// 'active' is the live status a freshly-submitted bid lands in (quotes.bid_status
-// schema default; the non-renewal submit path never overrides it). 'submitted' is
-// produced by the D-150 renewal path. NOTE: the renew-expiry side
-// (process-bid-expirations) is intentionally NOT touched here — separate Phase-18 item.
-const RESCINDABLE_STATUSES = ["active", "submitted", "pending", "under_review"];
+// Statuses that permit rescission, and the admitted bid_status a rescinded bid is written with, live in
+// ./status.ts (gh-2564: the old write, 'rescinded', was refused by quotes_bid_status_check).
 
 interface RescindBidRequest {
   quote_id: string;
@@ -118,7 +123,7 @@ Deno.serve(async (req: Request) => {
   // Fetch the quote
   const { data: quote, error: fetchError } = await supabase
     .from("quotes")
-    .select("id, bid_status, contractor_id, created_at, is_test")
+    .select("id, bid_status, status, claim_id, contractor_id, created_at, is_test")
     .eq("id", body.quote_id)
     .single();
 
@@ -169,6 +174,30 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  // gh-2564: refuse when the homeowner already selected this bid, or its claim is awarded / contract_signed.
+  // The contractor is routed to support (D-215(b)); the policy for withdrawing a selected bid is Dustin's (D-369).
+  let claimStatus: string | null = null;
+  if (quote.claim_id) {
+    const { data: claimRow } = await supabase
+      .from("claims")
+      .select("status")
+      .eq("id", quote.claim_id)
+      .maybeSingle();
+    claimStatus = claimRow?.status ?? null;
+  }
+  if (isBidSelectedOrAwarded(quote.status, claimStatus)) {
+    return new Response(
+      JSON.stringify({ error: BID_SELECTED_ERROR, message: BID_SELECTED_MESSAGE }),
+      {
+        status: 409,
+        headers: {
+          "Content-Type": "application/json",
+          ...buildCorsHeaders(req),
+        },
+      }
+    );
+  }
+
   // Check if status allows rescission
   if (!RESCINDABLE_STATUSES.includes(quote.bid_status)) {
     return new Response(
@@ -194,10 +223,14 @@ Deno.serve(async (req: Request) => {
   const { error: updateError, data: updateRows } = await supabase
     .from("quotes")
     .update({
-      bid_status: "rescinded",
+      bid_status: RESCINDED_BID_STATUS,
       updated_at: rescindedAt,
     })
     .eq("id", body.quote_id)
+    // gh-2564 (CEO RUN 104 point 3): condition the write on the state that was checked above, so a homeowner
+    // selecting this bid, or a double submit, between the read and the write matches zero rows (409 below).
+    .neq("status", SELECTED_QUOTE_STATUS)
+    .in("bid_status", RESCINDABLE_STATUSES)
     .select("id");
 
   if (updateError) {
@@ -218,7 +251,7 @@ Deno.serve(async (req: Request) => {
   // `quote` was fetched earlier by this same id, so a zero-row match here
   // means it changed out from under the request (RLS, concurrent delete) —
   // without this check the caller would get `success: true` while
-  // quotes.bid_status never actually flipped to "rescinded", leaving a bid
+  // quotes.bid_status never actually flipped to RESCINDED_BID_STATUS, leaving a bid
   // that still looks live/payable to the award flow.
   if (!Array.isArray(updateRows) || updateRows.length === 0) {
     return new Response(
@@ -255,6 +288,41 @@ Deno.serve(async (req: Request) => {
     // Don't fail the response; log insertion is non-critical
   }
 
+  // gh-2564: the confirmation card tells the contractor "the homeowner will be notified"; this is that notice.
+  // One email, non-fatal: the bid is already withdrawn, so a send failure is logged, never returned as an error.
+  let homeownerNotified = false;
+  try {
+    // gh-2564 (point 4): "The other bids on your project have not changed." is sent only when another live bid exists.
+    // Live = another quote on this claim that is still bid_status 'active' and status submitted/selected. A failed
+    // count counts as "none", so the sentence is omitted rather than asserted.
+    let otherLiveBids = false;
+    if (quote.claim_id) {
+      const { count: otherCount, error: otherErr } = await supabase
+        .from("quotes")
+        .select("id", { count: "exact", head: true })
+        .eq("claim_id", quote.claim_id)
+        .neq("id", body.quote_id)
+        .eq("bid_status", "active")
+        .in("status", ["submitted", "selected"]);
+      otherLiveBids = !otherErr && (otherCount ?? 0) > 0;
+    }
+    const mailgunApiKey = Deno.env.get("MAILGUN_API_KEY") || "";
+    const mailgunDomain = Deno.env.get("MAILGUN_DOMAIN") || "";
+    if (mailgunApiKey && mailgunDomain) {
+      const notice = await notifyHomeownerOfWithdrawal(
+        supabase,
+        mailgunSender(mailgunApiKey, mailgunDomain),
+        { claimId: quote.claim_id ?? null, contractorId: body.contractor_id, mailgunDomain, otherLiveBids },
+      );
+      homeownerNotified = notice.sent;
+      if (!notice.sent) console.error("[rescind-bid] homeowner notice not sent:", notice.reason);
+    } else {
+      console.error("[rescind-bid] homeowner notice not sent: MAILGUN_API_KEY / MAILGUN_DOMAIN not set");
+    }
+  } catch (noticeErr) {
+    console.error("[rescind-bid] homeowner notice failed (non-fatal):", noticeErr);
+  }
+
   // Success response
   return new Response(
     JSON.stringify({
@@ -262,6 +330,7 @@ Deno.serve(async (req: Request) => {
       quote_id: body.quote_id,
       rescinded_at: rescindedAt,
       previous_status: previousStatus,
+      homeowner_notified: homeownerNotified,
     }),
     {
       status: 200,

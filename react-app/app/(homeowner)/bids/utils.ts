@@ -129,7 +129,8 @@ export function extractOwnerPhotoPath(filePath: string | null | undefined): stri
 
 // ── D-150 bid expiration (bids.html:1137, 1157-1173) ─────────────────────────
 
-export type BidExpiryState = 'active' | 'expiring' | 'expired';
+// gh-2564: 'withdrawn' = quotes.bid_status 'cancelled' (the contractor withdrew the bid via rescind-bid).
+export type BidExpiryState = 'active' | 'expiring' | 'expired' | 'withdrawn';
 
 export interface BidExpiry {
   state: BidExpiryState;
@@ -149,6 +150,11 @@ export interface BidExpiry {
  */
 export function deriveBidExpiry(bid: BidRow, now: Date = new Date()): BidExpiry {
   const isExpired = bid.bid_status === 'expired';
+
+  // gh-2564: a withdrawn bid has no expiry countdown and no expired-on date; it is simply withdrawn.
+  if (bid.bid_status === 'cancelled') {
+    return { state: 'withdrawn', daysUntilExpiry: null, warning: '', expiredOn: null };
+  }
 
   if (isExpired) {
     return {
@@ -176,9 +182,9 @@ export function deriveBidExpiry(bid: BidRow, now: Date = new Date()): BidExpiry 
 
 // ── Active-bid / best-price selectors (bids.html:1121-1138, 2191) ────────────
 
-/** Only non-expired bids compete and appear in the comparison grid. */
+/** Only non-expired, non-withdrawn bids compete and appear in the comparison grid. */
 export function activeBids(bids: BidRow[]): BidRow[] {
-  return bids.filter((b) => b.bid_status !== 'expired');
+  return bids.filter((b) => b.bid_status !== 'expired' && b.bid_status !== 'cancelled');
 }
 
 /** Every bid expired (drives the all-expired banner). bids.html:1128. */
@@ -195,7 +201,7 @@ export function lowestActivePrice(bids: BidRow[]): number | null {
 
 /** "Best Price" badge — non-expired, ties the lowest, with 2+ active bids. */
 export function isLowestPrice(bid: BidRow, bids: BidRow[]): boolean {
-  if (bid.bid_status === 'expired') return false;
+  if (bid.bid_status === 'expired' || bid.bid_status === 'cancelled') return false;
   const lowest = lowestActivePrice(bids);
   return lowest !== null && bid.total_price === lowest;
 }
@@ -296,6 +302,7 @@ export type BidActionKind =
   | 'awarded_selected'
   | 'not_selected'
   | 'renew'
+  | 'withdrawn'
   | 'select';
 
 export interface BidAction {
@@ -320,6 +327,7 @@ function contractSigningHref(claimId: string, contractorId: string, quoteId: str
  *   contract_signed         → "✓ Contract Signed" (→ contract-signing)
  *   awarded + this winner   → "View Contract Status →" (→ contract-signing)
  *   awarded + another bid   → "Not Selected" (disabled)
+ *   withdrawn (cancelled)   → "Bid Withdrawn" (disabled; gh-2564 -- no Accept)
  *   expired                 → "Request Updated Bid" (renewal)
  *   otherwise               → "Select This Contractor"
  */
@@ -343,6 +351,9 @@ export function deriveBidAction(claim: BidsClaim | null | undefined, bid: BidRow
   }
   if (cs === 'awarded') {
     return { kind: 'not_selected', label: 'Not Selected', disabled: true };
+  }
+  if (bid.bid_status === 'cancelled') {
+    return { kind: 'withdrawn', label: 'Bid Withdrawn', disabled: true };
   }
   if (isExpired) {
     return { kind: 'renew', label: 'Request Updated Bid' };

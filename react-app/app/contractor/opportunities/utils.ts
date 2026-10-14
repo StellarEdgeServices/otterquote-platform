@@ -434,6 +434,8 @@ export function applyMyBids(
       const bid = myBidMap[o.id];
       if (!bid) return true; // no bid — show
       if (bid.bidStatus === 'expired') return true; // expired — keep, flag below
+      // gh-2564: a withdrawn ('cancelled') bid is not active -- keep the claim so the contractor can re-bid.
+      if (bid.bidStatus === 'cancelled') return true;
       return false; // active bid — exclude
     })
     .map((o) => {

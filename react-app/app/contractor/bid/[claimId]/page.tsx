@@ -34,7 +34,7 @@ import { RescindCard, type RescindQuote } from './rescind-card';
 import {
   type BidClaim, type BidGateContractor, type BidMode,
   resolveClaimId, resolveBidMode, preCpaBidGate, profileIncompleteRedirect,
-  deriveTradeFlags, BID_GATE_ROUTES, BIDDER_CLAIM_BID_COLS, withCarrierProfile,
+  deriveTradeFlags, BID_GATE_ROUTES, BIDDER_CLAIM_BID_COLS, withCarrierProfile, isBidSelected,
 } from './utils';
 
 type LoadedClaim = BidClaim & Record<string, unknown> & { siding_bid_released_at?: string | null };
@@ -181,6 +181,11 @@ function BidPageContent() {
       total_price: (existingQuote.total_price as number | null) ?? null,
       bid_status: (existingQuote.bid_status as string | null) ?? null,
       created_at: (existingQuote.created_at as string | null) ?? null,
+      selected: isBidSelected(
+        existingQuote.status as string | null,
+        (claim as unknown as { selected_contractor_id?: string | null }).selected_contractor_id,
+        contractor.id,
+      ),
     } : null;
     return <RescindCard contractorId={contractor.id} quote={rq} />;
   }

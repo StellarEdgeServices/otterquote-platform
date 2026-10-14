@@ -49,7 +49,7 @@ BEGIN;
 --       a rescind of an is_test selected bid to be shown succeeding, the re-bid to be accepted, and exactly ONE status = 'selected' row
 --       on that claim afterwards (production's signing, charge and completion code reads the winner as status = 'selected' alone).
 DO $gate$
-DECLARE c_rescind_bid_writes CONSTANT text := 'rescinded';
+DECLARE c_rescind_bid_writes CONSTANT text := 'cancelled'; -- gh-2564 repair: rescind-bid/status.ts RESCINDED_BID_STATUS
 BEGIN
   IF to_regprocedure('public.quotes_platform_fee_for(uuid,uuid)') IS NULL THEN
     RAISE EXCEPTION 'gh2564: gh2519_quotes_server_set_fee.sql is not applied (public.quotes_platform_fee_for(uuid, uuid) does not exist); applying this file alone would refuse every browser bid';
