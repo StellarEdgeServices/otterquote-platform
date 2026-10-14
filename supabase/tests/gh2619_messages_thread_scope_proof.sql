@@ -4,11 +4,12 @@
 -- The schema below is a minimal model of public.messages/claims/contractors/quotes with the policies
 -- as they are in production after ledger 20261014112047 (text from CLOSE-REVIEW 6168484981).
 -- Phases: LIVE (probes against that policy set) + scenario on claim D1 -> forward draft -> NEW probes + scenario on claim D2
--- -> gate / service_role checks -> rollback -> ROLLED-BACK probes. Rounds 2 and 3 (REVIEWs 6169771197, 6170220911): the scenario is the
+-- -> gate / service_role checks -> rollback -> ROLLED-BACK probes. Rounds 2 to 4 (REVIEWs 6169771197, 6170220911, 6170620390): the scenario is the
 -- process-dunning-style re-award (selection cleared with no contractor_switched_at, then another bidder awarded),
 -- a client-supplied created_at, INSERT ... RETURNING, re-selection, an attempt to set contractor_released_at directly,
 -- the pre-award case (homeowner writes before any award; the winner must still read it), the in-bidding case (homeowner writes
--- between the release and the next award), the in-migration backfill, and the created_at pin applying to client roles only.
+-- between the release and the next award), the legacy guard (refuses on a non-test claim in each of its three sets, passes on
+-- is_test-only data and on a non-test claim in none of them), and the created_at pin applying to client roles only.
 \set ON_ERROR_STOP on
 DO $r$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon NOLOGIN; END IF;
@@ -22,7 +23,8 @@ GRANT USAGE ON SCHEMA public, auth TO authenticated, service_role;
 
 CREATE TABLE public.profiles (id uuid PRIMARY KEY);
 CREATE TABLE public.contractors (id uuid PRIMARY KEY, user_id uuid NOT NULL);
-CREATE TABLE public.claims (id uuid PRIMARY KEY, user_id uuid NOT NULL, selected_contractor_id uuid, contractor_switched_at timestamptz);
+CREATE TABLE public.claims (id uuid PRIMARY KEY, user_id uuid NOT NULL, selected_contractor_id uuid, contractor_switched_at timestamptz, is_test boolean NOT NULL DEFAULT true);
+CREATE TABLE public.payment_failures (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), claim_id uuid NOT NULL, dunning_status text);
 CREATE TABLE public.quotes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), claim_id uuid NOT NULL REFERENCES public.claims(id), contractor_id uuid NOT NULL);
 CREATE TABLE public.messages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -93,7 +95,7 @@ INSERT INTO public.messages (claim_id, sender_id, sender_role, body, created_at)
 INSERT INTO public.messages (claim_id, sender_id, sender_role, body, created_at)
  SELECT c, '00000000-0000-0000-0000-0000000000b1', 'contractor', 'D CA reply', '2026-01-01 09:30+00' FROM unnest(ARRAY['20000000-0000-0000-0000-0000000000d1','20000000-0000-0000-0000-0000000000d2']::uuid[]) c;
 
--- round 3 fixtures. E1/E2: nothing selected yet, CB has a quote (pre-award case, LIVE/NEW). F1: legacy unselected claim that
+-- round 3 fixtures (kept in round 4). E1/E2: nothing selected yet, CB has a quote (pre-award case, LIVE/NEW). F1: legacy unselected claim that
 -- already holds contractor messages (dunning reset, no stamp). F2: legacy claim re-awarded to CB after A (CA) was dropped, no
 -- contractor_switched_at: A's thread plus one homeowner message written after A's last message.
 INSERT INTO public.claims VALUES
@@ -103,7 +105,7 @@ INSERT INTO public.claims VALUES
  ('20000000-0000-0000-0000-0000000000f2','00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-0000000000c1',NULL);
 INSERT INTO public.quotes (claim_id, contractor_id) VALUES
  ('20000000-0000-0000-0000-0000000000e1','10000000-0000-0000-0000-0000000000c1'),('20000000-0000-0000-0000-0000000000e2','10000000-0000-0000-0000-0000000000c1'),
- ('20000000-0000-0000-0000-0000000000f1','10000000-0000-0000-0000-0000000000b1'),
+ ('20000000-0000-0000-0000-0000000000f1','10000000-0000-0000-0000-0000000000b1'),('20000000-0000-0000-0000-0000000000f1','10000000-0000-0000-0000-0000000000c1'),
  ('20000000-0000-0000-0000-0000000000f2','10000000-0000-0000-0000-0000000000b1'),('20000000-0000-0000-0000-0000000000f2','10000000-0000-0000-0000-0000000000c1');
 INSERT INTO public.messages (claim_id, sender_id, sender_role, body, created_at) VALUES
  ('20000000-0000-0000-0000-0000000000f1','00000000-0000-0000-0000-0000000000a1','homeowner','F1 HO to CA','2026-01-01 09:00+00'),
@@ -111,6 +113,13 @@ INSERT INTO public.messages (claim_id, sender_id, sender_role, body, created_at)
  ('20000000-0000-0000-0000-0000000000f2','00000000-0000-0000-0000-0000000000a1','homeowner','F2 HO to CA','2026-01-01 09:00+00'),
  ('20000000-0000-0000-0000-0000000000f2','00000000-0000-0000-0000-0000000000b1','contractor','F2 CA reply','2026-01-01 09:30+00'),
  ('20000000-0000-0000-0000-0000000000f2','00000000-0000-0000-0000-0000000000a1','homeowner','F2 HO to CB (after CA)','2026-01-02 09:00+00');
+
+-- non-test control claim N1 (selected CA, thread only HO and CA): in none of the guard sets, so the guard must not fire on it.
+INSERT INTO public.claims (id, user_id, selected_contractor_id, is_test) VALUES ('20000000-0000-0000-0000-0000000000c9','00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-0000000000b1', false);
+INSERT INTO public.quotes (claim_id, contractor_id) VALUES ('20000000-0000-0000-0000-0000000000c9','10000000-0000-0000-0000-0000000000b1');
+INSERT INTO public.messages (claim_id, sender_id, sender_role, body, created_at) VALUES
+ ('20000000-0000-0000-0000-0000000000c9','00000000-0000-0000-0000-0000000000a1','homeowner','N1 HO to CA','2026-01-01 09:00+00'),
+ ('20000000-0000-0000-0000-0000000000c9','00000000-0000-0000-0000-0000000000b1','contractor','N1 CA reply','2026-01-01 09:30+00');
 
 -- probe: run one statement as an authenticated user in a sub-transaction that is always rolled back
 CREATE FUNCTION public.try_as(p_uid uuid, p_sql text) RETURNS text LANGUAGE plpgsql AS $f$
@@ -209,6 +218,30 @@ UPDATE public.claims SET selected_contractor_id = '10000000-0000-0000-0000-00000
 SET ROLE authenticated; SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000c1',false);
 SELECT count(*) AS winner_sees_pre_award_message_expect_1 FROM public.messages WHERE claim_id = '20000000-0000-0000-0000-0000000000e1';
 RESET ROLE;
+\echo === GUARD CHECKS (LIVE policies; each case in its own transaction that is rolled back) ===
+\echo The three fixture sets F1/F2/dunning below are is_test claims already in the database (sets A and B) and the control claim N1 is non-test but in no set: the real apply in PHASE 2 passes on them.
+\set ON_ERROR_STOP off
+\echo G1 non-test claim, no selected contractor, thread holds a contractor message (set A): expect the guard to raise
+BEGIN;
+INSERT INTO public.claims (id, user_id, selected_contractor_id, is_test) VALUES ('20000000-0000-0000-0000-0000000000a9','00000000-0000-0000-0000-0000000000a1',NULL,false);
+INSERT INTO public.messages (claim_id, sender_id, sender_role, body, created_at) VALUES ('20000000-0000-0000-0000-0000000000a9','00000000-0000-0000-0000-0000000000b1','contractor','G1 contractor message','2026-01-01 09:30+00');
+\i supabase/migrations_drafts/gh2619_messages_thread_scope_and_no_cross_delete.sql
+ROLLBACK;
+\echo G2 non-test claim, selected CB, thread holds a message from CA (set B): expect the guard to raise
+BEGIN;
+INSERT INTO public.claims (id, user_id, selected_contractor_id, is_test) VALUES ('20000000-0000-0000-0000-0000000000b9','00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-0000000000c1',false);
+INSERT INTO public.messages (claim_id, sender_id, sender_role, body, created_at) VALUES ('20000000-0000-0000-0000-0000000000b9','00000000-0000-0000-0000-0000000000b1','contractor','G2 message from another contractor','2026-01-01 09:30+00');
+\i supabase/migrations_drafts/gh2619_messages_thread_scope_and_no_cross_delete.sql
+ROLLBACK;
+\echo G3 non-test claim with a payment_failures row dunning_status = contractor_out and no messages (set C): expect the guard to raise
+BEGIN;
+INSERT INTO public.claims (id, user_id, selected_contractor_id, is_test) VALUES ('20000000-0000-0000-0000-0000000000d9','00000000-0000-0000-0000-0000000000a1',NULL,false);
+INSERT INTO public.payment_failures (claim_id, dunning_status) VALUES ('20000000-0000-0000-0000-0000000000d9','contractor_out');
+\i supabase/migrations_drafts/gh2619_messages_thread_scope_and_no_cross_delete.sql
+ROLLBACK;
+\echo G4 same set-A shape as G1 but is_test = true: the guard must not fire (checked by the real apply below, which also passes with F1 and F2 present)
+\set ON_ERROR_STOP on
+SELECT count(*) AS guard_fixtures_left_after_rollback FROM public.claims WHERE id::text LIKE '20000000-0000-0000-0000-0000000000_9' AND id <> '20000000-0000-0000-0000-0000000000c9';
 \echo === PHASE 2: forward draft applied ===
 \i supabase/migrations_drafts/gh2619_messages_thread_scope_and_no_cross_delete.sql
 SELECT probe, result FROM public.report('new');
@@ -261,12 +294,12 @@ SET ROLE authenticated; SELECT set_config('request.jwt.claim.sub','00000000-0000
 SELECT count(*) AS winner_sees_pre_award_message_expect_1 FROM public.messages WHERE claim_id = '20000000-0000-0000-0000-0000000000e2';
 RESET ROLE;
 
-\echo --- backfill check (NEW): which legacy claims got a bound from the in-migration UPDATEs (expect F1 t, F2 t, U f) ---
+\echo --- no backfill (round 4): legacy is_test claims F1 F2 and control U have no stamp (expect all f) ---
 SELECT right(id::text,2) AS claim, contractor_released_at IS NOT NULL AS has_bound FROM public.claims WHERE id IN ('20000000-0000-0000-0000-0000000000f1','20000000-0000-0000-0000-0000000000f2','20000000-0000-0000-0000-00000000005b') ORDER BY id;
-\echo F1 after backfill: CB is awarded now; expect 0 (the thread of A is hidden)
+\echo F1 awarded to CB with no backfill: the legacy test thread of A stays visible (expect 2; is_test legacy data is outside the guard by design)
 UPDATE public.claims SET selected_contractor_id = '10000000-0000-0000-0000-0000000000c1' WHERE id = '20000000-0000-0000-0000-0000000000f1';
 SET ROLE authenticated; SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000c1',false);
-SELECT count(*) AS cb_sees_f1_expect_0 FROM public.messages WHERE claim_id = '20000000-0000-0000-0000-0000000000f1';
+SELECT count(*) AS cb_sees_f1_legacy_test_expect_2 FROM public.messages WHERE claim_id = '20000000-0000-0000-0000-0000000000f1';
 RESET ROLE;
 \echo created_at pin is for client roles only: service_role keeps a supplied created_at, authenticated does not
 SET ROLE service_role; SELECT set_config('request.jwt.claim.role','service_role',false);

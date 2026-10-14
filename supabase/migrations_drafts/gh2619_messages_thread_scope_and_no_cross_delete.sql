@@ -38,14 +38,27 @@
 --   * Contractor SELECT additionally requires messages.created_at >= the bound, where the bound is
 --     coalesce(claims.contractor_released_at, claims.contractor_switched_at); no bound when both are
 --     NULL (as today). The homeowner's own read is unchanged (full history).
---   * In-migration BACKFILL, run after the column exists and before the trigger is created, for
---     claims that already lost a contractor without a stamp: (1) claims with no selected contractor
---     that hold contractor-sent messages get contractor_released_at = greatest(now(),
---     contractor_switched_at); (2) claims with a selected contractor whose thread holds contractor
---     messages from a different contractor get the time of the last such message (plus one
---     microsecond), floored at contractor_switched_at. Both only narrow what a contractor reads. The
---     UPDATEs fire the existing claims triggers (claims_updated_at bumps updated_at); the pre-flight
---     counts the rows first and says to run the two UPDATEs inside BEGIN ... ROLLBACK once before apply.
+--   * NO BACKFILL, A GUARD INSTEAD (round 4, REVIEW 6170620390 finding 1). Round 3 backfilled legacy
+--     claims from message heuristics; the review showed the heuristic both under-hides (a homeowner
+--     message written for the old contractor after that contractor's last reply stays visible to the
+--     next winner) and over-hides (a sole contractor loses their own thread after a pre-#2622
+--     non-selected bidder posted; a never-awarded claim hides pre-award questions). Both UPDATEs are
+--     removed. Instead the migration RAISEs, aborting, when any claim that is not is_test (is_test IS
+--     NOT TRUE, so NULL counts as real) is in one of three legacy sets:
+--       (A) no selected contractor and the thread holds contractor-sent messages;
+--       (B) a selected contractor and the thread holds contractor-sent messages from a different
+--           contractor (a former bidder or a former selected contractor);
+--       (C) a payment_failures row with dunning_status = 'contractor_out' (process-dunning released
+--           the contractor without contractor_switched_at).
+--     The message names the count per set. A non-zero count means STOP: the set only applies while
+--     production has no real exposure (measured 2026-10-14: 4 messages, none on real claims,
+--     CLOSE-REVIEW 6168484981); come back for a data decision (per-claim real release times from
+--     payment_failures.resolved_at / contractor_switched_at / quotes.cancelled_at, or a hand review).
+--     The guard is read-only. What it covers: legacy claims a real homeowner or contractor could be
+--     in. What it does not cover: is_test claims in sets A to C keep today's unbounded reads for the
+--     next winner (test data only); a claim that lost a contractor through a path that left no trace in
+--     any of the three sets; and any real exposure that appears between the pre-flight and the apply
+--     (the guard runs inside the apply transaction, so it sees the data as of the apply).
 --   * messages.created_at is pinned on INSERT for CLIENT roles only (trigger messages_pin_created_at:
 --     NEW.created_at := now() when current_user is authenticated or anon), so a client cannot plant a
 --     future-dated row that passes every later bound; service_role and admin sessions keep whatever
@@ -61,18 +74,17 @@
 --   * Messages the homeowner wrote while the claim was unselected are shown to the next winner
 --     (only messages from before the previous contractor's release are hidden). A message written
 --     by the homeowner for the previous contractor in the same instant as the release is not hidden.
---   * The backfill's bound is a time, not a recipient: on a claim that lost a contractor, homeowner
---     messages written before the backfill are hidden from the next winner even if they were meant
---     for nobody in particular.
 --   * created_at pin and the client-role test use current_user; a SECURITY DEFINER function that
 --     inserts into messages on a client's behalf would run as its owner and is not pinned (none exists).
 --   * ALTER TABLE ... ADD COLUMN (nullable, no default) is a catalogue-only change; it takes a brief
 --     ACCESS EXCLUSIVE lock on public.claims.
 --
--- Order gate: raises unless gh2619_messages_selected_contractor_only is already live.
+-- Order gate: raises unless gh2619_messages_selected_contractor_only is already live. Then the legacy guard (above).
+-- SET LOCAL lock_timeout = '5s' (as gh2107, gh1925, gh2559): if the ACCESS EXCLUSIVE locks cannot be had in 5 seconds the whole transaction fails and nothing changes.
 -- Rollback: supabase/migrations_rollbacks/gh2619_messages_thread_scope_and_no_cross_delete_rollback.sql
 
 BEGIN;
+SET LOCAL lock_timeout = '5s';
 
 DO $gate$
 BEGIN
@@ -85,28 +97,34 @@ BEGIN
 END
 $gate$;
 
+-- Legacy guard (replaces the round 3 backfill): refuse to apply while any real claim is in a legacy set.
+DO $guard$
+DECLARE
+  n_a int; n_b int; n_c int;
+BEGIN
+  SELECT count(*) INTO n_a
+    FROM public.claims cl
+   WHERE cl.is_test IS NOT TRUE
+     AND cl.selected_contractor_id IS NULL
+     AND EXISTS (SELECT 1 FROM public.messages m WHERE m.claim_id = cl.id AND m.sender_role = 'contractor');
+  SELECT count(DISTINCT cl.id) INTO n_b
+    FROM public.claims cl
+    JOIN public.messages m ON m.claim_id = cl.id AND m.sender_role = 'contractor'
+   WHERE cl.is_test IS NOT TRUE
+     AND cl.selected_contractor_id IS NOT NULL
+     AND m.sender_id IS DISTINCT FROM (SELECT k.user_id FROM public.contractors k WHERE k.id = cl.selected_contractor_id);
+  SELECT count(DISTINCT cl.id) INTO n_c
+    FROM public.claims cl
+    JOIN public.payment_failures pf ON pf.claim_id = cl.id AND pf.dunning_status = 'contractor_out'
+   WHERE cl.is_test IS NOT TRUE;
+  IF n_a + n_b + n_c > 0 THEN
+    RAISE EXCEPTION 'gh2619 thread-scope guard: % non-test claim(s) already lost a contractor or hold another contractor''s messages (A unselected with contractor messages: %; B selected with another contractor''s messages: %; C dunning contractor_out: %). Stop: this set only applies while production has no real exposure; come back for a data decision.', n_a + n_b + n_c, n_a, n_b, n_c;
+  END IF;
+END
+$guard$;
+
 ALTER TABLE public.claims ADD COLUMN contractor_released_at timestamptz;
 COMMENT ON COLUMN public.claims.contractor_released_at IS 'gh-2619: database-stamped time a contractor last lost this claim (trigger claims_stamp_contractor_released_at; client roles cannot set it). Lower bound for what the selected contractor may read in messages.';
-
--- Backfill (before the trigger exists, so it does not interfere): claims that already lost a contractor.
-UPDATE public.claims c
-   SET contractor_released_at = greatest(now(), c.contractor_switched_at)
- WHERE c.selected_contractor_id IS NULL
-   AND EXISTS (SELECT 1 FROM public.messages m WHERE m.claim_id = c.id AND m.sender_role = 'contractor');
-
-UPDATE public.claims c
-   SET contractor_released_at = greatest(f.last_foreign + interval '1 microsecond', c.contractor_switched_at)
-  FROM (
-    SELECT m.claim_id, max(m.created_at) AS last_foreign
-      FROM public.messages m
-      JOIN public.claims c2 ON c2.id = m.claim_id
-     WHERE m.sender_role = 'contractor'
-       AND c2.selected_contractor_id IS NOT NULL
-       AND m.sender_id IS DISTINCT FROM (SELECT k.user_id FROM public.contractors k WHERE k.id = c2.selected_contractor_id)
-     GROUP BY m.claim_id
-  ) f
- WHERE f.claim_id = c.id
-   AND c.selected_contractor_id IS NOT NULL;
 
 CREATE FUNCTION public.claims_stamp_contractor_released_at() RETURNS trigger
   LANGUAGE plpgsql
