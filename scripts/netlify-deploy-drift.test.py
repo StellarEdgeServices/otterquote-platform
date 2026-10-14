@@ -2168,13 +2168,18 @@ def main():
         "SVG script href": b'<svg><script src="' + cf + b'" href="https://evil.example/x.js"></script></svg>',
         "SVG script xlink:href": b'<svg><script src="' + cf + b'" xlink:href="https://evil.example/x.js"></script></svg>',
         "CF src + unknown nonce attr": b'<script src="' + cf + b'" nonce="x"></script>',
+        "0x0B before data-cf-beacon value": b'<script data-cf-beacon=\x0b"a src=https://evil.example/x.js b" src="' + cf + b'"></script>',
+        "0x0B before type value": b'<script type=\x0b"a src=https://evil.example/x.js b" src="' + cf + b'"></script>',
+        "svg close with 0x0B is not a close": b'<svg></svg\x0b><script src="' + cf + b'"></script>',
         "CF src + onerror import": b'<script src="' + cf + b'/nope" onerror="import(\'https://evil.example/x.js\')"></script>',
         "CF src + ONLOAD eval": b'<script src="' + cf + b'" ONLOAD="eval(atob(\'YWxlcnQoMSk=\'))"></script>',
         "CF src + inline body": b'<script src="' + cf + b'">alert(1)</script>',
         "CF src + onload containing =>": b'<script src="' + cf + b'" onload="x=>{evil()}"></script>',
     }
     for name, tag in decoys.items():
-        base = clean.replace(b"</body>", b"<svg></svg></body>", 1) if tag.startswith(b"<svg>") else clean
+        # base = the same decoy with its <script></script> element cut out, so a stripped
+        # script hashes equal to base and only the script itself decides pass/fail.
+        base = clean.replace(b"</body>", tag[:tag.index(b"<script")] + tag[tag.index(b"</script>") + 9:] + b"</body>", 1)
         check("gh-2289 negative control: decoy NOT stripped (%s)" % name,
               h(clean.replace(b"</body>", tag + b"</body>", 1)) != h(base), True)
     beacon_defer = b'<script defer src="' + cf + b'/vXXXX" data-cf-beacon=\'{"token":"tok-c"}\'></script>'

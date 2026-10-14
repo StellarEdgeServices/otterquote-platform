@@ -1857,16 +1857,22 @@ def fetch_netlify_builds(site_id, token):
 # one injected tag before hashing; every other byte still counts.
 # Candidate finder only: any <script ...></script> with an empty/whitespace body. Whether a
 # candidate is actually Cloudflare's beacon is decided by _strip_cf_beacon's ALLOWLIST below.
-_CF_BEACON_RE = re.compile(rb"[ \t]*<script\b([^>]*)>\s*</script>[ \t]*\r?\n?", re.IGNORECASE)
+# HTML whitespace is exactly tab, LF, FF, CR, space. NOT Python \s / isspace() / strip(), which also
+# count 0x0B (VT) and others, so a parser disagreement would let a hidden attribute through.
+_HTML_WS = b"\t\n\f\r "
+_CF_BEACON_RE = re.compile(rb"[ \t]*<script\b([^>]*)>[\t\n\f\r ]*</script>[ \t]*\r?\n?", re.IGNORECASE)
 # One attribute: name, optional = value (double-quoted, single-quoted or bare).
-_ATTR_RE = re.compile(rb"\s+([^\s=/>\"']+)(?:\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>\"']+))?")
+_ATTR_RE = re.compile(
+    rb"[\t\n\f\r ]+([^\t\n\f\r =/>\"']+)"
+    rb"(?:[\t\n\f\r ]*=[\t\n\f\r ]*(\"[^\"]*\"|'[^']*'|[^\t\n\f\r >\"']+))?"
+)
 _ALLOWED_BEACON_ATTRS = {b"type", b"src", b"integrity", b"data-cf-beacon", b"crossorigin", b"defer"}
 _CF_SRC_PREFIX = b"https://static.cloudflareinsights.com/beacon.min.js"
 
 
 def _inside_svg(prefix):
     """True when an <svg> element is still open at the end of `prefix` (simple count)."""
-    return len(re.findall(rb"<svg\b", prefix, re.IGNORECASE)) > len(re.findall(rb"</svg\s*>", prefix, re.IGNORECASE))
+    return len(re.findall(rb"<svg\b", prefix, re.IGNORECASE)) > len(re.findall(rb"</svg[\t\n\f\r ]*>", prefix, re.IGNORECASE))
 
 
 def _strip_cf_beacon(match):
@@ -1878,11 +1884,11 @@ def _strip_cf_beacon(match):
     tag, attrs_text = match.group(0), match.group(1)
     pos, names, src = 0, [], None
     while pos < len(attrs_text):
-        if not attrs_text[pos:pos + 1].isspace() and attrs_text[pos:pos + 1] != b"":
+        if attrs_text[pos:pos + 1] not in (b"\t", b"\n", b"\f", b"\r", b" "):
             return tag  # junk between attributes (e.g. "<script/src=...")
         m = _ATTR_RE.match(attrs_text, pos)
         if m is None:
-            if attrs_text[pos:].strip() == b"":
+            if attrs_text[pos:].strip(_HTML_WS) == b"":
                 break
             return tag
         name = m.group(1).lower()
