@@ -137,25 +137,24 @@ MANAGEMENT_API_BASE = "https://api.supabase.com/v1"
 #   4. cleanup always runs, and also sweeps self-test rows older than 1 hour
 #      (leaked by a cancelled/killed run).
 # The production modes (plain run() default and --management-api) are
-# unchanged: they never exclude self-test rows (gh-2718 adds one narrow exception: the S2 probe, below).
+# unchanged: they never exclude anything.
 SELFTEST_MARKER = "IS-TEST GUARD SELFTEST (gh-1763)"
 SELFTEST_MARKER_PREFIX = "IS-TEST GUARD SELFTEST"  # matches any run's fixture, incl. pre-tag ones
 STALE_SELFTEST_SECONDS = 3600
 
 # --- gh-2718: the deliberate S2 real-side probe -----------------------------
 # tests/e2e/flows/test-world-symmetry.spec.ts (S2, #564) DELIBERATELY creates an
-# identity whose profile is is_test=true and whose contractor is is_test=false
-# (the claims-RLS carve-out reads the CONTRACTORS flag), runs for ~a minute in
-# the nightly E2E job against this same shared CI-test project, and tears it
-# down in afterAll. Any guard pass that lands in that window (PR #2586/#2587,
-# 2026-10-14 13:30Z, nightly run 38567576152) saw the probe and went red, with a
-# different profile_id every time. The guard now ignores EXACTLY that identity:
-# matched on the fixed internal email (never on company name), and only in the
-# exact shape the spec creates (profile is_test=true, contractor is_test=false).
-# The same identity with the opposite shape, any other email, or any other
-# disagreeing row is still reported. Applies to BOTH modes: find_disagreements()
-# (PostgREST) and DISAGREEMENT_SQL (Management API). Kept in lock-step with the
-# spec by a unit test that reads the spec's REAL_SIDE_EMAIL.
+# identity whose profile is is_test=true and whose contractor is is_test=false,
+# for ~a minute in the nightly E2E job against the shared CI-test project, and
+# tears it down in afterAll. A guard pass inside that window went red on PRs
+# #2586/#2587 (2026-10-14 13:30Z, nightly run 38567576152).
+# SCOPE (review 6170853809): the exception applies ONLY in the CI-test
+# self-test's REAL pass (exclude_selftest=True). It is NOT in DISAGREEMENT_SQL
+# and NOT in the plain/production PostgREST path: in production a user can
+# update their own profiles.email/is_test, so an email-keyed exception there
+# would be a user-controllable blind spot. It matches the fixed internal email
+# on BOTH the profile and the contractor (a user cannot write contractors
+# columns), never the company name, and only the exact spec shape.
 S2_PROBE_EMAIL = "real-side-564@otterquote-internal.test"
 
 
@@ -196,11 +195,6 @@ DISAGREEMENT_SQL = (
     "c.id as contractor_id, c.is_test as contractor_is_test, c.company_name "
     "from profiles p join contractors c on c.user_id = p.id "
     "where p.is_test is distinct from c.is_test "
-    # gh-2718: ignore exactly the deliberate S2 probe (email + exact shape). The
-    # coalesce keeps the inner predicate non-NULL, so a NULL p.email can never
-    # make `not (...)` NULL and silently drop a genuine disagreeing row.
-    f"and not (coalesce(p.email, '') = '{S2_PROBE_EMAIL}' "
-    "and p.is_test is true and c.is_test is false) "
     "order by c.created_at;"
 )
 
@@ -255,7 +249,7 @@ def _request(method: str, url: str, service_key: str, body=None, urlopen=urllib.
 
 def fetch_contractors(project_url: str, service_key: str, urlopen=urllib.request.urlopen) -> list:
     """Every contractors row that has a user_id (unattached rows can't disagree with a profile)."""
-    url = f"{project_url}/rest/v1/contractors?select=id,user_id,is_test,company_name&user_id=not.is.null&limit=10000"
+    url = f"{project_url}/rest/v1/contractors?select=id,user_id,is_test,company_name,email&user_id=not.is.null&limit=10000"
     payload = _request("GET", url, service_key, urlopen=urlopen)
     if not isinstance(payload, list):
         raise FetchError(f"contractors fetch did not return a JSON array (got {type(payload).__name__})")
@@ -288,10 +282,11 @@ def fetch_profiles_by_ids(project_url: str, service_key: str, ids: list, urlopen
 
 def is_s2_probe(profile: dict, contractor: dict) -> bool:
     """gh-2718: True only for the spec-scoped S2 identity in the exact shape the
-    spec creates -- profile email == S2_PROBE_EMAIL, profile is_test=true,
-    contractor is_test=false. Mirrors the SQL predicate in DISAGREEMENT_SQL."""
+    spec creates -- profile AND contractor email == S2_PROBE_EMAIL, profile
+    is_test=true, contractor is_test=false. Used only when exclude_selftest=True."""
     return (
         profile.get("email") == S2_PROBE_EMAIL
+        and contractor.get("email") == S2_PROBE_EMAIL
         and profile.get("is_test") is True
         and contractor.get("is_test") is False
     )
@@ -311,7 +306,8 @@ def find_disagreements(contractors: list, profiles: list, exclude_selftest: bool
     profiles row at all is not in scope -- same as the SQL join, which
     would simply drop it.
 
-    exclude_selftest (default False): skip a pair when the contractor's
+    exclude_selftest (default False): also skip the deliberate S2 probe (is_s2_probe,
+    gh-2718), and skip a pair when the contractor's
     company_name OR the profile's full_name carries the self-test marker (any
     run's fixture). Only the CI-test self-test job's REAL pass sets it.
     only_contractor_ids (default None = all): restrict to these contractor ids;
@@ -327,7 +323,7 @@ def find_disagreements(contractors: list, profiles: list, exclude_selftest: bool
             continue
         if exclude_selftest and has_selftest_marker(c.get("company_name"), p.get("full_name")):
             continue
-        if is_s2_probe(p, c):
+        if exclude_selftest and is_s2_probe(p, c):
             continue
         if p.get("is_test") != c.get("is_test"):
             offenders.append({

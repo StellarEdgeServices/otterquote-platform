@@ -690,10 +690,11 @@ class SelfTestIsolationTests(unittest.TestCase):
 
 
 class S2ProbeIgnoredTests(unittest.TestCase):
-    """gh-2718: the guard ignores EXACTLY the deliberate S2 real-side probe that
-    tests/e2e/flows/test-world-symmetry.spec.ts creates (profile is_test=true,
-    contractor is_test=false, fixed internal email), in both PostgREST and
-    Management-API modes -- and still catches every other disagreeing row."""
+    """gh-2718 (scope per REVIEW 6170853809): ONLY the CI-test self-test's REAL
+    pass (exclude_selftest=True) ignores the deliberate S2 probe from
+    tests/e2e/flows/test-world-symmetry.spec.ts. The production paths
+    (Management-API SQL, plain PostgREST run) still REPORT the same shape,
+    because in production a user can self-update profiles.email/is_test."""
 
     URL = "https://zsdvaqilfdclwosmiheh.supabase.co"
     PROBE = "real-side-564@otterquote-internal.test"
@@ -703,9 +704,10 @@ class S2ProbeIgnoredTests(unittest.TestCase):
         with patch("sys.stdout", new_callable=io.StringIO), patch("sys.stderr", new_callable=io.StringIO):
             return guard.run(self.URL, "k", urlopen=db.urlopen, **kw)
 
-    def _probe(self, db, email=None, profile_is_test=True, contractor_is_test=False, name=None):
+    def _probe(self, db, p_email=None, c_email=None, profile_is_test=True, contractor_is_test=False, name=None):
         uid, cid = db.seed(name or self.PROBE_NAME, profile_is_test, contractor_is_test)
-        db.profiles[uid]["email"] = self.PROBE if email is None else email
+        db.profiles[uid]["email"] = self.PROBE if p_email is None else p_email
+        db.contractors[cid]["email"] = self.PROBE if c_email is None else c_email
         return uid, cid
 
     def test_constant_matches_the_spec(self):
@@ -714,46 +716,77 @@ class S2ProbeIgnoredTests(unittest.TestCase):
         self.assertIn(f"const REAL_SIDE_EMAIL = '{guard.S2_PROBE_EMAIL}';", text)
         self.assertEqual(guard.S2_PROBE_EMAIL, self.PROBE)
 
-    def test_postgrest_probe_alone_is_clean(self):
+    def test_ci_test_pass_ignores_the_probe(self):
         db = FakeSupabase()
         self._probe(db)
-        self.assertEqual(self._run(db), 0)
         self.assertEqual(self._run(db, exclude_selftest=True), 0)
 
-    def test_postgrest_profiles_fetch_asks_for_email(self):
+    def test_production_postgrest_mode_still_reports_the_probe_shape(self):
+        db = FakeSupabase()
+        self._probe(db)
+        self.assertEqual(self._run(db), 1)  # plain run(): exclude nothing
+
+    def test_production_management_api_mode_still_reports_the_probe_shape(self):
+        """DISAGREEMENT_SQL is byte-for-byte free of any probe exception, and the REAL
+        SQL text, run on in-memory SQLite (3.37 has no IS DISTINCT FROM, so only that
+        operator is swapped for the null-safe IS NOT), returns the probe-shaped row."""
+        import sqlite3
+        self.assertNotIn("real-side", guard.DISAGREEMENT_SQL)
+        self.assertNotIn("email", guard.DISAGREEMENT_SQL)
+        db = sqlite3.connect(":memory:")
+        db.executescript(
+            "create table profiles(id text, is_test int, email text);"
+            "create table contractors(id text, user_id text, is_test int, company_name text, created_at text);"
+        )
+        db.execute("insert into profiles values('p-probe', 1, ?)", (self.PROBE,))
+        db.execute("insert into contractors values('c1','p-probe',0,?, '2026-10-14T00:00:00')", (self.PROBE_NAME,))
+        got = db.execute(guard.DISAGREEMENT_SQL.replace(" is distinct from ", " is not ")).fetchall()
+        self.assertEqual([r[0] for r in got], ["p-probe"])
+        offenders = [{"profile_id": "p-probe", "profile_is_test": True, "contractor_id": "c1",
+                      "contractor_is_test": False, "company_name": self.PROBE_NAME}]
+        with patch("sys.stdout", new_callable=io.StringIO), patch("sys.stderr", new_callable=io.StringIO):
+            self.assertEqual(guard.run_management_api("yeszghaspzwwstvsrioa", "tok", fetcher=lambda r, t: offenders), 1)
+
+    def test_contractors_fetch_asks_for_email(self):
         urls = []
         db = FakeSupabase()
         self._probe(db)
         db.hook = lambda method, url: urls.append(url)
-        self._run(db)
+        self._run(db, exclude_selftest=True)
+        self.assertTrue(any("/rest/v1/contractors" in u and "email" in u for u in urls), urls)
         self.assertTrue(any("/rest/v1/profiles" in u and "email" in u for u in urls), urls)
 
     def test_negative_control_other_disagreeing_row_still_caught_beside_probe(self):
         db = FakeSupabase()
         self._probe(db)
-        db.seed("Acme Roofing LLC", True, False)  # same shape, no probe email -> genuine
-        self.assertEqual(self._run(db), 1)
+        db.seed("Acme Roofing LLC", True, False)
         self.assertEqual(self._run(db, exclude_selftest=True), 1)
 
     def test_negative_control_company_name_alone_is_not_enough(self):
         db = FakeSupabase()
-        self._probe(db, email="someone-else@example.com")  # probe's company name, other email
-        self.assertEqual(self._run(db), 1)
+        self._probe(db, p_email="someone-else@example.com", c_email="someone-else@example.com")
+        self.assertEqual(self._run(db, exclude_selftest=True), 1)
 
-    def test_negative_control_probe_email_without_email_is_not_matched(self):
+    def test_negative_control_profile_email_alone_is_not_enough(self):
+        """The user-controllable half: a profile carrying the probe email on a contractor
+        whose own email differs (a user can edit profiles, not contractors) is caught."""
         db = FakeSupabase()
-        uid, _ = db.seed(self.PROBE_NAME, True, False)  # no email on the profile at all
-        self.assertEqual(self._run(db), 1)
+        self._probe(db, c_email="real-contractor@example.com")
+        self.assertEqual(self._run(db, exclude_selftest=True), 1)
+        db2 = FakeSupabase()
+        uid, cid = db2.seed(self.PROBE_NAME, True, False)
+        db2.profiles[uid]["email"] = self.PROBE  # contractor has no email at all
+        self.assertEqual(self._run(db2, exclude_selftest=True), 1)
 
     def test_negative_control_probe_email_in_the_opposite_shape_is_caught(self):
         db = FakeSupabase()
         self._probe(db, profile_is_test=False, contractor_is_test=True)
-        self.assertEqual(self._run(db), 1)
+        self.assertEqual(self._run(db, exclude_selftest=True), 1)
 
     def test_negative_control_probe_email_case_variant_is_not_matched(self):
         db = FakeSupabase()
-        self._probe(db, email=self.PROBE.upper())
-        self.assertEqual(self._run(db), 1)
+        self._probe(db, p_email=self.PROBE.upper(), c_email=self.PROBE.upper())
+        self.assertEqual(self._run(db, exclude_selftest=True), 1)
 
     def test_full_self_test_survives_a_live_probe_and_still_fails_on_a_genuine_row(self):
         db = FakeSupabase()
@@ -769,36 +802,6 @@ class S2ProbeIgnoredTests(unittest.TestCase):
             code2 = guard.self_test(self.URL, "k", urlopen=db2.urlopen, run_id="2718-2")
         self.assertEqual(code2, 1, out2.getvalue())
         self.assertIn("REAL expectation (exit==0): FAIL", out2.getvalue())
-
-    def test_management_api_sql_carries_the_same_narrow_predicate(self):
-        sql = guard.DISAGREEMENT_SQL
-        self.assertIn(f"coalesce(p.email, '') = '{self.PROBE}'", sql)
-        self.assertIn("p.is_test is true and c.is_test is false", sql)
-        self.assertNotIn("company_name", sql.split("where", 1)[1])  # never matched on company name
-        self.assertIn("is distinct from c.is_test", sql)  # the base predicate is untouched
-
-    def test_management_api_sql_executed_ignores_only_the_probe(self):
-        """Run the REAL DISAGREEMENT_SQL text on an in-memory SQLite (3.37 has no
-        IS DISTINCT FROM, so only that operator is swapped for the null-safe IS NOT)."""
-        import sqlite3
-        db = sqlite3.connect(":memory:")
-        db.executescript(
-            "create table profiles(id text, is_test int, email text);"
-            "create table contractors(id text, user_id text, is_test int, company_name text, created_at text);"
-        )
-        rows = [  # (profile id, email, profile is_test, contractor is_test, company)
-            ("p-probe", self.PROBE, 1, 0, self.PROBE_NAME),            # ignored
-            ("p-null", None, 1, 0, self.PROBE_NAME),                   # NULL email: must NOT vanish
-            ("p-other", "x@example.com", 1, 0, "Acme Roofing LLC"),    # same shape, other email
-            ("p-flip", self.PROBE, 0, 1, self.PROBE_NAME),             # probe email, opposite shape
-            ("p-ok", "ok@example.com", 1, 1, "Agreeing Co"),           # agrees
-        ]
-        for i, (pid, em, pt, ct, name) in enumerate(rows):
-            db.execute("insert into profiles values(?,?,?)", (pid, pt, em))
-            db.execute("insert into contractors values(?,?,?,?,?)", (f"c{i}", pid, ct, name, f"2026-10-14T00:00:0{i}"))
-        sql = guard.DISAGREEMENT_SQL.replace(" is distinct from ", " is not ")
-        got = [r[0] for r in db.execute(sql).fetchall()]
-        self.assertEqual(got, ["p-null", "p-other", "p-flip"])
 
 
 class _FakeResponse:
