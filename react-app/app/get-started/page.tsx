@@ -17,10 +17,10 @@
  *     the user has no session/JWT yet at this point, and create-hubspot-contact's
  *     homeowner mode requires one (D-211 CODE-3 hardening, 86e1xdaxe #1), so the
  *     pre-auth call always 401'd (#405). The cs_signup payload written below is
- *     read post-auth by the auth-callback page, which fires the HubSpot call
- *     once a valid session JWT exists.
+ *     read post-auth by the auth-callback page. (The HubSpot send that page once
+ *     made was removed in PR #2624; nothing sends this data to HubSpot now.)
  *
- * References: D-189 (HubSpot), D-211 (React surface), #405 (post-auth HubSpot move)
+ * References: D-189 (HubSpot, since switched off in PR #2624), D-211 (React surface), #405 (post-auth HubSpot move, since removed)
  *
  *   [gh-1901, 2026-09-14, Tier A/B] Two-step reorder: CRO RUN 20 found the
  *   page asked for an account (8 fields, 2 checkboxes) before a word about
@@ -35,7 +35,8 @@
  *   see validateSmsConsent() below. Correction to the original claim here
  *   (CEO RUN 43 review F3): phone/address/name are NOT dead weight past this
  *   page — trade-selector/page.tsx writes phone/address/full_name to
- *   `profiles`, and auth-callback/page.tsx sends phone/address to HubSpot;
+ *   `profiles` (auth-callback/page.tsx no longer sends phone/address to HubSpot,
+ *   as of PR #2624);
  *   neither call is made FROM this file, which is the only reason this
  *   page's own leads-insert/signUp() calls don't need them. No Supabase
  *   schema or Edge Function changed; SMS-consent and referrer opt-out
@@ -102,7 +103,7 @@
  *   Step 2 fill state. Name is recovered afterward instead of gated on
  *   upfront: auth-callback/page.tsx's backfillNameFromGoogleIdentity reads
  *   the OAuth identity's given_name/family_name (or full_name) and patches
- *   cs_signup's first_name/last_name before HubSpot and trade-selector's
+ *   cs_signup's first_name/last_name before trade-selector's
  *   profile upsert read them, but only when this page left both blank —
  *   a name a visitor actually typed is never overwritten. Phone and "How
  *   did you hear about us" were already non-gating on this page (phone is
@@ -608,7 +609,7 @@ export default function GetStartedPage() {
   // below drives the <select>, so an invalid code can't be typed) and `zip`
   // is validated to exactly 5 digits in validateHomeInfo(). See fullAddress()
   // below for how these four recombine into the one `address` string
-  // existing readers (auth-callback's HubSpot sync) still expect.
+  // existing readers (trade-selector) still expect.
   const [street, setStreet] = useState('');
   const [city, setCity] = useState('');
   const [addrState, setAddrState] = useState('');
@@ -647,7 +648,7 @@ export default function GetStartedPage() {
    * project auto-confirms emails, signUp() hands back a live session right away,
    * which would otherwise trip the "already logged in" redirect below and drop a
    * brand-new homeowner on the dashboard before /auth-callback has run the
-   * post-auth HubSpot sync (#405) and the referral advance (#571). A ref, not
+   * referral advance (#571) (the post-auth HubSpot sync of #405 was removed in PR #2624). A ref, not
    * state, because this must take effect without waiting for a re-render.
    */
   const signupNavigation = useRef(false);
@@ -966,7 +967,7 @@ export default function GetStartedPage() {
    * step (same shape as the static partner-insurance.html cs_pending_partner_signup
    * pattern), except there is no need for a second pending-payload key here:
    * /auth-callback already reads cs_signup out of localStorage post-auth to fire
-   * the HubSpot contact (#405), and /trade-selector already reads it to upsert
+   * what it needs (the HubSpot send of #405 was removed in PR #2624), and /trade-selector already reads it to upsert
    * profiles. /get-started and /auth-callback are both on app.otterquote.com, so
    * localStorage — which is origin-scoped — survives the Google round-trip intact.
    * Reusing cs_signup keeps one mechanism instead of inventing a parallel one.
@@ -1026,8 +1027,8 @@ export default function GetStartedPage() {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         phone: phone.trim(),
-        // gh-1993: combined line kept for existing readers (auth-callback's
-        // HubSpot sync reads `address` as one string) alongside the four
+        // gh-1993: combined line kept for existing readers (read as one
+        // string by trade-selector; the auth-callback HubSpot send was removed in PR #2624) alongside the four
         // split fields trade-selector's claim/profile writers now read
         // directly — no re-parsing needed on that end.
         address: fullAddress(street, city, addrState, zip),
@@ -1266,12 +1267,11 @@ export default function GetStartedPage() {
     try {
       const emailTrimmed = email.trim();
 
-      // D-189/#405: HubSpot contact creation still runs post-auth in
-      // auth-callback, unchanged by the 2026-08-26 auth rework — the JWT that
-      // create-hubspot-contact's homeowner mode requires does not exist until
-      // Supabase establishes a session, which is true of the password path for
-      // exactly the same reason it was true of the magic link. cs_signup,
-      // written by persistSignupContext below, is what carries the fields over.
+      // D-189/#405: the HubSpot contact creation that once ran post-auth in
+      // auth-callback was removed in PR #2624 (nothing sends this data to HubSpot
+      // now). cs_signup, written by persistSignupContext below, still carries the
+      // fields over to auth-callback and trade-selector after Supabase establishes
+      // a session.
       persistSignupContext(emailTrimmed);
 
       // Password sign-up. Mirrors js/auth.js signUpWithPassword (the helper the
@@ -1350,8 +1350,8 @@ export default function GetStartedPage() {
 
       if (data.session) {
         // Project auto-confirms email — session is live, so hand off to
-        // /auth-callback for the normal post-auth routing (HubSpot sync,
-        // referral advance, trade-selector vs dashboard). The lead link
+        // /auth-callback for the normal post-auth routing (the HubSpot send was
+        // removed in PR #2624; referral advance, trade-selector vs dashboard). The lead link
         // (if any) is deliberately NOT fired above in this branch — see
         // the M2 comment above; auth-callback links it instead, once this
         // navigation has landed and nothing can cancel the call.
@@ -2033,7 +2033,7 @@ export default function GetStartedPage() {
                     ticked, so a consent timestamp is never recorded against
                     no phone (CEO RUN 43 review F2). Phone still matters
                     downstream even when unchecked — trade-selector writes
-                    it to `profiles` and auth-callback sends it to HubSpot
+                    it to `profiles` (the HubSpot send was removed in PR #2624)
                     (CEO RUN 43 review F3). */}
                 <div className="form-group">
                   <label className="form-label" htmlFor="phone">Phone <span style={{ fontWeight: 400, color: 'var(--slate, #94a3b8)' }}>(optional)</span></label>
