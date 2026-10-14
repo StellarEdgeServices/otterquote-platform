@@ -135,6 +135,7 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 # these lines are the documented source of truth. scripts/check-sitemap.py fails if a generated
 # page lacks its rule here and its entry in the edge function map.
 /locations/allen-county-in/roofing/index.html /locations/allen-county-in/roofing/ 301
+/locations/blount-county-tn/roofing/index.html /locations/blount-county-tn/roofing/ 301
 /locations/butler-county-oh/roofing/index.html /locations/butler-county-oh/roofing/ 301
 /locations/cuyahoga-county-oh/roofing/index.html /locations/cuyahoga-county-oh/roofing/ 301
 /locations/davidson-county-tn/roofing/index.html /locations/davidson-county-tn/roofing/ 301
@@ -155,9 +156,11 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 /locations/shelby-county-tn/roofing/index.html /locations/shelby-county-tn/roofing/ 301
 /locations/st-louis-county-mo/roofing/index.html /locations/st-louis-county-mo/roofing/ 301
 /locations/stark-county-oh/roofing/index.html /locations/stark-county-oh/roofing/ 301
+/locations/sullivan-county-tn/roofing/index.html /locations/sullivan-county-tn/roofing/ 301
 /locations/summit-county-oh/roofing/index.html /locations/summit-county-oh/roofing/ 301
 /locations/sumner-county-tn/roofing/index.html /locations/sumner-county-tn/roofing/ 301
 /locations/warren-county-oh/roofing/index.html /locations/warren-county-oh/roofing/ 301
+/locations/washington-county-tn/roofing/index.html /locations/washington-county-tn/roofing/ 301
 /locations/williamson-county-tn/roofing/index.html /locations/williamson-county-tn/roofing/ 301
 /locations/wilson-county-tn/roofing/index.html /locations/wilson-county-tn/roofing/ 301
 /guides/roof-bid-comparison-worksheet /guides/roof-bid-comparison-worksheet.html 301
