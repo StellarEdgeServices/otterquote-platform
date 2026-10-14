@@ -670,7 +670,13 @@ async function handleDisputeCreated(
     let clickupTaskId: string | null = null;
     let clickupTaskUrl: string | null = null;
 
-    if (!clickupKey) {
+    if (!event.livemode) {
+      // gh-1759 (Ben's ruling, issue comment 6069379782): a Stripe TEST-mode dispute
+      // must not file an Urgent task in the owner's ClickUp list. The disputes,
+      // admin_dispute_queue and activity_log rows below are still written, so the
+      // miss leg stays observable; only the ClickUp message is skipped.
+      console.log(`[${FN_NAME}] livemode=false: skipping ClickUp task for test dispute ${dispute.id}`);
+    } else if (!clickupKey) {
       console.error(`[${FN_NAME}] CLICKUP_API_KEY not set — cannot create ClickUp task`);
       await supabase.from("platform_alerts_log").insert({
         alert_type: "dispute_clickup_config_missing",

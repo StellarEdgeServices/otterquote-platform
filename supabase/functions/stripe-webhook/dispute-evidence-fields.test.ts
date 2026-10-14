@@ -59,3 +59,13 @@ Deno.test("gh-1759: index.ts builds its evidence through assembleTextEvidence an
   // gate 2 is untouched: submit still set only via maySubmitFinalEvidence
   assert(/maySubmitFinalEvidence\(\{/.test(src));
 });
+
+Deno.test("gh-1759: a livemode=false dispute never reaches createClickUpTask (Ben, comment 6069379782)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const guard = src.indexOf("if (!event.livemode) {");
+  const call = src.indexOf("await createClickUpTask({");
+  assert(guard !== -1 && call !== -1, "guard and call must both exist");
+  assert(guard < call, "the livemode check must come before the ClickUp call");
+  // the call must sit in the branch after the guard (else-if chain), not before it
+  assert(/\} else if \(!clickupKey\) \{/.test(src), "ClickUp call must be in the else chain of the livemode guard");
+});
