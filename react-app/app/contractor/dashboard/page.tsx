@@ -197,7 +197,7 @@ function DashboardContent() {
       <Messaging userId={contractor.user_id} />
 
       {showAgreement && <AgreementModal contractor={contractor} onAccepted={refetch} />}
-      {!showAgreement && showCpa && <CpaReacceptModal contractorId={contractor.id} userId={contractor.user_id} onAccepted={refetch} />}
+      {!showAgreement && showCpa && <CpaReacceptModal contractorId={contractor.id} userId={contractor.user_id} isTest={contractor.is_test === true} onAccepted={refetch} />}
     </div>
   );
 }
@@ -343,7 +343,7 @@ function WarrantyModal({ quoteId, onClose, onSuccess }: { quoteId: string; onClo
 }
 
 // ── Tier-3 verbatim-locked legal modals (copy in ./copy.ts) ──
-function AgreementModal({ contractor, onAccepted }: { contractor: { id: string; user_id: string }; onAccepted: () => void }) {
+function AgreementModal({ contractor, onAccepted }: { contractor: { id: string; user_id: string; is_test?: boolean | null }; onAccepted: () => void }) {
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const accept = async () => {
@@ -360,7 +360,7 @@ function AgreementModal({ contractor, onAccepted }: { contractor: { id: string; 
       if (error) throw error;
       // gh-2444: same shared evidence path as re-acceptance; a failed write is a failed acceptance (existing error copy, retry allowed).
       const evidenceErr = await recordCpaAcceptanceEvidence(supabase, {
-        contractorId: contractor.id, userId: contractor.user_id, now,
+        contractorId: contractor.id, userId: contractor.user_id, now, isTest: contractor.is_test === true,
         title: `Accepted Contractor Partner Agreement (${CURRENT_CPA_VERSION})`,
       });
       if (evidenceErr) throw evidenceErr;
@@ -382,7 +382,7 @@ function AgreementModal({ contractor, onAccepted }: { contractor: { id: string; 
   );
 }
 
-function CpaReacceptModal({ contractorId, userId, onAccepted }: { contractorId: string; userId: string; onAccepted: () => void }) {
+function CpaReacceptModal({ contractorId, userId, isTest, onAccepted }: { contractorId: string; userId: string; isTest?: boolean; onAccepted: () => void }) {
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -398,7 +398,7 @@ function CpaReacceptModal({ contractorId, userId, onAccepted }: { contractorId: 
       });
       if (error) { console.error('CPA re-acceptance write failed:', error); setErr(m.errorSave); setBusy(false); return; }
       const evidenceErr = await recordCpaAcceptanceEvidence(supabase, {
-        contractorId, userId, now,
+        contractorId, userId, now, isTest,
         title: `Accepted updated Contractor Partner Agreement (${CURRENT_CPA_VERSION})`,
       });
       if (evidenceErr) { setErr(m.errorSave); setBusy(false); return; }

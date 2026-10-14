@@ -50,7 +50,7 @@ ok(/await recordCpaAcceptanceEvidence\(/.test(first), 'first acceptance awaits t
 // Behaviour of the real function. supabase-js RETURNS {error} (it does not throw),
 // so failures are simulated as RETURNED errors; a throw is covered as a second mode.
 // mode: 'ok' | 'ret' (returned {error}) | 'throw'
-async function run(rpcMode, insertMode) {
+async function run(rpcMode, insertMode, isTest) {
   const calls = { rpc: [], ins: [] };
   const mk = (mode, log, args) => {
     log.push(args);
@@ -59,7 +59,7 @@ async function run(rpcMode, insertMode) {
   };
   const ctx = {
     console: { warn() {}, error() {} },
-    currentContractor: { id: 'c-1' }, currentUser: { id: 'u-1' },
+    currentContractor: { id: 'c-1', is_test: isTest }, currentUser: { id: 'u-1' },
     sb: {
       rpc: async (n, a) => mk(rpcMode, calls.rpc, [n, a]),
       from: (t) => ({ insert: async (r) => mk(insertMode, calls.ins, [t, r]) }),
@@ -90,6 +90,15 @@ ok(/const evidenceErr = await recordCpaAcceptanceEvidence\(/.test(first) && /if 
 ok(/const evidenceErr = await recordCpaAcceptanceEvidence\(/.test(re) && /if \(evidenceErr\)/.test(re), 're-acceptance checks the evidence result');
 ok(first.indexOf('button.disabled = true') > -1 && first.indexOf('button.disabled = true') < first.indexOf('.update('), 'first acceptance disables the button before the write');
 ok((first.match(/button\.disabled = false/g) || []).length >= 3, 'first acceptance re-enables the button on every failure path');
+
+// CEO RUN 104 finding 8: activity_log.is_test defaults false with no trigger, so the row
+// must carry the contractor's is_test (a test contractor's row must not read false).
+const tTrue = await run('ok', 'ok', true);
+ok(tTrue.ins[0][1].is_test === true, 'is_test contractor -> activity_log row is_test === true');
+const tFalse = await run('ok', 'ok', false);
+ok(tFalse.ins[0][1].is_test === false, 'real contractor -> activity_log row is_test === false');
+const tUndef = await run('ok', 'ok', undefined);
+ok(tUndef.ins[0][1].is_test === false, 'missing is_test -> false (never undefined/null)');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

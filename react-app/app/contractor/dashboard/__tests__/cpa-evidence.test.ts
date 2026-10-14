@@ -22,7 +22,13 @@ describe('recordCpaAcceptanceEvidence (gh-2444)', () => {
     expect(await recordCpaAcceptanceEvidence(c, ARGS)).toBeNull();
     expect(rpc).toHaveBeenCalledWith('record_cpa_ip', { p_contractor_id: 'c-1' });
     expect(from).toHaveBeenCalledWith('activity_log');
-    expect(insert).toHaveBeenCalledWith({ user_id: 'u-1', event_type: 'cpa_accepted', title: 'T', created_at: ARGS.now });
+    expect(insert).toHaveBeenCalledWith({ user_id: 'u-1', event_type: 'cpa_accepted', title: 'T', created_at: ARGS.now, is_test: false });
+  });
+
+  it('stamps is_test=true on the activity_log row for a test contractor (CEO RUN 104 finding 8)', async () => {
+    const { c, insert } = client();
+    expect(await recordCpaAcceptanceEvidence(c, { ...ARGS, isTest: true })).toBeNull();
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ event_type: 'cpa_accepted', is_test: true }));
   });
 
   it('RETURNED rpc error is a failure and skips the activity_log insert', async () => {
