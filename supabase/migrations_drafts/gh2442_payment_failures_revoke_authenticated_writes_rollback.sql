@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-14T15:20Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-10-14T15:27:36Z): NOT APPLIED
 -- FILE ROLE: rollback file of set gh2442_payment_failures_revoke_authenticated_writes
 -- EVIDENCE: forward file not applied; see gh2442_payment_failures_revoke_authenticated_writes.sql
 -- REPO COPY: none

@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-14T15:20Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-10-14T15:27:36Z): NOT APPLIED
 -- FILE ROLE: forward file of set gh2442_payment_failures_revoke_authenticated_writes (the STATUS is the set's)
 -- EVIDENCE: `authenticated` holds INSERT, SELECT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER on public.payment_failures on production: CLOSE-REVIEW 6154141392 (#2442), Supabase MCP SELECT 2026-10-13 20:05:06Z, and CTO65 state 6164276552 (2026-10-14 08:32Z). Not re-measured by the authoring session (it ran no SQL on production).
 -- REPO COPY: none
