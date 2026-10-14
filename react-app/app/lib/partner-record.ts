@@ -83,9 +83,15 @@ export async function resolvePartnerRecord(
 
   if (byEmail) {
     const rec = byEmail as PartnerRecord;
-    // gh-2105 batch 4 (a): .select('id') so a zero-row RLS match is loud. The record is still
-    // returned (the partner can use the dashboard), but it is only reported as linked when the
-    // write actually landed; otherwise the failure is logged and user_id stays as the DB has it.
+    // gh-2105 batch 4 -- class (c), NOT fixed: unreachable under current RLS. This branch cannot
+    // run for a non-admin: the byEmail lookup above (.is('user_id', null)) runs as the partner and
+    // no referral_agents SELECT policy exposes an unclaimed row (policies: user_id = auth.uid(),
+    // is_admin_email(), recruits), so byEmail is always null here. Even if reached, UPDATE ...
+    // RETURNING checks the existing row against the SELECT policies, so .select('id') would
+    // return 0 rows, and the "Authenticated can claim unclaimed partner record" UPDATE policy is
+    // unusable from this client for the same reason. A real linking path needs a separate fix (out of scope for this PR).
+    // The guard below is defensive only: it never reports the record as linked unless a row came
+    // back, and logs the failure.
     const { data: linkRows, error: linkErr } = await supabase
       .from('referral_agents')
       .update({ user_id: userId })

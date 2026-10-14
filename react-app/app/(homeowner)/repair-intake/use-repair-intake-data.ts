@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import * as Sentry from '@sentry/nextjs';
 import { supabase } from '@/lib/supabase';
 import { track } from '@/lib/track';
 import {
@@ -172,9 +173,9 @@ export async function submitRepairIntake(
     }
   }
 
-  // 5. Mark submitted (faithful: the static did not hard-fail on this update).
-  // gh-2105 batch 4 (a, log-only): the earlier update already proved the row is writable
-  // (same id + user_id), so a failure here is logged loudly, not blocking (twin of repair-intake.html).
+  // 5. Mark submitted. gh-2105 batch 4 (a, THROW): this is the user's actual submit, so on an
+  // error or zero rows we report to Sentry and throw (twin of repair-intake.html); the page's
+  // catch shows its existing error and re-enables Submit. The user is never told it was submitted.
   const { data: submittedRows, error: submittedErr } = await supabase
     .from('claims')
     .update({ status: 'submitted' })
@@ -182,7 +183,14 @@ export async function submitRepairIntake(
     .eq('user_id', user.id)
     .select('id');
   if (submittedErr || !Array.isArray(submittedRows) || submittedRows.length === 0) {
-    console.error('Repair submit: status=submitted write failed:', submittedErr ? submittedErr.message : 'update_zero_rows: claims (repair status)');
+    const submittedMsg = submittedErr ? submittedErr.message : 'update_zero_rows: claims (repair status)';
+    console.error('Repair submit: status=submitted write failed:', submittedMsg);
+    Sentry.captureMessage(`[repair-intake] status=submitted write failed: ${submittedMsg}`, {
+      level: 'error',
+      tags: { gh: '2105', site: 'repair-intake' },
+      extra: { claim_id: claimId },
+    });
+    throw new Error(submittedMsg);
   }
 
   return { claimId };

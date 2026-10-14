@@ -1324,13 +1324,19 @@
                 }
 
                 // ── Mark claim as submitted ─────────────────────────────────
-                // gh-2105 batch 4 (a, log-only): the preceding update already proved the row
-                // is writable (same id + user_id), so a failure here is logged loudly, not blocking.
+                // gh-2105 batch 4 (a, THROW): this is the user's actual submit. On an error or zero
+                // rows the user must NOT be told it was submitted: send the event to Sentry, then
+                // throw into the catch below (alert + Submit re-enabled so they can retry).
                 const { data: submittedRows, error: submittedErr } = await sb.from('claims').update({
                     status: 'submitted'
                 }).eq('id', claimId).eq('user_id', user.id).select('id');
                 if (submittedErr || !Array.isArray(submittedRows) || submittedRows.length === 0) {
-                    console.error('Repair submit: status=submitted write failed:', submittedErr ? submittedErr.message : 'update_zero_rows: claims (repair status)');
+                    const submittedMsg = submittedErr ? submittedErr.message : 'update_zero_rows: claims (repair status)';
+                    console.error('Repair submit: status=submitted write failed:', submittedMsg);
+                    if (typeof Sentry !== 'undefined' && Sentry.captureMessage) {
+                        Sentry.captureMessage('[repair-intake] status=submitted write failed: ' + submittedMsg, { level: 'error', tags: { gh: '2105', site: 'repair-intake' }, extra: { claim_id: claimId } });
+                    }
+                    throw new Error(submittedErr ? submittedErr.message : 'update_zero_rows: claims (repair status)');
                 }
 
                 // ── GA4 ─────────────────────────────────────────────────────

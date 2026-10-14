@@ -96,9 +96,9 @@ BASELINE: dict[str, int] = {
     "contractor-profile.html": 0,  # gh-2105 batch 4: fixed (a)
     "contractor-settings.html": 0,  # gh-2105 batch 12: 8 fixed (a), 1 annotated (b)
     "dashboard.html": 0,  # gh-2105 batch 12: 2 log-only, 1 fixed (a), 1 already selected (comment reworded)
-    "help-estimate.html": 0,  # gh-2105 batch 4: fixed (a, log-only)
+    "help-estimate.html": 0,  # gh-2105 batch 4: (a, report-only): Sentry event, flow unchanged
     "help-materials.html": 0,  # gh-2105 batch 13: page/JS fixed (a)
-    "help-measurements.html": 0,  # gh-2105 batch 4: fixed (a, log-only)
+    "help-measurements.html": 0,  # gh-2105 batch 4: (a, report-only): Sentry event, flow unchanged
     "js/auth.js": 2,
     "js/contract-template-validation.js": 0,  # gh-2105 batch 7: fixed (see PR body)
     "js/services.js": 2,
@@ -118,11 +118,11 @@ BASELINE: dict[str, int] = {
     # joinExpansionWaitlist -- all decision a, see the batch-4 PR body for the
     # full grep enumeration + per-site decisions). Lowered 3->0.
     "react-app/app/(homeowner)/dashboard/actions.ts": 0,
-    "react-app/app/(homeowner)/help-estimate/actions.ts": 0,  # gh-2105 batch 4: fixed (a, log-only)
+    "react-app/app/(homeowner)/help-estimate/actions.ts": 0,  # gh-2105 batch 4: (a, report-only): Sentry event, flow unchanged
     "react-app/app/(homeowner)/help-materials/use-help-materials-data.ts": 0,  # gh-2105 batch 13: page/JS fixed (a)
-    "react-app/app/(homeowner)/help-measurements/use-help-measurements-data.ts": 0,  # gh-2105 batch 4: fixed (a, log-only)
+    "react-app/app/(homeowner)/help-measurements/use-help-measurements-data.ts": 0,  # gh-2105 batch 4: (a, report-only): Sentry event, flow unchanged
     "react-app/app/(homeowner)/project-confirmation/use-project-confirmation-data.ts": 0,  # gh-2105 batch 13: page/JS fixed (a)
-    "react-app/app/(homeowner)/repair-intake/use-repair-intake-data.ts": 0,  # gh-2105 batch 4: status=submitted write fixed (a, log-only)
+    "react-app/app/(homeowner)/repair-intake/use-repair-intake-data.ts": 0,  # gh-2105 batch 4: status=submitted write fixed (a, THROW + Sentry)
     "react-app/app/admin/contractors/page.tsx": 0,  # gh-2105 batch 13: annotated (b)
     "react-app/app/admin/fee-config/page.tsx": 0,
     "react-app/app/admin/referrals/page.tsx": 0,  # gh-2105 batch 12: 3 fixed (a), 3 comment mentions reworded
@@ -139,10 +139,10 @@ BASELINE: dict[str, int] = {
     "react-app/app/contractor/settings/page.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/settings/utils.ts": 1,
     "react-app/app/hooks/use-notification-count.ts": 1,
-    "react-app/app/lib/partner-record.ts": 0,  # gh-2105 batch 4: fixed (a)
+    "react-app/app/lib/partner-record.ts": 0,  # gh-2105 batch 4: class (c), NOT fixed: branch unreachable under current RLS (see code comment); guard is defensive only
     "react-app/app/lib/services.ts": 2,
     "react-app/app/trade-selector/page.tsx": 0,  # gh-2105 batch 4: fixed (a)
-    "repair-intake.html": 0,  # gh-2105 batch 4: status=submitted write fixed (a, log-only)
+    "repair-intake.html": 0,  # gh-2105 batch 4: status=submitted write fixed (a, THROW + Sentry)
     "supabase/functions/admin-contractor-action/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     "supabase/functions/approve-warranty-drift/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     "supabase/functions/check-siding-design-completion/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered

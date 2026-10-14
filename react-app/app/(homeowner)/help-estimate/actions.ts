@@ -8,6 +8,7 @@
  * recipient. EFs are deployed and called AS-IS (changing one is Tier-3).
  */
 
+import * as Sentry from '@sentry/nextjs';
 import { supabase } from '@/lib/supabase';
 import { Services, type SendAdjusterEmailResult } from '@/lib/services';
 
@@ -33,8 +34,9 @@ export interface SendEstimateRequestInput {
 export async function sendEstimateRequest(
   input: SendEstimateRequestInput,
 ): Promise<SendAdjusterEmailResult> {
-  // gh-2105 batch 4 (a, log-only): the adjuster email below is the user's intent, so a
-  // failed or zero-row writeback is logged loudly, not blocking (twin of help-estimate.html).
+  // gh-2105 batch 4 (a, report-only): the adjuster email below is the user's intent, so a
+  // failed or zero-row writeback is sent to Sentry (and the console) and does not block the
+  // flow (twin of help-estimate.html).
   const { data: writeRows, error: writeErr } = await supabase
     .from('claims')
     .update({
@@ -45,7 +47,13 @@ export async function sendEstimateRequest(
     .eq('id', input.claimId)
     .select('id');
   if (writeErr || !Array.isArray(writeRows) || writeRows.length === 0) {
-    console.error('[help-estimate] adjuster writeback failed:', writeErr ? writeErr.message : 'update_zero_rows: claims (adjuster info)');
+    const writeMsg = writeErr ? writeErr.message : 'update_zero_rows: claims (adjuster info)';
+    console.error('[help-estimate] adjuster writeback failed:', writeMsg);
+    Sentry.captureMessage(`[help-estimate] adjuster writeback failed: ${writeMsg}`, {
+      level: 'error',
+      tags: { gh: '2105', site: 'help-estimate' },
+      extra: { claim_id: input.claimId },
+    });
   }
 
   await Services.findOrCreateAdjuster({

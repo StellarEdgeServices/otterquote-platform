@@ -1026,8 +1026,9 @@
 
                 // Save adjuster info to claim
                 if (currentClaim) {
-                    // gh-2105 batch 4 (a, log-only): the adjuster email below is the user's
-                    // intent, so a failed or zero-row writeback is logged loudly, not blocking.
+                    // gh-2105 batch 4 (a, report-only): the adjuster email below is the user's
+                    // intent, so a failed or zero-row writeback is sent to Sentry (and the console)
+                    // and does not block the flow.
                     const { data: adjWriteRows, error: adjWriteErr } = await sb
                         .from('claims')
                         .update({
@@ -1038,7 +1039,11 @@
                         .eq('id', currentClaim.id)
                         .select('id');
                     if (adjWriteErr || !Array.isArray(adjWriteRows) || adjWriteRows.length === 0) {
-                        console.error('[help-estimate] adjuster writeback failed:', adjWriteErr ? adjWriteErr.message : 'update_zero_rows: claims (adjuster info)');
+                        const adjWriteMsg = adjWriteErr ? adjWriteErr.message : 'update_zero_rows: claims (adjuster info)';
+                        console.error('[help-estimate] adjuster writeback failed:', adjWriteMsg);
+                        if (typeof Sentry !== 'undefined' && Sentry.captureMessage) {
+                            Sentry.captureMessage('[help-estimate] adjuster writeback failed: ' + adjWriteMsg, { level: 'error', tags: { gh: '2105', site: 'help-estimate' }, extra: { claim_id: currentClaim.id } });
+                        }
                     }
                 }
 

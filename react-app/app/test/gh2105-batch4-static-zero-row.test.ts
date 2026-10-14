@@ -3,9 +3,9 @@
  * chaining `.select('id')` with a zero-row guard. Same source-slice convention as
  * gh2105-batch11/12/13 (the static pages have no runnable harness).
  *
- * Two shapes: THROW (money pages, intro video, loss-sheet attach: the success path must not run on
- * zero rows) and LOG-ONLY (secondary writebacks after the user's real action: logged loudly, flow
- * unchanged). No new customer-facing copy; the `update_zero_rows` token never reaches a screen.
+ * Shapes: THROW (money pages, intro video, loss-sheet attach, repair-intake status='submitted': the success path must not run on
+ * zero rows), REPORT-ONLY (adjuster writebacks after the user's real action: Sentry event + console, flow
+ * unchanged) and partner-record (class (c), unreachable under RLS, not fixed). No new customer-facing copy; the `update_zero_rows` token never reaches a screen.
  *
  * FAIL-FIRST: against origin/main every `.select('id')` assertion below fails (none of the 12
  * sites chains .select), and the ratchet baseline for these files is higher than the live count.
@@ -85,45 +85,84 @@ describe('trade-selector loss-sheet attach (THROW into the existing catch -> ban
   });
 });
 
-describe('LOG-ONLY secondary writebacks (flow unchanged, failure loud)', () => {
-  const cases: Array<[string, string, string, string]> = [
-    ['help-estimate.html', ".eq('id', currentClaim.id)\n                        .select('id')", "adjWriteErr || !Array.isArray(adjWriteRows)", 'update_zero_rows: claims (adjuster info)'],
-    ['help-measurements.html', ".eq('id', currentClaim.id).select('id')", 'wbErr || !Array.isArray(wbRows)', 'update_zero_rows: claims (adjuster info)'],
-    ['repair-intake.html', ".eq('user_id', user.id).select('id')", 'submittedErr || !Array.isArray(submittedRows)', 'update_zero_rows: claims (repair status)'],
-    ['react-app/app/(homeowner)/help-estimate/actions.ts', ".eq('id', input.claimId)\n    .select('id')", 'writeErr || !Array.isArray(writeRows)', 'update_zero_rows: claims (adjuster info)'],
-    ['react-app/app/(homeowner)/help-measurements/use-help-measurements-data.ts', ".eq('id', claim.id).select('id')", 'wbErr || !Array.isArray(wbRows)', 'update_zero_rows: claims (adjuster info)'],
-    ['react-app/app/(homeowner)/repair-intake/use-repair-intake-data.ts', ".eq('user_id', user.id)\n    .select('id')", 'submittedErr || !Array.isArray(submittedRows)', 'update_zero_rows: claims (repair status)'],
+describe('REPORT-ONLY secondary writebacks (flow unchanged, failure sent to Sentry)', () => {
+  // The HTML pages load the Sentry CDN loader (window.sentryOnLoad -> Sentry.init); the React
+  // twins use @sentry/nextjs. Behaviour of the TS twins is covered in gh2105-batch4-behaviour.test.ts.
+  const cases: Array<[string, string, string, string, string]> = [
+    ['help-estimate.html', ".eq('id', currentClaim.id)\n                        .select('id')", "adjWriteErr || !Array.isArray(adjWriteRows)", 'update_zero_rows: claims (adjuster info)', "site: 'help-estimate'"],
+    ['help-measurements.html', ".eq('id', currentClaim.id).select('id')", 'wbErr || !Array.isArray(wbRows)', 'update_zero_rows: claims (adjuster info)', "site: 'help-measurements'"],
+    ['react-app/app/(homeowner)/help-estimate/actions.ts', ".eq('id', input.claimId)\n    .select('id')", 'writeErr || !Array.isArray(writeRows)', 'update_zero_rows: claims (adjuster info)', "site: 'help-estimate'"],
+    ['react-app/app/(homeowner)/help-measurements/use-help-measurements-data.ts', ".eq('id', claim.id).select('id')", 'wbErr || !Array.isArray(wbRows)', 'update_zero_rows: claims (adjuster info)', "site: 'help-measurements'"],
   ];
-  for (const [file, chain, guard, token] of cases) {
-    it(`${file}: .select('id'), guard, console.error with the token; no throw`, () => {
+  for (const [file, chain, guard, token, site] of cases) {
+    it(`${file}: .select('id'), guard, console.error + Sentry.captureMessage; no throw`, () => {
       const src = read(file);
       expect(src).toContain(chain);
       const i = src.indexOf(guard);
       expect(i, `guard not found in ${file}`).toBeGreaterThan(-1);
-      const g = src.slice(i, i + 420);
+      const g = src.slice(i, i + 900);
       expect(g).toContain('console.error(');
+      expect(g).toContain('Sentry.captureMessage(');
       expect(g).toContain(token);
-      // log-only: the guard body does not throw or alert
-      const body = g.slice(0, g.indexOf('}'));
-      expect(body).not.toMatch(/throw |alert\(/);
+      expect(g).toContain(site);
+      // report-only: the guard body does not throw or alert
+      expect(g.split('captureMessage')[0]).not.toMatch(/throw |alert\(/);
     });
   }
+  it('the HTML pages guard the Sentry global before calling it (loader may be blocked)', () => {
+    for (const f of ['help-estimate.html', 'help-measurements.html', 'repair-intake.html']) {
+      const src = read(f);
+      expect(src).toContain('js.sentry-cdn.com');
+      expect(src).toContain("typeof Sentry !== 'undefined' && Sentry.captureMessage");
+    }
+  });
+  it('the React twins import Sentry from @sentry/nextjs', () => {
+    for (const f of [
+      'react-app/app/(homeowner)/help-estimate/actions.ts',
+      'react-app/app/(homeowner)/help-measurements/use-help-measurements-data.ts',
+      'react-app/app/(homeowner)/repair-intake/use-repair-intake-data.ts',
+    ]) expect(read(f)).toContain("import * as Sentry from '@sentry/nextjs';");
+  });
 });
 
-describe('partner-record magic-link link (does not report linked on zero rows)', () => {
-  const src = read('react-app/app/lib/partner-record.ts');
-  const getB = () => block(src, ".from('referral_agents')\n      .update({ user_id: userId })", '// 3. No partner record');
-  it("referral_agents.user_id: .select('id'), and the zero-row path returns the record WITHOUT the local user_id", () => {
-    const b = getB();
-    expect(b).toContain(".select('id')");
-    expect(b).toContain('update_zero_rows: referral_agents (link user_id)');
-    const failBranch = b.slice(b.indexOf('if (linkErr'), b.indexOf('return { kind: \'ok\', partner: { ...rec, user_id: userId } }'));
-    expect(failBranch).toContain("return { kind: 'ok', partner: rec };");
-    expect(failBranch).not.toContain('user_id: userId');
+describe("repair-intake status='submitted' is the user's submit: Sentry event + THROW (never 'submitted' on failure)", () => {
+  it('repair-intake.html: the guard reports to Sentry and throws BEFORE gtag, contractors list and the success label', () => {
+    const src = read('repair-intake.html');
+    const b = block(src, 'submittedErr || !Array.isArray(submittedRows)', "gtag('event', 'repair_submitted'");
+    expect(b).toContain('Sentry.captureMessage(');
+    expect(b).toContain("site: 'repair-intake'");
+    expect(b).toContain('throw new Error(');
+    expect(b).toContain('update_zero_rows: claims (repair status)');
+    expect(src.indexOf('update_zero_rows: claims (repair status)')).toBeLessThan(src.indexOf("btn.textContent = '✓ Submitted!'"));
+    // the existing catch re-enables the button and shows the generic error
+    const c = block(src, "console.error('Repair submit error:', err);", 'async function showRepairContractors');
+    expect(c).toContain('alert(\'Something went wrong. Please try again.\')');
+    expect(c).toContain('btn.disabled = false;');
   });
-  it('the success path still reports the linked user_id', () => {
-    const b = getB();
+  it('use-repair-intake-data.ts: the guard reports to Sentry and throws before returning the claim id', () => {
+    const src = read('react-app/app/(homeowner)/repair-intake/use-repair-intake-data.ts');
+    const b = block(src, 'submittedErr || !Array.isArray(submittedRows)', 'return { claimId };');
+    expect(b).toContain('Sentry.captureMessage(');
+    expect(b).toContain('throw new Error(submittedMsg);');
+  });
+});
+
+describe('partner-record magic-link link: reclassified class (c), not fixed', () => {
+  const src = read('react-app/app/lib/partner-record.ts');
+  it('the code comment states class (c) / unreachable under current RLS and gives the reason', () => {
+    expect(src).toContain('class (c), NOT fixed: unreachable under current RLS');
+    expect(src).toContain('is_admin_email()');
+    expect(src).toContain('RETURNING');
+  });
+  it('the defensive guard never reports linked on zero rows (behaviour: gh2105-batch4-behaviour.test.ts)', () => {
+    const b = block(src, ".from('referral_agents')\n      .update({ user_id: userId })", '// 3. No partner record');
+    expect(b).toContain(".select('id')");
+    expect(b).toContain("return { kind: 'ok', partner: rec };");
     expect(b).toContain("return { kind: 'ok', partner: { ...rec, user_id: userId } };");
+  });
+  it('the ratchet comment says (c), not (a)', () => {
+    const r = read('scripts/check-unselected-update-ratchet.py');
+    expect(r).toMatch(/partner-record\.ts": 0,  # gh-2105 batch 4: class \(c\), NOT fixed/);
   });
 });
 
