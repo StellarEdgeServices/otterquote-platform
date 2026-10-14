@@ -113,7 +113,7 @@ describe('REPORT-ONLY secondary writebacks (flow unchanged, failure sent to Sent
     for (const f of ['help-estimate.html', 'help-measurements.html', 'repair-intake.html']) {
       const src = read(f);
       expect(src).toContain('js.sentry-cdn.com');
-      expect(src).toContain("typeof Sentry !== 'undefined' && Sentry.captureMessage");
+      expect(src).toContain(f === 'repair-intake.html' ? "typeof Sentry !== 'undefined' && Sentry.captureException" : "typeof Sentry !== 'undefined' && Sentry.captureMessage");
     }
   });
   it('the React twins import Sentry from @sentry/nextjs', () => {
@@ -129,15 +129,16 @@ describe("repair-intake status='submitted' is the user's submit: Sentry event + 
   it('repair-intake.html: the guard reports to Sentry and throws BEFORE gtag, contractors list and the success label', () => {
     const src = read('repair-intake.html');
     const b = block(src, 'submittedErr || !Array.isArray(submittedRows)', "gtag('event', 'repair_submitted'");
-    expect(b).toContain('Sentry.captureMessage(');
-    expect(b).toContain("site: 'repair-intake'");
-    expect(b).toContain('throw new Error(');
+    // exactly one Sentry event per failure: the catch's captureException (no captureMessage before the throw)
+    expect(b).not.toContain('Sentry.captureMessage');
+    expect(b).toContain('throw new Error(submittedMsg);');
     expect(b).toContain('update_zero_rows: claims (repair status)');
     expect(src.indexOf('update_zero_rows: claims (repair status)')).toBeLessThan(src.indexOf("btn.textContent = '✓ Submitted!'"));
     // the existing catch re-enables the button and shows the generic error
     const c = block(src, "console.error('Repair submit error:', err);", 'async function showRepairContractors');
     expect(c).toContain('alert(\'Something went wrong. Please try again.\')');
     expect(c).toContain('btn.disabled = false;');
+    expect(c).toContain('Sentry.captureException(err)');
   });
   it('use-repair-intake-data.ts: the guard reports to Sentry and throws before returning the claim id', () => {
     const src = read('react-app/app/(homeowner)/repair-intake/use-repair-intake-data.ts');

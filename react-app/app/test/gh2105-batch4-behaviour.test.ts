@@ -34,7 +34,6 @@ import { sendMeasurementRequest } from '../(homeowner)/help-measurements/use-hel
 import { submitRepairIntake } from '../(homeowner)/repair-intake/use-repair-intake-data';
 import { resolvePartnerRecord } from '../lib/partner-record';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
 const capture = Sentry.captureMessage as unknown as ReturnType<typeof vi.fn>;
 
@@ -103,7 +102,6 @@ describe('help-estimate/actions.ts sendEstimateRequest (report-only)', () => {
 });
 
 describe('use-help-measurements-data.ts sendMeasurementRequest (report-only)', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const args: any = {
     claim: { id: 'claim-2', adjuster_name: null, adjuster_email: null, adjuster_phone: null },
     profile: null, adjusterName: 'Pat', adjusterEmail: 'pat@x.com', adjusterPhone: '555',
@@ -133,7 +131,6 @@ describe('use-repair-intake-data.ts submitRepairIntake status=submitted (THROW +
   const sub = {
     userId: 'u1', claimId: 'c-1', trade: 'roofing', repairType: 'leak',
     material: { brand: 'GAF', product: 'T', color: 'W' }, notes: 'n', photos: [],
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
   beforeEach(() => {
     sb.auth.getUser.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null });
