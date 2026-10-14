@@ -39,6 +39,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { attemptContractorSms } from "./consent-gate.ts";
+import { consentedSmsRecipients } from "../_shared/sms-consent-phone.ts"; // gh-1916 / D-383
 
 const ALLOWED_ORIGINS = [
   "https://stellaredgeservices.com",
@@ -138,7 +139,7 @@ serve(async (req: Request) => {
   // consent-gate.ts's isSmsConsented.
   const { data: contractor, error: contractorErr } = await sb
     .from("contractors")
-    .select("company_name, phone, notification_phones, sms_opt_in, sms_consent_text_version")
+    .select("company_name, sms_opt_in, sms_consent_phone, sms_consent_text_version")
     .eq("id", contractor_id)
     .single();
 
@@ -181,15 +182,9 @@ serve(async (req: Request) => {
   const dustinMsg =
     `Otter Quotes Alert: ${homeownerName} (claim ${claim_id}) says they haven't heard from ${contractorName} since signing on ${signedDate}. Heads up.`;
 
-  const phones: string[] = [];
-  if (Array.isArray(contractor.notification_phones)) {
-    for (const p of contractor.notification_phones) {
-      if (p && !phones.includes(p)) phones.push(p);
-    }
-  }
-  if (contractor.phone && !phones.includes(contractor.phone)) {
-    phones.push(contractor.phone);
-  }
+  // gh-1916 / D-383: the only recipient is the phone number on the account at consent
+  // (sms_consent_phone). notification_phones and the account phone as it stands today are NOT used.
+  const phones: string[] = consentedSmsRecipients(contractor);
 
   // D-328 / gh-1916 R-134 gate: attemptContractorSms refuses (+logs) before
   // ever calling Twilio unless contractor.sms_opt_in is strictly true AND

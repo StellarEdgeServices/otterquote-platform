@@ -1517,6 +1517,9 @@ window.Auth = {
                 sms_opt_in: data.sms_opt_in === true ? true : null,
                 sms_opt_in_at: data.sms_opt_in === true ? (data.sms_opt_in_at || new Date().toISOString()) : null,
                 sms_opt_in_source: data.sms_opt_in === true ? (data.sms_opt_in_source || 'contractor-signup') : null,
+                // gh-1916 / D-383: the number on the account at the moment of consent. Texts go ONLY to
+                // this number (never to notification_phones added later). NULL whenever sms_opt_in is not true.
+                sms_consent_phone: data.sms_opt_in === true ? (data.phone || null) : null,
                 // R-177 rework: which exact consent sentence this opt-in was
                 // taken under (contractor-join.html sets this to match the copy
                 // it actually shows — see that file). NULL whenever sms_opt_in

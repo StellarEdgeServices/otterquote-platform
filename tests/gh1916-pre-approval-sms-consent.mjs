@@ -37,7 +37,7 @@ export function check(joinHtml, preHtml) {
   if (pre && /transactional/i.test(pre)) v.push('pre-approval label still says "transactional"');
   if (pre && !/HELP for help/.test(pre)) v.push('pre-approval label has no HELP line');
   // evidence columns written from the pre-approval submit
-  for (const col of ['sms_opt_in:', 'sms_opt_in_at:', 'sms_opt_in_source:', 'sms_consent_text_version:']) {
+  for (const col of ['sms_opt_in:', 'sms_opt_in_at:', 'sms_opt_in_source:', 'sms_consent_text_version:', 'sms_consent_phone:']) {
     if (!preHtml.includes(col)) v.push(`pre-approval does not write ${col}`);
   }
   const ver = (joinHtml.match(/sms_consent_text_version:\s*smsConsent \? '([^']+)'/) || [])[1];

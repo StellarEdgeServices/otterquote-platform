@@ -1210,6 +1210,8 @@
             sms_opt_in:               true,
             sms_opt_in_at:            now,
             sms_opt_in_source:        'contractor-onboarding',
+            // gh-1916 / D-383: texts go only to the number on the account at consent.
+            sms_consent_phone:        contractor.phone || null,
             sms_consent_text_version: 'contractor-v2-2026-09-15',
         } : {};
         const attestation = {

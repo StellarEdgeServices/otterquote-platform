@@ -46,6 +46,7 @@ import {
 // #2105 5848495644). Switched from this batch's original local copy to the
 // shared one; the local copy is deleted.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { consentedSmsRecipients } from "../_shared/sms-consent-phone.ts"; // gh-1916 / D-383
 // gh-2309: inbound caller gate (service-role bearer on TRIGGER + CRON).
 import { acceptedServiceKeys, classifyRequest, gateResponse, validateHomeownerChoice } from "./caller-gate.ts";
 // gh-1824: email bodies live in templates.ts (pinned by templates.test.ts).
@@ -412,7 +413,8 @@ interface ContactInfo {
 
 async function getContractorContacts(contractor: Record<string, any>, supabase: any): Promise<ContactInfo> {
   const emails: string[] = [];
-  const phones: string[] = [];
+  // gh-1916 / D-383: phones are NOT collected from notification_phones or the profile.
+  // SMS goes only to contractors.sms_consent_phone (the number on the account at consent).
 
   // Primary email from contractors table
   if (contractor.email) emails.push(contractor.email);
@@ -422,21 +424,15 @@ async function getContractorContacts(contractor: Record<string, any>, supabase: 
     emails.push(...contractor.notification_emails.filter(Boolean));
   }
 
-  // notification_phones array
-  if (Array.isArray(contractor.notification_phones)) {
-    phones.push(...contractor.notification_phones.filter(Boolean));
-  }
-
-  // Profile email + phone (primary account)
+  // Profile email (primary account)
   if (contractor.user_id) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("email, phone")
+      .select("email")
       .eq("id", contractor.user_id)
       .single();
 
     if (profile?.email) emails.push(profile.email);
-    if (profile?.phone) phones.push(profile.phone);
   }
 
   // gh-1916 / R-134 protective gate: this function bypasses send-sms's own
@@ -449,14 +445,20 @@ async function getContractorContacts(contractor: Record<string, any>, supabase: 
   // asked — the default for every pre-migration row) and false (declined)
   // both refuse. Email is unaffected; only the phones list is suppressed.
   if (contractor.sms_opt_in !== true) {
-    if (phones.length > 0) {
-      console.warn(
-        `[process-dunning] SMS refused (gh-1916 R-134 gate) — sms_opt_in is not true for contractor ${contractor.id ?? "(unknown)"} (value=${String(contractor.sms_opt_in)}). ${phones.length} phone(s) suppressed. No Twilio call attempted.`
-      );
-    }
+    console.warn(
+      `[process-dunning] SMS refused (gh-1916 R-134 gate) — sms_opt_in is not true for contractor ${contractor.id ?? "(unknown)"} (value=${String(contractor.sms_opt_in)}). No Twilio call attempted.`
+    );
     return { emails, phones: [] };
   }
 
+  // gh-1916 / D-383: the only recipient is the consented number. sms_opt_in = true with no stored
+  // sms_consent_phone (consented before the column existed) fails closed: no phone, email unaffected.
+  const phones = consentedSmsRecipients(contractor);
+  if (phones.length === 0) {
+    console.warn(
+      `[process-dunning] SMS refused (gh-1916 D-383) — contractor ${contractor.id ?? "(unknown)"} has no stored sms_consent_phone. No Twilio call attempted.`
+    );
+  }
   return { emails, phones };
 }
 
@@ -580,7 +582,7 @@ export async function handler(
         .from("payment_failures")
         .select(`
           *,
-          contractors:contractor_id (id, company_name, email, notification_emails, notification_phones, user_id, sms_opt_in),
+          contractors:contractor_id (id, company_name, email, notification_emails, notification_phones, user_id, sms_opt_in, sms_consent_phone),
           claims:claim_id (id, property_address, status)
         `)
         .eq("id", failId)
@@ -1036,7 +1038,7 @@ export async function handler(
       // Look up contractor (including timezone + address_state for derivation)
       const { data: contractor } = await supabase
         .from("contractors")
-        .select("id, company_name, email, notification_emails, notification_phones, user_id, timezone, address_state, sms_opt_in")
+        .select("id, company_name, email, notification_emails, notification_phones, user_id, timezone, address_state, sms_opt_in, sms_consent_phone")
         .eq("id", contractor_id)
         .single();
 
@@ -1186,7 +1188,7 @@ export async function handler(
         *,
         contractors:contractor_id (
           id, company_name, email, notification_emails, notification_phones,
-          user_id, timezone, address_state, sms_opt_in
+          user_id, timezone, address_state, sms_opt_in, sms_consent_phone
         ),
         claims:claim_id (id, property_address, status)
       `)
