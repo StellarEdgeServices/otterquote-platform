@@ -14,6 +14,16 @@
 
 BEGIN;
 
+-- Order gate (REVIEW 6162070214 B3): run after gh2519 / gh2564 this rollback would restore the pre-gh-2519 function bodies and silently remove the server-set fee and the price lock.
+-- Roll gh2564 and gh2519 back first (gh2564_..._rollback.sql, then gh2519_quotes_server_set_fee_rollback_to_gh2626.sql).
+DO $order$
+BEGIN
+  IF to_regprocedure('public.quotes_platform_fee_for(uuid,uuid)') IS NOT NULL THEN
+    RAISE EXCEPTION '%: gh2519 (public.quotes_platform_fee_for) is applied; this rollback would silently remove the server-set fee and the price lock. Roll gh2564 and gh2519 back first', 'gh2626 rollback';
+  END IF;
+END
+$order$;
+
 DROP TRIGGER IF EXISTS claims_guard_award_columns ON public.claims;
 DROP FUNCTION IF EXISTS public.claims_guard_award_columns();
 

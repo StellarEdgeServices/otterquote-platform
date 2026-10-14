@@ -119,5 +119,35 @@ INSERT INTO proof_log(line) VALUES ('C3 OWNER rpc accept_bid(claim, qA), the liv
   || pg_temp.try_as('authenticated', pg_temp.fx('owner'), 'owner@example.invalid', format('SELECT * FROM public.accept_bid(%L, %L)', pg_temp.fx('claim'), pg_temp.fx('qA')))
   || ' -> ' || pg_temp.qs('qA') || ' | ' || pg_temp.cl());
 
+-- C5 / C6 (REVIEW 6162070214 B1, the two-step route): the owner selects another bid (C5 by a direct write, C6 through accept_bid()), which retires the
+-- switched-away qA; then, after a later switch (claim back in bidding, qC submitted again), accept_bid(qA) must still be refused. Pre-fix both read ACCEPTED
+-- (qA was left declined/active and accept_bid() admits declined); gh2626 alone refuses the second step too (qA stays selected, bid_not_awardable).
+UPDATE public.quotes SET status = 'submitted', bid_status = 'active' WHERE id IN (pg_temp.fx('qA'), pg_temp.fx('qC'));
+UPDATE public.claims SET status = 'bidding', selected_contractor_id = NULL, selected_bid_amount = NULL WHERE id = pg_temp.fx('claim');
+UPDATE public.quotes SET status = 'selected' WHERE id = pg_temp.fx('qA');
+DO $c5$
+DECLARE r1 text; r2 text;
+BEGIN
+  r1 := pg_temp.try_as('authenticated', pg_temp.fx('owner'), 'owner@example.invalid', format('UPDATE public.quotes SET status = ''selected'' WHERE id = %L', pg_temp.fx('qC')));
+  INSERT INTO proof_log(line) VALUES ('C5a OWNER direct select of qC retires the switched-away qA: ' || r1 || ' -> ' || pg_temp.qs('qA') || ' ' || pg_temp.qs('qC'));
+  UPDATE public.quotes SET status = 'submitted', bid_status = 'active' WHERE id = pg_temp.fx('qC');
+  UPDATE public.claims SET status = 'bidding', selected_contractor_id = NULL, selected_bid_amount = NULL WHERE id = pg_temp.fx('claim');
+  r2 := pg_temp.try_as('authenticated', pg_temp.fx('owner'), 'owner@example.invalid', format('SELECT * FROM public.accept_bid(%L, %L)', pg_temp.fx('claim'), pg_temp.fx('qA')));
+  INSERT INTO proof_log(line) VALUES ('C5 then OWNER rpc accept_bid(claim, qA), the retired switched-away bid: ' || r2 || ' -> ' || pg_temp.qs('qA') || ' | ' || pg_temp.cl());
+END $c5$;
+UPDATE public.quotes SET status = 'submitted', bid_status = 'active' WHERE id IN (pg_temp.fx('qA'), pg_temp.fx('qC'));
+UPDATE public.claims SET status = 'bidding', selected_contractor_id = NULL, selected_bid_amount = NULL WHERE id = pg_temp.fx('claim');
+UPDATE public.quotes SET status = 'selected' WHERE id = pg_temp.fx('qA');
+DO $c6$
+DECLARE r1 text; r2 text;
+BEGIN
+  r1 := pg_temp.try_as('authenticated', pg_temp.fx('owner'), 'owner@example.invalid', format('SELECT * FROM public.accept_bid(%L, %L)', pg_temp.fx('claim'), pg_temp.fx('qC')));
+  INSERT INTO proof_log(line) VALUES ('C6a OWNER rpc accept_bid(claim, qC) retires the switched-away qA: ' || r1 || ' -> ' || pg_temp.qs('qA') || ' ' || pg_temp.qs('qC'));
+  UPDATE public.quotes SET status = 'submitted', bid_status = 'active' WHERE id = pg_temp.fx('qC');
+  UPDATE public.claims SET status = 'bidding', selected_contractor_id = NULL, selected_bid_amount = NULL WHERE id = pg_temp.fx('claim');
+  r2 := pg_temp.try_as('authenticated', pg_temp.fx('owner'), 'owner@example.invalid', format('SELECT * FROM public.accept_bid(%L, %L)', pg_temp.fx('claim'), pg_temp.fx('qA')));
+  INSERT INTO proof_log(line) VALUES ('C6 then OWNER rpc accept_bid(claim, qA), the retired switched-away bid: ' || r2 || ' -> ' || pg_temp.qs('qA') || ' | ' || pg_temp.cl());
+END $c6$;
+
 SELECT line FROM proof_log ORDER BY n;
 ROLLBACK;

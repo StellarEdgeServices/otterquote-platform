@@ -5,8 +5,8 @@
 -- amount on a bid, the claim owner can again write payment_status, is_test and the other columns, a second
 -- bid can again be set to selected, and the referral commission again reads the newest selected bid.
 -- ORDER: run gh2564_quotes_selected_price_lock_rollback.sql FIRST if gh2564_quotes_selected_price_lock.sql was applied (it re-creates this guard).
--- If gh2626_claims_award_columns_guard.sql is also applied, use gh2519_quotes_server_set_fee_rollback_to_gh2626.sql instead (this file refuses): it restores the gh-2626 bodies of both functions.
--- This file now REFUSES (RAISE EXCEPTION, nothing changes) while the live guard still carries the gh-2564 lock (review 6051777895 finding 7).
+-- This file REFUSES (RAISE EXCEPTION, nothing changes) while the live guard still carries the gh-2564 lock (review 6051777895 finding 7), and refuses
+-- when gh2626_claims_award_columns_guard.sql is NOT applied (then use gh2519_quotes_server_set_fee_rollback.sql, which restores the pre-gh-2626 bodies).
 -- It restores quotes_guard_homeowner_columns() and accept_bid() to the bodies of gh2626_claims_award_columns_guard.sql (the bodies that were
 -- live after that set and before gh2519; the claims trigger of gh2626 is untouched) and apply_referral_commission() to the body of
 -- 20261005151842_gh2479_referral_guard_and_commission_checks.sql (prosrc md5 5cd19c8b…), byte for byte, with
