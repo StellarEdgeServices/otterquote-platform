@@ -168,6 +168,10 @@ export async function sendMeasurementRequest(args: {
 
   const updates = buildAdjusterClaimWriteback({ claim, adjusterName, adjusterEmail, adjusterPhone });
   if (Object.keys(updates).length > 0) {
-    await supabase.from('claims').update(updates).eq('id', claim.id);
+    // gh-2105 batch 4 (a, log-only): the email already went out; log a failed or zero-row writeback.
+    const { data: wbRows, error: wbErr } = await supabase.from('claims').update(updates).eq('id', claim.id).select('id');
+    if (wbErr || !Array.isArray(wbRows) || wbRows.length === 0) {
+      console.error('[help-measurements] adjuster writeback failed:', wbErr ? wbErr.message : 'update_zero_rows: claims (adjuster info)');
+    }
   }
 }

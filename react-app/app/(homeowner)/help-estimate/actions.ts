@@ -33,14 +33,20 @@ export interface SendEstimateRequestInput {
 export async function sendEstimateRequest(
   input: SendEstimateRequestInput,
 ): Promise<SendAdjusterEmailResult> {
-  await supabase
+  // gh-2105 batch 4 (a, log-only): the adjuster email below is the user's intent, so a
+  // failed or zero-row writeback is logged loudly, not blocking (twin of help-estimate.html).
+  const { data: writeRows, error: writeErr } = await supabase
     .from('claims')
     .update({
       adjuster_name: input.adjusterName,
       adjuster_email: input.adjusterEmail,
       adjuster_phone: input.adjusterPhone || null,
     })
-    .eq('id', input.claimId);
+    .eq('id', input.claimId)
+    .select('id');
+  if (writeErr || !Array.isArray(writeRows) || writeRows.length === 0) {
+    console.error('[help-estimate] adjuster writeback failed:', writeErr ? writeErr.message : 'update_zero_rows: claims (adjuster info)');
+  }
 
   await Services.findOrCreateAdjuster({
     adjuster_name: input.adjusterName,

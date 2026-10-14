@@ -1184,7 +1184,11 @@
                     if (adjusterEmail && !currentClaim.adjuster_email) updates.adjuster_email = adjusterEmail;
                     if (adjusterPhone && !currentClaim.adjuster_phone) updates.adjuster_phone = adjusterPhone;
                     if (Object.keys(updates).length > 0) {
-                        await sb.from('claims').update(updates).eq('id', currentClaim.id);
+                        // gh-2105 batch 4 (a, log-only): the email already went out; log a failed or zero-row writeback.
+                        const { data: wbRows, error: wbErr } = await sb.from('claims').update(updates).eq('id', currentClaim.id).select('id');
+                        if (wbErr || !Array.isArray(wbRows) || wbRows.length === 0) {
+                            console.error('[help-measurements] adjuster writeback failed:', wbErr ? wbErr.message : 'update_zero_rows: claims (adjuster info)');
+                        }
                     }
                 }
 

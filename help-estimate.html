@@ -1026,14 +1026,20 @@
 
                 // Save adjuster info to claim
                 if (currentClaim) {
-                    await sb
+                    // gh-2105 batch 4 (a, log-only): the adjuster email below is the user's
+                    // intent, so a failed or zero-row writeback is logged loudly, not blocking.
+                    const { data: adjWriteRows, error: adjWriteErr } = await sb
                         .from('claims')
                         .update({
                             adjuster_name: adjusterName,
                             adjuster_email: adjusterEmail,
                             adjuster_phone: adjusterPhone || null,
                         })
-                        .eq('id', currentClaim.id);
+                        .eq('id', currentClaim.id)
+                        .select('id');
+                    if (adjWriteErr || !Array.isArray(adjWriteRows) || adjWriteRows.length === 0) {
+                        console.error('[help-estimate] adjuster writeback failed:', adjWriteErr ? adjWriteErr.message : 'update_zero_rows: claims (adjuster info)');
+                    }
                 }
 
                 // Auto-fill adjuster knowledge base (D-046)

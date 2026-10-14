@@ -173,11 +173,17 @@ export async function submitRepairIntake(
   }
 
   // 5. Mark submitted (faithful: the static did not hard-fail on this update).
-  await supabase
+  // gh-2105 batch 4 (a, log-only): the earlier update already proved the row is writable
+  // (same id + user_id), so a failure here is logged loudly, not blocking (twin of repair-intake.html).
+  const { data: submittedRows, error: submittedErr } = await supabase
     .from('claims')
     .update({ status: 'submitted' })
     .eq('id', claimId)
-    .eq('user_id', user.id);
+    .eq('user_id', user.id)
+    .select('id');
+  if (submittedErr || !Array.isArray(submittedRows) || submittedRows.length === 0) {
+    console.error('Repair submit: status=submitted write failed:', submittedErr ? submittedErr.message : 'update_zero_rows: claims (repair status)');
+  }
 
   return { claimId };
 }

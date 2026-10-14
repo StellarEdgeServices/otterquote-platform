@@ -83,7 +83,18 @@ export async function resolvePartnerRecord(
 
   if (byEmail) {
     const rec = byEmail as PartnerRecord;
-    await supabase.from('referral_agents').update({ user_id: userId }).eq('id', rec.id);
+    // gh-2105 batch 4 (a): .select('id') so a zero-row RLS match is loud. The record is still
+    // returned (the partner can use the dashboard), but it is only reported as linked when the
+    // write actually landed; otherwise the failure is logged and user_id stays as the DB has it.
+    const { data: linkRows, error: linkErr } = await supabase
+      .from('referral_agents')
+      .update({ user_id: userId })
+      .eq('id', rec.id)
+      .select('id');
+    if (linkErr || !Array.isArray(linkRows) || linkRows.length === 0) {
+      console.error('[partner-record] magic-link user_id link failed:', linkErr ? linkErr.message : 'update_zero_rows: referral_agents (link user_id)');
+      return { kind: 'ok', partner: rec };
+    }
     return { kind: 'ok', partner: { ...rec, user_id: userId } };
   }
 
