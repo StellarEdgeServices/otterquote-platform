@@ -318,7 +318,11 @@ jobs:
       # function the CI-test project lacks") -- it must actually be able to
       # fail a PR, unlike the `test` job below.
       - name: Edge Function parity check against the CI-test project
-        if: ${{ !cancelled() }}
+        # gh-2698: Dependabot-triggered runs get no Actions repository secrets (only
+        # Dependabot secrets), so this secret-dependent step reads UNMEASURED and fails
+        # exit 3 on every Dependabot PR. Skipped for that actor only; every other actor
+        # (humans, merge_group, push to main) still runs and can still fail it.
+        if: ${{ !cancelled() && github.actor != 'dependabot[bot]' }}
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: python3 scripts/ci-test-function-parity.py
@@ -340,7 +344,11 @@ jobs:
       # self-test-marked rows, and always cleans up (incl. rows >1 h old). The step
       # name is unchanged on purpose: it is a check-run context.
       - name: RED/GREEN self-test against the CI-test project
-        if: ${{ !cancelled() }}
+        # gh-2698: Dependabot-triggered runs get no Actions repository secrets (only
+        # Dependabot secrets), so this secret-dependent step reads UNMEASURED and fails
+        # exit 3 on every Dependabot PR. Skipped for that actor only; every other actor
+        # (humans, merge_group, push to main) still runs and can still fail it.
+        if: ${{ !cancelled() && github.actor != 'dependabot[bot]' }}
         env:
           SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
