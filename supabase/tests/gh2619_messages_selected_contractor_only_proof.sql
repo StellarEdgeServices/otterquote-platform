@@ -1,6 +1,6 @@
 -- gh-2619 proof: contractor_messages on public.messages admits only the claim's selected contractor.
 -- SELF-ROLLING-BACK: one DO block does the fixtures, the BEFORE probes, the ALTER POLICY (the exact
--- statement from supabase/migrations_drafts/gh2619_messages_selected_contractor_only.sql), the AFTER
+-- statement from supabase/migrations/20261014112047_gh2619_messages_selected_contractor_only.sql), the AFTER
 -- probes, then ends with RAISE EXCEPTION, which rolls the whole transaction back and returns the
 -- report in the error text. Nothing persists. Run: python3 "In Flight/bin/_cto53_sql.py" <this file>
 -- Uses is_test = true rows only; ids are looked up at run time and printed as 8-character digests.
