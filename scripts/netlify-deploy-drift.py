@@ -1862,6 +1862,7 @@ _CF_BEACON_RE = re.compile(
 
 
 _ANY_SRC_ATTR_RE = re.compile(rb"src\s*=", re.IGNORECASE)
+_EVENT_ATTR_RE = re.compile(rb"[\s/\"']on[a-z]+\s*=", re.IGNORECASE)
 _CF_SRC_ATTR_RE = re.compile(
     rb"\ssrc=[\"']https://static\.cloudflareinsights\.com/beacon\.min\.js[^\"']*[\"']", re.IGNORECASE
 )
@@ -1869,10 +1870,11 @@ _CF_SRC_ATTR_RE = re.compile(
 
 def _strip_cf_beacon(match):
     """Strip a candidate tag only if it has exactly ONE src-like attribute and that attribute
-    is a whitespace-preceded src= on static.cloudflareinsights.com (rejects data-src/x-src
-    decoys and tags carrying a second src=)."""
+    is a whitespace-preceded src= on static.cloudflareinsights.com, with no inline on* event
+    handler (rejects data-src/x-src decoys, a second src=, and onerror/onload payloads)."""
     tag = match.group(0)
-    if len(_ANY_SRC_ATTR_RE.findall(tag)) == 1 and _CF_SRC_ATTR_RE.search(tag):
+    if (len(_ANY_SRC_ATTR_RE.findall(tag)) == 1 and _CF_SRC_ATTR_RE.search(tag)
+            and not _EVENT_ATTR_RE.search(tag)):
         return b""
     return tag
 
