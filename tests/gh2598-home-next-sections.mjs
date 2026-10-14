@@ -4,6 +4,10 @@
  * The approved design (2026-10-07) is Recommended-desktop.dc.html and Recommended-phone.dc.html. Committed verbatim under
  * tests/fixtures/gh2598-design/ (with a .txt suffix) so CI can read them (the originals live on the owner's drive, Marketing/site-reskin-2026-10/).
  * DESIGN_DIR=<dir> points the test at another copy of the two files (used to check the fixture against the originals).
+ * ONE RULED EXCEPTION to "verbatim" (Dustin, #2719 comment 6169077489, 2026-10-14, option (b)): the Questions answer to "Do you work with my insurance company?"
+ * reads "Once you have your insurance estimate, we can walk you through what it includes and what it pays for." in the page AND in both committed
+ * fixtures. The drive originals in Marketing/site-reskin-2026-10/ still carry the approved "No. But we can read a loss sheet and tell you what is and is
+ * not covered.", so DESIGN_DIR=<drive> reports exactly that one string pair as different until the originals are re-approved with the new line.
  *
  * What it pins, for every section the page has built so far (BUILT below):
  *   S1  desktop view: the page's visible strings equal the desktop design's strings, same order, none extra, none missing

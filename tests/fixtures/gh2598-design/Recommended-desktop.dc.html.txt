@@ -217,7 +217,7 @@ a{color:#0D1B2E}a:hover{color:#B45309}
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 28px 48px">
 <div style="display: flex; flex-direction: column; gap: 6px; border-top: 2px solid #0D1B2E; padding-top: 16px">
 <h3 style="margin: 0; font-size: 20px; font-weight: 800">Do you work with my insurance company?</h3>
-<p style="margin: 0; font-size: 17px; line-height: 1.55; color: #3D4F60">No. But we can read a loss sheet and tell you what is and is not covered.</p>
+<p style="margin: 0; font-size: 17px; line-height: 1.55; color: #3D4F60">Once you have your insurance estimate, we can walk you through what it includes and what it pays for.</p>
 </div>
 <div style="display: flex; flex-direction: column; gap: 6px; border-top: 2px solid #0D1B2E; padding-top: 16px">
 <h3 style="margin: 0; font-size: 20px; font-weight: 800">Will you inspect my roof?</h3>
