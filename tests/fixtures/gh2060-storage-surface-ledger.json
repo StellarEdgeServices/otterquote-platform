@@ -207,7 +207,7 @@
       "tests": [
         {
           "file": "react-app/app/(homeowner)/help-measurements/__tests__/help-measurements-page.test.tsx",
-          "contains": "ignores a pending pointer left over from a different claim"
+          "contains": "clears a pointer left over from a different claim without a message"
         },
         {
           "file": "react-app/app/lib/__tests__/gh2060-stale-surfaces.test.ts",
@@ -444,22 +444,14 @@
       "tests": [
         {
           "file": "react-app/app/contractor/bid/[claimId]/__tests__/gh2060-stale-caches.test.tsx",
-          "contains": "does not show another claim's cached photos on this claim"
-        },
-        {
-          "file": "react-app/app/contractor/bid/[claimId]/__tests__/gh2060-stale-caches.test.tsx",
-          "contains": "refetches when this claim cache entry is past the 10-minute TTL"
-        },
-        {
-          "file": "react-app/app/contractor/bid/[claimId]/__tests__/gh2060-stale-caches.test.tsx",
-          "contains": "a FUTURE-dated entry (negative age) is not \"fresh\""
+          "contains": "never shows a cached vendor payload"
         },
         {
           "file": "tests/gh2060-static-surfaces-staleness.mjs",
-          "contains": "hover_photos_ cache read rejects a future-dated ts"
+          "contains": "no hover_photos_ cache read remains"
         }
       ],
-      "note": "gh-2060 item 7: a future-dated ts (negative age) is no longer treated as fresh (React + static twin)."
+      "note": "gh-1873: the Hover photo cache reader was removed from both stacks with the vendor (it was gh-2060 item 7: a future-dated ts was treated as fresh). Nothing reads or writes hover_photos_ any more; a stale entry left in a browser is ignored."
     },
     {
       "key": "d202_warranty_options",

@@ -2,21 +2,15 @@
 
 /**
  * Home Photos card (D-211 Phase 7 / BF-2 — port of contractor-bid-form.html
- * initHoverHomePhotos/renderHoverPhotos, :2761-2900). Reads the get-hover-siding-data
- * EF (UNCHANGED contract) for the claim's Hover design images, caches them in
- * sessionStorage (10-min TTL, key hover_photos_<claimId>), renders a 4-up thumbnail
- * grid + lightbox, and (siding claims only) an "Open Hover 3D Design" link.
+ * initHoverHomePhotos/renderHoverPhotos, :2761-2900).
  *
- * Tier-3 note: get-hover-siding-data is called with its existing { claim_id } contract.
- * Its missing caller-auth/ownership (IDOR) finding is filed for migration-author
- * (ClickUp 86e1xe0wb) — NOT addressed here.
+ * gh-1873: the measurement vendor (Hover) is retired. The card no longer calls any back-end function and shows
+ * its empty state ("No property photos are available for this project yet."). The thumbnail grid and lightbox
+ * stay in place for a replacement photo source.
  */
 
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { useState } from 'react';
 import { Card } from './bid-ui';
-
-const HOVER_PHOTOS_TTL = 10 * 60 * 1000;
 
 interface PhotoPayload {
   ts: number;
@@ -25,55 +19,16 @@ interface PhotoPayload {
   job_address: string | null;
 }
 
-function readCache(claimId: string): PhotoPayload | null {
-  try {
-    const raw = sessionStorage.getItem('hover_photos_' + claimId);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PhotoPayload;
-    // gh-2060 item 7: a future-dated ts (negative age) is not "fresh".
-    const age = Date.now() - parsed.ts;
-    if (Number.isFinite(age) && age >= 0 && age < HOVER_PHOTOS_TTL) return parsed;
-  } catch { /* ignore */ }
-  return null;
-}
+// gh-1873: the measurement vendor (Hover) is retired. No back-end function is called; the card is always in its empty
+// state, and a cached vendor payload from an earlier visit is never rendered.
+const EMPTY_PAYLOAD: PhotoPayload = { ts: 0, images: [], hover_job_id: null, job_address: null };
 
-export function HomePhotosCard({ claimId, isSiding }: { claimId: string; isSiding: boolean }) {
-  const [payload, setPayload] = useState<PhotoPayload | null>(null);
-  const [loading, setLoading] = useState(true);
+export function HomePhotosCard({ claimId: _claimId, isSiding: _isSiding }: { claimId: string; isSiding: boolean }) {
+  const payload = EMPTY_PAYLOAD;
+  const loading = false;
   const [lightbox, setLightbox] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (!claimId) return;
-    let active = true;
-    const cached = readCache(claimId);
-    if (cached) { setPayload(cached); setLoading(false); return; }
-
-    (async () => {
-      try {
-        const { data, error } = await supabase.functions.invoke('get-hover-siding-data', { body: { claim_id: claimId } });
-        if (!active) return;
-        if (error) throw error;
-        const next: PhotoPayload = {
-          ts: Date.now(),
-          images: (data?.design_images as string[]) || [],
-          hover_job_id: (data?.hover_job_id as string) || null,
-          // gh-2559 / D-371: the bid form never keeps or prints the job's street address.
-          job_address: null,
-        };
-        try { sessionStorage.setItem('hover_photos_' + claimId, JSON.stringify(next)); } catch { /* ignore */ }
-        setPayload(next);
-      } catch (err) {
-        console.warn('[Home Photos] fetch error:', err);
-        if (active) setPayload({ ts: Date.now(), images: [], hover_job_id: null, job_address: null });
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => { active = false; };
-  }, [claimId]);
-
   const images = payload?.images ?? [];
-  const jobUrl = payload?.hover_job_id ? 'https://hover.to/jobs/' + payload.hover_job_id : null;
 
   return (
     <Card title="Home Photos" sub="Reference imagery from the measurement for this property.">
@@ -96,15 +51,6 @@ export function HomePhotosCard({ claimId, isSiding }: { claimId: string; isSidin
           )}
         </>
       )}
-
-      <div className="oqb-doclinks">
-        {jobUrl && isSiding && (
-          <a className="oqb-doclink" href={jobUrl} target="_blank" rel="noreferrer">Open 3D Property Design ↗</a>
-        )}
-        {jobUrl && (
-          <a className="oqb-doclink" href={jobUrl} target="_blank" rel="noreferrer">View property design ↗</a>
-        )}
-      </div>
 
       {lightbox !== null && images[lightbox] && (
         <div className="oqb-lightbox" role="dialog" aria-modal="true" onClick={() => setLightbox(null)}>

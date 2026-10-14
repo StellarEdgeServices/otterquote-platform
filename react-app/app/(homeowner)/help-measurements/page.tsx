@@ -12,115 +12,64 @@
  *   • Locked copy + pure builders: ./copy (MEASUREMENTS_COPY) + ./utils (PR 1/2 — IMPORTED).
  *   • Data + EF-backed mutations:  ./use-help-measurements-data (reads + the three
  *     Services.* calls against the UNCHANGED Edge Functions).
- *   • Stripe card form:            ./HoverPaymentForm (CDN Stripe.js, publishable key only).
+ *   • (gh-1873) The Stripe card form ./HoverPaymentForm is no longer mounted by this page.
  *
- * Tier-3 boundary (the $15 RoofScope charge): this page only CALLS the already-hardened
- * create-payment-intent / create-hover-order / send-adjuster-email Edge Functions through
- * the Services layer with their contracts UNCHANGED. No EF/SQL/price/idempotency/DocuSign
- * change is made.
+ * gh-1873 (Hover retirement): the paid vendor-report path (Path A: create a PaymentIntent, charge the card,
+ * then call create-hover-order) was REMOVED with the measurement vendor. This page no longer creates a
+ * PaymentIntent for the vendor report, mounts the card form or calls create-hover-order, so no homeowner
+ * is charged for a report that cannot be delivered. The select view shows a "temporarily unavailable"
+ * notice for the vendor report (HOVER_RETIRED_COPY) and offers the free Ask-Adjuster path (Path B), which
+ * is unchanged. A resume pointer left in sessionStorage by an earlier visit (gh-951) is cleared on mount and
+ * the homeowner is told to contact support (RESUME_COPY.unresolved) -- no Edge Function is called.
  *
- * Two paths, ported in the static's exact order:
- *   A. Hover (paid): create PaymentIntent → mount card form → confirmCardPayment → order
- *      created ONLY after paymentIntent.status === 'succeeded' (D-181 guard re-checked by
- *      the EF). A decline surfaces and does NOT create an order.
- *   B. Ask Adjuster (free): sendAdjusterEmail → write entered adjuster fields back into the
- *      claim ONLY where currently empty → email success state.
+ * Path B (Ask Adjuster, free): sendAdjusterEmail -> write entered adjuster fields back into the claim ONLY
+ * where currently empty -> email success state.
  *
  * Intentional, flagged deltas from the static (see PR body):
  *   • Path B advances to the email SUCCESS STATE on send (per the brief WIRING + to surface
- *     PR-1's locked emailSuccess* copy). The static never activated #emailSuccessSection —
+ *     PR-1's locked emailSuccess* copy). The static never activated #emailSuccessSection --
  *     it only flipped the button to '✓ Email Sent!' + a toast (dead success markup). The
  *     unrendered locked strings (emailSentButton, statusEmailSent) are kept in copy.ts.
  *   • The email-preview area renders ONLY the locked 'Loading...' placeholder. The static's
  *     updateEmailPreview() is called-but-never-defined and there is NO preview-body template
  *     in the file, so no body is fabricated (PR-1 utils.ts header documents this).
- *   • No-claim edge: both actions require a loaded claim and surface an error rather than
+ *   • No-claim edge: the action requires a loaded claim and surfaces an error rather than
  *     fabricate a "sent" success (the static silently showed success with no DB write).
- *
- * gh-951 — charge→order reload persistence: purchaseHover() below persists a
- * {claimId, paymentIntentId} pointer to sessionStorage the moment the PaymentIntent is
- * created (BEFORE the card is charged). If a full-page reload interrupts the flow anywhere
- * between that point and a successful order, PageBody's resume effect finds the pointer on
- * remount and retries the order step once, automatically, before rendering path-selection.
- * See ./hover-charge-storage.ts for the persistence rationale and idempotency notes.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { HomeownerShell } from '../_shell/HomeownerShell';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { MEASUREMENTS_COPY as M } from './copy';
 import { isAdjusterFormValid, paymentIntentIdFromClientSecret, type MeasurementsUser } from './utils';
 import {
   useHelpMeasurementsData,
-  requestHoverPaymentIntent,
-  placeHoverOrder,
   sendMeasurementRequest,
   type HelpMeasurementsData,
 } from './use-help-measurements-data';
-import { HoverPaymentForm, isStripeConfigured } from './HoverPaymentForm';
-import {
-  readHoverChargeRecord,
-  saveHoverChargeRecord,
-  clearHoverChargeRecord,
-  hasFiredMeasurementPurchase,
-  markMeasurementPurchaseFired,
-  measurementPurchaseFromCharge,
-  recordHoverChargeAmount,
-  type ChargedPayment,
-  type PendingHoverCharge,
-} from './hover-charge-storage';
-import { track, fbqTrack, buildMeasurementPurchaseEventId } from '@/lib/track';
-import { getVariant } from '@/lib/variant';
+import { readHoverChargeRecord, clearHoverChargeRecord } from './hover-charge-storage';
+import { track } from '@/lib/track';
 import { supabase } from '@/lib/supabase';
 import { linkPendingLeadOnce } from '@/lib/lead-capture';
-import { adSharingBlockedAtFire, type ProfileReader } from '@/lib/ad-optout';
 
 /**
- * gh-2078 / LEGAL-READ: FAIL 5973345257: the ONE place this page sends the homeowner conversion to GA4 (`measurement_purchase`, which
- * carries Google Ads once linked) and Meta (`Purchase`). The advertising-sharing opt-out is resolved HERE, at fire time, including the
- * signed-in account's stored value (lib/ad-optout.ts adSharingBlockedAtFire): an opted-out buyer, or one whose stored flag cannot be
- * read (fail closed), sends NOTHING and the once-only marker is left unset. Never throws and never delays the success screen (callers
- * do not await it).
+ * Operational copy with no static-port equivalent, so it lives here rather than in the verbatim-locked ./copy.ts.
  *
- * gh-2078 / LEGAL-READ: FAIL 5973374792 point 3: the event value and currency are what Stripe CONFIRMED was charged
- * (`charged.amountCents / 100`, USD), never a constant. No confirmed positive USD amount, no event.
- */
-async function fireMeasurementPurchaseIfAllowed(
-  paymentIntentId: string,
-  charged?: { amountCents?: unknown; currency?: unknown } | null,
-): Promise<void> {
-  try {
-    const purchase = measurementPurchaseFromCharge(charged);
-    if (!purchase) return;
-    if (hasFiredMeasurementPurchase(paymentIntentId)) return;
-    if (await adSharingBlockedAtFire(supabase as unknown as ProfileReader)) return;
-    if (hasFiredMeasurementPurchase(paymentIntentId)) return; // the other route (handlePaid / resume) won the race while we read
-    const variant = getVariant();
-    track('measurement_purchase', { value: purchase.value, currency: purchase.currency, variant });
-    // gh-2078c: eventID lets Meta dedup this client event against the server-side CAPI Purchase (PR #2107) sent from the SAME
-    // paymentIntent id -- see lib/track.ts's buildMeasurementPurchaseEventId header.
-    fbqTrack('Purchase', { value: purchase.value, currency: purchase.currency, variant }, buildMeasurementPurchaseEventId(paymentIntentId));
-    markMeasurementPurchaseFired(paymentIntentId);
-  } catch {
-    /* an analytics failure must never break a purchase */
-  }
-}
-
-/**
- * NEW operational copy for the gh-951 resume flow — like gh-416's ORDER_RETRY_COPY
- * (HoverPaymentForm.tsx), this has no static-port equivalent (the static has no resume
- * concept at all), so it lives here rather than in the verbatim-locked ./copy.ts.
+ * RESUME_COPY.unresolved: shown when an unfinished vendor-report order from an earlier visit (gh-951) is found. The page
+ * cannot tell a homeowner who finished paying from one who did not, so it asserts neither: it asks the homeowner to contact
+ * support, who verify the payment.
  *
- * Deliberately worded to cover BOTH resume outcomes the client cannot distinguish from
- * each other: create-hover-order's D-181 guard rejects an unconfirmed PaymentIntent by
- * resolving (not throwing) with `placeholder: true` — the exact same shape a genuine
- * post-payment Hover-API failure returns (services.ts createHoverOrder). Asserting either
- * outcome specifically would risk telling a homeowner who never paid "your order failed",
- * or worse, one whose payment DID succeed a reassuring nothing.
+ * HOVER_RETIRED_COPY (gh-1873): shown in place of the retired vendor-report card.
  */
 export const RESUME_COPY = {
   unresolved:
     "We found an unfinished measurement order from your last visit. If you completed payment and don't see a confirmation, contact support with your claim number — we'll verify your payment and complete the order. If you did not finish paying, you can safely start over below.",
+} as const;
+
+export const HOVER_RETIRED_COPY = {
+  title: 'Complete Property Report: temporarily unavailable',
+  text:
+    "We have paused ordering the Complete Property Report while we change how measurements are provided, so you will not be charged for it right now. You can still get your measurements by asking your insurance adjuster to send them. Choose that option below, and we will take care of the request.",
 } as const;
 
 // ── Top-level page ───────────────────────────────────────────────────────────────
@@ -165,8 +114,7 @@ function Content() {
 
 // ── Page body: path state machine ───────────────────────────────────────────────
 
-type View = 'select' | 'hover' | 'adjuster';
-type HoverStage = 'intro' | 'card' | 'success';
+type View = 'select' | 'adjuster';
 type AdjusterStage = 'form' | 'success';
 type Status = { text: string; type: 'success' | 'error' } | null;
 
@@ -180,12 +128,10 @@ function PageBody({
   const { claim, profile, alreadySentBoth } = data;
 
   const [view, setView] = useState<View>('select');
-  const [status, setStatus] = useState<Status>(null);
-
-  // ── Path A (Hover) state ──
-  const [hoverStage, setHoverStage] = useState<HoverStage>('intro');
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [hoverLoading, setHoverLoading] = useState(false);
+  const [status, setStatus] = useState<Status>(() => {
+    const pending = readHoverChargeRecord();
+    return pending && claim?.id && pending.claimId === claim.id ? { text: RESUME_COPY.unresolved, type: 'error' } : null;
+  });
 
   // ── Path B (Adjuster) state ──
   const [adjStage, setAdjStage] = useState<AdjusterStage>('form');
@@ -194,81 +140,20 @@ function PageBody({
   const [adjusterPhone, setAdjusterPhone] = useState(claim?.adjuster_phone ?? '');
   const [sending, setSending] = useState(false);
 
-  // ── gh-951: resume a charge→order handoff a full-page reload interrupted ──
-  // A PendingHoverCharge is written the moment the PaymentIntent is created
-  // (purchaseHover, below) — before the card is even charged. If THIS mount finds one
-  // matching the loaded claim, attempt the order step once, automatically, before the
-  // normal path-selection UI ever renders (see the `resuming` render branch near the
-  // bottom of this component and the effect right below).
-  const [pendingResume] = useState<PendingHoverCharge | null>(() => readHoverChargeRecord());
-  const resumeEligible = !!(pendingResume && claim?.id && pendingResume.claimId === claim.id);
-  const [resuming, setResuming] = useState(resumeEligible);
-  const resumeAttempted = useRef(false);
-
+  // ── gh-951 / gh-1873: an unfinished vendor-report order pointer from an earlier visit ──
+  // The vendor-report order step no longer exists, so the pointer can never be completed here. If it belongs to the
+  // loaded claim, the homeowner is told once to contact support (who verify any payment); either way it is cleared. No
+  // Edge Function is called. The message is the initial status (read once, in the lazy initializer), so no effect sets state.
   useEffect(() => {
-    if (!resuming || resumeAttempted.current) return;
-    resumeAttempted.current = true;
-    if (!pendingResume || !claim) {
-      setResuming(false);
-      return;
-    }
-    (async () => {
-      try {
-        const result = await placeHoverOrder({
-          profile,
-          claim,
-          user,
-          paymentIntentId: pendingResume.paymentIntentId,
-        });
-        // create-hover-order's D-181 guard does NOT throw on an unverified/rejected
-        // payment — it resolves with `placeholder: true` and no capture_request_id
-        // (services.ts createHoverOrder). Only a real capture_request_id counts as a
-        // resumed order; anything else is treated defensively as "could not confirm"
-        // rather than a false success (a stale, never-charged pointer must never land
-        // on the success screen).
-        if (result?.capture_request_id) {
-          clearHoverChargeRecord();
-          // gh-2078 PR #2092 review fix 1: this resume path is a SECOND
-          // route to a completed order (the first is handlePaid, above) --
-          // a paid order that completes here (tab reload/close between the
-          // charge and placeHoverOrder resolving, or a first attempt that
-          // threw and was retried via a fresh mount rather than
-          // HoverPaymentForm's in-mount "Retry Order") must fire
-          // measurement_purchase too, or every resumed purchase is
-          // silently uncounted. Same once-only guard, same paymentIntent
-          // id as handlePaid's own call -- if handlePaid somehow already
-          // fired for this id (e.g. a race between the two paths), this
-          // is a no-op, not a double-count.
-          void fireMeasurementPurchaseIfAllowed(pendingResume.paymentIntentId, {
-            amountCents: pendingResume.amountCents,
-            currency: pendingResume.currency,
-          });
-          setHoverStage('success');
-          setView('hover');
-        } else {
-          clearHoverChargeRecord();
-          setStatus({ text: RESUME_COPY.unresolved, type: 'error' });
-        }
-      } catch {
-        clearHoverChargeRecord();
-        setStatus({ text: RESUME_COPY.unresolved, type: 'error' });
-      } finally {
-        setResuming(false);
-      }
-    })();
-  }, [resuming, pendingResume, claim, profile, user]);
+    clearHoverChargeRecord();
+  }, []);
 
   const scrollTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
-  const selectPath = useCallback((path: 'hover' | 'adjuster') => {
+  const selectAdjuster = useCallback(() => {
     setStatus(null);
-    if (path === 'hover') {
-      setHoverStage('intro');
-      setView('hover');
-    } else {
-      setAdjStage('form');
-      setView('adjuster');
-    }
+    setAdjStage('form');
+    setView('adjuster');
     scrollTop();
   }, []);
 
@@ -276,90 +161,6 @@ function PageBody({
     setStatus(null);
     setView('select');
     scrollTop();
-  }, []);
-
-  // ── Path A — step 1: create the PaymentIntent, then show the card form ──
-  const purchaseHover = useCallback(async () => {
-    if (!claim?.id) {
-      setStatus({ text: M.statusPaymentInitError, type: 'error' });
-      return;
-    }
-    // Mirror the static's pre-PI Stripe gate (initHoverStripe throws without a key).
-    if (!isStripeConfigured()) {
-      setStatus({ text: M.statusPaymentInitError, type: 'error' });
-      return;
-    }
-    setHoverLoading(true);
-    setStatus(null);
-    try {
-      // gh-2078c / D-330 reconciliation: thread the same persisted router arm
-      // the `measurement_purchase`/`Purchase` events below already read onto
-      // the PaymentIntent metadata, so the server-side Meta CAPI event
-      // (PR #2107) can attribute the purchase instead of reading 'unknown'.
-      const res = await requestHoverPaymentIntent(claim, getVariant());
-      if (!res?.client_secret) {
-        setStatus({ text: M.statusPaymentInitError, type: 'error' });
-        return;
-      }
-      setClientSecret(res.client_secret);
-      setHoverStage('card');
-      // gh-951: persist the resume pointer NOW — before the card is charged — so a
-      // full-page reload anywhere from here through order creation can recover. Best-effort
-      // only: a null id (unexpected client_secret shape) simply skips persistence, matching
-      // pre-fix behaviour exactly rather than blocking the flow.
-      const piId = paymentIntentIdFromClientSecret(res.client_secret);
-      if (piId) saveHoverChargeRecord({ claimId: claim.id, paymentIntentId: piId, ts: Date.now() });
-    } catch {
-      setStatus({ text: M.statusPaymentInitError, type: 'error' });
-    } finally {
-      setHoverLoading(false);
-    }
-  }, [claim]);
-
-  // ── Path A — step 2: payment succeeded → create the Hover order ──
-  // Throwing here propagates to HoverPaymentForm's order step, which parks the form in
-  // its post-charge 'orderFailed' state: error + "Retry Order" reusing the SAME
-  // paymentIntent id. The Pay button never re-arms after a successful charge (gh-416
-  // double-charge guard; supersedes the static's confirmHoverPayment re-arm behaviour).
-  // A graceful EF-pending result resolves (placeholder) and advances to the success state.
-  const handlePaid = useCallback(
-    async (paymentIntentId: string, charged?: ChargedPayment) => {
-      if (!claim) throw new Error('Missing claim. Please refresh and try again.');
-      // gh-2078: keep the confirmed amount with the resume pointer so the resume route reports the same value.
-      if (charged) recordHoverChargeAmount(paymentIntentId, charged);
-      await placeHoverOrder({ profile, claim, user, paymentIntentId });
-      // gh-951: the order step reached (a graceful-degrade) completion — clear the resume
-      // pointer so a later reload doesn't re-attempt an already-placed order.
-      clearHoverChargeRecord();
-      // gh-1940: this is a real completed Stripe charge (the $15 RoofScope
-      // order), not the CRO funnel's main job-payment step — see the
-      // gh-1940 report for why GA4 `purchase` is not wired here instead.
-      track('help_tool_used', { tool: 'help_measurements', method: 'hover_payment' });
-      // gh-2078: `measurement_purchase` -- the homeowner conversion event
-      // GA4/Meta optimise the D/E funnel toward. Guarded by
-      // hasFiredMeasurementPurchase/markMeasurementPurchaseFired (keyed on
-      // the CHARGED paymentIntent id, hover-charge-storage.ts) so a retry
-      // of the order step after a THROW here (this whole function can be
-      // re-invoked by HoverPaymentForm's "Retry Order" -- see that
-      // component's runOrder) never double-counts the same $15 charge as
-      // two purchases. Placed after the order-creation await above: this
-      // line is only reached once placeHoverOrder has actually resolved
-      // (a graceful EF-pending result counts as a completed order here,
-      // same as the resume-effect's own success criterion elsewhere in
-      // this file -- gh-951).
-      void fireMeasurementPurchaseIfAllowed(paymentIntentId, charged);
-      setHoverStage('success');
-    },
-    [profile, claim, user],
-  );
-
-  const cancelHoverPayment = useCallback(() => {
-    // gh-951: Cancel is only reachable pre-charge (HoverPaymentForm retires it once a
-    // charge succeeds — gh-416), so the PaymentIntent behind any resume pointer here was
-    // never confirmed. Safe to drop.
-    clearHoverChargeRecord();
-    setClientSecret(null);
-    setHoverStage('intro');
   }, []);
 
   // ── Path B — send the measurement request, then advance to success ──
@@ -395,22 +196,6 @@ function PageBody({
 
   const canSend = isAdjusterFormValid({ adjusterEmail: adjusterEmail.trim() }) && !sending;
 
-  // gh-951: a resume attempt is in flight — render nothing else until it resolves (either
-  // branch above flips `resuming` back to false and the normal tree below takes over).
-  // Reuses the existing "ordering" copy/spinner idiom (HoverPaymentForm's charged state)
-  // rather than inventing new in-progress copy.
-  if (resuming) {
-    return (
-      <div className="hm-container">
-        <div className="hm-section-card">
-          <p className="hm-payform-lead" role="status">
-            <span className="hm-spinner" aria-hidden="true" /> {M.payOrderingButton}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="hm-container">
       {status && (
@@ -440,16 +225,11 @@ function PageBody({
             <p>{M.pathIntroText}</p>
           </div>
 
+          <div className="hm-info" role="status" data-testid="hover-retired-notice">
+            <strong>{HOVER_RETIRED_COPY.title}.</strong> {HOVER_RETIRED_COPY.text}
+          </div>
+
           <div className="hm-path-cards">
-            <PathCard
-              badge={M.hoverBadge}
-              icon={M.hoverIcon}
-              title={M.hoverCardTitle}
-              price={M.hoverCardPrice}
-              description={M.hoverCardDescription}
-              features={M.hoverCardFeatures}
-              onSelect={() => selectPath('hover')}
-            />
             <PathCard
               badge={M.adjusterBadge}
               icon={M.adjusterIcon}
@@ -457,58 +237,9 @@ function PageBody({
               price={M.adjusterCardPrice}
               description={M.adjusterCardDescription}
               features={M.adjusterCardFeatures}
-              onSelect={() => selectPath('adjuster')}
+              onSelect={selectAdjuster}
             />
           </div>
-        </div>
-      )}
-
-      {/* ── Path A: Hover ── */}
-      {view === 'hover' && hoverStage === 'success' && <HoverSuccess />}
-      {view === 'hover' && hoverStage !== 'success' && (
-        <div className="hm-section-card">
-          <h3 className="hm-section-title">{M.hoverSectionTitle}</h3>
-          <p className="hm-section-intro">{M.hoverSectionIntro}</p>
-
-          <div className="hm-rebate">{M.rebateCallout}</div>
-
-          <div className="hm-steps">
-            <HoverStep n={1} title={M.hoverStep1Title} text={M.hoverStep1Text} />
-            <HoverStep n={2} title={M.hoverStep2Title} text={M.hoverStep2Text} />
-            <HoverStep n={3} title={M.hoverStep3Title} text={M.hoverStep3Text} />
-          </div>
-
-          <div className="hm-info">{M.hoverWhatYouNeed}</div>
-
-          <div className="hm-btn-row">
-            {hoverStage === 'intro' && (
-              <button
-                type="button"
-                className="hm-btn hm-btn-green"
-                disabled={hoverLoading}
-                onClick={() => void purchaseHover()}
-              >
-                {hoverLoading ? (
-                  <>
-                    <span className="hm-spinner" aria-hidden="true" /> {M.loadingButton}
-                  </>
-                ) : (
-                  M.hoverPurchaseButton
-                )}
-              </button>
-            )}
-            <button type="button" className="hm-btn hm-btn-outline" onClick={goBack}>
-              {M.chooseDifferentButton}
-            </button>
-          </div>
-
-          {hoverStage === 'card' && clientSecret && (
-            <HoverPaymentForm
-              clientSecret={clientSecret}
-              onPaid={handlePaid}
-              onCancel={cancelHoverPayment}
-            />
-          )}
         </div>
       )}
 
@@ -623,36 +354,6 @@ function PathCard({
       <button type="button" className="hm-select-btn" onClick={onSelect}>
         {M.cardSelectButton}
       </button>
-    </div>
-  );
-}
-
-function HoverStep({ n, title, text }: { n: number; title: string; text: string }) {
-  return (
-    <div className="hm-step">
-      <div className="hm-step-number">{n}</div>
-      <div className="hm-step-content">
-        <h4>{title}</h4>
-        <p>{text}</p>
-      </div>
-    </div>
-  );
-}
-
-function HoverSuccess() {
-  return (
-    <div className="hm-section-card">
-      <div className="hm-success-state">
-        <div className="hm-success-icon">{M.hoverSuccessIcon}</div>
-        <h2>{M.hoverSuccessTitle}</h2>
-        <p>{M.hoverSuccessText}</p>
-        <div className="hm-info hm-info-left">{M.hoverSuccessNextSteps}</div>
-        <div className="hm-btn-row hm-btn-row-center">
-          <a className="hm-btn hm-btn-amber" href="/dashboard">
-            {M.returnToDashboardButton}
-          </a>
-        </div>
-      </div>
     </div>
   );
 }

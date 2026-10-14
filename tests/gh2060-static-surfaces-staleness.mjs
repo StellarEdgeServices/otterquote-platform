@@ -601,13 +601,12 @@ for (const [file, key] of [['assets/handout-hi-4.html', 'oq_handout_hi4_contact'
 // ---------------------------------------------------------------------------
 {
   const src = read('contractor-bid-form.html');
-  await check('contractor-bid-form.html: hover_photos_ cache read rejects a future-dated ts (age >= 0 before age < TTL)', () => {
-    const i = src.indexOf("sessionStorage.getItem('hover_photos_' + claimId)");
-    assert.ok(i > -1, 'hover_photos_ reader not found');
-    const win = src.slice(i, i + 600);
-    assert.match(win, /const hpAge = Date\.now\(\) - parsed\.ts;/);
-    assert.match(win, /hpAge >= 0 && hpAge < HOVER_PHOTOS_TTL/);
-    assert.ok(!/Date\.now\(\) - parsed\.ts < HOVER_PHOTOS_TTL/.test(win), 'the unguarded age check is still present');
+  await check('contractor-bid-form.html: no hover_photos_ cache read remains (gh-1873: the vendor photo loader is a stub; a stale entry is never read)', () => {
+    assert.ok(!/sessionStorage\.(getItem|setItem)\(\s*'hover_photos_'/.test(src), 'a hover_photos_ cache access is still present');
+    const i = src.indexOf('async function initHoverHomePhotos(');
+    assert.ok(i > -1, 'initHoverHomePhotos stub not found');
+    const body = src.slice(i, src.indexOf('\n    }\n', i));
+    assert.ok(!/fetch\(|functions\.invoke|sessionStorage/.test(body), 'initHoverHomePhotos must make no call and read no cache');
   });
   await check('contractor-bid-form.html: d202_warranty_options_at read rejects a future-dated stamp (age >= 0 before age < TTL)', () => {
     const i = src.indexOf("sessionStorage.getItem('d202_warranty_options_at')");
