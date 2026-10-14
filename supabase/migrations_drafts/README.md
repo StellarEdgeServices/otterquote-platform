@@ -50,3 +50,9 @@ No set is marked `UNVERIFIED`: every set has a recorded measurement. Two sets ar
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh1873_unschedule_check_siding_design_completion` | forward (rollback and pre-flight live in `supabase/migrations_rollbacks/`) | NOT APPLIED | drafted 2026-10-13 under #1873 (plan, comment 6051733882); pg_cron job 6 `check-siding-design-completion` read by name and schedule on 2026-10-08, not re-measured since; Tier 3B, applies only after an R-097 24-hour notice and Ben's ruling on how retail-siding bids are released without Hover. Never touches job 10 `process-hover-rebate-scan` (homeowner refunds) | none |
+
+## Added 2026-10-14 (gh-1916 / D-383, consented phone only): 1 file here, 1 set, not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh1916_contractors_sms_consent_phone` | forward (rollback and pre-flight in `supabase/migrations_rollbacks/`) | NOT APPLIED | drafted 2026-10-14 under D-383 (issue #2732 answer "(a) Consented phone only"); one additive nullable column `contractors.sms_consent_phone`; Tier 3A; no production query run by the author; apply BEFORE deploying the three Edge Functions and the two pages that select or write it | none |

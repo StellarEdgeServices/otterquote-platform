@@ -33,6 +33,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { selectFanOutContractors } from "./test-exclusion.ts";
 import { acceptedServiceKeys, deny, type GetEnv } from "./caller-gate.ts"; // gh-2462
 import { authorizeNotifyCaller, type NotifyBody, type OwnershipLookups } from "./user-gate.ts"; // gh-2462
+import { consentedSmsRecipients } from "../_shared/sms-consent-phone.ts"; // gh-1916 / D-383
 
 // gh-2462: the service-role client is typed `any`, as process-dunning's is (gh-2309).
 // The handler is now imported by caller-gate.test.ts, so this file is type-checked in CI
@@ -124,12 +125,7 @@ function shouldNotify(
   return prefs[prefKey] !== false;
 }
 
-function normalizePhone(raw: string): string | null {
-  const digits = raw.replace(/\D/g, "");
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  return null;
-}
+// gh-1916 / D-383: normalizePhone() removed; recipients come from consentedSmsRecipients() (../_shared/sms-consent-phone.ts).
 
 function buildTradeLabel(trades: string[]): string {
   if (!trades || trades.length === 0) return "general";
@@ -403,7 +399,7 @@ async function handleContractSigned(
 
   const { data: contractor, error: contractorErr } = await supabase
     .from("contractors")
-    .select("id, user_id, email, phone, contact_name, company_name, notification_emails, notification_phones, notification_preferences, sms_opt_in")
+    .select("id, user_id, email, phone, contact_name, company_name, notification_emails, notification_phones, notification_preferences, sms_opt_in, sms_consent_phone")
     .eq("id", claim.selected_contractor_id)
     .single();
 
@@ -428,14 +424,11 @@ async function handleContractSigned(
       ? contractor.notification_emails
       : contractor.email ? [contractor.email] : [];
 
-  const rawPhones: string[] =
-    contractor.notification_phones?.length > 0
-      ? contractor.notification_phones
-      : contractor.phone ? [contractor.phone] : [];
-
-  const phoneRecipients = rawPhones
-    .map((p: string) => normalizePhone(p))
-    .filter((p: string | null): p is string => p !== null);
+  // gh-1916 / D-383: SMS goes only to the phone that was on the account at consent.
+  const phoneRecipients: string[] = consentedSmsRecipients(contractor);
+  if (phoneRecipients.length === 0 && contractor.sms_opt_in === true) {
+    console.warn(`[notify-contractors] no text sent (gh-1916 D-383): contractor ${contractor.id ?? "(unknown)"} is opted in but has no stored sms_consent_phone. Email unaffected.`);
+  }
 
   const contractorName = contractor.contact_name || contractor.company_name || "Contractor";
   const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
@@ -808,7 +801,7 @@ async function notifyContractorsForSingleTrade(
   // Fetch all active contractors (no DB-level limit — we filter and cap below)
   const { data: contractors, error: contractorsError } = await supabase
     .from("contractors")
-    .select("id, user_id, email, phone, contact_name, notification_emails, notification_phones, notification_preferences, sms_opt_in, trades, service_counties, is_test")
+    .select("id, user_id, email, phone, contact_name, notification_emails, notification_phones, notification_preferences, sms_opt_in, sms_consent_phone, trades, service_counties, is_test")
     .eq("status", "active");
 
   if (contractorsError) {
@@ -881,14 +874,11 @@ async function notifyContractorsForSingleTrade(
         ? contractor.notification_emails
         : contractor.email ? [contractor.email] : [];
 
-    const rawPhones: string[] =
-      contractor.notification_phones?.length > 0
-        ? contractor.notification_phones
-        : contractor.phone ? [contractor.phone] : [];
-
-    const phoneRecipients = rawPhones
-      .map((p: string) => normalizePhone(p))
-      .filter((p: string | null): p is string => p !== null);
+    // gh-1916 / D-383: SMS goes only to the phone that was on the account at consent.
+    const phoneRecipients: string[] = consentedSmsRecipients(contractor);
+    if (phoneRecipients.length === 0 && contractor.sms_opt_in === true) {
+      console.warn(`[notify-contractors] no text sent (gh-1916 D-383): contractor ${contractor.id ?? "(unknown)"} is opted in but has no stored sms_consent_phone. Email unaffected.`);
+    }
 
     const contractorName = contractor.contact_name || "there";
     const emailText = newOpportunityEmailText(contractorName, claim_city, claim_state, tradeCap, job_type || "");
@@ -1189,7 +1179,7 @@ async function handleAgreementRequested(
 
   const { data: contractor, error: contractorErr } = await supabase
     .from("contractors")
-    .select("id, user_id, email, phone, contact_name, company_name, notification_emails, notification_phones, notification_preferences, sms_opt_in")
+    .select("id, user_id, email, phone, contact_name, company_name, notification_emails, notification_phones, notification_preferences, sms_opt_in, sms_consent_phone")
     .eq("id", contractor_id)
     .single();
 
@@ -1213,14 +1203,11 @@ async function handleAgreementRequested(
       ? contractor.notification_emails
       : contractor.email ? [contractor.email] : [];
 
-  const rawPhones: string[] =
-    contractor.notification_phones?.length > 0
-      ? contractor.notification_phones
-      : contractor.phone ? [contractor.phone] : [];
-
-  const phoneRecipients = rawPhones
-    .map((p: string) => normalizePhone(p))
-    .filter((p: string | null): p is string => p !== null);
+  // gh-1916 / D-383: SMS goes only to the phone that was on the account at consent.
+  const phoneRecipients: string[] = consentedSmsRecipients(contractor);
+  if (phoneRecipients.length === 0 && contractor.sms_opt_in === true) {
+    console.warn(`[notify-contractors] no text sent (gh-1916 D-383): contractor ${contractor.id ?? "(unknown)"} is opted in but has no stored sms_consent_phone. Email unaffected.`);
+  }
 
   const contractorName = contractor.contact_name || contractor.company_name || "Contractor";
   const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
