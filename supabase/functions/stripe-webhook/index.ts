@@ -45,6 +45,7 @@ import {
   evaluateDisputeRouting,
   maySubmitFinalEvidence,
 } from "./dispute-routing.ts";
+import { assembleTextEvidence } from "./dispute-evidence-fields.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 import {
@@ -413,11 +414,13 @@ function buildEvidencePayload(params: {
     : "Bid confirmation email was sent upon bid submission per platform process (D-215 Layer 2). " +
       "Fee acceptance record could not be retrieved at this time.";
 
-  const evidence: Record<string, string> = {
-    "evidence[product_description]": productDescription,
-    "evidence[service_documentation]": serviceDocLines.join("\n"),
-    "evidence[customer_communication]": customerCommunication,
-  };
+  // gh-1759: service_documentation / customer_communication / receipt are Stripe
+  // FILE fields; the prose belongs in the text fields (see dispute-evidence-fields.ts).
+  const evidence: Record<string, string> = assembleTextEvidence({
+    productDescription,
+    serviceDocumentation: serviceDocLines.join("\n"),
+    customerCommunication, // already carries the invoice URL when one exists
+  });
 
   // ── gh-1759 GATE 2: do not spend Stripe's ONE final submission blind ───────
   // `evidence[submit]: "true"` is irreversible — Stripe accepts exactly one
@@ -436,10 +439,6 @@ function buildEvidencePayload(params: {
     feeAcceptanceResolved: feeAcceptance !== null,
   })) {
     evidence["evidence[submit]"] = "true";
-  }
-
-  if (feeAcceptance?.invoice_url) {
-    evidence["evidence[receipt]"] = feeAcceptance.invoice_url;
   }
 
   return evidence;
