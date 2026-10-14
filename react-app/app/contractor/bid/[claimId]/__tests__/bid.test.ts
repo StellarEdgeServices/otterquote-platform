@@ -402,8 +402,23 @@ describe('rescind (:5746-5793)', () => {
     expect(html).toContain(sentence);
     expect(BID_COPY.rescind.notRescindable('signed')).toContain(sentence);
   });
+  it('gh-2564 C7: no file still tells a bidder its bid "was already selected"; the neutral sentence is in all three places', () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const root = resolve(here, '../../../../../..');
+    const neutral = 'This bid can no longer be withdrawn here because the homeowner has already chosen a contractor. Contact support for help.';
+    const places = [
+      readFileSync(resolve(root, 'supabase/functions/rescind-bid/status.ts'), 'utf8'),
+      readFileSync(resolve(root, 'contractor-bid-form.html'), 'utf8'),
+      readFileSync(resolve(root, 'react-app/app/contractor/bid/[claimId]/copy.ts'), 'utf8'),
+    ];
+    for (const p of places) {
+      expect(p).toContain(neutral);
+      expect(p).not.toContain('was already selected by the homeowner'); // NEGATIVE CONTROL: the old, false-for-losers sentence
+    }
+    expect(BID_COPY.rescind.bidSelected).toBe(neutral);
+  });
   it('gh-2564 bidSelected copy is the EF refusal message, verbatim', () => {
-    const msg = 'This bid was already selected by the homeowner. Contact support to withdraw it.';
+    const msg = 'This bid can no longer be withdrawn here because the homeowner has already chosen a contractor. Contact support for help.';
     expect(BID_COPY.rescind.bidSelected).toBe(msg);
     expect(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../../contractor-bid-form.html'), 'utf8')).toContain(msg);
     expect(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../../supabase/functions/rescind-bid/status.ts'), 'utf8')).toContain(msg);

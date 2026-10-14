@@ -20,8 +20,10 @@ export const RESCINDED_BID_STATUS = "cancelled";
 // is not in awarded / contract_signed+ status and, if it is, displays an error and routes to support. D-369 leaves
 // "what happens when a contractor rescinds a selected bid" to Dustin; until he rules, the refusal stands.
 export const BID_SELECTED_ERROR = "bid_selected";
+// Neutral on purpose (LEGAL-READ C7): the same refusal reaches the selected contractor and a losing bidder on an
+// awarded claim, so it must be true for both.
 export const BID_SELECTED_MESSAGE =
-  "This bid was already selected by the homeowner. Contact support to withdraw it.";
+  "This bid can no longer be withdrawn here because the homeowner has already chosen a contractor. Contact support for help.";
 export const SELECTED_QUOTE_STATUS = "selected";
 export const LOCKED_CLAIM_STATUSES = ["awarded", "contract_signed"];
 

@@ -43,7 +43,7 @@ export function mailgunSender(apiKey: string, domain: string, fetchImpl: typeof 
 export async function notifyHomeownerOfWithdrawal(
   db: LookupClient,
   send: SendFn,
-  ctx: { claimId: string | null; contractorId: string; mailgunDomain: string },
+  ctx: { claimId: string | null; contractorId: string; mailgunDomain: string; otherLiveBids: boolean },
 ): Promise<{ sent: boolean; reason?: string }> {
   if (!ctx.claimId) return { sent: false, reason: "no_claim" };
 
@@ -60,6 +60,7 @@ export async function notifyHomeownerOfWithdrawal(
     contractorName: contractor?.company_name || "A contractor",
     bidsUrl: `https://otterquote.com/bids.html?claim=${ctx.claimId}`,
     mailgunDomain: ctx.mailgunDomain,
+    hasOtherLiveBids: ctx.otherLiveBids,
   });
 
   const ok = await send(

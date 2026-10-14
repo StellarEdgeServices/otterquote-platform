@@ -5,6 +5,7 @@ import {
   isBidSelectedOrAwarded,
   RESCINDABLE_STATUSES,
   RESCINDED_BID_STATUS,
+  SELECTED_QUOTE_STATUS,
 } from "./status.ts";
 import { mailgunSender, notifyHomeownerOfWithdrawal } from "./notify.ts";
 
@@ -226,6 +227,10 @@ Deno.serve(async (req: Request) => {
       updated_at: rescindedAt,
     })
     .eq("id", body.quote_id)
+    // gh-2564 (CEO RUN 104 point 3): condition the write on the state that was checked above, so a homeowner
+    // selecting this bid, or a double submit, between the read and the write matches zero rows (409 below).
+    .neq("status", SELECTED_QUOTE_STATUS)
+    .in("bid_status", RESCINDABLE_STATUSES)
     .select("id");
 
   if (updateError) {
@@ -287,13 +292,27 @@ Deno.serve(async (req: Request) => {
   // One email, non-fatal: the bid is already withdrawn, so a send failure is logged, never returned as an error.
   let homeownerNotified = false;
   try {
+    // gh-2564 (point 4): "The other bids on your project have not changed." is sent only when another live bid exists.
+    // Live = another quote on this claim that is still bid_status 'active' and status submitted/selected. A failed
+    // count counts as "none", so the sentence is omitted rather than asserted.
+    let otherLiveBids = false;
+    if (quote.claim_id) {
+      const { count: otherCount, error: otherErr } = await supabase
+        .from("quotes")
+        .select("id", { count: "exact", head: true })
+        .eq("claim_id", quote.claim_id)
+        .neq("id", body.quote_id)
+        .eq("bid_status", "active")
+        .in("status", ["submitted", "selected"]);
+      otherLiveBids = !otherErr && (otherCount ?? 0) > 0;
+    }
     const mailgunApiKey = Deno.env.get("MAILGUN_API_KEY") || "";
     const mailgunDomain = Deno.env.get("MAILGUN_DOMAIN") || "";
     if (mailgunApiKey && mailgunDomain) {
       const notice = await notifyHomeownerOfWithdrawal(
         supabase,
         mailgunSender(mailgunApiKey, mailgunDomain),
-        { claimId: quote.claim_id ?? null, contractorId: body.contractor_id, mailgunDomain },
+        { claimId: quote.claim_id ?? null, contractorId: body.contractor_id, mailgunDomain, otherLiveBids },
       );
       homeownerNotified = notice.sent;
       if (!notice.sent) console.error("[rescind-bid] homeowner notice not sent:", notice.reason);

@@ -17,7 +17,7 @@ const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
 // ── Point 2: refusal ─────────────────────────────────────────────────────────
 Deno.test("refusal contract: error code and message are exactly Ben's text", () => {
   assertEquals(BID_SELECTED_ERROR, "bid_selected");
-  assertEquals(BID_SELECTED_MESSAGE, "This bid was already selected by the homeowner. Contact support to withdraw it.");
+  assertEquals(BID_SELECTED_MESSAGE, "This bid can no longer be withdrawn here because the homeowner has already chosen a contractor. Contact support for help.");
 });
 
 Deno.test("refusal: quote.status 'selected' is refused, whatever the claim status", () => {
@@ -80,7 +80,7 @@ const FULL = {
   profiles: { full_name: "Pat Homeowner", email: "pat@example.com" },
   contractors: { company_name: "Acme Roofing" },
 };
-const CTX = { claimId: "claim-123", contractorId: "con-1", mailgunDomain: "mg.example.com" };
+const CTX = { claimId: "claim-123", contractorId: "con-1", mailgunDomain: "mg.example.com", otherLiveBids: true };
 
 Deno.test("notice: the send helper is called ONCE, to the homeowner's profile email", async () => {
   const { calls, send } = mockSend();
@@ -143,7 +143,7 @@ Deno.test("wiring: index.ts sends the notice once, after the update and activity
 Deno.test("template text (quotable): subject, body, no price / fee / promise", () => {
   assertEquals(BID_WITHDRAWN_SUBJECT, "A contractor withdrew their bid on your project");
   const { text, html } = buildBidWithdrawnHomeownerEmail({
-    homeownerName: "Pat", contractorName: "Acme Roofing", bidsUrl: "https://otterquote.com/bids.html?claim=c1", mailgunDomain: "mg.example.com",
+    homeownerName: "Pat", contractorName: "Acme Roofing", bidsUrl: "https://otterquote.com/bids.html?claim=c1", mailgunDomain: "mg.example.com", hasOtherLiveBids: true,
   });
   assert(text.startsWith(
     "Hi Pat,\n\nAcme Roofing withdrew their bid on your project.\n\nThe other bids on your project have not changed.\n\nView your bids: https://otterquote.com/bids.html?claim=c1\n",
@@ -156,8 +156,64 @@ Deno.test("template text (quotable): subject, body, no price / fee / promise", (
 
 Deno.test("template: contractor name is HTML-escaped in the html part", () => {
   const { html } = buildBidWithdrawnHomeownerEmail({
-    homeownerName: "Pat", contractorName: "<b>X</b> & Co", bidsUrl: "u", mailgunDomain: "d",
+    homeownerName: "Pat", contractorName: "<b>X</b> & Co", bidsUrl: "u", mailgunDomain: "d", hasOtherLiveBids: true,
   });
   assertStringIncludes(html, "&lt;b&gt;X&lt;/b&gt; &amp; Co");
   assert(!html.includes("<b>X</b>"));
+});
+
+// ── CEO RUN 104 points 1, 3, 4 (wording round) ──────────────────────────────
+const SENTENCE = "The other bids on your project have not changed.";
+
+Deno.test("point 1: the function's refusal wording is the one neutral sentence (HTML + copy.ts are pinned in the vitest bid.test.ts: CI's Deno flags cannot read them)", () => {
+  assertEquals(
+    BID_SELECTED_MESSAGE,
+    "This bid can no longer be withdrawn here because the homeowner has already chosen a contractor. Contact support for help.",
+  );
+});
+
+Deno.test("point 1 negative control: the old 'was already selected' sentence is gone from the refusal text", () => {
+  assert(!BID_SELECTED_MESSAGE.includes("already selected"));
+  assert(!src.includes("already selected by the homeowner"));
+});
+
+Deno.test("point 3: the rescind UPDATE is conditioned on status <> selected and bid_status in RESCINDABLE_STATUSES", () => {
+  const iUpdate = src.indexOf('const { error: updateError, data: updateRows } = await supabase');
+  const iLog = src.indexOf("// Insert activity log entry");
+  const block = src.slice(iUpdate, iLog);
+  assertStringIncludes(block, "gh2105_zero_rows");
+  assertStringIncludes(block, '.neq("status", SELECTED_QUOTE_STATUS)');
+  assertStringIncludes(block, '.in("bid_status", RESCINDABLE_STATUSES)');
+  assertStringIncludes(block, '.select("id")');
+  assertStringIncludes(block, "status: 409"); // the zero-row branch answers 409
+  assert(block.indexOf('.eq("id", body.quote_id)') < block.indexOf(".neq("), "conditions follow the id match");
+});
+
+Deno.test("point 3 mutation control: without the conditions the block no longer matches", () => {
+  const mutated = src.replace('.neq("status", SELECTED_QUOTE_STATUS)', "").replace('.in("bid_status", RESCINDABLE_STATUSES)', "");
+  assert(!mutated.includes('.neq("status", SELECTED_QUOTE_STATUS)') && src.includes('.neq("status", SELECTED_QUOTE_STATUS)'));
+});
+
+Deno.test("point 4: another live bid exists -> the sentence is in the text and html (mock send, one call)", async () => {
+  const { calls, send } = mockSend();
+  await notifyHomeownerOfWithdrawal(fakeDb(FULL), send, { ...CTX, otherLiveBids: true });
+  assertEquals(calls.length, 1);
+  assertStringIncludes(calls[0].text, SENTENCE);
+  assertStringIncludes(calls[0].html, SENTENCE);
+});
+
+Deno.test("point 4 NEGATIVE CONTROL: no other live bid -> the sentence is in neither part; the rest is intact", async () => {
+  const { calls, send } = mockSend();
+  await notifyHomeownerOfWithdrawal(fakeDb(FULL), send, { ...CTX, otherLiveBids: false });
+  assertEquals(calls.length, 1);
+  assert(!calls[0].text.includes("other bids"));
+  assert(!calls[0].html.includes("other bids"));
+  assertStringIncludes(calls[0].text, "Acme Roofing withdrew their bid on your project.\n\nView your bids: https://otterquote.com/bids.html?claim=claim-123");
+  assertStringIncludes(calls[0].html, "View My Bids");
+});
+
+Deno.test("point 4 wiring: index.ts counts OTHER live quotes on the claim and passes the flag", () => {
+  assertStringIncludes(src, '.select("id", { count: "exact", head: true })');
+  assertStringIncludes(src, '.neq("id", body.quote_id)');
+  assertStringIncludes(src, "mailgunDomain, otherLiveBids }");
 });
