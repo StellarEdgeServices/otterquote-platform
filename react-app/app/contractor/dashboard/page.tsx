@@ -32,7 +32,7 @@ import { isPendingApproval } from '../_shell/contractor-gating';
 import { DASHBOARD_COPY as C, QUICK_LINKS } from './copy';
 import { useDashboardData, type ActiveProject } from './use-dashboard-data';
 import { Messaging } from './Messaging';
-import { recordCpaAcceptanceEvidence } from './cpa-evidence';
+import { recordCpaAcceptanceEvidence, writeCpaAcceptance } from './cpa-evidence';
 import {
   activityDotColor, calculateProfileCompletion, efUrl, formatEarnings,
   profileChecklist, serviceAreaDisplay, type ChecklistContractor,
@@ -352,10 +352,11 @@ function AgreementModal({ contractor, onAccepted }: { contractor: { id: string; 
     try {
       const now = new Date().toISOString();
       const today = now.split('T')[0];
-      const { error } = await supabase.from('contractors').update({
+      // gh-2105 (batch 2): writeCpaAcceptance chains .select('id'); a zero-row match is a failed acceptance.
+      const error = await writeCpaAcceptance(supabase, contractor.id, {
         agreement_accepted_at: now, agreement_version: today,
         cpa_version: CURRENT_CPA_VERSION, cpa_accepted_at: now, needs_cpa_reattestation: false,
-      }).eq('id', contractor.id);
+      });
       if (error) throw error;
       // gh-2444: same shared evidence path as re-acceptance; a failed write is a failed acceptance (existing error copy, retry allowed).
       const evidenceErr = await recordCpaAcceptanceEvidence(supabase, {
@@ -391,10 +392,11 @@ function CpaReacceptModal({ contractorId, userId, onAccepted }: { contractorId: 
     setBusy(true); setErr('');
     try {
       const now = new Date().toISOString();
-      const { error } = await supabase.from('contractors').update({
+      // gh-2105 (batch 2): zero rows matched is a failed re-acceptance, shown with the existing errorSave copy.
+      const error = await writeCpaAcceptance(supabase, contractorId, {
         cpa_version: CURRENT_CPA_VERSION, cpa_accepted_at: now, needs_cpa_reattestation: false,
-      }).eq('id', contractorId);
-      if (error) { setErr(m.errorSave); setBusy(false); return; }
+      });
+      if (error) { console.error('CPA re-acceptance write failed:', error); setErr(m.errorSave); setBusy(false); return; }
       const evidenceErr = await recordCpaAcceptanceEvidence(supabase, {
         contractorId, userId, now,
         title: `Accepted updated Contractor Partner Agreement (${CURRENT_CPA_VERSION})`,
