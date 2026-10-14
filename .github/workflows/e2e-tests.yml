@@ -435,6 +435,9 @@ jobs:
       - name: partner signup duplicate-email error routing unit test (gh-2274 regression)
         run: node tests/gh2274-partner-dup-email-error.mjs
 
+      - name: contractor SMS consent box on pre-approval matches contractor-join D-328 label and evidence columns (gh-1916, PR #2722)
+        run: node tests/gh1916-pre-approval-sms-consent.mjs
+
       # gh-1925 / D-336: the "Do Not Sell or Share" opt-out control guard. It
       # pins the ruled link text + href in every static page's own <footer>
       # and on the React routes. It existed but ran in no workflow, so a PR

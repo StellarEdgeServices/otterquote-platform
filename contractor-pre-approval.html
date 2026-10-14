@@ -423,7 +423,7 @@
                     </div>
                     <div class="check-group" style="margin-bottom: var(--sp-8);">
                         <input type="checkbox" id="agreeTcpaSms">
-                        <label for="agreeTcpaSms">I agree to receive transactional SMS from Otter Quotes. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe. (Optional — you can still use the platform without SMS notifications.)</label>
+                        <label for="agreeTcpaSms">I agree to receive SMS from Otter Quotes about my contractor account and new job opportunities. Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help. See our <a href="privacy.html" style="color: var(--amber); text-decoration: underline;">Privacy Policy</a> and <a href="terms.html" style="color: var(--amber); text-decoration: underline;">Terms of Service</a>.</label>
                     </div>
 
                     <button class="btn-primary" onclick="submitStep3()">Continue to Contract Template →</button>
@@ -1197,6 +1197,21 @@
         }
 
         const now = new Date().toISOString();
+        // gh-1916 / D-328: the SMS box is the SAME sentence as contractor-join.html's #smsConsent and
+        // writes the SAME evidence columns (sms_opt_in true-or-omitted, never a bare false;
+        // sms_opt_in_at; sms_opt_in_source; sms_consent_text_version). Unchecked writes nothing, so
+        // it can never erase an opt-in captured at signup. sms_consent_ts is the legacy field.
+        // Consent text version must match contractor-join.html / js/auth.js (pinned by
+        // tests/gh1916-pre-approval-sms-consent.mjs).
+        const smsChecked = document.getElementById('agreeTcpaSms').checked;
+        const alreadyOptedIn = contractor && contractor.sms_opt_in === true && !!contractor.sms_opt_in_at;
+        const smsConsentFields = (smsChecked && !alreadyOptedIn) ? {
+            sms_consent_ts:           now,
+            sms_opt_in:               true,
+            sms_opt_in_at:            now,
+            sms_opt_in_source:        'contractor-onboarding',
+            sms_consent_text_version: 'contractor-v2-2026-09-15',
+        } : {};
         const attestation = {
             text_version:           'ic-24511-v1-2026-04',
             accepted:               true,
@@ -1216,7 +1231,7 @@
                     attestation_text_version: 'ic-24511-v1-2026-04',
                     attestation_accepted_at:  now,
                     ic_24511_attestation:     attestation,
-                    sms_consent_ts:           document.getElementById('agreeTcpaSms').checked ? now : null,
+                    ...smsConsentFields,
                     agreement_accepted_at:    now,
                     agreement_version:        'v2-2026-10',
                     onboarding_step:          3,

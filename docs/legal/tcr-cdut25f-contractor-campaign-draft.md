@@ -24,43 +24,69 @@ Gap: the `description` already says "and contractors" while `message_flow` and b
 
 ## 2. The contractor flow as built (on main, deployed)
 
-- Surface: https://otterquote.com/contractor-join.html (the live contractor signup; `/contractor` redirects to it). Phone is a required field (`#phone`). Checkbox `#smsConsent` sits above the business fields, has no `checked` attribute, and is not required to submit.
+- Surface: https://otterquote.com/contractor-join.html (the live contractor signup; `/contractor` redirects to it). Phone is a required field (`#phone`). Checkbox `#smsConsent` (contractor-join.html:280-281) has no `checked` attribute and is not required to submit. The same sentence is also the optional box `#agreeTcpaSms` on contractor-pre-approval.html (onboarding step 3), aligned in this PR.
 - Consent text, D-328, version tag `contractor-v2-2026-09-15` (verbatim from the served page): "I agree to receive SMS from Otter Quotes about my contractor account and new job opportunities. Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help. See our Privacy Policy and Terms of Service." (both are links).
-- Stored on `contractors`: `sms_opt_in` (true or NULL, never a bare false), `sms_opt_in_at`, `sms_opt_in_source = 'contractor-signup'`, `sms_consent_text_version`. IP and user agent are NOT recorded for contractor SMS consent today (see question Q3).
-- Sends: `notify-contractors` (new-opportunity alerts, signed-contract notice, agreement reminder), `process-dunning` (payment-failure notices), `send-contractor-nudge` (homeowner-triggered nudge) refuse unless `sms_opt_in` is true; the nudge also requires the current text version. Inventory and gate presence are pinned by `supabase/functions/send-sms/contractor-sms-send-sites.test.ts` in this PR.
+- Stored on `contractors`: `sms_opt_in` (true or NULL, never a bare false), `sms_opt_in_at`, `sms_opt_in_source` (`contractor-signup` or `contractor-onboarding`), `sms_consent_text_version`. IP and user agent are NOT recorded for contractor SMS consent today (Q3).
+- Send gates: `notify-contractors`, `process-dunning` and `send-contractor-nudge` refuse unless `sms_opt_in` is true; the nudge also requires the current text version. Inventory and gate presence (call-site gates only, before the send, not in comments) are pinned by `supabase/functions/send-sms/contractor-sms-send-sites.test.ts`.
+
+### The five contractor message types, bodies quoted from the code (head of this PR)
+
+1. New job opportunity (promotional), `supabase/functions/notify-contractors/index.ts:865`: `New Otter Quotes ${tradeCap} opportunity in ${claim_city}, ${claim_zip}. Log in to bid: ${OPPORTUNITIES_URL}`
+2. Contract signed, `notify-contractors/index.ts:446`: `Otter Quotes: Your contract is signed. Project package is ready — log in within 48 hrs to contact the homeowner: ${DASHBOARD_URL}`
+3. Agreement reminder, `notify-contractors/index.ts:1239`: `Otter Quotes: A homeowner wants to select you for a project in ${displayLocation}. Sign your agreement now to stay in the running: ${signingLink}`
+4. Homeowner-follow-up nudge, `supabase/functions/send-contractor-nudge/index.ts:180`: `Otter Quotes: Hi ${contractorName} — your homeowner ${homeownerName} (${address}) signed their contract on ${signedDate} and hasn't heard from you yet. Please reach out as soon as possible. Questions? Call (844) 875-3412.`
+5. Payment-method notices, `supabase/functions/process-dunning/index.ts`:
+   - hourly, `HOURLY_SMS` (:467-468): `Otter Quotes: You have a signed contract waiting for you, but your payment method has been declined. Please visit ${SETTINGS_URL} to resolve the matter.`
+   - 8 AM next-business-day warning, `WARNING_SMS` (:471-477): `Otter Quotes: You have a signed contract waiting for you, but your payment method has been declined. At 10 a.m. today we will inform the client of the payment failure and give them the option to choose another contractor. If they opt to move forward with you, you will receive their information and be liable for all fees, a $250 nonpayment fee, and any attorney's fees and costs associated with collecting this amount.`
+   - homeowner proceeded, `proceedSMS` (:642): `Otter Quotes: The homeowner has chosen to move forward with you. You are liable for all fees including the $250 nonpayment fee. Update payment at ${SETTINGS_URL}`
+   - homeowner chose another contractor, `lostSMS` (:726): `Otter Quotes: The homeowner on your pending project has selected a different contractor due to the unresolved payment issue. Visit ${SETTINGS_URL} to update your payment method.`
+
+Dunning cadence (process-dunning/index.ts header, lines 6-15): hourly, quiet hours 9 PM to 6 AM contractor local time, an 8 AM next-business-day warning, the homeowner is told at 10 AM, and no messages between the warning and 10 AM.
 
 ## 3. DRAFT replacement text (for the legal read)
 
-### 3a. description (target under 4096 chars)
+Brand spelling: the registered campaign text says "OtterQuote", so the prose below says "OtterQuote"; every quoted consent sentence and message body is verbatim from the code and says "Otter Quotes". The mismatch is raised as Q8.
 
-> Otter Quotes (https://otterquote.com) is an insurance-claim and home-improvement contractor bidding platform. This campaign sends account and project notifications to two groups who have each opted in separately: (1) homeowners, who agree to texts on the homeowner signup form, and (2) contractors, who agree to texts on the contractor signup form. Homeowner messages cover bid-ready alerts, project status and one-time verification codes. Contractor messages cover new project-opportunity alerts in the contractor's service area, contract-signed and project-ready notices, agreement-signing reminders, and payment-method notices for the contractor's account. Messages are sent only to people who checked the SMS consent box; message frequency varies. No marketing or promotional offers are sent in this campaign.
+### 3a. description (1282 characters; limit 4096)
 
-### 3b. message_flow (target under 2048 chars; keeps the homeowner flow verbatim, adds the contractor flow)
+> OtterQuote (https://otterquote.com; texts are signed "Otter Quotes") is an insurance-claim contractor bidding platform. This campaign sends account and project notifications to homeowners and to contractors, each of whom opted in separately on their own signup form. Homeowner messages: bid-ready alerts, project status updates and one-time verification codes. Contractor messages, sent only to contractors who opted in, are of five types: (1) alerts about new job opportunities in the contractor's service area, which are promotional because they invite the contractor to bid for paid work; (2) a notice that a homeowner's contract is signed and the project package is ready; (3) a reminder to sign the agreement when a homeowner wants to select the contractor; (4) a nudge when a homeowner who signed has not heard from the contractor; (5) payment-method notices for the contractor's account, including a fee and nonpayment warning and the homeowner's decision. Payment-method reminders repeat hourly between 6 AM and 9 PM contractor local time until the payment issue is resolved, with a warning at 8 AM on the next business day. This campaign therefore carries mixed content (informational and promotional) under the existing Low Volume Mixed use case. Message frequency varies.
 
-> HOMEOWNER FLOW (unchanged): [existing homeowner text quoted in section 1].
->
-> CONTRACTOR FLOW: Contractors opt in at https://otterquote.com/contractor-join.html, the contractor signup page. The page collects the contractor's phone number as a required account field. Separately, an unchecked, optional checkbox appears on the form. Its label reads exactly: "I agree to receive SMS from Otter Quotes about my contractor account and new job opportunities. Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help. See our Privacy Policy and Terms of Service." The Privacy Policy (https://otterquote.com/privacy.html) and Terms of Service (https://otterquote.com/terms.html) are linked in the label. The box is not pre-checked and is not a condition of creating an account. Contractors who do not check it receive the same notices by email and in the dashboard and are never texted. The platform stores the opt-in, its timestamp and the consent-text version, and the sending code refuses any contractor without a stored opt-in. Contractors can opt out at any time by replying STOP to any message.
+### 3b. message_flow (combined homeowner + contractor = 1824 characters of the 2048 limit, 224 to spare)
 
-### 3c. additional contractor message_samples (the campaign allows 5; two exist, so add up to 3). All taken from live templates; brand named in each.
+The homeowner flow stays exactly as registered (933 characters, read back live by the independent reviewer in comment 6158771558). Append one space and then:
 
-1. `New Otter Quotes [Roofing] opportunity in [City], [ZIP]. Log in to bid: https://otterquote.com/contractor-opportunities.html`
+> CONTRACTOR FLOW: Contractors opt in at https://otterquote.com/contractor-join.html (also offered at onboarding step 3, same sentence). Phone number is a required account field. Separately, an unchecked, optional checkbox reads exactly: "I agree to receive SMS from Otter Quotes about my contractor account and new job opportunities. Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help. See our Privacy Policy and Terms of Service." Both are linked in the label (https://otterquote.com/privacy.html, https://otterquote.com/terms.html). The box is not a condition of creating an account. The platform stores the opt-in, its timestamp, source and consent-text version, and the sending code refuses any contractor without a stored opt-in. Contractors who do not opt in get notices by email and in the dashboard. Reply STOP to any message to opt out.
+
+Length source: the contractor block is 890 characters by `len()` on this exact text in the script that wrote this file; 933 + 1 + 890 = 1824.
+
+### 3c. message_samples (the campaign allows 5; two exist, so add up to 3; brand named in each)
+
+1. `New Otter Quotes [Roofing] opportunity in [City], [ZIP]. Log in to bid: https://otterquote.com/contractor-opportunities.html Reply STOP to opt out.`
 2. `Otter Quotes: Your contract is signed. Project package is ready - log in within 48 hrs to contact the homeowner: https://otterquote.com/contractor-dashboard.html`
 3. `Otter Quotes: A homeowner wants to select you for a project in [City, ST]. Sign your agreement now to stay in the running: [link]`
 
+Sample 1 carries STOP language, as carrier vetters look for it. The live body at notify-contractors/index.ts:865 does NOT currently end with "Reply STOP to opt out." (Q9): either add that suffix to the template in a follow-up PR before the campaign update, or use sample 2 and 3 only. Do not submit sample 1 as written until one of those is chosen.
+
 ## 4. LEGAL-READ checklist and open questions (Tier C, not decided here)
 
-Q1 (use case and category). Registered use case is LOW_VOLUME and the description says "transactional". D-328 consent covers "new job opportunities", which is arguably promotional-adjacent (CEO comment 5673616027 rejected the word "transactional" for exactly this reason). The draft drops "transactional" for contractors and states no marketing is sent. Does counsel agree job-opportunity alerts to opted-in contractors fit this campaign, or should the registered use case be MIXED / re-registered? Recommended default: keep the draft, ask counsel; do not edit the use case without the read.
+Q1 (use case, resolved in this draft per CEO point 1). Job-opportunity alerts are described as promotional (mixed) content and carried under the existing `LOW_VOLUME` campaign. No MIXED alternative is offered: per the independent reviewer (6158771558, defect 3) Twilio's `MIXED` is a Standard-brand use case and moving to it means re-registering the brand. The registered use case is NOT edited.
 
-Q2 (message content vs consent text). `process-dunning` texts (`HOURLY_SMS`, `WARNING_SMS`, supabase/functions/process-dunning/index.ts) do not name "Otter Quotes". Carriers expect the brand in every message. Payment-failure notices are within "my contractor account". Recommended: a separate small PR adding the brand prefix, after the read.
+Q2 (sender name in dunning texts, fixed in this PR). `HOURLY_SMS` and `WARNING_SMS` now begin "Otter Quotes: " (process-dunning/index.ts:467, :471), pinned by `process-dunning/sms-sender-id.test.ts`.
 
-Q3 (consent evidence). Contractor SMS consent stores timestamp, source and version, but not IP or user agent, unlike the CPA evidence pattern (#2444). A client-sent IP is spoofable (see gh2154 note); a server-side capture needs a DRAFT migration plus an edge function on the signup path. Recommended: ask counsel whether timestamp + version + source is sufficient for carriers; if not, a follow-up migration DRAFT.
+Q3 (consent evidence). Timestamp, source and version are stored, not IP or user agent. Recommended: ask counsel whether that is sufficient for carriers; if not, a DRAFT migration plus a server-side capture on the signup path.
 
-Q4 (second checkbox, different wording). `contractor-pre-approval.html` (onboarding step, live) carries its own optional box `#agreeTcpaSms`: "I agree to receive transactional SMS from Otter Quotes. Message frequency varies. ... Reply STOP to unsubscribe. (Optional ...)", stored only as `contractors.sms_consent_ts`. It does not set `sms_opt_in`, so it can never cause a send (fails closed), but a contractor who ticks it believes they consented, and its wording is the rejected "transactional" label with no HELP line. It is also what a carrier auditor would find at onboarding. Recommended: remove the box, or replace it with the D-328 label writing `sms_opt_in` / version, in a follow-up PR once counsel signs the draft. NOT changed in this PR (wording is Tier C).
+Q4 (second checkbox, resolved). `#agreeTcpaSms` on contractor-pre-approval.html now carries the D-328 sentence and writes `sms_opt_in`, `sms_opt_in_at`, `sms_opt_in_source = 'contractor-onboarding'` and `sms_consent_text_version`; unchecked writes nothing and cannot erase an opt-in captured at signup. Pinned by `tests/gh1916-pre-approval-sms-consent.mjs`. Effect to note: a ticked box now really is an opt-in (previously it could never cause a send).
 
-Q5 (existing contractors). All 15 contractors have `sms_opt_in` NULL (2026-10-14 SELECT), so none receive SMS. If counsel wants existing contractors reachable, they need a re-consent prompt in the dashboard; no such prompt exists.
+Q5 (existing contractors). All 15 contractors have `sms_opt_in` NULL (2026-10-14 SELECT), so none receive SMS. A re-consent prompt would be a product choice for Dustin.
 
-Q6 (STOP handling). The sending code never writes `sms_opt_in = false` on an inbound STOP: Twilio's default STOP handling blocks sends at the carrier level, but the platform record stays true. Recommended: an inbound-webhook follow-up (no webhook exists in the repo today).
+Q6 (STOP handling). No inbound webhook; the platform record stays true after a STOP while Twilio blocks the handset. Recommended follow-up: inbound webhook writing per-number opt-out.
 
-Q7 (version gate parity). `send-contractor-nudge` requires `sms_consent_text_version == contractor-v2-2026-09-15`; `notify-contractors` and `process-dunning` require only `sms_opt_in === true`. Equivalent today (one version exists); they diverge the day the text changes.
+Q7 (version gate parity). `send-contractor-nudge` requires the current text version; `notify-contractors` and `process-dunning` require only `sms_opt_in === true`. Equivalent today.
 
-Do not paste any of this into the Twilio Console before LEGAL-READ and `R-177 SIGNED:`.
+Q8 (brand spelling). Registered text and homeowner samples say "OtterQuote"; the D-328 consent sentence and every contractor body say "Otter Quotes". This draft keeps both verbatim. Counsel to say whether to align the registered prose on one spelling.
+
+Q9 (STOP suffix on sample 1). See 3c.
+
+DUSTIN'S TWO CHOICES (not made here; on his board): (a) texts go only to the phone that consented (recommended) or consent wording is added at the settings "add phone" field for `notification_phones` (today the gate is per contractor, not per number, so `message_flow` above says "contractors who opted in", not "this number opted in"); (b) the privacy.html mobile/SMS-data clause and a short SMS terms section (his wording).
+
+Do not paste any of this into the Twilio Console before a fresh LEGAL-READ, `R-177 SIGNED:`, and Dustin's two answers.
