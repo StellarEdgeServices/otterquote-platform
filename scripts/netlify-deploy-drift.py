@@ -1848,6 +1848,24 @@ def fetch_netlify_builds(site_id, token):
     return _get_json("https://api.netlify.com/api/v1/sites/%s/builds?per_page=20" % site_id, token)
 
 
+# gh-2289: Cloudflare (in front of stohlerroof.com) injects its Web Analytics beacon
+# <script ... src="https://static.cloudflareinsights.com/beacon.min.js/v<release-id>"
+# integrity="sha512-..." data-cf-beacon='{...}'> into the HTML it serves to some clients
+# (this script's urllib fetch gets it, a bare curl does not). The src release id and SRI hash
+# change whenever Cloudflare ships a new beacon, with NO Netlify deploy -- which flipped the
+# raw-bytes hash to CONTENT_CHANGED on every scheduled run from 2026-10-08. Strip exactly that
+# one injected tag before hashing; every other byte still counts.
+_CF_BEACON_RE = re.compile(
+    rb"[ \t]*<script\b[^>]*\bsrc=[\"']https://static\.cloudflareinsights\.com/beacon\.min\.js[^\"']*[\"'][^>]*>\s*</script>[ \t]*\r?\n?",
+    re.IGNORECASE,
+)
+
+
+def normalise_page_bytes(raw):
+    """gh-2289: raw page bytes with Cloudflare's injected Web Analytics beacon tag removed."""
+    return _CF_BEACON_RE.sub(b"", raw)
+
+
 def fetch_url_content(url, timeout=TIMEOUT_SECONDS):
     """gh-1734: GET a public URL directly (no Netlify/GitHub auth -- it's the live public
     site) and return (raw_bytes_or_None, reason). This is the content half of a non-git
@@ -2088,7 +2106,7 @@ def check_non_git_site(site, netlify_token, now=None, timeout=TIMEOUT_SECONDS,
         if is_gone_reason(reason):
             return gone_row(site, reason)
         return unmeasured_row(site, "published-page fetch failed: %s" % reason)
-    content_sha256 = hashlib.sha256(raw_content).hexdigest()
+    content_sha256 = hashlib.sha256(normalise_page_bytes(raw_content)).hexdigest()
 
     expected_sha256, reason = _load_content_baseline(
         site.get("baseline_fixture"), fixtures_dir=fixtures_dir
