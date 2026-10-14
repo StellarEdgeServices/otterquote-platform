@@ -1848,6 +1848,68 @@ def fetch_netlify_builds(site_id, token):
     return _get_json("https://api.netlify.com/api/v1/sites/%s/builds?per_page=20" % site_id, token)
 
 
+# gh-2289: Cloudflare (in front of stohlerroof.com) injects its Web Analytics beacon
+# <script ... src="https://static.cloudflareinsights.com/beacon.min.js/v<release-id>"
+# integrity="sha512-..." data-cf-beacon='{...}'> into the HTML it serves to some clients
+# (this script's urllib fetch gets it, a bare curl does not). The src release id and SRI hash
+# change whenever Cloudflare ships a new beacon, with NO Netlify deploy -- which flipped the
+# raw-bytes hash to CONTENT_CHANGED on every scheduled run from 2026-10-08. Strip exactly that
+# one injected tag before hashing; every other byte still counts.
+# Candidate finder only: any <script ...></script> with an empty/whitespace body. Whether a
+# candidate is actually Cloudflare's beacon is decided by _strip_cf_beacon's ALLOWLIST below.
+# HTML whitespace is exactly tab, LF, FF, CR, space. NOT Python \s / isspace() / strip(), which also
+# count 0x0B (VT) and others, so a parser disagreement would let a hidden attribute through.
+_HTML_WS = b"\t\n\f\r "
+_CF_BEACON_RE = re.compile(rb"[ \t]*<script\b([^>]*)>[\t\n\f\r ]*</script>[ \t]*\r?\n?", re.IGNORECASE)
+# One attribute: name, optional = value (double-quoted, single-quoted or bare).
+_ATTR_RE = re.compile(
+    rb"[\t\n\f\r ]+([^\t\n\f\r =/>\"']+)"
+    rb"(?:[\t\n\f\r ]*=[\t\n\f\r ]*(\"[^\"]*\"|'[^']*'|[^\t\n\f\r >\"']+))?"
+)
+_ALLOWED_BEACON_ATTRS = {b"type", b"src", b"integrity", b"data-cf-beacon", b"crossorigin", b"defer"}
+_CF_SRC_PREFIX = b"https://static.cloudflareinsights.com/beacon.min.js"
+
+
+def _inside_svg(prefix):
+    """True when an <svg> element is still open at the end of `prefix` (simple count)."""
+    return len(re.findall(rb"<svg\b", prefix, re.IGNORECASE)) > len(re.findall(rb"</svg[\t\n\f\r ]*>", prefix, re.IGNORECASE))
+
+
+def _strip_cf_beacon(match):
+    """gh-2289 ALLOWLIST: strip a candidate <script></script> only when (1) it has exactly one
+    src=, whitespace-preceded and quoted, whose value starts with the Cloudflare beacon URL;
+    (2) every attribute name is in {type, src, integrity, data-cf-beacon, crossorigin, defer}
+    (no duplicates, nothing unparsed); (3) the body is empty (enforced by the finder regex);
+    (4) it is not inside an open <svg>. Anything else is left in the hash."""
+    tag, attrs_text = match.group(0), match.group(1)
+    pos, names, src = 0, [], None
+    while pos < len(attrs_text):
+        if attrs_text[pos:pos + 1] not in (b"\t", b"\n", b"\f", b"\r", b" "):
+            return tag  # junk between attributes (e.g. "<script/src=...")
+        m = _ATTR_RE.match(attrs_text, pos)
+        if m is None:
+            if attrs_text[pos:].strip(_HTML_WS) == b"":
+                break
+            return tag
+        name = m.group(1).lower()
+        names.append(name)
+        if name == b"src":
+            src = m.group(2)
+        pos = m.end()
+    if len(names) != len(set(names)) or not set(names) <= _ALLOWED_BEACON_ATTRS:
+        return tag
+    if src is None or src[:1] not in (b'"', b"'") or not src[1:-1].startswith(_CF_SRC_PREFIX):
+        return tag
+    if _inside_svg(match.string[:match.start()]):
+        return tag
+    return b""
+
+
+def normalise_page_bytes(raw):
+    """gh-2289: raw page bytes with Cloudflare's injected Web Analytics beacon tag removed."""
+    return _CF_BEACON_RE.sub(_strip_cf_beacon, raw)
+
+
 def fetch_url_content(url, timeout=TIMEOUT_SECONDS):
     """gh-1734: GET a public URL directly (no Netlify/GitHub auth -- it's the live public
     site) and return (raw_bytes_or_None, reason). This is the content half of a non-git
@@ -2088,7 +2150,7 @@ def check_non_git_site(site, netlify_token, now=None, timeout=TIMEOUT_SECONDS,
         if is_gone_reason(reason):
             return gone_row(site, reason)
         return unmeasured_row(site, "published-page fetch failed: %s" % reason)
-    content_sha256 = hashlib.sha256(raw_content).hexdigest()
+    content_sha256 = hashlib.sha256(normalise_page_bytes(raw_content)).hexdigest()
 
     expected_sha256, reason = _load_content_baseline(
         site.get("baseline_fixture"), fixtures_dir=fixtures_dir
