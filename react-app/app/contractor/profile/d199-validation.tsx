@@ -209,8 +209,8 @@ function ManualMappingModal({ row, onClose, onResolved }: {
         // fail loudly on a zero-row match (RLS-denied or wrong id resolves error:null with
         // no row written, so the contractor saw "Submitted for admin review" for nothing).
         // This proves the row matched, not the final `status` value: the
-        // contractor_templates_freeze_verdict trigger may rewrite status after the write,
-        // which is the part that stays class (c) / server-side (see the PR body).
+        // contractor_templates_freeze_verdict trigger always rewrites status for a regular
+        // contractor; the success alert is not yet true (#2717 Q2, server-side RPC).
         const { data: persistedRows, error: persistErr } = await supabase
           .from('contractor_templates')
           .update({ manual_overrides: { ...overrides, _missing_fields: missingFields }, status: 'submitted_for_admin_review' })

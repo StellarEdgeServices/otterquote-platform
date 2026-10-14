@@ -134,7 +134,7 @@ BASELINE: dict[str, int] = {
     "react-app/app/contractor/pre-approval/page.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/profile/ContractTemplates.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/profile/PcTemplates.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
-    "react-app/app/contractor/profile/d199-validation.tsx": 0,  # gh-2105 batch 3: fixed (a) row-count check; the verdict-trigger rewrite of status stays class (c), see PR body
+    "react-app/app/contractor/profile/d199-validation.tsx": 0,  # gh-2105 batch 3: zero-row hole closed; status class (c) open (trigger rewrites status, #2717 Q2)
     "react-app/app/contractor/settings/StripePaymentMethods.tsx": 0,  # gh-2105 batch 13: annotated (b)
     "react-app/app/contractor/settings/page.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/settings/utils.ts": 1,
