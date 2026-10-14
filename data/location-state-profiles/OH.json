@@ -136,7 +136,7 @@
     "Union"
    ],
    "climate": [
-    "A summary for the Central division, prepared with the Midwest Regional Climate Center, describes a humid continental climate with hot and humid summers and cool to cold winters. It calls precipitation in Ohio moderate compared with the rest of the country, and relatively consistent year-round. It also says severe weather is not uncommon in the division, including tornado threats, and {county} County is one of its counties.",
+    "A summary for the Central division, prepared with the Midwest Regional Climate Center, describes a humid continental climate with hot and humid summers and cool to cold winters. It calls precipitation in Ohio moderate compared with the rest of the country, and relatively consistent year-round. It also says severe weather is not uncommon in the division, including tornado threats. NOAA's county-to-climate-division file places {county} County in the Central division.",
     "The same Central division summary says gorge-like river valleys near Columbus, particularly along the Scioto and Olentangy, create microclimates that experience distinct weather from the surrounding areas. NOAA's Ohio state climate summary reports that since 2000 Columbus has averaged 22 warm nights per year, against 9 in the 1950s through 1970s. {county} County lies in the same division as Columbus.",
     "NWS Wilmington's summary of April 17, 2024 confirms an EF1 tornado in Delaware County, which is in the Central division with {county} County. NOAA's Ohio state climate summary says dangerous storms can occur in every season, and it lists snowstorms and ice storms among winter weather. It lists thunderstorms, flood-producing rainstorms, hail and tornadoes among the convective storms it calls common in the warmer months."
    ],
@@ -826,8 +826,12 @@
      "url": "https://api.weather.gov/zones/county/OHC041"
     },
     {
-     "label": "National Weather Service Wilmington, OH forecast office record (weather.gov API), as cited on the Delaware page",
+     "label": "National Weather Service Wilmington, OH forecast office record (weather.gov API)",
      "url": "https://api.weather.gov/offices/ILN"
+    },
+    {
+     "label": "NOAA NCEI: county-to-climate-division file",
+     "url": "https://www.ncei.noaa.gov/monitoring-content/data/us/climdiv/monthly/current/county-to-climdivs.txt"
     },
     {
      "label": "U.S. Census Bureau, American Community Survey 2020-2024 5-year, table B25035, Delaware County",
