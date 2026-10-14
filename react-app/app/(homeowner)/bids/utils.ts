@@ -244,6 +244,26 @@ export const NO_PAYMENT_METHOD_SENTINEL = 'contractor_no_payment_method';
 export const NO_PAYMENT_METHOD_MESSAGE =
   "This contractor hasn't added a payment method yet, so the project can't be awarded to them.";
 
+// ── Award-refusal copy (gh-2626) ────────────────────────────────────────
+// The claims/quotes award guard (trigger errors, SQLSTATE 42501) and accept_bid()
+// (P0001 bid_not_awardable / claim_not_awardable) refuse an award that skips the bid checks.
+// Raw trigger text is for logs, never for a homeowner.
+
+/** Sentinels raised by accept_bid() (P0001). INTERNAL identifiers: match on them, never render them. */
+export const BID_NOT_AWARDABLE_SENTINEL = 'bid_not_awardable';
+export const CLAIM_NOT_AWARDABLE_SENTINEL = 'claim_not_awardable';
+
+/** The bid is expired, withdrawn, not live, or not the one on file for this claim. */
+export const BID_NOT_AWARDABLE_MESSAGE =
+  'This bid can no longer be awarded \u2014 it has expired or was withdrawn. Pick another bid or ask the contractor to re-bid.';
+
+/** The claim is not in a status that can be awarded (not open for bids, or already signed). */
+export const CLAIM_NOT_AWARDABLE_MESSAGE = 'This claim is not open for awarding right now.';
+
+/** Any other refusal by the gh-2626 guard (a quote status or bid state change that is not allowed). */
+export const AWARD_NOT_ALLOWED_MESSAGE =
+  "This change isn't allowed on this bid. Refresh the page to see the current bids, or contact support if you need help.";
+
 /**
  * Map a raw Postgres/PostgREST error message onto homeowner-facing text.
  * Anything that is not a recognised sentinel is passed through unchanged.
@@ -251,6 +271,21 @@ export const NO_PAYMENT_METHOD_MESSAGE =
 export function mapAwardError(raw: string | null | undefined): string {
   const msg = raw ?? '';
   if (msg.includes(NO_PAYMENT_METHOD_SENTINEL)) return NO_PAYMENT_METHOD_MESSAGE;
+  if (msg.includes(BID_NOT_AWARDABLE_SENTINEL)) return BID_NOT_AWARDABLE_MESSAGE;
+  if (msg.includes(CLAIM_NOT_AWARDABLE_SENTINEL)) return CLAIM_NOT_AWARDABLE_MESSAGE;
+  // claims_guard_award_columns() (42501): claim-level refusals
+  if (msg.includes('a signed claim cannot be moved') || msg.includes('a claim can only be awarded while it is open for bids')) {
+    return CLAIM_NOT_AWARDABLE_MESSAGE;
+  }
+  // claims_guard_award_columns() / quotes_guard_homeowner_columns() (42501): the contractor or bid is not live
+  if (
+    msg.includes('the selected contractor can only be set to a contractor with a live bid') ||
+    msg.includes('only a submitted, active bid can be selected')
+  ) {
+    return BID_NOT_AWARDABLE_MESSAGE;
+  }
+  // Any other gh-2626 guard refusal: plain sentence, never the trigger text
+  if (msg.includes('(gh-2626)')) return AWARD_NOT_ALLOWED_MESSAGE;
   return msg;
 }
 

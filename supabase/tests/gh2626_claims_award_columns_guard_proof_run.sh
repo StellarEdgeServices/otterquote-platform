@@ -51,6 +51,11 @@ has 2-GUARD-ONLY '^Z2 .*REJECTED P0001'; has 5-WITH-2623-AND-GUARD '^Z2 .*REJECT
 has 2-GUARD-ONLY '^Z3 .*REJECTED 42501'; has 5-WITH-2623-AND-GUARD '^Z3 .*REJECTED 42501'
 has 1-TODAY '^Z6 [^:]*: rows=1 ACCEPTED ; then rows=1 ACCEPTED'; has 4-WITH-2623 '^Z6 [^:]*: rows=1 ACCEPTED ; then rows=1 ACCEPTED'
 has 2-GUARD-ONLY '^Z6 .*REJECTED 42501.*; then REJECTED P0001'; has 5-WITH-2623-AND-GUARD '^Z6 .*REJECTED 42501.*; then REJECTED P0001'
+# review 6157765833: B1b (Y1 relabel selected -> declined then accept_bid, Y2 then direct award) ACCEPTED before, REJECTED after
+has 1-TODAY '^Y1 [^:]*: rows=1 ACCEPTED ; then rows=1 ACCEPTED'; has 4-WITH-2623 '^Y1 [^:]*: rows=1 ACCEPTED ; then rows=1 ACCEPTED'
+has 2-GUARD-ONLY '^Y1 .*REJECTED 42501.*; then REJECTED P0001'; has 5-WITH-2623-AND-GUARD '^Y1 .*REJECTED 42501.*; then REJECTED P0001'
+has 4-WITH-2623 '^Y2 [^:]*: rows=1 ACCEPTED ; then rows=1 ACCEPTED'
+has 2-GUARD-ONLY '^Y2 .*REJECTED 42501.*; then REJECTED 42501'; has 5-WITH-2623-AND-GUARD '^Y2 .*REJECTED 42501.*; then REJECTED 42501'
 # the app's own paths and the contractor/service_role quote writes still succeed after
 for k in R7 Q1 S2 R8; do has 2-GUARD-ONLY "^$k .*ACCEPTED"; has 5-WITH-2623-AND-GUARD "^$k .*ACCEPTED"; done
 diff <(sed '/^GUARD /d' "$OUT/1-TODAY.txt") <(sed '/^GUARD /d' "$OUT/3-ROLLBACK-GUARD.txt") >/dev/null && echo "pass 3 matches pass 1 (GUARD line excluded)" || { echo "pass 3 differs from pass 1"; rc=1; }

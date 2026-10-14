@@ -60,7 +60,7 @@
 --     quotes.bid_status unless it is the quote's own contractor (the owner, who holds UPDATE on every column through the
 --     policy "Homeowners can update quotes for their claims", could revive an expired or withdrawn bid, review F2), and
 --     the claim owner can set status to selected only from a submitted bid whose bid_status is active, and to declined
---     only from a submitted or selected bid (review 6155821752 B2). service_role,
+--     only from a submitted bid (review 6155821752 B2, review 6157765833 B1b). service_role,
 --     admins, owner-level definer sessions and the bidding contractor's own paths are untouched.
 -- WHAT "LIVE" MEANS, exactly (review F3). In the claims guard (rule 3) a quote is live when status is submitted and
 -- bid_status is active or NULL. In accept_bid() it is awardable when bid_status is active or NULL and status
@@ -314,11 +314,13 @@ BEGIN
         USING ERRCODE = '42501';
     END IF;
 
-    -- gh-2626 (review 6155821752 B2): the owner may mark a bid declined only from submitted or selected. A draft
-    -- (never submitted) or expired quote cannot be relabelled declined and then accepted through accept_bid().
+    -- gh-2626 (review 6155821752 B2, review 6157765833 B1b): the owner may mark a bid declined only from submitted.
+    -- A draft (never submitted) or expired quote cannot be relabelled declined and then accepted through accept_bid(),
+    -- and neither can a switched-away, refunded quote that stays selected (accept_bid() admits declined, so
+    -- selected -> declined -> accept_bid() would re-award it). No app path moves a quote from selected to declined.
     IF NEW.status = 'declined' AND OLD.status IS DISTINCT FROM 'declined'
-       AND COALESCE(OLD.status NOT IN ('submitted', 'selected'), true) THEN
-      RAISE EXCEPTION 'quotes: only a submitted or selected bid can be declined by the claim owner (gh-2626)'
+       AND COALESCE(OLD.status <> 'submitted', true) THEN
+      RAISE EXCEPTION 'quotes: only a submitted bid can be declined by the claim owner (gh-2626)'
         USING ERRCODE = '42501';
     END IF;
   END IF;
@@ -327,6 +329,6 @@ END;
 $guard$;
 
 COMMENT ON FUNCTION public.quotes_guard_homeowner_columns() IS
-  'gh-2479 / gh-2519: BEFORE INSERT OR UPDATE guard on public.quotes. Client roles (anon, authenticated) that are not admins: on INSERT can create only their own bid (contractor_id is a contractor row of the caller) born status submitted, bid_status active, not an auto-bid, not a renewal, with no signing or payment state; on UPDATE cannot change claim_id or contractor_id, can change total_price, fee_amount, fee_percentage, platform_fee_pct and platform_fee_basis only as the quote''s own contractor, and can change status only as the claim owner and only to selected (and to selected only from a submitted bid whose bid_status is active) or declined (to declined only from a submitted or selected bid), and can change bid_status only as the quote''s own contractor (gh-2626). Rejected 42501; an unchanged value is not a change. service_role, admins and owner-level (SECURITY DEFINER) sessions such as accept_bid() are untouched.';
+  'gh-2479 / gh-2519: BEFORE INSERT OR UPDATE guard on public.quotes. Client roles (anon, authenticated) that are not admins: on INSERT can create only their own bid (contractor_id is a contractor row of the caller) born status submitted, bid_status active, not an auto-bid, not a renewal, with no signing or payment state; on UPDATE cannot change claim_id or contractor_id, can change total_price, fee_amount, fee_percentage, platform_fee_pct and platform_fee_basis only as the quote''s own contractor, and can change status only as the claim owner and only to selected (and to selected only from a submitted bid whose bid_status is active) or declined (to declined only from a submitted bid), and can change bid_status only as the quote''s own contractor (gh-2626). Rejected 42501; an unchanged value is not a change. service_role, admins and owner-level (SECURITY DEFINER) sessions such as accept_bid() are untouched.';
 
 COMMIT;
