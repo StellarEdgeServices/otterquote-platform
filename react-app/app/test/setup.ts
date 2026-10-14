@@ -15,9 +15,12 @@ import { vi } from 'vitest';
 // without pulling in Sentry's bundler-plugin registration at all. Keep this
 // in sync with the small, stable set of Sentry APIs actually used under
 // app/ (SentryInitializer.tsx, auth-provider.tsx): init, replayIntegration,
-// setUser.
+// setUser, captureMessage, captureException.
 vi.mock('@sentry/nextjs', () => ({
   init: vi.fn(),
   replayIntegration: vi.fn(() => ({})),
   setUser: vi.fn(),
+  // gh-2105 batch 4: zero-row write reports (captureMessage) from the homeowner data layers.
+  captureMessage: vi.fn(),
+  captureException: vi.fn(),
 }));
