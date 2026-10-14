@@ -62,7 +62,7 @@
 -- gh-2626 COMPOSITION (#2519 comment 6156383757, the precondition before this file is applied). quotes_guard_homeowner_columns() and accept_bid() below
 -- carry the lines marked gh-2626 from gh2626_claims_award_columns_guard.sql: in the guard, the owner cannot change bid_status, can select only a submitted
 -- bid whose bid_status is active, and can decline only a submitted bid (verbatim), plus one narrow branch for the gh-2519 clean-up of a switched-away selected bid (a nested UPDATE inside this trigger),
--- which now also writes bid_status = 'cancelled' so that bid is never re-awardable (REVIEW 6162070214 B1); in accept_bid(), a not-active bid is refused
+-- which now also writes bid_status = 'superseded' so that bid is never re-awardable (REVIEW 6162070214 B1); in accept_bid(), a not-active bid is refused
 -- (bid_not_awardable, after the gh-2519 "already the live selected bid" return, so a repeated click on the winner still writes nothing) and the claim UPDATE only
 -- matches a claim in status active or bidding (claim_not_awardable). APPLY ORDER VERIFIED: gh2626 -> gh2519 -> gh2564 (supabase/tests/gh2519_gh2564_gh2626_compose_proof_run.sh).
 -- gh2626 must be applied FIRST: applied after this file or gh2564 it would re-create both functions from the pre-gh-2519 live bodies and silently remove the
@@ -218,14 +218,14 @@ BEGIN
     -- gh-2519 / gh-2626 composition (REVIEW 6162070214 B1): the clean-up below (residual 4) is a nested UPDATE inside this trigger
     -- (pg_trigger_depth() > 1) that retires a switched-away bid still at status selected when the owner selects another bid. It
     -- must pass the gh-2626 rules above it (it moves a selected bid to declined) and the column allow-list, and it must leave the
-    -- bid NOT awardable: it writes bid_status = 'cancelled' (admitted by quotes_bid_status_check; accept_bid() refuses it) beside
+    -- bid NOT awardable: it writes bid_status = 'superseded' (admitted by quotes_bid_status_check; accept_bid() and the owner-select rule refuse it; no customer page words it; NOT 'cancelled', which the bid pages show to the homeowner as "withdrawn", LEGAL-READ 6162601678 b) beside
     -- status = 'declined', so a switched-away, refunded contractor cannot be re-awarded by a second step (gh-2626 review
     -- 6157765833 B1b, DECIDED 1). This branch passes ONLY that exact write: depth > 1, OLD.status selected, NEW.status declined,
-    -- bid_status active (or NULL) -> cancelled, any other bid_status unchanged, and no column but status, bid_status and updated_at
+    -- bid_status active (or NULL) -> superseded, any other bid_status unchanged, and no column but status, bid_status and updated_at
     -- changed. Every client statement is depth 1 and never reaches it. Proof: supabase/tests/gh2519_gh2564_gh2626_compose_proof.sql, C1, C5, C6.
     IF pg_trigger_depth() > 1
        AND OLD.status = 'selected' AND NEW.status = 'declined'
-       AND NEW.bid_status IS NOT DISTINCT FROM COALESCE(NULLIF(OLD.bid_status, 'active'), 'cancelled')
+       AND NEW.bid_status IS NOT DISTINCT FROM COALESCE(NULLIF(OLD.bid_status, 'active'), 'superseded')
        AND NOT EXISTS (
              SELECT 1 FROM jsonb_each(to_jsonb(NEW)) n
                JOIN jsonb_each(to_jsonb(OLD)) o ON o.key = n.key
@@ -357,7 +357,7 @@ BEGIN
           USING ERRCODE = '42501';
       END IF;
       UPDATE public.quotes q3 SET status = 'declined', updated_at = now(),
-             bid_status = CASE WHEN COALESCE(q3.bid_status, 'active') = 'active' THEN 'cancelled' ELSE q3.bid_status END
+             bid_status = CASE WHEN COALESCE(q3.bid_status, 'active') = 'active' THEN 'superseded' ELSE q3.bid_status END
        WHERE q3.claim_id = OLD.claim_id AND q3.id <> OLD.id
          AND q3.status = 'selected';
     END IF;
@@ -394,7 +394,7 @@ END;
 $guard$;
 
 COMMENT ON FUNCTION public.quotes_guard_homeowner_columns() IS
-  'gh-2479 / gh-2519: BEFORE INSERT OR UPDATE guard on public.quotes. Client roles (anon, authenticated) that are not admins: on INSERT can create only their own bid (contractor_id is a contractor row of the caller) born status submitted, bid_status active, not an auto-bid, not a renewal, with no signing, payment, test, envelope, cancellation, expiry or warranty-upload state, and the server sets platform_fee_pct, fee_percentage, platform_fee_basis and fee_amount from quotes_platform_fee_for() whatever the browser sent; on UPDATE cannot change claim_id or contractor_id, can change total_price only as the quote''s own contractor (whose three rate fields then keep their stored values and whose fee_amount is recomputed from total_price), cannot change the fee columns as anyone else, can change status only as the claim owner, only to selected or declined, and to selected only when the claim has no live selected bid (selected, active, and the claim''s current selected contractor; a switched-away or rescinded bid does not count and is set to declined), and can change no column outside the caller''s allow-list (owner: status, homeowner_signed_at; contractor: the bid-form columns and contractor_signed_at). gh-2626 (carried verbatim from gh2626_claims_award_columns_guard.sql): the owner cannot change bid_status (only the quote''s own contractor, service_role or an admin), can select only a submitted bid whose bid_status is active, and can decline only a submitted bid; the one exception is the gh-2519 clean-up of a switched-away selected bid (a nested UPDATE), which writes declined and bid_status cancelled. Rejected 42501; an unchanged value is not a change. service_role, admins and owner-level (SECURITY DEFINER) sessions such as accept_bid() are untouched.';
+  'gh-2479 / gh-2519: BEFORE INSERT OR UPDATE guard on public.quotes. Client roles (anon, authenticated) that are not admins: on INSERT can create only their own bid (contractor_id is a contractor row of the caller) born status submitted, bid_status active, not an auto-bid, not a renewal, with no signing, payment, test, envelope, cancellation, expiry or warranty-upload state, and the server sets platform_fee_pct, fee_percentage, platform_fee_basis and fee_amount from quotes_platform_fee_for() whatever the browser sent; on UPDATE cannot change claim_id or contractor_id, can change total_price only as the quote''s own contractor (whose three rate fields then keep their stored values and whose fee_amount is recomputed from total_price), cannot change the fee columns as anyone else, can change status only as the claim owner, only to selected or declined, and to selected only when the claim has no live selected bid (selected, active, and the claim''s current selected contractor; a switched-away or rescinded bid does not count and is set to declined), and can change no column outside the caller''s allow-list (owner: status, homeowner_signed_at; contractor: the bid-form columns and contractor_signed_at). gh-2626 (carried verbatim from gh2626_claims_award_columns_guard.sql): the owner cannot change bid_status (only the quote''s own contractor, service_role or an admin), can select only a submitted bid whose bid_status is active, and can decline only a submitted bid; the one exception is the gh-2519 clean-up of a switched-away selected bid (a nested UPDATE), which writes declined and bid_status superseded. Rejected 42501; an unchanged value is not a change. service_role, admins and owner-level (SECURITY DEFINER) sessions such as accept_bid() are untouched.';
 
 CREATE OR REPLACE FUNCTION public.apply_referral_commission()
  RETURNS trigger
@@ -754,9 +754,9 @@ BEGIN
   -- gh-2519: any other bid still status selected, whatever its bid_status, is after the refusal above one that is not live (switched
   -- away from, rescinded, expired, superseded). Set it to declined so the claim ends with exactly one status = 'selected' row and the
   -- partial unique index quotes_one_selected_bid_per_claim holds for the new selection (review 6051777895 finding 1).
-  -- gh-2626 (REVIEW 6162070214 B1): the retired bid also gets bid_status 'cancelled' (when it was active), so it is not awardable again.
+  -- gh-2626 (REVIEW 6162070214 B1): the retired bid also gets bid_status 'superseded' (when it was active; NOT 'cancelled', which the bid pages show to the homeowner as "withdrawn", LEGAL-READ 6162601678 b), so it is not awardable again.
   UPDATE quotes SET status = 'declined', updated_at = now(),
-         bid_status = CASE WHEN COALESCE(bid_status, 'active') = 'active' THEN 'cancelled' ELSE bid_status END
+         bid_status = CASE WHEN COALESCE(bid_status, 'active') = 'active' THEN 'superseded' ELSE bid_status END
    WHERE claim_id = p_claim_id AND id <> p_quote_id AND status = 'selected';
 
   -- gh-2626 (Ben, DECIDED 2): only a claim that is open for bids (status active or bidding, the names in

@@ -8,7 +8,7 @@
 --
 -- Manual reference only. Never rename this into a 14-digit timestamp or move it into
 -- supabase/migrations/ -- the CLI would replay it FORWARD and undo the guard it exists to revert.
--- Drops the trigger and its function and restores accept_bid() and quotes_guard_homeowner_columns() to the live bodies they had before the forward file. IF gh2519_quotes_server_set_fee or gh2564_quotes_selected_price_lock has been applied since, do NOT run the two restores below: they would put back the older bodies; remove only the gh-2626 lines from those functions instead. Rolling back re-opens the accept_bid() and quote-revival paths and the direct write of claims.selected_contractor_id,
+-- Drops the trigger and its function and restores accept_bid() and quotes_guard_homeowner_columns() to the live bodies they had before the forward file. IF gh2519_quotes_server_set_fee or gh2564_quotes_selected_price_lock has been applied since, this file REFUSES (the order gate below raises while quotes_platform_fee_for() exists): roll gh2564 and gh2519 back first (gh2564_..._rollback.sql, then gh2519_quotes_server_set_fee_rollback_to_gh2626.sql), then run this file. Rolling back re-opens the accept_bid() and quote-revival paths and the direct write of claims.selected_contractor_id,
 -- selected_bid_amount and status = 'awarded' for the claim owner. No data is touched. If the forward file was
 -- applied through the ledger, also delete its supabase_migrations.schema_migrations row.
 

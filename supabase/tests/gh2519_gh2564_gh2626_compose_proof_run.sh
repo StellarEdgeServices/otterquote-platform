@@ -46,12 +46,13 @@ for s in A2 A3; do
   grep -q 'quotes guard carries gh-2626: true | accept_bid carries gh-2626: true' "$OUT/$s-C.txt" && echo "both functions carry gh-2626 after $s" || { echo "MARKER LOST after $s"; rc=1; }
   has $s Q1 W "REJECTED 42501 quotes: bid_status can only be changed by service_role or an admin (gh-2519)"      # disclosed: the gh-2519 allow-list also refuses the contractor's own bid_status write
   diff <(sed -e '/^GUARD /d' -e '/^Q1 /d' "$OUT/A1-W.txt") <(sed -e '/^GUARD /d' -e '/^Q1 /d' "$OUT/$s-W.txt") >"$OUT/$s-W.diff" && echo "W pass after $s equals W pass after A1 (gh2626's own proof, lines GUARD and Q1 excluded)" || { echo "W pass after $s DIFFERS from A1"; cat "$OUT/$s-W.diff"; rc=1; }
-  has $s C1 C "rows=1 ACCEPTED -> qA=declined/cancelled qC=selected/active"
-  has $s C2 C "rows=1 ACCEPTED -> qA=declined/cancelled qC=selected/active"
+  has $s C1 C "rows=1 ACCEPTED -> qA=declined/superseded qC=selected/active"
+  has $s C2 C "rows=1 ACCEPTED -> qA=declined/superseded qC=selected/active"
   has $s C3 C "rows=1 ACCEPTED -> qA=selected/active | claim status=contract_signed"
   has $s C4 C "REJECTED P0001 bid_not_awardable"
-  has $s C5a C "qA=declined/cancelled"; has $s C5 C "REJECTED P0001 bid_not_awardable"
-  has $s C6a C "qA=declined/cancelled"; has $s C6 C "REJECTED P0001 bid_not_awardable"
+  has $s C5a C "qA=declined/superseded"; has $s C5 C "REJECTED P0001 bid_not_awardable"
+  has $s C6a C "qA=declined/superseded"; has $s C6 C "REJECTED P0001 bid_not_awardable"
+  has $s C7a C "REJECTED 42501 quotes: only a submitted, active bid can be selected"; has $s C7b C "REJECTED P0001 bid_not_awardable"
 done
 has A1 Q1 W "rows=1 ACCEPTED"; has A1 C5 C "REJECTED P0001 bid_not_awardable"      # gh2626 alone: the switched-away bid stays selected, refused
 for t in T1 T2 T3 T4 T5 T6 T7; do has A2 $t F "rows=1 ACCEPTED"; has A3 $t F "REJECTED 42501"; done            # the lock appears with gh2564 only
