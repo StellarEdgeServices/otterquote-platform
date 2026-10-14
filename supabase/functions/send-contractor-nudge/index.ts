@@ -185,6 +185,9 @@ serve(async (req: Request) => {
   // gh-1916 / D-383: the only recipient is the phone number on the account at consent
   // (sms_consent_phone). notification_phones and the account phone as it stands today are NOT used.
   const phones: string[] = consentedSmsRecipients(contractor);
+  if (phones.length === 0 && contractor.sms_opt_in === true) {
+    console.warn(`[send-contractor-nudge] no text sent (gh-1916 D-383): contractor ${contractor_id} is opted in but has no stored sms_consent_phone. Email unaffected.`);
+  }
 
   // D-328 / gh-1916 R-134 gate: attemptContractorSms refuses (+logs) before
   // ever calling Twilio unless contractor.sms_opt_in is strictly true AND

@@ -426,6 +426,9 @@ async function handleContractSigned(
 
   // gh-1916 / D-383: SMS goes only to the phone that was on the account at consent.
   const phoneRecipients: string[] = consentedSmsRecipients(contractor);
+  if (phoneRecipients.length === 0 && contractor.sms_opt_in === true) {
+    console.warn(`[notify-contractors] no text sent (gh-1916 D-383): contractor ${contractor.id ?? "(unknown)"} is opted in but has no stored sms_consent_phone. Email unaffected.`);
+  }
 
   const contractorName = contractor.contact_name || contractor.company_name || "Contractor";
   const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
@@ -873,6 +876,9 @@ async function notifyContractorsForSingleTrade(
 
     // gh-1916 / D-383: SMS goes only to the phone that was on the account at consent.
     const phoneRecipients: string[] = consentedSmsRecipients(contractor);
+    if (phoneRecipients.length === 0 && contractor.sms_opt_in === true) {
+      console.warn(`[notify-contractors] no text sent (gh-1916 D-383): contractor ${contractor.id ?? "(unknown)"} is opted in but has no stored sms_consent_phone. Email unaffected.`);
+    }
 
     const contractorName = contractor.contact_name || "there";
     const emailText = newOpportunityEmailText(contractorName, claim_city, claim_state, tradeCap, job_type || "");
@@ -1199,6 +1205,9 @@ async function handleAgreementRequested(
 
   // gh-1916 / D-383: SMS goes only to the phone that was on the account at consent.
   const phoneRecipients: string[] = consentedSmsRecipients(contractor);
+  if (phoneRecipients.length === 0 && contractor.sms_opt_in === true) {
+    console.warn(`[notify-contractors] no text sent (gh-1916 D-383): contractor ${contractor.id ?? "(unknown)"} is opted in but has no stored sms_consent_phone. Email unaffected.`);
+  }
 
   const contractorName = contractor.contact_name || contractor.company_name || "Contractor";
   const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;

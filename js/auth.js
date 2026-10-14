@@ -1519,7 +1519,9 @@ window.Auth = {
                 sms_opt_in_source: data.sms_opt_in === true ? (data.sms_opt_in_source || 'contractor-signup') : null,
                 // gh-1916 / D-383: the number on the account at the moment of consent. Texts go ONLY to
                 // this number (never to notification_phones added later). NULL whenever sms_opt_in is not true.
-                sms_consent_phone: data.sms_opt_in === true ? (data.phone || null) : null,
+                // Spread ONLY on opt-in: an unticked signup must not send this key at all, so a signup cannot
+                // fail if this page is published before the migration adds the column (REVIEW 6171829370).
+                ...(data.sms_opt_in === true ? { sms_consent_phone: data.phone || null } : {}),
                 // R-177 rework: which exact consent sentence this opt-in was
                 // taken under (contractor-join.html sets this to match the copy
                 // it actually shows — see that file). NULL whenever sms_opt_in

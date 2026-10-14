@@ -9,6 +9,8 @@ DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 
 **Refs** #1916, D-383 (issue #2732). **Tier 3A** (one additive nullable column). **Not applied.**
 
+**Do not merge until the migration is applied: merging publishes js/auth.js and the onboarding page.** (Netlify auto-deploys on merge to main; PR #2791 REVIEW 6171829370.)
+
 ## What it does
 `ALTER TABLE public.contractors ADD COLUMN IF NOT EXISTS sms_consent_phone text DEFAULT NULL` plus a column comment. No row is read or rewritten.
 
@@ -25,7 +27,7 @@ SELECT count(*) total, count(*) FILTER (WHERE sms_opt_in IS TRUE) opted_in FROM 
 SELECT count(*) FILTER (WHERE sms_consent_phone IS NOT NULL) AS with_phone, count(*) AS total FROM public.contractors;  -- expect 0 | 15 (or current total)
 ```
 ## Order of deploy (matters)
-1. Apply the migration. 2. Deploy `notify-contractors`, `process-dunning`, `send-contractor-nudge` (each selects the column; a SELECT of a missing column errors). 3. Publish `js/auth.js` and `contractor-pre-approval.html` (each writes the column; a write to a missing column errors the whole contractor insert/update). Never in the other order.
+1. Apply the migration. 2. Deploy `notify-contractors`, `process-dunning`, `send-contractor-nudge` (each selects the column; a SELECT of a missing column errors). 3. Publish `js/auth.js` and `contractor-pre-approval.html` (each writes the column only when the contractor ticks the SMS box; a write to a missing column errors the whole contractor insert/update). Never in the other order.
 
 ## Behaviour after deploy
 A contractor with `sms_opt_in = true` and a NULL `sms_consent_phone` (all rows consented before this column) gets no text and the refusal is logged. Email is unaffected.
