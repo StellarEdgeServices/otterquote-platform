@@ -72,11 +72,12 @@
 -- quote to declined (B2). Known difference (B3): after a switch the earlier bidders are declined, so bids.html (accept_bid)
 -- can re-award one, while the React direct write is refused by the claims guard (declined is not submitted).
 --
--- CONFLICT WITH THE UNAPPLIED DRAFTS (disclosed, not resolved here). gh2519_quotes_server_set_fee.sql and
--- gh2564_quotes_selected_price_lock.sql also CREATE OR REPLACE quotes_guard_homeowner_columns() (gh2519 also accept_bid())
--- from the same live body WITHOUT these gh-2626 lines. Applied AFTER this file they silently remove them. Before either is
--- applied, carry the lines marked gh-2626 into it, or apply this set last; after any later migration that touches those two
--- functions, run the two SELECTs in the pre-flight (prosrc LIKE '%gh-2626%') and they must both return true.
+-- ORDER WITH THE UNAPPLIED DRAFTS (#2519 comment 6156383757, PR #2737). gh2519_quotes_server_set_fee.sql and
+-- gh2564_quotes_selected_price_lock.sql also CREATE OR REPLACE quotes_guard_homeowner_columns() (gh2519 also accept_bid()). They now
+-- carry the lines marked gh-2626, so the verified order is THIS FILE FIRST: gh2626 -> gh2519 -> gh2564. Applied AFTER gh2519, this file
+-- would re-create both functions from the pre-gh-2519 body and silently remove the server-set fee and the price lock, so it REFUSES
+-- (the DO block after BEGIN: it raises when public.quotes_platform_fee_for(uuid, uuid) exists, i.e. gh2519 is applied). After any later
+-- migration that touches those two functions, run the two SELECTs in the pre-flight (prosrc LIKE '%gh-2626%'); both must return true.
 --
 -- Not changed: any other existing trigger or guard function, any policy, any grant, any data.
 
@@ -84,6 +85,15 @@
 -- (CREATE OR REPLACE keeps accept_bid()'s EXECUTE for authenticated and the revoke from PUBLIC and anon).
 
 BEGIN;
+
+-- Order gate (REVIEW 6162070214 B3): gh2626 -> gh2519 -> gh2564. Applied after gh2519 this file would silently remove the server-set fee and the lock.
+DO $order$
+BEGIN
+  IF to_regprocedure('public.quotes_platform_fee_for(uuid,uuid)') IS NOT NULL THEN
+    RAISE EXCEPTION '%: gh2519 (public.quotes_platform_fee_for) is applied; this file re-creates quotes_guard_homeowner_columns() and accept_bid() from the pre-gh-2519 bodies and would silently remove the server-set fee and the price lock. Apply order is gh2626, gh2519, gh2564; roll gh2564 and gh2519 back first (gh2519_quotes_server_set_fee_rollback_to_gh2626.sql is not needed if gh2626 is not yet applied: use gh2519_quotes_server_set_fee_rollback.sql)', 'gh2626';
+  END IF;
+END
+$order$;
 
 CREATE OR REPLACE FUNCTION public.claims_guard_award_columns()
 RETURNS trigger
