@@ -4,7 +4,8 @@
 -- REPO COPY: none in supabase/migrations/ yet
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
--- gh-2785 (SECURITY): a signed-in user cannot change their own profiles.is_test, profiles.email or (silently) profiles.role.
+-- gh-2785 (SECURITY): a signed-in user cannot change their own profiles.is_test, profiles.email or (silently) profiles.role,
+-- whether by UPDATE or by DELETE + re-INSERT of their own row (REVIEW: FAIL 6172743018, B1).
 -- Tier: 3B (new trigger on a user table). Protective only (R-134): it only removes capability from client roles.
 -- NOT APPLIED by the authoring session or by CI. R-097 notice applies.
 -- Rollback: supabase/migrations_rollbacks/gh2785_profiles_freeze_is_test_role_email_rollback.sql
@@ -30,16 +31,32 @@
 --              is untouched. So role is PINNED (NEW.role := OLD.role, no error): the legacy writes still succeed for their other
 --              columns (full_name, phone, address) and cannot change role.
 --
--- Change. One SECURITY INVOKER trigger function profiles_freeze_privileged_columns() and one trigger of the same name,
--- BEFORE UPDATE OF is_test, role, email ON public.profiles. Only when current_user IN ('anon','authenticated') AND the JWT
--- role is not service_role (the test the live claims guards use):
---   - is_test or email changed (IS DISTINCT FROM): refused 42501. Re-sending the same value is not a change.
---   - role changed: NEW.role := OLD.role (silent pin).
+-- Change. (1) One SECURITY INVOKER trigger function profiles_freeze_privileged_columns() and one trigger of the same name,
+-- BEFORE INSERT OR UPDATE OF is_test, role, email ON public.profiles. Only when current_user IN ('anon','authenticated') AND
+-- the JWT role is not service_role (the test the live claims guards use):
+--   - UPDATE, is_test or email changed (IS DISTINCT FROM): refused 42501. Re-sending the same value is not a change.
+--   - UPDATE, role changed: NEW.role := OLD.role (silent pin).
+--   - INSERT (profiles_user_insert lets a user insert their own row, and production also had an own-row DELETE policy, so
+--     delete + re-insert was a bypass): NEW.role := 'homeowner', NEW.is_test := false, NEW.email := the JWT email
+--     (auth.jwt()->>'email', NULL if the token has none). Forced, not refused, because dashboard.html:1690-1708,
+--     use-dashboard-data.ts:179 and trade-selector page.tsx:855 insert/upsert a missing profile with role:'homeowner' and no
+--     email. The existing BEFORE INSERT trigger profiles_set_is_test_for_internal_domain sorts AFTER this trigger
+--     ('profiles_freeze...' < 'profiles_set...'), so an @otterquote-internal.test address is still flagged is_test=true.
+--     An upsert's ON CONFLICT DO UPDATE sees the forced values as EXCLUDED, and the UPDATE branch then pins role.
+--     Contractor signup is unaffected: handle_new_user() (SECURITY DEFINER, current_user = owner) creates the row with the
+--     column defaults (role 'homeowner'), js/auth.js:1435 is an UPDATE of an existing row, and the contractor flip is
+--     sync_contractor_profile_role() (SECURITY DEFINER, AFTER INSERT ON contractors).
+-- (2) DROP POLICY "Users can delete own profile" ON public.profiles. No client code deletes profiles (grep of both apps:
+--     only tests/e2e/flows/test-world-symmetry.spec.ts:193 and :225, which use the service_role client). Deleting a profile
+--     cascades to messages and home_profiles, so the policy was also a data-loss lever. profiles_user_insert is KEPT (the
+--     dashboard creates a missing profile client-side).
+-- APPLY NOTE (N2): production has one contractor whose profiles.role is not 'contractor' (read-only 2026-10-14, rv6). The pin
+-- removes the client heal path (js/auth.js:1435), so repair that row with service_role at apply:
+--   update public.profiles p set role='contractor' from public.contractors c where c.user_id=p.id and p.role is distinct from 'contractor';
 -- service_role (every Edge Function), postgres/owner-level sessions and SECURITY DEFINER functions (current_user is the
 -- owner inside them) are untouched. SECURITY INVOKER on purpose: current_user must be the caller.
--- Not changed: any existing trigger or function, any policy, any grant, any data. INSERT is out of scope (the existing
--- BEFORE INSERT trigger profiles_set_is_test_for_internal_domain handles is_test at creation).
--- Idempotent: CREATE OR REPLACE FUNCTION; DROP TRIGGER IF EXISTS before CREATE TRIGGER. No GRANT or REVOKE.
+-- Not changed: any existing trigger or function, any other policy, any grant, any data.
+-- Idempotent: CREATE OR REPLACE FUNCTION; DROP TRIGGER IF EXISTS before CREATE TRIGGER; DROP POLICY IF EXISTS. No GRANT or REVOKE.
 
 BEGIN;
 
@@ -51,6 +68,12 @@ AS $guard$
 BEGIN
   IF current_user IN ('anon', 'authenticated')
      AND COALESCE(auth.role(), '') <> 'service_role' THEN
+    IF TG_OP = 'INSERT' THEN
+      NEW.role := 'homeowner';
+      NEW.is_test := false;
+      NEW.email := auth.jwt() ->> 'email';
+      RETURN NEW;
+    END IF;
     IF NEW.is_test IS DISTINCT FROM OLD.is_test THEN
       RAISE EXCEPTION 'profiles.is_test can only be changed by service_role (gh-2785)' USING ERRCODE = '42501';
     END IF;
@@ -66,11 +89,13 @@ END;
 $guard$;
 
 COMMENT ON FUNCTION public.profiles_freeze_privileged_columns() IS
-  'gh-2785: BEFORE UPDATE OF is_test, role, email guard on public.profiles. Client roles (anon, authenticated) that are not service_role cannot change is_test or email (42501) and cannot change role (silently pinned to the old value). service_role, owner-level sessions and SECURITY DEFINER functions are untouched.';
+  'gh-2785: BEFORE INSERT OR UPDATE OF is_test, role, email guard on public.profiles. Client roles (anon, authenticated) that are not service_role cannot change is_test or email on UPDATE (42501), cannot change role (silently pinned), and on INSERT get role homeowner, is_test false and email from the JWT. service_role, owner-level sessions and SECURITY DEFINER functions are untouched.';
 
 DROP TRIGGER IF EXISTS profiles_freeze_privileged_columns ON public.profiles;
 CREATE TRIGGER profiles_freeze_privileged_columns
-  BEFORE UPDATE OF is_test, role, email ON public.profiles
+  BEFORE INSERT OR UPDATE OF is_test, role, email ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.profiles_freeze_privileged_columns();
+
+DROP POLICY IF EXISTS "Users can delete own profile" ON public.profiles;
 
 COMMIT;

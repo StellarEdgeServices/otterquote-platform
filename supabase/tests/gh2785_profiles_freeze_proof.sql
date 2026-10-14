@@ -24,7 +24,7 @@ DECLARE
 BEGIN
   INSERT INTO public.profiles(id, full_name, email, is_test) VALUES (me, 'Real Homeowner', 'real@example.invalid', false), (other, 'Other', 'other@example.invalid', false);
   INSERT INTO proof_log(line) VALUES ('GUARD trigger profiles_freeze_privileged_columns present: ' || EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid='public.profiles'::regclass AND tgname='profiles_freeze_privileged_columns' AND NOT tgisinternal));
-  INSERT INTO proof_log(line) VALUES ('GRANT authenticated UPDATE is_test: ' || has_column_privilege('authenticated','public.profiles','is_test','UPDATE') || ' role: ' || has_column_privilege('authenticated','public.profiles','role','UPDATE') || ' email: ' || has_column_privilege('authenticated','public.profiles','email','UPDATE'));
+  INSERT INTO proof_log(line) VALUES ('GRANT anon/authenticated DELETE: ' || has_table_privilege('anon','public.profiles','DELETE') || '/' || has_table_privilege('authenticated','public.profiles','DELETE') || ' DELETE policy present: ' || EXISTS (SELECT 1 FROM pg_policies WHERE tablename='profiles' AND cmd='DELETE') || ' | authenticated UPDATE is_test: ' || has_column_privilege('authenticated','public.profiles','is_test','UPDATE') || ' role: ' || has_column_privilege('authenticated','public.profiles','role','UPDATE') || ' email: ' || has_column_privilege('authenticated','public.profiles','email','UPDATE'));
 
   -- U1 the closes-on statement: a real user flags themselves test (negative control: succeeds before the fix)
   r := pg_temp.try_as('authenticated', me, 'real@example.invalid', format('UPDATE public.profiles SET is_test = true WHERE id = %L', me));
@@ -72,6 +72,46 @@ BEGIN
   -- D1 the real contractor flip: authenticated inserts a contractors row, the SECURITY DEFINER trigger sets role
   r := pg_temp.try_as('authenticated', me, 'real@example.invalid', format('INSERT INTO public.contractors(user_id) VALUES (%L)', me));
   INSERT INTO proof_log(line) VALUES ('D1 authenticated INSERT contractors -> sync_contractor_profile_role: ' || r || ' -> now role=' || (SELECT role FROM profiles WHERE id=me));
+
+  -- A1 the bypass found in REVIEW 6172743018: delete own row, re-insert it forged (negative control: succeeds today)
+  r := pg_temp.try_as('authenticated', me, 'real@example.invalid', format('DO $x$ BEGIN DELETE FROM public.profiles WHERE id = %L; INSERT INTO public.profiles(id, email, role, is_test) VALUES (%L, ''forged@example.invalid'', ''contractor'', true); END $x$', me, me));
+  INSERT INTO proof_log(line) VALUES ('A1 authenticated DELETE own row + INSERT forged is_test/email/role: ' || r || ' -> now ' || coalesce((SELECT is_test::text || '/' || email || '/' || role FROM profiles WHERE id=me), 'row gone'));
+  DELETE FROM public.profiles WHERE id = me;
+  INSERT INTO public.profiles(id, full_name, email, is_test) VALUES (me, 'Real Homeowner', 'real@example.invalid', false);
+  -- A2 the INSERT leg alone (owner deleted the row, as if the DELETE policy were still open): forged insert
+  DELETE FROM public.profiles WHERE id = me;
+  r := pg_temp.try_as('authenticated', me, 'real@example.invalid', format('INSERT INTO public.profiles(id, email, role, is_test) VALUES (%L, ''forged@example.invalid'', ''contractor'', true)', me));
+  INSERT INTO proof_log(line) VALUES ('A2 authenticated INSERT forged is_test/email/role (row absent): ' || r || ' -> now ' || coalesce((SELECT is_test::text || '/' || email || '/' || role FROM profiles WHERE id=me), 'row gone'));
+  DELETE FROM public.profiles WHERE id = me;
+  INSERT INTO public.profiles(id, full_name, email, is_test) VALUES (me, 'Real Homeowner', 'real@example.invalid', false);
+  -- A3 plain DELETE of own row
+  r := pg_temp.try_as('authenticated', me, 'real@example.invalid', format('DELETE FROM public.profiles WHERE id = %L', me));
+  INSERT INTO proof_log(line) VALUES ('A3 authenticated DELETE own row: ' || r || ' -> row present=' || EXISTS (SELECT 1 FROM profiles WHERE id=me));
+  INSERT INTO public.profiles(id, full_name, email) VALUES (me, 'Real Homeowner', 'real@example.invalid') ON CONFLICT (id) DO NOTHING;
+  -- I1 legitimate client insert of a missing profile (dashboard shape: role homeowner, no email)
+  DELETE FROM public.profiles WHERE id = me;
+  r := pg_temp.try_as('authenticated', me, 'real@example.invalid', format('INSERT INTO public.profiles(id, full_name, role) VALUES (%L, ''Dash Name'', ''homeowner'')', me));
+  INSERT INTO proof_log(line) VALUES ('I1 authenticated INSERT dashboard shape (role homeowner, no email): ' || r || ' -> now ' || (SELECT is_test::text || '/' || coalesce(email,'NULL') || '/' || role || '/' || full_name FROM profiles WHERE id=me));
+  -- I2 internal-domain JWT email still flagged test by the existing gh-1961 trigger
+  DELETE FROM public.profiles WHERE id = me;
+  r := pg_temp.try_as('authenticated', me, 'agent@otterquote-internal.test', format('INSERT INTO public.profiles(id, full_name) VALUES (%L, ''Agent'')', me));
+  INSERT INTO proof_log(line) VALUES ('I2 authenticated INSERT with @otterquote-internal.test JWT email: ' || r || ' -> now ' || (SELECT is_test::text || '/' || coalesce(email,'NULL') || '/' || role FROM profiles WHERE id=me));
+  -- I3 handle_new_user shape: SECURITY DEFINER insert (called by authenticated) keeps defaults and the given email
+  DELETE FROM public.profiles WHERE id = me;
+  r := pg_temp.try_as('authenticated', me, 'real@example.invalid', format('SELECT public.proof_handle_new_user(%L, ''hnu@example.invalid'')', me));
+  INSERT INTO proof_log(line) VALUES ('I3 handle_new_user-shape definer insert: ' || r || ' -> now ' || (SELECT is_test::text || '/' || email || '/' || role FROM profiles WHERE id=me));
+  -- I4 service_role insert keeps what it sends (e2e seeds)
+  DELETE FROM public.profiles WHERE id = me;
+  r := pg_temp.try_as('service_role', NULL, NULL, format('INSERT INTO public.profiles(id, email, role, is_test) VALUES (%L, ''seed@example.invalid'', ''contractor'', true)', me));
+  INSERT INTO proof_log(line) VALUES ('I4 service_role INSERT email/role/is_test: ' || r || ' -> now ' || (SELECT is_test::text || '/' || email || '/' || role FROM profiles WHERE id=me));
+  -- I5 contractor signup chain on a fresh handle_new_user row: definer insert, auth.js-shape UPDATE, contractors INSERT
+  DELETE FROM public.profiles WHERE id = me; DELETE FROM public.contractors WHERE user_id = me;
+  PERFORM public.proof_handle_new_user(me, 'real@example.invalid');
+  r := pg_temp.try_as('authenticated', me, 'real@example.invalid', format('UPDATE public.profiles SET full_name = ''Contractor Co'', role = ''contractor'', updated_at = now() WHERE id = %L', me));
+  r := r || ' then ' || pg_temp.try_as('authenticated', me, 'real@example.invalid', format('INSERT INTO public.contractors(user_id) VALUES (%L)', me));
+  INSERT INTO proof_log(line) VALUES ('I5 contractor signup chain (definer insert, update role=contractor, contractors insert): ' || r || ' -> now ' || (SELECT role || '/' || full_name FROM profiles WHERE id=me));
+  DELETE FROM public.contractors WHERE user_id = me;
+  UPDATE public.profiles SET is_test = false, email = 'real@example.invalid', role = 'homeowner' WHERE id = me;
 
   FOR st IN SELECT line FROM proof_log ORDER BY n LOOP NULL; END LOOP;
   INSERT INTO proof_log(line) VALUES ('END forged values held by me: ' || (SELECT count(*) FROM profiles WHERE id=me AND (is_test OR email <> 'real@example.invalid')));
