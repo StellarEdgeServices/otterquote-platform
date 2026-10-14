@@ -344,9 +344,8 @@ function buildEvidencePayload(params: {
   const productDescription = [
     "Otter Quotes is a platform that facilitates roofing and exterior repair contracts.",
     "The platform collects a platform fee from contractors when a homeowner signs their contract.",
-    "The homeowner pays nothing to Otter Quotes; the fee is charged to the contractor.",
-    "The platform fee covers: competitive bid management, digital contract execution (DocuSign), ",
-    "measurements (aerial measurement reports), and document compliance services.",
+    "The platform fee covers: competitive bid management, digital contract execution (electronic signature), ",
+    "and document compliance services.",
   ].join(" ");
 
   const serviceDocLines = [
@@ -389,8 +388,8 @@ function buildEvidencePayload(params: {
     } else {
       serviceDocLines.push(
         "  Job Completion Date: PENDING — contractor 'Mark Complete' action not yet triggered.",
-        "  NOTE: Mark Complete dashboard flow is a net-new build (D-228). Completion cannot be",
-        "  auto-verified at this time. Manual verification of job completion required.",
+        "  NOTE: Completion cannot be auto-verified at this time. Manual verification of job",
+        "  completion required.",
       );
     }
 
@@ -404,15 +403,13 @@ function buildEvidencePayload(params: {
   const customerCommunication = feeAcceptance
     ? [
         "A bid confirmation email was sent to the contractor upon bid submission.",
-        `The email included the accepted fee rate (${feeAcceptance.fee_pct}%), the rescission link`,
-        "allowing the contractor to rescind within 24 hours, and a reference to the invoice",
-        "that would be generated at contract signing.",
+        `The email included the platform fee rate (${feeAcceptance.fee_pct}%), a link to rescind the bid,`,
+        "and a link to review the bid.",
         feeAcceptance.invoice_url
           ? `Invoice URL (D-215 Layer 3): ${feeAcceptance.invoice_url}`
           : "Invoice URL: Not available — invoice may not have been generated yet.",
       ].join(" ")
-    : "Bid confirmation email was sent upon bid submission per platform process (D-215 Layer 2). " +
-      "Fee acceptance record could not be retrieved at this time.";
+    : "Fee acceptance record could not be retrieved at this time.";
 
   // gh-1759: service_documentation / customer_communication / receipt are Stripe
   // FILE fields; the prose belongs in the text fields (see dispute-evidence-fields.ts).
@@ -670,7 +667,7 @@ async function handleDisputeCreated(
     let clickupTaskId: string | null = null;
     let clickupTaskUrl: string | null = null;
 
-    if (!event.livemode) {
+    if (event.livemode === false) {
       // gh-1759 (Ben's ruling, issue comment 6069379782): a Stripe TEST-mode dispute
       // must not file an Urgent task in the owner's ClickUp list. The disputes,
       // admin_dispute_queue and activity_log rows below are still written, so the

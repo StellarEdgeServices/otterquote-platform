@@ -11,7 +11,8 @@
  * URL) in them. No dispute could ever have been auto-answered.
  *
  * The text-bearing fields Stripe accepts are `product_description` (<= 20,000
- * chars) and `uncategorized_text` (<= 150,000 chars). This module is the single
+ * chars) and `uncategorized_text` (<= 20,000 chars; 150,000 is the COMBINED limit
+ * across all evidence fields, not a per-field limit). This module is the single
  * place that maps the handler's three prose blocks onto those two, so a test can
  * pin it without importing index.ts (which starts a server at import time).
  *
@@ -33,7 +34,7 @@ export const FILE_TYPED_EVIDENCE_FIELDS: ReadonlySet<string> = new Set([
 ]);
 
 export const PRODUCT_DESCRIPTION_MAX = 20_000;
-export const UNCATEGORIZED_TEXT_MAX = 150_000;
+export const UNCATEGORIZED_TEXT_MAX = 20_000;
 
 /**
  * Build the TEXT-ONLY evidence hash (form-encoded keys, as `stripeRequest` sends).
