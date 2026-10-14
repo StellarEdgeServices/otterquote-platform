@@ -182,9 +182,22 @@ export function deriveBidExpiry(bid: BidRow, now: Date = new Date()): BidExpiry 
 
 // ── Active-bid / best-price selectors (bids.html:1121-1138, 2191) ────────────
 
-/** Only non-expired, non-withdrawn bids compete and appear in the comparison grid. */
+/**
+ * gh-2564: a bid the homeowner switched away from is retired as bid_status 'superseded'. It is not
+ * selectable and has no customer wording, so it is dropped from every list the page renders.
+ */
+export function isSupersededBid(bid: Pick<BidRow, 'bid_status'>): boolean {
+  return bid.bid_status === 'superseded';
+}
+
+/** The bids the page shows at all: everything except retired ('superseded') bids. */
+export function visibleBids(bids: BidRow[]): BidRow[] {
+  return bids.filter((b) => !isSupersededBid(b));
+}
+
+/** Only non-expired, non-withdrawn, non-superseded bids compete and appear in the comparison grid. */
 export function activeBids(bids: BidRow[]): BidRow[] {
-  return bids.filter((b) => b.bid_status !== 'expired' && b.bid_status !== 'cancelled');
+  return bids.filter((b) => b.bid_status !== 'expired' && b.bid_status !== 'cancelled' && !isSupersededBid(b));
 }
 
 /** Every bid expired (drives the all-expired banner). bids.html:1128. */
@@ -201,7 +214,7 @@ export function lowestActivePrice(bids: BidRow[]): number | null {
 
 /** "Best Price" badge — non-expired, ties the lowest, with 2+ active bids. */
 export function isLowestPrice(bid: BidRow, bids: BidRow[]): boolean {
-  if (bid.bid_status === 'expired' || bid.bid_status === 'cancelled') return false;
+  if (bid.bid_status === 'expired' || bid.bid_status === 'cancelled' || isSupersededBid(bid)) return false;
   const lowest = lowestActivePrice(bids);
   return lowest !== null && bid.total_price === lowest;
 }
@@ -354,6 +367,10 @@ export function deriveBidAction(claim: BidsClaim | null | undefined, bid: BidRow
   }
   if (bid.bid_status === 'cancelled') {
     return { kind: 'withdrawn', label: 'Bid Withdrawn', disabled: true };
+  }
+  // gh-2564: defensive; the page never renders a superseded bid. Reuses the existing 'Not Selected' label.
+  if (isSupersededBid(bid)) {
+    return { kind: 'not_selected', label: 'Not Selected', disabled: true };
   }
   if (isExpired) {
     return { kind: 'renew', label: 'Request Updated Bid' };
