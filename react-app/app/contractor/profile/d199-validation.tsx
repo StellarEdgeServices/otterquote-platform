@@ -205,11 +205,19 @@ function ManualMappingModal({ row, onClose, onResolved }: {
     }
     try {
       if (missingFields.length > 0) {
-        const { error: persistErr } = await supabase
+        // gh-2105 batch 3 (legal: D-199 template verdict path). Chain .select('id') and
+        // fail loudly on a zero-row match (RLS-denied or wrong id resolves error:null with
+        // no row written, so the contractor saw "Submitted for admin review" for nothing).
+        // This proves the row matched, not the final `status` value: the
+        // contractor_templates_freeze_verdict trigger may rewrite status after the write,
+        // which is the part that stays class (c) / server-side (see the PR body).
+        const { data: persistedRows, error: persistErr } = await supabase
           .from('contractor_templates')
           .update({ manual_overrides: { ...overrides, _missing_fields: missingFields }, status: 'submitted_for_admin_review' })
-          .eq('id', row.id!);
+          .eq('id', row.id!)
+          .select('id');
         if (persistErr) throw persistErr;
+        if (!Array.isArray(persistedRows) || persistedRows.length === 0) throw new Error('update_zero_rows: contractor_templates (manual mapping submit)');
         const { data: refreshed } = await supabase.from('contractor_templates').select('*').eq('id', row.id!).single();
         alert('Submitted for admin review. We will notify you once a member of the Otter Quotes team has looked at your template.');
         onResolved((refreshed as D199Row) ?? row);
@@ -222,7 +230,11 @@ function ManualMappingModal({ row, onClose, onResolved }: {
       else if (result.status === 'manual_mapping_pending') alert('Some labels you provided still could not be matched in your PDF. Please double-check spelling and capitalization, or use "Request admin review" if you need help.');
       onResolved((refreshed as D199Row) ?? row);
     } catch (e) {
-      setErr('Submission failed: ' + (e instanceof Error ? e.message : String(e)));
+      const msg = e instanceof Error ? e.message : String(e);
+      // The internal zero-row token goes to the console, not to the contractor; the
+      // existing "Submission failed" prefix is the only text shown (no new copy).
+      if (msg.startsWith('update_zero_rows')) console.error('[D-199] manual mapping submit wrote no row:', msg);
+      setErr(msg.startsWith('update_zero_rows') ? 'Submission failed' : 'Submission failed: ' + msg);
       setBusy(false);
     }
   }
