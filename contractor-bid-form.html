@@ -5545,6 +5545,14 @@
                   expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
                   renewals_count: (existingQuote.renewals_count || 0) + 1,
                 } : {}),
+                // gh-2564 (CEO RUN 104 point 4): Change Bid on a bid the contractor withdrew ('cancelled') makes it
+                // live again -- the rescind-and-re-bid path D-369/D-381 rely on. Same live fields as a renewal, but
+                // renewals_count is not bumped: this is not an auto-renewal.
+                ...(!renewMode && existingQuote.bid_status === 'cancelled' ? {
+                  bid_status: 'active',
+                  expired_at: null,
+                  expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+                } : {}),
                 updated_at: new Date().toISOString(),
             };
             const { data: updatedRows, error: updateError } = await sb
@@ -5913,6 +5921,9 @@
     // EF: rescind-bid requires quote_id + contractor_id (JWT-gated).
     // ══════════════════════════════════════════════════════════════
 
+    // gh-2564: same text the rescind-bid EF returns with its 409 { error: 'bid_selected' }.
+    const BID_SELECTED_MESSAGE = 'This bid was already selected by the homeowner. Contact support to withdraw it.';
+
     async function initRescindMode() {
       // Hide the normal bid form and all form sections that don't apply
       ['bidFormCard', 'tradeSelectionCard', 'perTradeBreakdown', 'hoverHomePhotosCard',
@@ -5944,7 +5955,7 @@
       // Look up the contractor's active quote for this claim
       const { data: quote, error: quoteErr } = await sb
         .from('quotes')
-        .select('id, total_price, bid_status, created_at')
+        .select('id, total_price, bid_status, status, created_at')
         .eq('claim_id', currentClaim.id)
         .eq('contractor_id', currentContractor.id)
         .maybeSingle();
@@ -5952,6 +5963,16 @@
       if (quoteErr || !quote) {
         if (detailEl) detailEl.textContent =
           'No active bid found for this project. It may have already been withdrawn or does not exist.';
+        return;
+      }
+
+      // gh-2564 (CEO RUN 104): a bid the homeowner already selected is not the contractor's to withdraw here
+      // (D-215(b): route to support). The rescind-bid EF refuses the same case with a 409 bid_selected; this hides
+      // the Rescind control up front. selected_contractor_id comes from bidder_claim_summary.
+      if (quote.status === 'selected' || currentClaim.selected_contractor_id === currentContractor.id) {
+        if (detailEl) detailEl.textContent = BID_SELECTED_MESSAGE;
+        const actionsEl = document.getElementById('rescindConfirmBtn')?.parentElement;
+        if (actionsEl) actionsEl.style.display = 'none';
         return;
       }
 
@@ -6008,6 +6029,12 @@
 
         if (!resp.ok) {
           const errBody = await resp.json().catch(() => ({}));
+          if (errBody.error === 'bid_selected') {
+            // gh-2564: show the EF's message and hide the Rescind control; nothing to retry.
+            const selectedErr = new Error(errBody.message || BID_SELECTED_MESSAGE);
+            selectedErr.bidSelected = true;
+            throw selectedErr;
+          }
           throw new Error(errBody.error || 'HTTP ' + resp.status);
         }
 
@@ -6025,6 +6052,7 @@
       } catch (err) {
         console.error('[Rescind] confirmRescind error:', err);
         if (btn) { btn.disabled = false; btn.textContent = 'Yes, Rescind My Bid'; }
+        if (err && err.bidSelected && btn && btn.parentElement) { btn.parentElement.style.display = 'none'; }
         if (errEl) {
           errEl.textContent = err.message || 'Failed to rescind bid. Please try again or contact support.';
           errEl.style.display = 'block';

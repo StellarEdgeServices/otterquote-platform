@@ -1,5 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
-import { RESCINDABLE_STATUSES, RESCINDED_BID_STATUS } from "./status.ts";
+import {
+  BID_SELECTED_ERROR,
+  BID_SELECTED_MESSAGE,
+  isBidSelectedOrAwarded,
+  RESCINDABLE_STATUSES,
+  RESCINDED_BID_STATUS,
+} from "./status.ts";
+import { mailgunSender, notifyHomeownerOfWithdrawal } from "./notify.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -115,7 +122,7 @@ Deno.serve(async (req: Request) => {
   // Fetch the quote
   const { data: quote, error: fetchError } = await supabase
     .from("quotes")
-    .select("id, bid_status, contractor_id, created_at, is_test")
+    .select("id, bid_status, status, claim_id, contractor_id, created_at, is_test")
     .eq("id", body.quote_id)
     .single();
 
@@ -158,6 +165,30 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({ error: "Authed user does not own this contractor record" }),
       {
         status: 403,
+        headers: {
+          "Content-Type": "application/json",
+          ...buildCorsHeaders(req),
+        },
+      }
+    );
+  }
+
+  // gh-2564: refuse when the homeowner already selected this bid, or its claim is awarded / contract_signed.
+  // The contractor is routed to support (D-215(b)); the policy for withdrawing a selected bid is Dustin's (D-369).
+  let claimStatus: string | null = null;
+  if (quote.claim_id) {
+    const { data: claimRow } = await supabase
+      .from("claims")
+      .select("status")
+      .eq("id", quote.claim_id)
+      .maybeSingle();
+    claimStatus = claimRow?.status ?? null;
+  }
+  if (isBidSelectedOrAwarded(quote.status, claimStatus)) {
+    return new Response(
+      JSON.stringify({ error: BID_SELECTED_ERROR, message: BID_SELECTED_MESSAGE }),
+      {
+        status: 409,
         headers: {
           "Content-Type": "application/json",
           ...buildCorsHeaders(req),
@@ -252,6 +283,27 @@ Deno.serve(async (req: Request) => {
     // Don't fail the response; log insertion is non-critical
   }
 
+  // gh-2564: the confirmation card tells the contractor "the homeowner will be notified"; this is that notice.
+  // One email, non-fatal: the bid is already withdrawn, so a send failure is logged, never returned as an error.
+  let homeownerNotified = false;
+  try {
+    const mailgunApiKey = Deno.env.get("MAILGUN_API_KEY") || "";
+    const mailgunDomain = Deno.env.get("MAILGUN_DOMAIN") || "";
+    if (mailgunApiKey && mailgunDomain) {
+      const notice = await notifyHomeownerOfWithdrawal(
+        supabase,
+        mailgunSender(mailgunApiKey, mailgunDomain),
+        { claimId: quote.claim_id ?? null, contractorId: body.contractor_id, mailgunDomain },
+      );
+      homeownerNotified = notice.sent;
+      if (!notice.sent) console.error("[rescind-bid] homeowner notice not sent:", notice.reason);
+    } else {
+      console.error("[rescind-bid] homeowner notice not sent: MAILGUN_API_KEY / MAILGUN_DOMAIN not set");
+    }
+  } catch (noticeErr) {
+    console.error("[rescind-bid] homeowner notice failed (non-fatal):", noticeErr);
+  }
+
   // Success response
   return new Response(
     JSON.stringify({
@@ -259,6 +311,7 @@ Deno.serve(async (req: Request) => {
       quote_id: body.quote_id,
       rescinded_at: rescindedAt,
       previous_status: previousStatus,
+      homeowner_notified: homeownerNotified,
     }),
     {
       status: 200,

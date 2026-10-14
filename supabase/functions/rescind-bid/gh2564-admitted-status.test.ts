@@ -57,7 +57,7 @@ Deno.test("every status rescind-bid accepts as rescindable that the constraint c
 });
 
 Deno.test("wiring: index.ts writes RESCINDED_BID_STATUS, not a string literal, and never 'rescinded'", () => {
-  assert(src.includes('import { RESCINDABLE_STATUSES, RESCINDED_BID_STATUS } from "./status.ts";'));
+  assert(/import \{[^}]*\bRESCINDABLE_STATUSES\b[^}]*\bRESCINDED_BID_STATUS\b[^}]*\} from "\.\/status\.ts";/.test(src));
   assert(/\.update\(\{\s*bid_status: RESCINDED_BID_STATUS,/.test(src), "the update must write RESCINDED_BID_STATUS");
   assert(!/bid_status:\s*["']rescinded["']/.test(src));
 });

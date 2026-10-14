@@ -88,7 +88,9 @@ export const BID_COPY = {
     // Shown when bid_status is not one of RESCINDABLE_STATUSES (:5748-5749).
     // `status` is the bid_status; rendered as JSX text, not innerHTML.
     notRescindable: (status: string): string =>
-      `Bid status: ${status} — This bid cannot be withdrawn at its current stage. Only submitted, pending, or under-review bids can be rescinded.`,
+      `Bid status: ${status} — This bid cannot be withdrawn at its current stage. Only active, submitted, pending, or under-review bids can be rescinded.`, // gh-2564: matches contractor-bid-form.html:5962 (CEO RUN 104 point 6)
+    // gh-2564: the rescind-bid EF's 409 { error: 'bid_selected' } message, also shown up front for a selected bid.
+    bidSelected: 'This bid was already selected by the homeowner. Contact support to withdraw it.',
     confirmBtn: 'Yes, Rescind My Bid',
     rescinding: 'Rescinding…',
     genericError: 'Failed to rescind bid. Please try again or contact support.',

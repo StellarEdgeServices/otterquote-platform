@@ -14,3 +14,21 @@ export const RESCINDABLE_STATUSES = ["active", "submitted", "pending", "under_re
 
 // The bid_status a rescinded bid is written with. Must be a value quotes_bid_status_check admits.
 export const RESCINDED_BID_STATUS = "cancelled";
+
+// gh-2564 (CEO RUN 104 point 2): a bid the homeowner has already selected, or whose claim is already awarded or
+// signed, is not the contractor's to withdraw through this endpoint. D-215(b): the rescission link verifies the bid
+// is not in awarded / contract_signed+ status and, if it is, displays an error and routes to support. D-369 leaves
+// "what happens when a contractor rescinds a selected bid" to Dustin; until he rules, the refusal stands.
+export const BID_SELECTED_ERROR = "bid_selected";
+export const BID_SELECTED_MESSAGE =
+  "This bid was already selected by the homeowner. Contact support to withdraw it.";
+export const SELECTED_QUOTE_STATUS = "selected";
+export const LOCKED_CLAIM_STATUSES = ["awarded", "contract_signed"];
+
+export function isBidSelectedOrAwarded(
+  quoteStatus: string | null | undefined,
+  claimStatus: string | null | undefined,
+): boolean {
+  return quoteStatus === SELECTED_QUOTE_STATUS ||
+    (!!claimStatus && LOCKED_CLAIM_STATUSES.includes(claimStatus));
+}

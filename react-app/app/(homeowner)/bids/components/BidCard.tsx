@@ -69,6 +69,7 @@ export function BidCard({
   const expiry = deriveBidExpiry(bid, now);
   const action = deriveBidAction(claim, bid);
   const isExpired = expiry.state === 'expired';
+  const isWithdrawn = expiry.state === 'withdrawn'; // gh-2564
   const lowest = isLowestPrice(bid, bids);
   const jt = JOB_TYPE[claim?.job_type || ''] || { label: 'Project', color: 'var(--slate, #64748B)' };
   const ss = getScopeSummary(bid);
@@ -80,10 +81,10 @@ export function BidCard({
   const openCredentials = () => onCredentials?.(contractor.id);
 
   return (
-    <div className={'oqb-card' + (lowest ? ' lowest' : '') + (isExpired ? ' expired' : '')}>
+    <div className={'oqb-card' + (lowest ? ' lowest' : '') + (isExpired || isWithdrawn ? ' expired' : '')}>
       <div className="oqb-card-top">
         <span className="oqb-jobtype" style={{ background: jt.color }}>{jt.label}</span>
-        {isExpired ? <span className="oqb-expired-badge">Expired</span> : <span />}
+        {isExpired ? <span className="oqb-expired-badge">Expired</span> : isWithdrawn ? <span className="oqb-expired-badge">Withdrawn</span> : <span />}
         {lowest && !isExpired ? <span className="oqb-best">Best Price</span> : null}
       </div>
 
@@ -114,6 +115,8 @@ export function BidCard({
       </div>
 
       {expiry.state === 'expiring' && <div className="oqb-expiry-warning">{expiry.warning}</div>}
+
+      {isWithdrawn && <div className="oqb-expiry-notice">This contractor withdrew this bid.</div>}
 
       {isExpired && (
         <div className="oqb-expiry-notice">
@@ -206,7 +209,7 @@ function BidActionButton({
       </a>
     );
   }
-  if (action === 'not_selected') {
+  if (action === 'not_selected' || action === 'withdrawn') {
     return (
       <button type="button" className="oqb-btn ghost" disabled>
         {label}
