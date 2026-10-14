@@ -14,6 +14,12 @@
 -- since PR #2615, else 409) and then makes its one write, completion_date, as service_role. The HTTP and signed-in PostgREST legs
 -- are in supabase/tests/gh2479_signed_in_leg.sh. This file is the SQL layer.
 --
+-- PRODUCTION FIDELITY (review 6170832811): the local harness lacks quotes_enforce_bid_can_submit, trg_enforce_bid_window_expiry and
+-- claims_payment_method_guard. On production they can refuse C1's superuser INSERT of quote qc (printed as "C1 FIXTURE INSERT ... REFUSED",
+-- C1 is then not proven; the born-state proof sets the template and payment-method fixtures in-transaction, copy them if it happens),
+-- can refuse E1a/E7a before the gh-2479 born-state guard (every REJECTED line now prints "[by <function>]": read it, the gh-2479 guards
+-- are claims_guard_referral_columns and quotes_guard_homeowner_columns), and can refuse E3q-c (the CONTROL line then does not accrue).
+-- The PROD-ONLY GATES line prints their state first. The file aborts with no write if any fixture is not is_test.
 -- Run (production yeszghaspzwwstvsrioa, is_test fixtures only; the last statement is a deliberate RAISE EXCEPTION, so everything
 -- rolls back and the raw findings are the exception text; send it as ONE statement batch, no COMMIT anywhere):
 --   AFTER the fix (now): run this file alone.
@@ -31,7 +37,7 @@
 
 CREATE FUNCTION pg_temp.try_as(p_role text, p_sub uuid, p_sql text, p_email text DEFAULT 'gh2479-completion-proof@example.invalid') RETURNS text
 LANGUAGE plpgsql AS $f$
-DECLARE n int;
+DECLARE n int; ctx text; refuser text;
 BEGIN
   PERFORM set_config('request.jwt.claims', CASE WHEN p_role = 'anon' THEN json_build_object('role', 'anon')::text
     ELSE json_build_object('sub', p_sub, 'role', p_role, 'email', p_email)::text END, true);
@@ -42,8 +48,12 @@ BEGIN
     EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', '', true);
     RETURN 'rows=' || n || CASE WHEN n > 0 THEN ' ACCEPTED' ELSE ' (no row changed)' END;
   EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS ctx = PG_EXCEPTION_CONTEXT;
+    refuser := COALESCE(substring(ctx FROM 'function ([A-Za-z0-9_.]+)\('), '(no function: constraint, RLS or privilege)');
     EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', '', true);
-    RETURN 'REJECTED ' || SQLSTATE || ' ' || left(SQLERRM, 110);
+    -- the refusing trigger function is printed so a reader can tell the gh-2479 guard from another guard (D-199 bid gate,
+    -- bid-window, payment-method) that fires first on production
+    RETURN 'REJECTED ' || SQLSTATE || ' [by ' || refuser || '] ' || left(SQLERRM, 110);
   END;
 END $f$;
 
@@ -91,7 +101,7 @@ DECLARE
   qc   constant uuid := '00000000-2479-4c00-8000-0000000000a3';
   bid_cols constant text := 'claim_id,contractor_id,total_price,fee_percentage,fee_amount,is_test,trade_type';
   bid_vals text := format('%L,%L,13560,5,678,true,''roofing''', ca, k1);
-  v text := '';
+  v text := ''; bc text; ctx text;
 BEGIN
   v := v || E'\nFIXTURES ' || format('owner_is_test=%s claims(c1,csig)_is_test=%s c1=%s csig=%s q1_is_test=%s q1=%s/%s k1_is_test=%s k1u_is_test=%s rx_is_test=%s rx_agent_is_test=%s new ids free=%s',
     (SELECT is_test FROM profiles WHERE id = o), (SELECT bool_and(is_test) FROM claims WHERE id IN (c1, csig)),
@@ -100,6 +110,26 @@ BEGIN
     (SELECT is_test FROM contractors WHERE id = k1), (SELECT is_test FROM profiles WHERE id = k1u),
     (SELECT is_test FROM referrals WHERE id = rx), (SELECT a.is_test FROM referral_agents a JOIN referrals r ON r.referral_agent_id = a.id WHERE r.id = rx),
     (SELECT count(*) = 0 FROM claims WHERE id IN (ca, c3)) AND (SELECT count(*) = 0 FROM quotes WHERE id IN (qa, qc)));
+  -- FAIL CLOSED: every fixture must read is_test = true (a missing row reads NULL) before the first write.
+  IF NOT COALESCE((SELECT is_test FROM profiles WHERE id = o), false)
+     OR NOT COALESCE((SELECT bool_and(is_test) AND count(*) = 2 FROM claims WHERE id IN (c1, csig)), false)
+     OR NOT COALESCE((SELECT is_test FROM quotes WHERE id = q1), false)
+     OR NOT COALESCE((SELECT is_test FROM contractors WHERE id = k1), false)
+     OR NOT COALESCE((SELECT is_test FROM profiles WHERE id = k1u), false)
+     OR NOT COALESCE((SELECT is_test FROM referrals WHERE id = rx), false)
+     OR NOT COALESCE((SELECT a.is_test FROM referral_agents a JOIN referrals r ON r.referral_agent_id = a.id WHERE r.id = rx), false)
+     OR EXISTS (SELECT 1 FROM claims WHERE id IN (ca, c3)) OR EXISTS (SELECT 1 FROM quotes WHERE id IN (qa, qc)) THEN
+    RAISE EXCEPTION 'GH2479_COMPLETION_FIXTURE_ABORT: a fixture is missing, not is_test, or a new id is taken; nothing was written%', v;
+  END IF;
+  IF to_regprocedure('public.bid_can_submit(uuid,text,text)') IS NOT NULL THEN
+    EXECUTE format('SELECT public.bid_can_submit(%L, ''roofing'', ''retail'') ->> ''can_submit''', k1) INTO bc;
+  END IF;
+  -- production-only guards that can refuse the superuser fixture INSERT of quote qc, or a case line, before the gh-2479 guard does
+  -- (absent locally): their state is printed here, and try_as() prints the function that refused each case.
+  v := v || E'\nPROD-ONLY GATES ' || COALESCE((SELECT string_agg(tgname::text || ' [' || tgenabled::text || ']', ' ; ' ORDER BY tgname)
+    FROM pg_trigger WHERE tgname IN ('quotes_enforce_bid_can_submit', 'trg_enforce_bid_window_expiry', 'claims_payment_method_guard') AND NOT tgisinternal), '(none present)')
+    || ' | bid_can_submit(k1)=' || COALESCE(bc, 'n/a locally')
+    || ' | k1.has_payment_method=' || COALESCE((SELECT to_jsonb(k) ->> 'has_payment_method' FROM public.contractors k WHERE k.id = k1), 'n/a');
   v := v || E'\nGUARDS ' || COALESCE((SELECT string_agg(tgname::text || ' [' || tgenabled::text || ']', ' ; ' ORDER BY tgname)
     FROM pg_trigger WHERE tgname IN ('claims_guard_referral_columns', 'quotes_guard_homeowner_columns', 'after_claim_completed') AND NOT tgisinternal), '(none)');
 
@@ -120,8 +150,15 @@ BEGIN
 
   -- C1: a contract_signed claim still completes and accrues (the legitimate path). Fixture (superuser): a selected quote of k1 on csig.
   BEGIN
-    INSERT INTO public.quotes (id, claim_id, contractor_id, total_price, fee_percentage, fee_amount, status, is_test, trade_type)
-      VALUES (qc, csig, k1, 13560, 5, 678, 'selected', true, 'roofing');
+    BEGIN
+      INSERT INTO public.quotes (id, claim_id, contractor_id, total_price, fee_percentage, fee_amount, status, is_test, trade_type)
+        VALUES (qc, csig, k1, 13560, 5, 678, 'selected', true, 'roofing');
+    EXCEPTION WHEN OTHERS THEN
+      GET STACKED DIAGNOSTICS ctx = PG_EXCEPTION_CONTEXT;
+      -- on production the D-199 bid gate / bid-window guard can refuse this superuser fixture; C1 is then NOT proven. Say so and move on.
+      v := v || E'\nC1 FIXTURE INSERT of quote qc REFUSED ' || SQLSTATE || ' [by ' || COALESCE(substring(ctx FROM 'function ([A-Za-z0-9_.]+)\('), '?') || '] ' || left(SQLERRM, 110)
+        || ' -> C1 below is NOT a valid accrual proof; run the born-state proof''s in-transaction fixtures (validated template, payment method) first';
+    END;
     UPDATE public.claims SET referral_id = rx, completion_date = NULL WHERE id = csig;
     UPDATE public.referrals SET status = 'claim_submitted', created_at = (SELECT created_at FROM public.claims WHERE id = csig) - interval '5 days',
            commission_amount = NULL, recruit_commission_amount = NULL, job_value = NULL, is_test = true WHERE id = rx;

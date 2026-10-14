@@ -81,6 +81,13 @@ BEGIN
     INTO v_fx;
   v_out := v_out || E'\nFIXTURES ' || v_fx;
   IF v_owner IS NULL THEN RAISE EXCEPTION 'GH2479_FIXTURE_MISSING'; END IF;
+  -- fail closed before the first write: every fixture must read is_test = true (a missing row reads NULL)
+  IF NOT COALESCE((SELECT is_test FROM public.profiles WHERE id = v_owner), false)
+     OR (SELECT count(*) FROM public.referrals WHERE id IN (r1,r2,r3,r4,r5,r6,r7) AND is_test) <> 7
+     OR (SELECT count(*) FROM public.referrals r JOIN public.referral_agents a ON a.id = r.referral_agent_id
+          WHERE r.id IN (r1,r2,r3,r4,r5,r6,r7) AND a.is_test) <> 7 THEN
+    RAISE EXCEPTION 'GH2479_FIXTURE_NOT_IS_TEST: owner profile, the seven referrals or their agents are not all is_test; nothing was written%', v_out;
+  END IF;
 
   -- age the two attack referrals 45 days before the claim, status clicked (expired + unattributed)
   UPDATE public.referrals SET created_at = v_created - interval '45 days', status = 'clicked' WHERE id IN (r1, r2);
