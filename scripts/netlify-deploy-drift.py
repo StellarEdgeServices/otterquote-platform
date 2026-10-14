@@ -1873,7 +1873,7 @@ def _strip_cf_beacon(match):
     """gh-2289 ALLOWLIST: strip a candidate <script></script> only when (1) it has exactly one
     src=, whitespace-preceded and quoted, whose value starts with the Cloudflare beacon URL;
     (2) every attribute name is in {type, src, integrity, data-cf-beacon, crossorigin, defer}
-    (no duplicates, nothing unparsed); (3) the body is empty (guaranteed by the finder);
+    (no duplicates, nothing unparsed); (3) the body is empty (enforced by the finder regex);
     (4) it is not inside an open <svg>. Anything else is left in the hash."""
     tag, attrs_text = match.group(0), match.group(1)
     pos, names, src = 0, [], None
