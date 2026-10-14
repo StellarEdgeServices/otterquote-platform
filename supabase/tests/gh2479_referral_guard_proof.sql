@@ -15,6 +15,17 @@
 --   N3 service_role completes after the N2 attempt, referral 45d older than the claim: BEFORE accrues 200 (reviewer's X3), AFTER no accrual.
 --   N4 owner UPDATE that CHANGES referral_id on an existing claim (the trade-selector UPDATE branch with a new cookie): AFTER REJECTED (kept strict, see QUESTIONS).
 --   N5 owner INSERT of a claim with a browser-supplied backdated created_at: AFTER created_at is server time (now()), BEFORE it is the backdated value.
+-- #2403 closes-on (3), "an undated or NULL referral accrues nothing" (CLOSE-REVIEW: FAIL #2403 comment 6168643728):
+--   S9  claims.referral_id IS NULL, completed as service_role: no new payout_approvals row, referrals unchanged. Same BEFORE and AFTER
+--       (a NULL referral_id never accrued); its instrument check is S4/S8 accruing 200.00 in the same run.
+--   S10 claims.created_at IS NULL (the column is NULLABLE on production; referrals.created_at is NOT NULL, so this is the only way an
+--       "undated" attribution can exist). The referral is attributed (claim_submitted), in the window once the claim has a date,
+--       is_test on all three rows, the quote is >= 10000, and ONLY the claim's date is missing.
+--       S10  claim created_at NULL, service_role completes: BEFORE accrues 200 (the hole), AFTER commission=null and rows=0.
+--       S10b CONTROL, same referral, same claim, created_at restored, completed again: AFTER accrues 200.00 and rows=1 (the first
+--            accrual of that referral), so the zero in S10 is the NULL date and nothing else. BEFORE the row already carries the S10
+--            accrual, so S10b only shows the carried-over 200.00 (idempotency), not an independent control. Line S10 VERDICT states PASS or FAIL for the AFTER reading.
+--       S10e the owner (authenticated) tries to set claims.created_at to NULL: AFTER REJECTED 42501 (the guard freezes created_at).
 
 CREATE FUNCTION pg_temp.try_as(p_role text, p_sub uuid, p_sql text) RETURNS text
 LANGUAGE plpgsql AS $f$
@@ -58,6 +69,7 @@ DECLARE
   v_owner uuid; v_created timestamptz; v_stranger uuid := gen_random_uuid();
   v_out text := ''; v_fx text;
   v_s9_pa_before int; v_s9_pa_after int; v_s9_ref_before text; v_s9_ref_after text;
+  v_s10_ok boolean;
 BEGIN
   SELECT user_id, created_at INTO v_owner, v_created FROM public.claims WHERE id = c_claim AND is_test;
   SELECT format('claim_is_test=%s owner_profile_is_test=%s referrals_is_test=%s agents_is_test=%s open_commission=%s',
@@ -185,6 +197,34 @@ BEGIN
     || ' completed=' || (SELECT (completion_date IS NOT NULL)::text FROM public.claims WHERE id = c_claim)
     || ' | new payout_approvals rows=' || (v_s9_pa_after - v_s9_pa_before)
     || ' | referrals state unchanged=' || (v_s9_ref_before = v_s9_ref_after)::text;
+
+  -- ===== gh-2403 closes-on (3): S10, claims.created_at IS NULL =====
+  -- Fixture: referral R5 attributed (claim_submitted), is_test, no commission yet; claim c_claim carries it. The claim's date is
+  -- then set to NULL by the fixture session (superuser, not a client), and the legitimate writer completes the claim.
+  UPDATE public.claims SET completion_date = NULL, referral_id = NULL, created_at = v_created WHERE id = c_claim;
+  DELETE FROM public.payout_approvals WHERE referral_id = r5;
+  UPDATE public.referrals SET created_at = v_created - interval '10 days', status = 'claim_submitted',
+         commission_amount = NULL, recruit_commission_amount = NULL, job_value = NULL, is_test = true WHERE id = r5;
+  PERFORM pg_temp.try_as('service_role', v_owner, format('UPDATE public.claims SET referral_id = %L WHERE id = %L', r5, c_claim));
+  v_out := v_out || E'\nS10e OWNER sets claims.created_at = NULL: ' ||
+    pg_temp.try_as('authenticated', v_owner, format('UPDATE public.claims SET created_at = NULL WHERE id = %L', c_claim));
+  UPDATE public.claims SET created_at = NULL WHERE id = c_claim;   -- fixture (superuser)
+  v_out := v_out || E'\nS10 FIXTURE claims.created_at IS NULL=' || (SELECT (created_at IS NULL)::text FROM public.claims WHERE id = c_claim)
+    || ' | referral status=' || (SELECT status FROM public.referrals WHERE id = r5)
+    || ' referral created_at <= now()=' || (SELECT (created_at <= now())::text FROM public.referrals WHERE id = r5)
+    || ' | claim/referral is_test=' || (SELECT is_test::text FROM public.claims WHERE id = c_claim) || '/' || (SELECT is_test::text FROM public.referrals WHERE id = r5)
+    || ' | winning quote total_price=' || (SELECT max(total_price)::text FROM public.quotes WHERE claim_id = c_claim AND status IN ('selected','awarded'));
+  v_out := v_out || E'\nS10 service_role complete, claims.created_at NULL: ' ||
+    pg_temp.try_as('service_role', v_owner, format('UPDATE public.claims SET completion_date = now() WHERE id = %L', c_claim));
+  v_out := v_out || E'\nS10 RESULT ' || pg_temp.acc(r5);
+  SELECT COALESCE(commission_amount, 0) = 0 AND NOT EXISTS (SELECT 1 FROM public.payout_approvals WHERE referral_id = r5)
+    INTO v_s10_ok FROM public.referrals WHERE id = r5;
+  v_out := v_out || E'\nS10 VERDICT ' || CASE WHEN v_s10_ok THEN 'PASS (no accrual with a NULL claim date)' ELSE 'FAIL (accrued with a NULL claim date)' END;
+  -- S10b control: identical fixture, only the claim's date restored
+  UPDATE public.claims SET completion_date = NULL, created_at = v_created WHERE id = c_claim;
+  v_out := v_out || E'\nS10b CONTROL claims.created_at restored, same referral and claim, complete again: ' ||
+    pg_temp.try_as('service_role', v_owner, format('UPDATE public.claims SET completion_date = now() WHERE id = %L', c_claim));
+  v_out := v_out || E'\nS10b RESULT ' || pg_temp.acc(r5);
 
   RAISE EXCEPTION E'GH2479_FORCED_ROLLBACK%', v_out;
 END
