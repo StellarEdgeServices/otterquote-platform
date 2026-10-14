@@ -319,6 +319,19 @@ D341_LIABILITY_CAP_SENTENCE = (
 )
 
 
+# gh-2594 / D-374 (Dustin, question box 2026-10-07, "Yes, with the report line
+# fixed (Recommended)"): the partner FAQ answers now say "They pay $15 upfront
+# for an aerial roof measurement report." That "$15" is the HOMEOWNER's
+# measurement charge (rebated in full on a completed job), not a fee offered to
+# the partner. Only this EXACT sentence is excluded from the fee census, so any
+# other dollar amount near a fee word (for example a "$200 referral fee") still
+# trips it -- same pattern as D341_LIABILITY_CAP_SENTENCE above. The page is NOT
+# given D-266: home inspectors get no referral fee (D-333).
+D374_MEASUREMENT_CHARGE_SENTENCE = (
+    "They pay $15 upfront for an aerial roof measurement report."
+)
+
+
 def _fee_sentence_pages(root: Path) -> set[str]:
     """Stems of *.html pages at the repo root whose own VISIBLE text
     contains a referral-fee sentence (dollar amount + "referral" in the
@@ -356,6 +369,8 @@ def _fee_sentence_pages(root: Path) -> set[str]:
         # a fee offered to the partner. Only this EXACT sentence is excluded, so any
         # other dollar amount near a fee word still trips the census.
         normalized = normalized.replace(D341_LIABILITY_CAP_SENTENCE, " ")
+        # gh-2594 / D-374: exact-sentence exclusion, see D374_MEASUREMENT_CHARGE_SENTENCE.
+        normalized = normalized.replace(D374_MEASUREMENT_CHARGE_SENTENCE, " ")
         if _has_fee_sentence(normalized):
             found.add(path.stem)
     return found

@@ -1295,6 +1295,37 @@ def main():
             shutil.rmtree(d333_root, ignore_errors=True)
 
         print()
+        print("gh-2594 / D-374: the exact '$15 ... aerial roof measurement "
+              "report' sentence is excluded from the fee census, but a real "
+              "referral fee on the same page still fails closed")
+        d374_root = pathlib.Path(tempfile.mkdtemp(prefix="partnerparity-test-d374-"))
+        try:
+            d374_sentence = ("They pay $15 upfront for an aerial roof measurement report. "
+                             "If they complete a job on the platform, that cost is rebated in full.")
+            (d374_root / "partner-inspectors.html").write_text(
+                "<html><body><p>Home inspectors receive no referral fee or "
+                "recruit bonus.</p><p>" + d374_sentence + "</p></body></html>",
+                encoding="utf-8",
+            )
+            pages = mod.compute_d266_pages(d374_root)
+            check_false(
+                "D-374: the $15 measurement-charge sentence next to the D-333 no-fee line does not require D-266",
+                "partner-inspectors" in pages,
+            )
+            (d374_root / "partner-inspectors.html").write_text(
+                "<html><body><p>" + d374_sentence + "</p>"
+                "<p>Earn a $200 referral fee for every completed job.</p></body></html>",
+                encoding="utf-8",
+            )
+            pages = mod.compute_d266_pages(d374_root)
+            check_true(
+                "D-374 fail-closed: a $200 referral fee beside the $15 sentence still requires D-266",
+                "partner-inspectors" in pages,
+            )
+        finally:
+            shutil.rmtree(d374_root, ignore_errors=True)
+
+        print()
         print("gh-2020 REVIEW: FAIL 5849929623 item 2 (E2/E3/E4): the "
               "sentence-bounded fee census still required the amount and a "
               "fee word in the SAME sentence -- an amount and fee word "
