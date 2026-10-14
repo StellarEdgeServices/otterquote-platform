@@ -9,7 +9,9 @@
 -- the seeded 'IN'. The rule below clears 'IN' only where nothing shows the homeowner ever entered an
 -- address: no street, city or zip, and the row was never updated after signup (updated_at within one
 -- minute of created_at). An 'IN' that a homeowner typed leaves street/city/zip or updated_at behind.
--- Each cleared id is written to an audit table first-class so the rollback is exact.
+-- Each cleared id is written to an audit table so the rollback is exact. The audit table has RLS on, no policy,
+-- and all client grants revoked (production's default ACL would otherwise give anon/authenticated full rights,
+-- including TRUNCATE, which RLS does not cover); service_role is granted explicitly.
 -- Claims are not touched (claims.property_state is stored on the claim itself).
 -- Rollback: supabase/migrations_rollbacks/gh2431_profiles_address_state_backfill_rollback.sql
 -- NOT APPLIED by the authoring session. Apply only after REVIEW and the R-097 window.
@@ -22,6 +24,8 @@ CREATE TABLE IF NOT EXISTS public.gh2431_profiles_state_backfill_audit (
   repaired_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.gh2431_profiles_state_backfill_audit ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.gh2431_profiles_state_backfill_audit FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.gh2431_profiles_state_backfill_audit TO service_role;
 
 WITH hit AS (
   UPDATE public.profiles

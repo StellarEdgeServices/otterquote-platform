@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS public.gh2431_profiles_state_backfill_audit (
   repaired_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.gh2431_profiles_state_backfill_audit ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.gh2431_profiles_state_backfill_audit FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.gh2431_profiles_state_backfill_audit TO service_role;
 
 WITH hit AS (
   UPDATE public.profiles
@@ -70,6 +72,9 @@ BEGIN
   SELECT count(*) INTO v_audit FROM public.gh2431_profiles_state_backfill_audit;
   SELECT count(*) INTO v_real_in_after FROM public.profiles WHERE role='homeowner' AND address_state='IN' AND NOT coalesce(is_test,false)
      AND address_street IS NULL AND address_city IS NULL AND address_zip IS NULL AND updated_at <= created_at + interval '1 minute';
+  v_report := v_report || format(E'\nAUDIT ACL: anon_select=%s anon_truncate=%s authenticated_truncate=%s service_role_truncate=%s',
+     has_table_privilege('anon','public.gh2431_profiles_state_backfill_audit','SELECT'), has_table_privilege('anon','public.gh2431_profiles_state_backfill_audit','TRUNCATE'),
+     has_table_privilege('authenticated','public.gh2431_profiles_state_backfill_audit','TRUNCATE'), has_table_privilege('service_role','public.gh2431_profiles_state_backfill_audit','TRUNCATE'));
   v_report := v_report || format(E'\nFORWARD : A=%s B=%s C=%s D=%s audit_rows=%s real_untouched_IN before=%s after=%s', coalesce((SELECT address_state FROM public.profiles WHERE id=v_a),'<NULL>'),
      (SELECT address_state FROM public.profiles WHERE id=v_b), (SELECT address_state FROM public.profiles WHERE id=v_c), (SELECT address_state FROM public.profiles WHERE id=v_d), v_audit, v_real_in_before, v_real_in_after);
 

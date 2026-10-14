@@ -35,6 +35,8 @@ ok(!/\b(claims|contractors)\b/.test(fwd.replace(/gh2431_profiles_state_backfill_
 ok(/SET address_state = NULL WHERE/.test(fwd) && !/SET address_state = NULL, /.test(fwd), 'forward: changes only address_state');
 ok(/RETURNING id/.test(fwd) && /INSERT INTO public\.gh2431_profiles_state_backfill_audit \(profile_id, prior_state\) SELECT id, 'IN' FROM hit/.test(fwd), 'forward: every cleared id is written to the audit table');
 ok(/ENABLE ROW LEVEL SECURITY/.test(fwd), 'forward: audit table has RLS enabled (no policy, service role only)');
+ok(/REVOKE ALL ON public\.gh2431_profiles_state_backfill_audit FROM PUBLIC, anon, authenticated;/.test(fwd), 'forward: REVOKE ALL on the audit table from PUBLIC, anon, authenticated');
+ok(/GRANT ALL ON public\.gh2431_profiles_state_backfill_audit TO service_role;/.test(fwd), 'forward: explicit GRANT ALL to service_role (New-Table Service-Role Grant check)');
 ok(!/\bDELETE\b|\bDROP\b|\bTRUNCATE\b/i.test(fwd), 'forward: no DELETE/DROP/TRUNCATE');
 ok(/UPDATE public\.profiles p SET address_state = a\.prior_state FROM public\.gh2431_profiles_state_backfill_audit a WHERE a\.profile_id = p\.id AND p\.address_state IS NULL/.test(rb), 'rollback: restores only audited ids, only where still NULL');
 ok(/DROP TABLE public\.gh2431_profiles_state_backfill_audit/.test(rb), 'rollback: drops the audit table');
