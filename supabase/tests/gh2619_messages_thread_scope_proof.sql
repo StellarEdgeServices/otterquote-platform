@@ -3,9 +3,16 @@
 --   createdb gh2619t && psql -d gh2619t -v ON_ERROR_STOP=1 -f supabase/tests/gh2619_messages_thread_scope_proof.sql
 -- The schema below is a minimal model of public.messages/claims/contractors/quotes with the policies
 -- as they are in production after ledger 20261014112047 (text from CLOSE-REVIEW 6168484981).
--- Phases: LIVE (probes against that policy set) -> forward draft -> NEW probes -> rollback -> ROLLED-BACK probes.
+-- Phases: LIVE (probes against that policy set) + scenario on claim D1 -> forward draft -> NEW probes + scenario on claim D2
+-- -> gate / service_role checks -> rollback -> ROLLED-BACK probes. Round 2 (REVIEW 6169771197): the scenario is the
+-- process-dunning-style re-award (selection cleared with no contractor_switched_at, then another bidder awarded),
+-- a client-supplied created_at, INSERT ... RETURNING, re-selection, and an attempt to set contractor_selected_at directly.
 \set ON_ERROR_STOP on
-CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN;
+DO $r$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role NOLOGIN; END IF;
+END $r$;
 CREATE SCHEMA auth;
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$ SELECT coalesce(nullif(current_setting('request.jwt.claim.role', true), ''), 'anon') $$;
@@ -32,6 +39,7 @@ ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 CREATE POLICY c_own ON public.contractors FOR SELECT USING (user_id = (SELECT auth.uid()));
 CREATE POLICY q_own ON public.quotes FOR SELECT USING (contractor_id IN (SELECT id FROM public.contractors WHERE user_id = (SELECT auth.uid())));
 CREATE POLICY cl_owner ON public.claims FOR SELECT USING (user_id = (SELECT auth.uid()));
+CREATE POLICY cl_owner_upd ON public.claims FOR UPDATE USING (user_id = (SELECT auth.uid()));
 CREATE POLICY cl_quoted ON public.claims FOR SELECT USING (id IN (SELECT claim_id FROM public.quotes WHERE contractor_id IN (SELECT id FROM public.contractors WHERE user_id = (SELECT auth.uid()))));
 -- the three messages policies exactly as live after ledger 20261014112047
 CREATE POLICY contractor_messages ON public.messages
@@ -69,6 +77,19 @@ INSERT INTO public.messages (id, claim_id, sender_id, sender_role, body, created
  ('30000000-0000-0000-0000-000000000003','20000000-0000-0000-0000-00000000005a','00000000-0000-0000-0000-0000000000a1','homeowner','S3 to CB (after switch)','2026-01-03 09:00+00'),
  ('30000000-0000-0000-0000-000000000004','20000000-0000-0000-0000-00000000005b','00000000-0000-0000-0000-0000000000a1','homeowner','U1 never switched','2026-01-01 09:00+00'),
  ('30000000-0000-0000-0000-000000000005','20000000-0000-0000-0000-00000000005b','00000000-0000-0000-0000-0000000000b1','contractor','U2 CA reply never switched','2026-01-01 09:30+00');
+
+-- round 2 fixtures: claims D1 (LIVE-phase scenario) and D2 (NEW-phase scenario). Contractor CA is selected, never switched,
+-- two thread messages; CB has a quote. Inserted before the forward draft, so contractor_selected_at is NULL on both (legacy shape).
+INSERT INTO public.claims VALUES
+ ('20000000-0000-0000-0000-0000000000d1','00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-0000000000b1',NULL),
+ ('20000000-0000-0000-0000-0000000000d2','00000000-0000-0000-0000-0000000000a1','10000000-0000-0000-0000-0000000000b1',NULL);
+INSERT INTO public.quotes (claim_id, contractor_id) VALUES
+ ('20000000-0000-0000-0000-0000000000d1','10000000-0000-0000-0000-0000000000b1'),('20000000-0000-0000-0000-0000000000d1','10000000-0000-0000-0000-0000000000c1'),
+ ('20000000-0000-0000-0000-0000000000d2','10000000-0000-0000-0000-0000000000b1'),('20000000-0000-0000-0000-0000000000d2','10000000-0000-0000-0000-0000000000c1');
+INSERT INTO public.messages (claim_id, sender_id, sender_role, body, created_at)
+ SELECT c, '00000000-0000-0000-0000-0000000000a1', 'homeowner', 'D HO to CA', '2026-01-01 09:00+00' FROM unnest(ARRAY['20000000-0000-0000-0000-0000000000d1','20000000-0000-0000-0000-0000000000d2']::uuid[]) c;
+INSERT INTO public.messages (claim_id, sender_id, sender_role, body, created_at)
+ SELECT c, '00000000-0000-0000-0000-0000000000b1', 'contractor', 'D CA reply', '2026-01-01 09:30+00' FROM unnest(ARRAY['20000000-0000-0000-0000-0000000000d1','20000000-0000-0000-0000-0000000000d2']::uuid[]) c;
 
 -- probe: run one statement as an authenticated user in a sub-transaction that is always rolled back
 CREATE FUNCTION public.try_as(p_uid uuid, p_sql text) RETURNS text LANGUAGE plpgsql AS $f$
@@ -114,15 +135,81 @@ BEGIN
   probe := 'P17 CA INSERT as contractor on claim U'; result := public.try_as(CA, format('INSERT INTO public.messages (claim_id,sender_id,sender_role,body) VALUES (%L,%L,%L,%L)', U, CA, 'contractor', 'hi')); RETURN NEXT;
   probe := 'P18 CA DELETE homeowner row U1'; result := public.try_as(CA, format('DELETE FROM public.messages WHERE id=%L', '30000000-0000-0000-0000-000000000004')); RETURN NEXT;
   probe := 'P19 CX SELECT claim U'; result := public.try_as(CX, format('SELECT * FROM public.messages WHERE claim_id=%L', U)); RETURN NEXT;
+  probe := 'P20 CB INSERT ... RETURNING id on claim S (the app pattern)'; result := public.try_as(CB, format('INSERT INTO public.messages (claim_id,sender_id,sender_role,body) VALUES (%L,%L,%L,%L) RETURNING id', S, CB, 'contractor', 'hi')); RETURN NEXT;
+  probe := 'P21 HO INSERT ... RETURNING id on claim S'; result := public.try_as(HO, format('INSERT INTO public.messages (claim_id,sender_id,sender_role,body) VALUES (%L,%L,%L,%L) RETURNING id', S, HO, 'homeowner', 'hi')); RETURN NEXT;
 END $f$;
 
 \echo === PHASE 1: LIVE policies (production after ledger 20261014112047) ===
 SELECT probe, result FROM public.report('live');
 SELECT policyname, cmd FROM pg_policies WHERE tablename='messages' ORDER BY policyname;
+
+\echo --- scenario LIVE on claim d1 (LIVE policy, no triggers: the negative control for finding 1) ---
+\echo S1 CA (selected) inserts a row with a client-supplied created_at of year 2099; RETURNING shows what was stored (is it in the future?)
+SET ROLE authenticated; SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000b1',false), set_config('request.jwt.claim.role','authenticated',false);
+INSERT INTO public.messages (claim_id,sender_id,sender_role,body,created_at) VALUES ('20000000-0000-0000-0000-0000000000d1','00000000-0000-0000-0000-0000000000b1','contractor','planted by CA','2099-01-01') RETURNING body, created_at > now() AS stored_in_future;
+RESET ROLE;
+\echo S2 dunning-style: UPDATE claims SET selected_contractor_id = NULL (no contractor_switched_at), then award CB (accept_bid-style)
+SELECT pg_sleep(0.05);
+UPDATE public.claims SET selected_contractor_id = NULL WHERE id = '20000000-0000-0000-0000-0000000000d1';
+SELECT pg_sleep(0.05);
+UPDATE public.claims SET selected_contractor_id = '10000000-0000-0000-0000-0000000000c1' WHERE id = '20000000-0000-0000-0000-0000000000d1';
+SELECT contractor_switched_at IS NULL AS switched_at_still_null FROM public.claims WHERE id = '20000000-0000-0000-0000-0000000000d1';
+\echo S3 CB (newly awarded) reads the thread: 3 rows exist (HO, CA reply, planted by CA)
+SET ROLE authenticated; SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000c1',false);
+SELECT count(*) AS cb_sees_of_3 FROM public.messages WHERE claim_id = '20000000-0000-0000-0000-0000000000d1';
+\echo S4 CB INSERT ... RETURNING id, then reads again (expect 1 row returned, then sees 1)
+INSERT INTO public.messages (claim_id,sender_id,sender_role,body) VALUES ('20000000-0000-0000-0000-0000000000d1','00000000-0000-0000-0000-0000000000c1','contractor','CB first message') RETURNING id IS NOT NULL AS returned_id;
+SELECT count(*) AS cb_sees_after_own_insert FROM public.messages WHERE claim_id = '20000000-0000-0000-0000-0000000000d1';
+\echo S5 CA (no longer selected) reads: expect 0
+SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000b1',false);
+SELECT count(*) AS ca_sees FROM public.messages WHERE claim_id = '20000000-0000-0000-0000-0000000000d1';
+\echo S6 homeowner reads the whole thread: expect 4
+SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000a1',false);
+SELECT count(*) AS ho_sees FROM public.messages WHERE claim_id = '20000000-0000-0000-0000-0000000000d1';
+RESET ROLE;
+\echo S8 re-selection: CA selected again; CA reads (their own earlier conversation is hidden, disclosed in the draft header)
+SELECT pg_sleep(0.05);
+UPDATE public.claims SET selected_contractor_id = '10000000-0000-0000-0000-0000000000b1' WHERE id = '20000000-0000-0000-0000-0000000000d1';
+SET ROLE authenticated; SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000b1',false);
+SELECT count(*) AS ca_sees_after_reselection FROM public.messages WHERE claim_id = '20000000-0000-0000-0000-0000000000d1';
+RESET ROLE;
 \echo === PHASE 2: forward draft applied ===
 \i supabase/migrations_drafts/gh2619_messages_thread_scope_and_no_cross_delete.sql
 SELECT probe, result FROM public.report('new');
 SELECT policyname, cmd FROM pg_policies WHERE tablename='messages' ORDER BY policyname;
+
+\echo --- scenario NEW on claim d2 (forward draft applied) ---
+\echo S1 CA (selected) inserts a row with a client-supplied created_at of year 2099; RETURNING shows what was stored (is it in the future?)
+SET ROLE authenticated; SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000b1',false), set_config('request.jwt.claim.role','authenticated',false);
+INSERT INTO public.messages (claim_id,sender_id,sender_role,body,created_at) VALUES ('20000000-0000-0000-0000-0000000000d2','00000000-0000-0000-0000-0000000000b1','contractor','planted by CA','2099-01-01') RETURNING body, created_at > now() AS stored_in_future;
+RESET ROLE;
+\echo S2 dunning-style: UPDATE claims SET selected_contractor_id = NULL (no contractor_switched_at), then award CB (accept_bid-style)
+SELECT pg_sleep(0.05);
+UPDATE public.claims SET selected_contractor_id = NULL WHERE id = '20000000-0000-0000-0000-0000000000d2';
+SELECT pg_sleep(0.05);
+UPDATE public.claims SET selected_contractor_id = '10000000-0000-0000-0000-0000000000c1' WHERE id = '20000000-0000-0000-0000-0000000000d2';
+SELECT contractor_switched_at IS NULL AS switched_at_still_null, contractor_selected_at IS NOT NULL AS selected_at_stamped FROM public.claims WHERE id = '20000000-0000-0000-0000-0000000000d2';
+\echo S3 CB (newly awarded) reads the thread: 3 rows exist (HO, CA reply, planted by CA)
+SET ROLE authenticated; SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000c1',false);
+SELECT count(*) AS cb_sees_of_3 FROM public.messages WHERE claim_id = '20000000-0000-0000-0000-0000000000d2';
+\echo S4 CB INSERT ... RETURNING id, then reads again (expect 1 row returned, then sees 1)
+INSERT INTO public.messages (claim_id,sender_id,sender_role,body) VALUES ('20000000-0000-0000-0000-0000000000d2','00000000-0000-0000-0000-0000000000c1','contractor','CB first message') RETURNING id IS NOT NULL AS returned_id;
+SELECT count(*) AS cb_sees_after_own_insert FROM public.messages WHERE claim_id = '20000000-0000-0000-0000-0000000000d2';
+\echo S5 CA (no longer selected) reads: expect 0
+SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000b1',false);
+SELECT count(*) AS ca_sees FROM public.messages WHERE claim_id = '20000000-0000-0000-0000-0000000000d2';
+\echo S6 homeowner reads the whole thread: expect 4
+SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000a1',false);
+SELECT count(*) AS ho_sees FROM public.messages WHERE claim_id = '20000000-0000-0000-0000-0000000000d2';
+\echo S7 owner tries to set contractor_selected_at directly to year 2000 (needs the column to be settable to reopen the old thread)
+UPDATE public.claims SET contractor_selected_at = '2000-01-01' WHERE id = '20000000-0000-0000-0000-0000000000d2' RETURNING contractor_selected_at < '2001-01-01' AS owner_set_it;
+RESET ROLE;
+\echo S8 re-selection: CA selected again; CA reads (their own earlier conversation is hidden, disclosed in the draft header)
+SELECT pg_sleep(0.05);
+UPDATE public.claims SET selected_contractor_id = '10000000-0000-0000-0000-0000000000b1' WHERE id = '20000000-0000-0000-0000-0000000000d2';
+SET ROLE authenticated; SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000b1',false);
+SELECT count(*) AS ca_sees_after_reselection FROM public.messages WHERE claim_id = '20000000-0000-0000-0000-0000000000d2';
+RESET ROLE;
 \echo === PHASE 2b: forward draft applied a second time must refuse (order gate) ===
 \set ON_ERROR_STOP off
 \i supabase/migrations_drafts/gh2619_messages_thread_scope_and_no_cross_delete.sql
