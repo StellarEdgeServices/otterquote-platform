@@ -1102,6 +1102,10 @@
                     event_type: 'cpa_accepted',
                     title:      title,
                     created_at: now,
+                    // gh-2444 (CEO RUN 104 finding 8): activity_log.is_test defaults to false and has
+                    // no trigger, so stamp it from the contractor row (contractors.is_test is the
+                    // source of truth; the email-suffix heuristic misses 10 of 14 test profiles).
+                    is_test:    currentContractor.is_test === true,
                 });
                 if (logErr) {
                     console.error('Activity log failed:', logErr);

@@ -19,7 +19,7 @@ export interface CpaEvidenceClient {
 
 export async function recordCpaAcceptanceEvidence(
   client: CpaEvidenceClient,
-  args: { contractorId: string; userId: string; now: string; title: string },
+  args: { contractorId: string; userId: string; now: string; title: string; isTest?: boolean },
 ): Promise<unknown | null> {
   try {
     const { error } = await client.rpc('record_cpa_ip', { p_contractor_id: args.contractorId });
@@ -34,6 +34,8 @@ export async function recordCpaAcceptanceEvidence(
   try {
     const { error } = await client.from('activity_log').insert({
       user_id: args.userId, event_type: 'cpa_accepted', title: args.title, created_at: args.now,
+      // gh-2444: activity_log.is_test defaults false with no trigger; stamp from contractors.is_test.
+      is_test: args.isTest === true,
     });
     if (error) {
       console.error('activity_log failed:', error);
