@@ -754,11 +754,14 @@ export default function TradeSelectorPage() {
         .move(staged.storagePath, destPath);
       if (moveError) throw moveError;
 
-      const { error: patchError } = await supabase
+      const { data: patchRows, error: patchError } = await supabase
         .from('claims')
         .update({ has_estimate: true, estimate_filename: destPath })
-        .eq('id', claimId);
+        .eq('id', claimId)
+        .select('id');
       if (patchError) throw patchError;
+      // gh-2105 batch 4 (a): a zero-row match must not report the loss sheet as attached.
+      if (!Array.isArray(patchRows) || patchRows.length === 0) throw new Error('update_zero_rows: claims (loss sheet attach)');
 
       // REVIEW gh-2070 PR #2080: kept (not cleared) on failure below, but
       // that is not an active retry — nothing currently reads this key

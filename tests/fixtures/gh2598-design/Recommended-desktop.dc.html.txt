@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Recommended homepage, desktop</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;600;800&display=swap">
+<style>
+body{margin:0}
+a{color:#0D1B2E}a:hover{color:#B45309}
+</style>
+</helmet>
+<div style="font-family: 'Libre Franklin', system-ui, sans-serif; color: #14212E; background: #FFFFFF; min-height: 3600px">
+
+<header style="background: #0D1B2E; border-bottom: 1px solid #2A3C54">
+<div style="max-width: 1160px; margin: 0 auto; padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+<a href="#top" style="display: flex; align-items: center; gap: 12px; text-decoration: none">
+<img src="/_blob/b7995868bad66716dd21c3b48579bfe5" alt="Otter Quotes logo" style="width: 28px; height: 44px; object-fit: contain">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<div style="font-size: 21px; font-weight: 800; color: #FFFFFF; line-height: 1.1">Otter Quotes</div>
+<div style="font-size: 12px; font-weight: 600; color: #C7D2DE; letter-spacing: 0.02em">Contractors Compete. Homeowners Win.</div>
+</div>
+</a>
+<nav aria-label="Main" style="display: flex; flex-wrap: wrap; align-items: center; gap: 28px; font-size: 16px; font-weight: 600">
+<a href="#how" style="color: #FFFFFF; text-decoration: none; padding: 12px 0">How it works</a>
+<a href="#paid" style="color: #FFFFFF; text-decoration: none; padding: 12px 0">How we're paid</a>
+<a href="#questions" style="color: #FFFFFF; text-decoration: none; padding: 12px 0">Questions</a>
+</nav>
+<div style="display: flex; align-items: center; gap: 20px">
+<a href="tel:+18448753412" style="display: flex; align-items: center; gap: 8px; color: #FFFFFF; font-size: 17px; font-weight: 600; text-decoration: none; padding: 12px 0">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"></path></svg>
+<span>(844) 875-3412</span>
+</a>
+<a href="#start" style="border: 2px solid #FFFFFF; color: #FFFFFF; font-weight: 800; font-size: 16px; padding: 12px 18px; border-radius: 6px; text-decoration: none">Get my bids</a>
+</div>
+</div>
+</header>
+
+<section id="top" style="background: #0D1B2E; color: #FFFFFF">
+<div style="max-width: 1160px; margin: 0 auto; padding: 72px 24px 80px; display: flex; flex-wrap: wrap; align-items: center; gap: 56px">
+
+<div style="flex: 1 1 460px; min-width: 0; display: flex; flex-direction: column; gap: 22px">
+<div style="font-size: 15px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #C7D2DE">Roofing · Siding · Gutters</div>
+<h1 style="margin: 0; font-size: 58px; line-height: 1.05; font-weight: 800; color: #FFFFFF">Make contractors compete for your job.</h1>
+<p style="margin: 0; max-width: 520px; font-size: 20px; line-height: 1.5; color: #C7D2DE">Get multiple bids without a salesperson in your home. Compare them online, next to reviews and licensing information.</p>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<label for="zip-top" style="font-size: 15px; font-weight: 600; color: #FFFFFF">ZIP code of the home</label>
+<div style="display: flex; flex-wrap: wrap; gap: 12px">
+<input id="zip-top" type="text" inputmode="numeric" autocomplete="postal-code" maxlength="5" style="width: 170px; height: 58px; box-sizing: border-box; padding: 0 16px; font: inherit; font-size: 20px; color: #14212E; background: #FFFFFF; border: 2px solid #FFFFFF; border-radius: 6px">
+<a href="#start" style="display: flex; align-items: center; height: 58px; box-sizing: border-box; background: #F08C00; color: #0D1B2E; font-weight: 800; font-size: 19px; padding: 0 30px; border-radius: 6px; text-decoration: none">Get my bids</a>
+</div>
+</div>
+<div style="font-size: 16px; color: #C7D2DE">No salesperson in your home. No obligation to hire.</div>
+</div>
+
+<div style="flex: 1 1 460px; min-width: 0; background: #FFFFFF; color: #14212E; border-radius: 10px; padding: 28px; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px">
+<p aria-live="off" style="margin: 0; min-height: 68px; font-size: 28px; line-height: 1.2; font-weight: 800; color: #0D1B2E">Contractors compete on <span style="{{w1}}">price,</span> <span style="{{w2}}">materials</span> <span style="{{w3}}">and warranties.</span></p>
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px">
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" onClick="{{ pickPrice }}" style="{{ tabPrice }}">Price</button>
+<button type="button" onClick="{{ pickMaterials }}" style="{{ tabMaterials }}">Materials</button>
+<button type="button" onClick="{{ pickWarranty }}" style="{{ tabWarranty }}">Warranty</button>
+</div>
+<button type="button" onClick="{{ replay }}" style="height: 48px; padding: 0 12px; font: inherit; font-size: 15px; font-weight: 600; color: #3D4F60; background: #FFFFFF; border: 0; border-radius: 6px; cursor: pointer; text-decoration: underline">Replay</button>
+</div>
+<div role="table" aria-label="Sample bid comparison" style="border: 1px solid #DCE2E8; border-radius: 8px; overflow: hidden; font-size: 15px">
+<div role="row" style="display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr; gap: 12px; padding: 12px 16px; background: #F4F6F9; font-weight: 600; color: #3D4F60">
+<div role="columnheader">&nbsp;</div>
+<div role="columnheader">Contractor A</div>
+<div role="columnheader">Contractor B</div>
+<div role="columnheader">Contractor C</div>
+</div>
+<div role="row" style="{{ rowPrice }}">
+<div role="rowheader" style="font-weight: 800">Price</div>
+<div role="cell"><div style="height: 10px; width: 62%; border-radius: 5px; background: #8FA1B5"></div></div>
+<div role="cell"><div style="height: 10px; width: 54%; border-radius: 5px; background: #8FA1B5"></div></div>
+<div role="cell"><div style="height: 10px; width: 68%; border-radius: 5px; background: #8FA1B5"></div></div>
+</div>
+<div role="row" style="{{ rowMaterials }}">
+<div role="rowheader" style="font-weight: 800">Materials</div>
+<div role="cell"><div style="height: 10px; width: 80%; border-radius: 5px; background: #8FA1B5"></div></div>
+<div role="cell"><div style="height: 10px; width: 72%; border-radius: 5px; background: #8FA1B5"></div></div>
+<div role="cell"><div style="height: 10px; width: 86%; border-radius: 5px; background: #8FA1B5"></div></div>
+</div>
+<div role="row" style="{{ rowWarranty }}">
+<div role="rowheader" style="font-weight: 800">Warranty</div>
+<div role="cell"><div style="height: 10px; width: 58%; border-radius: 5px; background: #8FA1B5"></div></div>
+<div role="cell"><div style="height: 10px; width: 76%; border-radius: 5px; background: #8FA1B5"></div></div>
+<div role="cell"><div style="height: 10px; width: 64%; border-radius: 5px; background: #8FA1B5"></div></div>
+</div>
+<div role="row" style="display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr; gap: 12px; align-items: center; padding: 14px 16px; border-top: 1px solid #DCE2E8">
+<div role="rowheader" style="font-weight: 600; color: #3D4F60">Public reviews</div>
+<div role="cell"><div style="height: 10px; width: 44%; border-radius: 5px; background: #C9D3DC"></div></div>
+<div role="cell"><div style="height: 10px; width: 44%; border-radius: 5px; background: #C9D3DC"></div></div>
+<div role="cell"><div style="height: 10px; width: 44%; border-radius: 5px; background: #C9D3DC"></div></div>
+</div>
+<div role="row" style="display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr; gap: 12px; align-items: center; padding: 14px 16px; border-top: 1px solid #DCE2E8">
+<div role="rowheader" style="font-weight: 600; color: #3D4F60">Licensing</div>
+<div role="cell"><div style="height: 10px; width: 50%; border-radius: 5px; background: #C9D3DC"></div></div>
+<div role="cell"><div style="height: 10px; width: 50%; border-radius: 5px; background: #C9D3DC"></div></div>
+<div role="cell"><div style="height: 10px; width: 50%; border-radius: 5px; background: #C9D3DC"></div></div>
+</div>
+</div>
+<p style="margin: 0; min-height: 44px; font-size: 15px; line-height: 1.45; color: #3D4F60">{{ explain }}</p>
+</div>
+
+</div>
+</section>
+
+<section style="background: #FFFFFF; border-bottom: 1px solid #DCE2E8">
+<div style="max-width: 1160px; margin: 0 auto; padding: 40px 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 32px">
+<div style="display: flex; gap: 14px">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 28px"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 17px; font-weight: 800">Your details stay yours</div>
+<div style="font-size: 16px; line-height: 1.5; color: #3D4F60">Contractors do not see your name, phone number or street address until you choose one.</div>
+</div>
+</div>
+<div style="display: flex; gap: 14px">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 28px"><path d="M3 11l9-7 9 7"></path><path d="M5 10v10h14V10"></path><path d="M10 20v-6h4v6"></path></svg>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 17px; font-weight: 800">No salesperson in your home</div>
+<div style="font-size: 16px; line-height: 1.5; color: #3D4F60">Multiple bids without the time spent with salespeople and without high-pressure sales tactics.</div>
+</div>
+</div>
+<div style="display: flex; gap: 14px">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 28px"><path d="M9 11l3 3 8-8"></path><path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9"></path></svg>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 17px; font-weight: 800">Reviews and licensing beside your bids</div>
+<div style="font-size: 16px; line-height: 1.5; color: #3D4F60">Compare all of your bids online, next to reviews and licensing information.</div>
+</div>
+</div>
+</div>
+</section>
+
+<section id="how" style="background: #F4F6F9">
+<div style="max-width: 1160px; margin: 0 auto; padding: 72px 24px; display: flex; flex-direction: column; gap: 32px">
+<h2 style="margin: 0; font-size: 36px; font-weight: 800; color: #0D1B2E">How it works</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px">
+<div style="background: #FFFFFF; border: 1px solid #DCE2E8; border-radius: 10px; padding: 28px; display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 14px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #B45309">Step 1</div>
+<h3 style="margin: 0; font-size: 22px; font-weight: 800">One statement of work</h3>
+<p style="margin: 0; font-size: 17px; line-height: 1.5; color: #3D4F60">We create a scope of work for your job and submit it to multiple contractors.</p>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DCE2E8; border-radius: 10px; padding: 28px; display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 14px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #B45309">Step 2</div>
+<h3 style="margin: 0; font-size: 22px; font-weight: 800">Contractors compete online</h3>
+<p style="margin: 0; font-size: 17px; line-height: 1.5; color: #3D4F60">When contractors know they are competing for your business, they are more likely to include better materials and warranties.</p>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DCE2E8; border-radius: 10px; padding: 28px; display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 14px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #B45309">Step 3</div>
+<h3 style="margin: 0; font-size: 22px; font-weight: 800">You compare and sign online</h3>
+<p style="margin: 0; font-size: 17px; line-height: 1.5; color: #3D4F60">See every bid side by side, choose the one you want and sign online. Nobody sits at your kitchen table.</p>
+</div>
+</div>
+</div>
+</section>
+
+<section style="background: #FFFFFF">
+<div style="max-width: 1160px; margin: 0 auto; padding: 72px 24px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 56px">
+<div style="flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 18px">
+<h2 style="margin: 0; font-size: 36px; font-weight: 800; color: #0D1B2E">What you see about each contractor</h2>
+<ul style="margin: 0; padding-left: 22px; font-size: 18px; line-height: 1.8; color: #14212E">
+<li>Their bid on your statement of work</li>
+<li>The materials they propose</li>
+<li>The warranty they offer</li>
+<li>Public reviews</li>
+<li>Licensing information</li>
+</ul>
+</div>
+<div style="flex: 1 1 420px; min-width: 0; background: #F4F6F9; border-radius: 10px; padding: 32px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px">
+<h3 style="margin: 0; font-size: 22px; font-weight: 800; color: #0D1B2E">We help you understand what you're offered</h3>
+<p style="margin: 0; font-size: 18px; line-height: 1.55; color: #3D4F60">We will do our best to explain the costs and benefits of the products that go on your home so you can make informed decisions about what is best for you. Our goal isn't to sell you upgrades. It's to help you negotiate the best products you can for your home.</p>
+</div>
+</div>
+</section>
+
+<section id="paid" style="background: #F4F6F9">
+<div style="max-width: 1160px; margin: 0 auto; padding: 72px 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px">
+<div style="background: #FFFFFF; border: 1px solid #DCE2E8; border-radius: 10px; padding: 32px; display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-size: 30px; font-weight: 800; color: #0D1B2E">How we're paid</h2>
+<p style="margin: 0; font-size: 18px; line-height: 1.55; color: #3D4F60">Contractors pay Otter Quotes a fee on the bid you accept.</p>
+<p style="margin: 0; font-size: 18px; line-height: 1.55; color: #3D4F60">You pay as little as $15 up front for professional measurements that every contractor uses. If you complete a job on the platform, that money is refunded to you. There is no cost if you provide a copy of your insurance estimate.</p>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DCE2E8; border-radius: 10px; padding: 32px; display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-size: 30px; font-weight: 800; color: #0D1B2E">What we do not do</h2>
+<ul style="margin: 0; padding-left: 22px; font-size: 18px; line-height: 1.7; color: #3D4F60">
+<li>We do not work with your insurance company.</li>
+<li>We do not offer free inspections or assessments of your roof.</li>
+<li>We do not sell upgrades.</li>
+</ul>
+</div>
+</div>
+</section>
+
+<section id="promise" style="background: #0D1B2E; color: #FFFFFF">
+<div style="max-width: 1160px; margin: 0 auto; padding: 64px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 48px">
+<div style="flex: 1 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-size: 36px; font-weight: 800">You can change your mind</h2>
+<p style="margin: 0; max-width: 640px; font-size: 19px; line-height: 1.55; color: #C7D2DE">If something does not work out before work begins, you can switch to another Otter Quotes contractor at no cost, up to 3 days before your start date.</p>
+</div>
+<div style="flex: 0 1 360px; display: flex; flex-direction: column; gap: 6px; border-left: 2px solid #2A3C54; padding-left: 28px">
+<div style="font-size: 15px; font-weight: 600; color: #C7D2DE">Questions before you start?</div>
+<a href="tel:+18448753412" style="color: #FFFFFF; font-size: 26px; font-weight: 800; text-decoration: none; padding: 8px 0">(844) 875-3412</a>
+<div style="font-size: 15px; line-height: 1.5; color: #C7D2DE">3410 N High School Rd Ste G #102<br>Indianapolis IN 46224</div>
+</div>
+</div>
+</section>
+
+<section id="questions" style="background: #FFFFFF">
+<div style="max-width: 1160px; margin: 0 auto; padding: 72px 24px; display: flex; flex-direction: column; gap: 28px">
+<h2 style="margin: 0; font-size: 36px; font-weight: 800; color: #0D1B2E">Questions</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 28px 48px">
+<div style="display: flex; flex-direction: column; gap: 6px; border-top: 2px solid #0D1B2E; padding-top: 16px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 800">Do you work with my insurance company?</h3>
+<p style="margin: 0; font-size: 17px; line-height: 1.55; color: #3D4F60">Once you have your insurance estimate, we can walk you through what it includes and what it pays for.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; border-top: 2px solid #0D1B2E; padding-top: 16px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 800">Will you inspect my roof?</h3>
+<p style="margin: 0; font-size: 17px; line-height: 1.55; color: #3D4F60">No. We do not offer free inspections or assessments of your roof.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; border-top: 2px solid #0D1B2E; padding-top: 16px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 800">Do I have to hire one of the contractors?</h3>
+<p style="margin: 0; font-size: 17px; line-height: 1.55; color: #3D4F60">No. There is no obligation to work with our contractors.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; border-top: 2px solid #0D1B2E; padding-top: 16px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 800">Who bids on my job?</h3>
+<p style="margin: 0; font-size: 17px; line-height: 1.55; color: #3D4F60">You can choose from local, well-known contractors or work directly with the subcontractors who do the work.</p>
+</div>
+</div>
+</div>
+</section>
+
+<section id="start" style="background: #0D1B2E; color: #FFFFFF">
+<div style="max-width: 1160px; margin: 0 auto; padding: 72px 24px; display: flex; flex-direction: column; align-items: center; gap: 22px; text-align: center">
+<h2 style="margin: 0; font-size: 44px; line-height: 1.1; font-weight: 800">Contractors Compete. Homeowners Win.</h2>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px">
+<label for="zip-end" style="font-size: 15px; font-weight: 600">ZIP code of the home</label>
+<div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px">
+<input id="zip-end" type="text" inputmode="numeric" autocomplete="postal-code" maxlength="5" style="width: 170px; height: 58px; box-sizing: border-box; padding: 0 16px; font: inherit; font-size: 20px; color: #14212E; background: #FFFFFF; border: 2px solid #FFFFFF; border-radius: 6px">
+<a href="#start" style="display: flex; align-items: center; height: 58px; box-sizing: border-box; background: #F08C00; color: #0D1B2E; font-weight: 800; font-size: 19px; padding: 0 30px; border-radius: 6px; text-decoration: none">Get my bids</a>
+</div>
+</div>
+<a href="tel:+18448753412" style="color: #FFFFFF; font-size: 17px; padding: 12px 0">Questions first? Call (844) 875-3412</a>
+</div>
+</section>
+
+<footer style="background: #0A1524; color: #C7D2DE; border-top: 1px solid #2A3C54">
+<div style="max-width: 1160px; margin: 0 auto; padding: 36px 24px; display: flex; flex-direction: column; gap: 16px; font-size: 15px; line-height: 1.5">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+<div style="display: flex; align-items: center; gap: 12px">
+<img src="/_blob/b7995868bad66716dd21c3b48579bfe5" alt="" style="width: 22px; height: 35px; object-fit: contain">
+<div style="font-weight: 800; color: #FFFFFF">Otter Quotes · Contractors Compete. Homeowners Win.</div>
+</div>
+<nav aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 22px">
+<a href="#contractors" style="color: #FFFFFF">For contractors</a>
+<a href="#partners" style="color: #FFFFFF">For partners</a>
+<a href="#guides" style="color: #FFFFFF">Guides</a>
+<a href="#login" style="color: #FFFFFF">Log in</a>
+</nav>
+</div>
+<div>(844) 875-3412 · 3410 N High School Rd Ste G #102, Indianapolis IN 46224</div>
+<div>[Site-wide disclosure sentence, unchanged from the live site] · Terms of Service · Privacy Policy</div>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"enum","options":["once","loop","off"],"default":"once"},"$preview":{"width":1280,"height":3640}}'>
+class Component extends DCLogic {
+state = { step: 0, focus: '' };
+_t = [];
+replay = () => this.play();
+pickPrice = () => this.pick('price');
+pickMaterials = () => this.pick('materials');
+pickWarranty = () => this.pick('warranty');
+componentDidMount() { this.play(); }
+componentDidUpdate(prev) { if (prev.motion !== this.props.motion) this.play(); }
+componentWillUnmount() { this.clear(); }
+clear() { this._t.forEach((id) => clearTimeout(id)); this._t = []; }
+pick(name) { this.clear(); this.setState({ step: 4, focus: name }); }
+play() {
+this.clear();
+const mode = this.props.motion ?? 'once';
+const calm = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (mode === 'off' || calm) { this.setState({ step: 4, focus: '' }); return; }
+this.setState({ step: 0, focus: '' });
+this._t.push(setTimeout(() => this.setState({ step: 1 }), 600));
+this._t.push(setTimeout(() => this.setState({ step: 2 }), 1700));
+this._t.push(setTimeout(() => this.setState({ step: 3 }), 2800));
+this._t.push(setTimeout(() => this.setState({ step: 4 }), 4200));
+if (mode === 'loop') this._t.push(setTimeout(() => this.play(), 7000));
+}
+renderVals() {
+const s = this.state.step;
+const f = this.state.focus;
+const word = (n) => ({ display: 'inline-block', opacity: s >= n ? 1 : 0, transform: s >= n ? 'translateY(0)' : 'translateY(8px)', transition: 'opacity 0.45s ease, transform 0.45s ease' });
+const hot = (n, name) => (f ? f === name : s === n);
+const row = (n, name) => ({ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr 1fr', gap: '12px', alignItems: 'center', padding: '14px 16px', borderTop: '1px solid #DCE2E8', background: hot(n, name) ? '#FBD38D' : (s >= n ? '#FFF4DC' : '#FFFFFF'), transition: 'background 0.45s ease' });
+const tab = (n, name) => { const on = hot(n, name); return { height: '48px', padding: '0 16px', font: 'inherit', fontSize: '15px', fontWeight: 600, cursor: 'pointer', borderRadius: '24px', border: '2px solid #0D1B2E', background: on ? '#0D1B2E' : '#FFFFFF', color: on ? '#FFFFFF' : '#0D1B2E', transition: 'background 0.3s ease, color 0.3s ease' }; };
+const lines = { price: 'Price: we submit one scope of work to multiple contractors.', materials: 'Materials: learn about the benefits of upgraded materials without being sold on them.', warranty: 'Warranty: we help you learn the difference between warranties so you can assess the real value of what contractors offer.' };
+return {
+w1: word(1), w2: word(2), w3: word(3),
+rowPrice: row(1, 'price'), rowMaterials: row(2, 'materials'), rowWarranty: row(3, 'warranty'),
+tabPrice: tab(1, 'price'), tabMaterials: tab(2, 'materials'), tabWarranty: tab(3, 'warranty'),
+explain: f ? lines[f] : 'Sample layout. Your bids appear here, side by side.',
+replay: this.replay, pickPrice: this.pickPrice, pickMaterials: this.pickMaterials, pickWarranty: this.pickWarranty
+};
+}
+}
+</script>
+</body>
+</html>
