@@ -2165,14 +2165,18 @@ def main():
         "data-src + evil src": b'<script data-src="' + cf + b'" src="https://evil.example/x.js"></script>',
         "evil src first, CF src second": b'<script src="https://evil.example/x.js" src="' + cf + b'"></script>',
         "x-src + evil src": b'<script x-src="' + cf + b'" src="https://evil.example/x.js"></script>',
+        "SVG script href": b'<svg><script src="' + cf + b'" href="https://evil.example/x.js"></script></svg>',
+        "SVG script xlink:href": b'<svg><script src="' + cf + b'" xlink:href="https://evil.example/x.js"></script></svg>',
+        "CF src + unknown nonce attr": b'<script src="' + cf + b'" nonce="x"></script>',
         "CF src + onerror import": b'<script src="' + cf + b'/nope" onerror="import(\'https://evil.example/x.js\')"></script>',
         "CF src + ONLOAD eval": b'<script src="' + cf + b'" ONLOAD="eval(atob(\'YWxlcnQoMSk=\'))"></script>',
         "CF src + inline body": b'<script src="' + cf + b'">alert(1)</script>',
         "CF src + onload containing =>": b'<script src="' + cf + b'" onload="x=>{evil()}"></script>',
     }
     for name, tag in decoys.items():
+        base = clean.replace(b"</body>", b"<svg></svg></body>", 1) if tag.startswith(b"<svg>") else clean
         check("gh-2289 negative control: decoy NOT stripped (%s)" % name,
-              h(clean.replace(b"</body>", tag + b"</body>", 1)) != h(clean), True)
+              h(clean.replace(b"</body>", tag + b"</body>", 1)) != h(base), True)
     beacon_defer = b'<script defer src="' + cf + b'/vXXXX" data-cf-beacon=\'{"token":"tok-c"}\'></script>'
     check("gh-2289: real beacon, defer shape, still stripped",
           h(clean.replace(b"</body>", beacon_defer + b"</body>", 1)), h(clean))

@@ -1855,28 +1855,48 @@ def fetch_netlify_builds(site_id, token):
 # change whenever Cloudflare ships a new beacon, with NO Netlify deploy -- which flipped the
 # raw-bytes hash to CONTENT_CHANGED on every scheduled run from 2026-10-08. Strip exactly that
 # one injected tag before hashing; every other byte still counts.
-_CF_BEACON_RE = re.compile(
-    rb"[ \t]*<script\b[^>]*\bsrc=[\"']https://static\.cloudflareinsights\.com/beacon\.min\.js[^\"']*[\"'][^>]*>\s*</script>[ \t]*\r?\n?",
-    re.IGNORECASE,
-)
+# Candidate finder only: any <script ...></script> with an empty/whitespace body. Whether a
+# candidate is actually Cloudflare's beacon is decided by _strip_cf_beacon's ALLOWLIST below.
+_CF_BEACON_RE = re.compile(rb"[ \t]*<script\b([^>]*)>\s*</script>[ \t]*\r?\n?", re.IGNORECASE)
+# One attribute: name, optional = value (double-quoted, single-quoted or bare).
+_ATTR_RE = re.compile(rb"\s+([^\s=/>\"']+)(?:\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>\"']+))?")
+_ALLOWED_BEACON_ATTRS = {b"type", b"src", b"integrity", b"data-cf-beacon", b"crossorigin", b"defer"}
+_CF_SRC_PREFIX = b"https://static.cloudflareinsights.com/beacon.min.js"
 
 
-_ANY_SRC_ATTR_RE = re.compile(rb"src\s*=", re.IGNORECASE)
-_EVENT_ATTR_RE = re.compile(rb"[\s/\"']on[a-z]+\s*=", re.IGNORECASE)
-_CF_SRC_ATTR_RE = re.compile(
-    rb"\ssrc=[\"']https://static\.cloudflareinsights\.com/beacon\.min\.js[^\"']*[\"']", re.IGNORECASE
-)
+def _inside_svg(prefix):
+    """True when an <svg> element is still open at the end of `prefix` (simple count)."""
+    return len(re.findall(rb"<svg\b", prefix, re.IGNORECASE)) > len(re.findall(rb"</svg\s*>", prefix, re.IGNORECASE))
 
 
 def _strip_cf_beacon(match):
-    """Strip a candidate tag only if it has exactly ONE src-like attribute and that attribute
-    is a whitespace-preceded src= on static.cloudflareinsights.com, with no inline on* event
-    handler (rejects data-src/x-src decoys, a second src=, and onerror/onload payloads)."""
-    tag = match.group(0)
-    if (len(_ANY_SRC_ATTR_RE.findall(tag)) == 1 and _CF_SRC_ATTR_RE.search(tag)
-            and not _EVENT_ATTR_RE.search(tag)):
-        return b""
-    return tag
+    """gh-2289 ALLOWLIST: strip a candidate <script></script> only when (1) it has exactly one
+    src=, whitespace-preceded and quoted, whose value starts with the Cloudflare beacon URL;
+    (2) every attribute name is in {type, src, integrity, data-cf-beacon, crossorigin, defer}
+    (no duplicates, nothing unparsed); (3) the body is empty (guaranteed by the finder);
+    (4) it is not inside an open <svg>. Anything else is left in the hash."""
+    tag, attrs_text = match.group(0), match.group(1)
+    pos, names, src = 0, [], None
+    while pos < len(attrs_text):
+        if not attrs_text[pos:pos + 1].isspace() and attrs_text[pos:pos + 1] != b"":
+            return tag  # junk between attributes (e.g. "<script/src=...")
+        m = _ATTR_RE.match(attrs_text, pos)
+        if m is None:
+            if attrs_text[pos:].strip() == b"":
+                break
+            return tag
+        name = m.group(1).lower()
+        names.append(name)
+        if name == b"src":
+            src = m.group(2)
+        pos = m.end()
+    if len(names) != len(set(names)) or not set(names) <= _ALLOWED_BEACON_ATTRS:
+        return tag
+    if src is None or src[:1] not in (b'"', b"'") or not src[1:-1].startswith(_CF_SRC_PREFIX):
+        return tag
+    if _inside_svg(match.string[:match.start()]):
+        return tag
+    return b""
 
 
 def normalise_page_bytes(raw):
