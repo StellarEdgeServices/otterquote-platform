@@ -506,7 +506,8 @@ export function buildQuoteUpdate(input: QuoteUpdateInput): Record<string, unknow
   };
   if (input.renewMode) {
     // D-150 renewal — reset the bid window (:5347-5352).
-    base.bid_status = 'submitted';
+    // gh-2564: 'submitted' is not admitted by quotes_bid_status_check (active, expired, superseded, cancelled).
+    base.bid_status = 'active';
     base.expired_at = null;
     base.expires_at = new Date(now.getTime() + BID_RENEWAL_WINDOW_MS).toISOString();
     base.renewals_count = (input.existingRenewalsCount || 0) + 1;
@@ -616,7 +617,7 @@ export function buildBidUpdatedNotification(input: {
 }
 
 // ── Rescind (initRescindMode / confirmRescind, :5746-5793) ───────────────────
-export const RESCINDABLE_STATUSES = ['submitted', 'pending', 'under_review'] as const;
+export const RESCINDABLE_STATUSES = ['active', 'submitted', 'pending', 'under_review'] as const;
 
 export function isRescindable(bidStatus: string | null | undefined): boolean {
   return !!bidStatus && (RESCINDABLE_STATUSES as readonly string[]).includes(bidStatus);

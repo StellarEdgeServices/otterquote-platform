@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { RESCINDABLE_STATUSES, RESCINDED_BID_STATUS } from "./status.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -30,12 +31,8 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
-// Statuses that permit rescission.
-// 'active' is the live status a freshly-submitted bid lands in (quotes.bid_status
-// schema default; the non-renewal submit path never overrides it). 'submitted' is
-// produced by the D-150 renewal path. NOTE: the renew-expiry side
-// (process-bid-expirations) is intentionally NOT touched here — separate Phase-18 item.
-const RESCINDABLE_STATUSES = ["active", "submitted", "pending", "under_review"];
+// Statuses that permit rescission, and the admitted bid_status a rescinded bid is written with, live in
+// ./status.ts (gh-2564: the old write, 'rescinded', was refused by quotes_bid_status_check).
 
 interface RescindBidRequest {
   quote_id: string;
@@ -194,7 +191,7 @@ Deno.serve(async (req: Request) => {
   const { error: updateError, data: updateRows } = await supabase
     .from("quotes")
     .update({
-      bid_status: "rescinded",
+      bid_status: RESCINDED_BID_STATUS,
       updated_at: rescindedAt,
     })
     .eq("id", body.quote_id)
@@ -218,7 +215,7 @@ Deno.serve(async (req: Request) => {
   // `quote` was fetched earlier by this same id, so a zero-row match here
   // means it changed out from under the request (RLS, concurrent delete) —
   // without this check the caller would get `success: true` while
-  // quotes.bid_status never actually flipped to "rescinded", leaving a bid
+  // quotes.bid_status never actually flipped to RESCINDED_BID_STATUS, leaving a bid
   // that still looks live/payable to the award flow.
   if (!Array.isArray(updateRows) || updateRows.length === 0) {
     return new Response(

@@ -311,7 +311,7 @@ describe('quote + acceptance + notify payloads', () => {
 
   it('buildQuoteUpdate renewal resets the 14-day window + increments renewals_count', () => {
     const u = buildQuoteUpdate({ ...common, renewMode: true, existingRenewalsCount: 2, now: NOW });
-    expect(u.bid_status).toBe('submitted');
+    expect(u.bid_status).toBe('active'); // gh-2564: 'submitted' is refused by quotes_bid_status_check
     expect(u.expired_at).toBeNull();
     expect(u.expires_at).toBe(new Date(NOW.getTime() + BID_RENEWAL_WINDOW_MS).toISOString());
     expect(u.renewals_count).toBe(3);
@@ -367,7 +367,8 @@ describe('quote + acceptance + notify payloads', () => {
 // =============================================================================
 describe('rescind (:5746-5793)', () => {
   it('RESCINDABLE statuses', () => {
-    expect([...RESCINDABLE_STATUSES]).toEqual(['submitted', 'pending', 'under_review']);
+    expect([...RESCINDABLE_STATUSES]).toEqual(['active', 'submitted', 'pending', 'under_review']);
+    expect(isRescindable('active')).toBe(true);
     expect(isRescindable('submitted')).toBe(true);
     expect(isRescindable('under_review')).toBe(true);
     expect(isRescindable('signed')).toBe(false);

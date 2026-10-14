@@ -5538,7 +5538,9 @@
                 workmanship_warranty_years: quoteData.workmanship_warranty_years,
                 // D-150: renewal — reset bid window
                 ...(renewMode ? {
-                  bid_status: 'submitted',
+                  // gh-2564: 'submitted' is not admitted by quotes_bid_status_check (active, expired, superseded,
+                  // cancelled); a renewed bid is live again, which is 'active'.
+                  bid_status: 'active',
                   expired_at: null,
                   expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
                   renewals_count: (existingQuote.renewals_count || 0) + 1,
@@ -5953,10 +5955,11 @@
         return;
       }
 
-      const RESCINDABLE = ['submitted', 'pending', 'under_review'];
+      // gh-2564: 'active' is the live bid_status every production bid holds; the others are kept as before.
+      const RESCINDABLE = ['active', 'submitted', 'pending', 'under_review'];
       if (!RESCINDABLE.includes(quote.bid_status)) {
         if (detailEl) detailEl.innerHTML =
-          `<strong>Bid status: ${quote.bid_status}</strong><br>This bid cannot be withdrawn at its current stage. Only submitted, pending, or under-review bids can be rescinded.`;
+          `<strong>Bid status: ${quote.bid_status}</strong><br>This bid cannot be withdrawn at its current stage. Only active, submitted, pending, or under-review bids can be rescinded.`;
         return;
       }
 
