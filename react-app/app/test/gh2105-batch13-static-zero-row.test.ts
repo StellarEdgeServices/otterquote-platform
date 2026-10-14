@@ -65,6 +65,47 @@ describe('admin-measurements.html (gh-2105 batch 13)', () => {
   });
 });
 
+describe('admin-measurements.html never shows the internal token to the admin (gh-2105, #2610 ruling 6051013199)', () => {
+  const src = read('admin-measurements.html');
+  const helperSrc = block(src, 'var ZERO_ROW_USER_MESSAGE', '\nasync function saveFulfillment');
+  const { msgOf, PLAIN } = new Function(
+    `${helperSrc}; return { msgOf: userFacingWriteMessage, PLAIN: ZERO_ROW_USER_MESSAGE };`,
+  )() as { msgOf: (e: unknown) => string; PLAIN: string };
+
+  it('the plain sentence is the approved wording and carries no token', () => {
+    expect(PLAIN).toBe('The record was not updated \u2014 it may have been changed by someone else. Reload and try again.');
+    expect(PLAIN).not.toContain('zero_rows_updated');
+  });
+  it('NEGATIVE CONTROL: each thrown zero-row message maps to a token-free sentence; other errors pass through', () => {
+    const order = msgOf(new Error('zero_rows_updated: hover_orders abc (order not saved or delivered)'));
+    const claim = msgOf(new Error('Order saved, but writing measurements to the claim failed: zero_rows_updated: claims c1'));
+    expect(order).toBe(PLAIN);
+    expect(claim).toBe('Order saved, but writing measurements to the claim failed. ' + PLAIN);
+    for (const m of [order, claim]) expect(m).not.toContain('zero_rows_updated');
+    expect(msgOf(new Error('permission denied for table claims'))).toBe('permission denied for table claims');
+    expect(msgOf('plain string')).toBe('plain string');
+  });
+  it('the catch block puts userFacingWriteMessage(e), not e.message, on screen, and still logs the raw error', () => {
+    const b = block(src, 'Sentry.captureException(e, {', "btn.textContent = 'Save & deliver'");
+    expect(b).toContain('err.textContent = userFacingWriteMessage(e);');
+    expect(b).not.toMatch(/err\.textContent\s*=\s*e\.message/);
+    expect(b).toContain("console.error('[gh-2105] saveFulfillment failed', e);");
+  });
+  it('the measurement_shape alert uses the plain sentence, not the token', () => {
+    const b = block(src, 'else if (!rowsWritten(shapeUpd))', 'gh-1412');
+    expect(b).toContain('ZERO_ROW_USER_MESSAGE');
+    expect(b).not.toMatch(/alert\([^)]*zero_rows_updated/);
+  });
+  it('the token string appears only in thrown Errors, the helper, and comments (never in an alert/textContent literal)', () => {
+    for (const line of src.split('\n')) {
+      if (!line.includes('zero_rows_updated')) continue;
+      const t = line.trim();
+      const ok = t.startsWith('//') || t.includes("indexOf('zero_rows_updated')") || /throw new Error\(/.test(t);
+      expect(ok, `token on a non-throw line: ${t}`).toBe(true);
+    }
+  });
+});
+
 describe('platform_alerts_log acknowledge writes are annotated decision (b) (gh-2105 batch 13)', () => {
   for (const f of ['admin-contractors.html', 'react-app/app/admin/contractors/page.tsx']) {
     it(f, () => {

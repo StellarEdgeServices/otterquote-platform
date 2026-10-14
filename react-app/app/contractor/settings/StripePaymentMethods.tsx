@@ -313,10 +313,12 @@ export function StripePaymentMethods({ contractorId, billingName, billingEmail }
   // ── Set default ──
   async function onSetDefault(methodId: string) {
     try {
-      // gh-2105 (decision b, update-no-select-ok: clearing the previous
-      // default legitimately matches zero rows when there was no prior
-      // default — not a failure, so no .select()/throw is added here).
-      // update-no-select-ok: no prior default legitimately matches zero rows (gh-2105 decision b, see above)
+      // gh-2105 (decision b): this clear-all update has no is_default filter, so it
+      // matches every method the contractor owns, with or without a prior default.
+      // Zero rows therefore means RLS denied the write or the contractor id did not
+      // match. Safe to leave unchecked: the next write (is_default: true on methodId)
+      // chains .select('id') and is row-checked, so that case still fails loudly.
+      // update-no-select-ok: the following is_default:true write is row-checked (gh-2105 decision b)
       await supabase.from('contractor_payment_methods').update({ is_default: false }).eq('contractor_id', contractorId);
       const { data: defaultRows, error: defaultErr } = await supabase
         .from('contractor_payment_methods')

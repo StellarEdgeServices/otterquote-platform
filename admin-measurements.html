@@ -595,6 +595,19 @@ function rowsWritten(res) {
   return !!res && !res.error && Array.isArray(res.data) && res.data.length > 0;
 }
 
+// gh-2105 (#2610 ruling 6051013199): the internal token `zero_rows_updated` is never shown to
+// the admin. The thrown message keeps it (Sentry + console get the raw error); anything that
+// reaches the screen goes through userFacingWriteMessage, which swaps the token for a plain
+// sentence and keeps any "Order saved, but ..." prefix so a partial save is still reported.
+var ZERO_ROW_USER_MESSAGE = 'The record was not updated \u2014 it may have been changed by someone else. Reload and try again.';
+function userFacingWriteMessage(e) {
+  var msg = (e && e.message) || String(e);
+  var i = msg.indexOf('zero_rows_updated');
+  if (i === -1) return msg;
+  var prefix = msg.slice(0, i).replace(/[:\s]+$/, '');
+  return prefix ? prefix + '. ' + ZERO_ROW_USER_MESSAGE : ZERO_ROW_USER_MESSAGE;
+}
+
 async function saveFulfillment() {
   var row = state.current;
   if (!row) return;
@@ -716,7 +729,7 @@ async function saveFulfillment() {
         // gh-2105: error:null with zero rows is the silent miss -- the paid upgrade would read as delivered
         // while every other contractor still sees the basic report. Same alert as the error branch.
         console.error('[gh-2105] measurement_shape flip matched zero rows', row.claim_id);
-        alert('Order delivered, but marking the claim as fully detailed failed: zero_rows_updated (no claim row changed). Re-open and Save again to retry.');
+        alert('Order delivered, but marking the claim as fully detailed failed. ' + ZERO_ROW_USER_MESSAGE);
       }
     }
 
@@ -754,7 +767,8 @@ async function saveFulfillment() {
         extra: { order_id: row.id, claim_id: row.claim_id }
       });
     }
-    err.textContent = e.message || String(e);
+    console.error('[gh-2105] saveFulfillment failed', e);
+    err.textContent = userFacingWriteMessage(e);
     err.style.display = 'block';
   } finally {
     btn.disabled = false;

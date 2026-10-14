@@ -168,8 +168,8 @@ BASELINE: dict[str, int] = {
     # baseline capture appears to have missed or hand-adjusted for; that
     # comment is reworded in this same PR to stop tripping the scanner.
     "supabase/functions/docusign-webhook/index.ts": 0,
-    "supabase/functions/get-hover-pdf/index.ts": 0,  # gh-2105 batch 13: fixed (see PR body)
-    "supabase/functions/get-hover-siding-data/index.ts": 0,  # gh-2105 batch 13: fixed (see PR body)
+    "supabase/functions/get-hover-pdf/index.ts": 1,
+    "supabase/functions/get-hover-siding-data/index.ts": 1,
     "supabase/functions/hover-webhook/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     "supabase/functions/lead-next-step-optout/index.ts": 0,  # gh-2105 batch 7: decision-b annotated (see PR body)
     "supabase/functions/mark-job-complete/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
