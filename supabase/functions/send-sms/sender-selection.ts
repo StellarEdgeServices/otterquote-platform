@@ -65,7 +65,7 @@ export async function resolveAuthorization(
   if (!token) {
     return { authorized: false, reason: "missing_token" };
   }
-  if (token === serviceRoleKey) {
+  if (serviceRoleKey && constantTimeEqual(token, serviceRoleKey)) {
     return { authorized: true, reason: "service_role" };
   }
   const result = await getUser(token);
@@ -73,4 +73,36 @@ export async function resolveAuthorization(
     return { authorized: true, reason: "user_jwt" };
   }
   return { authorized: false, reason: "invalid_token" };
+}
+
+/** Constant-time string equality (same primitive as process-dunning / create-invoice caller gates). */
+export function constantTimeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  if (ab.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
+  return diff === 0;
+}
+
+export type ServiceOnlyDecision =
+  | { ok: true }
+  | { ok: false; status: 401 | 403; error: string };
+
+/**
+ * gh-1916 (LEGAL-READ F5, PR #2722): the relay takes a caller-supplied recipient, so only
+ * trusted server code may call it. Allowed: the exact service-role key. 401: no token, the public
+ * anon key, or any token that is not a valid user. 403: a valid logged-in user (authenticated
+ * but not the service role). Pure: `getUser` is injected, no network.
+ */
+export async function authorizeServiceOnly(
+  authHeader: string,
+  serviceRoleKey: string,
+  getUser: (token: string) => Promise<{ user: unknown } | null | undefined>,
+): Promise<ServiceOnlyDecision> {
+  const d = await resolveAuthorization(authHeader, serviceRoleKey, getUser);
+  if (d.authorized && d.reason === "service_role") return { ok: true };
+  if (d.authorized) return { ok: false, status: 403, error: "Forbidden: service role required" };
+  return { ok: false, status: 401, error: "Authentication required" };
 }
