@@ -1643,12 +1643,12 @@ class SourcesListTests(unittest.TestCase):
             state = m.group(2).upper()
             prof = glp.load_profile(state)
             county = next(c for c in prof["county_region"] if glp.county_slug(c, state) == slug)
-            pairs.append((state, county, trade, prof["county_sources"].get(county, {}).get(trade, []), page))
+            pairs.append((state, county, trade, glp.page_sources(prof, county, trade), page))
         return pairs
 
     def test_every_committed_county_page_has_a_non_empty_sources_list(self):
         pairs = self.committed_pairs()
-        self.assertEqual(len(pairs), 17)
+        self.assertEqual(len(pairs), 23)
         for state, county, trade, sources, _page in pairs:
             with self.subTest(f"{county}-{state}/{trade}"):
                 self.assertGreaterEqual(len(sources), 3)   # NOAA or Census plus at least one local source
@@ -1691,6 +1691,51 @@ class SourcesListTests(unittest.TestCase):
         del prof["county_sources"]["Alpha"]["siding"]
         self.assertNotIn("<h2>Sources</h2>", glp.build_page("Alpha", "siding", "2026-01-01", "ZZ", profile=prof))
         self.assertIn("<h2>Sources</h2>", glp.build_page("Alpha", "roofing", "2026-01-01", "ZZ", profile=prof))
+
+    def test_region_sources_are_listed_on_every_county_page_of_the_region(self):
+        # REVIEW: FAIL 6045262604 (gh-2423): a climate paragraph's documents must be linked
+        self.fx_profile(mutate=lambda prof: prof["regions"][next(iter(prof["regions"]))].update(
+            sources=[{"label": "NWS climatology", "url": "https://www.weather.gov/xyz/climo"},
+                     {"label": "Repeat of a county row", "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/"}]))
+        prof = glp.load_profile("ZZ", self.fx_profiles)
+        region = prof["county_region"]["Alpha"]
+        in_region = [c for c, r in prof["county_region"].items() if r == region]
+        out_of_region = [c for c, r in prof["county_region"].items() if r != region]
+        self.assertTrue(in_region and out_of_region)
+        for c in in_region:
+            urls = [s["url"] for s in glp.page_sources(prof, c, "roofing")]
+            self.assertIn("https://www.weather.gov/xyz/climo", urls)
+            self.assertEqual(len(urls), len(set(urls)))   # the repeated url is listed once
+            page = glp.build_page(c, "roofing", "2026-01-01", "ZZ", profile=prof)
+            self.assertIn('href="https://www.weather.gov/xyz/climo"', page)
+        for c in out_of_region:   # negative control: another region's sources do not leak
+            self.assertNotIn("https://www.weather.gov/xyz/climo",
+                             [s["url"] for s in glp.page_sources(prof, c, "roofing")])
+
+    def test_malformed_region_sources_are_refused(self):
+        for bad in ([], [{"label": "x", "url": "http://insecure.example.gov/a"}], [{"label": "x"}],
+                    [{"label": "a", "url": "https://example.gov/a"}, {"label": "b", "url": "https://example.gov/a"}]):
+            with self.subTest(bad=bad):
+                self.fx_profile(mutate=lambda prof, bad=bad: prof["regions"][next(iter(prof["regions"]))].update(sources=bad))
+                with self.assertRaises(glp.StateConfigError):
+                    glp.load_profile("ZZ", self.fx_profiles)
+
+    def test_committed_oh_pages_list_the_documents_their_climate_paragraph_cites(self):
+        # the three pages of REVIEW: FAIL 6045262604: each page's climate paragraph names a document
+        want = {"butler": "https://statesummaries.ncics.org/chapter/oh/",
+                "lorain": "https://statesummaries.ncics.org/chapter/oh/",
+                "stark": "https://www.weather.gov/pbz/svrclimo"}
+        for slug, url in want.items():
+            text = (REPO_ROOT / "locations" / f"{slug}-county-oh" / "roofing" / "index.html").read_text(encoding="utf-8")
+            self.assertIn(f'<li><a href="{url}" rel="noopener" target="_blank">', text)
+
+    def test_committed_middle_tennessee_pages_link_their_nws_documents_and_cite_no_statute(self):
+        # REVIEW: FAIL 6045269647 + Ben's ruling 6045865665: no unlinked statute, every figure's page linked
+        for slug in ("davidson", "montgomery", "rutherford", "sumner", "williamson", "wilson"):
+            text = (REPO_ROOT / "locations" / f"{slug}-county-tn" / "roofing" / "index.html").read_text(encoding="utf-8")
+            self.assertNotIn("Tennessee Code Annotated section 4-1-203", text)
+            for path in ("tornadoclimatology", "tntornadostats", "heavyprecipitationclimatology"):
+                self.assertIn(f'<a href="https://www.weather.gov/ohx/{path}" rel="noopener" target="_blank">', text)
 
     def test_page_without_sources_is_refused_when_sources_are_required(self):
         # negative control: county notes present, no county_sources -> the CLI path refuses and writes nothing

@@ -547,6 +547,24 @@ def render_issue_comment_body(offenders: list, project_ref: str) -> str:
     )
 
 
+def issue_state(token: str, timeout: int = 30):
+    """Return ALARM_ISSUE_NUMBER's state ("open" / "closed"), or None if it cannot be read."""
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{ISSUE_REPO}/issues/{ALARM_ISSUE_NUMBER}",
+        method="GET",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "otterquote-is-test-cross-table-check/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8")).get("state")
+    except Exception:  # noqa: BLE001 -- an unreadable state must not stop the alarm
+        return None
+
+
 def post_issue_comment(body: str, timeout: int = 30) -> tuple:
     """POST `body` as a comment on ALARM_ISSUE_NUMBER. Returns (success, detail).
 
@@ -557,6 +575,17 @@ def post_issue_comment(body: str, timeout: int = 30) -> tuple:
     if not token:
         reason = f"no GITHUB_TOKEN / {GITHUB_TOKEN_ENV_VAR} in environment -- skipping comment"
         print(f"!! --file-issue requested but {reason}", file=sys.stderr)
+        return False, reason
+    # Quiet on a closed issue: once #1763 is closed, a comment on it reaches nobody
+    # (it was posted on every scheduled run 2026-10-10..2026-10-13 while a known
+    # disagreement stood). The detection and the red exit code are unchanged; only
+    # the comment is skipped. If the state cannot be read, post anyway (fail open:
+    # an alarm that might be unread beats an alarm that is swallowed).
+    state = issue_state(token, timeout)
+    if state is not None and state != "open":
+        reason = (f"issue #{ALARM_ISSUE_NUMBER} is {state}, not open -- skipping comment "
+                  "(the disagreement still fails this job; see the job log)")
+        print(f"!! {reason}", file=sys.stderr)
         return False, reason
     req = urllib.request.Request(
         f"https://api.github.com/repos/{ISSUE_REPO}/issues/{ALARM_ISSUE_NUMBER}/comments",

@@ -38,3 +38,9 @@ No set is marked `UNVERIFIED`: every set has a recorded measurement. Two sets ar
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2559_claims_policy_narrow` | forward, rollback | NOT APPLIED | no ledger row; the two contractor SELECT policies on `public.claims` are live (pg_policy read 2026-10-06); Tier 3B, waits for its own R-097 window on #2559 and for the pages to be published first | none; same proof file |
+
+## Added 2026-10-13 (gh-2491, the `claims.platform_fee_charged` write guard): 2 files in this directory's set (forward here; rollback and pre-flight in `supabase/migrations_rollbacks/`), not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2491_claims_platform_fee_charged_guard` | forward (rollback and pre-flight in `supabase/migrations_rollbacks/`, the throwaway-Postgres proof in `supabase/tests/`) | NOT APPLIED | drafted 2026-10-13 as the precondition for applying `gh2491_message_counterpart`; production read-only 2026-10-13T20:02Z (CLOSE-REVIEW 6154236621): no trigger on `public.claims` mentions `platform_fee_charged`, `authenticated` holds column UPDATE. Tier 3B, applies only after an R-097 24-hour notice | none |
