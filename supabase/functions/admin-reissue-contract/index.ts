@@ -20,10 +20,17 @@
  * Without confirm:true it is a DRY RUN: returns the plan, writes nothing.
  *
  * Order when confirmed (each step aborts everything after it):
- *   1. audit row in platform_alerts_log (prior halt values) -- must succeed;
+ *   1. pre-image of the prior values to the function log (console.error);
  *   2. vendor revoke, only when the document is not finished;
- *   3. clear quotes.docusign_envelope_id (guarded by the old id, .select());
- *   4. clear the claim's pointer + halt markers (guarded by the old id, .select()).
+ *   3. clear quotes.docusign_envelope_id AND quotes.contractor_signed_at /
+ *      homeowner_signed_at in ONE guarded update (guarded by the old id, .select()).
+ *      The signing marks must go with the pointer or the corrected document cannot
+ *      be signed (F1, review 6163971155);
+ *   4. clear the claim's pointer + halt markers (guarded by the old id, .select());
+ *   5. audit row in platform_alerts_log, written only AFTER the detach succeeded, so a
+ *      mid-way failure never leaves a record saying a detach happened. It carries the
+ *      prior signing timestamps (copy-then-clear). If the insert fails the response
+ *      says audit_written:false and the prior values are in the step 1 log line.
  *
  * R-097: deploying this function is a 3B change (it calls BoldSign and rewrites
  * claim/quote pointers). Build is a PR; deploy waits for the 24-hour notice.
@@ -136,7 +143,7 @@ serve(async (req) => {
 
     const { data: quotes, error: quoteErr } = await supabase
       .from("quotes")
-      .select("id, docusign_envelope_id")
+      .select("id, docusign_envelope_id, contractor_signed_at, homeowner_signed_at")
       .eq("claim_id", claimId);
     if (quoteErr) throw quoteErr;
 
@@ -163,28 +170,22 @@ serve(async (req) => {
       });
     }
 
-    // 1. Audit row FIRST. If it cannot be written, nothing else happens.
-    const { error: auditErr } = await supabase.from("platform_alerts_log").insert({
-      alert_type: "contract_reissue_detach",
-      function_name: FN_NAME,
-      message: auditMessage({ claim, plan, adminEmail, documentStatus }),
-      sent_at: new Date().toISOString(),
-    });
-    if (auditErr) {
-      console.error(`[${FN_NAME}] audit insert failed, aborting before any write:`, auditErr);
-      return json(corsHeaders, 500, { error: "Audit row could not be written; nothing changed" });
-    }
+    // 1. Pre-image to the log: the only record of the prior values if the audit insert (step 5) fails.
+    console.error(`[${FN_NAME}] PRE-IMAGE (detach about to run) ${auditMessage({ claim, plan, adminEmail, documentStatus }).replace('detach COMPLETED', 'detach NOT YET DONE')}`);
 
     // 2. Vendor: revoke only a document that has not finished. Completed is retained.
     if (plan.vendorAction === "revoke") {
-      await revokeDocument(plan.envelopeId, "Superseded: corrected contract to be issued");
+      // Neutral on purpose: BoldSign may email the revoke message to signers, and a
+      // statement to a party about their contract is Part 3 (Dustin's words, 6015863834).
+      // Do not put substantive wording here until BoldSign is confirmed NOT to send it.
+      await revokeDocument(plan.envelopeId, "Document revoked by administrator");
     }
 
     // 3. Detach quotes (guarded by the old id so a concurrent re-mint is never clobbered).
     for (const quoteId of plan.quoteIds) {
       const { data: qRows, error: qErr } = await supabase
         .from("quotes")
-        .update({ docusign_envelope_id: null })
+        .update(plan.quoteClear)
         .eq("id", quoteId)
         .eq("docusign_envelope_id", plan.envelopeId)
         .select("id");
@@ -208,8 +209,19 @@ serve(async (req) => {
       return json(corsHeaders, 409, { error: "Claim pointer changed underneath this action; quotes were already detached", claim_id: claimId });
     }
 
+    // 5. Audit row, only now that the detach is done.
+    const { error: auditErr } = await supabase.from("platform_alerts_log").insert({
+      alert_type: "contract_reissue_detach",
+      function_name: FN_NAME,
+      message: auditMessage({ claim, plan, adminEmail, documentStatus }),
+      sent_at: new Date().toISOString(),
+    });
+    if (auditErr) console.error(`[${FN_NAME}] audit insert failed AFTER a successful detach; see PRE-IMAGE log line:`, auditErr);
+
     return json(corsHeaders, 200, {
       success: true,
+      audit_written: !auditErr,
+      quote_prior_marks: plan.quotePrior,
       claim_id: claimId,
       detached_envelope_id: plan.envelopeId,
       vendor_action: plan.vendorAction,

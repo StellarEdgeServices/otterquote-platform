@@ -2,6 +2,7 @@ import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import {
   auditMessage,
   CLAIM_CLEAR,
+  QUOTE_CLEAR,
   normalizeDocumentStatus,
   planReissue,
   vendorActionFor,
@@ -65,7 +66,7 @@ Deno.test("only quotes carrying the envelope are detached", () => {
 Deno.test("vendor action by document status; unknown fails closed", () => {
   assertEquals(vendorActionFor("completed"), "retain_completed");
   assertEquals(vendorActionFor("inprogress"), "revoke");
-  assertEquals(vendorActionFor("draft"), "revoke");
+  assertEquals(vendorActionFor("draft"), null); // not documented as revocable: refuse
   assertEquals(vendorActionFor("revoked"), "none");
   assertEquals(vendorActionFor("declined"), "none");
   assertEquals(vendorActionFor("expired"), "none");
@@ -103,5 +104,35 @@ Deno.test("audit message carries the prior halt values and says the document was
   });
   for (const s of [ENV, "13561", "$13,561.00", "NOT deleted", "retain_completed", "ff1f8323"]) {
     assertEquals(m.includes(s), true, `missing ${s}`);
+  }
+});
+
+Deno.test("draft is refused with document_status_not_revocable, not revoked", () => {
+  const p = planReissue({ ...base, documentStatus: "draft" });
+  if (p.ok) throw new Error("expected refusal");
+  assertEquals(p.code, "document_status_not_revocable");
+});
+
+// F1 (review 6163971155): the fixture quote carries BOTH signing marks from the wrong-price document.
+const marked = [{
+  id: "ff1f8323", docusign_envelope_id: ENV,
+  contractor_signed_at: "2026-10-05T18:00:00Z", homeowner_signed_at: "2026-10-05T18:05:00Z",
+}];
+
+Deno.test("F1: quote clear set removes the envelope pointer AND both signing marks", () => {
+  assertEquals(Object.keys(QUOTE_CLEAR).sort(), ["contractor_signed_at", "docusign_envelope_id", "homeowner_signed_at"]);
+  assertEquals(Object.values(QUOTE_CLEAR).every((v) => v === null), true);
+  const p = planReissue({ ...base, quotes: marked });
+  if (!p.ok) throw new Error("refused");
+  assertEquals(p.quoteClear, { docusign_envelope_id: null, contractor_signed_at: null, homeowner_signed_at: null });
+});
+
+Deno.test("F1: prior signing marks are carried in the plan and in the audit text before they are cleared", () => {
+  const p = planReissue({ ...base, quotes: marked });
+  if (!p.ok) throw new Error("refused");
+  assertEquals(p.quotePrior, [{ id: "ff1f8323", contractor_signed_at: "2026-10-05T18:00:00Z", homeowner_signed_at: "2026-10-05T18:05:00Z" }]);
+  const m = auditMessage({ claim: halted, plan: p, adminEmail: "dustinstohler1@gmail.com", documentStatus: "completed" });
+  for (const s of ["contractor_signed_at=2026-10-05T18:00:00Z", "homeowner_signed_at=2026-10-05T18:05:00Z"]) {
+    assertEquals(m.includes(s), true, s);
   }
 });

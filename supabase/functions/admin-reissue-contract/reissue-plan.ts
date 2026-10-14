@@ -34,6 +34,16 @@ export interface ReissueClaim {
 export interface ReissueQuote {
   id: string;
   docusign_envelope_id: string | null;
+  /** Written by docusign-webhook while the superseded document was being signed. */
+  contractor_signed_at?: string | null;
+  homeowner_signed_at?: string | null;
+}
+
+/** Prior signing marks of one detached quote, copied into the audit row before they are cleared. */
+export interface QuotePriorMarks {
+  id: string;
+  contractor_signed_at: string | null;
+  homeowner_signed_at: string | null;
 }
 
 /** BoldSign document.status values, lower-cased by normalizeDocumentStatus(). */
@@ -61,7 +71,8 @@ export type RefusalCode =
   | "quote_pointer_mismatch"
   | "no_quote_points_at_envelope"
   | "expected_envelope_mismatch"
-  | "document_status_unreadable";
+  | "document_status_unreadable"
+  | "document_status_not_revocable";
 
 export type ReissuePlan =
   | { ok: false; code: RefusalCode; detail: string }
@@ -72,6 +83,10 @@ export type ReissuePlan =
       vendorAction: VendorAction;
       /** quote ids whose docusign_envelope_id pointer is cleared */
       quoteIds: string[];
+      /** prior signing marks of those quotes (copy-then-clear, gh-2543 F1) */
+      quotePrior: QuotePriorMarks[];
+      /** columns written on each quote, in the SAME guarded update as the pointer clear */
+      quoteClear: Record<string, null>;
       /** columns written on claims, all guarded by .eq(docusign_envelope_id, envelopeId) */
       claimClear: Record<string, null>;
     };
@@ -85,6 +100,19 @@ export const CLAIM_CLEAR: Record<string, null> = {
   signed_price_verdict: null,
   signed_price_reason: null,
   signed_price_checked_at: null,
+};
+
+/**
+ * F1 (review 6163971155): the webhook stamps quotes.contractor_signed_at /
+ * homeowner_signed_at while the wrong-price document is signed, and writes them
+ * only `.is(..., null)`. Left in place they make resolveSignGate report
+ * 'already-signed' and block the corrected document. The prior values are copied
+ * into the audit row first, then cleared in the same guarded quote update.
+ */
+export const QUOTE_CLEAR: Record<string, null> = {
+  docusign_envelope_id: null,
+  contractor_signed_at: null,
+  homeowner_signed_at: null,
 };
 
 export function normalizeDocumentStatus(raw: unknown): DocumentStatus {
@@ -107,14 +135,15 @@ export function vendorActionFor(status: DocumentStatus): VendorAction | null {
     case "completed":
       return "retain_completed";
     case "inprogress":
-    case "draft":
       return "revoke";
     case "declined":
     case "expired":
     case "revoked":
       return "none";
     default:
-      return null; // unknown/unreadable: fail closed
+      // unknown/unreadable AND draft: fail closed. BoldSign's docs do not say a
+      // draft can be revoked, so it is not treated as revocable (review 6163971155 d).
+      return null;
   }
 }
 
@@ -148,7 +177,11 @@ export function planReissue(input: {
   }
   const vendorAction = vendorActionFor(documentStatus);
   if (vendorAction === null) {
-    return { ok: false, code: "document_status_unreadable", detail: `status=${documentStatus}` };
+    return {
+      ok: false,
+      code: documentStatus === "draft" ? "document_status_not_revocable" : "document_status_unreadable",
+      detail: `status=${documentStatus}`,
+    };
   }
   return {
     ok: true,
@@ -156,6 +189,12 @@ export function planReissue(input: {
     verdict,
     vendorAction,
     quoteIds: pointing.map((q) => q.id),
+    quotePrior: pointing.map((q) => ({
+      id: q.id,
+      contractor_signed_at: q.contractor_signed_at ?? null,
+      homeowner_signed_at: q.homeowner_signed_at ?? null,
+    })),
+    quoteClear: { ...QUOTE_CLEAR },
     claimClear: { ...CLAIM_CLEAR },
   };
 }
@@ -175,8 +214,9 @@ export function auditMessage(args: {
   return (
     `gh-2543 reissue: claim ${claim.id} detached from envelope ${plan.envelopeId} ` +
     `(vendor status ${documentStatus}, vendor action ${plan.vendorAction}, document NOT deleted) ` +
-    `by ${adminEmail}. Prior halt: verdict=${plan.verdict}, reason=${claim.signed_price_reason ?? "null"}, ` +
+    `by ${adminEmail}, detach COMPLETED. Prior halt: verdict=${plan.verdict}, reason=${claim.signed_price_reason ?? "null"}, ` +
     `signed=${claim.signed_contract_price ?? "null"}, raw=${claim.signed_price_raw ?? "null"}. ` +
-    `Quotes detached: ${plan.quoteIds.join(",")}. A corrected document is minted on the next signing entry.`
+    `Quotes detached: ${plan.quoteIds.join(",")}. Prior quote signing marks (cleared): ` +
+    `${plan.quotePrior.map((q) => `${q.id}[contractor_signed_at=${q.contractor_signed_at ?? "null"},homeowner_signed_at=${q.homeowner_signed_at ?? "null"}]`).join(";")}. A corrected document is minted on the next signing entry.`
   );
 }
