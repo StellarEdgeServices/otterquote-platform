@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Hail-Damaged Windows and Gutters: Bid Guide | Otter Quotes</title>
+<meta name="description" content="Write down hail damage to each window and gutter run, then ask every contractor to price the same list. Includes a bid checklist.">
+<link rel="canonical" href="https://otterquote.com/guides/hail-damaged-windows-gutters-bids.html">
+<meta property="og:title" content="Hail-Damaged Windows and Gutters: Bid Guide | Otter Quotes">
+<meta property="og:description" content="Write down hail damage to each window and gutter run, then ask every contractor to price the same list. Includes a bid checklist.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/hail-damaged-windows-gutters-bids.html">
+<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Otter Quotes logo">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-10-07">
+<meta property="article:author" content="Otter Quotes">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+
+/* Cost table: readable body text on the light page, and stacked rows on narrow screens */
+.definition-table td { color: var(--dark-gray); }
+.definition-table td a { color: var(--link-on-light); }
+@media (max-width: 640px) {
+  .table-wrap .definition-table { min-width: 0; }
+  .definition-table.stack thead { display: none; }
+  .definition-table.stack tr { display: block; padding: var(--sp-4) 0; border-bottom: 1px solid rgba(0,0,0,0.12); }
+  .definition-table.stack td { display: block; padding: var(--sp-1) var(--sp-2); border-bottom: none; }
+  .definition-table.stack td[data-label]::before { content: attr(data-label); display: block; font-size: 0.8rem; font-weight: 600; color: var(--link-on-light-deep); }
+}
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>Hail-Damaged Windows and Gutters: How to Document the Damage and Get Comparable Bids</h1>
+    <p class="meta">Otter Quotes &middot; Updated October 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>Write down hail damage to each window and each run of gutter, photograph it, and give every contractor the same list to price. Ask each bid to say, item by item, what is repaired and what is replaced. Whether a policy covers it is a question for your policy and your insurer, and this page does not answer it.</p>
+    </div>
+
+    <section class="step">
+      <h2>What should I write down about hail damage to windows and gutters?</h2>
+      <p>Write down each window and each stretch of gutter separately, with its place on the house, what you can see and the date you saw it. Photograph each item from a few feet away and up close. A written list gives every contractor the same starting point, so the bids describe the same damage.</p>
+      <p>The Insurance Institute for Business &amp; Home Safety (IBHS), a nonprofit research organization, says in its <a href="https://ibhs.org/wp-content/uploads/member_docs/ibhs-do-i-have-hail-damage.pdf" target="_blank" rel="noopener nofollow">guide to hail damage</a>: &ldquo;Hail can also cause damage to siding, windows, fences, lawn furniture, vehicles and other property.&rdquo; It adds: &ldquo;Seeing spatter marks or impact indentations on other items around the building are good indicators hail has occurred.&rdquo; So look at the whole house, not only the roof. Write down what you see even if you are not sure hail caused it, and ask each contractor what caused each item.</p>
+      <p><strong>Windows</strong></p>
+      <ul>
+        <li>Location: the room and wall, and the size or style if you know it.</li>
+        <li>What you see: cracked or chipped glass, damaged screens, bent frames, damaged trim.</li>
+        <li>Fog or moisture between the panes, and the date you first noticed it.</li>
+        <li>The manufacturer or model name, if it is printed on the glass or frame.</li>
+      </ul>
+      <p><strong>Gutters</strong></p>
+      <ul>
+        <li>Location: which wall or run of gutter, and which corners and downspouts.</li>
+        <li>What you see: dents, sagging, loose or pulled-away sections, crushed or detached downspouts.</li>
+        <li>Damage at seams, corners and end caps, and to the fascia board behind the gutter, if you can see it.</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>How do I get comparable window bids after hail damage?</h2>
+      <p>Give every contractor the same written list of windows, and ask each one to say in writing, window by window, whether the bid replaces the glass, the whole window unit, or the frame and trim. Bids that choose different fixes are pricing different jobs, so ask each contractor why the bid chose its fix.</p>
+      <p>Pella, a window manufacturer, says on its page about <a href="https://www.pella.com/ideas/windows/why-do-windows-crack/" target="_blank" rel="noopener nofollow">cracked windows</a>, in an answer about stress cracks rather than impact damage: &ldquo;Depending on the size, location and severity of the damage, replacing the glass or the entire window may be the best long-term solution.&rdquo; Pella&rsquo;s <a href="https://pressroom.pella.com/what-causes-windows-to-fog/" target="_blank" rel="noopener nofollow">page on fogged windows</a> (November 2017) says of fog between the panes: &ldquo;Moisture and condensation between panes of insulating glass can occur when the seal between the panes of glass fails and allows moisture to leak in. This typically occurs in older windows or doors.&rdquo; If you see fog, write down which window and when you first noticed it, and ask each contractor what caused it.</p>
+      <p>Our guide to <a href="/guides/window-replacement-bid-comparison.html">comparing window replacement bids</a> has a table for frame, glass, installation method, trim, permits and warranty that you can fill in for each bid.</p>
+    </section>
+
+    <section class="step">
+      <h2>How do I get comparable gutter bids after hail damage?</h2>
+      <p>Ask every contractor to price the same runs of gutter, and to say whether the bid repairs damaged sections, replaces the damaged runs, or replaces every gutter on the house. Those are three different jobs, so ask for each one priced on its own. Then compare downspouts, fascia and removal line by line.</p>
+      <p>Our guide to <a href="/guides/gutter-bid-comparison.html">gutter replacement bids</a> has a table for linear feet, size, material, downspouts, hangers, fascia and warranty. One manufacturer&rsquo;s <a href="https://www.gentek.ca/wp-content/uploads/sites/2/2021/01/Aluminum_Soffit_Fascia_And_Rainware_INSTALLATION-GUIDE_010213_ENG-1.pdf" target="_blank" rel="noopener nofollow">installation guide</a> (Gentek Building Products, a Canadian company, © 2013, for its aluminum gutters) calls for a slope of at least 1/4 inch per 10 feet of run toward the nearest outlet, so ask each contractor whether the bid sets the gutter to drain toward the downspouts.</p>
+    </section>
+
+    <section class="step">
+      <h2>What if only some windows or gutter runs are damaged?</h2>
+      <p>Ask each contractor to price the damaged items alone, and then the full set, side by side. Partial work leaves older parts next to new ones, so ask about color, style and whether a match is available, and ask who stands behind the warranty on each part.</p>
+    </section>
+
+    <section class="step">
+      <h2>Does insurance cover hail damage to windows and gutters?</h2>
+      <p>That is a question for your policy and your insurer, and this page does not answer it. Check your policy and ask your insurer to explain its own documents. This page covers the repair side: writing down the damage and getting bids that price the same work. Otter Quotes does not work with your insurance company.</p>
+    </section>
+
+    <section class="step">
+      <h2>What should I ask every contractor about windows and gutters?</h2>
+      <p>Copy this list and send the same questions to every contractor, in writing if you can. Asking everyone the same things gives you answers you can line up in a comparison table, and a blank answer shows you where a bid is silent or a contractor has not explained the work.</p>
+      <ul>
+        <li>Which windows and which runs of gutter does the bid cover, by location?</li>
+        <li>For each window, does the bid replace the glass, the whole unit, or the frame and trim?</li>
+        <li>Which manufacturer, model and glass package is each window?</li>
+        <li>Are trim, finishing, permits and disposal of the old windows in the bid?</li>
+        <li>For the gutters, do you repair sections, replace the damaged runs, or replace every gutter?</li>
+        <li>How many downspouts does the bid add, and where does each one discharge?</li>
+        <li>What happens to the price if you find damaged fascia behind the gutter?</li>
+        <li>Can I see the warranties in writing, and who stands behind each one?</li>
+        <li>What does the bid leave out, and how are changes priced?</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>For gutters, you compare the bids online, next to reviews and licensing information, and you do not need a salesperson to visit your home. Contractors pay Otter Quotes a fee on the accepted bid. We do not sell upgrades, and we are not a contractor.</p>
+      <p><a href="/how-it-works.html">How Otter Quotes works</a></p>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>What should I write down about hail damage to windows?</h3>
+        <div class="faq-answer">
+          <p>Write down each window by location, with what you see: cracked or chipped glass, damaged screens, bent frames or damaged trim. Note any fog between the panes too, and ask each contractor what caused it. Add the date you first noticed each problem, and photograph each window up close and from a few feet away. Give every contractor the same list so each bid prices the same windows.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>How do I get window bids after hail damage?</h3>
+        <div class="faq-answer">
+          <p>Give each contractor the same written list of windows and ask for the bid in writing, window by window. Ask whether each one is a glass replacement, a whole-unit replacement, or a full-frame replacement with trim. Bids that choose different fixes are pricing different jobs, so ask each contractor why the bid chose its fix.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Can a bid repair some gutter sections instead of replacing all of them?</h3>
+        <div class="faq-answer">
+          <p>A bid can take any of three approaches: repair damaged sections, replace the damaged runs, or replace every gutter on the house. Those are different jobs, so ask each contractor to price each option on its own and to say what the bid does about downspouts and the fascia board behind the gutter.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What if only some of my windows are damaged?</h3>
+        <div class="faq-answer">
+          <p>Ask each contractor to price the damaged windows alone and then all of the windows, so you can see both options side by side. Ask whether a match is available in style and color, how new windows will sit beside the old ones, and who stands behind the warranty on each.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does insurance cover hail damage to windows and gutters?</h3>
+        <div class="faq-answer">
+          <p>Check your policy and ask your insurer; this page does not say what is covered. On the repair side, write down the damage to each window and gutter run and ask every contractor to price the same list, so the bids are easy to compare.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="step">
+      <h2>Sources</h2>
+      <ul>
+        <li>Insurance Institute for Business &amp; Home Safety, <a href="https://ibhs.org/wp-content/uploads/member_docs/ibhs-do-i-have-hail-damage.pdf" target="_blank" rel="noopener nofollow">Is it hail damage?</a> (undated guide).</li>
+        <li>Pella Corporation, <a href="https://www.pella.com/ideas/windows/why-do-windows-crack/" target="_blank" rel="noopener nofollow">Why Do Windows Crack?</a>, updated August 4, 2026.</li>
+        <li>Pella Corporation, <a href="https://pressroom.pella.com/what-causes-windows-to-fog/" target="_blank" rel="noopener nofollow">What Causes Windows to Fog?</a>, November 16, 2017.</li>
+        <li>Gentek Building Products, <a href="https://www.gentek.ca/wp-content/uploads/sites/2/2021/01/Aluminum_Soffit_Fascia_And_Rainware_INSTALLATION-GUIDE_010213_ENG-1.pdf" target="_blank" rel="noopener nofollow">Aluminum Soffit, Fascia &amp; Rainware Installation Guide</a>, &copy; 2013.</li>
+      </ul>
+    </section>
+
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/guides/window-replacement-bid-comparison.html">How to Compare Window Replacement Bids</a></li>
+        <li><a href="/guides/gutter-bid-comparison.html">Gutter Replacement Bids: Linear Feet, Downspouts and What to Check</a></li>
+        <li><a href="/guides/prove-date-of-loss-hail.html">How to Find the Date Hail Hit Your House</a></li>
+        <li><a href="/guides/how-to-choose-contractor.html">How to Choose a Contractor for Insurance Repairs</a></li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Hail-Damaged Windows and Gutters: How to Document the Damage and Get Comparable Bids",
+  "description": "Write down hail damage to each window and gutter run, then ask every contractor to price the same list. Includes a bid checklist.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-10-07",
+  "dateModified": "2026-10-07",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/hail-damaged-windows-gutters-bids.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What should I write down about hail damage to windows?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Write down each window by location, with what you see: cracked or chipped glass, damaged screens, bent frames or damaged trim. Note any fog between the panes too, and ask each contractor what caused it. Add the date you first noticed each problem, and photograph each window up close and from a few feet away. Give every contractor the same list so each bid prices the same windows."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How do I get window bids after hail damage?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Give each contractor the same written list of windows and ask for the bid in writing, window by window. Ask whether each one is a glass replacement, a whole-unit replacement, or a full-frame replacement with trim. Bids that choose different fixes are pricing different jobs, so ask each contractor why the bid chose its fix."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can a bid repair some gutter sections instead of replacing all of them?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "A bid can take any of three approaches: repair damaged sections, replace the damaged runs, or replace every gutter on the house. Those are different jobs, so ask each contractor to price each option on its own and to say what the bid does about downspouts and the fascia board behind the gutter."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What if only some of my windows are damaged?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Ask each contractor to price the damaged windows alone and then all of the windows, so you can see both options side by side. Ask whether a match is available in style and color, how new windows will sit beside the old ones, and who stands behind the warranty on each."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does insurance cover hail damage to windows and gutters?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Check your policy and ask your insurer; this page does not say what is covered. On the repair side, write down the damage to each window and gutter run and ask every contractor to price the same list, so the bids are easy to compare."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "Hail-Damaged Windows and Gutters: How to Document the Damage and Get Comparable Bids",
+      "item": "https://otterquote.com/guides/hail-damaged-windows-gutters-bids.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>
