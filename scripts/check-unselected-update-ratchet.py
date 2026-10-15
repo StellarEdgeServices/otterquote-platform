@@ -99,10 +99,10 @@ BASELINE: dict[str, int] = {
     "help-estimate.html": 0,  # gh-2105 batch 4: (a, report-only): Sentry event, flow unchanged
     "help-materials.html": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "help-measurements.html": 0,  # gh-2105 batch 4: (a, report-only): Sentry event, flow unchanged
-    "js/auth.js": 2,
+    "js/auth.js": 1,  # gh-2105 batch 15: contractor role write fixed (a), log-only
     "js/contract-template-validation.js": 0,  # gh-2105 batch 7: fixed (see PR body)
     "js/services.js": 0,  # gh-2105 batch 14: Twilio-SID log + adjuster enrichment annotated (b)
-    "js/video-upload-handler.js": 1,
+    "js/video-upload-handler.js": 0,  # gh-2105 batch 15: claims.video_url fixed (a), warning return
     "project-confirmation.html": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "project-info-acv.html": 0,  # gh-2105 batch 4: claims money write fixed (a); batch 14: adjuster_id link annotated (b)
     "project-info-cash.html": 0,  # gh-2105 batch 4: fixed (a), money
