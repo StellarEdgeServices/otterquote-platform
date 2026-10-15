@@ -2,7 +2,7 @@
 STATUS (gh-1438, as of 2026-10-14T07:22Z): NOT APPLIED
 FILE ROLE: pre-flight file of set gh2431_profiles_address_state_backfill (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: written by gh-2431 (CTO RUN 65); production read-only SELECT counts 2026-10-14 below; proof file written, NOT yet run on production (the authoring session may not write; run it verbatim before the apply, expect the forced-rollback text)
-REPO COPY: none in supabase/migrations/ (forward draft: supabase/migrations_drafts/gh2431_profiles_address_state_backfill.sql)
+REPO COPY: none in supabase/migrations/ (forward draft: supabase/migrations/20261015210310_gh2431_profiles_address_state_backfill.sql)
 DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 -->
 # Pre-flight: gh2431_profiles_address_state_backfill
