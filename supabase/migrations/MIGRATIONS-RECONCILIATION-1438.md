@@ -1215,3 +1215,23 @@ The `20261005200000_gh2479_born_state_guard` item queued from Part 5 needed noth
 `statements` is NULL, so there is no ledger text to copy.
 
 Counts after part 6 (manifest only; it is the static baseline): Direction 1 (applied, no repo file) 46 -> 41; Direction 2 (repo file, no ledger row) 25 -> 23.
+
+## Part 7 (2026-10-15, CTO RUN 68, claim cto-2026-10-15T17:34:21Z): five Direction-2 files renamed to their ledger versions
+
+Direction-2 lowering for the closes-on `query` conjunct 2 (a repo file with no ledger row). Production was read SELECT-only
+(`yeszghaspzwwstvsrioa`, `supabase_migrations.schema_migrations`, `statements` joined with a newline); nothing was applied. Each rename was chosen because
+the ledger row's `name` is the repo file's own stem and the file text matches the ledger text:
+
+```
+repo file (old version)                                   ledger version   ledger md5                         match
+20260904234257_gh1509_w9_gate_retired_policy_key          20260909122835   cb38d36637f4e46e6c4e252d77939594    file minus its leading comment header
+20260926221500_gh2121_s16_lead_goal_security_fix          20260927143606   08b2ec0f17a21fa161a55a5a701736c7    byte-for-byte
+20260928215500_gh2300_set_lead_converted_8day_window      20260929014230   2b0b1c95ba8dab78ce90e993e6c430d8    byte-for-byte
+20260928211500_gh2313_partner_lead_consents               20260929023234   86a9345da5aafa6cd96259f1061198f0    byte-for-byte
+20260928233000_gh2310_backfill_legacy_internal_test_profiles 20260930015640 0da985ce397a0b5b98a7cbbb1a8c89dc   ledger text = file + one trailing newline
+```
+
+Rollbacks and pre-flights travel with each rename. The migration files' own text is untouched (their header comments still name the old version; editing them would break the
+byte match above). Not renamed, because the file text differs from the ledger row and the difference needs a decision: gh1059 (`20260820004212` vs ledger `20260820004417`, 11273 file
+chars vs 7369), gh1304 (`20260901132754` vs `20260901132827`), gh1529 (`20260904140000` vs `20260909045422`; `20260908111639` vs `20260909044414`), and gh2345 (`20260929180000` vs `20260930190030`,
+ledger `statements` NULL). Counts after part 7: Direction 1 41 -> 36; Direction 2 23 -> 18.
