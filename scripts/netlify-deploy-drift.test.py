@@ -2196,28 +2196,31 @@ def main():
     NC_MSG = ("Failed during stage 'checking build content for changes': "
               "Canceled build due to no content change")
     PUB_AT = "2026-10-14T18:29:01Z"
+    PUB_CREATED = "2026-10-14T18:20:00Z"     # the published deploy was CREATED 9 min before it was published
     PUB_SHA, MAIN_SHA = "1" * 40, "2" * 40
     NOW = datetime.datetime(2026, 10, 15, 14, 11, 0, tzinfo=datetime.timezone.utc)
 
-    def _nc(i, created):
-        return {"id": "nc-%d" % i, "state": "error", "created_at": created, "error_message": NC_MSG}
+    def _nc(i, created, ref=None):
+        return {"id": "nc-%d" % i, "state": "error", "created_at": created, "error_message": NC_MSG,
+                "commit_ref": ref or ("c%d" % i) * 20}
 
     def _ready(i, created, published_at=None):
         return {"id": "rd-%d" % i, "state": "ready", "created_at": created,
                 "error_message": None, "published_at": published_at}
 
-    PUB_DEPLOY = {"id": "pub-1", "state": "ready", "created_at": "2026-10-14T18:20:00Z",
+    PUB_DEPLOY = {"id": "pub-1", "state": "ready", "created_at": PUB_CREATED,
                   "published_at": PUB_AT, "error_message": None}
     NC_ONLY = [_nc(1, "2026-10-14T19:00:00Z"), _nc(2, "2026-10-14T21:00:00Z"),
                _nc(3, "2026-10-15T01:00:00Z"), _nc(4, "2026-10-15T09:00:00Z"),
-               _nc(5, "2026-10-15T13:00:00Z"), PUB_DEPLOY]
+               _nc(5, "2026-10-15T13:00:00Z", MAIN_SHA), PUB_DEPLOY]
 
     def _eval(deploys, ahead=5, locked=True, now=NOW, base_dir=None, state=None, msg=None,
               errored=None, use_summary=True, per_page=None):
         """Drive evaluate_site the way check_site does, from a deploy list."""
         signal, benign_newer = nd.select_signal_deploy(deploys)
         summary = nd.summarize_deploys_since_publish(
-            deploys, PUB_AT, published_deploy_id="pub-1", per_page=per_page) if use_summary else None
+            deploys, PUB_CREATED, published_deploy_id="pub-1", per_page=per_page,
+            main_sha=MAIN_SHA) if use_summary else None
         return nd.evaluate_site(
             site=SITE, published_commit=PUB_SHA, published_at=PUB_AT, main_sha=MAIN_SHA,
             ahead_by=ahead, deploy_state=state or signal.get("state"),
@@ -2226,7 +2229,7 @@ def main():
             base_head_sha=MAIN_SHA if base_dir else None,
             benign_newer_count=benign_newer,
             errored_since_publish=(errored if errored is not None
-                                   else nd.count_errored_since_publish(deploys, PUB_AT)),
+                                   else nd.count_errored_since_publish(deploys, PUB_CREATED)),
             newer_deploys=summary, published_locked=locked, now=now)
 
     # (1) every newer production deploy is a no-content cancel -> clean verdict, exit 0.
@@ -2256,26 +2259,33 @@ def main():
     check("#2792 locked + ready deploy 5 h old -> PENDING_PUBLISH", r["verdict"], nd.PENDING_PUBLISH)
     check("#2792 PENDING_PUBLISH run exits 0", nd.report_exit_code([r]), 0)
     check("#2792 PENDING_PUBLISH detail states the age and the window",
-          "oldest 5.0 h old, window 16 h" in r["detail"], True)
+          "oldest 5.0 h old, window 24 h" in r["detail"], True)
     check("#2792 PENDING_PUBLISH is not a push verdict", r["verdict"] in nd.PUSH_VERDICTS, False)
-    edge_ok = _eval([_ready(1, "2026-10-14T22:12:00Z")] + NC_ONLY, ahead=8)   # 15.98 h
-    check("#2792 just inside the window (15.98 h) still PENDING_PUBLISH", edge_ok["verdict"], nd.PENDING_PUBLISH)
+    # the published deploy was created 10-14 18:20Z, so the oldest possible unpublished ready deploy
+    # is just after that; the window edges are probed by moving `now` instead.
+    R19 = _ready(1, "2026-10-14T19:00:00Z")
+    edge_ok = _eval([R19] + NC_ONLY, ahead=8, now=datetime.datetime(2026, 10, 15, 18, 58, tzinfo=datetime.timezone.utc))   # 23.97 h
+    check("#2792 just inside the window (23.97 h) still PENDING_PUBLISH", edge_ok["verdict"], nd.PENDING_PUBLISH)
     # NEGATIVE CONTROL: pre-fix path flags the same young deploy BEHIND.
     check("#2792 negative control: pre-fix path flags the young ready deploy BEHIND",
           _eval(young, ahead=8, use_summary=False)["verdict"], nd.BEHIND)
 
     # (3) older than the window -> BEHIND and fails: a batch that really stopped is still caught.
-    stale = [_ready(1, "2026-10-14T19:00:00Z")] + NC_ONLY           # 19.2 h old at NOW
-    r = _eval(stale, ahead=8)
-    check("#2792 locked + ready deploy 19 h old -> BEHIND", r["verdict"], nd.BEHIND)
+    stale = [_ready(1, "2026-10-14T19:00:00Z")] + NC_ONLY
+    NOW_STALE = datetime.datetime(2026, 10, 15, 20, 0, tzinfo=datetime.timezone.utc)   # 25.0 h after the deploy
+    r = _eval(stale, ahead=8, now=NOW_STALE)
+    check("#2792 locked + ready deploy 25 h old -> BEHIND", r["verdict"], nd.BEHIND)
     check("#2792 over-window BEHIND fails the run (exit 2)", nd.report_exit_code([r]), 2)
     check("#2792 over-window BEHIND says the batch has not run",
           "the publish batch has not run" in r["detail"], True)
-    check("#2792 exactly 16.0 h is BEHIND (window is strictly under)",
-          _eval([_ready(1, "2026-10-14T22:11:00Z")] + NC_ONLY, ahead=8)["verdict"], nd.BEHIND)
+    check("#2792 exactly 24.0 h is BEHIND (window is strictly under)",
+          _eval([R19] + NC_ONLY, ahead=8,
+                now=datetime.datetime(2026, 10, 15, 19, 0, tzinfo=datetime.timezone.utc))["verdict"], nd.BEHIND)
+    check("#2792 a 17.9 h wait (measured 10-12 night-batch shape) is now PENDING_PUBLISH, not BEHIND",
+          _eval([_ready(1, "2026-10-14T20:17:00Z")] + NC_ONLY, ahead=8)["verdict"], nd.PENDING_PUBLISH)
     check("#2792 the OLDEST unpublished ready deploy sets the age (fresh one cannot hide a stale one)",
           _eval([_ready(2, "2026-10-15T13:50:00Z"), _ready(1, "2026-10-14T19:00:00Z")] + NC_ONLY,
-                ahead=8)["verdict"], nd.BEHIND)
+                ahead=8, now=NOW_STALE)["verdict"], nd.BEHIND)
     check("#2792 UNLOCKED site with a young ready deploy stays BEHIND (it should have auto-published)",
           _eval(young, ahead=8, locked=False)["verdict"], nd.BEHIND)
     check("#2792 lock state unknown (None) stays BEHIND, not assumed locked",
@@ -2311,40 +2321,82 @@ def main():
     check("#2792 ahead_by 0 is still plain IDENTICAL", _eval(NC_ONLY, ahead=0)["verdict"], nd.IDENTICAL)
 
     # summarize_deploys_since_publish unit checks.
-    sm = nd.summarize_deploys_since_publish(young, PUB_AT, published_deploy_id="pub-1")
-    check("#2792 summarize counts", (sm["newer"], sm["benign"], sm["ready_unpublished"], sm["other"], sm["complete"]),
-          (6, 5, 1, 0, True))
+    sm = nd.summarize_deploys_since_publish(young, PUB_CREATED, published_deploy_id="pub-1", main_sha=MAIN_SHA)
+    check("#2792 summarize counts", (sm["newer"], sm["benign"], sm["benign_at_main"], sm["ready_unpublished"],
+                                     sm["other"], sm["complete"]), (6, 5, 1, 1, 0, True))
     check("#2792 summarize: a previously-published newer ready deploy is 'other', not pending",
           nd.summarize_deploys_since_publish(
-              [_ready(1, "2026-10-15T09:00:00Z", published_at="2026-10-15T10:00:00Z")], PUB_AT)["other"], 1)
+              [_ready(1, "2026-10-15T09:00:00Z", published_at="2026-10-15T10:00:00Z")], PUB_CREATED)["other"], 1)
     check("#2792 summarize: unparseable published_at -> None", nd.summarize_deploys_since_publish(young, None), None)
+
+    # (6) MF1 / probe P2: Netlify cancelled OLDER commits but main's tip was never built
+    # (webhook dead, builds paused): that is "stopped building main", not "nothing changed".
+    p2 = [_nc(1, "2026-10-14T19:00:00Z"), _nc(2, "2026-10-14T20:00:00Z"), PUB_DEPLOY]
+    r = _eval(p2, ahead=5)
+    check("#2792 P2: cancels for older commits only (main tip never built) -> BEHIND", r["verdict"], nd.BEHIND)
+    check("#2792 P2: fails the run (exit 2)", nd.report_exit_code([r]), 2)
+    check("#2792 P2: with main's own tip cancelled as well -> CURRENT_NO_CONTENT",
+          _eval(p2 + [_nc(3, "2026-10-15T09:00:00Z", MAIN_SHA)], ahead=5)["verdict"], nd.CURRENT_NO_CONTENT)
+    check("#2792 P2: a READY deploy for main's tip is not a no-content proof -> not CURRENT_NO_CONTENT",
+          _eval(p2 + [dict(_ready(7, "2026-10-15T09:00:00Z"), commit_ref=MAIN_SHA)], ahead=5)["verdict"] != nd.CURRENT_NO_CONTENT, True)
+
+    # (7) MF2 / probe P3: a content deploy created BETWEEN the published deploy's created_at and
+    # its published_at (the batch was publishing an older one) is newer than the publish.
+    p3 = [_nc(2, "2026-10-15T09:00:00Z", MAIN_SHA), _ready(9, "2026-10-14T18:25:00Z"), PUB_DEPLOY]
+    r = _eval(p3, ahead=5)
+    check("#2792 P3: content deploy created inside the publish window + later cancels -> not CURRENT_NO_CONTENT",
+          r["verdict"] != nd.CURRENT_NO_CONTENT, True)
+    check("#2792 P3: that deploy is counted as the oldest unpublished ready deploy (PENDING_PUBLISH, or BEHIND once over window)",
+          r["verdict"] in (nd.PENDING_PUBLISH, nd.BEHIND), True)
+    check("#2792 P3: over the window it is BEHIND and exits 2",
+          (_eval(p3, ahead=5, now=NOW + datetime.timedelta(hours=12))["verdict"],
+           nd.report_exit_code([_eval(p3, ahead=5, now=NOW + datetime.timedelta(hours=12))])), (nd.BEHIND, 2))
+    check("#2792 P3: summarize anchored on created_at counts it newer (published_at anchor would drop it)",
+          (nd.summarize_deploys_since_publish(p3, PUB_CREATED, published_deploy_id="pub-1")["ready_unpublished"],
+           nd.summarize_deploys_since_publish(p3, PUB_AT, published_deploy_id="pub-1")["ready_unpublished"]), (1, 0))
+    # count_errored_since_publish has the same anchor (pre-existing blind window).
+    inwin = [{"id": "e-w", "state": "error", "created_at": "2026-10-14T18:25:00Z",
+              "error_message": "Build script returned non-zero exit code: 2"}, PUB_DEPLOY]
+    check("#2792 count_errored_since_publish counts a real error created inside the publish window",
+          nd.count_errored_since_publish(inwin, PUB_CREATED), 1)
+    check("#2792 count_errored_since_publish: the published_at anchor would have missed it (the old blind window)",
+          nd.count_errored_since_publish(inwin, PUB_AT), 0)
 
     # The constant is anchored to the workflow it is justified against.
     wf = (HERE.parent / ".github" / "workflows" / "netlify-publish-batch.yml").read_text(encoding="utf-8")
     slots = sorted(int(h) * 60 + int(m) for m, h in re.findall(r"cron:\s*'(\d+)\s+(\d+)\s+\*\s+\*\s+\*'", wf))
+    # Measured GitHub scheduler lag (Actions API, event=schedule, 2026-10-01..10-15, PR #2817 review):
+    # drift cron 4.9-9.8 h late, batch 14:05 slot 3.8-8.0 h late, 22:05 slot 2.3-4.9 h late, longest
+    # legitimate waits seen 17.9 h and 17.75 h. 8 h covers the worst measured slot lag.
+    LAG_ALLOWANCE_HOURS = 8
+    LONGEST_CRON_GAP_HOURS = 16.0
     gaps = [(slots[(i + 1) % len(slots)] - slots[i]) % 1440 or 1440 for i in range(len(slots))]
     check("#2792 publish-batch workflow still has two daily cron slots", len(slots), 2)
-    check("#2792 PENDING_PUBLISH_MAX_HOURS covers the longest gap between publish-batch crons (16 h)",
-          (max(gaps) / 60.0, nd.PENDING_PUBLISH_MAX_HOURS >= max(gaps) / 60.0), (16.0, True))
+    check("#2792 PENDING_PUBLISH_MAX_HOURS >= longest cron gap + LAG_ALLOWANCE_HOURS",
+          (max(gaps) / 60.0, nd.PENDING_PUBLISH_MAX_HOURS >= max(gaps) / 60.0 + LAG_ALLOWANCE_HOURS),
+          (LONGEST_CRON_GAP_HOURS, True))
 
     # End-to-end through check_site with mocked Netlify/GitHub (the jade-alpaca shape).
     def _jade_router(deploys, locked, ahead):
         return _make_router(
             site_body={"published_deploy": {"id": "pub-1", "commit_ref": PUB_SHA,
-                                            "published_at": PUB_AT, "locked": locked}},
+                                            "created_at": PUB_CREATED, "published_at": PUB_AT,
+                                            "locked": locked}},
             deploys_body=deploys,
             github_commit_body={"sha": MAIN_SHA},
             github_compare_body={"ahead_by": ahead})
 
-    for label, deploys, locked, ahead, want in (
-        ("e2e jade: no-content-only", NC_ONLY, True, 27, nd.CURRENT_NO_CONTENT),
-        ("e2e jade: 5 h-old ready deploy, locked", young, True, 27, nd.PENDING_PUBLISH),
-        ("e2e jade: 19 h-old ready deploy, locked", stale, True, 27, nd.BEHIND),
-        ("e2e jade: real build error", real_err, True, 27, nd.BUILD_FAILING),
+    for label, deploys, locked, ahead, want, e2e_now in (
+        ("e2e jade: no-content-only", NC_ONLY, True, 27, nd.CURRENT_NO_CONTENT, NOW),
+        ("e2e jade: 5 h-old ready deploy, locked", young, True, 27, nd.PENDING_PUBLISH, NOW),
+        ("e2e jade: 25 h-old ready deploy, locked", stale, True, 27, nd.BEHIND, NOW_STALE),
+        ("e2e jade: real build error", real_err, True, 27, nd.BUILD_FAILING, NOW),
+        ("e2e jade: P2 cancels for older commits only", p2, True, 27, nd.BEHIND, NOW),
+        ("e2e jade: P3 content deploy inside the publish window", p3, True, 27, nd.PENDING_PUBLISH, NOW),
     ):
         nd.urllib.request.urlopen = _jade_router(deploys, locked, ahead)
         try:
-            row = nd.check_site(SITE, "fake-netlify-token", "fake-github-token", now=NOW)
+            row = nd.check_site(SITE, "fake-netlify-token", "fake-github-token", now=e2e_now)
             check("#2792 %s -> %s" % (label, want), row["verdict"], want)
         finally:
             nd.urllib.request.urlopen = real_urlopen
