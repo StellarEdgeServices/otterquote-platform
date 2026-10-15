@@ -11,7 +11,6 @@ const ROOT = process.env.GH2559_ROOT || path.join(path.dirname(fileURLToPath(imp
 const rd = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
 let failed = 0;
 function ok(c, m) { console.log((c ? 'PASS: ' : 'FAIL: ') + m); if (!c) failed++; }
-const D386C = "The homeowner's phone number and email address are released to you only after the Platform Fee has been successfully collected.";
 const D386 = "The homeowner's full insurance estimate is released to you only after the Platform Fee has been successfully collected.";
 for (const [f, label] of [['contractor-how-it-works.html', 'how-it-works'], ['contractor-faq.html', 'FAQ']]) {
   const t = rd(f);
@@ -19,7 +18,7 @@ for (const [f, label] of [['contractor-how-it-works.html', 'how-it-works'], ['co
   ok(!/As soon as the homeowner selects you/i.test(t), label + ' does not say documents open "as soon as the homeowner selects you"');
   ok(!/(at|upon) selection/i.test(t.replace(/<[^>]+>/g, ' ')), label + ' has no "at selection" / "upon selection" access wording');
   const txt = t.replace(/<[^>]+>/g, ' ').replace(/&nbsp;|\s+/g, ' ');
-  ok(txt.includes(D386C), label + ' states the D-386 phone/email wording (released only after the Platform Fee is collected)');
+  ok(!/phone number and email address are released/i.test(txt), label + ' makes no phone/email release-timing claim (contact-flow ruling vs D-386 pending, #2559)');
   ok(!/released the moment the contract is fully signed/i.test(txt), label + ' does not release contact information "the moment the contract is fully signed"');
   ok(!/Once both parties have signed[^.]*contact information/i.test(txt), label + ' does not tie contact information to "Once both parties have signed"');
   ok(!/contact information[^.]*after both parties have signed the contract/i.test(txt), label + ' does not release contact information "after both parties have signed the contract"');
