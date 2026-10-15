@@ -106,6 +106,9 @@ on:
       - 'js/home-reskin.js'
       - 'tests/gh2598-home-next-staging.mjs'
       - 'tests/gh2598-home-next-sections.mjs'
+      - 'tests/gh2598-nav-header-footer.mjs'
+      - 'tests/gh2598-nav-header-width.mjs'
+      - 'css/nav.css'
       - 'tests/fixtures/gh2598-design/**'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
@@ -206,6 +209,9 @@ on:
       - 'js/home-reskin.js'
       - 'tests/gh2598-home-next-staging.mjs'
       - 'tests/gh2598-home-next-sections.mjs'
+      - 'tests/gh2598-nav-header-footer.mjs'
+      - 'tests/gh2598-nav-header-width.mjs'
+      - 'css/nav.css'
       - 'tests/fixtures/gh2598-design/**'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
@@ -297,11 +303,15 @@ jobs:
         run: node tests/gh2598-home-next-staging.mjs
       - name: /home-next staging page -- every visible string of the built sections equals the two approved design files (desktop and phone views), section order, no fee or promise wording before slice 3, negative controls (gh2598-home-next-sections)
         run: node tests/gh2598-home-next-sections.mjs
+      - name: Shared header and footer (js/nav.js) -- tel link in the header of every page type, tagline in the footer slot, contractor footer unchanged, negative controls (gh2598-nav-header-footer)
+        run: node tests/gh2598-nav-header-footer.mjs
       - name: Install Playwright + Chromium from the tests/e2e lockfile (gh-2361 real-browser proof)
         working-directory: tests/e2e
         run: |
           npm ci
           npx playwright install --with-deps chromium
+      - name: Shared header rendered width (css/nav.css + js/nav.js) -- real Rubik, 769-1300 px sweep on six page types, no wrap beyond production's 889 px, tel link compact below 1100, negative control (gh2598-nav-header-width)
+        run: node tests/gh2598-nav-header-width.mjs
       - name: Partner trust header on re-1/ins-1/hi-1 -- 390x744 FB UA, fields/legal/events unchanged, negative controls PN1-PN4 (cro47-trust-partner)
         run: node tests/cro47-trust-partner.mjs
       - name: RE-1 value layout -- Dustin's copy byte-for-byte, Become a partner today buttons, banned phrases, 390px no overflow (cro51-re1-value-layout)
