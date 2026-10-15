@@ -63,3 +63,9 @@ No set is marked `UNVERIFIED`: every set has a recorded measurement. Two sets ar
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2442_payment_failures_revoke_authenticated_writes` | forward, rollback, pre-flight (all three here, the older convention, which is allowed) | NOT APPLIED | drafted 2026-10-14 under #2442 (PR #2790); production read-only 2026-10-14 (REVIEW 6171819374): `authenticated` holds DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE and UPDATE on `public.payment_failures`, all granted by `postgres`; the set keeps SELECT and UPDATE. Tier 3B, R-097 24-hour notice before apply | none |
+
+## Added 2026-10-15 (gh-2559 fee leg, D-386): forward, rollback and pre-flight here, the proof in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2559_claim_docs_fee_gate` | forward, rollback, pre-flight (proof: `supabase/tests/gh2559_claim_docs_fee_gate_proof.sql`) | NOT APPLIED | drafted 2026-10-15 under #2559 (CTO RUN 68, D-386): production read-only 2026-10-15: the storage policy "Contractors can view biddable claim docs" is the selected-contractor-only text of ledger `20261008231142` (no fee condition); `claims_guard_platform_fee_charged` live; 0 claims have a selected contractor and an estimate. Adds `AND c.platform_fee_charged IS TRUE` to that policy. Tier 3B, R-097 24-hour notice before apply; PR #2796 (copy) must not merge before it is live | none |
