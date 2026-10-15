@@ -599,6 +599,8 @@ async function handleDisputeCreated(
     const submittedFinal = result.ok && result.submitFinal;
     const savedDraft = result.ok && !result.submitFinal;
 
+    // Only a FINAL submit stamps evidence_submitted_at; a draft is not a submission.
+    // disputes.status is free text (no CHECK/enum), so "evidence_drafted" is allowed.
     if (disputeRowId) {
       // gh-2105 (batch 2): disputeRowId came from our own insert moments ago,
       // so a zero-row match here means the row vanished between insert and
@@ -607,12 +609,10 @@ async function handleDisputeCreated(
       const { data: evidenceRows, error: evidenceUpdErr } = await supabase
         .from("disputes")
         .update({
-          // A draft is not a submission: only a FINAL submit stamps evidence_submitted_at.
           ...(submittedFinal ? { evidence_submitted_at: new Date().toISOString() } : {}),
           evidence_payload: result.requestBody,
           auto_submit_result: result.ok ? result.data : null,
           auto_submit_error: result.ok ? null : result.error,
-          // disputes.status is free text (no CHECK/enum); a draft must not read as submitted.
           status: submittedFinal ? "evidence_submitted" : savedDraft ? "evidence_drafted" : dispute.status,
         })
         .eq("id", disputeRowId)
