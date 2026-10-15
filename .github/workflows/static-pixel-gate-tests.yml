@@ -106,6 +106,7 @@ on:
       - 'js/home-reskin.js'
       - 'tests/gh2598-home-next-staging.mjs'
       - 'tests/gh2598-home-next-sections.mjs'
+      - 'tests/gh2598-nav-header-footer.mjs'
       - 'tests/fixtures/gh2598-design/**'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
@@ -206,6 +207,7 @@ on:
       - 'js/home-reskin.js'
       - 'tests/gh2598-home-next-staging.mjs'
       - 'tests/gh2598-home-next-sections.mjs'
+      - 'tests/gh2598-nav-header-footer.mjs'
       - 'tests/fixtures/gh2598-design/**'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
@@ -297,6 +299,8 @@ jobs:
         run: node tests/gh2598-home-next-staging.mjs
       - name: /home-next staging page -- every visible string of the built sections equals the two approved design files (desktop and phone views), section order, no fee or promise wording before slice 3, negative controls (gh2598-home-next-sections)
         run: node tests/gh2598-home-next-sections.mjs
+      - name: Shared header and footer (js/nav.js) -- tel link in the header of every page type, tagline in the footer slot, contractor footer unchanged, negative controls (gh2598-nav-header-footer)
+        run: node tests/gh2598-nav-header-footer.mjs
       - name: Install Playwright + Chromium from the tests/e2e lockfile (gh-2361 real-browser proof)
         working-directory: tests/e2e
         run: |

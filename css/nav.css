@@ -498,3 +498,25 @@
   }
   #support-fab .support-fab-label { display: none; }
 }
+
+/* ── gh-2598 slice 4: header tel link (approved homepage design). Number on wide screens, "Call" button on phones. ── */
+.nav-phone {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 var(--sp-2);
+  color: var(--white);
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.nav-phone:hover { text-decoration: underline; }
+.nav-phone-call { display: none; }
+@media (max-width: 768px) {
+  .nav-phone { margin-left: auto; margin-right: var(--sp-2); padding: 0 14px; border: 2px solid var(--white); border-radius: 6px; }
+  .nav-phone:hover { text-decoration: none; background: rgba(255,255,255,0.08); }
+  .nav-phone-num { display: none; }
+  .nav-phone-call { display: inline; }
+}

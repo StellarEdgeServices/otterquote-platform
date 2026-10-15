@@ -35,7 +35,9 @@ const NAP = Object.freeze({
   phoneTelHref: 'tel:+18448753412',
   phoneE164: '+1-844-875-3412',           // machine-readable schema.org telephone field (E.164-normalized)
   email: 'info@otterquote.com',
-  url: 'https://otterquote.com'
+  url: 'https://otterquote.com',
+  // Tagline (D-377, Dustin 2026-10-07 on #2597): "Contractors Compete. Homeowners Win." exactly so. Single source for the shared footer slot (gh-2598 slice 4).
+  tagline: 'Contractors Compete. Homeowners Win.'
 });
 
 const Nav = {
@@ -563,6 +565,16 @@ const Nav = {
     return href;
   },
 
+  /**
+   * gh-2598 slice 4: the header tel link. Markup mirrors the approved design (phone icon + number on wide screens, icon + "Call" on phones).
+   * data-nav-phone="header" is the location label for the phone_click event; slice 9 records the event, this slice only places the link.
+   */
+  _phoneLinkHTML() {
+    return `<a class="nav-phone" href="${NAP.phoneTelHref}" data-nav-phone="header" aria-label="Call ${NAP.name} at ${NAP.phoneDisplay.replace(/[^0-9]+/g, ' ').trim()}">` +
+      `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>` +
+      `<span class="nav-phone-num">${NAP.phoneDisplay}</span><span class="nav-phone-call">Call</span></a>`;
+  },
+
   /** Render the site header (role bar + role-scoped nav) */
   renderHeader(options = {}) {
     const { active = '', showAuth = true } = options;
@@ -600,6 +612,9 @@ const Nav = {
           ${showAuth ? '<div class="nav-mobile-auth" id="nav-mobile-auth-slot"></div>' : ''}
           ${wantsSignOutSlot ? '<span id="nav-mobile-signout-slot"></span>' : ''}
         </div>
+        <!-- gh-2598 slice 4 (approved homepage design, README, Behaviour section): tel link in the header of every page. Number and href come from NAP (D-240), never typed here.
+             Wide screens show the number; phones show the design's Call button (Recommended-phone.dc.html). Outside .nav-actions because that block is hidden on phones. -->
+        ${this._phoneLinkHTML()}
         <div class="nav-actions" id="nav-actions">
           ${showAuth ? '<div id="nav-auth-slot"></div>' : ''}
           ${wantsSignOutSlot ? '<span id="nav-signout-slot"></span>' : ''}
@@ -1147,9 +1162,11 @@ const Nav = {
               <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;">
               <span class="nav-logo-text">${CONFIG.SITE_NAME}</span>
             </div>
+            <!-- gh-2598 slice 4 / D-377: the footer slot carries the tagline exactly as approved. Non-contractor footers only: the contractor-portal line below
+                 is a different audience's pitch and replacing it is a copy decision not made in the design (open question on #2598). -->
             <p class="footer-tagline">${isContractor
               ? 'Your sales team — without the truck, the manager, or the advance.'
-              : 'Helping homeowners get the best deal on roofing and exterior projects.'
+              : NAP.tagline
             }</p>
             <address class="footer-nap" style="font-style:normal;margin-top:0.75rem;font-size:0.8rem;color:#94a3b8;line-height:1.6;">
               ${NAP.streetAddress},<br>${NAP.addressLocality} ${NAP.addressRegion} ${NAP.postalCode}<br>
