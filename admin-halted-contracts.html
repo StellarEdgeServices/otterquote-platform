@@ -71,6 +71,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 .badge-test       { background: #DBEAFE; color: #1E40AF; margin-left: 0.4rem; }
 .badge-other      { background: #F1F5F9; color: #475569; }
 .loading, .empty { padding: 2rem; text-align: center; color: var(--slate); }
+.reissue-btn { background: var(--amber); color: var(--navy); border: none; padding: 0.45rem 0.9rem; border-radius: 0.5rem; font-weight: 600; font-size: 0.85rem; cursor: pointer; font-family: inherit; white-space: nowrap; }
+.reissue-btn:disabled { opacity: 0.5; cursor: wait; }
+.action-note { margin-bottom: 1.5rem; padding: 0.75rem 1rem; border-radius: 0.5rem; font-size: 0.9rem; line-height: 1.5; background: rgba(255,255,255,0.06); color: var(--light); display: none; white-space: pre-wrap; }
+.action-note.error { background: rgba(239,68,68,0.15); color: #FCA5A5; }
 </style>
 </head>
 <body>
@@ -102,12 +106,16 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
   </nav>
 
   <div class="info-banner">
-    <strong>Read-only.</strong> Every claim listed here was signed at a price that differs
+    Every claim listed here was signed at a price that differs
     from the bid the homeowner accepted (or whose signed price could not be read). The platform halted:
     <code>contract_signed_at</code> stays empty, no platform fee was charged, no invoice was created,
     and the claim stays at <code>awarded</code>. The e-signature service still holds a fully signed document, so both
-    parties may believe signing finished. This page has no void or re-issue action yet.
+    parties may believe signing finished.
+    <strong>Re-issue</strong> detaches that document from the claim so a corrected one can be sent. It never deletes
+    the signed document, never claims to void a completed one. Otter Quotes sends no message itself, but if the document is revoked the e-signature service emails both signers to say so.
+    The first click is a dry run; nothing is written until you confirm.
   </div>
+  <div class="action-note" id="actionNote" role="status"></div>
 
   <div class="summary-cards">
     <div class="summary-card">
@@ -138,9 +146,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
           <th>Verdict</th>
           <th>Claim status</th>
           <th>Signed document id</th>
+          <th>Action</th>
         </tr>
       </thead>
-      <tbody id="rows"><tr><td colspan="8" class="loading">Loading&hellip;</td></tr></tbody>
+      <tbody id="rows"><tr><td colspan="9" class="loading">Loading&hellip;</td></tr></tbody>
     </table>
   </div>
 
@@ -148,15 +157,22 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 
 <script>
 /*
- * gh-2543 part 1 -- read-only list of claims the signed-price reconciliation
+ * gh-2543 part 2, slice 2b -- a Re-issue button per halted row. It calls the
+ * admin-only Edge Function admin-reissue-contract (slice 2a, PR #2764): first
+ * as a dry run (confirm:false, writes nothing), then, only after the admin
+ * accepts the plan, with confirm:true. This page itself still makes no table
+ * write: every write is the Edge Function's, under the admin's own JWT.
+ * The function never deletes a document and sends no message itself; a revoke makes the e-signature service email both signers.
+ *
+ * gh-2543 part 1 -- list of claims the signed-price reconciliation
  * halted (signing webhook, price-verify.ts, gh-1314).
  *
  * A halted claim has claims.signed_price_verdict = 'mismatch' (or 'unverified')
  * AND claims.contract_signed_at still NULL: the webhook returns before setting
  * contract_signed_at, charging, or invoicing.
  *
- * Reads claims only, through the existing claims_admin_select RLS policy
- * (is_admin_email()). No writes, no RPC, no Edge Function, no schema change.
+ * Reads claims through the existing claims_admin_select RLS policy
+ * (is_admin_email()). No table write, no RPC, no schema change from this page.
  */
 var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
 
@@ -182,6 +198,11 @@ async function checkAdminAndInit(user) {
   if (!isAdmin) { window.location.href = '/'; return; }
   document.getElementById('main-content').style.display = 'block';
 
+  document.getElementById('rows').addEventListener('click', function (e) {
+    var b = e.target.closest('.reissue-btn');
+    if (b && !b.disabled) onReissueClick(b);
+  });
+
   document.getElementById('filterTabs').addEventListener('click', function (e) {
     var btn = e.target.closest('.filter-tab');
     if (!btn) return;
@@ -204,6 +225,70 @@ function money(n) {
   if (!isFinite(v)) return '&mdash;';
   return (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+// ---- gh-2543 slice 2b: re-issue helpers (pure where possible; unit-tested in vm) ----
+async function callReissue(claimId, envelopeId, confirm) {
+  var sess = await sb.auth.getSession();
+  var token = sess && sess.data && sess.data.session ? sess.data.session.access_token : null;
+  if (!token) return { ok: false, status: 0, body: { error: 'Not signed in' } };
+  var res = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/admin-reissue-contract', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ claim_id: claimId, expected_envelope_id: envelopeId, confirm: confirm === true })
+  });
+  var body = await res.json().catch(function () { return {}; });
+  return { ok: res.ok, status: res.status, body: body };
+}
+
+function describeRefusal(r) {
+  var b = r.body || {};
+  if (b.refused) return 'Refused (' + (b.code || 'no code') + '): ' + (b.detail || 'no detail') + '\nNothing was written.';
+  return 'Could not complete (' + (b.error || ('HTTP ' + r.status)) + ').';
+}
+
+function describePlan(b) {
+  var n = (b.quotes_detached || []).length;
+  return 'Dry run. Nothing has been written.\n\n' +
+    'Document: ' + b.envelope_id + '\n' +
+    'Document status at the e-signature service: ' + b.document_status + '\n' +
+    'Action at the e-signature service: ' + (b.vendor_action === 'revoke' ? 'revoke (the document is not finished)' : 'none; the signed document is retained, never deleted') + '\n' +
+    'Quotes detached from it: ' + n + '\n\n' +
+    'Then the claim and its halt markers are cleared so a corrected document can be sent. ' +
+    (b.vendor_action === 'revoke' ? 'Otter Quotes sends no message, but revoking makes the e-signature service email both signers that the document was revoked.' : 'No message goes to either party.') + '\n\n' +
+    'Press OK to re-issue now.';
+}
+
+function describeDone(b) {
+  return 'Re-issued. Document ' + b.detached_envelope_id + ' detached (' + (b.vendor_action === 'revoke' ? 'revoked at the vendor' : 'retained at the vendor, not deleted') + '); ' +
+    (b.quotes_detached || []).length + ' quote(s) cleared. Audit row written: ' + (b.audit_written ? 'yes' : 'NO (the prior values are in the function log)') + '.';
+}
+
+function showNote(text, isError) {
+  var el = document.getElementById('actionNote');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'action-note' + (isError ? ' error' : '');
+  el.style.display = 'block';
+}
+
+async function onReissueClick(btn) {
+  var claimId = btn.getAttribute('data-claim');
+  var envId = btn.getAttribute('data-env');
+  btn.disabled = true;
+  try {
+    var dry = await callReissue(claimId, envId, false);
+    if (!dry.ok || !dry.body || dry.body.dry_run !== true) { showNote(describeRefusal(dry), true); return; }
+    if (!window.confirm(describePlan(dry.body))) { showNote('Cancelled. Nothing was written.', false); return; }
+    var done = await callReissue(claimId, envId, true);
+    if (!done.ok || !done.body || done.body.success !== true) { showNote(describeRefusal(done), true); await loadHalted(); return; }
+    showNote(describeDone(done.body), false);
+    await loadHalted();
+  } catch (e) {
+    showNote('Could not complete (' + (e && e.message ? e.message : e) + '). Check the list before trying again.', true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function daysAgo(iso) {
   if (!iso) return '';
   var d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
@@ -220,7 +305,7 @@ async function loadHalted() {
 
   if (res.error) {
     document.getElementById('rows').innerHTML =
-      '<tr><td colspan="8" class="empty">Could not load halted contracts: ' + esc(res.error.message) + '</td></tr>';
+      '<tr><td colspan="9" class="empty">Could not load halted contracts: ' + esc(res.error.message) + '</td></tr>';
     return;
   }
   state.rows = res.data || [];
@@ -243,7 +328,7 @@ function renderRows() {
   var list = state.filter === 'all' ? state.rows : state.rows.filter(function (r) { return r.signed_price_verdict === state.filter; });
   var tbody = document.getElementById('rows');
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty">No halted contracts in this view.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">No halted contracts in this view.</td></tr>';
     return;
   }
   tbody.innerHTML = list.map(function (r) {
@@ -265,6 +350,9 @@ function renderRows() {
       '<td>' + verdictBadge(r) + '</td>' +
       '<td>' + esc(r.status || '') + '</td>' +
       '<td class="mono">' + (r.envelope ? esc(r.envelope) : '&mdash;') + '</td>' +
+      '<td>' + (r.envelope
+        ? '<button class="reissue-btn" type="button" data-claim="' + esc(r.id) + '" data-env="' + esc(r.envelope) + '">Re-issue&hellip;</button>'
+        : '<span class="sub">no document to detach</span>') + '</td>' +
       '</tr>';
   }).join('');
 }
