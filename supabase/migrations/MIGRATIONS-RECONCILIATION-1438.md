@@ -1224,11 +1224,11 @@ the ledger row's `name` is the repo file's own stem and the file text matches th
 
 ```
 repo file (old version)                                   ledger version   ledger md5                         match
-20260904234257_gh1509_w9_gate_retired_policy_key          20260909122835   cb38d36637f4e46e6c4e252d77939594    file minus its leading comment header
-20260926221500_gh2121_s16_lead_goal_security_fix          20260927143606   08b2ec0f17a21fa161a55a5a701736c7    byte-for-byte
-20260928215500_gh2300_set_lead_converted_8day_window      20260929014230   2b0b1c95ba8dab78ce90e993e6c430d8    byte-for-byte
-20260928211500_gh2313_partner_lead_consents               20260929023234   86a9345da5aafa6cd96259f1061198f0    byte-for-byte
-20260928233000_gh2310_backfill_legacy_internal_test_profiles 20260930015640 0da985ce397a0b5b98a7cbbb1a8c89dc   ledger text = file + one trailing newline
+20260904234257_gh1509_w9_gate_retired_policy_key          20260909122835   cb38d36637f4    file minus its leading comment header
+20260926221500_gh2121_s16_lead_goal_security_fix          20260927143606   08b2ec0f17a2    byte-for-byte
+20260928215500_gh2300_set_lead_converted_8day_window      20260929014230   2b0b1c95ba8d    byte-for-byte
+20260928211500_gh2313_partner_lead_consents               20260929023234   86a9345da5aa    byte-for-byte
+20260928233000_gh2310_backfill_legacy_internal_test_profiles 20260930015640 0da985ce397a   ledger text = file + one trailing newline
 ```
 
 Rollbacks and pre-flights travel with each rename. The migration files' own text is untouched (their header comments still name the old version; editing them would break the

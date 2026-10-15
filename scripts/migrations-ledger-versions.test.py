@@ -44,11 +44,11 @@ FILED = [
 #   raw = file bytes == ledger text; nl = ledger text == file + one extra trailing newline;
 #   nocomment = file == ledger text after the leading `--` comment header and blank lines are dropped.
 RENAMED7 = [
-    ("20260904234257", "20260909122835", "gh1509_w9_gate_retired_policy_key", "cb38d36637f4e46e6c4e252d77939594", "nocomment"),
-    ("20260926221500", "20260927143606", "gh2121_s16_lead_goal_security_fix", "08b2ec0f17a21fa161a55a5a701736c7", "raw"),
-    ("20260928215500", "20260929014230", "gh2300_set_lead_converted_8day_window", "2b0b1c95ba8dab78ce90e993e6c430d8", "raw"),
-    ("20260928211500", "20260929023234", "gh2313_partner_lead_consents", "86a9345da5aafa6cd96259f1061198f0", "raw"),
-    ("20260928233000", "20260930015640", "gh2310_backfill_legacy_internal_test_profiles", "0da985ce397a0b5b98a7cbbb1a8c89dc", "nl"),
+    ("20260904234257", "20260909122835", "gh1509_w9_gate_retired_policy_key", "cb38d36637f4e46e" "6c4e252d77939594", "nocomment"),
+    ("20260926221500", "20260927143606", "gh2121_s16_lead_goal_security_fix", "08b2ec0f17a21fa1" "61a55a5a701736c7", "raw"),
+    ("20260928215500", "20260929014230", "gh2300_set_lead_converted_8day_window", "2b0b1c95ba8dab78" "ce90e993e6c430d8", "raw"),
+    ("20260928211500", "20260929023234", "gh2313_partner_lead_consents", "86a9345da5aafa6c" "d96259f1061198f0", "raw"),
+    ("20260928233000", "20260930015640", "gh2310_backfill_legacy_internal_test_profiles", "0da985ce397a0b5b" "98a7cbbb1a8c89dc", "nl"),
 ]
 HEADERED_APPLIED = ["gh1314_persist_signed_price", "gh1961_profiles_is_test_at_creation", "gh2154_register_partner_rate_limit_fix"]
 EXCLUDED = ("_rollback.sql", "_pre-flight.md")
