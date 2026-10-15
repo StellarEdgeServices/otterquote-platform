@@ -177,5 +177,6 @@ describe('ratchet baselines match the live counts for the 12 fixed sites', () =>
     'react-app/app/lib/partner-record.ts', 'react-app/app/trade-selector/page.tsx',
   ];
   for (const f of zero) it(`${f} baseline is 0`, () => expect(ratchet).toContain(`"${f}": 0,`));
-  for (const f of ['project-info-acv.html', 'project-info-rcv.html']) it(`${f} baseline is 1 (adjuster_id (b) remains)`, () => expect(ratchet).toContain(`"${f}": 1,`));
+  // gh-2105 batch 14: the adjuster_id (b) link-back write is now annotated update-no-select-ok, so the live count is 0.
+  for (const f of ['project-info-acv.html', 'project-info-rcv.html']) it(`${f} baseline is 0 (adjuster_id (b) annotated in batch 14)`, () => expect(ratchet).toContain(`"${f}": 0,`));
 });

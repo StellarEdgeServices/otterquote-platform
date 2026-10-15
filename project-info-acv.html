@@ -307,6 +307,7 @@ main.pi-main {
             p_adjuster_phone: updates.adjuster_phone,
             p_carrier_id: updates.carrier_id,
           });
+          // update-no-select-ok: gh-2105 decision b -- adjuster link-back inside the existing non-critical try/catch; the claim row was just written and row-checked by the update above in this same submit, and a zero-row match only leaves claims.adjuster_id unset (the page navigates on regardless, by design).
           if (adjData) await sb.from('claims').update({ adjuster_id: adjData }).eq('id', claimId);
         } catch (adjErr) {
           console.warn('[project-info-acv] adjuster upsert failed (non-critical):', adjErr);
