@@ -54,7 +54,7 @@ function makeEnv(js, opts = {}) {
   const root = mkEl();
   const doc = {
     documentElement: root,
-    querySelector: (s) => byId[s] || (/^#hr-(sticky|hero-go)$/.test(s) ? null : (byId[s] = mkEl())),
+    querySelector: (s) => (opts.missing && opts.missing.indexOf(s) >= 0 ? null : (byId[s] || (/^#hr-(sticky|hero-go)$/.test(s) ? null : (byId[s] = mkEl())))),
     querySelectorAll: (s) => (s === '[data-hr-go]' ? anchors : []),
   };
   Object.defineProperty(doc, 'cookie', { get() { return ''; }, set(v) { log.cookies.push(String(v)); } });
@@ -210,9 +210,20 @@ function t6(html, js, css) {
   const firstOn = w.map((x) => x && x.cls.has('hr-on'));
   pass.log.timers.slice().forEach((t) => t.f());
   out.push(['motion still plays one pass: all three words start unrevealed and end revealed after the timeline fires', w.every((x) => x) && firstOn.every((v) => v === false) && w.every((x) => x.cls.has('hr-on'))]);
-  const late = makeEnv(js, { reduce: false, hrOpened: true });
+  /* late script: the head script runs for real, its fail-open timer fires, THEN the main script arrives */
+  const late = makeEnv('', { reduce: false }); late.run(pre); if (late.log.timers[0]) { late.log.timers[0].f(); } late.run(js);
   const wl = ['#hr-w1', '#hr-w2', '#hr-w3'].map((k) => late.byId[k]);
-  out.push(['script arrives after the fail-open fired: no hiding, the first pass shows the finished state at once', wl.every((x) => x && x.cls.has('hr-on')) && !late.root.cls.has('hr-js')]);
+  out.push(['script arrives after the fail-open fired (head script executed): no hiding, the first pass shows the finished state at once', wl.every((x) => x && x.cls.has('hr-on')) && !late.root.cls.has('hr-js')]);
+  /* m1 (review 6199226076): play() throws (#hr-explain missing) after the timer would have been cleared; the words must still end visible.
+     Checked BEFORE the head script's own 2.5 s timer is allowed to fire, so that timer cannot be what rescues the words. */
+  const bad = makeEnv('', { reduce: false, missing: ['#hr-explain'] }); bad.run(pre);
+  const badTimer = bad.log.timers[0]; let badThrew = false;
+  try { bad.run(js); } catch (x) { badThrew = true; }
+  const hiddenNow = bad.root.cls.has('hr-js');
+  bad.log.timers.filter((t) => t !== badTimer).forEach((t) => { try { t.f(); } catch (x) {} });
+  out.push(['m1: play() throws (#hr-explain missing): the main script fails open at once (hr-js removed, no throw), without waiting for the head timer, and stays open', !badThrew && !hiddenNow && !bad.root.cls.has('hr-js') && bad.win.__hrOpened === true]);
+  const okp = makeEnv('', { reduce: false }); okp.run(pre); const okTimer = okp.log.timers.length; okp.run(js);
+  out.push(['m1: play() starting fine still clears the head timer exactly as before and keeps hr-js for the pass', okp.log.cleared.includes(okTimer) && okp.root.cls.has('hr-js')]);
   /* CSS: the words are hidden only under html.hr-js, so no JS (or a failed script) means visible text */
   const hides = [...css.matchAll(/([^{}]+)\{[^}]*opacity\s*:\s*0\s*[;}]/g)].map((x) => x[1].trim()).filter((sel) => /\.hr-w\b/.test(sel));
   out.push(['CSS hides the words only under .hr-js (no JS: visible)', hides.length >= 1 && hides.every((sel) => /^\.hr-js\s+\.hr-w\b/.test(sel))]);
@@ -237,6 +248,9 @@ control('T6 (matchMedia exception leaves the words hidden)', red6(HTML.replace('
 control('T6 (onerror removed)', red6(HTML.replace(/ onerror="[^"]*"/, ''), JS, CSS));
 control('T6 (main script never stops the timer)', red6(HTML, JS.replace("try { clearTimeout(window.__hrTimer); } catch (e) {}", ''), CSS));
 control('T6 (late script hides the words again)', red6(HTML, JS.replace('if (calm() || (first && late))', 'if (calm())'), CSS));
+const JS_PREFIX = JS.replace(/  try \{\n    play\(\);\n    try \{ clearTimeout\(window\.__hrTimer\); \} catch \(e\) \{\}\n  \} catch \(e\) \{[\s\S]*?\n  \}\n/, "  play();\n").replace('var late =', 'try { clearTimeout(window.__hrTimer); } catch (e) {}\n  var late =');   /* the pre-m1 behaviour: timer cleared first, play() unguarded */
+control('T6 (m1: timer cleared before play(), a throw in play() leaves the words hidden)', JS_PREFIX !== JS && red6(HTML, JS_PREFIX, CSS));
+control('T6 (m1: catch does not remove hr-js)', red6(HTML, JS.replace("d.documentElement.classList.remove('hr-js'); window.__hrOpened = true;", 'void 0;'), CSS));
 control('T6 (CSS hides the words without .hr-js)', red6(HTML, JS, CSS.replace('.hr-js .hr-w { opacity: 0;', '.hr-w { opacity: 0;')));
 
 /* ---------- T7 ---------- */
