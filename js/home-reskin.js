@@ -4,8 +4,10 @@
 (function () {
   'use strict';
   var d = document;
-  /* The hidden-until-animated state in the CSS applies only under .hr-js, which this script adds; if the file fails to load the words stay visible. */
-  d.documentElement.classList.add('hr-js');
+  /* The hidden-until-animated state in the CSS applies only under .hr-js, which an inline script in the head of home-next.html adds before first paint (gh-2598 correction 3)
+     and removes if this file errors or is slow (fail open). This file stops that script's timer only once play() below has started without throwing; if play() throws, the words are opened here;
+     if the timer already fired, the words stay visible and the first pass shows the finished state. */
+  var late = window.__hrOpened === true;
   var $ = function (s, r) { return (r || d).querySelector(s); };
   var $$ = function (s, r) { return [].slice.call((r || d).querySelectorAll(s)); };
 
@@ -37,16 +39,26 @@
     explain.textContent = focus ? LINES[focus] : IDLE;
   }
   function calm() { try { return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } }
+  var firstPass = true;
   function play() {
+    var first = firstPass; firstPass = false;
     clear();
-    if (calm()) { render(4, ''); return; }
+    if (calm() || (first && late)) { render(4, ''); return; }
     render(0, '');
     [[1, 600], [2, 1700], [3, 2800], [4, 4200]].forEach(function (p) { timers.push(setTimeout(function () { render(p[0], ''); }, p[1])); });
   }
   tabs.forEach(function (t) { t.addEventListener('click', function () { clear(); render(4, t.getAttribute('data-k')); }); });
   var replay = $('#hr-replay');
   if (replay) { replay.addEventListener('click', play); }
-  play();
+  try {
+    play();
+    try { clearTimeout(window.__hrTimer); } catch (e) {}
+  } catch (e) {
+    /* play() threw (a missing #hr-explain or #hr-row-* element): fail open. Stop the half-built timeline, drop hr-js so the words show, and leave the timer's job done. */
+    try { clear(); } catch (e2) {}
+    try { clearTimeout(window.__hrTimer); } catch (e2) {}
+    try { d.documentElement.classList.remove('hr-js'); window.__hrOpened = true; } catch (e2) {}
+  }
 
   /* ---------- ZIP hand-off to /start (the /start slice, slice 6 in the #2598 decomposition, reads this entry and skips the role screen) ----------
      The ZIP never goes in a URL: /start loads the Meta pixel, GA4 and Clarity, which record the page URL. It travels in sessionStorage under
