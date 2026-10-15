@@ -42,8 +42,10 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import {
+  applySubmitDecision,
   evaluateDisputeRouting,
-  maySubmitFinalEvidence,
+  FINAL_SUBMIT_ENV_VAR,
+  isFinalSubmitEnabled,
 } from "./dispute-routing.ts";
 import { assembleTextEvidence } from "./dispute-evidence-fields.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
@@ -431,14 +433,17 @@ function buildEvidencePayload(params: {
   // did assemble. Gate 1 (evaluateDisputeRouting) already keeps an unresolvable
   // dispute out of this branch entirely; this is the second, independent gate,
   // here because gate 1 is a boolean someone will refactor one day.
-  if (maySubmitFinalEvidence({
+  //
+  // [gh-2794] GATE 3: even a fully resolved dispute is saved as DRAFT unless
+  // DISPUTE_EVIDENCE_FINAL_SUBMIT_ENABLED is exactly "true". Default OFF. The
+  // evidence names the homeowner and property address; final submission waits
+  // for the owner's answer on #2794. This is the ONLY place `evidence[submit]`
+  // is set, and it is set only through applySubmitDecision().
+  return applySubmitDecision(evidence, {
     claimResolved: claim !== null,
     feeAcceptanceResolved: feeAcceptance !== null,
-  })) {
-    evidence["evidence[submit]"] = "true";
-  }
-
-  return evidence;
+    finalSubmitEnabled: isFinalSubmitEnabled(Deno.env.get(FINAL_SUBMIT_ENV_VAR)),
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -75,7 +75,7 @@ Deno.test("gh-1759: evidence[submit] is NO LONGER set unconditionally", () => {
       'was "Not found in database". That is an automatic, irreversible concession.',
   );
   assert(
-    /maySubmitFinalEvidence\(\{/.test(stripeWebhook),
+    /(maySubmitFinalEvidence\(\{|applySubmitDecision\()/.test(stripeWebhook),
     "REGRESSION (gh-1759): the evidence builder does not consult maySubmitFinalEvidence(), so " +
       "nothing stops a blind final submission.",
   );

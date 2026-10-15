@@ -65,8 +65,9 @@ Deno.test("gh-1759: index.ts builds its evidence through assembleTextEvidence an
       `index.ts sets evidence[${f}], a Stripe FILE field; prose/URLs are rejected there`,
     );
   }
-  // gate 2 is untouched: submit still set only via maySubmitFinalEvidence
-  assert(/maySubmitFinalEvidence\(\{/.test(src));
+  // gate 2 is untouched: submit is still decided via maySubmitFinalEvidence, now reached
+  // through applySubmitDecision (gh-2794 gate 3 wraps it)
+  assert(/(maySubmitFinalEvidence\(\{|applySubmitDecision\()/.test(src));
 });
 
 Deno.test("gh-1759: a livemode=false dispute never reaches createClickUpTask (Ben, comment 6069379782)", async () => {

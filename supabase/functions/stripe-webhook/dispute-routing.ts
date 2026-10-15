@@ -109,3 +109,66 @@ export function maySubmitFinalEvidence(params: {
 }): boolean {
   return params.claimResolved && params.feeAcceptanceResolved;
 }
+
+// ---------------------------------------------------------------------------
+// [gh-2794] GATE 3: draft-only unless a person has deliberately switched final
+// submission on.
+// ---------------------------------------------------------------------------
+
+/**
+ * Name of the Supabase Edge Function secret / env var that turns on FINAL
+ * (irreversible) dispute-evidence submission. Same pattern as the other
+ * feature switches under supabase/functions (`Deno.env.get(NAME) === "true"`,
+ * e.g. BOLDSIGN_REQUIRE_SIGNATURE, TEMPLATE_WATCH_EMAIL_ENABLED).
+ */
+export const FINAL_SUBMIT_ENV_VAR = "DISPUTE_EVIDENCE_FINAL_SUBMIT_ENABLED";
+
+/**
+ * Is final submission explicitly switched on? Fail-closed: ONLY the exact
+ * string "true" enables it. Unset, empty, "TRUE", "1", "yes", " true " and
+ * anything else all mean OFF (draft only).
+ *
+ * WHY: the evidence names the homeowner and the property address, and Stripe
+ * allows exactly one final submission per dispute. #2794 promised Dustin that
+ * final submission "stays draft-only until you answer"; until this gate nothing
+ * enforced it. This stays OFF until he answers and someone sets the secret.
+ */
+export function isFinalSubmitEnabled(envValue: string | undefined | null): boolean {
+  return envValue === "true";
+}
+
+/**
+ * Final decision for `evidence[submit]`. True only when BOTH the evidence is
+ * complete (claim + fee-acceptance resolved: `maySubmitFinalEvidence`) AND the
+ * explicit switch is on. Default (switch off) is always false.
+ */
+export function shouldSubmitFinalEvidence(params: {
+  claimResolved: boolean;
+  feeAcceptanceResolved: boolean;
+  finalSubmitEnabled: boolean;
+}): boolean {
+  return params.finalSubmitEnabled === true && maySubmitFinalEvidence(params);
+}
+
+/**
+ * Apply the submit decision to an evidence payload. When the answer is false
+ * the `evidence[submit]` key is ABSENT, which makes Stripe save the evidence as
+ * a DRAFT on the dispute (nothing is lost; a person finishes it). Never emits
+ * `evidence[submit]: "false"`; absence is the documented draft behaviour this
+ * module already relied on.
+ */
+export function applySubmitDecision(
+  evidence: Record<string, string>,
+  params: {
+    claimResolved: boolean;
+    feeAcceptanceResolved: boolean;
+    finalSubmitEnabled: boolean;
+  },
+): Record<string, string> {
+  if (shouldSubmitFinalEvidence(params)) {
+    evidence["evidence[submit]"] = "true";
+  } else {
+    delete evidence["evidence[submit]"];
+  }
+  return evidence;
+}
