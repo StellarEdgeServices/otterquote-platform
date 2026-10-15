@@ -26,9 +26,10 @@
  *      `admin_dispute_queue` row, exactly like a >= $500 or non-delivery
  *      dispute already does today. VISIBLE WORK, NOT SILENCE.
  *   2. `maySubmitFinalEvidence` — even if a future refactor routes an
- *      unresolvable dispute to auto-submit anyway, the evidence payload omits
- *      `evidence[submit]` entirely, which makes the Stripe call save DRAFT
- *      evidence instead of spending the final submission.
+ *      unresolvable dispute to auto-submit anyway, the request sends an
+ *      explicit top-level `submit=false`, which makes Stripe stage the evidence
+ *      as a DRAFT instead of spending the final submission. (Omitting `submit`
+ *      would NOT do this: Stripe defaults it to true.)
  *
  * Gate 2 exists precisely because gate 1 is the kind of boolean someone
  * refactors. Pure and separate for the same reason `live-charge-guard.ts` is:
@@ -99,9 +100,9 @@ export function evaluateDisputeRouting(
  * records were "Not found in database" — a submission worse than no submission,
  * because it is final and it is quotable.
  *
- * Omitting `evidence[submit]` does NOT lose the evidence: Stripe stores it as
- * draft against the dispute, so a human working the queue item starts from what
- * we did manage to assemble rather than from nothing.
+ * When this is false the request still goes out, with an explicit top-level
+ * `submit=false`, so Stripe stages the evidence as a draft for a human to finish.
+ * (Omitting `submit` would NOT do that: Stripe defaults it to true.)
  */
 export function maySubmitFinalEvidence(params: {
   claimResolved: boolean;
@@ -138,7 +139,7 @@ export function isFinalSubmitEnabled(envValue: string | undefined | null): boole
 }
 
 /**
- * Final decision for `evidence[submit]`. True only when BOTH the evidence is
+ * Final decision for the top-level `submit` parameter. True only when BOTH the evidence is
  * complete (claim + fee-acceptance resolved: `maySubmitFinalEvidence`) AND the
  * explicit switch is on. Default (switch off) is always false.
  */
@@ -151,13 +152,16 @@ export function shouldSubmitFinalEvidence(params: {
 }
 
 /**
- * Apply the submit decision to an evidence payload. When the answer is false
- * the `evidence[submit]` key is ABSENT, which makes Stripe save the evidence as
- * a DRAFT on the dispute (nothing is lost; a person finishes it). Never emits
- * `evidence[submit]: "false"`; absence is the documented draft behaviour this
- * module already relied on.
+ * Build the form body for POST /v1/disputes/{id}.
+ *
+ * STRIPE WIRE CONTRACT (https://docs.stripe.com/api/disputes/update): `submit` is a
+ * TOP-LEVEL boolean parameter and it DEFAULTS TO TRUE. `evidence` has no `submit`
+ * child. So leaving the parameter out means Stripe submits FINAL, and sending
+ * `evidence[submit]` is an unknown parameter. The only way to save a draft is an
+ * explicit top-level `submit=false`, so this ALWAYS sets it, to "true" only when
+ * shouldSubmitFinalEvidence() says so, and never emits `evidence[submit]`.
  */
-export function applySubmitDecision(
+export function buildDisputeRequestBody(
   evidence: Record<string, string>,
   params: {
     claimResolved: boolean;
@@ -165,10 +169,67 @@ export function applySubmitDecision(
     finalSubmitEnabled: boolean;
   },
 ): Record<string, string> {
-  if (shouldSubmitFinalEvidence(params)) {
-    evidence["evidence[submit]"] = "true";
-  } else {
-    delete evidence["evidence[submit]"];
+  const body: Record<string, string> = {};
+  for (const [k, v] of Object.entries(evidence)) {
+    if (k === "evidence[submit]" || k === "submit") continue; // never trust a caller-supplied key
+    body[k] = v;
   }
-  return evidence;
+  body["submit"] = shouldSubmitFinalEvidence(params) ? "true" : "false";
+  return body;
+}
+
+export interface DisputeSubmitResult {
+  ok: boolean;
+  data: unknown;
+  error?: string;
+  /** True only when the request carried submit=true (FINAL). False = staged draft. */
+  submitFinal: boolean;
+  /** The exact key/value pairs that were form-encoded and sent. */
+  requestBody: Record<string, string>;
+}
+
+/**
+ * The ONE place that writes to a Stripe dispute. Form-encodes the body from
+ * buildDisputeRequestBody and POSTs it. `fetchImpl` is injectable so tests can
+ * decode the real request body.
+ */
+export async function postDisputeEvidence(params: {
+  disputeId: string;
+  stripeKey: string;
+  evidence: Record<string, string>;
+  claimResolved: boolean;
+  feeAcceptanceResolved: boolean;
+  finalSubmitEnabled: boolean;
+  apiBase?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<DisputeSubmitResult> {
+  const requestBody = buildDisputeRequestBody(params.evidence, params);
+  const submitFinal = requestBody["submit"] === "true";
+  const doFetch = params.fetchImpl ?? fetch;
+  try {
+    const res = await doFetch(
+      `${params.apiBase ?? "https://api.stripe.com/v1"}/disputes/${params.disputeId}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${params.stripeKey}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams(requestBody).toString(),
+      },
+    );
+    const data = await res.json();
+    if (!res.ok) {
+      return {
+        ok: false,
+        data,
+        error: (data as { error?: { message?: string } })?.error?.message ?? "Stripe API error",
+        submitFinal,
+        requestBody,
+      };
+    }
+    return { ok: true, data, submitFinal, requestBody };
+  } catch (err) {
+    return { ok: false, data: null, error: String(err), submitFinal, requestBody };
+  }
 }
