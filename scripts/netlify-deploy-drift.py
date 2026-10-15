@@ -55,6 +55,24 @@ not a mechanism; a firing one is")
      field that carried the signal while every usage-exceeded array stayed `[]`. See
      find_auto_topup_warnings().
 
+LOCKED SITES + NO-CONTENT-ONLY (#2792, CTO RUN 68 -- this detector had failed 9 of its last 10
+runs on false alarms; read before "fixing" a red jade-alpaca row)
+  Both Netlify sites are deliberately LOCKED (published deploy locked=true) and published twice
+  a day by .github/workflows/netlify-publish-batch.yml (gh-2389). Two benign shapes read as BEHIND:
+    - NO-CONTENT-ONLY. A site with no base dir (jade-alpaca-b82b5e, otterquote.com) compares the
+      published commit to `main` HEAD, but Netlify cancels builds that change nothing the site
+      serves ("Canceled build due to no content change"), so the published commit stays old while
+      main moves. When every production deploy newer than the published one is such a cancel the
+      site is CURRENT_NO_CONTENT (clean, exit 0). Needs >=1 newer deploy: zero newer deploys
+      while main moved is real staleness and stays BEHIND. A real error still wins first
+      (BUILD_FAILING via errored_since_publish), and base-dir sites are not given this verdict.
+    - PENDING_PUBLISH. On a locked site, a ready deploy that was never published and is younger
+      than PENDING_PUBLISH_MAX_HOURS (16 h, justified at the constant) is the batch not having
+      run yet: PENDING_PUBLISH (clean, exit 0). The OLDEST such deploy sets the age. Older than
+      the window, or on an unlocked site (which should have auto-published), it stays BEHIND, so
+      a publish batch that genuinely stops is still caught.
+  Neither verdict is in FAILING_VERDICTS or PUSH_VERDICTS.
+
 BASE-DIRECTORY SITES + NO-CONTENT CANCELS (gh-1549 CTO run cto-2026-09-05T03:07:58Z,
 measured 2026-09-05T03:5xZ -- read before "fixing" a red otterquote-app row)
   otterquote-app (app.otterquote.com) builds from otterquote-platform with
@@ -302,7 +320,7 @@ AUTH
   script emits.
 
 EXIT
-  0  IDENTICAL for every site
+  0  IDENTICAL for every site (or CURRENT_NO_CONTENT / PENDING_PUBLISH, see LOCKED SITES below)
   2  BEHIND, BUILD_FAILING, or QUEUED_STALE for at least one site, and every site was
      measurable
   3  UNMEASURED for at least one site -- could not measure at all. This OUTRANKS 2: a run
@@ -411,6 +429,31 @@ GONE_HTTP_STATUS = 410
 # said why") and never silently absent from the output.
 OUT_OF_SCOPE = "OUT_OF_SCOPE"
 
+# #2792 (CTO RUN 68): two clean verdicts for the two false-alarm classes this detector
+# raised on 9 of its last 10 runs. See the module docstring's LOCKED SITES + NO-CONTENT-ONLY
+# section.
+#   CURRENT_NO_CONTENT -- no base-dir site; main is ahead of the published commit, but EVERY
+#                         production deploy newer than the published one is Netlify's
+#                         no-content cancel, i.e. nothing the site serves changed.
+#   PENDING_PUBLISH    -- locked site; a ready-but-never-published deploy exists and is younger
+#                         than PENDING_PUBLISH_MAX_HOURS: the deliberate publish batch
+#                         (gh-2389) simply has not run yet.
+CURRENT_NO_CONTENT = "CURRENT_NO_CONTENT"
+PENDING_PUBLISH = "PENDING_PUBLISH"
+
+# How old the OLDEST ready-but-unpublished deploy on a locked site may be before the site is
+# BEHIND (and fails the run) rather than PENDING_PUBLISH. 16 hours, justified against
+# .github/workflows/netlify-publish-batch.yml, whose crons are `5 14 * * *` and `5 22 * * *`
+# (UTC): the gaps between slots are 8 h (14:05 -> 22:05) and 16 h (22:05 -> 14:05 next day).
+# A deploy that turns ready just after the 22:05 slot legitimately waits the whole 16 h gap,
+# so anything shorter than 16 h would false-alarm every night; anything much longer lets a
+# batch that really stopped hide for a second full cycle. Measured GitHub scheduler lag
+# (slots firing up to ~4 h late, 2026-10-14/15) can push the real wait past 16 h on a bad
+# night; that surfaces as a BEHIND that says "ready deploy waiting Nh", which is the correct
+# signal for an overdue batch. scripts/netlify-deploy-drift.test.py parses the workflow's
+# crons and fails if this constant ever drops below the longest gap.
+PENDING_PUBLISH_MAX_HOURS = 16
+
 # Verdicts that represent a real, measured problem (as opposed to "could not measure").
 FAILING_VERDICTS = {BEHIND, BUILD_FAILING, QUEUED_STALE, CONTENT_CHANGED, PUBLISH_STALE}
 
@@ -418,7 +461,7 @@ FAILING_VERDICTS = {BEHIND, BUILD_FAILING, QUEUED_STALE, CONTENT_CHANGED, PUBLIS
 # "here's what's wrong" banner/issue-comment listings alongside IDENTICAL (gh-1734:
 # CONTENT_VERIFIED is content-hash's IDENTICAL; OUT_OF_SCOPE is a clean, explained
 # non-measurement, not a concern to list when some OTHER site on the same run alarms).
-CLEAN_VERDICTS = {IDENTICAL, CONTENT_VERIFIED, OUT_OF_SCOPE, GONE}
+CLEAN_VERDICTS = {IDENTICAL, CONTENT_VERIFIED, OUT_OF_SCOPE, GONE, CURRENT_NO_CONTENT, PENDING_PUBLISH}
 
 # gh-1734: explicit per-site classification -- see the module docstring's EXPLICIT SITE
 # CLASSIFICATION section. Keyed by the Netlify site's "name" field (its stable API
@@ -622,6 +665,65 @@ def count_errored_since_publish(deploys, published_at):
     return count
 
 
+def summarize_deploys_since_publish(deploys, published_at, published_deploy_id=None,
+                                    per_page=None):
+    """Pure (#2792): classify every production deploy NEWER than the published one, so
+    evaluate_site() can tell "main moved but nothing this site serves changed" and "the
+    publish batch has not run yet" from real staleness. Returns None when published_at
+    cannot be parsed (nothing to compare newer-than), else a dict:
+      newer                    count of deploys with created_at strictly after published_at
+                               (the published deploy itself is excluded by id)
+      benign                   of those, Netlify no-content cancels (is_benign_deploy_error)
+      ready_unpublished        of those, state "ready" with no published_at (never served)
+      oldest_ready_unpublished created_at (ISO string) of the OLDEST of those, else None --
+                               the OLDEST, not the newest: a fresh ready deploy must not
+                               hide an older one the batch has already skipped over
+      other                    everything else (building/enqueued, already-published, ...):
+                               anything this function cannot call benign or pending makes
+                               the no-content / pending verdicts refuse to fire
+      complete                 False when the fetched page may be truncated, i.e. it is
+                               full and its oldest deploy is still newer than the publish,
+                               so an older-than-seen ready deploy cannot be ruled out
+    Real error-state deploys are counted in `other`; evaluate_site() has already returned
+    BUILD_FAILING for them before this summary is consulted. Never raises."""
+    threshold = _parse_iso8601(published_at)
+    if threshold is None:
+        return None
+    if per_page is None:
+        per_page = _DEPLOYS_PER_PAGE
+    newer = benign = ready_unpub = other = 0
+    oldest_ready = None
+    oldest_seen = None
+    for d in deploys or []:
+        created = _parse_iso8601(d.get("created_at"))
+        if created is None:
+            continue
+        if oldest_seen is None or created < oldest_seen:
+            oldest_seen = created
+        if published_deploy_id and d.get("id") == published_deploy_id:
+            continue
+        if created <= threshold:
+            continue
+        newer += 1
+        if is_benign_deploy_error(d.get("error_message")):
+            benign += 1
+        elif d.get("state") == "ready" and not d.get("published_at"):
+            ready_unpub += 1
+            if oldest_ready is None or created < _parse_iso8601(oldest_ready):
+                oldest_ready = d.get("created_at")
+        else:
+            other += 1
+    complete = not (len(deploys or []) >= per_page and oldest_seen is not None and oldest_seen > threshold)
+    return {
+        "newer": newer,
+        "benign": benign,
+        "ready_unpublished": ready_unpub,
+        "oldest_ready_unpublished": oldest_ready,
+        "other": other,
+        "complete": complete,
+    }
+
+
 def _plural(n):
     return "commit" if n == 1 else "commits"
 
@@ -756,8 +858,21 @@ def evaluate_site(
     main_ahead_of_production=None,
     benign_newer_count=0,
     errored_since_publish=0,
+    newer_deploys=None,
+    published_locked=None,
+    now=None,
 ):
-    """Pure verdict logic given already-fetched fields. No network, no I/O.
+    """Pure verdict logic given already-fetched fields.
+
+    newer_deploys / published_locked / now (#2792, see LOCKED SITES + NO-CONTENT-ONLY in the
+    module docstring): newer_deploys is summarize_deploys_since_publish()'s dict. When it is
+    None (older callers) the verdict is exactly the pre-#2792 sha compare. Otherwise, once
+    the sha compare says BEHIND and no BUILD_FAILING / QUEUED_STALE applied:
+      - no base dir, >=1 newer deploy and ALL of them no-content cancels -> CURRENT_NO_CONTENT
+      - published_locked is True and the oldest ready-but-unpublished deploy is younger than
+        PENDING_PUBLISH_MAX_HOURS (measured against `now`) -> PENDING_PUBLISH
+      - anything else (unlocked site, deploy older than the window, an unclassifiable newer
+        deploy, a possibly truncated deploy list) stays BEHIND. No network, no I/O.
 
     base_dir / base_head_sha (BASE-DIRECTORY SITES in the module docstring): when the
     site builds from a base directory, `ahead_by` and the IDENTICAL/BEHIND compare are
@@ -903,13 +1018,47 @@ def evaluate_site(
             row["detail"] = "production commit_ref matches main HEAD" + suffix
         return row
 
+    pending_note = ""
+    s = newer_deploys
+    if s is not None and s.get("complete") and not s.get("other"):
+        if not base_dir and s.get("benign", 0) > 0 and s.get("ready_unpublished", 0) == 0:
+            row["no_content_skip"] = True
+            row["verdict"] = CURRENT_NO_CONTENT
+            row["detail"] = (
+                "production commit_ref is %d %s behind main, but all %d production deploy%s "
+                "since the publish %s Netlify's no-content cancel (%s): nothing this site "
+                "serves changed"
+                % (ahead_by, _plural(ahead_by), s["benign"], "" if s["benign"] == 1 else "s",
+                   "is" if s["benign"] == 1 else "are", SKIPPED_NO_CONTENT)
+            )
+            return row
+        if s.get("ready_unpublished", 0) > 0 and published_locked is True:
+            oldest = _parse_iso8601(s.get("oldest_ready_unpublished"))
+            now_dt = now if isinstance(now, datetime.datetime) else None
+            if oldest is not None and now_dt is not None:
+                age_h = (now_dt - oldest).total_seconds() / 3600.0
+                if age_h < PENDING_PUBLISH_MAX_HOURS:
+                    row["verdict"] = PENDING_PUBLISH
+                    row["detail"] = (
+                        "%d ready deploy%s waiting for the next publish batch (oldest %.1f h "
+                        "old, window %d h): site is locked, publish is deliberate (gh-2389)"
+                        % (s["ready_unpublished"], "" if s["ready_unpublished"] == 1 else "s",
+                           age_h, PENDING_PUBLISH_MAX_HOURS)
+                    )
+                    return row
+                pending_note = (
+                    " -- a ready deploy has waited %.1f h unpublished, over the %d h "
+                    "PENDING_PUBLISH window: the publish batch has not run"
+                    % (age_h, PENDING_PUBLISH_MAX_HOURS)
+                )
+
     row["verdict"] = BEHIND
     row["detail"] = "%d %s behind, since %s" % (ahead_by, _plural(ahead_by), row["since"])
     if base_dir:
         row["detail"] += " (counted against the last main commit touching base dir %r, not main HEAD)" % (
             base_dir.rstrip("/") + "/"
         )
-    row["detail"] += suffix
+    row["detail"] += suffix + pending_note
     return row
 
 
@@ -1413,7 +1562,8 @@ def render_text(rows, code, warnings=None, alarm_post_status=None, alarm_post_de
             if r.get("errored_since_publish") is not None:
                 line += "  errored_since_publish=%d" % r["errored_since_publish"]
             lines.append(line)
-            if r["verdict"] == IDENTICAL and (r.get("base_dir") or r.get("no_content_skip")):
+            if r["verdict"] in (CURRENT_NO_CONTENT, PENDING_PUBLISH) or (
+                    r["verdict"] == IDENTICAL and (r.get("base_dir") or r.get("no_content_skip"))):
                 lines.append("    %s" % r["detail"])
         elif r.get("content_sha256") or r.get("expected_sha256"):
             # gh-1734: non-git content-hash site -- no commit shas to show, but the
@@ -1432,7 +1582,11 @@ def render_text(rows, code, warnings=None, alarm_post_status=None, alarm_post_de
     if banner:
         lines.extend(banner)
     else:
-        lines.append("Every site's production deploy is byte-for-commit identical to `main`.")
+        if any(r["verdict"] in (CURRENT_NO_CONTENT, PENDING_PUBLISH) for r in rows):
+            lines.append("No site is drifted: every production deploy is identical to `main`, serves "
+                         "the same content as `main`, or is waiting on the next publish batch.")
+        else:
+            lines.append("Every site's production deploy is byte-for-commit identical to `main`.")
     gone = [r for r in rows if r["verdict"] == GONE]
     if gone:
         # gh-2289: GONE is reported every run (a resurrection must be visible) but is not drift.
@@ -2088,11 +2242,14 @@ def check_site(site, netlify_token, github_token, now=None, queued_stale_minutes
     if ahead_by is None:
         return unmeasured_row(site, "GitHub compare failed: %s" % reason)
 
+    eval_now = now or datetime.datetime.now(datetime.timezone.utc)
     queued_stale_build = find_queued_stale_build(
         builds_data,
-        now or datetime.datetime.now(datetime.timezone.utc),
+        eval_now,
         stale_minutes=queued_stale_minutes,
     )
+    newer_deploys = summarize_deploys_since_publish(
+        deploys_data, published_at, published_deploy_id=published.get("id"))
 
     return evaluate_site(
         site=site,
@@ -2109,6 +2266,9 @@ def check_site(site, netlify_token, github_token, now=None, queued_stale_minutes
         main_ahead_of_production=main_ahead_of_production,
         benign_newer_count=benign_newer_count,
         errored_since_publish=errored_since_publish,
+        newer_deploys=newer_deploys,
+        published_locked=published.get("locked"),
+        now=eval_now,
     )
 
 

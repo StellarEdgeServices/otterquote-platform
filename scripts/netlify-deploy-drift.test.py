@@ -2190,6 +2190,165 @@ def main():
     check("gh-2289: D-174 disclosure 'operated by Dustin Stohler personally' survives normalisation",
           b"operated by Dustin Stohler personally" in visible, True)
 
+    # -------------------------------------------------------------------------------
+    print("#2792: no-content-only deploys are CURRENT, locked + young ready deploys are PENDING_PUBLISH")
+    # -------------------------------------------------------------------------------
+    NC_MSG = ("Failed during stage 'checking build content for changes': "
+              "Canceled build due to no content change")
+    PUB_AT = "2026-10-14T18:29:01Z"
+    PUB_SHA, MAIN_SHA = "1" * 40, "2" * 40
+    NOW = datetime.datetime(2026, 10, 15, 14, 11, 0, tzinfo=datetime.timezone.utc)
+
+    def _nc(i, created):
+        return {"id": "nc-%d" % i, "state": "error", "created_at": created, "error_message": NC_MSG}
+
+    def _ready(i, created, published_at=None):
+        return {"id": "rd-%d" % i, "state": "ready", "created_at": created,
+                "error_message": None, "published_at": published_at}
+
+    PUB_DEPLOY = {"id": "pub-1", "state": "ready", "created_at": "2026-10-14T18:20:00Z",
+                  "published_at": PUB_AT, "error_message": None}
+    NC_ONLY = [_nc(1, "2026-10-14T19:00:00Z"), _nc(2, "2026-10-14T21:00:00Z"),
+               _nc(3, "2026-10-15T01:00:00Z"), _nc(4, "2026-10-15T09:00:00Z"),
+               _nc(5, "2026-10-15T13:00:00Z"), PUB_DEPLOY]
+
+    def _eval(deploys, ahead=5, locked=True, now=NOW, base_dir=None, state=None, msg=None,
+              errored=None, use_summary=True, per_page=None):
+        """Drive evaluate_site the way check_site does, from a deploy list."""
+        signal, benign_newer = nd.select_signal_deploy(deploys)
+        summary = nd.summarize_deploys_since_publish(
+            deploys, PUB_AT, published_deploy_id="pub-1", per_page=per_page) if use_summary else None
+        return nd.evaluate_site(
+            site=SITE, published_commit=PUB_SHA, published_at=PUB_AT, main_sha=MAIN_SHA,
+            ahead_by=ahead, deploy_state=state or signal.get("state"),
+            deploy_error_message=msg if msg is not None else signal.get("error_message"),
+            deploy_skipped=None, base_dir=base_dir,
+            base_head_sha=MAIN_SHA if base_dir else None,
+            benign_newer_count=benign_newer,
+            errored_since_publish=(errored if errored is not None
+                                   else nd.count_errored_since_publish(deploys, PUB_AT)),
+            newer_deploys=summary, published_locked=locked, now=now)
+
+    # (1) every newer production deploy is a no-content cancel -> clean verdict, exit 0.
+    r = _eval(NC_ONLY, ahead=5)
+    check("#2792 no-content-only -> CURRENT_NO_CONTENT", r["verdict"], nd.CURRENT_NO_CONTENT)
+    check("#2792 no-content-only is not a failing verdict", r["verdict"] in nd.FAILING_VERDICTS, False)
+    check("#2792 no-content-only run exits 0", nd.report_exit_code([r]), 0)
+    check("#2792 no-content-only detail names the 5 cancels",
+          "all 5 production deploys since the publish are Netlify's no-content cancel" in r["detail"], True)
+    check("#2792 no-content-only: no banner, JSON verdict CURRENT",
+          (json.loads(nd.render_json([r], 0))["verdict"], json.loads(nd.render_json([r], 0))["banner"]),
+          ("CURRENT", None))
+    check("#2792 no-content-only text row prints the verdict and its detail line",
+          nd.render_text([r], 0).count("CURRENT_NO_CONTENT") >= 1, True)
+    check("#2792 no-content-only never alarms a push", r["verdict"] in nd.PUSH_VERDICTS, False)
+    # (1-) NEGATIVE CONTROL: the pre-fix path (no newer-deploy summary) flags the same inputs.
+    old = _eval(NC_ONLY, ahead=5, use_summary=False)
+    check("#2792 negative control: pre-fix path flags the no-content-only case BEHIND",
+          old["verdict"], nd.BEHIND)
+    check("#2792 negative control: pre-fix path fails the run (exit 2)", nd.report_exit_code([old]), 2)
+    check("#2792 negative control: pre-fix detail is the 'SKIPPED_NO_CONTENT, not a build failure' BEHIND",
+          "5 commits behind" in old["detail"] and "SKIPPED_NO_CONTENT" in old["detail"], True)
+
+    # (2) PENDING_PUBLISH on a locked site, younger than the window -> clean.
+    young = [_ready(1, "2026-10-15T09:11:00Z")] + NC_ONLY          # 5.0 h old at NOW
+    r = _eval(young, ahead=8)
+    check("#2792 locked + ready deploy 5 h old -> PENDING_PUBLISH", r["verdict"], nd.PENDING_PUBLISH)
+    check("#2792 PENDING_PUBLISH run exits 0", nd.report_exit_code([r]), 0)
+    check("#2792 PENDING_PUBLISH detail states the age and the window",
+          "oldest 5.0 h old, window 16 h" in r["detail"], True)
+    check("#2792 PENDING_PUBLISH is not a push verdict", r["verdict"] in nd.PUSH_VERDICTS, False)
+    edge_ok = _eval([_ready(1, "2026-10-14T22:12:00Z")] + NC_ONLY, ahead=8)   # 15.98 h
+    check("#2792 just inside the window (15.98 h) still PENDING_PUBLISH", edge_ok["verdict"], nd.PENDING_PUBLISH)
+    # NEGATIVE CONTROL: pre-fix path flags the same young deploy BEHIND.
+    check("#2792 negative control: pre-fix path flags the young ready deploy BEHIND",
+          _eval(young, ahead=8, use_summary=False)["verdict"], nd.BEHIND)
+
+    # (3) older than the window -> BEHIND and fails: a batch that really stopped is still caught.
+    stale = [_ready(1, "2026-10-14T19:00:00Z")] + NC_ONLY           # 19.2 h old at NOW
+    r = _eval(stale, ahead=8)
+    check("#2792 locked + ready deploy 19 h old -> BEHIND", r["verdict"], nd.BEHIND)
+    check("#2792 over-window BEHIND fails the run (exit 2)", nd.report_exit_code([r]), 2)
+    check("#2792 over-window BEHIND says the batch has not run",
+          "the publish batch has not run" in r["detail"], True)
+    check("#2792 exactly 16.0 h is BEHIND (window is strictly under)",
+          _eval([_ready(1, "2026-10-14T22:11:00Z")] + NC_ONLY, ahead=8)["verdict"], nd.BEHIND)
+    check("#2792 the OLDEST unpublished ready deploy sets the age (fresh one cannot hide a stale one)",
+          _eval([_ready(2, "2026-10-15T13:50:00Z"), _ready(1, "2026-10-14T19:00:00Z")] + NC_ONLY,
+                ahead=8)["verdict"], nd.BEHIND)
+    check("#2792 UNLOCKED site with a young ready deploy stays BEHIND (it should have auto-published)",
+          _eval(young, ahead=8, locked=False)["verdict"], nd.BEHIND)
+    check("#2792 lock state unknown (None) stays BEHIND, not assumed locked",
+          _eval(young, ahead=8, locked=None)["verdict"], nd.BEHIND)
+    check("#2792 no clock passed stays BEHIND, not assumed young",
+          _eval(young, ahead=8, now=None)["verdict"], nd.BEHIND)
+
+    # (4) real build errors still fail, however many no-content cancels surround them.
+    real_err = [{"id": "er-1", "state": "error", "created_at": "2026-10-15T13:30:00Z",
+                 "error_message": "Build script returned non-zero exit code: 2"}] + NC_ONLY
+    r = _eval(real_err, ahead=5)
+    check("#2792 a real build error newest -> BUILD_FAILING", r["verdict"], nd.BUILD_FAILING)
+    check("#2792 a real build error fails the run (exit 2)", nd.report_exit_code([r]), 2)
+    buried = [_nc(9, "2026-10-15T13:45:00Z"),
+              {"id": "er-2", "state": "error", "created_at": "2026-10-15T12:00:00Z",
+               "error_message": "Skipped due to account credit usage exceeded"}] + NC_ONLY
+    check("#2792 a real error buried under a newer no-content cancel -> BUILD_FAILING",
+          _eval(buried, ahead=5)["verdict"], nd.BUILD_FAILING)
+    check("#2792 a real error beats a young ready deploy on a locked site (never PENDING_PUBLISH)",
+          _eval(real_err + [_ready(1, "2026-10-15T12:50:00Z")], ahead=5)["verdict"], nd.BUILD_FAILING)
+
+    # (5) real staleness still fails.
+    check("#2792 zero newer deploys while main moved -> BEHIND (builds never triggered)",
+          _eval([PUB_DEPLOY], ahead=5)["verdict"], nd.BEHIND)
+    check("#2792 a newer in-flight (building) deploy blocks the clean verdict -> BEHIND",
+          _eval([{"id": "b-1", "state": "building", "created_at": "2026-10-15T13:59:00Z",
+                  "error_message": None}] + NC_ONLY, ahead=5)["verdict"], nd.BEHIND)
+    check("#2792 a possibly truncated deploy page blocks the clean verdict -> BEHIND",
+          _eval([_nc(i, "2026-10-15T0%d:00:00Z" % i) for i in range(1, 6)], ahead=5,
+                per_page=5)["verdict"], nd.BEHIND)
+    check("#2792 a base-dir site gets no CURRENT_NO_CONTENT (its compare is already base-scoped)",
+          _eval(NC_ONLY, ahead=2, base_dir="react-app")["verdict"], nd.BEHIND)
+    check("#2792 ahead_by 0 is still plain IDENTICAL", _eval(NC_ONLY, ahead=0)["verdict"], nd.IDENTICAL)
+
+    # summarize_deploys_since_publish unit checks.
+    sm = nd.summarize_deploys_since_publish(young, PUB_AT, published_deploy_id="pub-1")
+    check("#2792 summarize counts", (sm["newer"], sm["benign"], sm["ready_unpublished"], sm["other"], sm["complete"]),
+          (6, 5, 1, 0, True))
+    check("#2792 summarize: a previously-published newer ready deploy is 'other', not pending",
+          nd.summarize_deploys_since_publish(
+              [_ready(1, "2026-10-15T09:00:00Z", published_at="2026-10-15T10:00:00Z")], PUB_AT)["other"], 1)
+    check("#2792 summarize: unparseable published_at -> None", nd.summarize_deploys_since_publish(young, None), None)
+
+    # The constant is anchored to the workflow it is justified against.
+    wf = (HERE.parent / ".github" / "workflows" / "netlify-publish-batch.yml").read_text(encoding="utf-8")
+    slots = sorted(int(h) * 60 + int(m) for m, h in re.findall(r"cron:\s*'(\d+)\s+(\d+)\s+\*\s+\*\s+\*'", wf))
+    gaps = [(slots[(i + 1) % len(slots)] - slots[i]) % 1440 or 1440 for i in range(len(slots))]
+    check("#2792 publish-batch workflow still has two daily cron slots", len(slots), 2)
+    check("#2792 PENDING_PUBLISH_MAX_HOURS covers the longest gap between publish-batch crons (16 h)",
+          (max(gaps) / 60.0, nd.PENDING_PUBLISH_MAX_HOURS >= max(gaps) / 60.0), (16.0, True))
+
+    # End-to-end through check_site with mocked Netlify/GitHub (the jade-alpaca shape).
+    def _jade_router(deploys, locked, ahead):
+        return _make_router(
+            site_body={"published_deploy": {"id": "pub-1", "commit_ref": PUB_SHA,
+                                            "published_at": PUB_AT, "locked": locked}},
+            deploys_body=deploys,
+            github_commit_body={"sha": MAIN_SHA},
+            github_compare_body={"ahead_by": ahead})
+
+    for label, deploys, locked, ahead, want in (
+        ("e2e jade: no-content-only", NC_ONLY, True, 27, nd.CURRENT_NO_CONTENT),
+        ("e2e jade: 5 h-old ready deploy, locked", young, True, 27, nd.PENDING_PUBLISH),
+        ("e2e jade: 19 h-old ready deploy, locked", stale, True, 27, nd.BEHIND),
+        ("e2e jade: real build error", real_err, True, 27, nd.BUILD_FAILING),
+    ):
+        nd.urllib.request.urlopen = _jade_router(deploys, locked, ahead)
+        try:
+            row = nd.check_site(SITE, "fake-netlify-token", "fake-github-token", now=NOW)
+            check("#2792 %s -> %s" % (label, want), row["verdict"], want)
+        finally:
+            nd.urllib.request.urlopen = real_urlopen
+
     print()
     if FAILURES:
         print(f"FAILED — {len(FAILURES)} assertion(s): {', '.join(FAILURES)}")
