@@ -3391,7 +3391,7 @@
 
                 if (existingQuoteData && isSelectedBidLocked(existingQuoteData, currentClaim, data)) {
                   // gh-2564 / D-369 / D-382: the homeowner selected this bid, so no Change Your Bid mode and no edit path.
-                  // (The price-lock migration refuses the write too; this is the page half.)
+                  // (Once gh2564 is applied, its price-lock migration will refuse the write too; until then this is the only guard. This is the page half.)
                   existingQuote = existingQuoteData;
                   showSelectedBidLock();
                 } else if (existingQuoteData) {
@@ -3415,7 +3415,7 @@
 
     // ── Selected-bid lock (gh-2564, D-369, D-382) ──
     // Same wording family as BID_SELECTED_MESSAGE below (the withdrawal refusal): factual, no promise, support handles it.
-    const BID_LOCKED_MESSAGE = 'The homeowner has already chosen your bid, so it can no longer be changed here. Contact support for help.';
+    const BID_LOCKED_MESSAGE = 'The homeowner has already chosen a contractor, so this bid can no longer be changed here. Contact support for help.';
 
     function isSelectedBidLocked(quote, claim, contractor) {
       if (!quote) return false;
@@ -3424,15 +3424,15 @@
     }
 
     function showSelectedBidLock() {
-      ['bidFormCard', 'tradeSelectionCard', 'perTradeBreakdown', 'hoverHomePhotosCard',
+      ['bidFormCard', 'tradeSelectionCard', 'perTradeBreakdown',
        'wizardProgressBar', 'wizardStep1Card', 'wizardStep3Card', 'feeDisclosureSection',
        'contractSigningStep', 'changeBidBanner', 'renewBidBanner', 'rescindConfirmCard'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
       });
       const heading = document.getElementById('pageHeading');
-      if (heading) heading.textContent = 'Your Bid';
-      document.title = 'Your Bid | Otter Quotes Contractor Portal';
+      if (heading) heading.textContent = 'Bid Locked';
+      document.title = 'Bid Locked | Otter Quotes Contractor Portal';
       const msg = document.getElementById('selectedBidLockMessage');
       if (msg) msg.textContent = BID_LOCKED_MESSAGE;
       const card = document.getElementById('selectedBidLockCard');
@@ -5552,6 +5552,8 @@
 
       async function startUp() {
         await init();
+        // gh-2564: init() may have shown the selected-bid lock; the trade, photo and wizard inits below re-show cards.
+        if (window._bidLockedSelected) return;
         updateFeeCalculator();
 
         // Set default start date to today

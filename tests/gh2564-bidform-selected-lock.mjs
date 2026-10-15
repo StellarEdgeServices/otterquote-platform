@@ -7,6 +7,7 @@
  * a submitted bid does not; another contractor's selection does not); (3) the lock card exists and showSelectedBidLock
  * hides the form cards, sets the message, hides the submit button; (4) the submit handler returns early when locked;
  * (5) the message is neutral: no price, promise, or legal claim words, and it points to support.
+ * (6) startUp() returns right after init() when locked (executes the real startUp with spies).
  * Negative control: ROOT=<checkout of main before this change> node tests/gh2564-bidform-selected-lock.mjs  (expected exit 1)
  */
 import fs from 'node:fs';
@@ -52,7 +53,32 @@ check('submit handler returns early when locked', /bidForm\.addEventListener\('s
 // (5) wording
 const msg = (html.match(/const BID_LOCKED_MESSAGE = '([^']*)';/) || [])[1] || '';
 check('message exists and points to support', /contact support/i.test(msg));
-check('message makes no price, promise, guarantee or legal claim', msg.length > 0 && !/\$|guarantee|promise|will |refund|liable|legal|contract|binding|law/i.test(msg));
+check('message makes no price, promise, guarantee or legal claim', msg.length > 0 && !/\$|guarantee|promise|will |refund|liable|legal|\bcontract\b|binding|law/i.test(msg));
+check('message is exactly the legal-reader text', msg === 'The homeowner has already chosen a contractor, so this bid can no longer be changed here. Contact support for help.');
+// "your bid" is false after a contractor switch (the old contractor's quote stays selected): refuse it anywhere in the lock text
+const lockCardHtml = (html.match(/<div id="selectedBidLockCard"[\s\S]*?<\/div>\s*<\/div>/) || [''])[0];
+check('lock text never says "your bid" (message, lock card, lock heading/title)',
+  msg.length > 0 && lockCardHtml.length > 0 && !/your bid/i.test(msg + ' ' + lockCardHtml + ' ' + (show ? show[0] : '')));
+// D-381 notes: they save only through the same submit that writes price and fee, so the form stays hidden (follow-up)
+check('hide list adds no vendor-named card id (D-312 ratchet)', !!show && !/hoverHomePhotosCard/.test(show[0]));
+
+// (6) startUp must not undo the lock (review MF2): executes the real startUp source with spies
+const su = html.match(/async function startUp\(\) \{[\s\S]*?\n      \}\n/);
+check('startUp is defined', !!su);
+if (su) {
+  const calls = [];
+  const spy = n => () => { calls.push(n); };
+  const win = {};
+  const run = new Function('window', 'init', 'updateFeeCalculator', 'initTradeSelection', 'initHoverHomePhotos', 'initWizard',
+    'document', 'URLSearchParams', 'localStorage', su[0] + '; return startUp;');
+  const startUp = run(win, async () => { calls.push('init'); win._bidLockedSelected = true; }, spy('updateFeeCalculator'),
+    spy('initTradeSelection'), spy('initHoverHomePhotos'), spy('initWizard'),
+    new Proxy({}, { get: () => () => null }), URLSearchParams, { getItem: () => null, setItem() {}, removeItem() {} });
+  let threw = null;
+  try { await startUp(); } catch (e) { threw = e; }
+  check('startUp returns right after init() when the bid is locked (no re-shown cards, no wizard)',
+    !threw && calls.join(',') === 'init');
+}
 
 console.log(fail ? `FAILED (${fail})` : 'ALL PASS');
 process.exit(fail ? 1 : 0);
