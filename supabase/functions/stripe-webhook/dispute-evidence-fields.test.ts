@@ -9,6 +9,7 @@ import {
   PRODUCT_DESCRIPTION_MAX,
   UNCATEGORIZED_TEXT_MAX,
 } from "./dispute-evidence-fields.ts";
+import { stripComments } from "./test-source-utils.ts";
 
 const sample = {
   productDescription: "Otter Quotes platform fee.",
@@ -65,8 +66,11 @@ Deno.test("gh-1759: index.ts builds its evidence through assembleTextEvidence an
       `index.ts sets evidence[${f}], a Stripe FILE field; prose/URLs are rejected there`,
     );
   }
-  // gate 2 is untouched: submit still set only via maySubmitFinalEvidence
-  assert(/maySubmitFinalEvidence\(\{/.test(src));
+  // gate 2 is untouched: submit is still decided via maySubmitFinalEvidence, reached through
+  // shouldSubmitFinalEvidence in buildDisputeRequestBody (gh-2794 gate 3). Matched on CODE only.
+  const routing = stripComments(await Deno.readTextFile(new URL("./dispute-routing.ts", import.meta.url)));
+  assert(/return params\.finalSubmitEnabled === true && maySubmitFinalEvidence\(params\)/.test(routing));
+  assert(/postDisputeEvidence\(\{/.test(stripComments(src)));
 });
 
 Deno.test("gh-1759: a livemode=false dispute never reaches createClickUpTask (Ben, comment 6069379782)", async () => {

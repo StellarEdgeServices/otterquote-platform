@@ -43,7 +43,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import {
   evaluateDisputeRouting,
-  maySubmitFinalEvidence,
+  FINAL_SUBMIT_ENV_VAR,
+  isFinalSubmitEnabled,
+  postDisputeEvidence,
 } from "./dispute-routing.ts";
 import { assembleTextEvidence } from "./dispute-evidence-fields.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
@@ -419,25 +421,14 @@ function buildEvidencePayload(params: {
     customerCommunication, // already carries the invoice URL when one exists
   });
 
-  // ── gh-1759 GATE 2: do not spend Stripe's ONE final submission blind ───────
-  // `evidence[submit]: "true"` is irreversible — Stripe accepts exactly one
-  // final submission per dispute. Before this change it was set
-  // UNCONDITIONALLY, including on the path where `claim` and `feeAcceptance`
-  // are both null, which submitted a payload whose own text reads "FEE
-  // ACCEPTANCE RECORD: Not found in database" and closed the case against us.
-  //
-  // Omitting the key does not throw the evidence away: Stripe saves it as DRAFT
-  // against the dispute, so the human working the queue item starts from what we
-  // did assemble. Gate 1 (evaluateDisputeRouting) already keeps an unresolvable
-  // dispute out of this branch entirely; this is the second, independent gate,
-  // here because gate 1 is a boolean someone will refactor one day.
-  if (maySubmitFinalEvidence({
-    claimResolved: claim !== null,
-    feeAcceptanceResolved: feeAcceptance !== null,
-  })) {
-    evidence["evidence[submit]"] = "true";
-  }
-
+  // ── gh-1759 GATE 2 / gh-2794 GATE 3 ────────────────────────────────────────
+  // This function returns the evidence FIELDS only. Whether the request submits
+  // FINAL is decided in postDisputeEvidence() (dispute-routing.ts), which always
+  // sends an explicit top-level `submit` parameter: Stripe's Update-a-dispute API
+  // defaults `submit` to true, so leaving it out would submit FINAL. It is
+  // "true" only when claim + fee acceptance are resolved AND
+  // DISPUTE_EVIDENCE_FINAL_SUBMIT_ENABLED is exactly "true"; otherwise "false"
+  // (staged draft for a person to finish).
   return evidence;
 }
 
@@ -597,13 +588,19 @@ async function handleDisputeCreated(
 
     console.log(`[${FN_NAME}] Submitting evidence for dispute ${dispute.id} via Stripe API`);
 
-    const result = await stripeRequest(
-      `/disputes/${dispute.id}`,
-      "POST",
+    const result = await postDisputeEvidence({
+      disputeId: dispute.id,
       stripeKey,
-      evidencePayload,
-    );
+      evidence: evidencePayload,
+      claimResolved: claim !== null,
+      feeAcceptanceResolved: feeAcceptance !== null,
+      finalSubmitEnabled: isFinalSubmitEnabled(Deno.env.get(FINAL_SUBMIT_ENV_VAR)),
+    });
+    const submittedFinal = result.ok && result.submitFinal;
+    const savedDraft = result.ok && !result.submitFinal;
 
+    // Only a FINAL submit stamps evidence_submitted_at; a draft is not a submission.
+    // disputes.status is free text (no CHECK/enum), so "evidence_drafted" is allowed.
     if (disputeRowId) {
       // gh-2105 (batch 2): disputeRowId came from our own insert moments ago,
       // so a zero-row match here means the row vanished between insert and
@@ -612,11 +609,11 @@ async function handleDisputeCreated(
       const { data: evidenceRows, error: evidenceUpdErr } = await supabase
         .from("disputes")
         .update({
-          evidence_submitted_at: new Date().toISOString(),
-          evidence_payload: evidencePayload,
+          ...(submittedFinal ? { evidence_submitted_at: new Date().toISOString() } : {}),
+          evidence_payload: result.requestBody,
           auto_submit_result: result.ok ? result.data : null,
           auto_submit_error: result.ok ? null : result.error,
-          status: result.ok ? "evidence_submitted" : dispute.status,
+          status: submittedFinal ? "evidence_submitted" : savedDraft ? "evidence_drafted" : dispute.status,
         })
         .eq("id", disputeRowId)
         .select("id");
@@ -628,7 +625,9 @@ async function handleDisputeCreated(
     }
 
     if (result.ok) {
-      console.log(`[${FN_NAME}] Evidence submitted successfully for ${dispute.id}`);
+      console.log(
+        `[${FN_NAME}] Evidence ${submittedFinal ? "SUBMITTED (final)" : "saved as DRAFT (submit=false)"} for ${dispute.id}`,
+      );
     } else {
       console.error(
         `[${FN_NAME}] Evidence submission failed for ${dispute.id}: ${result.error}`,
@@ -643,8 +642,10 @@ async function handleDisputeCreated(
 
     await supabase.from("activity_log").insert({
       user_id: claim?.user_id ?? "00000000-0000-0000-0000-000000000000",
-      event_type: "dispute.auto_evidence_submitted",
-      title: `Dispute evidence auto-submitted: ${dispute.id}`,
+      event_type: result.submitFinal ? "dispute.auto_evidence_submitted" : "dispute.auto_evidence_drafted",
+      title: result.submitFinal
+        ? `Dispute evidence auto-submitted: ${dispute.id}`
+        : `Dispute evidence drafted (NOT submitted; a person must finish it): ${dispute.id}`,
       is_test: claim?.is_test ?? false,
       metadata: {
         stripe_dispute_id: dispute.id,
@@ -653,10 +654,42 @@ async function handleDisputeCreated(
         reason: dispute.reason,
         success: result.ok,
         error: result.error ?? null,
+        submit_final: result.submitFinal,
         claim_id: claim?.id ?? null,
         routing,
       },
     });
+
+    // A draft that nobody finishes before evidence_details.due_by loses the dispute,
+    // so a draft (or a failed attempt) gets a visible admin_dispute_queue row.
+    if (!result.submitFinal) {
+      if (!disputeRowId) {
+        console.error(`[${FN_NAME}] no disputes row id; cannot queue draft for ${dispute.id}`);
+      } else {
+        const { error: draftQueueErr } = await supabase
+          .from("admin_dispute_queue")
+          .insert({
+            dispute_id: disputeRowId,
+            stripe_dispute_id: dispute.id,
+            amount: dispute.amount,
+            reason: dispute.reason,
+            claim_id: claim?.id ?? null,
+            contractor_id: claim?.selected_contractor_id ?? quote?.contractor_id ?? null,
+            stripe_dispute_url: event.livemode
+              ? `https://dashboard.stripe.com/disputes/${dispute.id}`
+              : `https://dashboard.stripe.com/test/disputes/${dispute.id}`,
+            clickup_task_id: null,
+            clickup_task_url: null,
+            status: "open",
+            notes: result.ok
+              ? "DRAFT evidence saved on the Stripe dispute (submit=false). NOT submitted. A person must review and submit it before evidence_details.due_by."
+              : `Draft evidence could NOT be saved (${result.error ?? "Stripe error"}). Nothing was submitted. A person must respond before evidence_details.due_by.`,
+          });
+        if (draftQueueErr) {
+          console.error(`[${FN_NAME}] Failed to insert draft admin_dispute_queue row:`, draftQueueErr);
+        }
+      }
+    }
   }
 
   if (routeToManualQueue) {
