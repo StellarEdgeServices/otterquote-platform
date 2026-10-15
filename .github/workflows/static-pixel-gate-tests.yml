@@ -295,7 +295,7 @@ jobs:
         run: node tests/gh2225-handout-pii-gate.mjs
       - name: /home-next staging page -- no ZIP in any URL, analytics only through the two gates, noindex, no canonical to /, unlinked, not in sitemap/llms, negative controls (gh2598-home-next-staging)
         run: node tests/gh2598-home-next-staging.mjs
-      - name: /home-next staging page -- every visible string of the built sections equals the two approved design files (desktop and phone views), section order, no fee or promise wording before slice 3, negative controls (gh2598-home-next-sections)
+      - name: /home-next staging page -- every visible string of the built sections equals the two approved design files (desktop and phone views), section order, fee, charge, refund and switch wording only inside #paid and #promise (attribute text included), negative controls (gh2598-home-next-sections)
         run: node tests/gh2598-home-next-sections.mjs
       - name: Install Playwright + Chromium from the tests/e2e lockfile (gh-2361 real-browser proof)
         working-directory: tests/e2e
