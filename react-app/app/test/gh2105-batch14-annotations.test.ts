@@ -79,9 +79,9 @@ describe('gh-2105 batch 14: class-(b) zero-row sites are annotated with a reason
   }
 
   it('NEGATIVE CONTROL: the port flags a bare un-annotated update and honours the marker', () => {
-    expect(violations("await sb.from('claims').update({ a: 1 }).eq('id', 1);")).toEqual([1]);
-    expect(violations("// update-no-select-ok: x\nawait sb.from('claims').update({ a: 1 }).eq('id', 1);")).toEqual([]);
-    expect(violations("await sb.from('claims').update({ a: 1 }).eq('id', 1).select('id');")).toEqual([]);
+    expect(violations("await sb.from('claims').update({ updated_at: 'x' }).eq('id', 1);")).toEqual([1]);
+    expect(violations("// update-no-select-ok: x\nawait sb.from('claims').update({ updated_at: 'x' }).eq('id', 1);")).toEqual([]);
+    expect(violations("await sb.from('claims').update({ updated_at: 'x' }).eq('id', 1).select('id');")).toEqual([]);
   });
 
   it('the annotated sites stayed annotation-only: no .select( was added to any of them', () => {

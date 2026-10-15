@@ -717,7 +717,7 @@
       try {
         await sb
           .from('notifications')
-          // update-no-select-ok: gh-2105 decision b -- read receipt for the bid-updated banner; a zero-row match (notification already read, deleted, or not visible to this user) only leaves the unread badge stale until the next load; no money, consent or legal state hangs on read_at.
+          // update-no-select-ok: gh-2105 decision b -- read receipt for the bid-updated banner; a zero-row match (notification already read, deleted, or not visible to this user) only leaves the unread badge stale until the next load; read_at is only a display flag for this banner.
           .update({ read_at: new Date().toISOString() })
           .in('id', _bidUpdatedNotifIds);
         _bidUpdatedNotifIds = [];
