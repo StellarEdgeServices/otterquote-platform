@@ -57,3 +57,9 @@ No set is marked `UNVERIFIED`: every set has a recorded measurement. Two sets ar
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2710_claims_fee_stripe_columns_guard` | forward (rollback and pre-flight in `supabase/migrations_rollbacks/`, the throwaway-Postgres proof and runner in `supabase/tests/`) | NOT APPLIED | drafted 2026-10-14 under #2710 (R-177 SIGNED condition (4) on PR #2704, comment 6155920082); the follow-up to `gh2491_claims_platform_fee_charged_guard`: a separate trigger, `claims_guard_fee_stripe_columns`, that refuses client writes (42501) to `platform_fee_stripe_id` and `platform_fee_amount`, the columns `stripe-webhook` routes a dispute by. Shares no object with gh2491, gh2626, gh2519 or gh2564, so it applies and rolls back in any order relative to them (the runner proves four orders). Tier 3B, R-097 24-hour notice before apply, R177-NEEDED | none |
+
+## Added 2026-10-14 (gh-2442, revoke `authenticated`'s unused write privileges on `public.payment_failures`): 3 files, 1 set, not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2442_payment_failures_revoke_authenticated_writes` | forward, rollback, pre-flight (all three here, the older convention, which is allowed) | NOT APPLIED | drafted 2026-10-14 under #2442 (PR #2790); production read-only 2026-10-14 (REVIEW 6171819374): `authenticated` holds DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE and UPDATE on `public.payment_failures`, all granted by `postgres`; the set keeps SELECT and UPDATE. Tier 3B, R-097 24-hour notice before apply | none |
