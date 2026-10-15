@@ -86,7 +86,11 @@ ok(sample.footer.includes('href="tel:+18448753412"') && sample.footer.includes('
 const mut = (a, b) => { if (!SRC.includes(a)) throw new Error('mutation anchor missing: ' + a); return SRC.replace(a, b); };
 control('H1 (tel href changed)', failures(mut("phoneTelHref: 'tel:+18448753412'", "phoneTelHref: 'tel:+18005550100'")).length > 0);
 control('H1 (header link removed)', failures(mut('${this._phoneLinkHTML()}', '')).length > 0);
-control('H1 (link moved after the actions block)', failures(mut('        ${this._phoneLinkHTML()}\n        <div class="nav-actions" id="nav-actions">', '        <div class="nav-actions" id="nav-actions">')).length > 0);
+/* MOVE, not delete: the link must still be rendered once (so the count check passes) and only its position changes -- only the placement check can turn this red. */
+const AFTER_ACTIONS = "\n          ${wantsSignOutSlot ? '<span id=\"nav-signout-slot\"></span>' : ''}\n        </div>\n        <button class=\"nav-hamburger\"";
+const moved = mut('        ${this._phoneLinkHTML()}\n        <div class="nav-actions" id="nav-actions">', '        <div class="nav-actions" id="nav-actions">').replace(AFTER_ACTIONS, AFTER_ACTIONS.replace('</div>\n', '</div>\n        ${this._phoneLinkHTML()}\n'));
+ok(moved.split('this._phoneLinkHTML()').length === SRC.split('this._phoneLinkHTML()').length && moved !== SRC, 'H1 move mutation really moves the call (same number of call sites as the source, text changed)');
+control('H1 (link moved after the actions block)', (() => { const f = failures(moved); return f.some((m) => /not placed before the actions block/.test(m)) && !f.some((m) => /nav-phone tel links, want/.test(m)); })());
 control('H1 ("Call" label removed)', failures(mut('<span class="nav-phone-call">Call</span>', '')).length > 0);
 control('H2 (a second hand-typed tel href added)', failures(SRC + '\n// <a href="tel:+18448753412">\n').length > 0);
 control('F1 (tagline in sentence case)', failures(mut("tagline: 'Contractors Compete. Homeowners Win.'", "tagline: 'Contractors compete. Homeowners win.'")).length > 0);
