@@ -480,6 +480,9 @@ jobs:
       - name: a bidding contractor is offered no raw homeowner upload, only the selected contractor (gh-2559, D-368)
         run: node tests/gh2559-bidder-no-raw-files.mjs
 
+      - name: the fee-gate draft migration, rollback and proof are consistent (gh-2559 fee leg, D-386)
+        run: node tests/gh2559-claim-docs-fee-gate.mjs
+
       - name: partner-re one leads row per signup, variant carried (gh-2084 arm E)
         run: node tests/gh2084-partner-re-one-lead-row.mjs
 
