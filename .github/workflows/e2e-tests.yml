@@ -480,6 +480,9 @@ jobs:
       - name: a bidding contractor is offered no raw homeowner upload, only the selected contractor (gh-2559, D-368)
         run: node tests/gh2559-bidder-no-raw-files.mjs
 
+      - name: contractor pages state the D-386 release timing for the estimate, phone and email (gh-2559, D-386)
+        run: node tests/gh2559-contractor-access-window-copy.mjs
+
       - name: partner-re one leads row per signup, variant carried (gh-2084 arm E)
         run: node tests/gh2084-partner-re-one-lead-row.mjs
 
