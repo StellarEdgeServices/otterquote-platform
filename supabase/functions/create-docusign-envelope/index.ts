@@ -1781,8 +1781,10 @@ function getDocumentLabel(documentType) {
 // which is exactly why this is called out as a hard cutover prerequisite,
 // not an optional nice-to-have).
 // ========== AUTO-POPULATE FIELDS FROM DB ==========
-// D-386 (#2828): the homeowner's phone never rides on a contract envelope. A caller-supplied
-// `fields` object is stripped too, so no route can put it back.
+// D-386 (#2828): the homeowner's phone is not written onto a contract envelope by this function.
+// A caller-supplied `fields` object has its `customer_phone` / `homeowner_phone` keys removed too.
+// Only those two keys are stripped: a phone number typed into any other caller-supplied field
+// (e.g. a free-text notes field) is not detected or removed here.
 function stripHomeownerPhone(fields) {
   const out = { ...(fields || {}) };
   delete out.customer_phone;
