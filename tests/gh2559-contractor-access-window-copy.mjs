@@ -20,6 +20,8 @@ for (const [f, label] of [['contractor-how-it-works.html', 'how-it-works'], ['co
   const txt = t.replace(/<[^>]+>/g, ' ').replace(/&nbsp;|\s+/g, ' ');
   ok(!/phone number and email address are released/i.test(txt), label + ' makes no phone/email release-timing claim (contact-flow ruling vs D-386 pending, #2559)');
   ok(!/released the moment the contract is fully signed/i.test(txt), label + ' does not release contact information "the moment the contract is fully signed"');
+  ok(!/(phone|email|contact)[^.]{0,80}released[^.]{0,80}(signed|signing|selects? you|selection)/i.test(txt) && !/released[^.]{0,80}(phone|email|contact)[^.]{0,80}(signed|signing|selects? you|selection)/i.test(txt), label + ' has no "released ... signed" promise of phone/email/contact before the Platform Fee');
+  ok(!/project package[^.]*contact information|contact information[^.]*project package/i.test(txt), label + ' does not put contact information in the project package');
   ok(!/Once both parties have signed[^.]*contact information/i.test(txt), label + ' does not tie contact information to "Once both parties have signed"');
   ok(!/contact information[^.]*after both parties have signed the contract/i.test(txt), label + ' does not release contact information "after both parties have signed the contract"');
   ok(!/you can open the homeowner's uploaded documents/i.test(t), label + ' does not promise the uploaded documents are openable on selection');
