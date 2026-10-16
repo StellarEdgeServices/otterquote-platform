@@ -95,3 +95,44 @@ Deno.test("gh-1759 REVIEW-FIX: evidence prose carries no vendor name, no 'homeow
   const fb = body.slice(body.indexOf(": \"Fee acceptance record could not be retrieved"));
   assert(!/email/i.test(fb.slice(0, 120)), "fallback must say nothing about an email");
 });
+
+// gh-2794 ruling: homeowner name and property address are OMITTED from dispute evidence.
+import { claimRecordLines } from "./dispute-evidence-fields.ts";
+
+const pii = {
+  id: "claim-uuid-1",
+  contract_signed_at: "2026-10-01T12:00:00Z",
+  homeowner_name: "Jane Q. Homeowner",
+  property_address: "123 Maple Street, Zionsville, IN 46077",
+};
+
+Deno.test("gh-2794: claim record lines carry no homeowner name or property address", () => {
+  const lines = claimRecordLines(pii).join("\n");
+  assert(lines.includes("claim-uuid-1"));
+  for (const needle of ["Jane", "Homeowner", "123 Maple", "Zionsville", "46077", "Property:"]) {
+    assert(!lines.includes(needle), `leaked: ${needle}`);
+  }
+});
+
+Deno.test("gh-2794: full assembled evidence payload contains no name or address", () => {
+  const ev = assembleTextEvidence({
+    productDescription: "Otter Quotes platform fee.",
+    serviceDocumentation: ["TRANSACTION RECORD", ...claimRecordLines(pii)].join("\n"),
+    customerCommunication: "Bid confirmation email sent.",
+  });
+  const all = Object.values(ev).join("\n");
+  assert(all.includes("claim-uuid-1")); // positive control: the scan sees the claim section
+  for (const needle of ["Jane", "Maple", "Zionsville", "46077"]) {
+    assert(!all.includes(needle), `leaked: ${needle}`);
+  }
+});
+
+Deno.test("gh-2794: buildEvidencePayload in index.ts never reads homeowner_name / property_address", async () => {
+  const src = stripComments(await Deno.readTextFile(new URL("./index.ts", import.meta.url)));
+  const start = src.indexOf("function buildEvidencePayload(");
+  const end = src.indexOf("\n}\n", start);
+  assert(start > 0 && end > start);
+  const body = src.slice(start, end);
+  assert(body.includes("claimRecordLines(claim)")); // positive control
+  assert(!/homeowner_name|property_address|claim\.(name|address|city|zip|street|first|last)|customer_name/i.test(body), "PII field referenced in evidence builder");
+});

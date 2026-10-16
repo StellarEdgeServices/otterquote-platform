@@ -47,7 +47,7 @@ import {
   isFinalSubmitEnabled,
   postDisputeEvidence,
 } from "./dispute-routing.ts";
-import { assembleTextEvidence } from "./dispute-evidence-fields.ts";
+import { assembleTextEvidence, claimRecordLines } from "./dispute-evidence-fields.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 import {
@@ -378,11 +378,7 @@ function buildEvidencePayload(params: {
 
   if (claim) {
     serviceDocLines.push(
-      "CLAIM RECORD:",
-      `  Claim ID: ${claim.id}`,
-      `  Homeowner: ${claim.homeowner_name ?? "On file"}`,
-      `  Property: ${claim.property_address ?? "On file"}`,
-      `  Contract Signed At: ${claim.contract_signed_at ?? "Not yet signed"}`,
+      ...claimRecordLines(claim),
     );
 
     if (claim.completion_date) {
