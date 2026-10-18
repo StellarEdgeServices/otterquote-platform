@@ -1431,7 +1431,10 @@ window.Auth = {
         // row exists on every new signup via ON CONFLICT DO NOTHING insert.
         try {
           if (sb) {
-            const { error: profileUpdateErr } = await sb
+            // gh-2105 class (a): `.select('id')` so a zero-row match (RLS or a missing profiles row)
+            // is visible. Without it supabase-js returns { error: null } and the signup silently
+            // keeps the default role. Log-only: this block is already non-fatal by design.
+            const { data: profileUpdateRows, error: profileUpdateErr } = await sb
               .from('profiles')
               .update({
                 full_name: data.contact_name || null,
@@ -1440,9 +1443,12 @@ window.Auth = {
                 role: 'contractor',
                 updated_at: new Date().toISOString(),
               })
-              .eq('id', user.id);
+              .eq('id', user.id)
+              .select('id');
             if (profileUpdateErr) {
               console.warn('[handleAuthCallback] contractor profile update failed (non-fatal):', profileUpdateErr);
+            } else if (!profileUpdateRows || profileUpdateRows.length === 0) {
+              console.warn('[handleAuthCallback] contractor profile update matched 0 rows; role not set (non-fatal)');
             }
           }
         } catch (profileUpdateEx) {

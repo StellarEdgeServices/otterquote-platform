@@ -28,8 +28,8 @@
 --
 -- pg_temp.mjc() stands in for the mark-job-complete Edge Function. It applies the function's own two
 -- checks at main (supabase/functions/mark-job-complete/index.ts: the caller's contractor has exactly one
--- quote on the claim with status selected/awarded, ~L315; the claim is 'contract_signed' or 'awarded',
--- COMPLETABLE_STATES L52) and then makes its one write, completion_date, as service_role (~L376).
+-- quote on the claim with status selected/awarded, ~L315; the claim is 'contract_signed' only,
+-- COMPLETABLE_STATES, since PR #2615 / CTO ruling #2479 6049009981; this stand-in used to accept 'awarded' too) and then makes its one write, completion_date, as service_role (~L376).
 --
 -- Expected BEFORE (the holes): E1, E7, E3, E3u end in commission=200.00; X2, X4-X8, X10-X14 ACCEPTED;
 --   Y2, Y5-Y8, Y11 ACCEPTED; Q2-Q13, Q17 ACCEPTED.
@@ -49,10 +49,13 @@
 --   every R line (React award); every S line (service_role, admin). S4 is refused 23502 both times: the
 --     auto-renew INSERT in process-bid-expirations sends no fee_percentage, which is NOT NULL (existing
 --     defect on a service_role path, not this guard; S4b is the same INSERT with the fee columns).
--- NOT closed by this migration, printed so nobody has to guess (see the pre-flight "Residual"):
---   E3p and E3q end in commission=200.00 before AND after. One user who is both the claim owner and an
---   active contractor with a payment method on file can take a claim through the product's own award
---   (accept_bid() or the React award) to 'awarded', which mark-job-complete accepts.
+-- NOT closed by THIS migration (see the pre-flight "Residual"), closed by mark-job-complete at main (PR #2615, deployed 2026-10-14T11:22:54Z):
+--   One user who is both the claim owner and an active contractor with a payment method on file can take a claim through the
+--   product's own award (accept_bid() or the React award) to 'awarded'. UPDATED 2026-10-14 (gh-2403): mark-job-complete now accepts only
+--   'contract_signed', so E3p-e and E3q-e print "REFUSES 409 (claim status awarded)" and E3p/E3q RESULT end in commission=null,
+--   payout_approvals rows=0, before AND after this migration (the 409 is the barrier, not the guard). The pre-#2615 reading
+--   (commission=200.00) is no longer produced by this file. The explicit 409-versus-control pair with an armed referral is in
+--   gh2479_completion_path_proof.sql (A1, E3q, E3q CONTROL), because rx is 'clicked' here and check (b) would also block.
 
 CREATE FUNCTION pg_temp.try_as(p_role text, p_sub uuid, p_sql text, p_email text DEFAULT 'gh2479-born-proof@example.invalid') RETURNS text
 LANGUAGE plpgsql AS $f$
@@ -124,7 +127,7 @@ BEGIN
   SELECT status, completion_date INTO c FROM public.claims WHERE id = p_claim;
   IF NOT FOUND THEN RETURN 'mark-job-complete: REFUSES 404 (claim not found)'; END IF;
   IF c.completion_date IS NOT NULL THEN RETURN 'mark-job-complete: already complete, no write'; END IF;
-  IF c.status IS NULL OR c.status NOT IN ('contract_signed', 'awarded') THEN
+  IF c.status IS NULL OR c.status NOT IN ('contract_signed') THEN   -- COMPLETABLE_STATES at main since PR #2615 (was contract_signed + awarded)
     RETURN format('mark-job-complete: REFUSES 409 (claim status %s)', COALESCE(c.status, 'NULL'));
   END IF;
   RETURN 'mark-job-complete: COMPLETES, ' || pg_temp.try_as('service_role', NULL, format('UPDATE public.claims SET completion_date=now() WHERE id=%L', p_claim));

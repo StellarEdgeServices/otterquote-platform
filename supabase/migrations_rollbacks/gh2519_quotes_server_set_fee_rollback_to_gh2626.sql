@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations_drafts/gh2519_quotes_server_set_fee.sql (gh-2519) WHEN gh2626_claims_award_columns_guard.sql IS APPLIED (#2519 comment 6156383757).
+-- Rollback for supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql (gh-2519) WHEN gh2626_claims_award_columns_guard.sql IS APPLIED (#2519 comment 6156383757).
 -- Same as gh2519_quotes_server_set_fee_rollback.sql except that quotes_guard_homeowner_columns() and accept_bid() are restored to the bodies of
 -- gh2626_claims_award_columns_guard.sql (byte for byte), which carry the gh-2626 lines, instead of the pre-gh-2626 live bodies. REFUSES if gh2626 is not applied.
 -- WARNING: this RE-OPENS #2519's residuals: the bidding contractor can again store any fee rate, basis and fee

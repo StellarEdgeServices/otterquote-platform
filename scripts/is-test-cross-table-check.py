@@ -142,6 +142,21 @@ SELFTEST_MARKER = "IS-TEST GUARD SELFTEST (gh-1763)"
 SELFTEST_MARKER_PREFIX = "IS-TEST GUARD SELFTEST"  # matches any run's fixture, incl. pre-tag ones
 STALE_SELFTEST_SECONDS = 3600
 
+# --- gh-2718: the deliberate S2 real-side probe -----------------------------
+# tests/e2e/flows/test-world-symmetry.spec.ts (S2, #564) DELIBERATELY creates an
+# identity whose profile is is_test=true and whose contractor is is_test=false,
+# for ~a minute in the nightly E2E job against the shared CI-test project, and
+# tears it down in afterAll. A guard pass inside that window went red on PRs
+# #2586/#2587 (2026-10-14 13:30Z, nightly run 38567576152).
+# SCOPE (review 6170853809): the exception applies ONLY in the CI-test
+# self-test's REAL pass (exclude_selftest=True). It is NOT in DISAGREEMENT_SQL
+# and NOT in the plain/production PostgREST path: in production a user can
+# update their own profiles.email/is_test, so an email-keyed exception there
+# would be a user-controllable blind spot. It matches the fixed internal email
+# on BOTH the profile and the contractor (a user cannot write contractors
+# columns), never the company name, and only the exact spec shape.
+S2_PROBE_EMAIL = "real-side-564@otterquote-internal.test"
+
 
 def _selftest_run_id() -> str:
     """Unique id for this self-test invocation: SELFTEST_RUN_ID if set, else
@@ -234,7 +249,7 @@ def _request(method: str, url: str, service_key: str, body=None, urlopen=urllib.
 
 def fetch_contractors(project_url: str, service_key: str, urlopen=urllib.request.urlopen) -> list:
     """Every contractors row that has a user_id (unattached rows can't disagree with a profile)."""
-    url = f"{project_url}/rest/v1/contractors?select=id,user_id,is_test,company_name&user_id=not.is.null&limit=10000"
+    url = f"{project_url}/rest/v1/contractors?select=id,user_id,is_test,company_name,email&user_id=not.is.null&limit=10000"
     payload = _request("GET", url, service_key, urlopen=urlopen)
     if not isinstance(payload, list):
         raise FetchError(f"contractors fetch did not return a JSON array (got {type(payload).__name__})")
@@ -256,13 +271,25 @@ def fetch_profiles_by_ids(project_url: str, service_key: str, ids: list, urlopen
         id_list = ",".join(batch)
         url = (
             f"{project_url}/rest/v1/profiles"
-            f"?select=id,is_test,role,full_name&id=in.({id_list})&limit=10000"
+            f"?select=id,is_test,role,full_name,email&id=in.({id_list})&limit=10000"
         )
         payload = _request("GET", url, service_key, urlopen=urlopen)
         if not isinstance(payload, list):
             raise FetchError(f"profiles fetch did not return a JSON array (got {type(payload).__name__})")
         rows.extend(payload)
     return rows
+
+
+def is_s2_probe(profile: dict, contractor: dict) -> bool:
+    """gh-2718: True only for the spec-scoped S2 identity in the exact shape the
+    spec creates -- profile AND contractor email == S2_PROBE_EMAIL, profile
+    is_test=true, contractor is_test=false. Used only when exclude_selftest=True."""
+    return (
+        profile.get("email") == S2_PROBE_EMAIL
+        and contractor.get("email") == S2_PROBE_EMAIL
+        and profile.get("is_test") is True
+        and contractor.get("is_test") is False
+    )
 
 
 def find_disagreements(contractors: list, profiles: list, exclude_selftest: bool = False, only_contractor_ids=None) -> list:
@@ -279,7 +306,8 @@ def find_disagreements(contractors: list, profiles: list, exclude_selftest: bool
     profiles row at all is not in scope -- same as the SQL join, which
     would simply drop it.
 
-    exclude_selftest (default False): skip a pair when the contractor's
+    exclude_selftest (default False): also skip the deliberate S2 probe (is_s2_probe,
+    gh-2718), and skip a pair when the contractor's
     company_name OR the profile's full_name carries the self-test marker (any
     run's fixture). Only the CI-test self-test job's REAL pass sets it.
     only_contractor_ids (default None = all): restrict to these contractor ids;
@@ -294,6 +322,8 @@ def find_disagreements(contractors: list, profiles: list, exclude_selftest: bool
         if p is None:
             continue
         if exclude_selftest and has_selftest_marker(c.get("company_name"), p.get("full_name")):
+            continue
+        if exclude_selftest and is_s2_probe(p, c):
             continue
         if p.get("is_test") != c.get("is_test"):
             offenders.append({

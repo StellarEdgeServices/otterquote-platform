@@ -2356,10 +2356,13 @@
                         .upload(filePath, file, { contentType: file.type, upsert: true });
                     if (uploadError) throw uploadError;
 
-                    const { error: dbError } = await sb.from('contractors')
+                    const { data: introRows, error: dbError } = await sb.from('contractors')
                         .update({ intro_video_path: filePath, updated_at: new Date().toISOString() })
-                        .eq('id', contractorRecord.id);
+                        .eq('id', contractorRecord.id)
+                        .select('id');
                     if (dbError) throw dbError;
+                    // gh-2105 batch 4 (a): a zero-row match must not show "Saved."
+                    if (!Array.isArray(introRows) || introRows.length === 0) throw new Error('update_zero_rows: contractors (intro video)');
 
                     contractorRecord.intro_video_path = filePath;
                     if (statusEl) { statusEl.style.color = '#10B981'; statusEl.textContent = 'Saved.'; }

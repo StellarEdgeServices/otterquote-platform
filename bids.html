@@ -610,7 +610,10 @@
         .order('created_at', { ascending: true });
 
       if (!error && data) {
-        bids = data;
+        // gh-2564: a bid the homeowner switched away from is retired as bid_status 'superseded'. It is not
+        // selectable and has no customer wording, so it never enters the list the cards, compare grid and
+        // select handlers read from.
+        bids = data.filter(b => b.bid_status !== 'superseded');
 
         const contractorIds = [...new Set(data.map(b => b.contractor_id).filter(Boolean))];
         if (contractorIds.length) {
@@ -714,6 +717,7 @@
       try {
         await sb
           .from('notifications')
+          // update-no-select-ok: gh-2105 decision b -- read receipt for the bid-updated banner; a zero-row match (notification already read, deleted, or not visible to this user) only leaves the unread badge stale until the next load; read_at is only a display flag for this banner.
           .update({ read_at: new Date().toISOString() })
           .in('id', _bidUpdatedNotifIds);
         _bidUpdatedNotifIds = [];

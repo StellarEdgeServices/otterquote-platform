@@ -1324,9 +1324,18 @@
                 }
 
                 // ── Mark claim as submitted ─────────────────────────────────
-                await sb.from('claims').update({
+                // gh-2105 batch 4 (a, THROW): this is the user's actual submit. On an error or zero
+                // rows the user must NOT be told it was submitted: throw into the catch below (which sends the one Sentry event via captureException),
+                // and (alert + Submit re-enabled so they can retry).
+                const { data: submittedRows, error: submittedErr } = await sb.from('claims').update({
                     status: 'submitted'
-                }).eq('id', claimId).eq('user_id', user.id);
+                }).eq('id', claimId).eq('user_id', user.id).select('id');
+                if (submittedErr || !Array.isArray(submittedRows) || submittedRows.length === 0) {
+                    const submittedMsg = submittedErr ? submittedErr.message : 'update_zero_rows: claims (repair status)';
+                    console.error('Repair submit: status=submitted write failed:', submittedMsg);
+                    // One Sentry event only: the throw below lands in the catch, which calls Sentry.captureException(err).
+                    throw new Error(submittedMsg);
+                }
 
                 // ── GA4 ─────────────────────────────────────────────────────
                 // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id
