@@ -152,7 +152,7 @@ a{color:#0D1B2E}a:hover{color:#B45309}
 <div style="background: #FFFFFF; border: 1px solid #DCE2E8; border-radius: 10px; padding: 22px; display: flex; flex-direction: column; gap: 12px">
 <h2 style="margin: 0; font-size: 24px; font-weight: 800; color: #0D1B2E">How we're paid</h2>
 <p style="margin: 0; font-size: 16px; line-height: 1.55; color: #3D4F60">Contractors pay Otter Quotes a fee on the bid you accept.</p>
-<p style="margin: 0; font-size: 16px; line-height: 1.55; color: #3D4F60">You pay as little as $15 up front for professional measurements that every contractor uses. If you complete a job on the platform, that money is refunded to you. There is no cost if you provide a copy of your insurance estimate.</p>
+<p style="margin: 0; font-size: 16px; line-height: 1.55; color: #3D4F60">You pay as little as $15 up front for professional measurements that contractors use to bid. If you complete a job on the platform, that money is refunded to you. There is no cost if you provide a copy of your insurance estimate.</p>
 </div>
 <div style="background: #FFFFFF; border: 1px solid #DCE2E8; border-radius: 10px; padding: 22px; display: flex; flex-direction: column; gap: 12px">
 <h2 style="margin: 0; font-size: 24px; font-weight: 800; color: #0D1B2E">What we do not do</h2>

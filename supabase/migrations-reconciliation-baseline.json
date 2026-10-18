@@ -9,7 +9,7 @@
     "repo_migrations_scan": "filesystem scan of supabase/migrations/ on this branch (excludes _rollback.sql and _pre-flight.md), de-duplicated -- 192 distinct version prefixes"
   },
   "counts": {
-    "applied_versions_total": 226,
+    "applied_versions_total": 228,
     "applied_no_repo_file": 36,
     "repo_file_no_applied": 18
   },
@@ -233,6 +233,8 @@
     "20261008210751",
     "20261008231142",
     "20261008231303",
+    "20261014112047",
+    "20261014112110",
     "20261015205709",
     "20261015205726",
     "20261015205851",
@@ -311,6 +313,7 @@
     "cto64 (2026-10-08, gh2559): 20261008231142 (gh2559_claim_docs_summary_only) and 20261008231303 (gh2559_bidder_claims_view) applied to production under R-097 (issue #2559 comment 6070932320) and added to applied_versions with their filed copies (moved from supabase/migrations_drafts/); applied_versions_total is now 219. applied_no_repo_file and repo_file_no_applied are unchanged (each new ledger row has its repo file).",
     "gh-1438 part 7 (2026-10-15, CTO RUN 68): five Direction-2 files renamed to their ledger versions after a content check against supabase_migrations.schema_migrations.statements (read-only): gh2121_s16 (20260926221500 -> 20260927143606), gh2300 (20260928215500 -> 20260929014230) and gh2313 (20260928211500 -> 20260929023234) match the ledger md5 byte-for-byte; gh2310 (20260928233000 -> 20260930015640) matches once one trailing newline is added to the file (the ledger text ends one newline later); gh1509 (20260904234257 -> 20260909122835) matches after the leading comment header is stripped. Counts after part 7: applied_no_repo_file 41 -> 36, repo_file_no_applied 23 -> 18. Still unreconciled in Direction 2 because the file text differs from the ledger row: gh1059 (20260820004212 vs 20260820004417), gh1304 (20260901132754 vs 20260901132827), gh1529 (20260904140000 vs 20260909045422; 20260908111639 vs 20260909044414), and gh2345 (20260929180000 vs 20260930190030, ledger statements NULL).",
     "cto68 (2026-10-15, filing): 20261015205709 (gh2491_claims_platform_fee_charged_guard), 20261015205726 (gh2491_message_counterpart), 20261015205851 (gh2626_claims_award_columns_guard), 20261015205902 (gh2519_quotes_server_set_fee) and 20261015210310 (gh2431_profiles_address_state_backfill) applied to production on 2026-10-15 through the Supabase migrations endpoint on Dustin's approval and added to applied_versions with their filed copies (git mv from supabase/migrations_drafts/, file bytes unchanged, the STATUS header included: the statements md5 of each ledger row, shortened to 16 characters, equals the file md5 at main 50740451: 0f414a6bba999862, dfedb5da96429578, 06176baf2308396b, 3eba46e642d5bf43, afe4cdb17f11d411); applied_versions_total is now 224. applied_no_repo_file and repo_file_no_applied are unchanged (each new ledger row has its repo file).",
-    "cto70 (2026-10-18, filing): 20261018193726 (gh2559_claim_docs_fee_gate) and 20261018195342 (gh2564_quotes_selected_price_lock) applied to production on 2026-10-18 from supabase/migrations_drafts/ and added to applied_versions with their filed copies (git mv, file bytes unchanged, the STATUS header included: the statements md5 of each ledger row, read-only SELECT on supabase_migrations.schema_migrations 2026-10-18, equals the file md5 at main be629150: 55ceb93c97c0eeb3, b0fdbea466b9b817); applied_versions_total is now 226. applied_no_repo_file and repo_file_no_applied are unchanged (each new ledger row has its repo file)."
+    "cto67 (2026-10-14, gh2619): 20261014112047 (gh2619_messages_selected_contractor_only) and 20261014112110 (gh2620_claims_payment_guard_security_definer) applied to production under R-134 (issue #2619 comment 6167206416, issue #2620 comment 6167206684) and added to applied_versions with their filed copies (moved from supabase/migrations_drafts/); applied_versions_total is now 226. applied_no_repo_file and repo_file_no_applied are unchanged (each new ledger row has its repo file).",
+    "cto70 (2026-10-18, filing): 20261018193726 (gh2559_claim_docs_fee_gate) and 20261018195342 (gh2564_quotes_selected_price_lock) applied to production on 2026-10-18 from supabase/migrations_drafts/ and added to applied_versions with their filed copies (git mv, file bytes unchanged, the STATUS header included: the statements md5 of each ledger row, read-only SELECT on supabase_migrations.schema_migrations 2026-10-18, equals the file md5 at main be629150: 55ceb93c97c0eeb3, b0fdbea466b9b817); applied_versions_total is now 228. applied_no_repo_file and repo_file_no_applied are unchanged (each new ledger row has its repo file)."
   ]
 }

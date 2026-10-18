@@ -1845,6 +1845,29 @@
   // the gh-2011 note in 20260918122231_gh2011_leads_variant.sql). Every other
   // caller omits it and gets exactly the payload it always did.
   var INSERT_EXTRA_COLUMNS = ['zip'];
+
+  // gh-2598 slice 6: the new homepage hands over the ZIP the visitor typed, in this tab's sessionStorage under
+  // 'oq_home_zip' (never in the URL: this page loads the Meta pixel, GA4 and Clarity, which record page URLs), and sends the visitor here
+  // with ?entry=home. This runs once, at load: it ALWAYS removes the key (read-and-clear, so a stale ZIP cannot outlive this load or
+  // resurface on a later direct visit), and it returns the ZIP only when the visit really came from the homepage (entry=home) AND the
+  // stored value is exactly five digits. skipRole is true for any entry=home visit, ZIP or not: the visitor already pressed a homeowner
+  // button, so the "I am a..." screen is skipped on arms D and E (Back from the first real screen still reaches it). No live arm has a ZIP
+  // field, so the ZIP is used the one way the page already supports: it rides on the homeowner's leads insert in the existing, allow-listed
+  // `zip` column (insertFreshLead's extraColumns). It is never sent to analytics, never put in a URL or cookie.
+  function readHomeHandoff() {
+    var fromHome = false;
+    var stored = null;
+    try { fromHome = new URLSearchParams(window.location.search).get('entry') === 'home'; } catch (e) {}
+    try { stored = window.sessionStorage.getItem('oq_home_zip'); } catch (e) {}
+    try { window.sessionStorage.removeItem('oq_home_zip'); } catch (e) {}
+    var zip = (fromHome && typeof stored === 'string' && /^\d{5}$/.test(stored)) ? stored : null;
+    return { skipRole: fromHome, zip: zip };
+  }
+  // gh-2598 slice 6, RECORDED PURPOSE (Dustin, #2801 comment 6253698968, 2026-10-18, "Store it, purpose: prefill + service area"): the homepage ZIP is stored on
+  // the homeowner's lead row (the `zip` column) to "prefill the property step so a visitor is never asked twice, and check service area".
+  // Nothing else reads it for any other purpose. Note: today's get-started prefill (get_lead_prefill) returns name, email and phone only, so the property-step
+  // ZIP prefill itself is a follow-up (RPC change = migration), tracked on #2598.
+  var homeEntry = readHomeHandoff();
   function insertFreshLead(name, email, phoneDigits, isSynthetic, variantOverride, extraColumns) {
     var newId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (
       'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
@@ -2773,7 +2796,8 @@
       showError: showError,
       ROLE_DESTINATIONS: ROLE_DESTINATIONS,
       PARTNER_INDUSTRY_DESTINATIONS: PARTNER_INDUSTRY_DESTINATIONS,
-      NO_LEAD_ID_DESTINATIONS: NO_LEAD_ID_DESTINATIONS
+      NO_LEAD_ID_DESTINATIONS: NO_LEAD_ID_DESTINATIONS,
+      homeEntry: homeEntry
     };
     var routerDScript = document.createElement('script');
     routerDScript.src = 'js/router-variant-d.js';
@@ -2812,7 +2836,8 @@
       ROLE_DESTINATIONS: ROLE_DESTINATIONS,
       PARTNER_INDUSTRY_DESTINATIONS: PARTNER_INDUSTRY_DESTINATIONS,
       NO_LEAD_ID_DESTINATIONS: NO_LEAD_ID_DESTINATIONS,
-      oqInternalOverride: oqInternalOverrideFlag
+      oqInternalOverride: oqInternalOverrideFlag,
+      homeEntry: homeEntry
     };
     // #2088 round 2 leftover (item 9): a SEPARATE bridge for the
     // script-load-failure fallback below -- reusing routerEBridge there
