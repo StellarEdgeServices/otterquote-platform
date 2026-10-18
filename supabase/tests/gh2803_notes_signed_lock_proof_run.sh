@@ -2,7 +2,7 @@
 # gh-2803: before/after proof of supabase/migrations_drafts/gh2803_quotes_notes_signed_lock.sql on a THROWAWAY Postgres 16. Never point this at production.
 # Usage: RPC_SQL=<path to gh2803_selected_bid_notes_rpc.sql from PR #2844> PGHOST=... PGPORT=... PGUSER=postgres bash supabase/tests/gh2803_notes_signed_lock_proof_run.sh [outdir]
 # (NOTE: *.sh is in .gitignore; committed with `git add -f` like the gh2519/gh2564 runners.)
-# Schema: gh2519_gh2564_throwaway_schema.sql, then main's gh2626 -> gh2519 -> gh2564, then PR #2844's RPC. Passes of the proof:
+# Schema: gh2519_gh2564_throwaway_schema.sql, then main's gh2626 -> gh2519 -> gh2564, then PR #2844's RPC. Bound: homeowner_signed_at OR contractor_signed_at (Dustin, #2846, option (b)). Passes of the proof:
 #   P1 BEFORE (no trigger)   P2 AFTER (trigger applied)   P3 after its rollback (must equal P1)   P4 re-applied (must equal P2)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -31,6 +31,13 @@ for s in P1_BEFORE P2_AFTER; do
   has $s N7 "REJECTED 42501"; has $s N9 "rows=1 ACCEPTED -> notes=owner edit"; has $s N10 "REJECTED 42501"
 done
 has P1_BEFORE N8 "rows=1 ACCEPTED -> notes=NULL"; has P2_AFTER N8 "REJECTED 42501"
+# #2846 option (b): contractor signature alone, NULL-ing notes, chained rewrite through another column, unsign+edit in one statement
+has P1_BEFORE N11 "rows=1 ACCEPTED"; has P2_AFTER N11 "REJECTED 42501"; has P2_AFTER N11 "notes=ORIGINAL CONTRACTOR-SIGNED NOTE"
+has P1_BEFORE N12 "rows=1 ACCEPTED -> notes=NULL"; has P2_AFTER N12 "REJECTED 42501"; has P2_AFTER N12 "notes=ORIGINAL CONTRACTOR-SIGNED NOTE"
+has P1_BEFORE N13 "REJECTED 22023"; has P2_AFTER N13 "REJECTED 22023"
+has P1_BEFORE N14 "rows=1 ACCEPTED -> notes=chained rewrite"; has P2_AFTER N14 "REJECTED 42501"; has P2_AFTER N14 "notes=ORIGINAL CONTRACTOR-SIGNED NOTE"
+has P1_BEFORE N15 "rows=1 ACCEPTED -> notes=chained rewrite"; has P2_AFTER N15 "rows=1 ACCEPTED -> notes=chained rewrite"
+has P1_BEFORE N16 "rows=1 ACCEPTED"; has P2_AFTER N16 "REJECTED 42501"
 diff "$OUT/P1_BEFORE.txt" "$OUT/P3_ROLLBACK.txt" >/dev/null && echo "P3_ROLLBACK equals P1_BEFORE" || { echo "P3 DIFFERS from P1"; rc=1; }
 diff "$OUT/P2_AFTER.txt" "$OUT/P4_REAPPLY.txt" >/dev/null && echo "P4_REAPPLY equals P2_AFTER" || { echo "P4 DIFFERS from P2"; rc=1; }
 echo "EXIT $rc"; exit $rc
