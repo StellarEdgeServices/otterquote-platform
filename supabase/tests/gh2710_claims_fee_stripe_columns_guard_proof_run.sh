@@ -16,7 +16,7 @@ cd "$(dirname "$0")/../.."
 OUT="${1:-$(mktemp -d)}"; mkdir -p "$OUT"
 D=supabase/migrations_drafts; RB=supabase/migrations_rollbacks; T=supabase/tests
 F2710=$D/gh2710_claims_fee_stripe_columns_guard.sql
-declare -A F=([2491]=supabase/migrations/20261015205709_gh2491_claims_platform_fee_charged_guard.sql [2626]=supabase/migrations/20261015205851_gh2626_claims_award_columns_guard.sql [2519]=supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql [2564]=$D/gh2564_quotes_selected_price_lock.sql [2710]=$F2710)
+declare -A F=([2491]=supabase/migrations/20261015205709_gh2491_claims_platform_fee_charged_guard.sql [2626]=supabase/migrations/20261015205851_gh2626_claims_award_columns_guard.sql [2519]=supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql [2564]=supabase/migrations/20261018195342_gh2564_quotes_selected_price_lock.sql [2710]=$F2710)
 rc=0
 fail() { echo "EXPECT FAIL: $*"; rc=1; }
 run_order() {

@@ -1,5 +1,5 @@
 -- gh-2559 fee leg proof: D-386 gate on the storage policy "Contractors can view biddable claim docs"
--- (supabase/migrations_drafts/gh2559_claim_docs_fee_gate.sql; NOT APPLIED when this was written).
+-- (supabase/migrations/20261018193726_gh2559_claim_docs_fee_gate.sql; NOT APPLIED when this was written).
 -- Run against production (yeszghaspzwwstvsrioa) as ONE statement. It is a single DO block whose last action is a
 -- deliberate RAISE EXCEPTION, so every fixture write and the DDL roll back whatever the client does. The findings are
 -- the exception text. It INSERTs nothing (no storage object, no sequence use); its only writes are three UPDATEs of one
