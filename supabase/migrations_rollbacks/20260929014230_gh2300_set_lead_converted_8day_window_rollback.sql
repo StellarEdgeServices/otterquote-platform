@@ -1,7 +1,7 @@
--- Rollback for: supabase/migrations/20260928215500_gh2300_set_lead_converted_8day_window.sql
+-- Rollback for: supabase/migrations/20260929014230_gh2300_set_lead_converted_8day_window.sql
 -- GitHub: #2300, #2121
 -- Tier 3B. Restores set_lead_converted(uuid) to its live pre-change definition (interval '24 hours'),
--- copied from 20260926221500_gh2121_s16_lead_goal_security_fix.sql and confirmed identical to
+-- copied from 20260927143606_gh2121_s16_lead_goal_security_fix.sql and confirmed identical to
 -- pg_get_functiondef on production (prosrc md5 prefix ba14bac2d987) on 2026-09-28.
 -- Effect of running it: reminded leads (24 h - 7 days old) stop linking again. Leads already linked stay linked
 -- (this touches no data). The ACL and the function signature are unchanged (privileges are not touched: CREATE OR REPLACE keeps the existing ACL).

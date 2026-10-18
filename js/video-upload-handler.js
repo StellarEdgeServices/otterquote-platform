@@ -61,13 +61,15 @@ class VideoUploadManager {
       return { success: false, error: uploadError.message || 'Upload failed.' };
     }
 
-    const { error: dbError } = await sb
+    // gh-2105 class (a): `.select('id')` so a zero-row match is a failure, not a silent success.
+    const { data: dbRows, error: dbError } = await sb
       .from('claims')
       .update({ video_url: filePath })
-      .eq('id', this.claimId);
+      .eq('id', this.claimId)
+      .select('id');
 
-    if (dbError) {
-      console.error('[VideoUploadManager] db error:', dbError);
+    if (dbError || !dbRows || dbRows.length === 0) {
+      console.error('[VideoUploadManager] db error:', dbError || 'update matched 0 rows');
       // Storage succeeded — don't surface a fatal error, but log it
       return { success: true, path: filePath, warning: 'Saved to storage but failed to record in database.' };
     }

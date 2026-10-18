@@ -4,7 +4,7 @@
 -- REPO COPY: none in supabase/migrations/ (this is a manual reference rollback)
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
--- gh-2431 ROLLBACK for supabase/migrations_drafts/gh2431_profiles_address_state_backfill.sql
+-- gh-2431 ROLLBACK for supabase/migrations/20261015210310_gh2431_profiles_address_state_backfill.sql
 -- Manual reference only. Never rename into a 14-digit timestamp or move into supabase/migrations/.
 -- Restores 'IN' on exactly the profiles the forward file cleared (via its audit table), only where the
 -- state is still NULL (a state the homeowner entered since is kept), then drops the audit table.

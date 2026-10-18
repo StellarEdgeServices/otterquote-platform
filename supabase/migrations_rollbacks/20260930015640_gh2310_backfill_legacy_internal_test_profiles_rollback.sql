@@ -1,4 +1,4 @@
--- Rollback for 20260928233000_gh2310_backfill_legacy_internal_test_profiles.
+-- Rollback for 20260930015640_gh2310_backfill_legacy_internal_test_profiles.
 -- Restores is_test=false ONLY for the 26 profile ids measured as false on 2026-09-28
 -- (a predicate-based rollback would also flip the 33 rows that were already true).
 -- The forward migration is profiles-only, so this fully reverts it.

@@ -1,6 +1,6 @@
-# Pre-Flight: 20260904234257_gh1509_w9_gate_retired_policy_key
+# Pre-Flight: 20260909122835_gh1509_w9_gate_retired_policy_key
 
-**Migration**: 20260904234257_gh1509_w9_gate_retired_policy_key.sql
+**Migration**: 20260909122835_gh1509_w9_gate_retired_policy_key.sql
 **Date**: 2026-09-04
 **Author**: Claude Code (run-work dispatch rw-f22-20260904T231551-wgnu, orch rw-drain-f22-20260904T231551-cmqi)
 **D-numbers**: D-182 Tier 3B (RLS policy change, R-097 24h window, approved), D-319 (the underlying decision), D-221 (Path A deploy)
@@ -282,7 +282,7 @@ branch test would.
   `notify-partner-w9`, `process-payout-reminders`, `admin-referrals.html`,
   or `partner-agreement.html`.
 - **Rollback pre-authorized**: Yes —
-  `20260904234257_gh1509_w9_gate_retired_policy_key_rollback.sql`
+  `20260909122835_gh1509_w9_gate_retired_policy_key_rollback.sql`
   re-creates the policy with exactly the original five keys. Reversible
   with no data loss.
 - **Refuter guidance** (per the dispatch): check specifically that the
