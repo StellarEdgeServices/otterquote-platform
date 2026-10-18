@@ -49,14 +49,20 @@ SAFETY PROPERTIES (each has a test in seed-gh1570-is-test-fixtures.test.py):
     inserts nothing the second time.
   * CREDENTIALS FROM ENV ONLY: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY. No
     argv, no URL-embedded key, never printed. Anything echoed is redacted.
-  * CLEANUP MODE (--cleanup, also dry-run until --apply): removes only users
-    whose email is one of the three fixture addresses AND whose profile is
-    is_test = true. ALL three fixtures are validated BEFORE the first delete:
-    any non-test profile, claim or activity_log row refuses the whole run with
-    nothing deleted. Every DELETE is also scoped in its own URL (claims and
+  * CLEANUP MODE (--cleanup, also dry-run until --apply): removes only auth
+    users whose email is one of the three fixture addresses and that own no
+    non-test row we can see. The profile is read both by email and by id
+    (profiles?id=eq.<uid>, so a profile whose email column drifted is still
+    caught, including for an orphaned auth user), and contractors?user_id=eq.<uid>
+    is read too. ALL three fixtures are validated BEFORE the first delete:
+    any non-test profile (by email or by id), claim, activity_log or contractors
+    row refuses the whole run with nothing deleted. Every DELETE is also scoped in its own URL (claims and
     activity_log by is_test=eq.true, notifications by recipient=<fixture
-    email>), so a row that appears after the check cannot be deleted. The auth
-    user is deleted only if nothing is left under it. An orphaned auth user
+    email>), so a row that appears after the check cannot be deleted. Just
+    before the auth delete (which cascades profiles, claims, activity_log and
+    contractors) claims, activity_log, contractors and the profile (by email
+    and by id) are read again; if any is non-test the auth user is kept and
+    the run stops. Tables this script does not read are not checked. An orphaned auth user
     (no profile row) is found by email and deleted only if that email is on
     the fixture list and in the is_test domain.
   * The service role key is Dustin's production credential. This script is
@@ -189,6 +195,15 @@ class Client:
     def activity_for(self, user_id):
         return self._req("GET", f"/rest/v1/activity_log?user_id=eq.{user_id}&select=id,is_test,event_type")
 
+    def profile_by_id(self, user_id):
+        """The profile row for an auth user id. Catches a profile whose email
+        column no longer matches the fixture address."""
+        rows = self._req("GET", f"/rest/v1/profiles?id=eq.{user_id}&select=id,email,is_test")
+        return rows[0] if rows else None
+
+    def contractors_for(self, user_id):
+        return self._req("GET", f"/rest/v1/contractors?user_id=eq.{user_id}&select=id,is_test")
+
     def find_auth_user(self, email, per_page=200, max_pages=50):
         """Admin lookup by exact email (GoTrue has no reliable email filter)."""
         for page in range(1, max_pages + 1):
@@ -310,6 +325,11 @@ def plan_cleanup(client, out=print):
                 raise RuntimeError(
                     f"REFUSING: auth user {au.get('email')} is not on the fixture list / is_test domain; nothing deleted")
             uid, orphan = au["id"], True
+        by_id = client.profile_by_id(uid)
+        if by_id is not None and by_id.get("is_test") is not True:
+            raise RuntimeError(f"REFUSING: profile {uid} (fixture {email}) is not is_test; nothing deleted")
+        if any(c.get("is_test") is not True for c in client.contractors_for(uid)):
+            raise RuntimeError(f"REFUSING: {email} owns a non-test contractors row; nothing deleted")
         claims = client.claims_for(uid)
         if any(c.get("is_test") is not True for c in claims):
             raise RuntimeError(f"REFUSING: {email} owns a non-test claim; nothing deleted")
@@ -338,9 +358,14 @@ def run_cleanup(client, apply, out=print):
         # Deleting the auth user would cascade it away, so stop instead.
         left = client.claims_for(uid) + client.activity_for(uid)
         prof_now = client.find_profile(email)
-        if left or (prof_now is not None and prof_now.get("is_test") is not True):
+        prof_id_now = client.profile_by_id(uid)
+        contractors_now = [c for c in client.contractors_for(uid) if c.get("is_test") is not True]
+        if (left or contractors_now
+                or (prof_now is not None and prof_now.get("is_test") is not True)
+                or (prof_id_now is not None and prof_id_now.get("is_test") is not True)):
             raise RuntimeError(
-                f"REFUSING: {email} gained a non-test row after the check ({len(left)} row(s) remain); "
+                f"REFUSING: {email} gained a non-test row after the check "
+                f"({len(left) + len(contractors_now)} row(s) remain, or a profile is not is_test); "
                 "auth user kept, nothing further deleted")
         client.delete_auth_user(uid)  # cascades profiles
     return removed

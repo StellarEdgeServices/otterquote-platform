@@ -27,6 +27,7 @@ class FakeClient:
         self.auth_users = {}        # email -> id (auth.users, incl. orphans)
         self.on_delete = None       # hook: called before each scoped delete (race injection)
         self.delete_log = []        # (table, uid, scope_col, scope_val)
+        self.contractors = []
 
     def find_profile(self, email):
         return self.profiles.get(email)
@@ -39,6 +40,15 @@ class FakeClient:
 
     def activity_for(self, uid):
         return [e for e in self.events if e["user_id"] == uid]
+
+    def profile_by_id(self, uid):
+        for p in self.profiles.values():
+            if p["id"] == uid:
+                return p
+        return None
+
+    def contractors_for(self, uid):
+        return [x for x in self.contractors if x["user_id"] == uid]
 
     def find_auth_user(self, email):
         uid = self.auth_users.get(email)
@@ -87,6 +97,7 @@ class FakeClient:
         # cascade, as the real FK does
         self.claims = [c for c in self.claims if c["user_id"] != uid]
         self.events = [e for e in self.events if e["user_id"] != uid]
+        self.contractors = [x for x in self.contractors if x["user_id"] != uid]
 
 
 def quiet(fn, *a, **k):
@@ -304,6 +315,93 @@ class OrphanTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             quiet(seed.run_cleanup, c, True)
         self.assertEqual(c.writes, [])
+
+
+class ProfileByIdAndContractorsTests(unittest.TestCase):
+    """Reviewer 6255499832 probes P10 and P11: the cascading auth delete must not
+    reach a non-test profile (found by id) or a non-test contractors row."""
+    EMAIL = "gh1570-stalled@otterquote-internal.test"
+
+    def drifted_orphan(self):
+        c = FakeClient()
+        c.auth_users[self.EMAIL] = "orph1"
+        # profiles row exists by id but its email column drifted off the fixture address
+        c.profiles["moved@real.example"] = {"id": "orph1", "email": "moved@real.example", "is_test": False}
+        return c
+
+    def test_p10_orphan_path_non_test_profile_by_id_refuses(self):
+        c = self.drifted_orphan()
+        with self.assertRaises(RuntimeError) as cm:
+            quiet(seed.run_cleanup, c, True)
+        self.assertIn("is not is_test", str(cm.exception))
+        self.assertEqual(c.writes, [])
+        self.assertIn("orph1", c.auth_users.values())
+        self.assertIn("moved@real.example", c.profiles)
+
+    def test_p10_dry_run_refuses_too(self):
+        with self.assertRaises(RuntimeError):
+            quiet(seed.run_cleanup, self.drifted_orphan(), False)
+
+    def test_p10_drift_after_the_check_stops_before_the_auth_delete(self):
+        c = seeded()
+        victim = uid_of(c, "gh1570-draft")
+
+        def drift(cl):  # after validation, before the first DELETE: email drifts, is_test flips
+            cl.profiles.pop("gh1570-draft@otterquote-internal.test")
+            cl.profiles["moved@real.example"] = {"id": victim, "email": "moved@real.example", "is_test": False}
+
+        c.on_delete = drift
+        with self.assertRaises(RuntimeError):
+            quiet(seed.run_cleanup, c, True)
+        self.assertIn(victim, c.auth_users.values())
+        self.assertIn("moved@real.example", c.profiles)
+        self.assertNotIn("del-auth", c.writes)
+
+    def test_p11_non_test_contractors_row_refuses_with_nothing_deleted(self):
+        c = seeded()
+        c.contractors.append({"id": "K1", "user_id": uid_of(c, "gh1570-control"), "is_test": False})
+        before = (list(c.writes), list(c.claims), dict(c.profiles), dict(c.auth_users))
+        with self.assertRaises(RuntimeError) as cm:
+            quiet(seed.run_cleanup, c, True)
+        self.assertIn("contractors", str(cm.exception))
+        self.assertEqual((c.writes, c.claims, c.profiles, c.auth_users), before)
+        self.assertEqual([x["id"] for x in c.contractors], ["K1"])
+
+    def test_p11_contractors_row_inserted_late_survives(self):
+        c = seeded()
+        victim = uid_of(c, "gh1570-stalled")
+        c.on_delete = lambda cl: cl.contractors.append({"id": "K2", "user_id": victim, "is_test": False})
+        with self.assertRaises(RuntimeError):
+            quiet(seed.run_cleanup, c, True)
+        self.assertIn("K2", [x["id"] for x in c.contractors])
+        self.assertIn(victim, c.auth_users.values())
+        self.assertEqual(c.writes.count("del-auth"), 1)  # only the earlier, clean fixture
+
+    def test_is_test_contractors_row_does_not_block_cleanup(self):
+        c = seeded()
+        c.contractors.append({"id": "K3", "user_id": uid_of(c, "gh1570-draft"), "is_test": True})
+        quiet(seed.run_cleanup, c, True)
+        self.assertEqual((c.contractors, c.auth_users), ([], {}))
+
+    def test_real_client_reads_profile_by_id_and_contractors(self):
+        calls = []
+
+        class R:
+            def __enter__(s): return s
+            def __exit__(s, *a): return False
+            def read(s): return b"[]"
+
+        def fake_urlopen(req, timeout=0):
+            calls.append((req.get_method(), req.full_url))
+            return R()
+
+        cl = seed.Client("https://x.supabase.co", "k" * 40)
+        with patch.object(seed.urllib.request, "urlopen", fake_urlopen):
+            self.assertIsNone(cl.profile_by_id("U1"))
+            self.assertEqual(cl.contractors_for("U1"), [])
+        self.assertTrue(calls[0][1].endswith("/rest/v1/profiles?id=eq.U1&select=id,email,is_test"))
+        self.assertTrue(calls[1][1].endswith("/rest/v1/contractors?user_id=eq.U1&select=id,is_test"))
+        self.assertEqual({m for m, _ in calls}, {"GET"})
 
 
 class MainTests(unittest.TestCase):
