@@ -597,5 +597,23 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspector
     'nav.js: a /guides/ page is not a partner page');
 }
 
+// cro64 (gh-2423): the home-inspector guide under /partners/ is an inspector-context surface,
+// so its header and footer never offer the fee-bearing partner programs (D-333).
+{
+  function inspectorImmediate(file) {
+    const ctx = { window: { location: { pathname: '/' + file, search: '' }, URLSearchParams }, URLSearchParams };
+    ctx.window.window = ctx.window;
+    vm.createContext(ctx);
+    vm.runInContext(navBody, ctx);
+    return ctx.Nav._isInspectorTrackImmediate();
+  }
+  ok(inspectorImmediate('partners/how-a-home-inspector-can-point-a-client-to-bids.html') === true,
+    'nav.js: /partners/how-a-home-inspector-can-point-a-client-to-bids.html is an inspector-context page');
+  ok(inspectorImmediate('partners/roof-damage-found-before-closing.html') === false,
+    'nav.js: the real-estate guide under /partners/ is NOT an inspector-context page');
+  ok(!/\$|referral fee|recruit bonus/i.test(staticRenderedText(readPage('partners/how-a-home-inspector-can-point-a-client-to-bids.html'))),
+    'the home-inspector guide renders no dollar sign, referral fee or recruit bonus text');
+}
+
 console.log(`\n${pass} passed, ${fail} failed.`);
 process.exit(fail === 0 ? 0 : 1);
