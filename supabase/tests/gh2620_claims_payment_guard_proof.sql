@@ -2,7 +2,7 @@
 -- Run against production (yeszghaspzwwstvsrioa). A single DO block whose last action is a deliberate
 -- RAISE EXCEPTION, so the forward DDL and every fixture write roll back whatever the client does; the
 -- findings are the exception text. The text between the $fwd$ markers is the body of
--- supabase/migrations_drafts/gh2620_claims_payment_guard_security_definer.sql without its header and
+-- supabase/migrations/20261014112110_gh2620_claims_payment_guard_security_definer.sql without its header and
 -- BEGIN/COMMIT lines (regenerate if that file changes).
 -- Fixtures are looked up at run time (nothing hard-coded): an is_test homeowner's is_test claim in
 -- 'bidding' that has a quote, an is_test contractor with has_payment_method = true (k_pm), and the quote's

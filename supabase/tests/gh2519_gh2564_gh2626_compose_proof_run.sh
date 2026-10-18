@@ -17,7 +17,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 OUT="${1:-$(mktemp -d)}"; mkdir -p "$OUT"
 D=supabase/migrations_drafts; RB=supabase/migrations_rollbacks; T=supabase/tests
-G6="$D/gh2626_claims_award_columns_guard.sql"; G19="$D/gh2519_quotes_server_set_fee.sql"; G64="$D/gh2564_quotes_selected_price_lock.sql"
+G6="supabase/migrations/20261015205851_gh2626_claims_award_columns_guard.sql"; G19="supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql"; G64="supabase/migrations/20261018195342_gh2564_quotes_selected_price_lock.sql"
 R6="$RB/gh2626_claims_award_columns_guard_rollback.sql"
 R19="$RB/gh2519_quotes_server_set_fee_rollback.sql"; R19b="$RB/gh2519_quotes_server_set_fee_rollback_to_gh2626.sql"; R64="$RB/gh2564_quotes_selected_price_lock_rollback.sql"
 rc=0

@@ -4,7 +4,7 @@
 -- REPO COPY: none in supabase/migrations/ (this is a manual reference rollback)
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
--- gh-2491 ROLLBACK for supabase/migrations_drafts/gh2491_claims_platform_fee_charged_guard.sql
+-- gh-2491 ROLLBACK for supabase/migrations/20261015205709_gh2491_claims_platform_fee_charged_guard.sql
 --
 -- Manual reference only. Never rename this into a 14-digit timestamp or move it into
 -- supabase/migrations/ -- the CLI would replay it FORWARD and undo the guard it exists to revert.

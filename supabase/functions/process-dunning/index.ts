@@ -461,13 +461,14 @@ async function getContractorContacts(contractor: Record<string, any>, supabase: 
 }
 
 // MESSAGE TEXT
+// gh-1916 (LEGAL-READ F3): every contractor SMS names the sender. Pinned by sms-sender-id.test.ts.
 
 const HOURLY_SMS =
-  "You have a signed contract waiting for you, but your payment method has been " +
+  "Otter Quotes: You have a signed contract waiting for you, but your payment method has been " +
   `declined. Please visit ${SETTINGS_URL} to resolve the matter.`;
 
 const WARNING_SMS =
-  "You have a signed contract waiting for you, but your payment method has been " +
+  "Otter Quotes: You have a signed contract waiting for you, but your payment method has been " +
   "declined. At 10 a.m. today we will inform the client of the payment failure " +
   "and give them the option to choose another contractor. If they opt to move " +
   "forward with you, you will receive their information and be liable for all fees, " +

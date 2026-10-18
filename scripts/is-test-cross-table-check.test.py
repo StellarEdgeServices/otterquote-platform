@@ -689,6 +689,121 @@ class SelfTestIsolationTests(unittest.TestCase):
         self.assertEqual(db.users, set())
 
 
+class S2ProbeIgnoredTests(unittest.TestCase):
+    """gh-2718 (scope per REVIEW 6170853809): ONLY the CI-test self-test's REAL
+    pass (exclude_selftest=True) ignores the deliberate S2 probe from
+    tests/e2e/flows/test-world-symmetry.spec.ts. The production paths
+    (Management-API SQL, plain PostgREST run) still REPORT the same shape,
+    because in production a user can self-update profiles.email/is_test."""
+
+    URL = "https://zsdvaqilfdclwosmiheh.supabase.co"
+    PROBE = "real-side-564@otterquote-internal.test"
+    PROBE_NAME = "Real-Side Probe Roofing (E2E #564)"  # what CI actually printed 2026-10-14
+
+    def _run(self, db, **kw):
+        with patch("sys.stdout", new_callable=io.StringIO), patch("sys.stderr", new_callable=io.StringIO):
+            return guard.run(self.URL, "k", urlopen=db.urlopen, **kw)
+
+    def _probe(self, db, p_email=None, c_email=None, profile_is_test=True, contractor_is_test=False, name=None):
+        uid, cid = db.seed(name or self.PROBE_NAME, profile_is_test, contractor_is_test)
+        db.profiles[uid]["email"] = self.PROBE if p_email is None else p_email
+        db.contractors[cid]["email"] = self.PROBE if c_email is None else c_email
+        return uid, cid
+
+    def test_constant_matches_the_spec(self):
+        spec_path = HERE.parent / "tests" / "e2e" / "flows" / "test-world-symmetry.spec.ts"
+        text = spec_path.read_text(encoding="utf-8")
+        self.assertIn(f"const REAL_SIDE_EMAIL = '{guard.S2_PROBE_EMAIL}';", text)
+        self.assertEqual(guard.S2_PROBE_EMAIL, self.PROBE)
+
+    def test_ci_test_pass_ignores_the_probe(self):
+        db = FakeSupabase()
+        self._probe(db)
+        self.assertEqual(self._run(db, exclude_selftest=True), 0)
+
+    def test_production_postgrest_mode_still_reports_the_probe_shape(self):
+        db = FakeSupabase()
+        self._probe(db)
+        self.assertEqual(self._run(db), 1)  # plain run(): exclude nothing
+
+    def test_production_management_api_mode_still_reports_the_probe_shape(self):
+        """DISAGREEMENT_SQL is byte-for-byte free of any probe exception, and the REAL
+        SQL text, run on in-memory SQLite (3.37 has no IS DISTINCT FROM, so only that
+        operator is swapped for the null-safe IS NOT), returns the probe-shaped row."""
+        import sqlite3
+        self.assertNotIn("real-side", guard.DISAGREEMENT_SQL)
+        self.assertNotIn("email", guard.DISAGREEMENT_SQL)
+        db = sqlite3.connect(":memory:")
+        db.executescript(
+            "create table profiles(id text, is_test int, email text);"
+            "create table contractors(id text, user_id text, is_test int, company_name text, created_at text);"
+        )
+        db.execute("insert into profiles values('p-probe', 1, ?)", (self.PROBE,))
+        db.execute("insert into contractors values('c1','p-probe',0,?, '2026-10-14T00:00:00')", (self.PROBE_NAME,))
+        got = db.execute(guard.DISAGREEMENT_SQL.replace(" is distinct from ", " is not ")).fetchall()
+        self.assertEqual([r[0] for r in got], ["p-probe"])
+        offenders = [{"profile_id": "p-probe", "profile_is_test": True, "contractor_id": "c1",
+                      "contractor_is_test": False, "company_name": self.PROBE_NAME}]
+        with patch("sys.stdout", new_callable=io.StringIO), patch("sys.stderr", new_callable=io.StringIO):
+            self.assertEqual(guard.run_management_api("yeszghaspzwwstvsrioa", "tok", fetcher=lambda r, t: offenders), 1)
+
+    def test_contractors_fetch_asks_for_email(self):
+        urls = []
+        db = FakeSupabase()
+        self._probe(db)
+        db.hook = lambda method, url: urls.append(url)
+        self._run(db, exclude_selftest=True)
+        self.assertTrue(any("/rest/v1/contractors" in u and "email" in u for u in urls), urls)
+        self.assertTrue(any("/rest/v1/profiles" in u and "email" in u for u in urls), urls)
+
+    def test_negative_control_other_disagreeing_row_still_caught_beside_probe(self):
+        db = FakeSupabase()
+        self._probe(db)
+        db.seed("Acme Roofing LLC", True, False)
+        self.assertEqual(self._run(db, exclude_selftest=True), 1)
+
+    def test_negative_control_company_name_alone_is_not_enough(self):
+        db = FakeSupabase()
+        self._probe(db, p_email="someone-else@example.com", c_email="someone-else@example.com")
+        self.assertEqual(self._run(db, exclude_selftest=True), 1)
+
+    def test_negative_control_profile_email_alone_is_not_enough(self):
+        """The user-controllable half: a profile carrying the probe email on a contractor
+        whose own email differs (a user can edit profiles, not contractors) is caught."""
+        db = FakeSupabase()
+        self._probe(db, c_email="real-contractor@example.com")
+        self.assertEqual(self._run(db, exclude_selftest=True), 1)
+        db2 = FakeSupabase()
+        uid, cid = db2.seed(self.PROBE_NAME, True, False)
+        db2.profiles[uid]["email"] = self.PROBE  # contractor has no email at all
+        self.assertEqual(self._run(db2, exclude_selftest=True), 1)
+
+    def test_negative_control_probe_email_in_the_opposite_shape_is_caught(self):
+        db = FakeSupabase()
+        self._probe(db, profile_is_test=False, contractor_is_test=True)
+        self.assertEqual(self._run(db, exclude_selftest=True), 1)
+
+    def test_negative_control_probe_email_case_variant_is_not_matched(self):
+        db = FakeSupabase()
+        self._probe(db, p_email=self.PROBE.upper(), c_email=self.PROBE.upper())
+        self.assertEqual(self._run(db, exclude_selftest=True), 1)
+
+    def test_full_self_test_survives_a_live_probe_and_still_fails_on_a_genuine_row(self):
+        db = FakeSupabase()
+        self._probe(db)  # the nightly spec is mid-flight
+        with patch("sys.stdout", new_callable=io.StringIO) as out, patch("sys.stderr", new_callable=io.StringIO):
+            code = guard.self_test(self.URL, "k", urlopen=db.urlopen, run_id="2718-1")
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertIn("REAL expectation (exit==0): PASS", out.getvalue())
+        db2 = FakeSupabase()
+        self._probe(db2)
+        db2.seed("Acme Roofing LLC", True, False)
+        with patch("sys.stdout", new_callable=io.StringIO) as out2, patch("sys.stderr", new_callable=io.StringIO):
+            code2 = guard.self_test(self.URL, "k", urlopen=db2.urlopen, run_id="2718-2")
+        self.assertEqual(code2, 1, out2.getvalue())
+        self.assertIn("REAL expectation (exit==0): FAIL", out2.getvalue())
+
+
 class _FakeResponse:
     def __init__(self, body: bytes, status: int = 200):
         self._body = body

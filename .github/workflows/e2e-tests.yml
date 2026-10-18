@@ -440,8 +440,14 @@ jobs:
       - name: measurement-shape admin-fulfilment flip unit test (gh-1411 D-317 cl. 4-6; REVIEW finding A, PR #2236)
         run: node tests/measurement-shape-flip-on-deliver.mjs
 
+      - name: "admin halted-contracts Re-issue button: dry run first, confirm only after acceptance (gh-2543 slice 2b)"
+        run: node tests/gh2543-halted-contracts-reissue-button.mjs
+
       - name: partner signup duplicate-email error routing unit test (gh-2274 regression)
         run: node tests/gh2274-partner-dup-email-error.mjs
+
+      - name: contractor SMS consent box on pre-approval matches contractor-join D-328 label and evidence columns (gh-1916, PR #2722)
+        run: node tests/gh1916-pre-approval-sms-consent.mjs
 
       # gh-1925 / D-336: the "Do Not Sell or Share" opt-out control guard. It
       # pins the ruled link text + href in every static page's own <footer>
@@ -476,6 +482,12 @@ jobs:
 
       - name: a bidding contractor is offered no raw homeowner upload, only the selected contractor (gh-2559, D-368)
         run: node tests/gh2559-bidder-no-raw-files.mjs
+
+      - name: contractor pages state the D-386 release timing for the estimate, phone and email (gh-2559, D-386)
+        run: node tests/gh2559-contractor-access-window-copy.mjs
+
+      - name: the fee-gate draft migration, rollback and proof are consistent (gh-2559 fee leg, D-386)
+        run: node tests/gh2559-claim-docs-fee-gate.mjs
 
       - name: partner-re one leads row per signup, variant carried (gh-2084 arm E)
         run: node tests/gh2084-partner-re-one-lead-row.mjs

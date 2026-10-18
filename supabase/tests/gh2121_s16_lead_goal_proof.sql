@@ -2,7 +2,7 @@
 --
 -- Run the WHOLE file as one statement batch wrapped in BEGIN ... ROLLBACK
 -- against a database that already has supabase/migrations/20260924195639_
--- gh2121_lead_goal_writeback.sql AND supabase/migrations/20260926221500_
+-- gh2121_lead_goal_writeback.sql AND supabase/migrations/20260927143606_
 -- gh2121_s16_lead_goal_security_fix.sql applied. Never COMMIT.
 --
 -- NOT RUN BY THIS WORKER: the Code-lane dispatch this file was written
@@ -29,7 +29,7 @@
 --      then queries lead_goal_events for that lead and asserts no
 --      measurement_purchase row. Run against 20260924195639 alone this
 --      correctly FAILS (the pre-fix view has no payment predicate, so the
---      pending order is counted); with 20260926221500 applied it PASSES.
+--      pending order is counted); with 20260927143606 applied it PASSES.
 --   2. The original P1/P2/P3 fixture leads (A/B/C) all converted to the
 --      SAME synthetic account (user_a). Since lead_goal_events joins
 --      claim_goals on l.converted_user_id (i.e. one account's ENTIRE claim
@@ -55,7 +55,7 @@
 --                20260924195639 alone (fix migration NOT applied) this
 --                assertion FAILS -- that is the "negative control failing
 --                on the pre-fix code" the coordinator required. Apply
---                20260926221500 and rerun -- P2 passes.
+--                20260927143606 and rerun -- P2 passes.
 --   P3  loss-sheet path unaffected by D1/D5 -- claims.loss_sheet_parsed_at
 --                still produces a loss_sheet_upload row (own dedicated
 --                account, no shared-account tie-break).
@@ -73,9 +73,9 @@
 --   P7  unconverted lead : no row in lead_goal_events at all.
 --
 -- To reproduce the "fails on pre-fix code" run for P2: apply only
--- 20260924195639 (not 20260926221500), run this file, and P2 will report
+-- 20260924195639 (not 20260927143606), run this file, and P2 will report
 -- FAIL (a measurement_purchase row appears for the unpaid order). Then
--- apply 20260926221500 and rerun -- P2 passes. Paste both raw runs.
+-- apply 20260927143606 and rerun -- P2 passes. Paste both raw runs.
 --
 -- Everything this script writes is rolled back by the ROLLBACK that must
 -- follow it -- no synthetic row may be left behind, and this must never be
@@ -181,7 +181,7 @@ BEGIN
   -- 20260924195639 alone (no payment filter in the view's lateral join)
   -- this MUST fail: the pending row's created_at still satisfies
   -- MIN(ho.created_at), so claim_goal_type resolves to
-  -- 'measurement_purchase' and a row appears. Against 20260926221500 (this
+  -- 'measurement_purchase' and a row appears. Against 20260927143606 (this
   -- PR's fix) the lateral join's payment predicate excludes the pending
   -- row entirely, so the claim's own goal_type/goal_at are both NULL, and
   -- either no row is returned for lead B or a row is returned with

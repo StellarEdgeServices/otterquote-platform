@@ -1,8 +1,8 @@
--- STATUS (gh-1438, as of 2026-10-08T16:46:19Z): NOT APPLIED
+-- STATUS (gh-1438): APPLIED. APPLIED to production (yeszghaspzwwstvsrioa) by CTO RUN 65 re-entry 1 (claim cto-2026-10-14T04:47:56Z) on Dustin's word in chat "Go on 2688" (#2688 comment 6167081184): supabase_migrations.schema_migrations version 20261014112047, name gh2619_messages_selected_contractor_only; evidence #2619 comment 6167206416; ledger statements md5 and byte length equal this file's pre-header-change text.
 -- FILE ROLE: forward file of set gh2619_messages_selected_contractor_only
 -- EVIDENCE: production read-only 2026-10-08 (pg_policies on public.messages): policy contractor_messages (cmd ALL, roles public) still carries the old predicate with no selected-contractor condition; rolled-back before/after proof is on issue #2619 and in supabase/tests/gh2619_messages_selected_contractor_only_proof.sql
--- REPO COPY: none. After apply, file this forward SQL under its real ledger version in supabase/migrations/; rollback is supabase/migrations_rollbacks/gh2619_messages_selected_contractor_only_rollback.sql
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- REPO COPY: this file (ledger version 20261014112047). The rollback stays at supabase/migrations_rollbacks/gh2619_messages_selected_contractor_only_rollback.sql. NEVER RE-RUN by hand: this is the filed copy under the ledger version (moved from supabase/migrations_drafts/ after the apply, 2026-10-14T11:58:22Z stamp.py; SQL statements unchanged, header comments only).
+-- NEVER RE-RUN by hand: applied; see the REPO COPY line above.
 --
 -- gh-2619 [SECURITY]: the policy contractor_messages on public.messages let ANY
 -- contractor holding a quote on a claim read and write the whole message thread
