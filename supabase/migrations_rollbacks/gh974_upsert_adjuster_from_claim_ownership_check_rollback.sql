@@ -1,4 +1,4 @@
--- Rollback for: 20260818214531_gh974_upsert_adjuster_from_claim_ownership_check.sql
+-- Rollback for: 20260818214332_gh974_upsert_adjuster_from_claim_ownership_check.sql
 -- GitHub: #974
 -- WARNING: restores the PRE-FIX vulnerable behavior - no claim_id, no
 -- ownership check, anon EXECUTE, AND the two schema-mismatch bugs this PR

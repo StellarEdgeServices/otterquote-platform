@@ -13,6 +13,22 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;600;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/home-reskin.css">
+<script>
+/* gh-2598 correction 3 (#2598 comment 6067600190, N1): the three animated words must never paint visible and then fade out.
+   css/home-reskin.css hides them only under html.hr-js. That class is set HERE, in the head, before the body is parsed, so the first paint already has the words in their hidden start state.
+   It is set only when JS runs (no JS: the class is never added and the words are plain visible text) and not when the visitor prefers reduced motion (the words stay visible).
+   Fail open: if /js/home-reskin.js errors on load, or has not started within 2.5 s, the class is removed and the static visible words stay. window.__hrOpen is also called by the script tag's onerror. */
+(function () {
+  var root = document.documentElement;
+  function open() { try { clearTimeout(window.__hrTimer); } catch (e) {} root.classList.remove('hr-js'); window.__hrOpened = true; }
+  window.__hrOpen = open;
+  try {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { return; }
+    root.classList.add('hr-js');
+    window.__hrTimer = setTimeout(open, 2500);
+  } catch (e) { open(); }
+})();
+</script>
 <script src="/js/internal-traffic.js"></script>
 <script>
   /* gtag / fbq stubs so every call site is safe before the gates load; same shape as start.html. GA4 loads ONLY via js/ga-gate.js
@@ -36,9 +52,10 @@
       <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes logo" width="28" height="44">
       <span><span class="hr-brand-name">Otter Quotes</span><span class="hr-brand-tag">Contractors Compete. Homeowners Win.</span></span>
     </a>
-    <!-- gh-2598 slice 2: How it works and Questions come back with the sections they point at. How we're paid returns with its section in slice 3. -->
+    <!-- gh-2598 slice 3: the third header link, How we're paid, returns with its section (#paid). -->
     <nav class="hr-nav" aria-label="Main">
       <a href="#how">How it works</a>
+      <a href="#paid">How we're paid</a>
       <a href="#questions">Questions</a>
     </nav>
     <div class="hr-header-right">
@@ -87,8 +104,8 @@
     </div>
   </div>
 </section>
-<!-- gh-2598 slice 2: reading sections, strings verbatim from the two design files (checked by tests/gh2598-home-next-sections.mjs).
-     Slice 3 adds How we're paid, What we do not do and the change-your-mind band between the contractor section and Questions; slice 4 replaces the footer. -->
+<!-- gh-2598 slices 2 and 3: reading sections, strings verbatim from the two design files (checked by tests/gh2598-home-next-sections.mjs).
+     Slice 3 sections (#paid, #promise) restate the fee, the measurement charge and its refund, and the switch-contractor promise: LEGAL-READ and R-177 SIGNED before merge. -->
 <section class="hr-sec hr-facts" id="facts">
   <div class="hr-wrap hr-facts-grid">
     <div class="hr-fact">
@@ -157,6 +174,39 @@
   </div>
 </section>
 
+<section class="hr-sec hr-paid" id="paid">
+  <div class="hr-wrap hr-paid-grid">
+    <div class="hr-paid-card">
+      <h2 class="hr-h2p">How we're paid</h2>
+      <p class="hr-pp">Contractors pay Otter Quotes a fee on the bid you accept.</p>
+      <p class="hr-pp">You pay as little as $15 up front for professional measurements that contractors use to bid. If you complete a job on the platform, that money is refunded to you. There is no cost if you provide a copy of your insurance estimate.</p>
+    </div>
+    <div class="hr-paid-card">
+      <h2 class="hr-h2p">What we do not do</h2>
+      <ul class="hr-paid-list">
+        <li>We do not work with your insurance company.</li>
+        <li>We do not offer free inspections or assessments of your roof.</li>
+        <li>We do not sell upgrades.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="hr-sec hr-promise" id="promise">
+  <div class="hr-wrap hr-promise-in">
+    <div class="hr-promise-main">
+      <h2 class="hr-h2w">You can change your mind</h2>
+      <p class="hr-promise-p">If something does not work out before work begins, you can switch to another Otter Quotes contractor at no cost, up to 3 days before your start date.</p>
+    </div>
+    <div class="hr-promise-side hr-full">
+      <div class="hr-promise-lab">Questions before you start?</div>
+      <a class="hr-promise-tel" href="tel:+18448753412">(844) 875-3412</a>
+      <div class="hr-promise-addr">3410 N High School Rd Ste G #102<br>Indianapolis IN 46224</div>
+    </div>
+    <a class="hr-promise-call" href="tel:+18448753412">Questions before you start? Call (844) 875-3412</a>
+  </div>
+</section>
+
 <section class="hr-sec hr-questions" id="questions">
   <div class="hr-wrap hr-stack">
     <h2 class="hr-h2">Questions</h2>
@@ -210,7 +260,7 @@
   <a class="hr-sticky-call" href="tel:+18448753412" data-hr-phone="sticky" aria-label="Call Otter Quotes"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0D1B2E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg></a>
 </div>
 
-<script src="/js/home-reskin.js"></script>
+<script src="/js/home-reskin.js" onerror="window.__hrOpen &amp;&amp; window.__hrOpen()"></script>
 <script>
 (function () {
   'use strict';

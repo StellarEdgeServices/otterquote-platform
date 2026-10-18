@@ -15,6 +15,7 @@ on:
       - 'supabase/migrations_rollbacks/**'
       - 'tests/gh2479-static-quotes-homeowner-guard.mjs'
       - 'tests/gh2564-bids-html-superseded-hidden.mjs'
+      - 'tests/gh2564-bidform-selected-lock.mjs'
       - 'supabase/tests/gh2479_quotes_guard_proof.sql'
       - 'react-app/app/(homeowner)/bids/actions.ts'
       - 'react-app/app/(homeowner)/contract-signing/use-contract-signing-data.ts'
@@ -29,6 +30,7 @@ on:
       - 'supabase/migrations_rollbacks/**'
       - 'tests/gh2479-static-quotes-homeowner-guard.mjs'
       - 'tests/gh2564-bids-html-superseded-hidden.mjs'
+      - 'tests/gh2564-bidform-selected-lock.mjs'
       - 'supabase/tests/gh2479_quotes_guard_proof.sql'
       - 'react-app/app/(homeowner)/bids/actions.ts'
       - 'react-app/app/(homeowner)/contract-signing/use-contract-signing-data.ts'
@@ -63,3 +65,5 @@ jobs:
         run: node tests/gh2479-static-quotes-homeowner-guard.mjs
       - name: bids.html hides a superseded bid (gh2564)
         run: node tests/gh2564-bids-html-superseded-hidden.mjs
+      - name: Bid form shows a lock message on a selected bid, no Change Your Bid (gh2564 C4)
+        run: node tests/gh2564-bidform-selected-lock.mjs

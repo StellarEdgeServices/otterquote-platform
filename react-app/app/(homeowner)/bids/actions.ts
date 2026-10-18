@@ -267,6 +267,7 @@ export async function acknowledgeBidUpdatedNotifications(ids: string[]): Promise
   if (ids.length === 0) return { ok: true };
   const { error } = await supabase
     .from('notifications')
+    // update-no-select-ok: gh-2105 decision b -- read receipt for the bid-updated banner; a zero-row match (notification already read, deleted, or not visible to this user) only leaves the unread badge stale until the next load; no money, consent or legal state hangs on read_at.
     .update({ read_at: new Date().toISOString() })
     .in('id', ids);
   return error ? { ok: false, error: error.message } : { ok: true };

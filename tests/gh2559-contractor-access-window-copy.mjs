@@ -40,4 +40,28 @@ for (const [f, label] of [['contractor-how-it-works.html', 'how-it-works'], ['co
   ok(!/(phone|e-?mail|contact info)/i.test(txt.replace(/Contractors are expected to contact the homeowner within 48 hours\./i, '')), 'receive section lists no phone/email/contact info');
   ok(txt.includes(D386), 'receive section Insurance Estimate card carries the D-386 sentence (estimate released only after the Platform Fee is collected)');
 }
+// REVIEW: FAIL 6254502819 -- pin three changed passages each to ITS OWN element (not a whole-page search), so a
+// revert of any one of them fails even though the same words appear elsewhere on the page.
+{
+  const strip = h => h.replace(/<[^>]+>/g, ' ').replace(/&nbsp;|\s+/g, ' ');
+  // (a) how-it-works step 5 "Win the Contract": the <p> right after that <h3>.
+  const hiw = rd('contractor-how-it-works.html');
+  const s5 = hiw.match(/<h3>Win the Contract<\/h3>\s*<p>([\s\S]*?)<\/p>/);
+  ok(!!s5, 'how-it-works step 5 "Win the Contract" paragraph found');
+  const s5t = s5 ? strip(s5[1]) : '';
+  ok(s5t.includes(D386), 'how-it-works step 5 carries the D-386 sentence itself (not just the receive card)');
+  ok(!/loss sheet|aerial/i.test(s5t), 'how-it-works step 5 does not hand over the loss sheet or aerial measurements "at signing"');
+  // (b) FAQ answer holding the D-386 sentence (FAQ:330): its <p> must not promise the "project package" at signing.
+  const faq = rd('contractor-faq.html');
+  const f330 = [...faq.matchAll(/<p>([^<]*?Once a homeowner selects you, the contract is sent to both of you for signature[\s\S]*?)<\/p>/g)].map(m => strip(m[1]));
+  ok(f330.length === 1, 'FAQ contract-signing answer (FAQ:330) found exactly once');
+  const a330 = f330[0] || '';
+  ok(!/project package/i.test(a330), 'FAQ:330 does not promise "the rest of the project package"/"full project package" at signing');
+  ok(/Once both parties have signed, you receive your signed contract\.\s*$/.test(a330), 'FAQ:330 ends at "you receive your signed contract."');
+  // (c) FAQ:350 "How do I contact the homeowner?" answer: only the 48-hour expectation, no contact-timing claim.
+  const q = faq.match(/How do I contact the homeowner\?[\s\S]*?<\/(?:h3|button|summary|div)>\s*(?:<div[^>]*>\s*)?((?:<p>[\s\S]*?<\/p>\s*)+)/);
+  ok(!!q, 'FAQ "How do I contact the homeowner?" answer found');
+  const a350 = q ? strip(q[1]).trim() : '';
+  ok(a350 === 'Contractors are expected to contact the homeowner within 48 hours.', 'FAQ:350 is exactly the 48-hour expectation, with no contact-timing sentence (got: ' + a350 + ')');
+}
 process.exit(failed ? 1 : 0);

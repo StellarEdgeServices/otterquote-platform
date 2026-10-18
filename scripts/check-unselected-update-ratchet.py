@@ -86,7 +86,7 @@ BASELINE: dict[str, int] = {
     "admin-measurements.html": 0,  # gh-2105 batch 13: fixed (see PR body)
     "admin-referrals.html": 0,  # gh-2105 batch 12: 3 fixed (a), 1 comment reworded
     "admin-template-review.html": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
-    "bids.html": 2,
+    "bids.html": 0,  # gh-2105 batch 16: last hit was a comment mention, reworded
     "color-selection.html": 1,  # gh-2105: colour selection deliberately NOT touched by PR #2610 (broken three ways, CEO decision pending, see issue #2105)
     "contract-signing.html": 0,  # gh-2105 batch 11: log-only stamps
     "contractor-auto-bids.html": 0,  # gh-2105 batch 13: page/JS fixed (a)
@@ -99,15 +99,15 @@ BASELINE: dict[str, int] = {
     "help-estimate.html": 0,  # gh-2105 batch 4: (a, report-only): Sentry event, flow unchanged
     "help-materials.html": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "help-measurements.html": 0,  # gh-2105 batch 4: (a, report-only): Sentry event, flow unchanged
-    "js/auth.js": 2,
+    "js/auth.js": 0,  # gh-2105 batch 16: last hit was a comment mention, reworded (role write fixed in batch 15)
     "js/contract-template-validation.js": 0,  # gh-2105 batch 7: fixed (see PR body)
-    "js/services.js": 2,
-    "js/video-upload-handler.js": 1,
+    "js/services.js": 0,  # gh-2105 batch 14: Twilio-SID log + adjuster enrichment annotated (b)
+    "js/video-upload-handler.js": 0,  # gh-2105 batch 15: claims.video_url fixed (a), warning return
     "project-confirmation.html": 0,  # gh-2105 batch 13: page/JS fixed (a)
-    "project-info-acv.html": 1,  # gh-2105 batch 4: claims money write fixed (a); adjuster_id (b) remains
+    "project-info-acv.html": 0,  # gh-2105 batch 4: claims money write fixed (a); batch 14: adjuster_id link annotated (b)
     "project-info-cash.html": 0,  # gh-2105 batch 4: fixed (a), money
-    "project-info-rcv.html": 1,  # gh-2105 batch 4: claims money write fixed (a); adjuster_id (b) remains
-    "react-app/app/(homeowner)/bids/actions.ts": 1,
+    "project-info-rcv.html": 0,  # gh-2105 batch 4: claims money write fixed (a); batch 14: adjuster_id link annotated (b)
+    "react-app/app/(homeowner)/bids/actions.ts": 0,  # gh-2105 batch 14: read receipt annotated (b)
     "react-app/app/(homeowner)/color-selection/use-color-selection-data.ts": 1,  # gh-2105: colour selection deliberately NOT touched by PR #2610 (broken three ways, CEO decision pending, see issue #2105)
     # gh-2105 batch 4: fixed both sites (recordHomeownerSigned's two
     # quotes.homeowner_signed_at writes -- decision a, LEGAL path, see the
@@ -137,10 +137,10 @@ BASELINE: dict[str, int] = {
     "react-app/app/contractor/profile/d199-validation.tsx": 0,  # gh-2105 batch 3: zero-row hole closed; status class (c) open (trigger rewrites status, #2717 Q2)
     "react-app/app/contractor/settings/StripePaymentMethods.tsx": 0,  # gh-2105 batch 13: annotated (b)
     "react-app/app/contractor/settings/page.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
-    "react-app/app/contractor/settings/utils.ts": 1,
-    "react-app/app/hooks/use-notification-count.ts": 1,
+    "react-app/app/contractor/settings/utils.ts": 0,  # gh-2105 batch 16: last hit was a doc-comment mention, reworded
+    "react-app/app/hooks/use-notification-count.ts": 0,  # gh-2105 batch 14: read receipt annotated (b)
     "react-app/app/lib/partner-record.ts": 0,  # gh-2105 batch 4: class (c), NOT fixed: branch unreachable under current RLS (see code comment); guard is defensive only
-    "react-app/app/lib/services.ts": 2,
+    "react-app/app/lib/services.ts": 0,  # gh-2105 batch 14: Twilio-SID log + adjuster enrichment annotated (b)
     "react-app/app/trade-selector/page.tsx": 0,  # gh-2105 batch 4: fixed (a)
     "repair-intake.html": 0,  # gh-2105 batch 4: status=submitted write fixed (a, THROW + Sentry)
     "supabase/functions/admin-contractor-action/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered

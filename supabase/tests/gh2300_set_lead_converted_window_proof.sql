@@ -2,7 +2,7 @@
 --
 -- Run the WHOLE file as one batch. It opens its own BEGIN and ends in ROLLBACK, so nothing it
 -- writes survives. NEVER change the ROLLBACK to COMMIT. Run it against a database that has
--- supabase/migrations/20260928215500_gh2300_set_lead_converted_8day_window.sql applied (or paste
+-- supabase/migrations/20260929014230_gh2300_set_lead_converted_8day_window.sql applied (or paste
 -- that migration's CREATE OR REPLACE inside the same transaction, above the DO block).
 --
 -- NOTE ON FIXTURES: trg_leads_force_safe_insert_defaults forces created_at := now() on INSERT

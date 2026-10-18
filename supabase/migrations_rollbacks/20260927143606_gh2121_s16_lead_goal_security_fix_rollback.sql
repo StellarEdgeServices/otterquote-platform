@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations/20260926221500_gh2121_s16_lead_goal_security_fix.sql
+-- Rollback for supabase/migrations/20260927143606_gh2121_s16_lead_goal_security_fix.sql
 -- (gh-2121, LRS HO-1 S16, REVIEW: FAIL 5849942876 D1/D4/D5 fixes).
 --
 -- Restores set_lead_converted(uuid) and lead_goal_events to EXACTLY the
