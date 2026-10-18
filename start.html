@@ -1863,6 +1863,10 @@
     var zip = (fromHome && typeof stored === 'string' && /^\d{5}$/.test(stored)) ? stored : null;
     return { skipRole: fromHome, zip: zip };
   }
+  // gh-2598 slice 6, RECORDED PURPOSE (Dustin, #2801 comment 6253698968, 2026-10-18, "Store it, purpose: prefill + service area"): the homepage ZIP is stored on
+  // the homeowner's lead row (the `zip` column) to "prefill the property step so a visitor is never asked twice, and check service area".
+  // Nothing else reads it for any other purpose. Note: today's get-started prefill (get_lead_prefill) returns name, email and phone only, so the property-step
+  // ZIP prefill itself is a follow-up (RPC change = migration), tracked on #2598.
   var homeEntry = readHomeHandoff();
   function insertFreshLead(name, email, phoneDigits, isSynthetic, variantOverride, extraColumns) {
     var newId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (

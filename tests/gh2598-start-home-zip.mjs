@@ -420,6 +420,15 @@ async function eScenarios() {
   }
 }
 
+// ---- stored on the lead row, with the recorded purpose (Dustin, #2801, 2026-10-18) ---------------------------------------------
+{
+  const m = /var INSERT_EXTRA_COLUMNS = \[([^\]]*)\];/.exec(startHtmlSrc);
+  ok(!!m && m[1].replace(/['"\s]/g, '') === 'zip', 'P1 the only extra column /start may write on a lead insert is the existing allow-listed `zip` (no new column)');
+  ok(/RECORDED PURPOSE \(Dustin, #2801/.test(startHtmlSrc) && /prefill the property step so a visitor is never asked twice, and check service area/.test(startHtmlSrc), 'P2 start.html records the ruled purpose "prefill the property step so a visitor is never asked twice, and check service area"');
+  const hs = startHtmlSrc.slice(startHtmlSrc.indexOf('function readHomeHandoff'), startHtmlSrc.indexOf('var homeEntry = readHomeHandoff()'));
+  ok(!/analytics|gtag|fbq|clarity|document\.cookie/i.test(hs), 'P3 the handoff reader never sends the ZIP to analytics or a cookie');
+}
+
 // ---- ledger ------------------------------------------------------------------------------------------------------------------
 const ledger = JSON.parse(rd('tests/fixtures/gh2060-storage-surface-ledger.json'));
 const entry = (ledger.surfaces || ledger.entries || ledger.keys || (Array.isArray(ledger) ? ledger : [])).find((e) => e.key === 'oq_home_zip');
