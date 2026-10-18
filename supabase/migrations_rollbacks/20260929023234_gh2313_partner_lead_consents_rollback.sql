@@ -1,4 +1,4 @@
--- Rollback for: supabase/migrations/20260928211500_gh2313_partner_lead_consents.sql
+-- Rollback for: supabase/migrations/20260929023234_gh2313_partner_lead_consents.sql
 -- GitHub: #2313
 --
 -- Drops public.partner_lead_consents. Nothing else was changed by the forward migration.

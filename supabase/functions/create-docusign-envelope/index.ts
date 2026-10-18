@@ -1781,6 +1781,16 @@ function getDocumentLabel(documentType) {
 // which is exactly why this is called out as a hard cutover prerequisite,
 // not an optional nice-to-have).
 // ========== AUTO-POPULATE FIELDS FROM DB ==========
+// D-386 (#2828): the homeowner's phone is not written onto a contract envelope by this function.
+// A caller-supplied `fields` object has its `customer_phone` / `homeowner_phone` keys removed too.
+// Only those two keys are stripped: a phone number typed into any other caller-supplied field
+// (e.g. a free-text notes field) is not detected or removed here.
+function stripHomeownerPhone(fields) {
+  const out = { ...(fields || {}) };
+  delete out.customer_phone;
+  delete out.homeowner_phone;
+  return out;
+}
 async function autoPopulateFields(supabase, claimId, contractorId, signerName, signerEmail, documentType) {
   const { data: claimData } = await supabase.from("claims").select("*").eq("id", claimId).single();
   const { data: contractorData } = await supabase.from("contractors").select("*").eq("id", contractorId).single();
@@ -1806,13 +1816,16 @@ async function autoPopulateFields(supabase, claimId, contractorId, signerName, s
   // prefill they wire seven blank fields and blame BoldSign. Fixed now so that
   // does not happen.
   //
-  // The homeowner's phone and city/state/zip come from `profiles`, which is
-  // where the homeowner's own address actually lives.
+  // The homeowner's city/state/zip come from `profiles`, which is where the
+  // homeowner's own address actually lives. Her PHONE is deliberately NOT read
+  // (D-386, Dustin's ruling on #2828 / #2559, 2026-10-16): a contract is created
+  // at selection, before the Platform Fee clears, so it must not carry her phone.
+  // Her email stays, only as the signing address (fields.customer_email below).
   let homeownerProfileRow = null;
   if (claimData?.user_id) {
     const { data: hp } = await supabase
       .from("profiles")
-      .select("phone, address_street, address_city, address_state, address_zip")
+      .select("address_street, address_city, address_state, address_zip")
       .eq("id", claimData.user_id)
       .maybeSingle();
     homeownerProfileRow = hp ?? null;
@@ -1838,7 +1851,7 @@ async function autoPopulateFields(supabase, claimId, contractorId, signerName, s
       homeownerProfileRow?.address_city,
       [homeownerProfileRow?.address_state, homeownerProfileRow?.address_zip].filter(Boolean).join(" "),
     ].filter(Boolean).join(", ");
-    fields.customer_phone = homeownerProfileRow?.phone || "";
+    // D-386 (#2828): no customer_phone before the fee clears. Do not re-add.
     fields.customer_email = signerEmail || "";
     // #514: claims has no `insurance_carrier` column — read carrier_name
     // (written by parse-loss-sheet), with the legacy name as a fallback.
@@ -2000,7 +2013,7 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
       throw err;
     }
   }
-  let autoFields = providedFields || {};
+  let autoFields = stripHomeownerPhone(providedFields);
   let claimData = null;
   let contractorData = null;
   let bidData = null;
@@ -2459,7 +2472,7 @@ async function handleHomeownerSign(supabase, requestBody, corsHeaders) {
 // ========== HANDLER: LEGACY CONTRACT / COLOR / PROJECT CONFIRMATION ==========
 async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   const { claim_id, document_type, contractor_id, signer, fields: providedFields, return_url } = requestBody;
-  let autoFields = providedFields || {};
+  let autoFields = stripHomeownerPhone(providedFields);
   let claimData = null;
   let contractorData = null;
   if (!providedFields || Object.keys(providedFields).length === 0) {

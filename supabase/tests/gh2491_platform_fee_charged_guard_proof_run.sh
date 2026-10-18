@@ -3,7 +3,7 @@
 # Usage: PGHOST=... PGPORT=... PGUSER=postgres bash supabase/tests/gh2491_platform_fee_charged_guard_proof_run.sh [outdir]
 # Three passes of supabase/tests/gh2491_platform_fee_charged_guard_proof.sql in one database:
 #   1 TODAY     production's schema as read 2026-10-08 (the failing controls)
-#   2 AFTER     + supabase/migrations_drafts/gh2491_claims_platform_fee_charged_guard.sql
+#   2 AFTER     + supabase/migrations/20261015205709_gh2491_claims_platform_fee_charged_guard.sql
 #   3 ROLLBACK  + its rollback (must print exactly what pass 1 printed)
 # Exit 0 only if pass 3 equals pass 1 and pass 2 shows the expected verdicts.
 set -euo pipefail
@@ -16,7 +16,7 @@ pass() { psql -q -At -d "$DB" -v ON_ERROR_STOP=1 -f "$T/gh2491_platform_fee_char
 apply() { psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "$1" >/dev/null; }
 rc=0
 pass 1-TODAY
-apply "$D/gh2491_claims_platform_fee_charged_guard.sql"; pass 2-AFTER
+apply "supabase/migrations/20261015205709_gh2491_claims_platform_fee_charged_guard.sql"; pass 2-AFTER
 apply "$RB/gh2491_claims_platform_fee_charged_guard_rollback.sql"; pass 3-ROLLBACK
 # verdict lines
 grep -q '^U1 .*ACCEPTED' "$OUT/1-TODAY.txt" || { echo "EXPECT FAIL: U1 must be ACCEPTED today"; rc=1; }

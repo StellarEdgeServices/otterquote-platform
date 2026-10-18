@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations_drafts/gh2519_quotes_server_set_fee.sql (gh-2519).
+-- Rollback for supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql (gh-2519).
 -- WARNING: this RE-OPENS #2519's residuals: the bidding contractor can again store any fee rate, basis and fee
 -- amount on a bid, the claim owner can again write payment_status, is_test and the other columns, a second
 -- bid can again be set to selected, and the referral commission again reads the newest selected bid.
