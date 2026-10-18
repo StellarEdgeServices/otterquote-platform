@@ -24,6 +24,9 @@ class FakeClient:
         self.profiles, self.claims, self.events = {}, [], []
         self.writes = []
         self.n = 0
+        self.auth_users = {}        # email -> id (auth.users, incl. orphans)
+        self.on_delete = None       # hook: called before each scoped delete (race injection)
+        self.delete_log = []        # (table, uid, scope_col, scope_val)
 
     def find_profile(self, email):
         return self.profiles.get(email)
@@ -34,10 +37,20 @@ class FakeClient:
     def events_for(self, uid):
         return [e for e in self.events if e["user_id"] == uid]
 
+    def activity_for(self, uid):
+        return [e for e in self.events if e["user_id"] == uid]
+
+    def find_auth_user(self, email):
+        uid = self.auth_users.get(email)
+        return {"id": uid, "email": email} if uid else None
+
     def create_auth_user(self, email, name):
         self.writes.append("auth")
+        if email in self.auth_users:
+            raise RuntimeError("422 email_exists")
         self.n += 1
         uid = f"u{self.n}"
+        self.auth_users[email] = uid
         self.profiles[email] = {"id": uid, "email": email, "is_test": False}
         return uid
 
@@ -54,16 +67,26 @@ class FakeClient:
         (self.claims if table == "claims" else self.events).append(dict(row, id=rid))
         return rid
 
-    def delete_where(self, table, col, val):
+    def delete_scoped(self, table, uid, scope_col, scope_val):
+        """Emulates the database: the scope filter is applied AT DELETE TIME."""
+        if self.on_delete:
+            hook, self.on_delete = self.on_delete, None
+            hook(self)
         self.writes.append("del-" + table)
+        self.delete_log.append((table, uid, scope_col, scope_val))
+        keep = lambda r: not (r["user_id"] == uid and str(r.get(scope_col)).lower() == str(scope_val).lower())
         if table == "claims":
-            self.claims = [c for c in self.claims if c[col] != val]
+            self.claims = [c for c in self.claims if keep(c)]
         if table == "activity_log":
-            self.events = [e for e in self.events if e[col] != val]
+            self.events = [e for e in self.events if keep(e)]
 
     def delete_auth_user(self, uid):
         self.writes.append("del-auth")
         self.profiles = {k: v for k, v in self.profiles.items() if v["id"] != uid}
+        self.auth_users = {k: v for k, v in self.auth_users.items() if v != uid}
+        # cascade, as the real FK does
+        self.claims = [c for c in self.claims if c["user_id"] != uid]
+        self.events = [e for e in self.events if e["user_id"] != uid]
 
 
 def quiet(fn, *a, **k):
@@ -94,6 +117,8 @@ class SeedTests(unittest.TestCase):
         c = FakeClient()
         quiet(seed.run_seed, c, True, NOW)
         by = {x["homeowner_name"].split()[1]: x for x in c.claims}
+        # control isolates the Submit predicate: eligible status + already submitted
+        self.assertEqual(by["control"]["status"], "documents_needed")
         self.assertEqual((by["draft"]["status"], by["draft"]["ready_for_bids"]), ("draft", False))
         self.assertEqual((by["stalled"]["status"], by["stalled"]["ready_for_bids"]), ("documents_needed", False))
         self.assertTrue(by["control"]["ready_for_bids"])
@@ -133,6 +158,152 @@ class SeedTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             quiet(seed.run_cleanup, c, True)
         self.assertEqual(len(c.writes), n)
+
+
+def seeded():
+    c = FakeClient()
+    quiet(seed.run_seed, c, True, NOW)
+    return c
+
+
+def uid_of(c, slug):
+    return c.profiles[f"{slug}@otterquote-internal.test"]["id"]
+
+
+class CleanupSafetyTests(unittest.TestCase):
+    def test_p2_real_client_delete_urls_are_scoped(self):
+        calls = []
+
+        class R:
+            def __enter__(s): return s
+            def __exit__(s, *a): return False
+            def read(s): return b""
+
+        def fake_urlopen(req, timeout=0):
+            calls.append((req.get_method(), req.full_url))
+            return R()
+
+        cl = seed.Client("https://x.supabase.co", "k" * 40)
+        with patch.object(seed.urllib.request, "urlopen", fake_urlopen):
+            cl.delete_scoped("claims", "U1", "is_test", "true")
+            cl.delete_scoped("activity_log", "U1", "is_test", "true")
+            cl.delete_scoped("notifications", "U1", "recipient", "gh1570-draft@otterquote-internal.test")
+        urls = [u for m, u in calls if m == "DELETE"]
+        self.assertEqual(len(urls), 3)
+        self.assertTrue(urls[0].endswith("/rest/v1/claims?user_id=eq.U1&is_test=eq.true"), urls[0])
+        self.assertTrue(urls[1].endswith("/rest/v1/activity_log?user_id=eq.U1&is_test=eq.true"), urls[1])
+        self.assertIn("&recipient=eq.gh1570-draft@otterquote-internal.test", urls[2])
+        # negative control: no unscoped delete helper remains
+        self.assertFalse(hasattr(seed.Client, "delete_where"))
+
+    def test_p2_run_cleanup_only_issues_scoped_deletes(self):
+        c = seeded()
+        quiet(seed.run_cleanup, c, True)
+        self.assertEqual(len(c.delete_log), 9)  # 3 tables x 3 fixtures
+        for table, _uid, col, val in c.delete_log:
+            if table in ("claims", "activity_log"):
+                self.assertEqual((col, val), ("is_test", "true"))
+            else:
+                self.assertEqual(col, "recipient")
+
+    def test_p3_non_test_claim_inserted_between_check_and_delete_survives(self):
+        c = seeded()
+        victim = uid_of(c, "gh1570-draft")
+        race = {}
+
+        def inject(cl):
+            cl.claims.append({"id": "RACE", "user_id": victim, "is_test": False, "status": "draft"})
+            race["done"] = True
+
+        c.on_delete = inject  # fires after plan_cleanup validated, before the first DELETE
+        with self.assertRaises(RuntimeError):
+            quiet(seed.run_cleanup, c, True)
+        self.assertTrue(race.get("done"))
+        self.assertIn("RACE", [x["id"] for x in c.claims])      # the non-test claim survived
+        self.assertIn(victim, c.auth_users.values())            # and its user was not deleted
+        self.assertIn("gh1570-draft@otterquote-internal.test", c.profiles)
+        self.assertNotIn("del-auth", c.writes[-1:])             # stopped before deleting that auth user
+
+    def test_p4_non_test_activity_row_refuses_up_front(self):
+        c = seeded()
+        c.events.append({"id": "AL", "user_id": uid_of(c, "gh1570-stalled"), "is_test": False,
+                         "event_type": "x"})
+        before = (len(c.writes), len(c.claims), len(c.events), dict(c.profiles))
+        with self.assertRaises(RuntimeError):
+            quiet(seed.run_cleanup, c, True)
+        self.assertEqual((len(c.writes), len(c.claims), len(c.events), c.profiles), before)
+
+    def test_p4_activity_row_inserted_late_survives(self):
+        c = seeded()
+        victim = uid_of(c, "gh1570-stalled")
+        c.on_delete = lambda cl: cl.events.append(
+            {"id": "ALRACE", "user_id": victim, "is_test": False, "event_type": "x"})
+        with self.assertRaises(RuntimeError):
+            quiet(seed.run_cleanup, c, True)
+        self.assertIn("ALRACE", [e["id"] for e in c.events])
+
+    def test_p6_refusal_leaves_every_fixture_intact(self):
+        c = seeded()
+        c.claims[-1]["is_test"] = False  # the LAST fixture (control) is the offender
+        before = (list(c.writes), list(c.claims), list(c.events), dict(c.profiles), dict(c.auth_users))
+        with self.assertRaises(RuntimeError):
+            quiet(seed.run_cleanup, c, True)
+        self.assertEqual((c.writes, c.claims, c.events, c.profiles, c.auth_users), before)
+        self.assertEqual(len(c.profiles), 3)
+        self.assertEqual(c.delete_log, [])
+
+    def test_p6_non_test_profile_refuses_with_nothing_deleted(self):
+        c = seeded()
+        c.profiles["gh1570-control@otterquote-internal.test"]["is_test"] = False
+        with self.assertRaises(RuntimeError):
+            quiet(seed.run_cleanup, c, True)
+        self.assertEqual(c.delete_log, [])
+        self.assertEqual(len(c.auth_users), 3)
+
+    def test_cleanup_dry_run_validates_too(self):
+        c = seeded()
+        c.claims[0]["is_test"] = False
+        with self.assertRaises(RuntimeError):
+            quiet(seed.run_cleanup, c, False)
+
+
+class OrphanTests(unittest.TestCase):
+    EMAIL = "gh1570-stalled@otterquote-internal.test"
+
+    def test_seed_reports_orphan_and_writes_nothing(self):
+        c = FakeClient()
+        c.auth_users[self.EMAIL] = "orph1"
+        with self.assertRaises(RuntimeError) as cm:
+            quiet(seed.run_seed, c, True, NOW)
+        self.assertIn("ORPHANED AUTH USER", str(cm.exception))
+        self.assertIn("--cleanup", str(cm.exception))
+        self.assertEqual(c.writes, [])
+
+    def test_cleanup_deletes_orphan_auth_user(self):
+        c = FakeClient()
+        c.auth_users[self.EMAIL] = "orph1"
+        self.assertEqual(quiet(seed.run_cleanup, c, False), ["orph1"])
+        self.assertEqual(c.writes, [])  # dry run
+        quiet(seed.run_cleanup, c, True)
+        self.assertEqual(c.auth_users, {})
+        # and seed works again afterwards
+        quiet(seed.run_seed, c, True, NOW)
+        self.assertEqual(len(c.claims), 3)
+
+    def test_cleanup_refuses_auth_user_off_the_fixture_list(self):
+        c = FakeClient()
+        c.find_auth_user = lambda email: {"id": "real", "email": "someone@gmail.com"}
+        with self.assertRaises(RuntimeError):
+            quiet(seed.run_cleanup, c, True)
+        self.assertEqual(c.writes, [])
+
+    def test_cleanup_refuses_orphan_that_owns_a_non_test_claim(self):
+        c = FakeClient()
+        c.auth_users[self.EMAIL] = "orph1"
+        c.claims.append({"id": "k", "user_id": "orph1", "is_test": False, "status": "draft"})
+        with self.assertRaises(RuntimeError):
+            quiet(seed.run_cleanup, c, True)
+        self.assertEqual(c.writes, [])
 
 
 class MainTests(unittest.TestCase):
