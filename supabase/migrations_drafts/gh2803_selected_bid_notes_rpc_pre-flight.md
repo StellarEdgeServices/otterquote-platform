@@ -38,6 +38,7 @@ Then run `supabase/tests/gh2803_selected_bid_notes_proof.sql` (ends in ROLLBACK)
 - A: the selected contractor saves notes through the function; a SELECT shows the trimmed value.
 - B (negative control): the same contractor's direct `UPDATE quotes SET total_price = total_price + 1` is refused 42501.
 - B2: a different contractor calling the function on this quote is refused 42501. B3: anon has no EXECUTE. B4: 501 characters refused.
+- B5: after `homeowner_signed_at` is set the function refuses 22023 and notes do not move (A is the success before signature). Reason: notes print in the signed contract PDF as "Message from Contractor"; PR #2844 LEGAL-READ FAIL fix, default (a) of #2846.
 - C: an md5 of price, fee_amount, fee_percentage, platform_fee_pct, platform_fee_basis, card_fee_cents, decking/redeck prices, per_trade_breakdown, trade_type, bundled_trades, value_adds, warranty_option_id, warranty_snapshot, workmanship_warranty_years, scope_summary, status and bid_status is identical before and after.
 Status of this proof: written, NOT run. The authoring session had no scratch Postgres and may not run write SQL on production during the R-097 window.
 

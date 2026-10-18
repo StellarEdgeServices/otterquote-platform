@@ -3456,7 +3456,9 @@
       // only for a bid the RPC accepts: status selected/awarded and bid_status active
       const notesEligible = !!(existingQuote && existingQuote.id
         && ['selected', 'awarded'].includes(existingQuote.status)
-        && (existingQuote.bid_status || 'active') === 'active');
+        && (existingQuote.bid_status || 'active') === 'active'
+        // LEGAL-READ fix: notes print in the signed contract, so no edit once the homeowner has signed (same bound as the RPC)
+        && !existingQuote.homeowner_signed_at);
       if (notesCard && notesBox && notesEligible) {
         notesBox.value = existingQuote.notes || '';
         const cnt = document.getElementById('selectedBidNotesCount');
@@ -3492,7 +3494,7 @@
       } catch (err) {
         console.error('[gh-2803] notes save failed:', err);
         const code = err && err.code;
-        const friendly = code === '22023' ? 'Notes can only be edited on a selected bid.'
+        const friendly = code === '22023' ? 'Notes can only be edited on a selected bid before the homeowner signs.'
           : code === '22001' ? 'Notes are limited to 500 characters.'
           : code === '42501' ? 'We could not confirm this bid is yours. Sign in again and retry.'
           : 'We could not save your notes. Try again, or contact support.';

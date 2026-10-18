@@ -13,6 +13,7 @@
 -- quotes_guard_homeowner_columns(), which acts only when current_user is anon or authenticated, does not see this write):
 --   * caller must be signed in; the quote must belong to a contractor row whose user_id = auth.uid()  (else 42501, same text for "no such quote" and "not yours")
 --   * the quote must be status selected or awarded and bid_status active; any other bid is saved through the normal bid form
+--   * refused (22023) once quotes.homeowner_signed_at is set: notes print in the signed contract PDF ("Message from Contractor")
 --   * notes are trimmed, an empty string becomes NULL, and more than 500 characters is refused (the form's own maxlength)
 --   * the single UPDATE sets notes only. updated_at moves through set_updated_at_quotes. quotes_normalize_fee_amount
 --     recomputes fee_amount from the stored pct and price, which is a no-op on every row today (0 mismatches).
@@ -37,13 +38,14 @@ DECLARE
   v_uid    uuid := auth.uid();
   v_status text;
   v_bid    text;
+  v_signed timestamptz;
   v_notes  text;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'update_selected_bid_notes: sign in to save notes' USING ERRCODE = '42501';
   END IF;
 
-  SELECT q.status, q.bid_status INTO v_status, v_bid
+  SELECT q.status, q.bid_status, q.homeowner_signed_at INTO v_status, v_bid, v_signed
     FROM public.quotes q
     JOIN public.contractors k ON k.id = q.contractor_id
    WHERE q.id = p_quote_id
@@ -58,6 +60,12 @@ BEGIN
   IF v_status NOT IN ('selected', 'awarded') OR COALESCE(v_bid, 'active') <> 'active' THEN
     RAISE EXCEPTION 'update_selected_bid_notes: this path is only for a bid the homeowner has selected; save other bids from the bid form'
       USING ERRCODE = '22023';
+  END IF;
+
+  -- LEGAL-READ FAIL fix (PR #2844 comment 6254074220; default (a) of #2846): quotes.notes prints into the signed
+  -- contract PDF as "Message from Contractor", so edits stop at the homeowner's signature. After that, D-203/D-271 govern.
+  IF v_signed IS NOT NULL THEN
+    RAISE EXCEPTION 'update_selected_bid_notes: the homeowner has signed; notes can no longer be changed' USING ERRCODE = '22023';
   END IF;
 
   v_notes := NULLIF(btrim(COALESCE(p_notes, '')), '');

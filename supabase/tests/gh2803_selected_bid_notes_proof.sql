@@ -1,7 +1,7 @@
 -- gh-2803 proof: notes accepted, price refused, everything else byte-identical. Everything runs inside BEGIN ... ROLLBACK; nothing persists.
 -- Run where update_selected_bid_notes() AND gh2564 are applied (apply order: gh2564, then gh2803), on an is_test selected quote only (the script picks one).
 -- Run on a schema without gh2564 it fails at control B by design: the price edit is accepted, which is the hole gh2564 closes.
--- Prints PROOF lines. Any failed check raises and aborts; the final ROLLBACK discards the notes write.
+-- Controls: A success before signature, B5 refusal after signature. Prints PROOF lines. Any failed check raises and aborts; the final ROLLBACK discards the notes write.
 BEGIN;
 
 DO $proof$
@@ -37,6 +37,9 @@ BEGIN
             warranty_option_id, warranty_snapshot, workmanship_warranty_years, scope_summary, status, bid_status
             FROM public.quotes WHERE id = %L) t$f$;
   EXECUTE format(v_fp, v_quote) INTO v_before;
+
+  -- precondition for A: the quote is unsigned (the picked is_test quote may already carry a signature; this is rolled back)
+  UPDATE public.quotes SET homeowner_signed_at = NULL WHERE id = v_quote;
 
   PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
   EXECUTE 'SET LOCAL ROLE authenticated';
@@ -95,6 +98,21 @@ BEGIN
     RESET ROLE;
     RAISE NOTICE 'PROOF B4 ok: 501 characters refused';
   END;
+
+  -- B5 (LEGAL-READ fix, PR #2844 comment 6254074220): once the homeowner has signed, the same contractor is refused 22023
+  -- (A above is the matching success while homeowner_signed_at IS NULL) and the saved notes do not move
+  UPDATE public.quotes SET homeowner_signed_at = now() WHERE id = v_quote;
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  BEGIN
+    PERFORM public.update_selected_bid_notes(v_quote, 'rewrite after signing');
+    RESET ROLE;
+    RAISE EXCEPTION 'PROOF B5 FAILED: notes changed after the homeowner signed';
+  EXCEPTION WHEN invalid_parameter_value THEN
+    RESET ROLE;
+    RAISE NOTICE 'PROOF B5 ok: edit after homeowner signature refused 22023';
+  END;
+  SELECT notes INTO v_notes FROM public.quotes WHERE id = v_quote;
+  IF v_notes IS DISTINCT FROM 'gh2803 proof note' THEN RAISE EXCEPTION 'PROOF B5 FAILED: notes moved to %', v_notes; END IF;
 
   -- C: price, platform fee, trades, value_adds, warranty (and the rest of the locked set) byte-identical
   EXECUTE format(v_fp, v_quote) INTO v_after;
