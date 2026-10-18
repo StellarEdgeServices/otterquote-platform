@@ -70,3 +70,20 @@ export function fileTypedKeysIn(evidence: Record<string, string>): string[] {
     return m !== null && FILE_TYPED_EVIDENCE_FIELDS.has(m[1]);
   });
 }
+
+/**
+ * gh-2794 ruling (Dustin, 2026-10-16): the automatic dispute evidence sent to Stripe
+ * must OMIT the homeowner's name and the property address. This is the ONLY place the
+ * claim section of the evidence is built, and it takes just the three non-PII fields,
+ * so a name or address cannot reach the payload through here.
+ */
+export function claimRecordLines(claim: {
+  id: string;
+  contract_signed_at: string | null;
+}): string[] {
+  return [
+    "CLAIM RECORD:",
+    `  Claim ID: ${claim.id}`,
+    `  Contract Signed At: ${claim.contract_signed_at ?? "Not yet signed"}`,
+  ];
+}
