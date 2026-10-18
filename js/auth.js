@@ -1353,7 +1353,7 @@ window.Auth = {
     // #594 / v97: link referral_agents.user_id to this auth user via the
     // claim_partner_account() SECURITY DEFINER RPC.
     //
-    // This USED to be a client-side `.update().eq('email').is('user_id', null)`
+    // This USED to be a client-side row update (`eq('email')`, `is('user_id', null)`)
     // gated on a `cs_partner_signup` localStorage breadcrumb. Both halves were
     // wrong:
     //   1. The update silently matched 0 rows — PostgreSQL applies SELECT

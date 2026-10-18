@@ -244,7 +244,7 @@ export function legacyBrandFor(m: PaymentMethodRecord): string | null {
 
 /**
  * Legacy contractors-row fields kept in sync with the default method (backward compat).
- * Pass null to CLEAR (no methods left). Port of the `.from('contractors').update(...)`
+ * Pass null to CLEAR (no methods left). Port of the contractors-table row-update
  * blocks in setDefaultMethod / removePaymentMethod / confirm*Setup.
  */
 export function buildLegacyContractorUpdate(
