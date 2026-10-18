@@ -6,7 +6,7 @@
 # Five passes of supabase/tests/gh2519_gh2564_fee_lock_proof.sql in one database:
 #   1 TODAY            production's schema as read on 2026-10-08 (the failing controls)
 #   2 AFTER-gh2519     + supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql
-#   3 AFTER-both       + supabase/migrations_drafts/gh2564_quotes_selected_price_lock.sql
+#   3 AFTER-both       + supabase/migrations/20261018195342_gh2564_quotes_selected_price_lock.sql
 #   4 ROLLBACK-gh2564  + its rollback   (must print exactly what pass 2 printed)
 #   5 ROLLBACK-gh2519  + its rollback   (must print exactly what pass 1 printed)
 # Exit 0 only if passes 4 and 5 match, every pass ends with NOWRITE ... unchanged=t, and the EXPECTATION lines hold
@@ -30,13 +30,13 @@ gate() { # <label> <file> <message that the apply must raise>: the file must fai
   else echo "GATE $1: failed with another message"; cat "$OUT/gate.err"; rc=1; fi; }
 rc=0
 pass 1-TODAY
-gate "gh2564 without gh2519" "$D/gh2564_quotes_selected_price_lock.sql" "quotes_platform_fee_for(uuid, uuid) does not exist"
+gate "gh2564 without gh2519" "supabase/migrations/20261018195342_gh2564_quotes_selected_price_lock.sql" "quotes_platform_fee_for(uuid, uuid) does not exist"
 apply "supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql";                 pass 2-AFTER-gh2519
 # the gate fires for a rescind value the constraint refuses: a copy of the draft whose one constant is the old, refused value 'rescinded'
-sed "s/c_rescind_bid_writes CONSTANT text := 'cancelled'/c_rescind_bid_writes CONSTANT text := 'rescinded'/" "$D/gh2564_quotes_selected_price_lock.sql" > "$OUT/gh2564_with_rescinded.sql"
-cmp -s "$OUT/gh2564_with_rescinded.sql" "$D/gh2564_quotes_selected_price_lock.sql" && { echo "runner: the gh2564 constant was not found to replace"; rc=1; }
+sed "s/c_rescind_bid_writes CONSTANT text := 'cancelled'/c_rescind_bid_writes CONSTANT text := 'rescinded'/" "supabase/migrations/20261018195342_gh2564_quotes_selected_price_lock.sql" > "$OUT/gh2564_with_rescinded.sql"
+cmp -s "$OUT/gh2564_with_rescinded.sql" "supabase/migrations/20261018195342_gh2564_quotes_selected_price_lock.sql" && { echo "runner: the gh2564 constant was not found to replace"; rc=1; }
 gate "gh2564 while rescind-bid is refused by quotes_bid_status_check" "$OUT/gh2564_with_rescinded.sql" "rescind-bid writes bid_status 'rescinded'"
-apply "$D/gh2564_quotes_selected_price_lock.sql";             pass 3-AFTER-both
+apply "supabase/migrations/20261018195342_gh2564_quotes_selected_price_lock.sql";             pass 3-AFTER-both
 # order hazards (review 6051777895 finding 7): with the gh2564 lock applied, both the gh2519 rollback and a re-apply of the gh2519 draft
 # would silently remove it; each must refuse and change nothing (pass 4 below, which must still equal pass 2, proves nothing changed).
 gate "gh2519 rollback while gh2564 is applied" "$RB/gh2519_quotes_server_set_fee_rollback.sql" "gh-2564 (the selected-bid price lock, D-369) is applied"
