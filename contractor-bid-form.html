@@ -3453,7 +3453,11 @@
       // gh-2803 / D-381: the notes box, with its own Save, under the lock card
       const notesCard = document.getElementById('selectedBidNotesCard');
       const notesBox = document.getElementById('selectedBidNotes');
-      if (notesCard && notesBox && existingQuote && existingQuote.id) {
+      // only for a bid the RPC accepts: status selected/awarded and bid_status active
+      const notesEligible = !!(existingQuote && existingQuote.id
+        && ['selected', 'awarded'].includes(existingQuote.status)
+        && (existingQuote.bid_status || 'active') === 'active');
+      if (notesCard && notesBox && notesEligible) {
         notesBox.value = existingQuote.notes || '';
         const cnt = document.getElementById('selectedBidNotesCount');
         const sync = () => { if (cnt) cnt.textContent = notesBox.value.length; };
@@ -3487,7 +3491,12 @@
         _setSelectedBidNotesStatus('Notes saved.', true);
       } catch (err) {
         console.error('[gh-2803] notes save failed:', err);
-        _setSelectedBidNotesStatus('We could not save your notes: ' + ((err && err.message) ? err.message : 'unknown error') + ' Try again, or contact support.', false);
+        const code = err && err.code;
+        const friendly = code === '22023' ? 'Notes can only be edited on a selected bid.'
+          : code === '22001' ? 'Notes are limited to 500 characters.'
+          : code === '42501' ? 'We could not confirm this bid is yours. Sign in again and retry.'
+          : 'We could not save your notes. Try again, or contact support.';
+        _setSelectedBidNotesStatus(friendly, false);
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Save Notes'; }
       }

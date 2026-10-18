@@ -1,5 +1,5 @@
 -- gh-2803 (D-381): update_selected_bid_notes(uuid, text), the notes-only save for a selected bid.
--- STATUS (gh-1438, as of 2026-10-18T19:00:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-10-18T18:56:17Z): NOT APPLIED
 -- EVIDENCE: production read-only 2026-10-18: no update_selected_bid_notes in pg_proc; quotes.notes is text NULL; 0 selected bids on real claims, 3 selected bids, all is_test; fee_amount mismatches against round(platform_fee_pct/100*total_price,2): 0; quotes_guard_homeowner_columns() prosrc has no gh-2564 clause (gh2564 not applied)
 -- REPO COPY: none in supabase/migrations/ (not applied). Rollback: supabase/migrations_drafts/gh2803_selected_bid_notes_rpc_rollback.sql  Pre-flight: supabase/migrations_drafts/gh2803_selected_bid_notes_rpc_pre-flight.md  Proof: supabase/tests/gh2803_selected_bid_notes_proof.sql
 -- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3B path (review, R-177 if the gate is red, tier:3b-approved after the R-097 window ends 2026-10-19T18:37:39Z, recorded apply). Sequence AFTER gh2564 (PR #2802 is the page half of that lock).
