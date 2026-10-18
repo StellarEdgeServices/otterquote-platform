@@ -10,11 +10,11 @@
 -- Tier: 3B (what a contractor can read of a homeowner's words; privacy). It removes read access and changes what is shown; it adds no access.
 -- Rollback: gh2559_d390_redact_contact_until_fee_rollback.sql
 -- Pre-flight: gh2559_d390_redact_contact_until_fee_pre-flight.md
--- Proof (throwaway Postgres 16): supabase/tests/gh2559_d390_redact_proof.sql
+-- Proof (throwaway Postgres 17.11 and 16.15): supabase/tests/gh2559_d390_redact_proof.sql
 --
 -- WHAT CHANGES (four things, one transaction)
---  1. public.d390_redact_contact(text): a pure function holding the phone and e-mail patterns of the bidder rule (rules b and c of the
---     "ft" join in 20261008231303_gh2559_bidder_claims_view.sql, copied byte for byte; the web-address patterns of rule b are NOT included,
+--  1. public.d390_redact_contact(text): a pure function that applies the bidder view's Unicode fold (fx.notes) and then the phone and e-mail patterns of the bidder rule (rules b and c of the
+--     "ft" join in 20261008231303_gh2559_bidder_claims_view.sql), both copied byte for byte, so it behaves like the view on the same text (review 6256187448 D1: without the fold, full-width digits and the full-width at-sign got through; the web-address patterns of rule b are NOT included,
 --     D-390 names phone and e-mail only). tests/gh2559-d390-regex-parity.py checks the copy against the applied view file.
 --  2. public.bidder_claim_summary is re-created with ONE clause changed: for the SELECTED contractor, homeowner_notes is the typed text only when
 --     claims.platform_fee_charged IS TRUE, and is d390_redact_contact(...) otherwise. Every other branch (bidders, repair claims) and every other
@@ -69,7 +69,10 @@ STRICT
 PARALLEL SAFE
 SET search_path = pg_catalog, pg_temp
 AS $fn$
-  SELECT regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(p_text, '[[:alnum:]._%+-]+\s*@\s*[[:alnum:]-]+(\s*\.\s*[[:alnum:]-]+)*', '[removed]', 'g'), '[[:alnum:]._%+-]+\s*(?:[\(\[\{<]\s*at\s*[\)\]\}>]|\s+at\s+)\s*[[:alpha:]][[:alnum:]-]*(?:\s*(?:\.|[\(\[\{<]\s*dot\s*[\)\]\}>]|\s+dot\s+)\s*[[:alpha:]][[:alnum:]-]*)+', '[removed]', 'gi'), '\S+\s+at\s+\S+\s+dot\s+\S+', '[removed]', 'gi'), '\S*@\S*', '[removed]', 'g'), '\m\d{3}[/\\]\d{4}\M', '[removed]', 'g'), '\(?\d{3}\)?[^[:alnum:],\n]{1,3}\d{3}[^[:alnum:],\n]{1,3}\d{4}(?!\d)', '[removed]', 'g'), '(\+?\d[\s().-]*){7,}', '[removed] ', 'g');
+  SELECT regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(
+    -- the same Unicode fold the bidder view applies first (fx.notes of 20261008231303, copied verbatim, argument p_text in place of
+    -- left(c.homeowner_notes, 2000)): full-width digits and at-sign, circled and mathematical digits, accents, zero-width characters
+    normalize(replace(replace(replace(replace(replace(replace(replace(translate(regexp_replace(regexp_replace(normalize(p_text, NFKD), U&'([A-Za-z])[\0300-\036F]+', '\1', 'g'), U&'[\00AD\034F\180E\200B-\200F\202A-\202E\2060-\2064\FE00-\FE0F\FEFF]', '', 'g'), U&'\0142\0141\00F8\00D8\0131\0111\0110\00F0\0127\0126', 'lLoOidDdhH'), U&'\00DF', 'ss'), U&'\00E6', 'ae'), U&'\00C6', 'AE'), U&'\0153', 'oe'), U&'\0152', 'OE'), U&'\00FE', 'th'), U&'\00DE', 'Th'), NFC), '[[:alnum:]._%+-]+\s*@\s*[[:alnum:]-]+(\s*\.\s*[[:alnum:]-]+)*', '[removed]', 'g'), '[[:alnum:]._%+-]+\s*(?:[\(\[\{<]\s*at\s*[\)\]\}>]|\s+at\s+)\s*[[:alpha:]][[:alnum:]-]*(?:\s*(?:\.|[\(\[\{<]\s*dot\s*[\)\]\}>]|\s+dot\s+)\s*[[:alpha:]][[:alnum:]-]*)+', '[removed]', 'gi'), '\S+\s+at\s+\S+\s+dot\s+\S+', '[removed]', 'gi'), '\S*@\S*', '[removed]', 'g'), '\m\d{3}[/\\]\d{4}\M', '[removed]', 'g'), '\(?\d{3}\)?[^[:alnum:],\n]{1,3}\d{3}[^[:alnum:],\n]{1,3}\d{4}(?!\d)', '[removed]', 'g'), '(\+?\d[\s().-]*){7,}', '[removed] ', 'g');
 $fn$;
 
 COMMENT ON FUNCTION public.d390_redact_contact(text) IS
@@ -411,6 +414,14 @@ COMMENT ON VIEW public.contractor_thread_messages IS
 REVOKE ALL ON public.contractor_thread_messages FROM PUBLIC;
 REVOKE ALL ON public.contractor_thread_messages FROM anon;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON public.contractor_thread_messages FROM authenticated;
+-- MAINTAIN exists from PG17 only (production runs 17); the REVOKE is a syntax error on 16, so it is guarded by version (review 6256187448 D4).
+DO $maint$
+BEGIN
+  IF current_setting('server_version_num')::int >= 170000 THEN
+    EXECUTE 'REVOKE MAINTAIN ON public.contractor_thread_messages FROM authenticated, anon';
+  END IF;
+END
+$maint$;
 
 -- 4. the table-level lock on homeowner-sent text before the fee
 DROP POLICY IF EXISTS d390_homeowner_text_prefee ON public.messages;
@@ -440,6 +451,11 @@ BEGIN
      OR has_table_privilege('authenticated', 'public.contractor_thread_messages', 'DELETE')
      OR has_table_privilege('anon', 'public.contractor_thread_messages', 'SELECT') THEN
     RAISE EXCEPTION 'gh2559 d390: thread view ACL is not SELECT-only for authenticated and nothing for anon' USING ERRCODE = 'P0D06';
+  END IF;
+  IF current_setting('server_version_num')::int >= 170000
+     AND (has_table_privilege('authenticated', 'public.contractor_thread_messages', 'MAINTAIN')
+          OR has_table_privilege('anon', 'public.contractor_thread_messages', 'MAINTAIN')) THEN
+    RAISE EXCEPTION 'gh2559 d390: thread view still grants MAINTAIN to authenticated or anon (PG17)' USING ERRCODE = 'P0D09';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='messages' AND policyname='d390_homeowner_text_prefee' AND permissive = 'RESTRICTIVE' AND cmd = 'SELECT') THEN
     RAISE EXCEPTION 'gh2559 d390: restrictive policy missing' USING ERRCODE = 'P0D07';

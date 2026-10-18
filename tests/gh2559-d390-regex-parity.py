@@ -14,10 +14,18 @@ def stmt(t):
     m = re.search(r"\n\s*OR EXISTS \(SELECT 1 FROM public\.quotes q WHERE q\.claim_id = c\.id AND q\.contractor_id = ct\.id\);", t[s:])
     return t[s:s + m.end()]
 fn = fwd[fwd.index("AS $fn$") + 7: fwd.index("$fn$;")]
-lits = re.findall(r"'((?:[^']|'')*)'", fn)
+# the Unicode fold at the head of the function (D1, review 6256187448): must equal the applied view's fx.notes expression with p_text for left(c.homeowner_notes, 2000)
+al = [l for l in applied.split("\n") if l.strip().startswith("normalize(") and l.rstrip().endswith(" AS notes,")]
+fold_applied = al[0].strip()[:-len(" AS notes,")].replace("left(c.homeowner_notes, 2000)", "p_text")
+fs = fn.index("normalize(", fn.index("regexp_replace(")); fe = fn.index(", '[[:alnum:]._%+-]+\\s*@")
+fold_fn = fn[fs:fe].strip()
+fold_ok = len(al) == 1 and fold_fn == fold_applied
+print("Unicode fold in d390_redact_contact == applied view fx.notes (argument p_text): %s (%d chars)" % ("identical" if fold_ok else "DIFFERENT", len(fold_fn)))
+fn_patterns = fn.replace(fold_fn, "")
+lits = re.findall(r"'((?:[^']|'')*)'", fn_patterns)
 pats = [l for l in lits if l not in ("[removed]", "[removed] ", "g", "gi")]
 bad = [p for p in pats if ("'" + p + "'") not in applied]
-ok = True
+ok = fold_ok
 print("regex literals in d390_redact_contact: %d patterns; found verbatim in the applied view: %d" % (len(pats), len(pats) - len(bad)))
 if bad or len(pats) != 7: ok = False; print("FAIL (1): missing or wrong count", len(pats), [b[:40] for b in bad])
 a, f = stmt(applied), stmt(fwd)

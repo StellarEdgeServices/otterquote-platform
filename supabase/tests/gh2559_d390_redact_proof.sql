@@ -38,6 +38,40 @@ FROM (SELECT row_number() OVER () n, public.d390_redact_contact(i) r, e FROM (VA
   ('me at example dot com', '[removed]'),
   ('Two layers, 30 squares, 8/12 pitch, 2400 sq ft.', 'Two layers, 30 squares, 8/12 pitch, 2400 sq ft.'),
   ('Tree fell on the back slope', 'Tree fell on the back slope')) v(i, e)) q;
+-- D1 (review 6256187448): Unicode probes through the function, the notes view and the thread view, and parity with the bidder view
+\i supabase/tests/gh2559_d390_redact_unicode_probes.sql
+SELECT t.unicode_probes('2f-unicode', false);
+SELECT t.parity('2g-parity');
+-- NEGATIVE CONTROL: the function as it stood at head 31b90853 (no fold) leaks every Unicode form (and diverges from the bidder view); then the fixed file is restored
+\i supabase/tests/gh2559_d390_redact_prefix_function.sql
+SELECT t.unicode_probes('2h-negctl-prefix-function', true);
+SELECT t.parity('2h-negctl-prefix-function', true);
+INSERT INTO t.results SELECT '2h-negctl-prefix-function', 'PARNEG pre-fix function differs from the bidder view on the corpus', count(*) || ' of ' || (SELECT count(*) FROM t.pcorpus) || ' inputs differ', count(*) > 0
+FROM t.results WHERE phase = '2h-negctl-prefix-function' AND probe LIKE 'PAR%' AND detail = 'DIFFERENT';
+\i supabase/migrations_drafts/gh2559_d390_redact_contact_until_fee.sql
+SELECT t.run_phase('2i-restored', 'new');
+-- D4 (review 6256187448): MAINTAIN (PG17 only) on the thread view. NEGATIVE CONTROL: with the privilege granted (what the default privileges and the pre-fix REVOKE list left),
+-- the check sees it; after the forward file runs again it is gone. On PG16 the privilege does not exist and the probes record 'n/a (PG16)'.
+DO $m$ DECLARE v int := current_setting('server_version_num')::int; b text; a text; c text; BEGIN
+  IF v >= 170000 THEN
+    EXECUTE 'GRANT MAINTAIN ON public.contractor_thread_messages TO authenticated, anon';
+    b := has_table_privilege('authenticated','public.contractor_thread_messages','MAINTAIN')::text || '/' || has_table_privilege('anon','public.contractor_thread_messages','MAINTAIN')::text;
+    INSERT INTO t.results VALUES ('2j-maintain', 'M1 NEGATIVE CONTROL MAINTAIN granted (authenticated/anon true/true expected)', b, b = 'true/true');
+  ELSE
+    INSERT INTO t.results VALUES ('2j-maintain', 'M1 NEGATIVE CONTROL MAINTAIN granted', 'n/a (PG' || (v / 10000) || ')', true);
+  END IF;
+END $m$;
+\i supabase/migrations_drafts/gh2559_d390_redact_contact_until_fee.sql
+DO $m$ DECLARE v int := current_setting('server_version_num')::int; a text; BEGIN
+  IF v >= 170000 THEN
+    a := has_table_privilege('authenticated','public.contractor_thread_messages','MAINTAIN')::text || '/' || has_table_privilege('anon','public.contractor_thread_messages','MAINTAIN')::text;
+    INSERT INTO t.results VALUES ('2j-maintain', 'M2 after the forward file, MAINTAIN authenticated/anon (false/false expected)', a, a = 'false/false');
+  ELSE
+    INSERT INTO t.results VALUES ('2j-maintain', 'M2 after the forward file, MAINTAIN', 'n/a (PG' || (v / 10000) || ')', true);
+  END IF;
+END $m$;
+SELECT current_setting('server_version') AS server_version \gset
+\echo server_version=:server_version
 \i supabase/migrations_drafts/gh2559_d390_redact_contact_until_fee_rollback.sql
 SELECT t.run_phase('4-after-rollback', 'live');
 \echo ==== RESULTS (phase | probe | detail | ok) ====
