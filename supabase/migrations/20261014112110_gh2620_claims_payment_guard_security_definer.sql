@@ -1,8 +1,8 @@
--- STATUS (gh-1438, as of 2026-10-08T16:39:44Z): NOT APPLIED
+-- STATUS (gh-1438): APPLIED. APPLIED to production (yeszghaspzwwstvsrioa) by CTO RUN 65 re-entry 1 (claim cto-2026-10-14T04:47:56Z) on Dustin's word in chat "Go on 2688" (#2688 comment 6167081184): supabase_migrations.schema_migrations version 20261014112110, name gh2620_claims_payment_guard_security_definer; evidence #2620 comment 6167206684; ledger statements md5 and byte length equal this file's pre-header-change text.
 -- FILE ROLE: forward file of set gh2620_claims_payment_guard_security_definer (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: production read-only 2026-10-08: claims_enforce_payment_method_on_award() prosecdef=false, trigger claims_payment_method_guard enabled; rolled-back proof in supabase/tests/gh2620_claims_payment_guard_proof.sql (results on #2620)
--- REPO COPY: none in supabase/migrations/ yet
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- REPO COPY: this file (ledger version 20261014112110). The rollback stays at supabase/migrations_rollbacks/gh2620_claims_payment_guard_security_definer_rollback.sql. NEVER RE-RUN by hand: this is the filed copy under the ledger version (moved from supabase/migrations_drafts/ after the apply, 2026-10-14T11:58:22Z stamp.py; SQL statements unchanged, header comments only).
+-- NEVER RE-RUN by hand: applied; see the REPO COPY line above.
 --
 -- gh-2620: a homeowner awarding a bid from the React app is refused for every homeowner.
 --
@@ -26,7 +26,7 @@
 -- flag, and only for a contractor the caller has just set on a claim row they may already update.
 --
 -- Rollback: supabase/migrations_rollbacks/gh2620_claims_payment_guard_security_definer_rollback.sql
--- NOT APPLIED by the authoring session. Apply only after REVIEW and the R-097 window.
+-- Applied after REVIEW and the R-097 window (see STATUS above).
 
 BEGIN;
 

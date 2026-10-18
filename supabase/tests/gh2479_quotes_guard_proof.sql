@@ -24,9 +24,13 @@
 --      quotes_bid_status_check does not allow. That is an existing defect, not this guard (K2b is the
 --      same payload without bid_status and lands);
 --   H1, H2b, H2c, H3 ACCEPTED; H4 accept_bid returns the quote and the claim is awarded;
---   H2a REJECTED P0001 contractor_no_payment_method even though contractor k3 has a payment method:
---      claims_enforce_payment_method_on_award() is SECURITY INVOKER and reads public.contractors, which a
---      homeowner cannot SELECT under RLS. That is an existing defect on the claims table, not this guard;
+--   H2a (CHANGED 2026-10-14, gh-2620; expectation derived from the #2620 after-apply proof, comment 6167206684, not a re-run of this file): ACCEPTED, and H2 RESULT then ends with claim cs=awarded (it read
+--      claim cs=<its pre-award status> while H2a was refused). Until gh-2620 it was REJECTED P0001
+--      contractor_no_payment_method even though contractor k3 has a payment method:
+--      claims_enforce_payment_method_on_award() was SECURITY INVOKER and read public.contractors, which a
+--      homeowner cannot SELECT under RLS. Migration 20261014112110_gh2620_claims_payment_guard_security_definer.sql
+--      (applied to production 2026-10-14, #2620 comment 6167206684) made it SECURITY DEFINER, so a run of this
+--      file against production now, or before that migration in a fresh branch, differs only on this line;
 --   S1 ACCEPTED; S2 RESULT commission=200.00; A2, A3, A4 ACCEPTED.
 
 CREATE FUNCTION pg_temp.try_as(p_role text, p_sub uuid, p_sql text, p_email text DEFAULT 'gh2479-proof@example.invalid') RETURNS text
@@ -163,7 +167,7 @@ BEGIN
     UPDATE public.quotes SET claim_id = cs WHERE id = qb;
     UPDATE public.quotes SET contractor_id = k3 WHERE id IN (qs, qb); -- fixture: k3 has a payment method on file
     v := v || E'\nH1 LEGIT OWNER stamps homeowner_signed_at on q1: ' || pg_temp.try_as('authenticated', o, format('UPDATE public.quotes SET homeowner_signed_at=now() WHERE id=%L', q1));
-    v := v || E'\nH2a OWNER award step 1, claims -> awarded (existing gh-1532 guard, see header): ' || pg_temp.try_as('authenticated', o, format('UPDATE public.claims SET selected_contractor_id=%L, selected_bid_amount=15000, status=''awarded'' WHERE id=%L', k3, cs));
+    v := v || E'\nH2a OWNER award step 1, claims -> awarded (gh-1532 guard, SECURITY DEFINER since gh-2620; see header): ' || pg_temp.try_as('authenticated', o, format('UPDATE public.claims SET selected_contractor_id=%L, selected_bid_amount=15000, status=''awarded'' WHERE id=%L', k3, cs));
     v := v || E'\nH2b LEGIT OWNER award step 2, winning quote qs -> selected: ' || pg_temp.try_as('authenticated', o, format('UPDATE public.quotes SET status=''selected'' WHERE id=%L', qs));
     v := v || E'\nH2c LEGIT OWNER award step 3, other quotes on the claim -> declined: ' || pg_temp.try_as('authenticated', o, format('UPDATE public.quotes SET status=''declined'' WHERE claim_id=%L AND id<>%L', cs, qs));
     v := v || E'\nH2 RESULT ' || format('qs=%s qb=%s claim cs=%s', (SELECT status FROM quotes WHERE id = qs), (SELECT status FROM quotes WHERE id = qb), (SELECT status FROM claims WHERE id = cs));

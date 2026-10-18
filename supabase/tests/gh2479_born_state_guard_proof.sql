@@ -40,9 +40,14 @@
 --   X9 REJECTED both times (23514 claims_status_check before, this guard's 42501 after: the BEFORE
 --     trigger fires ahead of the CHECK constraint); X15, X16 (RLS);
 --   Y1, Y3, Y4 ACCEPTED (active, waitlisted, submitted); Y9, Y10, Y12, Y13 ACCEPTED;
---   Y-awarded: the React award's claims write, refused P0001 contractor_no_payment_method both times
---     (existing defect: claims_enforce_payment_method_on_award() reads public.contractors as the
---     homeowner, who cannot SELECT it);
+--   Y-awarded (CHANGED 2026-10-14, gh-2620; expectation derived from the #2620 after-apply proof, comment 6167206684, not a re-run of this file): the React award's claims write is ACCEPTED both times (this
+--     guard allows status -> awarded for the owner). Until gh-2620 it was refused P0001
+--     contractor_no_payment_method both times (claims_enforce_payment_method_on_award() was SECURITY
+--     INVOKER and read public.contractors as the homeowner, who cannot SELECT it). Migration
+--     20261014112110_gh2620_claims_payment_guard_security_definer.sql (applied to production 2026-10-14,
+--     #2620 comment 6167206684) made it SECURITY DEFINER; the outcome still does not depend on this guard.
+--     R1 (line ~353, the same write, k1 has a payment method) changes the same way: ACCEPTED, and R RESULT's
+--     claim reads awarded;
 --   Q0, Q1 ACCEPTED; Q14, Q15 REJECTED both times (RLS before, this guard after: the BEFORE trigger fires
 --     ahead of the policy check, so the message changes and the outcome does not); Q16 permission denied;
 --   every L line (the legitimate flow, client payload shapes) and its commission=200.00;
@@ -353,7 +358,7 @@ BEGIN
   BEGIN
     INSERT INTO public.claims (id, user_id, is_test, status, ready_for_bids, job_type, funding_type) VALUES (ca, o, true, 'active', true, 'retail', 'cash');
     INSERT INTO public.quotes (id, claim_id, contractor_id, total_price, fee_percentage, fee_amount, is_test, trade_type, is_auto_bid) VALUES (qa, ca, k1, 15000, 5, 750, true, 'roofing', true), (qb, ca, k2, 16000, 5, 800, true, 'roofing', true);
-    v := v || E'\nR1 homeowner award step 1, claims selected_contractor_id + selected_bid_amount + status=awarded (existing gh-1532 defect, see header): ' || pg_temp.try_as('authenticated', o, format('UPDATE public.claims SET selected_contractor_id=%L, selected_bid_amount=15000, status=''awarded'' WHERE id=%L', k1, ca));
+    v := v || E'\nR1 homeowner award step 1, claims selected_contractor_id + selected_bid_amount + status=awarded (gh-1532 guard, SECURITY DEFINER since gh-2620; see header): ' || pg_temp.try_as('authenticated', o, format('UPDATE public.claims SET selected_contractor_id=%L, selected_bid_amount=15000, status=''awarded'' WHERE id=%L', k1, ca));
     v := v || E'\nR2 homeowner award step 2, winning quote status=selected: ' || pg_temp.try_as('authenticated', o, format('UPDATE public.quotes SET status=''selected'' WHERE id=%L', qa));
     v := v || E'\nR3 homeowner award step 3, the other quotes status=declined: ' || pg_temp.try_as('authenticated', o, format('UPDATE public.quotes SET status=''declined'' WHERE claim_id=%L AND id<>%L', ca, qa));
     v := v || E'\nR RESULT ' || format('k1 bid=%s k2 bid=%s claim=%s', (SELECT status FROM quotes WHERE id = qa), (SELECT status FROM quotes WHERE id = qb), (SELECT status FROM claims WHERE id = ca));
