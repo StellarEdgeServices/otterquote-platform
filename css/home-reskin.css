@@ -37,6 +37,16 @@ body.hr { margin: 0; font-family: var(--hr-font); color: var(--hr-ink); backgrou
 .hr .hr-btn-outline { border: 2px solid var(--hr-on-navy); color: var(--hr-on-navy); font-weight: 800; font-size: 16px; padding: 12px 18px; border-radius: 6px; text-decoration: none; min-height: 48px; display: inline-flex; align-items: center; }
 .hr-call-short { display: none; }
 
+/* slice 3: the third header link (How we're paid) made the single row too wide between 768 and 1099 px; tighter gaps keep it one row down to 900 px.
+   The design specifies 1280 and 390 only; the narrow-tablet header is slice 4/10's to finish (review condition m2 of #2716). */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .hr-header .hr-wrap { gap: 12px; }
+  .hr-nav { flex-wrap: nowrap; white-space: nowrap; gap: 16px; }
+  .hr-header-right { gap: 12px; }
+  .hr-phone { font-size: 16px; }
+  .hr .hr-btn-outline { padding: 12px 14px; }
+}
+
 /* hero */
 .hr-hero { background: var(--hr-navy); color: var(--hr-on-navy); }
 .hr-hero .hr-wrap { padding-top: 72px; padding-bottom: 80px; display: flex; flex-wrap: wrap; align-items: center; gap: 56px; }
@@ -127,6 +137,27 @@ body.hr { margin: 0; font-family: var(--hr-font); color: var(--hr-ink); backgrou
 .hr .hr-closing-call { color: var(--hr-on-navy); font-size: 17px; padding: 12px 0; min-height: 48px; display: inline-flex; align-items: center; }
 .hr .hr-closing-call:hover { text-decoration: underline; }
 
+/* ---------- slice 3: How we're paid, What we do not do, You can change your mind (desktop values from Recommended-desktop.dc.html; phone values in the max-width block below) ---------- */
+.hr-paid { background: var(--hr-tint); }
+.hr-paid-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 24px; }
+.hr-paid-card { background: var(--hr-white); border: 1px solid var(--hr-border); border-radius: 10px; padding: 32px; display: flex; flex-direction: column; gap: 14px; }
+.hr-h2p { margin: 0; font-size: 30px; font-weight: 800; color: var(--hr-navy); }
+.hr-pp { margin: 0; font-size: 18px; line-height: 1.55; color: var(--hr-slate); }
+.hr-paid-list { margin: 0; padding-left: 22px; font-size: 18px; line-height: 1.7; color: var(--hr-slate); }
+
+.hr-promise { background: var(--hr-navy); color: var(--hr-on-navy); }
+.hr-promise .hr-wrap { padding-top: 64px; padding-bottom: 64px; }
+.hr-promise-in { display: flex; flex-wrap: wrap; align-items: center; gap: 48px; }
+.hr-promise-main { flex: 1 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.hr-h2w { margin: 0; font-size: 36px; font-weight: 800; color: var(--hr-on-navy); }
+.hr-promise-p { margin: 0; max-width: 640px; font-size: 19px; line-height: 1.55; color: var(--hr-on-navy-2); }
+.hr-promise-side { flex: 0 1 360px; display: flex; flex-direction: column; gap: 6px; border-left: 2px solid var(--hr-line-navy); padding-left: 28px; }
+.hr-promise-lab { font-size: 15px; font-weight: 600; color: var(--hr-on-navy-2); }
+.hr .hr-promise-tel { color: var(--hr-on-navy); font-size: 26px; font-weight: 800; text-decoration: none; padding: 8px 0; min-height: 48px; display: inline-flex; align-items: center; align-self: flex-start; }
+.hr .hr-promise-tel:hover, .hr .hr-promise-call:hover { text-decoration: underline; }
+.hr-promise-addr { font-size: 15px; line-height: 1.5; color: var(--hr-on-navy-2); }
+.hr-promise-call { display: none; }
+
 /* phone sticky bar: appears once the hero button has scrolled out of view */
 .hr-sticky { display: none; }
 
@@ -189,6 +220,19 @@ body.hr { margin: 0; font-family: var(--hr-font); color: var(--hr-ink); backgrou
   .hr-zipbox-c { align-items: stretch; }
   .hr-zipbox-c .hr-zip-row { justify-content: flex-start; }
   .hr .hr-closing-call { font-size: 16px; }
+  /* slice 3: phone values from Recommended-phone.dc.html (the side block is desktop-only; phones get one call link) */
+  .hr-paid .hr-wrap { padding: 40px 20px; }
+  .hr-paid-grid { grid-template-columns: 1fr; gap: 18px; }
+  .hr-paid-card { padding: 22px; gap: 12px; }
+  .hr-h2p { font-size: 24px; }
+  .hr-pp { font-size: 16px; line-height: 1.55; }
+  .hr-paid-list { padding-left: 20px; font-size: 16px; line-height: 1.65; }
+  .hr-promise .hr-wrap { padding: 40px 20px; }
+  .hr-promise-in { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 14px; }
+  .hr-promise-main { flex: 0 0 auto; }
+  .hr-h2w { font-size: 28px; }
+  .hr-promise-p { font-size: 17px; }
+  .hr .hr-promise-call { display: inline-flex; align-items: center; min-height: 48px; color: var(--hr-on-navy); font-size: 16px; padding: 12px 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .hr-w, .hr-row, .hr-tab, .hr-sticky { transition: none !important; }
