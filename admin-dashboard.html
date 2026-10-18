@@ -443,10 +443,13 @@ function renderTopPage() {
       html += '<div class="line-card">' +
         '<h2>' + esc(l.label) + ' <span class="status-pill status-operational">Operational</span></h2>' +
         '<div class="tile-grid">' +
-          tileHtml('Homeowners', l.stats.homeowners_total) +
-          tileHtml('Claims', l.stats.claims_total) +
-          tileHtml('Contractors', l.stats.contractors_total) +
-          tileHtml('Referral partners', l.stats.referral_partners_total) +
+          // gh-1340 (Ben's ruling, #1772 6015862872): the top-page tiles show
+          // NON-TEST totals by default (the total-with-test figures stay on the
+          // Otter Quotes line page, labelled as totals).
+          tileHtml('Homeowners (non-test)', l.stats.homeowners_non_test) +
+          tileHtml('Claims (non-test)', l.stats.claims_non_test) +
+          tileHtml('Contractors (non-test)', l.stats.contractors_non_test) +
+          tileHtml('Referral partners (non-test)', l.stats.referral_partners_non_test) +
           tileHtml('Measurement orders', l.stats.measurement_orders) +
           revenueTileHtml(l.revenue_mtd) +
         '</div>' +
@@ -456,7 +459,11 @@ function renderTopPage() {
       html += '<div class="line-card">' +
         '<h2>' + esc(l.label) + ' <span class="status-pill status-not-operational">Not operational</span></h2>' +
         '<div class="status-note">' + esc(l.status_note) + '</div>' +
-        '<a class="line-link" href="' + esc(l.issues_url) + '" target="_blank" rel="noopener">What remains &rarr;</a>' +
+        // gh-1340 (Ben's ruling, #1772 6015862872): phase 3 shipped (#1573), so
+        // the Otter CRM card links to its own line page, not the issue list.
+        (l.key === 'otter-crm'
+          ? '<a class="line-link" href="?line=otter-crm">View ' + esc(l.label) + ' &rarr;</a>'
+          : '<a class="line-link" href="' + esc(l.issues_url) + '" target="_blank" rel="noopener">What remains &rarr;</a>') +
       '</div>';
     }
   });

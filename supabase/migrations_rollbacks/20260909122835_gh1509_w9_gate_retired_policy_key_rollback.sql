@@ -1,4 +1,4 @@
--- ROLLBACK for 20260904234257_gh1509_w9_gate_retired_policy_key.sql
+-- ROLLBACK for 20260909122835_gh1509_w9_gate_retired_policy_key.sql
 --
 -- Re-creates "Authenticated can read public settings" with exactly the
 -- pre-change five-key allowlist (byte-identical to the qual read live

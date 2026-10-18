@@ -13,6 +13,7 @@
 // gone, by reading the three functions' sources. Four of its assertions FAIL
 // against origin/main. See the PR body for both runs.
 import { assert } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { stripComments } from "./test-source-utils.ts";
 
 const dir = new URL("../", import.meta.url);
 const read = (p: string) => Deno.readTextFile(new URL(p, dir));
@@ -20,6 +21,7 @@ const read = (p: string) => Deno.readTextFile(new URL(p, dir));
 const createPaymentIntent = await read("create-payment-intent/index.ts");
 const docusignWebhook = await read("docusign-webhook/index.ts");
 const stripeWebhook = await read("stripe-webhook/index.ts");
+const disputeRoutingSrc = await read("stripe-webhook/dispute-routing.ts");
 
 Deno.test("gh-1759: create-payment-intent RETURNS the Stripe charge id to its callers", () => {
   // The root cause. No caller could ever have persisted the charge id because
@@ -75,9 +77,13 @@ Deno.test("gh-1759: evidence[submit] is NO LONGER set unconditionally", () => {
       'was "Not found in database". That is an automatic, irreversible concession.',
   );
   assert(
-    /maySubmitFinalEvidence\(\{/.test(stripeWebhook),
-    "REGRESSION (gh-1759): the evidence builder does not consult maySubmitFinalEvidence(), so " +
+    /postDisputeEvidence\(\{[^}]*claimResolved:\s*claim !== null[^}]*feeAcceptanceResolved:\s*feeAcceptance !== null/s.test(stripComments(stripeWebhook)),
+    "REGRESSION (gh-1759): the dispute POST does not pass claimResolved/feeAcceptanceResolved, so " +
       "nothing stops a blind final submission.",
+  );
+  assert(
+    /return params\.finalSubmitEnabled === true && maySubmitFinalEvidence\(params\)/.test(stripComments(disputeRoutingSrc)),
+    "REGRESSION (gh-1759): shouldSubmitFinalEvidence no longer consults maySubmitFinalEvidence() (code, not comments).",
   );
 });
 

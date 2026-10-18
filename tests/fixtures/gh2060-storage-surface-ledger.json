@@ -312,9 +312,14 @@
     },
     {
       "key": "oq_home_zip",
-      "stack": "static (gh-2598 slice-1 staging page script, sessionStorage)",
-      "status": "write-only",
-      "reason": "The gh-2598 slice-1 staging page writes the typed ZIP here so it never travels in the /start URL; nothing reads it yet. Slice 6 (/start prefill) will read and clear it and must change this entry to tested, with a stale-state test, in the same PR."
+      "stack": "static (gh-2598: staging page script writes, start.html readHomeHandoff reads and clears, sessionStorage)",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "tests/gh2598-start-home-zip.mjs",
+          "contains": "STALE STATE: a leftover key on a direct visit (no entry=home) is ignored, role screen kept"
+        }
+      ]
     },
     {
       "key": "oq_referral_id_for_claim",

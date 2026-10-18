@@ -1,4 +1,4 @@
-# Pre-flight: 20260928215500_gh2300_set_lead_converted_8day_window (Tier 3B)
+# Pre-flight: 20260929014230_gh2300_set_lead_converted_8day_window (Tier 3B)
 
 NOT APPLIED. `apply_migration` was never called. Refs #2300 (finding: comment 5878649711), #2121 (HO-1.S16 / HO-2.S16).
 
@@ -10,7 +10,7 @@ and `lead_goal_events` (joins on `converted_user_id`) undercounts conversion.
 
 ## Live vs repo (read-only, project yeszghaspzwwstvsrioa, 2026-09-28T21:5x Z)
 - first 12 hex of `md5(prosrc)` live = `ba14bac2d987`; md5 of the function body in
-  `20260926221500_gh2121_s16_lead_goal_security_fix.sql` = the same value. So the repo source is what is live.
+  `20260927143606_gh2121_s16_lead_goal_security_fix.sql` = the same value. So the repo source is what is live.
 - The forward file differs from live in exactly one executable token (`interval '24 hours'` -> `interval '8 days'`)
   plus the COMMENT text ("24h window" -> "8-day window ..."). Everything else is identical: null check, S1 anon
   rejection (28000), D4 JWT-email guard, first-write-wins, SECURITY DEFINER, `SET search_path = public, pg_temp`.
@@ -45,7 +45,7 @@ noted for #2121.
 ## Apply (after R-097 window and Dustin approval), rollback
 Apply the forward file. Verify: `SELECT prosrc LIKE '%8 days%' FROM pg_proc WHERE proname='set_lead_converted'` is true,
 `has_function_privilege('anon', 'public.set_lead_converted(uuid)', 'EXECUTE')` is false, `authenticated` true.
-Rollback: `supabase/migrations_rollbacks/20260928215500_gh2300_set_lead_converted_8day_window_rollback.sql`
+Rollback: `supabase/migrations_rollbacks/20260929014230_gh2300_set_lead_converted_8day_window_rollback.sql`
 (restores the 24 h body verbatim; no data change; already-linked leads stay linked).
 
 ## Residual

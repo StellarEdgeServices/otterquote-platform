@@ -17,7 +17,7 @@ function ok(cond, msg) { if (cond) { passed++; console.log('PASS: ' + msg); } el
 const code = (s) => s.replace(/--.*$/gm, '');
 const norm = (s) => s.replace(/\s+/g, ' ');
 
-const fwd = norm(code(rd('supabase/migrations_drafts/gh2431_profiles_address_state_backfill.sql')));
+const fwd = norm(code(rd('supabase/migrations/20261015210310_gh2431_profiles_address_state_backfill.sql')));
 const rb = norm(code(rd('supabase/migrations_rollbacks/gh2431_profiles_address_state_backfill_rollback.sql')));
 const proof = rd('supabase/tests/gh2431_address_state_backfill_proof.sql');
 
@@ -47,7 +47,7 @@ ok(/\$fwd\$[\s\S]*UPDATE public\.profiles[\s\S]*\$fwd\$/.test(proof), 'proof: em
 const strip = (s) => norm(s.replace(/^--.*$/gm, '').replace(/BEGIN;|COMMIT;/g, ''));
 const embFwd = proof.match(/\$fwd\$([\s\S]*?)\$fwd\$/)[1];
 const embRb = proof.match(/\$rb\$([\s\S]*?)\$rb\$/)[1];
-ok(strip(embFwd).trim() === strip(rd('supabase/migrations_drafts/gh2431_profiles_address_state_backfill.sql')).trim(), 'proof: embedded forward body equals the forward file');
+ok(strip(embFwd).trim() === strip(rd('supabase/migrations/20261015210310_gh2431_profiles_address_state_backfill.sql')).trim(), 'proof: embedded forward body equals the forward file');
 ok(strip(embRb).trim() === strip(rd('supabase/migrations_rollbacks/gh2431_profiles_address_state_backfill_rollback.sql')).trim(), 'proof: embedded rollback body equals the rollback file');
 ok(/B=%s/.test(proof) && /address_city = 'Proofville'/.test(proof), 'proof: has the kept-row negative control (IN with a city)');
 

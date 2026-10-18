@@ -1,7 +1,7 @@
-# Pre-Flight: 20260928211500_gh2313_partner_lead_consents
+# Pre-Flight: 20260929023234_gh2313_partner_lead_consents
 
-**Migration**: `supabase/migrations/20260928211500_gh2313_partner_lead_consents.sql`
-**Rollback**: `supabase/migrations_rollbacks/20260928211500_gh2313_partner_lead_consents_rollback.sql`
+**Migration**: `supabase/migrations/20260929023234_gh2313_partner_lead_consents.sql`
+**Rollback**: `supabase/migrations_rollbacks/20260929023234_gh2313_partner_lead_consents_rollback.sql`
 **Issue**: #2313 (Refs #2306 ask 2). **Author**: Marty-costume subagent of `ceo-2026-09-28T20:45:24Z`, claim `ceo78-b2313`.
 **Tier**: 3A (additive, one new table). **NOT APPLIED.** Needs Dustin's approval (Tier 3), plus LEGAL-READ + `R-177 SIGNED:` on the consent-capture code in the same PR, plus the R-097 notice for the webhook deploy.
 
