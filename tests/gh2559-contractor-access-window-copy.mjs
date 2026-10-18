@@ -26,4 +26,18 @@ for (const [f, label] of [['contractor-how-it-works.html', 'how-it-works'], ['co
   ok(!/contact information[^.]*after both parties have signed the contract/i.test(txt), label + ' does not release contact information "after both parties have signed the contract"');
   ok(!/you can open the homeowner's uploaded documents/i.test(t), label + ' does not promise the uploaded documents are openable on selection');
 }
+// LEGAL-READ FAIL 6227107231: the how-it-works "What You Receive When You Win" section (receive-section) must not
+// imply contact info or the estimate file arrive with the signed contract package; it is fee-timed (D-386, Agreement 6.2).
+{
+  const t = rd('contractor-how-it-works.html');
+  const m = t.match(/<div class="receive-section">[\s\S]*?<!-- Cost \/ Fee Model -->/);
+  ok(!!m, 'how-it-works has the "What You Receive When You Win" section');
+  const sec = m ? m[0] : '';
+  const txt = sec.replace(/<[^>]+>/g, ' ').replace(/&nbsp;|\s+/g, ' ');
+  ok(!/Every signed contract package/i.test(txt), 'receive section does not say "Every signed contract package includes" (package is not released at signing)');
+  ok(/Once the Platform Fee is collected, your project package includes/i.test(txt), 'receive section intro is fee-timed ("Once the Platform Fee is collected, your project package includes ...")');
+  ok(!/Homeowner Contact Info/i.test(txt), 'receive section has no "Homeowner Contact Info" card (D-386 / Agreement 6.2 / #2828)');
+  ok(!/(phone|e-?mail|contact info)/i.test(txt.replace(/Contractors are expected to contact the homeowner within 48 hours\./i, '')), 'receive section lists no phone/email/contact info');
+  ok(txt.includes(D386), 'receive section Insurance Estimate card carries the D-386 sentence (estimate released only after the Platform Fee is collected)');
+}
 process.exit(failed ? 1 : 0);
