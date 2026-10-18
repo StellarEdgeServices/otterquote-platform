@@ -9,6 +9,9 @@
  * fixtures. The drive originals in Marketing/site-reskin-2026-10/ still carry the approved "No. But we can read a loss sheet and tell you what is and is
  * not covered.", so DESIGN_DIR=<drive> reports exactly that one string pair as different until the originals are re-approved with the new line.
  *
+ * SECOND RULED EXCEPTION to "verbatim" (Dustin, #2813 comment 6253699223, 2026-10-18, option (b), \"Narrow: \"...that contractors use to bid\" (Recommended)\"): the #paid
+ * sentence reads "You pay as little as $15 up front for professional measurements that contractors use to bid." in the page AND in both committed fixtures
+ * (the approved drive originals still say "that every contractor uses"). Re-run the legal read on that line.
  * Slice 3 (How we're paid, What we do not do, You can change your mind) is built; it restates the fee, the $15 measurement charge and its refund and the
  * switch-contractor promise, so the PR that adds it carries an independent LEGAL-READ and the CEO's R-177 SIGNED line (D-377, D-378, D-291, D-313, D-371).
  *
