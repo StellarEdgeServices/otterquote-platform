@@ -13,7 +13,7 @@
 -- quotes_guard_homeowner_columns(), which acts only when current_user is anon or authenticated, does not see this write):
 --   * caller must be signed in; the quote must belong to a contractor row whose user_id = auth.uid()  (else 42501, same text for "no such quote" and "not yours")
 --   * the quote must be status selected or awarded and bid_status active; any other bid is saved through the normal bid form
---   * refused (22023) once quotes.homeowner_signed_at is set: notes print in the signed contract PDF ("Message from Contractor")
+--   * refused (22023) once EITHER party has signed (quotes.homeowner_signed_at OR quotes.contractor_signed_at is set): notes print in the signed contract PDF ("Message from Contractor"). Dustin's ruling on #2846 (2026-10-18T22:11:53Z), option (b) "At contractor signature"
 --   * notes are trimmed, an empty string becomes NULL, and more than 500 characters is refused (the form's own maxlength)
 --   * the single UPDATE sets notes only. updated_at moves through set_updated_at_quotes. quotes_normalize_fee_amount
 --     recomputes fee_amount from the stored pct and price, which is a no-op on every row today (0 mismatches).
@@ -39,13 +39,14 @@ DECLARE
   v_status text;
   v_bid    text;
   v_signed timestamptz;
+  v_csigned timestamptz;
   v_notes  text;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'update_selected_bid_notes: sign in to save notes' USING ERRCODE = '42501';
   END IF;
 
-  SELECT q.status, q.bid_status, q.homeowner_signed_at INTO v_status, v_bid, v_signed
+  SELECT q.status, q.bid_status, q.homeowner_signed_at, q.contractor_signed_at INTO v_status, v_bid, v_signed, v_csigned
     FROM public.quotes q
     JOIN public.contractors k ON k.id = q.contractor_id
    WHERE q.id = p_quote_id
@@ -62,10 +63,11 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
-  -- LEGAL-READ FAIL fix (PR #2844 comment 6254074220; default (a) of #2846): quotes.notes prints into the signed
-  -- contract PDF as "Message from Contractor", so edits stop at the homeowner's signature. After that, D-203/D-271 govern.
-  IF v_signed IS NOT NULL THEN
-    RAISE EXCEPTION 'update_selected_bid_notes: the homeowner has signed; notes can no longer be changed' USING ERRCODE = '22023';
+  -- LEGAL-READ FAIL fix (PR #2844 comment 6254074220) as bounded by Dustin on #2846 (2026-10-18T22:11:53Z, option (b) "At contractor signature",
+  -- board-answered comment 6255786375): quotes.notes prints into the contract PDF as "Message from Contractor", so edits stop once EITHER party
+  -- has signed. The contractor signs first, which closes the window where the envelope PDF carries older text than bids.html. After that, D-203/D-271 govern.
+  IF v_signed IS NOT NULL OR v_csigned IS NOT NULL THEN
+    RAISE EXCEPTION 'update_selected_bid_notes: the contract has been signed; notes can no longer be changed' USING ERRCODE = '22023';
   END IF;
 
   v_notes := NULLIF(btrim(COALESCE(p_notes, '')), '');
@@ -85,6 +87,6 @@ REVOKE ALL ON FUNCTION public.update_selected_bid_notes(uuid, text) FROM service
 GRANT EXECUTE ON FUNCTION public.update_selected_bid_notes(uuid, text) TO authenticated;
 
 COMMENT ON FUNCTION public.update_selected_bid_notes(uuid, text) IS
-  'gh-2803 / D-381: notes-only save for the contractor''s own selected (or awarded), active bid. Writes quotes.notes and nothing else; SECURITY DEFINER with a fixed search_path; EXECUTE to authenticated only. Refuses (42501) a caller who is not signed in or does not own the quote, (22023) a bid that is not selected, (22001) notes over 500 characters.';
+  'gh-2803 / D-381: notes-only save for the contractor''s own selected (or awarded), active bid. Writes quotes.notes and nothing else; SECURITY DEFINER with a fixed search_path; EXECUTE to authenticated only. Refuses (42501) a caller who is not signed in or does not own the quote, (22023) a bid that is not selected or whose contract either party has signed, (22001) notes over 500 characters.';
 
 COMMIT;
