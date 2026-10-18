@@ -1296,6 +1296,12 @@
       </div>
     </div>
 
+    <!-- gh-2564 / D-369 / D-382 (C4 on PR #2612): shown in place of Change Your Bid when the homeowner has selected this contractor's bid -->
+    <div id="selectedBidLockCard" style="display:none; background:#F3F4F6; border:2px solid #6B7280; border-radius:0.75rem; padding:1rem 1.5rem; margin-bottom:1.5rem;">
+      <div style="font-weight:700; color:#374151; margin-bottom:0.25rem;">This bid can no longer be changed here</div>
+      <div id="selectedBidLockMessage" style="font-size:0.9rem; color:#374151;"></div>
+    </div>
+
     <!-- RESCIND MODE: shown when contractor arrives via ?action=rescind in email link -->
     <div id="rescindConfirmCard" style="display:none;">
       <div class="rescind-title">⚠️ Rescind Your Bid</div>
@@ -3383,7 +3389,12 @@
                   .eq('contractor_id', data.id)
                   .maybeSingle();
 
-                if (existingQuoteData) {
+                if (existingQuoteData && isSelectedBidLocked(existingQuoteData, currentClaim, data)) {
+                  // gh-2564 / D-369 / D-382: the homeowner selected this bid, so no Change Your Bid mode and no edit path.
+                  // (Once gh2564 is applied, its price-lock migration will refuse the write too; until then this is the only guard. This is the page half.)
+                  existingQuote = existingQuoteData;
+                  showSelectedBidLock();
+                } else if (existingQuoteData) {
                   existingQuote = existingQuoteData;
                   changeBidMode = true;
                   // D-150: detect renewal mode (?renew=true in URL)
@@ -3400,6 +3411,35 @@
           console.error('Error loading contractor:', err);
         }
       }
+    }
+
+    // ── Selected-bid lock (gh-2564, D-369, D-382) ──
+    // Same wording family as BID_SELECTED_MESSAGE below (the withdrawal refusal): factual, no promise, support handles it.
+    const BID_LOCKED_MESSAGE = 'The homeowner has already chosen a contractor, so this bid can no longer be changed here. Contact support for help.';
+
+    function isSelectedBidLocked(quote, claim, contractor) {
+      if (!quote) return false;
+      if (quote.status === 'selected') return true;
+      return !!(claim && contractor && claim.selected_contractor_id && claim.selected_contractor_id === contractor.id);
+    }
+
+    function showSelectedBidLock() {
+      ['bidFormCard', 'tradeSelectionCard', 'perTradeBreakdown',
+       'wizardProgressBar', 'wizardStep1Card', 'wizardStep3Card', 'feeDisclosureSection',
+       'contractSigningStep', 'changeBidBanner', 'renewBidBanner', 'rescindConfirmCard'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+      const heading = document.getElementById('pageHeading');
+      if (heading) heading.textContent = 'Bid Locked';
+      document.title = 'Bid Locked | Otter Quotes Contractor Portal';
+      const msg = document.getElementById('selectedBidLockMessage');
+      if (msg) msg.textContent = BID_LOCKED_MESSAGE;
+      const card = document.getElementById('selectedBidLockCard');
+      if (card) card.style.display = 'block';
+      const submitBtnEl = document.getElementById('submitBtn');
+      if (submitBtnEl) { submitBtnEl.disabled = true; submitBtnEl.style.display = 'none'; }
+      window._bidLockedSelected = true;
     }
 
     // ── Change Bid Mode ──
@@ -4896,6 +4936,7 @@
 
     bidForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (window._bidLockedSelected) return; // gh-2564: a selected bid is locked; no write from this form
 
       // Validate: bid type must have a price if RCV selected
       const bidTypeOption = document.querySelector('input[name="bidTypeOption"]:checked')?.value || 'rcv_plus_supplements';
@@ -5234,10 +5275,20 @@
                 workmanship_warranty_years: quoteData.workmanship_warranty_years,
                 // D-150: renewal — reset bid window
                 ...(renewMode ? {
-                  bid_status: 'submitted',
+                  // gh-2564: 'submitted' is not admitted by quotes_bid_status_check (active, expired, superseded,
+                  // cancelled); a renewed bid is live again, which is 'active'.
+                  bid_status: 'active',
                   expired_at: null,
                   expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
                   renewals_count: (existingQuote.renewals_count || 0) + 1,
+                } : {}),
+                // gh-2564 (CEO RUN 104 point 4): Change Bid on a bid the contractor withdrew ('cancelled') makes it
+                // live again -- the rescind-and-re-bid path D-369/D-381 rely on. Same live fields as a renewal, but
+                // renewals_count is not bumped: this is not an auto-renewal.
+                ...(!renewMode && existingQuote.bid_status === 'cancelled' ? {
+                  bid_status: 'active',
+                  expired_at: null,
+                  expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
                 } : {}),
                 updated_at: new Date().toISOString(),
             };
@@ -5501,6 +5552,8 @@
 
       async function startUp() {
         await init();
+        // gh-2564: init() may have shown the selected-bid lock; the trade, photo and wizard inits below re-show cards.
+        if (window._bidLockedSelected) return;
         updateFeeCalculator();
 
         // Set default start date to today
@@ -5607,6 +5660,9 @@
     // EF: rescind-bid requires quote_id + contractor_id (JWT-gated).
     // ══════════════════════════════════════════════════════════════
 
+    // gh-2564: same text the rescind-bid EF returns with its 409 { error: 'bid_selected' }.
+    const BID_SELECTED_MESSAGE = 'This bid can no longer be withdrawn here because the homeowner has already chosen a contractor. Contact support for help.';
+
     async function initRescindMode() {
       // Hide the normal bid form and all form sections that don't apply
       ['bidFormCard', 'tradeSelectionCard', 'perTradeBreakdown', 'hoverHomePhotosCard',
@@ -5638,7 +5694,7 @@
       // Look up the contractor's active quote for this claim
       const { data: quote, error: quoteErr } = await sb
         .from('quotes')
-        .select('id, total_price, bid_status, created_at')
+        .select('id, total_price, bid_status, status, created_at')
         .eq('claim_id', currentClaim.id)
         .eq('contractor_id', currentContractor.id)
         .maybeSingle();
@@ -5649,10 +5705,21 @@
         return;
       }
 
-      const RESCINDABLE = ['submitted', 'pending', 'under_review'];
+      // gh-2564 (CEO RUN 104): a bid the homeowner already selected is not the contractor's to withdraw here
+      // (D-215(b): route to support). The rescind-bid EF refuses the same case with a 409 bid_selected; this hides
+      // the Rescind control up front. selected_contractor_id comes from bidder_claim_summary.
+      if (quote.status === 'selected' || currentClaim.selected_contractor_id === currentContractor.id) {
+        if (detailEl) detailEl.textContent = BID_SELECTED_MESSAGE;
+        const actionsEl = document.getElementById('rescindConfirmBtn')?.parentElement;
+        if (actionsEl) actionsEl.style.display = 'none';
+        return;
+      }
+
+      // gh-2564: 'active' is the live bid_status every production bid holds; the others are kept as before.
+      const RESCINDABLE = ['active', 'submitted', 'pending', 'under_review'];
       if (!RESCINDABLE.includes(quote.bid_status)) {
         if (detailEl) detailEl.innerHTML =
-          `<strong>Bid status: ${quote.bid_status}</strong><br>This bid cannot be withdrawn at its current stage. Only submitted, pending, or under-review bids can be rescinded.`;
+          `<strong>Bid status: ${quote.bid_status}</strong><br>This bid cannot be withdrawn at its current stage. Only active, submitted, pending, or under-review bids can be rescinded.`;
         return;
       }
 
@@ -5701,6 +5768,12 @@
 
         if (!resp.ok) {
           const errBody = await resp.json().catch(() => ({}));
+          if (errBody.error === 'bid_selected') {
+            // gh-2564: show the EF's message and hide the Rescind control; nothing to retry.
+            const selectedErr = new Error(errBody.message || BID_SELECTED_MESSAGE);
+            selectedErr.bidSelected = true;
+            throw selectedErr;
+          }
           throw new Error(errBody.error || 'HTTP ' + resp.status);
         }
 
@@ -5718,6 +5791,7 @@
       } catch (err) {
         console.error('[Rescind] confirmRescind error:', err);
         if (btn) { btn.disabled = false; btn.textContent = 'Yes, Rescind My Bid'; }
+        if (err && err.bidSelected && btn && btn.parentElement) { btn.parentElement.style.display = 'none'; }
         if (errEl) {
           errEl.textContent = err.message || 'Failed to rescind bid. Please try again or contact support.';
           errEl.style.display = 'block';

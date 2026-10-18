@@ -619,7 +619,9 @@
   // existing homeowner call site below now passes ('homeowner', null)
   // explicitly.
   function insertLeadAndSetRole(nm, em, phoneDigits, roleForRpc, partnerIndustryForRpc) {
-    return bridge.insertFreshLead(nm, em, phoneDigits, bridge.oqInternalOverride).then(function (newId) {
+    // gh-2598 slice 6: the homepage ZIP (five digits, read-and-cleared by start.html) rides on a HOMEOWNER's row only, in the allow-listed `zip` column.
+    var homeZipExtra = (roleForRpc === 'homeowner' && bridge.homeEntry && bridge.homeEntry.zip) ? { zip: bridge.homeEntry.zip } : undefined;
+    return bridge.insertFreshLead(nm, em, phoneDigits, bridge.oqInternalOverride, undefined, homeZipExtra).then(function (newId) {
       return new Promise(function (resolve) {
         var payload = { p_lead_id: newId, p_role: roleForRpc };
         if (partnerIndustryForRpc) payload.p_partner_industry = partnerIndustryForRpc;
@@ -1317,6 +1319,14 @@
     loadDiscoveryModule().then(function (RD) {
       if (typeof RD.setBridge === 'function') RD.setBridge(bridge);
       registerReusedTracks(RD);
+      // gh-2598 slice 6: ?entry=home (a homeowner button on the new homepage) skips the role screen, same as arm D. No role event fires
+      // because nobody tapped e-p1. e-p2 has no Back control on any path (it is an exposition screen), so nothing is lost by not stacking e-p1.
+      // start.html reads and clears the ZIP.
+      if (bridge.homeEntry && bridge.homeEntry.skipRole) {
+        role = 'homeowner';
+        show('e-p2');
+        return;
+      }
       show('e-p1');
     }).catch(function (err) {
       console.error('[router-variant-e] failed to load js/router-discovery.js:', err);

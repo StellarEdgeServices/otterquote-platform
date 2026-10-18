@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stohler Roofing</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f8f7f4;
+      color: #1a1a1a;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: #1c3557;
+      padding: 28px 24px;
+      text-align: center;
+    }
+
+    header h1 {
+      color: #ffffff;
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    header p {
+      color: #a8c4e0;
+      font-size: 0.9rem;
+      margin-top: 4px;
+    }
+
+    main {
+      flex: 1;
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 48px 24px 64px;
+      width: 100%;
+    }
+
+    .winddown {
+      margin-bottom: 40px;
+    }
+
+    .winddown h2 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #1c3557;
+      margin-bottom: 12px;
+    }
+
+    .winddown p {
+      font-size: 1.05rem;
+      line-height: 1.7;
+      color: #333;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #d9d6d0;
+      margin: 36px 0;
+    }
+
+    .legal-firewall {
+      background: #fff8e6;
+      border-left: 4px solid #c8a832;
+      border-radius: 4px;
+      padding: 18px 20px;
+      margin-bottom: 40px;
+    }
+
+    .legal-firewall h3 {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #8a6e00;
+      margin-bottom: 8px;
+    }
+
+    .legal-firewall p {
+      font-size: 0.92rem;
+      line-height: 1.65;
+      color: #5c4a00;
+    }
+
+    .otterquote {
+      margin-bottom: 40px;
+    }
+
+    .otterquote h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #1c3557;
+      margin-bottom: 12px;
+    }
+
+    .otterquote p {
+      font-size: 1.02rem;
+      line-height: 1.75;
+      color: #333;
+      margin-bottom: 20px;
+    }
+
+    .otterquote a.cta {
+      display: inline-block;
+      background: #1c7c5a;
+      color: #fff;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.97rem;
+      padding: 13px 26px;
+      border-radius: 6px;
+      transition: background 0.15s;
+    }
+
+    .otterquote a.cta:hover {
+      background: #155e44;
+    }
+
+    .contact {
+      border-top: 1px solid #d9d6d0;
+      padding-top: 32px;
+    }
+
+    .contact h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #1c3557;
+      margin-bottom: 8px;
+    }
+
+    .contact p {
+      font-size: 1rem;
+      color: #444;
+      line-height: 1.6;
+    }
+
+    .contact a {
+      color: #1c3557;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .contact a:hover {
+      text-decoration: underline;
+    }
+
+    footer {
+      background: #1c3557;
+      text-align: center;
+      padding: 18px 24px;
+      font-size: 0.8rem;
+      color: #7aa0c0;
+    }
+
+    @media (max-width: 480px) {
+      header h1 { font-size: 1.3rem; }
+      main { padding: 32px 18px 48px; }
+      .winddown h2 { font-size: 1.15rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Stohler Roofing</h1>
+    <p>Serving Indiana Homeowners</p>
+  </header>
+
+  <main>
+
+    <section class="winddown">
+      <h2>A Note to Our Customers</h2>
+      <p>
+        Stohler Roofing has completed operations. We are proud of the work we did for Indiana homeowners,
+        and we're grateful for the trust you placed in us.
+      </p>
+    </section>
+
+    <hr class="divider" />
+
+    <div class="legal-firewall">
+      <h3>Important Disclosure</h3>
+      <p>
+        This website is operated by <strong>Dustin Stohler personally</strong>. It is not affiliated with,
+        operated by, or a product of Stellar Edge Services LLC or OtterQuote.
+        Stohler Roofing was a separate business that has since wound down.
+      </p>
+    </div>
+
+    <section class="otterquote">
+      <h2>Looking for Home Repair Help?</h2>
+      <p>
+        I've been building something new that I think Indiana homeowners will find genuinely useful.
+        OtterQuote is a platform that connects homeowners with qualified local contractors who
+        compete for your project — so you get real bids without the runaround. If you have a roofing,
+        siding, or exterior repair project, I'd encourage you to take a look.
+      </p>
+      <a class="cta" href="https://otterquote.com" target="_blank" rel="noopener">
+        Visit OtterQuote &rarr;
+      </a>
+    </section>
+
+    <div class="contact">
+      <h3>Questions?</h3>
+      <p>
+        Feel free to reach out directly.<br />
+        <a href="tel:3175019215">Call or text: (317) 501-9215</a>
+      </p>
+    </div>
+
+  </main>
+
+  <footer>
+    &copy; 2024 Stohler Roofing &mdash; All rights reserved.
+  </footer>
+
+</body>
+</html>

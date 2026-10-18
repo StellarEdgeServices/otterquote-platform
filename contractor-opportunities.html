@@ -687,6 +687,9 @@
                       const bid = myBidMap[o.id];
                       if (!bid) return true; // no bid — show normally
                       if (bid.bidStatus === 'expired') return true; // expired — keep, flag below
+                      // gh-2564: a bid the contractor withdrew ('cancelled') is not an active bid. Keep the claim so
+                      // the contractor can re-bid (opening it enters Change Bid mode, which makes the bid live again).
+                      if (bid.bidStatus === 'cancelled') return true;
                       return false; // active bid — exclude
                     });
 

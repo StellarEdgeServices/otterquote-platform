@@ -222,6 +222,19 @@ describe('D-030 cap + D-150 my-bids', () => {
   });
 });
 
+describe('gh-2564 withdrawn bids keep the claim visible for a re-bid', () => {
+  const base = [opp({ id: 'a' }), opp({ id: 'b' })];
+  it('keeps a cancelled bid\'s claim, without the expired flag', () => {
+    const out = applyMyBids(base, { a: { quoteId: 'q-a', bidStatus: 'cancelled' } });
+    expect(out.map((o) => o.id)).toEqual(['a', 'b']);
+    expect(out.find((o) => o.id === 'a')!.hasExpiredBid).toBeUndefined();
+  });
+  it('NEGATIVE CONTROL: an active bid is still excluded', () => {
+    const out = applyMyBids(base, { a: { quoteId: 'q-a', bidStatus: 'active' } });
+    expect(out.map((o) => o.id)).toEqual(['b']);
+  });
+});
+
 describe('applyOppFilters (filters + sort)', () => {
   const list = [
     opp({ id: 'rcv', jobType: 'insurance_rcv', estimatedValue: 10000, distance: 30, trades: ['roofing'] }),

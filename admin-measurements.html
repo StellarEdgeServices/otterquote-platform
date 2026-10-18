@@ -588,6 +588,26 @@ function numOrNull(id) {
   return isNaN(n) ? null : n;
 }
 
+// gh-2105 (batch 2): supabase-js resolves { error: null } on an RLS/filter match of
+// ZERO rows. Every write in saveFulfillment() chains .select('id') and passes the
+// result here, so "no row changed" is a failure, not a silent success.
+function rowsWritten(res) {
+  return !!res && !res.error && Array.isArray(res.data) && res.data.length > 0;
+}
+
+// gh-2105 (#2610 ruling 6051013199): the internal token `zero_rows_updated` is never shown to
+// the admin. The thrown message keeps it (Sentry + console get the raw error); anything that
+// reaches the screen goes through userFacingWriteMessage, which swaps the token for a plain
+// sentence and keeps any "Order saved, but ..." prefix so a partial save is still reported.
+var ZERO_ROW_USER_MESSAGE = 'The record was not updated \u2014 it may have been changed by someone else. Reload and try again.';
+function userFacingWriteMessage(e) {
+  var msg = (e && e.message) || String(e);
+  var i = msg.indexOf('zero_rows_updated');
+  if (i === -1) return msg;
+  var prefix = msg.slice(0, i).replace(/[:\s]+$/, '');
+  return prefix ? prefix + '. ' + ZERO_ROW_USER_MESSAGE : ZERO_ROW_USER_MESSAGE;
+}
+
 async function saveFulfillment() {
   var row = state.current;
   if (!row) return;
@@ -673,14 +693,16 @@ async function saveFulfillment() {
       patch.fulfilled_by = state.user ? state.user.id : null;
     }
 
-    var upd = await sb.from('hover_orders').update(patch).eq('id', row.id);
+    var upd = await sb.from('hover_orders').update(patch).eq('id', row.id).select('id');
     if (upd.error) throw new Error(upd.error.message);
+    if (!rowsWritten(upd)) throw new Error('zero_rows_updated: hover_orders ' + row.id + ' (order not saved or delivered)');
 
     // Mirror onto the claim so every existing reader — bid form, opportunity
     // card, auto-bid math — sees a hand-entered report exactly as a parsed one.
     if (anyNumber && row.claim_id) {
-      var cUpd = await sb.from('claims').update({ hover_measurements: m }).eq('id', row.claim_id);
+      var cUpd = await sb.from('claims').update({ hover_measurements: m }).eq('id', row.claim_id).select('id');
       if (cUpd.error) throw new Error('Order saved, but writing measurements to the claim failed: ' + cUpd.error.message);
+      if (!rowsWritten(cUpd)) throw new Error('Order saved, but writing measurements to the claim failed: zero_rows_updated: claims ' + row.claim_id);
     }
 
     // [gh-1411 / D-317 cl. 4-5] Delivering the paid contractor upgrade is the
@@ -699,10 +721,15 @@ async function saveFulfillment() {
     // separate, separately-approved (D-182) step, and a claim delivered
     // before it lands must not have its order un-delivered by this failing.
     if (window.MeasurementShape.shouldFlipMeasurementShapeOnDeliver(row, delivering)) {
-      var shapeUpd = await sb.from('claims').update({ measurement_shape: 'full' }).eq('id', row.claim_id);
+      var shapeUpd = await sb.from('claims').update({ measurement_shape: 'full' }).eq('id', row.claim_id).select('id');
       if (shapeUpd.error) {
         console.error('[gh-1411] measurement_shape flip failed (migration not yet applied?)', shapeUpd.error);
         alert('Order delivered, but marking the claim as fully detailed failed: ' + shapeUpd.error.message + '. Re-open and Save again to retry once the measurement_shape column exists.');
+      } else if (!rowsWritten(shapeUpd)) {
+        // gh-2105: error:null with zero rows is the silent miss -- the paid upgrade would read as delivered
+        // while every other contractor still sees the basic report. Same alert as the error branch.
+        console.error('[gh-2105] measurement_shape flip matched zero rows', row.claim_id);
+        alert('Order delivered, but marking the claim as fully detailed failed. ' + ZERO_ROW_USER_MESSAGE);
       }
     }
 
@@ -740,7 +767,8 @@ async function saveFulfillment() {
         extra: { order_id: row.id, claim_id: row.claim_id }
       });
     }
-    err.textContent = e.message || String(e);
+    console.error('[gh-2105] saveFulfillment failed', e);
+    err.textContent = userFacingWriteMessage(e);
     err.style.display = 'block';
   } finally {
     btn.disabled = false;

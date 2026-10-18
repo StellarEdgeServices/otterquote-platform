@@ -5,7 +5,7 @@
 #    or a local `initdb -U postgres`). It creates and drops the database gh2519_fee_lock_proof.
 # Five passes of supabase/tests/gh2519_gh2564_fee_lock_proof.sql in one database:
 #   1 TODAY            production's schema as read on 2026-10-08 (the failing controls)
-#   2 AFTER-gh2519     + supabase/migrations_drafts/gh2519_quotes_server_set_fee.sql
+#   2 AFTER-gh2519     + supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql
 #   3 AFTER-both       + supabase/migrations_drafts/gh2564_quotes_selected_price_lock.sql
 #   4 ROLLBACK-gh2564  + its rollback   (must print exactly what pass 2 printed)
 #   5 ROLLBACK-gh2519  + its rollback   (must print exactly what pass 1 printed)
@@ -14,8 +14,8 @@
 # again, W3 W4 RB2, and the live selected bid still blocks, RB3; the partial unique index, N1; the terms of a selected bid
 # are locked, T1-T7) and the two apply gates of the gh2564 draft hold (it raises without gh2519, and while rescind-bid's
 # bid_status value is refused by quotes_bid_status_check), and the two order guards hold (the gh2519 rollback and a re-apply of the gh2519
-# draft refuse while the gh2564 lock is applied). Pass 3 applies a copy of the gh2564 draft whose one constant
-# c_rescind_bid_writes is set to 'cancelled', the value a repaired rescind-bid would write: the draft itself is untouched.
+# draft refuse while the gh2564 lock is applied). Pass 3 applies the gh2564 draft as it is (its constant c_rescind_bid_writes is 'cancelled', the value the repaired rescind-bid writes, PR #2720);
+# the gate test uses a copy whose constant is the old refused value 'rescinded'. The drafts carry the gh-2626 quote and accept_bid() lines (#2519 comment 6156383757); the composition with gh2626 itself is gh2519_gh2564_gh2626_compose_proof_run.sh.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 OUT="${1:-$(mktemp -d)}"; DB=gh2519_fee_lock_proof; mkdir -p "$OUT"
@@ -31,15 +31,16 @@ gate() { # <label> <file> <message that the apply must raise>: the file must fai
 rc=0
 pass 1-TODAY
 gate "gh2564 without gh2519" "$D/gh2564_quotes_selected_price_lock.sql" "quotes_platform_fee_for(uuid, uuid) does not exist"
-apply "$D/gh2519_quotes_server_set_fee.sql";                 pass 2-AFTER-gh2519
-gate "gh2564 while rescind-bid is refused by quotes_bid_status_check" "$D/gh2564_quotes_selected_price_lock.sql" "rescind-bid writes bid_status 'rescinded'"
-sed "s/c_rescind_bid_writes CONSTANT text := 'rescinded'/c_rescind_bid_writes CONSTANT text := 'cancelled'/" "$D/gh2564_quotes_selected_price_lock.sql" > "$OUT/gh2564_with_cancelled.sql"
-cmp -s "$OUT/gh2564_with_cancelled.sql" "$D/gh2564_quotes_selected_price_lock.sql" && { echo "runner: the gh2564 constant was not found to replace"; rc=1; }
-apply "$OUT/gh2564_with_cancelled.sql";                      pass 3-AFTER-both
+apply "supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql";                 pass 2-AFTER-gh2519
+# the gate fires for a rescind value the constraint refuses: a copy of the draft whose one constant is the old, refused value 'rescinded'
+sed "s/c_rescind_bid_writes CONSTANT text := 'cancelled'/c_rescind_bid_writes CONSTANT text := 'rescinded'/" "$D/gh2564_quotes_selected_price_lock.sql" > "$OUT/gh2564_with_rescinded.sql"
+cmp -s "$OUT/gh2564_with_rescinded.sql" "$D/gh2564_quotes_selected_price_lock.sql" && { echo "runner: the gh2564 constant was not found to replace"; rc=1; }
+gate "gh2564 while rescind-bid is refused by quotes_bid_status_check" "$OUT/gh2564_with_rescinded.sql" "rescind-bid writes bid_status 'rescinded'"
+apply "$D/gh2564_quotes_selected_price_lock.sql";             pass 3-AFTER-both
 # order hazards (review 6051777895 finding 7): with the gh2564 lock applied, both the gh2519 rollback and a re-apply of the gh2519 draft
 # would silently remove it; each must refuse and change nothing (pass 4 below, which must still equal pass 2, proves nothing changed).
 gate "gh2519 rollback while gh2564 is applied" "$RB/gh2519_quotes_server_set_fee_rollback.sql" "gh-2564 (the selected-bid price lock, D-369) is applied"
-gate "gh2519 draft re-applied while gh2564 is applied" "$D/gh2519_quotes_server_set_fee.sql" "gh-2564 (the selected-bid price lock, D-369) is applied"
+gate "gh2519 draft re-applied while gh2564 is applied" "supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql" "gh-2564 (the selected-bid price lock, D-369) is applied"
 apply "$RB/gh2564_quotes_selected_price_lock_rollback.sql";  pass 4-ROLLBACK-gh2564
 apply "$RB/gh2519_quotes_server_set_fee_rollback.sql";       pass 5-ROLLBACK-gh2519
 diff -q "$OUT/2-AFTER-gh2519.txt" "$OUT/4-ROLLBACK-gh2564.txt" >/dev/null && echo "ROLLBACK gh2564: output identical to AFTER-gh2519" || { echo "ROLLBACK gh2564: OUTPUT DIFFERS"; rc=1; }
@@ -65,16 +66,26 @@ OLD="1-TODAY 5-ROLLBACK-gh2519"; NEW="2-AFTER-gh2519 3-AFTER-both 4-ROLLBACK-gh2
 # the two exits (re-review 6051423781 finding 1)
 for pn in $OLD $NEW; do
   has $pn W1 "REJECTED 23514"; has $pn W2 "rows=1 ACCEPTED"; has $pn RB1 "REJECTED 23514"
-  has $pn W3 "rows=1 ACCEPTED"; has $pn W4 "rows=1 ACCEPTED / rows=1 ACCEPTED"
-  has $pn RB2 "rows=1 ACCEPTED / rows=1 ACCEPTED / rows=1 ACCEPTED"; has $pn RB2 "selected AND active=1"
+  has $pn W3 "rows=1 ACCEPTED"
   has $pn N2 "rows=1 ACCEPTED / rows=1 ACCEPTED / rows=1 ACCEPTED"; has $pn N2 "selected AND active=1"
+done
+for pn in $OLD; do has $pn W4 "rows=1 ACCEPTED / rows=1 ACCEPTED"; has $pn RB2 "rows=1 ACCEPTED / rows=1 ACCEPTED / rows=1 ACCEPTED"; has $pn RB2 "selected AND active=1"; done
+# gh-2626 lines carried into the gh2519 and gh2564 drafts (#2519 comment 6156383757). W4, RB2 and RP2 changed on purpose:
+#  W4  the owner can no longer select a declined bid (gh-2626 "only a submitted, active bid can be selected"); with the gh2626 claims guard applied
+#      first the claims write is refused before it (gh2519_gh2564_gh2626_compose_proof_run.sh, pass A2).
+#  RB2 RP2  a service_role rescind of a SELECTED bid leaves the claim awarded, and accept_bid() now refuses a claim that is not active or bidding
+#      (gh-2626 DECIDED 2, claim_not_awardable). rescind-bid itself refuses a selected bid today (index.ts L177-193, routed to support), so this
+#      is reachable only by service_role; what a rescind after selection does to the claim is not decided (D-369): QUESTION on #2564.
+for pn in $NEW; do
+  has $pn W4 "REJECTED 42501 quotes: only a submitted, active bid can be selected by the claim owner (gh-2626)"
+  has $pn RB2 "REJECTED P0001 claim_not_awardable"; has $pn RB2 "selected AND active=0"
 done
 # P1 and P2 (re-review 6051423781 finding 1, blocking): after a re-award the claim has exactly ONE row with status = 'selected',
 # whatever its bid_status, because production's signing, charge and completion code reads the winner as status = 'selected' alone.
 # Failing controls: today's schema, the schema after the rollback, and the previous head (94d01006) end with 2.
 for pn in $NEW; do
   has $pn RP1 "rows=1 ACCEPTED"; has $pn RP1 "selected bids (any bid_status)=1"; has $pn RP1 "status=selected rows=1"; has $pn RP1 "qw=declined/expired ql=selected/active"
-  has $pn RP2 "rows=1 ACCEPTED / rows=1 ACCEPTED / rows=1 ACCEPTED"; has $pn RP2 "selected bids (any bid_status)=1"; has $pn RP2 "status=selected rows=1"
+  has $pn RP2 "REJECTED P0001 claim_not_awardable"; has $pn RP2 "selected bids (any bid_status)=1"; has $pn RP2 "status=selected rows=1"
 done
 for pn in $OLD; do has $pn RP1 "status=selected rows=2"; has $pn RP2 "status=selected rows=2"; done
 for pn in $OLD; do   # failing controls: today two selected bids stand

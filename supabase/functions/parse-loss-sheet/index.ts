@@ -29,6 +29,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts"; // gh-2105 batch 13 (remaining sites)
 
 const FUNCTION_NAME = "parse-loss-sheet";
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
@@ -463,7 +464,7 @@ serve(async (req) => {
     const deductibleAmount = parsed.summary?.deductible ?? null;
     const carrierName = parsed.carrier_name ?? null;
 
-    const { error: updateError } = await supabase
+    const { data: storedRows, error: updateError } = await supabase
       .from("claims")
       .update({
         parsed_line_items: parsed,
@@ -474,8 +475,18 @@ serve(async (req) => {
         deductible_amount: deductibleAmount,
         carrier_name: carrierName,
       })
-      .eq("id", claim_id);
+      .eq("id", claim_id)
+      .select("id");
 
+    // gh-2105 (batch 2, decision a): the RCV/ACV/deductible columns feed the contract; a
+    // zero-row match must be the same 500 as a DB error, not a "parsed OK" 200.
+    if (!updateError && !checkRowsWritten(storedRows).wroteRows) {
+      console.error(zeroRowWriteMessage(FUNCTION_NAME, `claims parsed loss sheet for claim ${claim_id}`));
+      return new Response(
+        JSON.stringify({ error: "Failed to store parsed data", detail: "no claim row matched (gh-2105)" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     if (updateError) {
       console.error("Failed to update claims table:", updateError);
       return new Response(

@@ -22,6 +22,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import * as Sentry from '@sentry/nextjs';
 import { supabase } from '@/lib/supabase';
 import {
   sendAdjusterEmail,
@@ -168,6 +169,16 @@ export async function sendMeasurementRequest(args: {
 
   const updates = buildAdjusterClaimWriteback({ claim, adjusterName, adjusterEmail, adjusterPhone });
   if (Object.keys(updates).length > 0) {
-    await supabase.from('claims').update(updates).eq('id', claim.id);
+    // gh-2105 batch 4 (a, report-only): the email already went out; a failed or zero-row writeback goes to Sentry + console, flow unchanged.
+    const { data: wbRows, error: wbErr } = await supabase.from('claims').update(updates).eq('id', claim.id).select('id');
+    if (wbErr || !Array.isArray(wbRows) || wbRows.length === 0) {
+      const wbMsg = wbErr ? wbErr.message : 'update_zero_rows: claims (adjuster info)';
+      console.error('[help-measurements] adjuster writeback failed:', wbMsg);
+      Sentry.captureMessage(`[help-measurements] adjuster writeback failed: ${wbMsg}`, {
+        level: 'error',
+        tags: { gh: '2105', site: 'help-measurements' },
+        extra: { claim_id: claim.id },
+      });
+    }
   }
 }

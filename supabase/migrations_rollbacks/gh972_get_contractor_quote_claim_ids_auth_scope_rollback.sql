@@ -1,4 +1,4 @@
--- Rollback for: 20260818214620_gh972_get_contractor_quote_claim_ids_auth_scope.sql
+-- Rollback for: 20260818214025_gh972_get_contractor_quote_claim_ids_auth_scope.sql
 -- GitHub: #972
 -- WARNING: restores the PRE-FIX vulnerable behavior - caller-supplied
 -- p_user_id scoping and anon EXECUTE (claim-ID enumeration). Only run to

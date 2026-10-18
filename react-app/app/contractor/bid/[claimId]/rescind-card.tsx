@@ -17,7 +17,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Card, formatCurrency } from './bid-ui';
 import { BID_COPY } from './copy';
-import { isRescindable, buildRescindRequest } from './utils';
+import { isRescindable, buildRescindRequest, readBidSelectedRefusal } from './utils';
 
 const DASHBOARD_ROUTE = '/contractor/dashboard';
 
@@ -26,6 +26,8 @@ export interface RescindQuote {
   total_price: number | null;
   bid_status: string | null;
   created_at: string | null;
+  /** gh-2564: true when the homeowner already selected this bid; the Rescind control is hidden. */
+  selected?: boolean;
 }
 
 export function RescindCard({ contractorId, quote }: { contractorId: string | null; quote: RescindQuote | null }) {
@@ -33,9 +35,13 @@ export function RescindCard({ contractorId, quote }: { contractorId: string | nu
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bidSelected, setBidSelected] = useState(false);
 
   if (!quote) {
     return <Card title="Rescind Bid"><div className="oqb-summary-k">{BID_COPY.rescind.noActiveBid}</div></Card>;
+  }
+  if (quote.selected || bidSelected) {
+    return <Card title="Rescind Bid"><div className="oqb-err">{BID_COPY.rescind.bidSelected}</div></Card>;
   }
   if (!isRescindable(quote.bid_status)) {
     return <Card title="Rescind Bid"><div className="oqb-err">{BID_COPY.rescind.notRescindable(quote.bid_status || 'unknown')}</div></Card>;
@@ -60,6 +66,9 @@ export function RescindCard({ contractorId, quote }: { contractorId: string | nu
       setDone(true);
       setTimeout(() => router.replace(DASHBOARD_ROUTE), 2500);
     } catch (err) {
+      // gh-2564: the EF refuses a selected / awarded bid with 409 { error: 'bid_selected', message }.
+      const refusal = await readBidSelectedRefusal(err, BID_COPY.rescind.bidSelected);
+      if (refusal) { setBidSelected(true); setBusy(false); return; }
       console.error('Error rescinding bid:', err);
       setError(BID_COPY.rescind.genericError);
       setBusy(false);

@@ -325,6 +325,7 @@ function AdminContractorsContent() {
     try {
       const { error } = await supabase
         .from('platform_alerts_log')
+        // update-no-select-ok: .is('acknowledged_at', null) makes zero rows the EXPECTED result when the alert was already acknowledged (double-click / second admin tab); loadCronHealth() below re-reads the list from the DB (gh-2105 decision b)
         .update({ acknowledged_at: new Date().toISOString() })
         .eq('id', alertId)
         .is('acknowledged_at', null);

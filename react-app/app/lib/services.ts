@@ -293,6 +293,7 @@ async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
     if (logEntry && data?.sid) {
       await supabase
         .from('notifications')
+        // update-no-select-ok: gh-2105 decision b -- best-effort delivery-log enrichment written AFTER the SMS was already sent; a zero-row match only leaves twilio_sid/delivered unset on the notification log row, and nothing reads either column back (no money, consent or retry logic).
         .update({ twilio_sid: data.sid, delivered: true })
         .eq('id', logEntry.id);
     }
@@ -457,6 +458,7 @@ async function findOrCreateAdjuster(
     if (adjuster_name && existing.adjuster_name !== adjuster_name) updates.adjuster_name = adjuster_name;
 
     if (Object.keys(updates).length > 0) {
+      // update-no-select-ok: gh-2105 decision b -- best-effort enrichment of an adjuster knowledge-base row that the caller just read; the function returns that row either way, and a zero-row match (this user may not hold UPDATE on a shared adjuster row) only skips the phone/name refresh.
       await supabase.from('adjusters').update(updates).eq('id', existing.id);
     }
 

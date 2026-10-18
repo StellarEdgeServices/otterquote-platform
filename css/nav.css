@@ -498,3 +498,35 @@
   }
   #support-fab .support-fab-label { display: none; }
 }
+
+/* ── gh-2598 slice 4: header tel link (approved homepage design). Number on wide screens, "Call" button on phones. ── */
+.nav-phone {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 var(--sp-2);
+  color: var(--white);
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.nav-phone:hover { text-decoration: underline; }
+.nav-phone-call { display: none; }
+/* gh-2598-nav-compact-band (REVIEW FAIL 6200529604, M1): the full number crowds the shared header and wraps the brand and nav labels.
+   Signed-in headers are wider than signed-out ones (REVIEW FAIL 6201398978, M1b): with the number back at 1100px they wrapped up to 1119-1159px where main wraps only to 959-999px.
+   769-1199px shows the icon alone (its aria-label carries the number) and tightens the link padding so no page wraps wider than main, signed in or out;
+   the full number returns from 1200px. Measured with real Rubik. tests/gh2598-nav-header-width.mjs pins it (signed-out and signed-in sweeps). */
+@media (min-width: 769px) and (max-width: 1199px) {
+  .nav-phone-num { display: none; }
+  .nav-phone { gap: 0; min-height: 44px; padding: 0 4px; }
+  .nav-links .nav-link { padding-left: 8px; padding-right: 8px; }
+}
+/* /gh-2598-nav-compact-band */
+@media (max-width: 768px) {
+  .nav-phone { margin-left: auto; margin-right: var(--sp-2); padding: 0 14px; border: 2px solid var(--white); border-radius: 6px; }
+  .nav-phone:hover { text-decoration: none; background: rgba(255,255,255,0.08); }
+  .nav-phone-num { display: none; }
+  .nav-phone-call { display: inline; }
+}

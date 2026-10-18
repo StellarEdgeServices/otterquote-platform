@@ -39,7 +39,7 @@ Every client or service writer of `quotes.status` / `quotes.bid_status` at main 
 No owner-side page writes `quotes.bid_status`.
 
 ### Conflict with the other unapplied drafts
-`gh2519_quotes_server_set_fee.sql` and `gh2564_quotes_selected_price_lock.sql` re-create `quotes_guard_homeowner_columns()` (and gh2519 `accept_bid()`) from the same live body without the `gh-2626` lines. Applied after this set they remove those lines. Carry the lines into them first, or apply this set last. After any later migration that touches either function, both of these must return `true`:
+`gh2519_quotes_server_set_fee.sql` and `gh2564_quotes_selected_price_lock.sql` re-create `quotes_guard_homeowner_columns()` (and gh2519 `accept_bid()`) from the same live body without the `gh-2626` lines. They now carry those lines (PR #2737). Apply this set FIRST (gh2626, gh2519, gh2564): applied after gh2519 it would remove the server-set fee and the lock, so the forward and rollback files refuse when `quotes_platform_fee_for(uuid,uuid)` exists. After any later migration that touches either function, both of these must return `true`:
 ```sql
 SELECT prosrc LIKE '%gh-2626%' FROM pg_proc WHERE oid = 'public.accept_bid(uuid,uuid)'::regprocedure;
 SELECT prosrc LIKE '%gh-2626%' FROM pg_proc WHERE oid = 'public.quotes_guard_homeowner_columns()'::regprocedure;

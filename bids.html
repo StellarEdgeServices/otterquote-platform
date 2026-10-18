@@ -610,7 +610,10 @@
         .order('created_at', { ascending: true });
 
       if (!error && data) {
-        bids = data;
+        // gh-2564: a bid the homeowner switched away from is retired as bid_status 'superseded'. It is not
+        // selectable and has no customer wording, so it never enters the list the cards, compare grid and
+        // select handlers read from.
+        bids = data.filter(b => b.bid_status !== 'superseded');
 
         const contractorIds = [...new Set(data.map(b => b.contractor_id).filter(Boolean))];
         if (contractorIds.length) {
@@ -714,6 +717,7 @@
       try {
         await sb
           .from('notifications')
+          // update-no-select-ok: gh-2105 decision b -- read receipt for the bid-updated banner; a zero-row match (notification already read, deleted, or not visible to this user) only leaves the unread badge stale until the next load; read_at is only a display flag for this banner.
           .update({ read_at: new Date().toISOString() })
           .in('id', _bidUpdatedNotifIds);
         _bidUpdatedNotifIds = [];
@@ -1076,7 +1080,8 @@
       const grid = document.getElementById('bidsGrid');
 
       // Only non-expired bids compete for "Best Price" badge
-      const activeBids = bids.filter(b => b.bid_status !== 'expired');
+      // gh-2564: a bid the contractor withdrew ('cancelled') does not compete either.
+      const activeBids = bids.filter(b => b.bid_status !== 'expired' && b.bid_status !== 'cancelled');
       const lowestPrice = activeBids.length > 1
         ? Math.min(...activeBids.map(b => b.total_price || Infinity))
         : Infinity;
@@ -1092,7 +1097,10 @@
       grid.innerHTML = bids.map((bid, idx) => {
         const c = contractors[bid.contractor_id] || {};
         const isExpired = bid.bid_status === 'expired';
-        const isLowest = !isExpired && bid.total_price === lowestPrice && activeBids.length > 1;
+        // gh-2564: 'cancelled' = the contractor withdrew this bid. Shown as withdrawn, dimmed like an expired bid,
+        // never offered Accept or "Request Updated Bid" (the contractor re-bids on their own).
+        const isWithdrawn = bid.bid_status === 'cancelled';
+        const isLowest = !isExpired && !isWithdrawn && bid.total_price === lowestPrice && activeBids.length > 1;
         const initials = (c.company_name || 'C').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
         const avatarHTML = c._resolvedPhotoUrl
           ? `<img src="${c._resolvedPhotoUrl}" alt="${c.company_name}">`
@@ -1112,7 +1120,7 @@
                             currentClaim.job_type === 'repair' ? 'Repair' : 'Project';
 
         // Pre-expiry warning for active bids expiring within 3 days
-        const daysUntilExpiry = (!isExpired && bid.expires_at)
+        const daysUntilExpiry = (!isExpired && !isWithdrawn && bid.expires_at)
           ? Math.ceil((new Date(bid.expires_at) - new Date()) / (1000 * 60 * 60 * 24))
           : null;
         const isExpiringSoon = daysUntilExpiry !== null && daysUntilExpiry <= 3 && daysUntilExpiry > 0;
@@ -1127,6 +1135,10 @@
               <button class="expiry-info-btn" onclick="toggleExpiryTooltip(event)" aria-label="Why do bids expire?">?</button>
               <div class="expiry-tooltip">Contractors can't predict the future. Costs change and crews get busy. To avoid misunderstandings, bids on Otter Quotes expire after 14 days. If you want to move forward with this bid, the contractor will probably renew it at same or similar terms. We just don't want anyone to commit to promises they can't keep. Ask this contractor to renew this bid. If nothing has changed, you'll be able to accept it as soon as it is updated.</div>
             </div>`
+          : '';
+
+        const withdrawnNotice = isWithdrawn
+          ? `<div class="bid-expiry-notice">This contractor withdrew this bid.</div>`
           : '';
 
         // Net-to-contractor transparency line
@@ -1149,6 +1161,9 @@
           if (cs === 'awarded') {
             return `<button class="btn btn-sm btn-ghost" disabled style="opacity:0.4;cursor:not-allowed;">Not Selected</button>`;
           }
+          if (isWithdrawn) {
+            return `<button class="btn btn-sm btn-ghost" disabled style="opacity:0.4;cursor:not-allowed;">Bid Withdrawn</button>`;
+          }
           if (isExpired) {
             return `<button id="renewalBtn-${bid.id}" class="btn btn-sm btn-primary" style="background:var(--amber);" onclick="requestBidRenewal('${bid.id}')">Request Updated Bid</button>`;
           }
@@ -1156,10 +1171,10 @@
         })();
 
         return `
-          <div class="bid-card ${isLowest ? 'lowest-price' : ''} ${isExpired ? 'expired' : ''}" style="animation-delay:${idx * 0.1}s">
+          <div class="bid-card ${isLowest ? 'lowest-price' : ''} ${isExpired || isWithdrawn ? 'expired' : ''}" style="animation-delay:${idx * 0.1}s">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--sp-4);">
               <span style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;background:${jobTypeColor};color:white;padding:4px 10px;border-radius:var(--radius-full);">${jobTypeLabel}</span>
-              ${isExpired ? '<span class="bid-expiry-badge">Expired</span>' : '<span></span>'}
+              ${isExpired ? '<span class="bid-expiry-badge">Expired</span>' : (isWithdrawn ? '<span class="bid-expiry-badge">Withdrawn</span>' : '<span></span>')}
             </div>
 
             <div class="bid-card-header">
@@ -1175,6 +1190,7 @@
 
             ${expiryWarning}
             ${expiryNotice}
+            ${withdrawnNotice}
 
             <!-- ── PRICING ── -->
             <div class="bid-metrics">
@@ -1688,7 +1704,10 @@
       `;
 
       // Select CTA — any contractor can be selected; signing happens after selection
-      document.getElementById('profileSelectCTA').innerHTML = `
+      document.getElementById('profileSelectCTA').innerHTML = bid.bid_status === 'cancelled' ? `
+        <h3>${esc(c.company_name)} withdrew this bid</h3>
+        <p style="color:var(--slate);">This bid can no longer be selected.</p>
+      ` : `
         <h3>Ready to Choose ${esc(c.company_name)}?</h3>
         <p style="color:var(--slate);margin-bottom:var(--sp-6);">Selecting this contractor will begin the contract signing process. The contract will be sent to both you and the contractor for signature. You can switch to another Otter Quotes contractor at no cost up to 3 days before installation.</p>
         <button class="btn btn-primary btn-lg" onclick="selectContractor('${bid.id}')">Select ${esc(c.company_name)}</button>
@@ -1773,6 +1792,15 @@
       if (currentClaim && (currentClaim.status === 'awarded' || currentClaim.status === 'contract_signed')) {
         document.getElementById('modalTitle').textContent = 'Project Already Awarded';
         document.getElementById('modalBody').textContent = 'This project has already been awarded to a contractor.';
+        document.getElementById('modalActions').style.display = 'none';
+        document.getElementById('confirmModal').classList.add('active');
+        return;
+      }
+
+      // gh-2564: a withdrawn bid cannot be accepted, from the card or from the contractor profile.
+      if (bid.bid_status === 'cancelled') {
+        document.getElementById('modalTitle').textContent = 'Bid Withdrawn';
+        document.getElementById('modalBody').textContent = 'This contractor withdrew this bid, so it can no longer be selected.';
         document.getElementById('modalActions').style.display = 'none';
         document.getElementById('confirmModal').classList.add('active');
         return;
@@ -1985,7 +2013,7 @@
         document.getElementById('modalBody').textContent = 'Awarding the project...';
 
         // 1-4. Atomic bid acceptance via SECURITY DEFINER RPC (gh-1293 criterion 5) --
-        // replaces three unbatched .update() calls that could leave a durable half-state
+        // replaces three unbatched row updates (no row-count check) that could leave a durable half-state
         // between steps (see supabase/migrations/20260830192051_v116_accept_bid_rpc.sql).
         const { error: acceptErr } = await sb
           .rpc('accept_bid', { p_claim_id: currentClaim.id, p_quote_id: bidId });
@@ -2234,7 +2262,7 @@
     function renderBidsCompare() {
       const compare = document.getElementById('bidsCompare');
       if (!compare) return;
-      const activeBids = bids.filter(b => b.bid_status !== 'expired');
+      const activeBids = bids.filter(b => b.bid_status !== 'expired' && b.bid_status !== 'cancelled'); // gh-2564
       if (activeBids.length < 2) {
         compare.innerHTML = '<div class="bids-compare-empty">Comparison requires at least 2 active bids. We\'ll switch this on automatically once your second bid arrives.</div>';
         return;
@@ -2301,7 +2329,7 @@
     function refreshBidsViewToggle() {
       const toggle = document.getElementById('bidsViewToggle');
       if (!toggle) return;
-      const activeCount = bids.filter(b => b.bid_status !== 'expired').length;
+      const activeCount = bids.filter(b => b.bid_status !== 'expired' && b.bid_status !== 'cancelled').length; // gh-2564
       toggle.style.display = activeCount >= 2 ? 'flex' : 'none';
     }
 

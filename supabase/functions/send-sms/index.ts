@@ -12,22 +12,22 @@
  *   TWILIO_MESSAGING_SERVICE_SID   ← preferred (A2P / TCR campaign)
  *   TWILIO_PHONE_NUMBER             ← fallback only if messaging service not set
  *
- * ── Auth (D-211 Phase 16/32 — open-relay closure) ─────────────────────────
+ * ── Auth (D-211 Phase 16/32, tightened by gh-1916) ────────────────────────
  * verify_jwt=false at the gateway (preserved) so trusted internal callers
- * (notify-contractors uses the service-role bearer) and logged-in browser
- * callers both work. Authorization is enforced IN-HANDLER: the caller must
- * present EITHER the service-role key OR a valid authenticated-user JWT
- * (auth.getUser). Anonymous / anon-key-only / missing-token callers are
- * rejected — this closes the prior unauthenticated open-relay (86e207gey).
- * NOTE: for authenticated end-user callers the recipient is still caller-
- * supplied; claim-scoped recipient derivation (selected contractor + claimant)
- * is deferred to the SMS re-enablement work, gated behind the Twilio A2P/TCR
- * vendor remediation. Tracked — do not ship user-facing SMS live without it.
+ * (notify-contractors, process-dunning, send-contractor-nudge use the
+ * service-role bearer) reach the handler. Authorization is enforced IN-HANDLER
+ * and is SERVICE-ROLE ONLY: the relay takes a caller-supplied recipient, so a
+ * logged-in end user must not be able to text any number through the A2P
+ * campaign. No token / anon key / invalid token -> 401; a valid end-user JWT
+ * -> 403; the service-role key -> proceeds. (Before gh-1916 any authenticated
+ * user JWT was accepted; no app code relied on that: the only browser caller,
+ * services.sendAdjusterFollowup, has no call sites and already treats an
+ * error as "not sent".)
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
-import { resolveAuthorization, resolveTwilioSender } from "./sender-selection.ts";
+import { authorizeServiceOnly, resolveTwilioSender } from "./sender-selection.ts";
 
 const FUNCTION_NAME = "send-sms";
 
@@ -63,12 +63,9 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
-    // ── AUTH GATE (D-211 Phase 32 — close the open SMS relay, 86e207gey) ────
-    // Require EITHER the service-role key (trusted internal callers, e.g.
-    // notify-contractors) OR a valid authenticated-user JWT. Reject anyone
-    // presenting no token or only the public anon key.
+    // ── AUTH GATE (gh-1916: service-role only; see the header) ──────────────
     const authHeader = req.headers.get("Authorization") || "";
-    const authDecision = await resolveAuthorization(
+    const authDecision = await authorizeServiceOnly(
       authHeader,
       supabaseKey,
       async (token) => {
@@ -77,12 +74,12 @@ serve(async (req) => {
       },
     );
 
-    if (!authDecision.authorized) {
-      console.warn(`[${FUNCTION_NAME}] Unauthorized call rejected (no valid user/service token).`);
+    if (!authDecision.ok) {
+      console.warn(`[${FUNCTION_NAME}] Call rejected (${authDecision.status}): not a service-role caller.`);
       return new Response(
-        JSON.stringify({ error: "Authentication required" }),
+        JSON.stringify({ error: authDecision.error }),
         {
-          status: 401,
+          status: authDecision.status,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );

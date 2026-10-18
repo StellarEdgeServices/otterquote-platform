@@ -98,7 +98,9 @@ import {
   signPartnerOptOutToken,
 } from "./optout.ts";
 import { isCronAuthorized } from "./cron-auth.ts";
+import { markResult } from "./mark-result.ts"; // gh-2105 batch 13
 import { ADMIN_EMAIL, buildUncertainAlertEmail } from "./admin-alert.ts";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts"; // gh-2105 batch 13 (remaining sites)
 import type { UncertainStage } from "./run-sweep.ts";
 
 const FUNCTION_NAME = "send-partner-onboarding";
@@ -323,15 +325,16 @@ serve(async (req: Request) => {
       return { claimed: data === true };
     },
     markSent: async (partnerId, stage, mailgunId) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("partner_onboarding_sends")
         .update({ status: "sent", mailgun_id: mailgunId, error: null })
         .eq("partner_id", partnerId)
-        .eq("stage", stage);
-      return { error: error ? { code: error.code, message: error.message } : null };
+        .eq("stage", stage)
+        .select("partner_id");
+      return markResult(error, data, `partner_onboarding_sends status=sent for partner ${partnerId} stage ${stage}`);
     },
     markFailed: async (partnerId, stage, errMessage, terminal) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("partner_onboarding_sends")
         // gh-2154 P-4 switch-on hardening (item (3)): terminal_failure=true
         // for a permanent 4xx rejection makes this row permanently
@@ -343,8 +346,9 @@ serve(async (req: Request) => {
         // false).
         .update({ status: "failed", error: errMessage, terminal_failure: terminal === true })
         .eq("partner_id", partnerId)
-        .eq("stage", stage);
-      return { error: error ? { code: error.code, message: error.message } : null };
+        .eq("stage", stage)
+        .select("partner_id");
+      return markResult(error, data, `partner_onboarding_sends status=failed for partner ${partnerId} stage ${stage}`);
     },
     alertAdminUncertain: async (stages) => {
       if (!mailgunApiKey) {
@@ -385,11 +389,16 @@ serve(async (req: Request) => {
             .from("partner_onboarding_sends")
             .update({ uncertain_alerted_at: nowIso })
             .eq("partner_id", s.partner_id)
-            .eq("stage", s.stage),
+            .eq("stage", s.stage)
+            .select("partner_id"),
         ),
       );
-      const firstError = results.find((r) => r.error)?.error;
-      return { error: firstError ? { code: firstError.code, message: firstError.message } : null };
+      // gh-2105 (batch 2): a zero-row stamp would re-page the admin for the same row next tick.
+      for (const r of results) {
+        const res = markResult(r.error, r.data, "partner_onboarding_sends.uncertain_alerted_at");
+        if (res.error) return res;
+      }
+      return { error: null };
     },
     markSkipped: async (partnerId, stage, reason) => {
       // Fresh INSERT (backlog-superseded stages are never claimed first —
