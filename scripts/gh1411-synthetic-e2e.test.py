@@ -101,5 +101,77 @@ class T(unittest.TestCase):
         self.assertTrue(syn.check_after({"status": "awaiting_fulfillment"}, {"measurement_shape": None}))
 
 
+SECRETISH = "sb_secret_TESTONLYabcdef0123456789"
+JWTISH = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.TESTONLYsig"
+
+
+class SecretHygiene(unittest.TestCase):
+    """gh-2582: no secret-shaped value in argv, a URL, the docstring, or printed output."""
+
+    def test_argv_with_secret_shaped_value_refused(self):  # NEGATIVE CONTROL
+        for argv in (["--execute", "--ruling", "6050104990", SECRETISH], [JWTISH],
+                     ["SUPABASE_SERVICE_ROLE_KEY=" + SECRETISH], ["--key", SECRETISH], ["--ruling", SECRETISH]):
+            self.assertTrue(syn.bad_argv(argv), argv)
+            self.assertNotIn(SECRETISH, repr(syn.bad_argv(argv)))
+
+    def test_allowed_argv_passes(self):
+        self.assertEqual(syn.bad_argv(["--execute", "--ruling", "6050104990"]), [])
+        self.assertEqual(syn.bad_argv([]), [])
+
+    def test_main_refuses_secret_argv_without_echo(self):
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = syn.main(["--execute", SECRETISH])
+        self.assertEqual(rc, 1)
+        self.assertNotIn(SECRETISH, buf.getvalue())
+
+    def test_docstring_usage_has_no_inline_secret(self):
+        import re
+        self.assertIsNone(re.search(r"SUPABASE_SERVICE_ROLE_KEY=\S", syn.__doc__ or ""))
+        self.assertIsNone(re.search(r"SUPABASE_ACCESS_TOKEN=\S", syn.__doc__ or ""))
+
+    def test_key_never_in_url_or_output(self):
+        seen = []
+
+        class R:
+            def __init__(s, body): s.body = body
+            def __enter__(s): return s
+            def __exit__(s, *a): return False
+            def read(s): return s.body
+
+        def opener(req, timeout=0):
+            seen.append(req.full_url)
+            return R(b"[]")
+        rest = syn.Rest("https://abc.supabase.co", SECRETISH, opener)
+        rest.get("claims", "id", {"id": "1"})
+        rest.patch  # noqa: B018
+        self.assertTrue(seen and all(SECRETISH not in u for u in seen))
+
+    def test_load_key_precedence_and_management_api_url_has_no_token(self):
+        self.assertEqual(syn.load_service_key({"SUPABASE_SERVICE_ROLE_KEY": SECRETISH}), SECRETISH)
+        seen = []
+
+        class R:
+            def __init__(s, body): s.body = body
+            def __enter__(s): return s
+            def __exit__(s, *a): return False
+            def read(s): return s.body
+
+        def opener(req, timeout=0):
+            seen.append(req.full_url)
+            return R(('[{"name":"anon","api_key":"x"},{"name":"service_role","api_key":"%s"}]' % SECRETISH).encode())
+        env = {"SUPABASE_ACCESS_TOKEN": "sbp_TESTONLYtoken0123456789", "SUPABASE_URL": "https://abcdefgh.supabase.co"}
+        self.assertEqual(syn.load_service_key(env, opener), SECRETISH)
+        self.assertTrue(all("sbp_TESTONLY" not in u and SECRETISH not in u for u in seen))
+        self.assertIsNone(syn.load_service_key({"SUPABASE_URL": "https://abcdefgh.supabase.co"}, opener))
+
+    def test_source_has_no_secret_on_cli_patterns(self):
+        import re
+        src = (HERE / "gh1411-synthetic-e2e.py").read_text()
+        self.assertIsNone(re.search(r"(eyJ[A-Za-z0-9_-]{10,}\.|sb_secret_|sbp_[A-Za-z0-9]{10,})", src))
+        self.assertNotIn("sys.argv[", src.replace("main(sys.argv[1:])", ""))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

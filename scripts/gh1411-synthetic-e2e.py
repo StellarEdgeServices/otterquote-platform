@@ -21,10 +21,15 @@ email), press the buy panel, touch contractor 986ce2b6, insert a bid, or write a
 other than the two named above. It only talks to PostgREST at SUPABASE_URL.
 It does NOT prove: the admin page's own fulfilment path, a real vendor report, a real payment.
 
-USAGE (service-role key from the environment, never printed):
-  SUPABASE_URL=https://<ref>.supabase.co SUPABASE_SERVICE_ROLE_KEY=... \\
-    python3 scripts/gh1411-synthetic-e2e.py            # plan: GETs only
-  ... python3 scripts/gh1411-synthetic-e2e.py --execute --ruling 6050104990
+USAGE (gh-2582: a secret is never a command-line argument, a URL or printed output):
+  The script accepts ONLY --execute and --ruling <digits>. The service-role key is loaded,
+  in this order, from: (a) env SUPABASE_SERVICE_ROLE_KEY, (b) the file named by env
+  SUPABASE_SERVICE_ROLE_KEY_FILE, (c) the Supabase Management API api-keys call, using env
+  SUPABASE_ACCESS_TOKEN (Doppler otterquote/prd holds that token but no service-role key).
+  Set the variable from a non-echoing source (a Doppler/secret-store read inside a shell
+  variable, or a mode-600 file); never type a value on a command line.
+    SUPABASE_URL=https://<ref>.supabase.co python3 scripts/gh1411-synthetic-e2e.py     # plan: GETs only
+    SUPABASE_URL=... python3 scripts/gh1411-synthetic-e2e.py --execute --ruling 6050104990
 """
 import json
 import os
@@ -145,6 +150,47 @@ class Rest:
         return rows[0]
 
 
+def bad_argv(argv):
+    """gh-2582: only --execute and --ruling <digits> may appear on the command line.
+    Anything else (a key, a token, KEY=value, a URL) is refused WITHOUT being echoed."""
+    bad = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--execute":
+            i += 1
+        elif a == "--ruling" and i + 1 < len(argv) and argv[i + 1].isdigit():
+            i += 2
+        else:
+            bad.append("argument #%d" % (i + 1))
+            i += 1
+    return bad
+
+
+def load_service_key(environ, opener=urllib.request.urlopen):
+    """Return the service-role key from env, then a file, then the Management API. Never prints it."""
+    key = (environ.get("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
+    if key:
+        return key
+    path = environ.get("SUPABASE_SERVICE_ROLE_KEY_FILE")
+    if path:
+        with open(path) as f:
+            key = f.read().strip()
+        if key:
+            return key
+    token, url = (environ.get("SUPABASE_ACCESS_TOKEN") or "").strip(), environ.get("SUPABASE_URL") or ""
+    host = url.replace("https://", "").split("/")[0]
+    ref = host.split(".")[0] if host.endswith(".supabase.co") else ""
+    if token and ref:
+        req = urllib.request.Request("https://api.supabase.com/v1/projects/%s/api-keys?reveal=true" % ref,
+                                     headers={"Authorization": "Bearer " + token, "Accept": "application/json"})
+        with opener(req, timeout=30) as r:
+            for k in json.loads(r.read().decode() or "[]"):
+                if k.get("name") == "service_role" and k.get("api_key"):
+                    return k["api_key"]
+    return None
+
+
 def read_state(rest):
     orders = [o for o in rest.get("hover_orders", ORDER_COLS, {"claim_id": CLAIM_ID})
               if str(o.get("id", "")).startswith(ORDER_PREFIX)]
@@ -187,11 +233,21 @@ def run(rest, execute, ruling, now_iso, out=print):
 
 
 def main(argv):
+    bad = bad_argv(argv)
+    if bad:
+        print("REFUSED: unexpected command-line " + ", ".join(bad) + " (values not shown). Secrets come from the environment only (gh-2582).")
+        return 1
     execute = "--execute" in argv
     ruling = argv[argv.index("--ruling") + 1] if "--ruling" in argv and argv.index("--ruling") + 1 < len(argv) else None
-    url, key = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    url = os.environ.get("SUPABASE_URL")
+    try:
+        key = load_service_key(os.environ) if url else None
+    except Exception as e:
+        print("could not load the service-role key (%s; no value shown)" % type(e).__name__)
+        return 1
     if not url or not key:
-        print("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required (read from the environment, never printed)")
+        print("SUPABASE_URL and a service-role key source are required: env SUPABASE_SERVICE_ROLE_KEY, "
+              "env SUPABASE_SERVICE_ROLE_KEY_FILE, or env SUPABASE_ACCESS_TOKEN (never printed)")
         return 1
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return run(Rest(url, key), execute, ruling, now_iso)
