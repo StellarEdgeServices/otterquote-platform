@@ -25,7 +25,7 @@ import {
 // being SILENT: an alert lets an operator notice and re-point the record
 // instead of the pointer just vanishing into a zero-row no-op.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
-import { homeownerTextForContractor } from "../_shared/homeowner-text-redact.ts";
+import { redactContactOrRefuse, RedactionUnavailableError } from "../_shared/homeowner-text-redact.ts";
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 // gh-1314: refuse a labeled sign/init/date tag BEFORE /v1/document/send (BoldSign builds it silently-broken).
 import { LabeledSignTagError, preflightTemplateTags } from "./tag-preflight.ts";
@@ -2196,11 +2196,20 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
       ];
       // [gh-2559 / D-390] The Scope of Work is created at selection, before the Platform Fee clears. The notes the homeowner typed print on it
       // for the contractor; phone-shaped and e-mail-shaped text is removed (server side, public.d390_redact_contact) until
-      // claims.platform_fee_charged IS TRUE. Fails closed: if the redaction cannot run, the notes are withheld, not printed.
+      // claims.platform_fee_charged IS TRUE. Fails closed by REFUSING: if the redaction cannot run, RedactionUnavailableError escapes this
+      // block (see the catch below) and no envelope is built, created or sent. No marker text is ever printed on the document.
       const d390FeeCollected = claimData?.platform_fee_charged === true;
-      const d390SowNotes = await homeownerTextForContractor(supabase, claimData?.homeowner_notes ?? null, d390FeeCollected);
+      const d390SowNotes = await redactContactOrRefuse(supabase, claimData?.homeowner_notes ?? null, d390FeeCollected);
+      // project_confirmation: the SOW reads homeownerNotes and workNotBeingDone; the form saves projectNotes and exclusions (key mismatch, not
+      // changed here). All four free-text keys are wrapped, so aligning the keys later cannot print unredacted text.
       const d390Pc = claimData?.project_confirmation
-        ? { ...claimData.project_confirmation, homeownerNotes: await homeownerTextForContractor(supabase, claimData.project_confirmation.homeownerNotes ?? null, d390FeeCollected) }
+        ? {
+          ...claimData.project_confirmation,
+          homeownerNotes: await redactContactOrRefuse(supabase, claimData.project_confirmation.homeownerNotes ?? null, d390FeeCollected),
+          workNotBeingDone: await redactContactOrRefuse(supabase, claimData.project_confirmation.workNotBeingDone ?? null, d390FeeCollected),
+          projectNotes: await redactContactOrRefuse(supabase, claimData.project_confirmation.projectNotes ?? null, d390FeeCollected),
+          exclusions: await redactContactOrRefuse(supabase, claimData.project_confirmation.exclusions ?? null, d390FeeCollected)
+        }
         : null;
       scopeOfWorkBase64 = generateRetailScopeOfWorkPdf({
         homeownerName,
@@ -2255,6 +2264,11 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
       });
       console.log(`Retail Scope of Work PDF generated for claim ${claim_id}`);
     } catch (sowErr) {
+      // gh-2559 / D-390: a redaction that cannot run is not a "continue without SOW" case; refuse, create nothing, send nothing.
+      if (sowErr instanceof RedactionUnavailableError) {
+        console.error("gh-2559 D-390: refusing to build the envelope, redaction unavailable:", sowErr.message);
+        throw sowErr;
+      }
       console.error("Retail SOW PDF generation failed (non-fatal, continuing without SOW):", sowErr);
       scopeOfWorkBase64 = null;
     }
@@ -3106,6 +3120,18 @@ serve(async (req)=>{
         violations: error.violations.map((v) => ({ tag: v.tag, label: v.label, fixed_tag: v.fixedTag }))
       }), {
         status: error.statusCode,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json"
+        }
+      });
+    }
+    if (error instanceof RedactionUnavailableError) {
+      // gh-2559 / D-390: raised before /v1/document/send; nothing was created or sent. Machine code only, no customer-facing wording.
+      return new Response(JSON.stringify({
+        error: error.code
+      }), {
+        status: 503,
         headers: {
           ...corsHeaders,
           "Content-Type": "application/json"

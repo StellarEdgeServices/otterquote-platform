@@ -9,10 +9,10 @@ Proof: `supabase/tests/gh2559_d390_redact_proof_run.sh` (throwaway Postgres only
 | # | surface | path | before this PR | after this PR |
 |---|---|---|---|---|
 | 1 | notes box on the contractor's pages | `claims.homeowner_notes` through `public.bidder_claim_summary`; its selected-contractor branch returned the raw column (comment in the view: "the selected contractor reads it as typed") | as typed | redacted until `platform_fee_charged IS TRUE` (view re-created, one clause) |
-| 2 | Scope of Work PDF | `create-docusign-envelope` printed `claims.homeowner_notes` (and `project_confirmation.homeownerNotes`) under NOTES. The envelope is created at selection, before the fee | as typed | redacted through `public.d390_redact_contact` until the fee; fails closed (notes withheld if the call fails) |
+| 2 | Scope of Work PDF | `create-docusign-envelope` printed `claims.homeowner_notes` (and `project_confirmation.homeownerNotes`) under NOTES. The envelope is created at selection, before the fee | as typed | redacted through `public.d390_redact_contact` until the fee; if the call fails the function refuses to build the envelope (creates and sends nothing; no marker text is printed). The four free-text keys of `project_confirmation` (`homeownerNotes`, `workNotBeingDone`, `projectNotes`, `exclusions`) are all wrapped |
 | 3 | message thread, pages | `contractor-dashboard.html` and `react-app/.../Messaging.tsx` read `public.messages` | as typed | read `public.contractor_thread_messages` (redacted body) |
 | 4 | message thread, PostgREST | a selected contractor can call `/messages` directly | as typed | restrictive policy `d390_homeowner_text_prefee`: no homeowner-sent row through the table before the fee |
-| 5 | new-message e-mail to the contractor | `send-message-notification` put the first 200 characters of the homeowner's message in the e-mail, at status "selected" (before the fee) | as typed | preview built from the redacted body; fails closed |
+| 5 | new-message e-mail to the contractor | `send-message-notification` put the first 200 characters of the homeowner's message in the e-mail, at status "selected" (before the fee) | as typed | preview built from the redacted body; if the call fails the preview is `[removed]`, the success-path token |
 
 ## 2. Design
 
@@ -50,7 +50,7 @@ Blast radius today: no real claim or message changes what any contractor sees. T
 
 ## 5. RESIDUALS (not closed here; each named)
 
-1. **Base claims row.** The selected contractor can still read `claims.homeowner_notes` and `claims.urgency_reason` through PostgREST `/claims` (one login role serves homeowner and contractor; RLS cannot hide a column; the storage and message policies read `claims` under the caller's RLS so the selected-contractor SELECT policy cannot simply be dropped). No page reads them from the base row. The proof row P14 records this as "still as typed". Closing it needs a split of the notes into a table the contractor policy does not reach, or definer helpers in those policies: a separate decision.
+1. **Base claims row.** The selected contractor can still read `claims.homeowner_notes`, `claims.urgency_reason` and `claims.project_confirmation` (its `homeownerNotes`, `workNotBeingDone`, `projectNotes` and `exclusions` keys) through PostgREST `/claims` (one login role serves homeowner and contractor; RLS cannot hide a column; the storage and message policies read `claims` under the caller's RLS so the selected-contractor SELECT policy cannot simply be dropped). No page reads them from the base row. Follow-up #2881. The proof row P14 records this as "still as typed". Closing it needs a split of the notes into a table the contractor policy does not reach, or definer helpers in those policies: a separate decision.
 2. Web addresses and other contact channels ("find me on Facebook") are not redacted; D-390 names phone and e-mail. Same posture as D-371: best-effort pattern matching.
 3. The Scope of Work goes to the homeowner too; she sees the redacted notes on her own copy before the fee (her own typed notes are unchanged on every other screen).
 4. `project_notes` in `autoPopulateFields` (project-confirmation DocuSign fields) is not changed; that document is created after the contract. Unverified against production timing.
