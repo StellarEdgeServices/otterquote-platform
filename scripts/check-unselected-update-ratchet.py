@@ -86,7 +86,7 @@ BASELINE: dict[str, int] = {
     "admin-measurements.html": 0,  # gh-2105 batch 13: fixed (see PR body)
     "admin-referrals.html": 0,  # gh-2105 batch 12: 3 fixed (a), 1 comment reworded
     "admin-template-review.html": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
-    "bids.html": 1,  # gh-2105 batch 14: read receipt annotated (b); the 1 left is a comment mention (:2015)
+    "bids.html": 0,  # gh-2105 batch 16: last hit was a comment mention, reworded
     "color-selection.html": 1,  # gh-2105: colour selection deliberately NOT touched by PR #2610 (broken three ways, CEO decision pending, see issue #2105)
     "contract-signing.html": 0,  # gh-2105 batch 11: log-only stamps
     "contractor-auto-bids.html": 0,  # gh-2105 batch 13: page/JS fixed (a)
@@ -99,7 +99,7 @@ BASELINE: dict[str, int] = {
     "help-estimate.html": 0,  # gh-2105 batch 4: (a, report-only): Sentry event, flow unchanged
     "help-materials.html": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "help-measurements.html": 0,  # gh-2105 batch 4: (a, report-only): Sentry event, flow unchanged
-    "js/auth.js": 1,  # gh-2105 batch 15: contractor role write fixed (a), log-only
+    "js/auth.js": 0,  # gh-2105 batch 16: last hit was a comment mention, reworded (role write fixed in batch 15)
     "js/contract-template-validation.js": 0,  # gh-2105 batch 7: fixed (see PR body)
     "js/services.js": 0,  # gh-2105 batch 14: Twilio-SID log + adjuster enrichment annotated (b)
     "js/video-upload-handler.js": 0,  # gh-2105 batch 15: claims.video_url fixed (a), warning return
@@ -137,7 +137,7 @@ BASELINE: dict[str, int] = {
     "react-app/app/contractor/profile/d199-validation.tsx": 0,  # gh-2105 batch 3: zero-row hole closed; status class (c) open (trigger rewrites status, #2717 Q2)
     "react-app/app/contractor/settings/StripePaymentMethods.tsx": 0,  # gh-2105 batch 13: annotated (b)
     "react-app/app/contractor/settings/page.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
-    "react-app/app/contractor/settings/utils.ts": 1,
+    "react-app/app/contractor/settings/utils.ts": 0,  # gh-2105 batch 16: last hit was a doc-comment mention, reworded
     "react-app/app/hooks/use-notification-count.ts": 0,  # gh-2105 batch 14: read receipt annotated (b)
     "react-app/app/lib/partner-record.ts": 0,  # gh-2105 batch 4: class (c), NOT fixed: branch unreachable under current RLS (see code comment); guard is defensive only
     "react-app/app/lib/services.ts": 0,  # gh-2105 batch 14: Twilio-SID log + adjuster enrichment annotated (b)
