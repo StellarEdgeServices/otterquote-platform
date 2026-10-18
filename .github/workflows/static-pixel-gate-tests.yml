@@ -109,6 +109,11 @@ on:
       - 'tests/gh2598-nav-header-footer.mjs'
       - 'tests/gh2598-nav-header-width.mjs'
       - 'css/nav.css'
+      - 'tests/gh2598-start-home-zip.mjs'
+      - 'js/router-variant-d.js'
+      - 'js/router-variant-e.js'
+      - 'js/router-discovery.js'
+      - 'tests/fixtures/gh2060-storage-surface-ledger.json'
       - 'tests/fixtures/gh2598-design/**'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
@@ -212,6 +217,11 @@ on:
       - 'tests/gh2598-nav-header-footer.mjs'
       - 'tests/gh2598-nav-header-width.mjs'
       - 'css/nav.css'
+      - 'tests/gh2598-start-home-zip.mjs'
+      - 'js/router-variant-d.js'
+      - 'js/router-variant-e.js'
+      - 'js/router-discovery.js'
+      - 'tests/fixtures/gh2060-storage-surface-ledger.json'
       - 'tests/fixtures/gh2598-design/**'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
@@ -305,6 +315,8 @@ jobs:
         run: node tests/gh2598-home-next-sections.mjs
       - name: Shared header and footer (js/nav.js) -- tel link in the header of every page type, tagline in the footer slot, contractor footer unchanged, negative controls (gh2598-nav-header-footer)
         run: node tests/gh2598-nav-header-footer.mjs
+      - name: /start reads and clears sessionStorage['oq_home_zip'] (slice 6) -- entry=home skips the role screen on arms D and E, the ZIP rides only on the homeowner's leads insert, stale key never used, negative controls (gh2598-start-home-zip)
+        run: node tests/gh2598-start-home-zip.mjs
       - name: Install Playwright + Chromium from the tests/e2e lockfile (gh-2361 real-browser proof)
         working-directory: tests/e2e
         run: |
