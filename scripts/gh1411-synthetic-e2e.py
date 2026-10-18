@@ -33,7 +33,10 @@ USAGE (gh-2582: a secret is never a command-line argument, a URL or printed outp
 """
 import json
 import os
+import re
 import sys
+import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
@@ -44,6 +47,47 @@ RULING = "6050104990"
 UPGRADE_PRODUCT_CODE = "roof_upgrade_detailed"
 ORDER_COLS = "id,claim_id,product_code,status,report_url,measurements_json,fulfilled_at,requested_by_contractor_id"
 CLAIM_COLS = "id,is_test,measurement_shape,live_charge_authorized_at,hover_measurements"
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Every request here carries apikey/Authorization. urllib would forward those headers
+    to a redirect target on another host, so a redirect is refused: the 3xx surfaces as an
+    HTTPError and nothing is re-sent."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+def open_no_redirect(req, timeout=30):
+    return _NO_REDIRECT_OPENER.open(req, timeout=timeout)
+
+
+_REF_RE = re.compile(r"[a-z0-9]+")
+
+
+def supabase_ref(url):
+    """Return the project ref when url is exactly https://<ref>.supabase.co[/], else None.
+    Parsed with urlsplit so `https://real.evil.example?.supabase.co` and `...#.supabase.co`
+    (hostname real.evil.example) are refused, as are userinfo, a port, a query, a fragment,
+    a path other than '/', http, and any host other than one label under supabase.co."""
+    try:
+        parts = urllib.parse.urlsplit(url or "")
+        host, port = parts.hostname, parts.port
+    except ValueError:
+        return None
+    if parts.scheme != "https" or not host or port is not None:
+        return None
+    if parts.username is not None or parts.password is not None or parts.query or parts.fragment:
+        return None
+    if parts.path not in ("", "/") or "?" in url or "#" in url or "@" in url:
+        return None
+    if not host.endswith(".supabase.co"):
+        return None
+    ref = host[:-len(".supabase.co")]
+    return ref if _REF_RE.fullmatch(ref) else None
 
 
 def synthetic_measurements(existing_squares, now_iso):
@@ -127,7 +171,9 @@ def check_after(order, claim):
 
 
 class Rest:
-    def __init__(self, url, key, opener=urllib.request.urlopen):
+    def __init__(self, url, key, opener=open_no_redirect):
+        if supabase_ref(url) is None:
+            raise ValueError("SUPABASE_URL must be https://<ref>.supabase.co (value not shown)")
         self.url, self.key, self.opener = url.rstrip("/"), key, opener
 
     def _call(self, method, path, body=None):
@@ -159,7 +205,7 @@ def bad_argv(argv):
         a = argv[i]
         if a == "--execute":
             i += 1
-        elif a == "--ruling" and i + 1 < len(argv) and argv[i + 1].isdigit():
+        elif a == "--ruling" and i + 1 < len(argv) and re.fullmatch(r"[0-9]+", argv[i + 1]):
             i += 2
         else:
             bad.append("argument #%d" % (i + 1))
@@ -167,7 +213,7 @@ def bad_argv(argv):
     return bad
 
 
-def load_service_key(environ, opener=urllib.request.urlopen):
+def load_service_key(environ, opener=open_no_redirect):
     """Return the service-role key from env, then a file, then the Management API. Never prints it."""
     key = (environ.get("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
     if key:
@@ -179,8 +225,7 @@ def load_service_key(environ, opener=urllib.request.urlopen):
         if key:
             return key
     token, url = (environ.get("SUPABASE_ACCESS_TOKEN") or "").strip(), environ.get("SUPABASE_URL") or ""
-    host = url.replace("https://", "").split("/")[0]
-    ref = host.split(".")[0] if host.endswith(".supabase.co") else ""
+    ref = supabase_ref(url)
     if token and ref:
         req = urllib.request.Request("https://api.supabase.com/v1/projects/%s/api-keys?reveal=true" % ref,
                                      headers={"Authorization": "Bearer " + token, "Accept": "application/json"})
@@ -240,6 +285,9 @@ def main(argv):
     execute = "--execute" in argv
     ruling = argv[argv.index("--ruling") + 1] if "--ruling" in argv and argv.index("--ruling") + 1 < len(argv) else None
     url = os.environ.get("SUPABASE_URL")
+    if url and supabase_ref(url) is None:
+        print("REFUSED: SUPABASE_URL must be https://<ref>.supabase.co with no userinfo, port, path, query or fragment (value not shown)")
+        return 1
     try:
         key = load_service_key(os.environ) if url else None
     except Exception as e:
