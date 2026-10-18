@@ -2176,7 +2176,7 @@
   // (get_message_counterpart) says the fee is collected and returns the name; this page
   // never reads the homeowner's profiles row, and never shows a name the rpc did not return.
   function senderLabel(msg, isOwn) {
-    if (isOwn) return (msg.profiles && msg.profiles.full_name) ? msg.profiles.full_name + " (You)" : "You";
+    if (isOwn) return msg.sender_full_name ? msg.sender_full_name + " (You)" : "You";
     if (counterpart && msg.sender_id === counterpart.counterpart_user_id && counterpart.display_label) return counterpart.display_label;
     return msg.sender_role === "contractor" ? "Another contractor" : HOMEOWNER_LABEL;
   }
@@ -2184,9 +2184,11 @@
   async function loadMessages() {
     if (!currentClaimId) return;
     await loadCounterpart();
+    // gh-2559 / D-390: read the thread through public.contractor_thread_messages (phone- and e-mail-shaped text in the homeowner's
+    // messages is removed until the Platform Fee is collected). Do not read public.messages here; sends still insert into it.
     const { data: messages, error } = await sb
-      .from("messages")
-      .select("id, sender_id, sender_role, body, created_at, profiles:sender_id(full_name)")
+      .from("contractor_thread_messages")
+      .select("id, sender_id, sender_role, body, created_at, sender_full_name")
       .eq("claim_id", currentClaimId)
       .order("created_at", { ascending: true });
 

@@ -61,3 +61,9 @@ Two more sets were applied to production on 2026-10-18 (CTO RUN 70 filing; appli
 
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
+
+## Added 2026-10-18 (gh-2559 / gh-2619, D-390): forward, rollback and pre-flight here, the proof in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2559_d390_redact_contact_until_fee` | forward, rollback, pre-flight | NOT APPLIED | drafted 2026-10-18 (CTO RUN 70 worker cto70-d390); production read-only same day: `claims.contractor_released_at` absent (PR #2777 not applied, this set's gate refuses until it is), counts in the pre-flight; proof on a throwaway Postgres 16.15 (`supabase/tests/gh2559_d390_redact_proof_run.sh`, 94 probes, 0 failures, plus a gate negative control). Tier 3B, R-097 24-hour notice before apply; apply AFTER PR #2777 and publish the page change with it | none |

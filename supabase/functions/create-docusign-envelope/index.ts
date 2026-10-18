@@ -25,6 +25,7 @@ import {
 // being SILENT: an alert lets an operator notice and re-point the record
 // instead of the pointer just vanishing into a zero-row no-op.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { homeownerTextForContractor } from "../_shared/homeowner-text-redact.ts";
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 // gh-1314: refuse a labeled sign/init/date tag BEFORE /v1/document/send (BoldSign builds it silently-broken).
 import { LabeledSignTagError, preflightTemplateTags } from "./tag-preflight.ts";
@@ -2193,6 +2194,14 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
       const sowTrades = (Array.isArray(claimData?.trades) && claimData.trades.length) ? claimData.trades : [
         trade
       ];
+      // [gh-2559 / D-390] The Scope of Work is created at selection, before the Platform Fee clears. The notes the homeowner typed print on it
+      // for the contractor; phone-shaped and e-mail-shaped text is removed (server side, public.d390_redact_contact) until
+      // claims.platform_fee_charged IS TRUE. Fails closed: if the redaction cannot run, the notes are withheld, not printed.
+      const d390FeeCollected = claimData?.platform_fee_charged === true;
+      const d390SowNotes = await homeownerTextForContractor(supabase, claimData?.homeowner_notes ?? null, d390FeeCollected);
+      const d390Pc = claimData?.project_confirmation
+        ? { ...claimData.project_confirmation, homeownerNotes: await homeownerTextForContractor(supabase, claimData.project_confirmation.homeownerNotes ?? null, d390FeeCollected) }
+        : null;
       scopeOfWorkBase64 = generateRetailScopeOfWorkPdf({
         homeownerName,
         contractorName,
@@ -2209,8 +2218,8 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
         // [C2 2026-08-27] Guarded: never attribute unverified prose to the
         // contractor. See contractorAuthoredMessage() for the mechanism.
         messageToHomeowner: contractorAuthoredMessage(bidData),
-        homeownerNotes: claimData?.homeowner_notes ?? null,
-        projectConfirmation: claimData?.project_confirmation ?? null,
+        homeownerNotes: d390SowNotes,
+        projectConfirmation: d390Pc,
         measurements,
         contractDate,
         fundingType,
