@@ -1,8 +1,9 @@
--- Rollback for supabase/migrations_drafts/gh2519_quotes_server_set_fee.sql (gh-2519).
+-- Rollback for supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql (gh-2519).
 -- WARNING: this RE-OPENS #2519's residuals: the bidding contractor can again store any fee rate, basis and fee
 -- amount on a bid, the claim owner can again write payment_status, is_test and the other columns, a second
 -- bid can again be set to selected, and the referral commission again reads the newest selected bid.
 -- ORDER: run gh2564_quotes_selected_price_lock_rollback.sql FIRST if gh2564_quotes_selected_price_lock.sql was applied (it re-creates this guard).
+-- If gh2626_claims_award_columns_guard.sql is also applied, use gh2519_quotes_server_set_fee_rollback_to_gh2626.sql instead (this file refuses): it restores the gh-2626 bodies of both functions.
 -- This file now REFUSES (RAISE EXCEPTION, nothing changes) while the live guard still carries the gh-2564 lock (review 6051777895 finding 7).
 -- It restores quotes_guard_homeowner_columns() to the body of 20261006170000_gh2519_quotes_fee_columns_guard.sql
 -- (prosrc md5 f6102d1c…) and accept_bid() to the live body (prosrc md5 07ae60dd…) and apply_referral_commission() to the body of
@@ -27,6 +28,17 @@ BEGIN
   END IF;
 END
 $order$;
+
+-- gh-2626 order guard: this file restores the bodies that were live BEFORE gh2626_claims_award_columns_guard.sql, which has no gh-2626 lines.
+-- If that set is applied (its trigger claims_guard_award_columns exists), restoring them would silently remove its accept_bid() and quotes
+-- fixes. It refuses; run gh2519_quotes_server_set_fee_rollback_to_gh2626.sql instead.
+DO $order26$
+BEGIN
+  IF to_regprocedure('public.claims_guard_award_columns()') IS NOT NULL THEN
+    RAISE EXCEPTION '%: gh2626_claims_award_columns_guard is applied; this rollback would silently remove its accept_bid() and quotes_guard_homeowner_columns() fixes. Run gh2519_quotes_server_set_fee_rollback_to_gh2626.sql instead', 'gh2519 rollback';
+  END IF;
+END
+$order26$;
 
 CREATE OR REPLACE FUNCTION public.quotes_guard_homeowner_columns()
 RETURNS trigger

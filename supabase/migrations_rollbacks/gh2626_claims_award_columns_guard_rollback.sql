@@ -4,15 +4,25 @@
 -- REPO COPY: none in supabase/migrations/ (this is a manual reference rollback)
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
--- gh-2626 ROLLBACK for supabase/migrations_drafts/gh2626_claims_award_columns_guard.sql
+-- gh-2626 ROLLBACK for supabase/migrations/20261015205851_gh2626_claims_award_columns_guard.sql
 --
 -- Manual reference only. Never rename this into a 14-digit timestamp or move it into
 -- supabase/migrations/ -- the CLI would replay it FORWARD and undo the guard it exists to revert.
--- Drops the trigger and its function and restores accept_bid() and quotes_guard_homeowner_columns() to the live bodies they had before the forward file. IF gh2519_quotes_server_set_fee or gh2564_quotes_selected_price_lock has been applied since, do NOT run the two restores below: they would put back the older bodies; remove only the gh-2626 lines from those functions instead. Rolling back re-opens the accept_bid() and quote-revival paths and the direct write of claims.selected_contractor_id,
+-- Drops the trigger and its function and restores accept_bid() and quotes_guard_homeowner_columns() to the live bodies they had before the forward file. IF gh2519_quotes_server_set_fee or gh2564_quotes_selected_price_lock has been applied since, this file REFUSES (the order gate below raises while quotes_platform_fee_for() exists): roll gh2564 and gh2519 back first (gh2564_..._rollback.sql, then gh2519_quotes_server_set_fee_rollback_to_gh2626.sql), then run this file. Rolling back re-opens the accept_bid() and quote-revival paths and the direct write of claims.selected_contractor_id,
 -- selected_bid_amount and status = 'awarded' for the claim owner. No data is touched. If the forward file was
 -- applied through the ledger, also delete its supabase_migrations.schema_migrations row.
 
 BEGIN;
+
+-- Order gate (REVIEW 6162070214 B3): run after gh2519 / gh2564 this rollback would restore the pre-gh-2519 function bodies and silently remove the server-set fee and the price lock.
+-- Roll gh2564 and gh2519 back first (gh2564_..._rollback.sql, then gh2519_quotes_server_set_fee_rollback_to_gh2626.sql).
+DO $order$
+BEGIN
+  IF to_regprocedure('public.quotes_platform_fee_for(uuid,uuid)') IS NOT NULL THEN
+    RAISE EXCEPTION '%: gh2519 (public.quotes_platform_fee_for) is applied; this rollback would silently remove the server-set fee and the price lock. Roll gh2564 and gh2519 back first', 'gh2626 rollback';
+  END IF;
+END
+$order$;
 
 DROP TRIGGER IF EXISTS claims_guard_award_columns ON public.claims;
 DROP FUNCTION IF EXISTS public.claims_guard_award_columns();

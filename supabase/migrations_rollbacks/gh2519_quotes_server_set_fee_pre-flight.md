@@ -90,3 +90,11 @@ If it returns a row, stop and rule on each (which bid stands, the other is set t
 
 ## Proof
 `supabase/tests/gh2519_gh2564_fee_lock_proof_run.sh` and the two-session `supabase/tests/gh2519_gh2564_concurrency_proof.sh` (throwaway Postgres; schema file `supabase/tests/gh2519_gh2564_throwaway_schema.sql` is production's seven tables, policies, grants, functions and triggers, read by SELECT; production is PostgreSQL 17.6, the run was on 16). Raw output is in the PR body.
+
+## gh-2626 composition check (#2519 comment 6156383757)
+This file's guard and, for gh2519, `accept_bid()` carry the `gh-2626` lines of `gh2626_claims_award_columns_guard.sql`. Apply order verified on a throwaway Postgres: gh2626, then gh2519, then gh2564 (`supabase/tests/gh2519_gh2564_gh2626_compose_proof_run.sh`). After this file is applied, and after ANY later migration that touches either function, both of these must return true:
+```sql
+SELECT prosrc LIKE '%gh-2626%' FROM pg_proc WHERE oid = 'public.accept_bid(uuid,uuid)'::regprocedure;
+SELECT prosrc LIKE '%gh-2626%' FROM pg_proc WHERE oid = 'public.quotes_guard_homeowner_columns()'::regprocedure;
+```
+Never apply `gh2626_claims_award_columns_guard.sql` after gh2519 or gh2564: it would replace both functions and remove the fee rules and the lock. The R-097 notice for this file must state the order used.

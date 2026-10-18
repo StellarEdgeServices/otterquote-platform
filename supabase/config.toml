@@ -285,6 +285,11 @@ verify_jwt = false
 [functions.admin-contractor-action]
 verify_jwt = false
 
+[functions.admin-reissue-contract]
+# gh-2543 part 2: admin JWT checked in-handler (single primary admin email, same gate as
+# admin-contractor-action); dry-run by default. Deploy waits for the R-097 3B notice.
+verify_jwt = false
+
 [functions.check-siding-design-completion]
 # gh-2462: service bearer required in-handler (cron job 6 vault key, hover-webhook runtime key);
 # 401 with zero I/O otherwise. verify_jwt stays false: the vault key is not a JWT (gh-2309).

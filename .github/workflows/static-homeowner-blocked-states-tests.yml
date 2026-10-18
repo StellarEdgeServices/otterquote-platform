@@ -17,6 +17,10 @@ on:
       - 'supabase/migrations_drafts/gh2431_profiles_address_state_default.sql'
       - 'supabase/migrations_rollbacks/gh2431_profiles_address_state_default_rollback.sql'
       - 'tests/gh2431-profiles-address-state-null.mjs'
+      - 'supabase/migrations/20261015210310_gh2431_profiles_address_state_backfill.sql'
+      - 'supabase/migrations_rollbacks/gh2431_profiles_address_state_backfill_rollback.sql'
+      - 'supabase/tests/gh2431_address_state_backfill_proof.sql'
+      - 'tests/gh2431-profiles-address-state-backfill.mjs'
       - '.github/workflows/static-homeowner-blocked-states-tests.yml'
   push:
     branches: [main]
@@ -29,6 +33,10 @@ on:
       - 'supabase/migrations_drafts/gh2431_profiles_address_state_default.sql'
       - 'supabase/migrations_rollbacks/gh2431_profiles_address_state_default_rollback.sql'
       - 'tests/gh2431-profiles-address-state-null.mjs'
+      - 'supabase/migrations/20261015210310_gh2431_profiles_address_state_backfill.sql'
+      - 'supabase/migrations_rollbacks/gh2431_profiles_address_state_backfill_rollback.sql'
+      - 'supabase/tests/gh2431_address_state_backfill_proof.sql'
+      - 'tests/gh2431-profiles-address-state-backfill.mjs'
       - '.github/workflows/static-homeowner-blocked-states-tests.yml'
 
 permissions:
@@ -57,3 +65,5 @@ jobs:
         run: node tests/gh2421-static-homeowner-blocked-states.mjs
       - name: profiles.address_state has no Indiana default; every reader NULL-safe (gh2431)
         run: node tests/gh2431-profiles-address-state-null.mjs
+      - name: backfill clears only untouched seeded IN, audited and reversible (gh2431)
+        run: node tests/gh2431-profiles-address-state-backfill.mjs

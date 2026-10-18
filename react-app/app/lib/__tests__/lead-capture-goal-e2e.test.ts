@@ -31,7 +31,7 @@
  *      an existing customer's OLD paid claim (predating the Arm F lead
  *      entirely) could be credited as "the" goal for a brand-new lead.
  *
- * The fix migration, supabase/migrations/20260926221500_gh2121_s16_lead_
+ * The fix migration, supabase/migrations/20260927143606_gh2121_s16_lead_
  * goal_security_fix.sql, requires a confirmed PaymentIntent + charge amount
  * on `hover_orders` (D1), an email match between the caller's JWT and the
  * lead (D4), and `claim_goal_at >= lead.created_at` (D5). This file's
@@ -110,7 +110,7 @@ interface LeadFixture {
   convertedUserId: string | null;
 }
 
-// Mirrors supabase/migrations/20260926221500_gh2121_s16_lead_goal_security_
+// Mirrors supabase/migrations/20260927143606_gh2121_s16_lead_goal_security_
 // fix.sql's set_lead_converted(uuid): first-write-wins, 24h window,
 // auth.uid()-scoped, AND (D4) the caller's JWT email must match the lead's
 // email. A pure fixture double, never used to write anything real.
@@ -168,7 +168,7 @@ interface LeadGoalEventRow {
   goalType: 'measurement_purchase' | 'loss_sheet_upload';
 }
 
-// Mirrors the FIXED lead_goal_events (20260926221500_gh2121_s16_lead_goal_
+// Mirrors the FIXED lead_goal_events (20260927143606_gh2121_s16_lead_goal_
 // security_fix.sql): claim_goals' LEAST(first_hover_order_at,
 // loss_sheet_parsed_at) + goal_type CASE, where first_hover_order_at now
 // comes ONLY from a hover_orders row with a confirmed PaymentIntent + a

@@ -19,7 +19,7 @@ import {
   parseCounties, evaluateProfileBasics, wcSatisfied, coiSatisfied, licenseSatisfied, step2Complete,
   validateLicenseEntry, licenseEntrySummary, buildLicenseInsert,
   docPath, wce1Path, licenseDocPath, buildStep2ContractorUpdate, buildStep2FallbackCreate,
-  buildHubspotContactBody, buildSupportEmailBody,
+  buildSupportEmailBody,
   ATTESTATION_TEXT_VERSION, CPA_VERSION, AGREEMENT_VERSION,
   buildAttestationPayload, step3Complete, buildStep3ContractorUpdate, buildRecordAttestationBody,
   validateTemplate, templateSlotKey, templateFilePath, buildContractTemplatesArray, buildFinishSubmitUpdate,
@@ -236,10 +236,6 @@ describe('Step 2 contractors update + fallback create', () => {
 // Step 2 — EF bodies (contracts UNCHANGED)
 // ============================================================
 describe('EF request bodies (UNCHANGED contracts)', () => {
-  it('create-hubspot-contact: contractor mode', () => {
-    expect(buildHubspotContactBody('a@x.com', 'c1')).toEqual({ mode: 'contractor', email: 'a@x.com', contractor_id: 'c1' });
-  });
-
   it('send-support-email: admin-routed (NO to_email -> never the open-relay override path)', () => {
     const b = buildSupportEmailBody({ company_name: 'Acme' }, 'a@x.com');
     expect(b).toEqual({

@@ -52,7 +52,7 @@ function stripLineComments(text: string): string {
 }
 
 const idxResume = mustFind("if (requestBody.resolved_envelope_id) {");
-const idxNextField = mustFind("let autoFields = providedFields || {};", idxResume);
+const idxNextField = mustFind("let autoFields = stripHomeownerPhone(providedFields);", idxResume);
 const resumeBlock = src.slice(idxResume, idxNextField);
 const resumeCode = stripLineComments(resumeBlock);
 

@@ -1,10 +1,10 @@
--- STATUS (gh-1438, as of 2026-10-08T16:39:44Z): NOT APPLIED
+-- STATUS (gh-1438): APPLIED. The forward migration this file reverts is applied to production at ledger version 20261014112110 (supabase/migrations/20261014112110_gh2620_claims_payment_guard_security_definer.sql; evidence #2620 comment 6167206684)
 -- FILE ROLE: rollback file of set gh2620_claims_payment_guard_security_definer (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: written by gh-2620; the function text and grants below are the live ones read 2026-10-08 (SECURITY INVOKER; ACL =X, postgres, anon, authenticated, service_role)
 -- REPO COPY: none in supabase/migrations/ (this is a manual reference rollback)
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md (convention only; the forward file is now filed under supabase/migrations/)
 --
--- gh-2620 ROLLBACK for supabase/migrations_drafts/gh2620_claims_payment_guard_security_definer.sql
+-- gh-2620 ROLLBACK for supabase/migrations/20261014112110_gh2620_claims_payment_guard_security_definer.sql
 --
 -- Manual reference only. Never rename this into a 14-digit timestamp or move it into
 -- supabase/migrations/ -- the CLI would replay it FORWARD and undo the fix it exists to revert.

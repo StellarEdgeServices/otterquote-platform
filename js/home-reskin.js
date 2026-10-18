@@ -1,11 +1,13 @@
-/* gh-2598 slice 1: motion, tabs, ZIP hand-off and GA4 events for the approved homepage reskin.
+/* gh-2598 slices 1 and 2: motion, tabs, ZIP hand-off and GA4 events for the approved homepage reskin (slice 2 adds the closing-band ZIP field and its cta_location).
    Motion (design README): words 2-4 appear at 0.6 s, 1.7 s, 2.8 s; table rows take the active highlight in step; at 4.2 s all three settle. One pass, no loop.
    prefers-reduced-motion: render the finished state at once. Replay replays. Hidden words keep their layout space (opacity/transform only). */
 (function () {
   'use strict';
   var d = document;
-  /* The hidden-until-animated state in the CSS applies only under .hr-js, which this script adds; if the file fails to load the words stay visible. */
-  d.documentElement.classList.add('hr-js');
+  /* The hidden-until-animated state in the CSS applies only under .hr-js, which an inline script in the head of home-next.html adds before first paint (gh-2598 correction 3)
+     and removes if this file errors or is slow (fail open). This file stops that script's timer only once play() below has started without throwing; if play() throws, the words are opened here;
+     if the timer already fired, the words stay visible and the first pass shows the finished state. */
+  var late = window.__hrOpened === true;
   var $ = function (s, r) { return (r || d).querySelector(s); };
   var $$ = function (s, r) { return [].slice.call((r || d).querySelectorAll(s)); };
 
@@ -37,16 +39,26 @@
     explain.textContent = focus ? LINES[focus] : IDLE;
   }
   function calm() { try { return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } }
+  var firstPass = true;
   function play() {
+    var first = firstPass; firstPass = false;
     clear();
-    if (calm()) { render(4, ''); return; }
+    if (calm() || (first && late)) { render(4, ''); return; }
     render(0, '');
     [[1, 600], [2, 1700], [3, 2800], [4, 4200]].forEach(function (p) { timers.push(setTimeout(function () { render(p[0], ''); }, p[1])); });
   }
   tabs.forEach(function (t) { t.addEventListener('click', function () { clear(); render(4, t.getAttribute('data-k')); }); });
   var replay = $('#hr-replay');
   if (replay) { replay.addEventListener('click', play); }
-  play();
+  try {
+    play();
+    try { clearTimeout(window.__hrTimer); } catch (e) {}
+  } catch (e) {
+    /* play() threw (a missing #hr-explain or #hr-row-* element): fail open. Stop the half-built timeline, drop hr-js so the words show, and leave the timer's job done. */
+    try { clear(); } catch (e2) {}
+    try { clearTimeout(window.__hrTimer); } catch (e2) {}
+    try { d.documentElement.classList.remove('hr-js'); window.__hrOpened = true; } catch (e2) {}
+  }
 
   /* ---------- ZIP hand-off to /start (the /start slice, slice 6 in the #2598 decomposition, reads this entry and skips the role screen) ----------
      The ZIP never goes in a URL: /start loads the Meta pixel, GA4 and Clarity, which record the page URL. It travels in sessionStorage under
@@ -62,34 +74,43 @@
     qs.push('entry=home');
     return '/start.html?' + qs.join('&');
   }
-  var zip = $('#hr-zip');
-  var zipSent = false;
-  function zipValue() { return zip ? zip.value.replace(/\D/g, '').slice(0, 5) : ''; }
-  if (zip) {
-    zip.addEventListener('input', function () {
-      var v = zipValue();
-      if (zip.value !== v) { zip.value = v; }
-      if (v.length === 5 && !zipSent) { zipSent = true; track('zip_entered', { cta_location: 'hero' }); }
-    });
-    zip.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go('hero'); } });
+  /* Two ZIP fields: the hero field and the closing-band field. Each button reads the field next to it first and the other field second. */
+  var zipHero = $('#hr-zip'), zipEnd = $('#hr-zip-end');
+  var zipSent = { hero: false, closing: false };
+  function clean(el) { return el ? el.value.replace(/\D/g, '').slice(0, 5) : ''; }
+  function zipValue(loc) {
+    var first = loc === 'closing' ? zipEnd : zipHero, second = loc === 'closing' ? zipHero : zipEnd;
+    var x = clean(first), y = clean(second);
+    return x.length === 5 ? x : (y.length === 5 ? y : x);   /* a complete ZIP wins; otherwise the near field's partial value (which is never stored) */
   }
-  function stashZip() {
-    var v = zipValue();
+  function wireZip(el, loc) {
+    if (!el) { return; }
+    el.addEventListener('input', function () {
+      var v = clean(el);
+      if (el.value !== v) { el.value = v; }
+      if (v.length === 5 && !zipSent[loc]) { zipSent[loc] = true; track('zip_entered', { cta_location: loc }); }
+    });
+    el.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(loc); } });
+  }
+  wireZip(zipHero, 'hero');
+  wireZip(zipEnd, 'closing');
+  function stashZip(loc) {
+    var v = zipValue(loc);
     try {
       if (/^\d{5}$/.test(v)) { window.sessionStorage.setItem(ZIP_KEY, v); } else { window.sessionStorage.removeItem(ZIP_KEY); }
     } catch (e) {}   /* storage blocked: navigate anyway, the ZIP is simply not carried */
   }
   function go(loc) {
-    track('hero_cta_click', { cta_location: loc, zip_present: /^\d{5}$/.test(zipValue()) ? 'yes' : 'no' });
-    stashZip();
+    track('hero_cta_click', { cta_location: loc, zip_present: /^\d{5}$/.test(zipValue(loc)) ? 'yes' : 'no' });
+    stashZip(loc);
     window.location.href = startUrl();
   }
   $$('[data-hr-go]').forEach(function (a) {
     a.addEventListener('click', function (e) {
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (typeof e.button === 'number' && e.button !== 0)) {
-        /* modified click: let the browser open the link in a new tab/window; still record the event and hand the ZIP over (best effort) */
-        track('hero_cta_click', { cta_location: a.getAttribute('data-hr-go'), zip_present: /^\d{5}$/.test(zipValue()) ? 'yes' : 'no' });
-        stashZip();
+        /* modified click: let the browser open the link in a new tab or window. The event is still recorded. The ZIP is stored in this tab only; the new tab starts with empty sessionStorage, so the ZIP is not carried (accepted, PR #2617 comment 6066730926). */
+        track('hero_cta_click', { cta_location: a.getAttribute('data-hr-go'), zip_present: /^\d{5}$/.test(zipValue(a.getAttribute('data-hr-go'))) ? 'yes' : 'no' });
+        stashZip(a.getAttribute('data-hr-go'));
         return;
       }
       e.preventDefault(); go(a.getAttribute('data-hr-go'));
