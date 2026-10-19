@@ -5,7 +5,7 @@
  *
  * Every .update( chains .select( (gh-2105 ratchet): a zero-row write is reported, never assumed.
  */
-import type { ChargeMethod, ChargeRequest, ChargeResult, FailureRow, RetryPassDeps } from "./retry-pass.ts";
+import type { ChargeMethod, ChargeRequest, ChargeResult, FailureRow, RetryPassDeps, UnknownAttempt } from "./retry-pass.ts";
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 
@@ -98,7 +98,7 @@ export function buildRetryPassDeps(
   return {
     now: nowFn,
     async listCandidateRows(sinceIso: string): Promise<FailureRow[]> {
-      const cols = "id, quote_id, contractor_id, claim_id, amount_cents, dunning_status, resolved_at, homeowner_notify_at, retry_requested_at, retry_request_count, retry_handled_at, retry_unknown_at";
+      const cols = "id, quote_id, contractor_id, claim_id, amount_cents, dunning_status, resolved_at, homeowner_notify_at, retry_requested_at, retry_request_count, retry_handled_at, retry_unknown_at, retry_unknown_attempt";
       const { data: req, error } = await supabase
         .from("payment_failures")
         .select(cols)
@@ -139,30 +139,21 @@ export function buildRetryPassDeps(
       if (error) { console.error("[process-dunning] retry request refund failed:", error); return false; }
       return Array.isArray(data) && data.length > 0;
     },
-    async markUnknown(rowIds: string[], nowIso: string): Promise<number> {
-      const { data, error } = await supabase.from("payment_failures").update({ retry_unknown_at: nowIso }).in("id", rowIds).select("id");
+    async markUnknown(rowIds: string[], attempt: UnknownAttempt): Promise<number> {
+      // Write-once (.is NULL): a later request can never move the stored key of the attempt in doubt.
+      const { data, error } = await supabase
+        .from("payment_failures")
+        .update({ retry_unknown_at: attempt.attemptedAt, retry_unknown_attempt: attempt })
+        .in("id", rowIds)
+        .is("retry_unknown_at", null)
+        .select("id");
       if (error) { console.error("[process-dunning] retry_unknown_at write failed:", error); return 0; }
       return Array.isArray(data) ? data.length : 0;
     },
     async clearUnknown(rowIds: string[]): Promise<number> {
-      const { data, error } = await supabase.from("payment_failures").update({ retry_unknown_at: null }).in("id", rowIds).select("id");
+      const { data, error } = await supabase.from("payment_failures").update({ retry_unknown_at: null, retry_unknown_attempt: null }).in("id", rowIds).select("id");
       if (error) { console.error("[process-dunning] retry_unknown_at clear failed:", error); return 0; }
       return Array.isArray(data) ? data.length : 0;
-    },
-    async lookupIntent(quoteId: string, requestedAtMs: number) {
-      if (!/^[0-9a-f-]{36}$/i.test(quoteId) || !Number.isFinite(requestedAtMs)) return { error: "bad_lookup_args" };
-      try {
-        const q = `metadata['quote_id']:'${quoteId}' AND metadata['retry_requested_ms']:'${requestedAtMs}'`;
-        const resp = await fetchFn(`${STRIPE_API_BASE}/payment_intents/search?query=${encodeURIComponent(q)}`, {
-          method: "GET",
-          headers: { Authorization: `Basic ${btoa(`${stripeSecretKey}:`)}` },
-        });
-        const data = await resp.json();
-        if (!resp.ok || !Array.isArray(data?.data)) return { error: `HTTP ${resp.status}` };
-        if (data.data.length === 0) return { found: false as const };
-        const best = data.data.find((i: any) => i.status === "succeeded") ?? data.data.find((i: any) => i.status === "processing") ?? data.data[0];
-        return { found: true as const, id: best.id as string, status: best.status as string };
-      } catch (e) { return { error: String(e) }; }
     },
     async getQuotePaymentStatus(quoteId: string) {
       const { data } = await supabase.from("quotes").select("payment_status").eq("id", quoteId).maybeSingle();

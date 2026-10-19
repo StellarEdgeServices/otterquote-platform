@@ -40,6 +40,7 @@
   "payment_failures": {
     "retry_request_count": { "migration": "supabase/migrations_drafts/gh2442_dunning_retry_request.sql", "issue": "#2442", "note": "APPLIED to production 2026-10-09 (ledger 20261009000257) but sql/schema-snapshot.json has not been refreshed yet; the retry pass writes it only to give back a refused request (compare-and-set). Delete this entry when the snapshot is refreshed." },
     "retry_handled_at": { "migration": "supabase/migrations_drafts/gh2442_dunning_retry_pass_column.sql", "issue": "#2442", "note": "process-dunning retry pass consumed-request stamp (compare-and-set before any Stripe call); migration drafted, not applied" },
+    "retry_unknown_attempt": { "migration": "supabase/migrations_drafts/gh2442_dunning_retry_pass_column.sql", "issue": "#2442", "note": "process-dunning retry pass: exact in-doubt Stripe request (idempotency key + params), replayed verbatim; migration drafted, not applied" },
     "retry_unknown_at": { "migration": "supabase/migrations_drafts/gh2442_dunning_retry_pass_column.sql", "issue": "#2442", "note": "process-dunning retry pass unknown-Stripe-outcome marker (blocks any further charge for the quote until the intent is looked up); migration drafted, not applied" }
   }
 }

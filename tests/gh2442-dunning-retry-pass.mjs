@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const root = process.env.OQ_ROOT || path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dir = path.join(root, 'supabase/functions/process-dunning');
 const P = await import(path.join(dir, 'retry-pass.ts'));
 const S = await import(path.join(dir, 'retry-pass-supabase.ts'));
@@ -32,9 +32,8 @@ function makeDeps(rows, over = {}) {
     listCandidateRows: async () => rows,
     markHandled: async (ids, t, req) => { log.handled.push([ids, t, req]); return over.markWrites ?? ids.length; },
     refundRequest: async (id, n) => { log.refunds.push([id, n]); return true; },
-    markUnknown: async (ids) => { log.unknown.push(ids); return ids.length; },
+    markUnknown: async (ids, attempt) => { log.unknown.push([ids, attempt]); return ids.length; },
     clearUnknown: async (ids) => { log.cleared.push(ids); return ids.length; },
-    lookupIntent: async () => over.lookup ?? { found: false },
     getQuotePaymentStatus: async () => over.payStatus ?? 'failed',
     chargeGuard: async () => over.guard ?? { allow: true, message: '' },
     getChargeMethods: async () => over.methods === undefined
@@ -162,22 +161,30 @@ for (const [label, mk] of [
   const out = await P.runRetryPass(deps);
   ok(posts.length === 2 && out[0].outcome === 'charged', 'B1 control: a DEFINITE 402 card_error still falls through to the next method'); }
 
-// B1: reconciliation of an unknown marker (never charges)
-const unk = (o = {}) => row({ retry_handled_at: iso(10), retry_unknown_at: iso(10), ...o });
-{ const { deps, log } = makeDeps([unk()], { lookup: { found: true, id: 'pi_r', status: 'succeeded' } }); const out = await P.runRetryPass(deps);
-  ok(log.charges.length === 0 && out[0].outcome === 'reconciled' && log.quote[0][1].payment_status === 'succeeded' && log.closed.length === 1 && log.cleared.length === 1, 'reconcile: intent found succeeded -> quote recorded, dunning closed, marker cleared, no charge'); }
-{ const { deps, log } = makeDeps([unk()], { lookup: { found: true, id: 'pi_r', status: 'processing' } }); const out = await P.runRetryPass(deps);
-  ok(log.charges.length === 0 && log.quote[0][1].payment_status === 'pending' && log.closed.length === 0, 'reconcile: processing -> pending recorded, dunning not closed'); }
-{ const { deps, log } = makeDeps([unk()], { lookup: { found: true, id: 'pi_r', status: 'requires_payment_method' } }); const out = await P.runRetryPass(deps);
-  ok(log.charges.length === 0 && log.cleared.length === 1 && out[0].result.startsWith('not_charged'), 'reconcile: definite no-charge clears the marker, still no automatic re-charge'); }
-{ const { deps, log } = makeDeps([unk()], { lookup: { found: false } }); const out = await P.runRetryPass(deps);
-  ok(log.charges.length === 0 && out[0].reason === 'unknown_awaiting_reconciliation' && log.cleared.length === 0 && log.alerts.length === 0, 'reconcile: nothing found yet -> wait, no charge, marker kept'); }
-{ const { deps, log } = makeDeps([unk({ retry_unknown_at: iso(3 * 60) })], { lookup: { found: false } }); await P.runRetryPass(deps);
-  ok(log.charges.length === 0 && log.alerts.some((a) => a[0] === 'dunning_retry_unknown_stuck'), 'reconcile: still nothing after 2h -> escalated, still no charge'); }
-{ const { deps, log } = makeDeps([unk({ retry_requested_at: iso(1) })], { lookup: { error: 'HTTP 500' } }); const out = await P.runRetryPass(deps);
-  ok(log.charges.length === 0 && out[0].reason === 'reconcile_lookup_failed', 'reconcile: lookup error -> no charge'); }
-{ const { deps, log } = makeDeps([unk({ retry_requested_at: iso(1), retry_handled_at: iso(10) })], { lookup: { found: false } }); await P.runRetryPass(deps);
-  ok(log.charges.length === 0, 'a NEWER request on a quote with an unreconciled marker is still not charged'); }
+// C1/C2 ruling: an in-doubt attempt is resolved ONLY by replaying the stored request with the SAME key
+const REQ = (o = {}) => ({ quoteId: Q, contractorId: 'c1', claimId: 'cl1', customerId: 'cus_1', method: { stripe_pm_id: 'pm_card1', payment_type: 'card', cpm_id: 'c1' }, feeCents: 18000, chargeAmountCents: P.cardChargeAmount(18000), idempotencyKey: 'dunning-retry-KEY-1', requestedAtMs: Date.parse(iso(10)), ...o });
+const unk = (o = {}, att = {}) => row({ retry_handled_at: iso(10), retry_unknown_at: iso(10), retry_unknown_attempt: { req: REQ(), attemptedAt: iso(10), ...att }, ...o });
+{ const { deps, log } = makeDeps([unk()], { results: [SUCCESS] }); const out = await P.runRetryPass(deps);
+  ok(log.charges.length === 1 && log.charges[0].idempotencyKey === 'dunning-retry-KEY-1', 'replay: the stored request is sent again with the SAME idempotency key');
+  ok(out[0].outcome === 'reconciled' && log.quote[0][1].payment_status === 'succeeded' && log.quote[0][1].payment_method_id === 'c1' && log.closed.length === 1 && log.cleared.length === 1, 'replay succeeded -> quote recorded, dunning closed, marker cleared'); }
+{ const { deps, log } = makeDeps([unk()], { results: [{ status: 'processing', paymentIntentId: 'pi_p' }] }); await P.runRetryPass(deps);
+  ok(log.quote[0][1].payment_status === 'pending' && log.closed.length === 0 && log.cleared.length === 1, 'replay processing -> pending recorded, dunning kept, marker cleared'); }
+{ const { deps, log } = makeDeps([unk()], { results: [{ status: 'failed', paymentIntentId: 'pi_d', declineCode: 'generic_decline' }] }); const out = await P.runRetryPass(deps);
+  ok(log.charges.length === 1 && log.cleared.length === 1 && log.closed.length === 0 && out[0].result === 'declined', 'replay definite decline -> marker cleared, nothing else charged'); }
+{ const { deps, log } = makeDeps([unk()], { results: [{ status: 'unknown', message: 'timeout' }] }); const out = await P.runRetryPass(deps);
+  ok(out[0].reason === 'unknown_still_unknown' && log.cleared.length === 0 && log.closed.length === 0, 'replay unknown again -> marker stays'); }
+{ const { deps, log } = makeDeps([unk({}, { attemptedAt: iso(23 * 60 + 5) })], { results: [SUCCESS] }); const out = await P.runRetryPass(deps);
+  ok(log.charges.length === 0 && out[0].reason === 'unknown_replay_window_closed', 'past 23h: no replay (it could mint a new charge)');
+  const al = log.alerts.find((x) => x[0] === 'dunning_retry_unknown_stuck');
+  ok(al && al[1].includes('dunning-retry-KEY-1') && /quote_id=/.test(al[1]) && /Verify in Stripe by idempotency key\/metadata before clearing/.test(al[1]) && !/just clear/i.test(al[1]), 'past 23h: alert carries key + metadata and says verify in Stripe before clearing'); }
+{ const { deps, log } = makeDeps([unk({}, { attemptedAt: iso(23 * 60 + 120) })]); await P.runRetryPass(deps);
+  ok(log.alerts.length === 0, 'past 24h: the stuck alert is not repeated every tick'); }
+{ const { deps, log } = makeDeps([unk({ retry_unknown_attempt: null })]); const out = await P.runRetryPass(deps);
+  ok(log.charges.length === 0 && out[0].reason === 'unknown_attempt_not_stored' && log.alerts.length === 1, 'marker without a stored attempt: nothing replayed, alert'); }
+{ const { deps, log } = makeDeps([unk()], { guard: { allow: false, message: 'refused' }, results: [SUCCESS] }); const out = await P.runRetryPass(deps);
+  ok(log.charges.length === 0 && out[0].reason === 'unknown_replay_guard_refused' && log.cleared.length === 0, 'replay is still behind the live-charge guard'); }
+{ const { deps, log } = makeDeps([unk({ retry_requested_at: iso(1), retry_handled_at: iso(10) })], { results: [SUCCESS] }); await P.runRetryPass(deps);
+  ok(log.charges.length === 1 && log.charges[0].idempotencyKey === 'dunning-retry-KEY-1' && log.charges[0].requestedAtMs === Date.parse(iso(10)), 'a NEWER request never changes the replayed key or request ms (C2)'); }
 
 // B2: the whole quote's rows are read; a request on the webhook row W while the scheduled row S is warning_sent is SERVED
 const W = (o = {}) => row({ id: 'W', homeowner_notify_at: null, dunning_status: 'active', retry_requested_at: iso(5), retry_request_count: 1, ...o });
@@ -204,11 +211,12 @@ const Sx = (o = {}) => row({ id: 'S', dunning_status: 'warning_sent', homeowner_
 { const { deps, log } = makeDeps([W(), Sx()], { results: [SUCCESS], recordOk: false }); await P.runRetryPass(deps);
   ok(log.alerts.some((a) => a[0] === 'gh2105_zero_row_update' && /quotes write matched zero rows/.test(a[1])), 'quote write with zero rows raises the alert'); }
 
-// In-memory supabase fake for the real wiring (listCandidateRows two-step read, CAS, close filter, hold lookup)
+// In-memory supabase fake for the real wiring (listCandidateRows two-step read, CAS, close filter, hold lookup, replay)
 function fakeSb(tables) {
   const calls = [];
   const match = (r, f) => {
     if (f[0] === 'notnull') return r[f[1]] != null;
+    if (f[0] === 'isnull') return r[f[1]] == null;
     if (f[0] === 'gte') return r[f[1]] >= f[2];
     if (f[0] === 'in') return f[2].includes(r[f[1]]);
     if (f[0] === 'eq') return r[f[1]] === f[2];
@@ -216,12 +224,21 @@ function fakeSb(tables) {
     return true;
   };
   return { calls, from(t) {
-    const q = { filters: [], upd: null }; calls.push([t, q]);
+    const q = { filters: [], upd: null, ins: null }; calls.push([t, q]);
+    const run = () => {
+      if (!tables[t]) throw new Error('no table ' + t);
+      if (q.ins) { const rows = Array.isArray(q.ins) ? q.ins : [q.ins]; rows.forEach((r) => tables[t].push({ ...r })); return rows; }
+      const hit = tables[t].filter((r) => q.filters.every((f) => match(r, f)));
+      if (q.upd) hit.forEach((r) => Object.assign(r, q.upd));
+      return hit.map((r) => ({ ...r }));
+    };
     const api = {
-      select() { return api; }, update(v) { q.upd = v; return api; },
-      not(c, op, v) { q.filters.push(['notnull', c]); return api; }, gte(c, v) { q.filters.push(['gte', c, v]); return api; },
-      in(c, v) { q.filters.push(['in', c, v]); return api; }, eq(c, v) { q.filters.push(['eq', c, v]); return api; }, or(s) { q.filters.push(['or', s]); return api; },
-      then(res, rej) { try { const hit = tables[t].filter((r) => q.filters.every((f) => match(r, f))); if (q.upd) hit.forEach((r) => Object.assign(r, q.upd)); res({ data: hit.map((r) => ({ ...r })), error: null }); } catch (e) { (rej || (() => { throw e; }))(e); } },
+      select() { return api; }, update(v) { q.upd = v; return api; }, insert(v) { q.ins = v; return api; }, order() { return api; },
+      not(c, op, v) { q.filters.push(['notnull', c]); return api; }, is(c, v) { q.filters.push(['isnull', c]); return api; },
+      gte(c, v) { q.filters.push(['gte', c, v]); return api; }, in(c, v) { q.filters.push(['in', c, v]); return api; },
+      eq(c, v) { q.filters.push(['eq', c, v]); return api; }, or(s2) { q.filters.push(['or', s2]); return api; },
+      maybeSingle() { return Promise.resolve({ data: run()[0] ?? null, error: null }); }, single() { return Promise.resolve({ data: run()[0] ?? null, error: null }); },
+      then(res, rej) { try { res({ data: run(), error: null }); } catch (e) { (rej || (() => { throw e; }))(e); } },
     };
     return api; } };
 }
@@ -251,12 +268,13 @@ const mkTables = () => ({ payment_failures: [
   const ok1 = await d.refundRequest('W', 1); const ok2 = await d.refundRequest('W', 1);
   ok(ok1 === true && ok2 === false && t.payment_failures[0].retry_request_count === 0, 'refund wiring: compare-and-set on the current count, never below 0'); }
 
-// B4: payment-hold filter
-{ const t = { quotes: [{ id: 'qa', payment_status: 'processing' }, { id: 'qb', payment_status: 'pending' }, { id: 'qc', payment_status: 'succeeded' }, { id: 'qd', payment_status: 'failed' }, { id: 'qe', payment_status: null }] };
-  const held = await H.heldQuoteIds(fakeSb(t), ['qa', 'qb', 'qc', 'qd', 'qe', null]);
-  ok([...held].sort().join() === 'qa,qb,qc', 'B4: processing, pending and succeeded quotes are held; failed/null are not');
-  const kept = H.dropHeld([{ id: 1, quote_id: 'qa' }, { id: 2, quote_id: 'qd' }, { id: 3, quote_id: null }], held);
-  ok(kept.map((r) => r.id).join() === '2,3', 'B4: held failures are dropped from the reminder / homeowner-notice passes'); }
+// B4 / C3: payment-hold filter
+{ const t = { quotes: [{ id: 'qa', payment_status: 'processing' }, { id: 'qb', payment_status: 'pending' }, { id: 'qc', payment_status: 'succeeded' }, { id: 'qd', payment_status: 'failed' }, { id: 'qe', payment_status: null }, { id: 'qf', payment_status: 'dunning' }],
+    payment_failures: [{ id: 'f1', quote_id: 'qf', retry_unknown_at: iso(10) }, { id: 'f2', quote_id: 'qd', retry_unknown_at: null }] };
+  const held = await H.heldQuoteIds(fakeSb(t), ['qa', 'qb', 'qc', 'qd', 'qe', 'qf', null]);
+  ok([...held].sort().join() === 'qa,qb,qc,qf', 'B4/C3: processing, pending, succeeded AND in-doubt (retry_unknown_at) quotes are held; failed/null are not');
+  const kept = H.dropHeld([{ id: 1, quote_id: 'qa' }, { id: 2, quote_id: 'qd' }, { id: 3, quote_id: null }, { id: 4, quote_id: 'qf' }], held);
+  ok(kept.map((r) => r.id).join() === '2,3', 'B4/C3: held failures are dropped from the reminder / final-warning / homeowner-notice passes'); }
 
 // N1: test mode is the default even when enabled
 { const env = (o) => (n) => o[n];
@@ -272,6 +290,125 @@ const mkTables = () => ({ payment_failures: [
 { const pend = JSON.parse(fs.readFileSync(path.join(root, 'sql/schema-pending.json'), 'utf8'));
   ok(pend.payment_failures?.retry_handled_at && pend.payment_failures?.retry_unknown_at, 'B5: sql/schema-pending.json declares retry_handled_at and retry_unknown_at');
   ok(fs.existsSync(path.join(root, pend.payment_failures.retry_handled_at.migration)), 'B5: the named migration file exists'); }
+
+
+// ═════════════ END-TO-END with a simulated Stripe (REVIEW 6276208597 C1, C2) ═════════════
+// The simulated Stripe honours idempotency keys exactly like Stripe does: the same key returns the ORIGINAL response
+// (even when that response was lost on the wire); a different key makes a new intent. Search lags for intents flagged slow.
+function makeStripe(script) {
+  const st = { intents: [], byKey: new Map(), posts: [], gets: [] };
+  let seq = 0;
+  st.fetchFn = async (url, init) => {
+    if (init.method === 'GET') { // /payment_intents/search : eventually consistent
+      st.gets.push(url); const hits = st.intents.filter((i) => !i.slowIndex);
+      return j(200, { data: hits.map((i) => ({ id: i.id, status: i.status })) });
+    }
+    if (!url.endsWith('/payment_intents')) return j(200, {});
+    const key = init.headers['Idempotency-Key']; const body = new URLSearchParams(init.body);
+    st.posts.push({ key, pm: body.get('payment_method'), body: init.body });
+    const prev = st.byKey.get(key);
+    if (prev) { if (prev.body !== init.body) return j(400, { error: { type: 'idempotency_error' } }); return prev.respond(); }
+    const act = script(body.get('payment_method'), st.posts.length);
+    if (act === 'lost-before') throw new Error('network timeout (request never arrived)');
+    const intent = { id: 'pi_' + (++seq), status: act === 'decline' ? 'requires_payment_method' : act === 'processing' ? 'processing' : 'succeeded', amount: Number(body.get('amount')), slowIndex: act === 'ok-lost-slow' };
+    st.intents.push(intent);
+    const respond = () => intent.status === 'requires_payment_method'
+      ? j(402, { error: { type: 'card_error', code: 'card_declined', decline_code: 'generic_decline', message: 'declined', payment_intent: { id: intent.id, status: intent.status } } })
+      : j(200, { id: intent.id, status: intent.status });
+    st.byKey.set(key, { body: init.body, respond });
+    if (act === 'ok-lost' || act === 'ok-lost-slow') throw new Error('connection reset (response lost)');
+    return respond();
+  };
+  st.succeeded = () => st.intents.filter((i) => i.status === 'succeeded').length;
+  return st;
+}
+function world(rows, stripe, clock) {
+  const t = {
+    payment_failures: rows, quotes: [{ id: Q, payment_status: 'dunning' }], claims: [{ id: 'cl1' }],
+    contractors: [{ id: 'c1', stripe_customer_id: 'cus_1', stripe_payment_method_id: null }],
+    contractor_payment_methods: [
+      { id: 'cpm1', contractor_id: 'c1', is_default: true, payment_type: 'card', stripe_payment_method_id: 'pm_card1' },
+      { id: 'cpm2', contractor_id: 'c1', is_default: false, payment_type: 'card', stripe_payment_method_id: 'pm_card2' }],
+    platform_alerts_log: [],
+  };
+  const sb = fakeSb(t);
+  const mkDeps = () => S.buildRetryPassDeps(sb, 'sk_test_x', guardApi, stripe.fetchFn, () => clock.now);
+  return { t, sb, tick: () => P.runRetryPass(mkDeps()), mkDeps };
+}
+const wr = (clock, o = {}) => ({ ...row({ id: 'W', quote_id: Q, homeowner_notify_at: null, dunning_status: 'active', retry_requested_at: new Date(clock.now.getTime() - 60000).toISOString(), retry_request_count: 1 }), ...o });
+const sr = (clock, o = {}) => ({ ...row({ id: 'S', quote_id: Q, dunning_status: 'warning_sent', homeowner_notify_at: new Date(clock.now.getTime() + 20 * 3600000).toISOString(), retry_requested_at: null, retry_request_count: 0 }), ...o });
+const adv = (clock, min) => { clock.now = new Date(clock.now.getTime() + min * 60000); };
+
+// C1: method 1 definite decline (pi_1); method 2 succeeds at Stripe but the response is lost AND search would not show it yet
+{ const clock = { now: new Date(NOW) };
+  const stripe = makeStripe((pm) => (pm === 'pm_card1' ? 'decline' : 'ok-lost-slow'));
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  const o1 = await w.tick();
+  ok(o1[0].outcome === 'unknown' && stripe.succeeded() === 1, 'C1 tick 1: method 2 charged at Stripe, response lost -> unknown (1 succeeded intent)');
+  const stored = w.t.payment_failures.find((r) => r.id === 'W').retry_unknown_attempt;
+  ok(stored && stored.req.idempotencyKey.includes('pm_card2') && stored.req.method.stripe_pm_id === 'pm_card2', 'C1: the exact in-doubt request (method 2 key) is stored with the marker');
+  ok(w.t.quotes[0].payment_status === 'dunning', 'C1: quote not yet recorded');
+  adv(clock, 30); const o2 = await w.tick();
+  ok(o2[0].outcome === 'reconciled' && o2[0].result === 'succeeded', 'C1 tick 2: replay of the stored key returns the ORIGINAL intent (search never consulted)');
+  ok(stripe.gets.length === 0, 'C1: Stripe search is never called');
+  ok(w.t.quotes[0].payment_status === 'succeeded' && w.t.quotes[0].payment_intent_id === 'pi_2', 'C1: quote records pi_2');
+  ok(w.t.payment_failures.every((r) => r.dunning_status === 'resolved' && r.retry_unknown_at == null), 'C1: every dunning row closed, marker cleared');
+  adv(clock, 10); w.t.payment_failures.find((r) => r.id === 'W').retry_requested_at = clock.now.toISOString(); w.t.payment_failures.find((r) => r.id === 'W').retry_request_count = 2;
+  const o3 = await w.tick();
+  ok(o3[0].outcome === 'refused' && stripe.succeeded() === 1, 'C1 tick 3: the contractor retries again -> refused; still exactly ONE succeeded intent');
+  const keys = stripe.posts.map((x) => x.pm + ':' + x.key.slice(-13)); ok(stripe.posts.length === 3, 'C1: total POSTs = 3 (decline, lost-success, replay)'); }
+
+// C2: unknown on method 1; the contractor asks again BEFORE the replay; the key must not move
+{ const clock = { now: new Date(NOW) };
+  const stripe = makeStripe(() => 'ok-lost-slow');
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  await w.tick();
+  const firstKey = stripe.posts[0].key; const firstStored = JSON.stringify(w.t.payment_failures.find((r) => r.id === 'W').retry_unknown_attempt);
+  adv(clock, 5); const W = w.t.payment_failures.find((r) => r.id === 'W'); W.retry_requested_at = clock.now.toISOString(); W.retry_request_count = 2; // a second click got through
+  adv(clock, 5);
+  const o2 = await w.tick();
+  ok(stripe.posts.length === 2 && stripe.posts[1].key === firstKey, 'C2: the replay uses the ORIGINAL key, not one built from the newer request');
+  ok(o2[0].outcome === 'reconciled' && stripe.succeeded() === 1, 'C2: original intent recovered; exactly one succeeded intent');
+  ok(firstStored.includes(firstKey), 'C2: the stored attempt carried that key all along');
+  const o3 = await w.tick(); ok(o3[0].outcome === 'refused' && stripe.succeeded() === 1, 'C2: the newer request is refused (dunning closed), no second charge'); }
+
+// replay itself times out again: marker stays, still one POST per tick, still no other method
+{ const clock = { now: new Date(NOW) };
+  let n = 0; const stripe = makeStripe(() => 'ok-lost-slow');
+  const realFetch = stripe.fetchFn; let failReplay = true;
+  stripe.fetchFn = async (u, i) => { if (failReplay && stripe.posts.length >= 1 && u.endsWith('/payment_intents')) { stripe.posts.push({ key: i.headers['Idempotency-Key'], replayLost: true }); throw new Error('timeout again'); } return realFetch(u, i); };
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  await w.tick(); adv(clock, 30); const o2 = await w.tick();
+  ok(o2[0].reason === 'unknown_still_unknown' && w.t.payment_failures.find((r) => r.id === 'W').retry_unknown_at, 'replay times out again -> marker stays set');
+  failReplay = false; adv(clock, 30); const o3 = await w.tick();
+  ok(o3[0].outcome === 'reconciled' && stripe.succeeded() === 1, 'a later replay resolves it; one succeeded intent in total'); }
+
+// overlapping ticks while an attempt is in doubt
+{ const clock = { now: new Date(NOW) };
+  const stripe = makeStripe(() => 'ok-lost-slow');
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  await w.tick(); adv(clock, 30);
+  const [a, b] = await Promise.all([w.tick(), w.tick()]);
+  ok(stripe.succeeded() === 1 && stripe.posts.slice(1).every((x) => x.key === stripe.posts[0].key), 'overlapping ticks both replay the same key: Stripe still shows ONE succeeded intent'); }
+
+// 24h: past 23h the pass stops replaying and tells a person to verify in Stripe
+{ const clock = { now: new Date(NOW) };
+  const stripe = makeStripe(() => 'ok-lost-slow');
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  await w.tick(); adv(clock, 23 * 60 + 5); const before = stripe.posts.length;
+  const o = await w.tick();
+  ok(o[0].reason === 'unknown_replay_window_closed' && stripe.posts.length === before, 'after 23h: no POST at all');
+  const al = w.t.platform_alerts_log.filter((x) => x.alert_type === 'dunning_retry_unknown_stuck');
+  ok(al.length === 1 && al[0].message.includes(stripe.posts[0].key) && /Verify in Stripe by idempotency key\/metadata before clearing/.test(al[0].message), 'after 23h: one alert with the key and the verify-before-clearing wording');
+  ok(w.t.payment_failures.every((r) => r.retry_unknown_at), 'after 23h: marker is NOT auto-cleared');
+  const held = await H.heldQuoteIds(w.sb, [Q]); ok(held.has(Q), 'C3: the quote stays held (no final warning / homeowner notice) while the marker is set'); }
+
+// C3 end to end: an in-doubt quote is held even though quotes.payment_status is still 'dunning'
+{ const clock = { now: new Date(NOW) };
+  const stripe = makeStripe(() => 'lost-before');
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  await w.tick();
+  ok((await H.heldQuoteIds(w.sb, [Q])).has(Q), 'C3: held right after the unknown outcome'); }
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

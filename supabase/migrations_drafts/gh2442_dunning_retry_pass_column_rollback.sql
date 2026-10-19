@@ -5,8 +5,9 @@
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- Rollback. Drops the column. Turn the retry pass off first (unset DUNNING_RETRY_PASS_ENABLED) or the pass will
--- throw inside its own try/catch each tick (reminders unaffected). Loses only the consumed stamps and unknown-outcome markers (check no row has retry_unknown_at set first: such a quote may hold an unreconciled Stripe charge).
+-- throw inside its own try/catch each tick (reminders unaffected). Loses only the consumed stamps and unknown-outcome markers (check no row has retry_unknown_at set first: such a quote may hold an unverified Stripe charge; verify in Stripe by idempotency key/metadata).
 BEGIN;
 ALTER TABLE public.payment_failures DROP COLUMN IF EXISTS retry_handled_at;
 ALTER TABLE public.payment_failures DROP COLUMN IF EXISTS retry_unknown_at;
+ALTER TABLE public.payment_failures DROP COLUMN IF EXISTS retry_unknown_attempt;
 COMMIT;
