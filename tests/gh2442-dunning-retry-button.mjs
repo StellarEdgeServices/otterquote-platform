@@ -28,6 +28,10 @@ const bannerEnd = html.indexOf('Bid Accepted Notification Banner');
 ok(bannerStart > 0 && html.slice(bannerStart, bannerEnd).includes(sentence), 'the sentence sits inside the dunning banner');
 ok(html.split(sentence).length === 2, 'the sentence appears exactly once on the dashboard');
 
+// ── the dashboard must not read retry_unknown_attempt (Stripe ids): explicit columns, no '*'
+const dunSel = html.slice(html.indexOf("checkDunningStatus()"), html.indexOf("checkDunningStatus()") + 900);
+ok(!/from\('payment_failures'\)\s*\.select\('\*/.test(dunSel), "dunning banner query selects explicit columns, not '*'");
+
 // ── lift the real function
 const start = html.indexOf('async function retryDunningPayment() {');
 ok(start > 0, 'retryDunningPayment exists');

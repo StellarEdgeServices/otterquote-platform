@@ -32,8 +32,11 @@ function makeDeps(rows, over = {}) {
     listCandidateRows: async () => rows,
     markHandled: async (ids, t, req) => { log.handled.push([ids, t, req]); return over.markWrites ?? ids.length; },
     refundRequest: async (id, n) => { log.refunds.push([id, n]); return true; },
-    markUnknown: async (ids, attempt) => { log.unknown.push([ids, attempt]); return ids.length; },
-    clearUnknown: async (ids) => { log.cleared.push(ids); return ids.length; },
+    markUnknown: async (ids, attempt) => { log.unknown.push([ids, attempt]); return over.markUnknownWrites ?? ids.length; },
+    clearUnknown: async (ids) => { log.cleared.push(ids); return over.clearWrites ?? ids.length; },
+    markStuckAlerted: async (ids, att, t) => { log.stuck = (log.stuck ?? 0) + 1; return over.stuckCas ?? ids.length; },
+    retrieveIntent: async () => over.fresh ?? { error: 'not available' },
+    countOpenRows: async () => over.openLeft ?? 1,
     getQuotePaymentStatus: async () => over.payStatus ?? 'failed',
     chargeGuard: async () => over.guard ?? { allow: true, message: '' },
     getChargeMethods: async () => over.methods === undefined
@@ -178,14 +181,31 @@ const unk = (o = {}, att = {}) => row({ retry_handled_at: iso(10), retry_unknown
   ok(log.charges.length === 0 && out[0].reason === 'unknown_replay_window_closed', 'past 23h: no replay (it could mint a new charge)');
   const al = log.alerts.find((x) => x[0] === 'dunning_retry_unknown_stuck');
   ok(al && al[1].includes('dunning-retry-KEY-1') && /quote_id=/.test(al[1]) && /Verify in Stripe by idempotency key\/metadata before clearing/.test(al[1]) && !/just clear/i.test(al[1]), 'past 23h: alert carries key + metadata and says verify in Stripe before clearing'); }
-{ const { deps, log } = makeDeps([unk({}, { attemptedAt: iso(23 * 60 + 120) })]); await P.runRetryPass(deps);
-  ok(log.alerts.length === 0, 'past 24h: the stuck alert is not repeated every tick'); }
+{ const { deps, log } = makeDeps([unk({}, { attemptedAt: iso(26 * 60) })]); await P.runRetryPass(deps);
+  ok(log.alerts.filter((a) => a[0] === 'dunning_retry_unknown_stuck').length === 1 && log.charges.length === 0, 'past 23h with the cron hour missed (26h): the alert still fires, once, no POST'); }
+{ const { deps, log } = makeDeps([unk({}, { attemptedAt: iso(26 * 60), stuckAlertedAt: iso(60) })]); await P.runRetryPass(deps);
+  ok(log.alerts.length === 0 && log.charges.length === 0, 'already alerted (stored flag): no repeat alert on later ticks'); }
+{ const { deps, log } = makeDeps([unk({}, { attemptedAt: iso(26 * 60) })], { stuckCas: 0 }); await P.runRetryPass(deps);
+  ok(log.alerts.length === 0, 'overlapping tick lost the flag race: it does not alert a second time'); }
+{ const { deps, log } = makeDeps([unk({}, { attemptedAt: iso(23 * 60) })]); await P.runRetryPass(deps);
+  ok(log.charges.length === 0, 'exactly 23h counts as closed (>= 23h, not a one-hour window)'); }
 { const { deps, log } = makeDeps([unk({ retry_unknown_attempt: null })]); const out = await P.runRetryPass(deps);
   ok(log.charges.length === 0 && out[0].reason === 'unknown_attempt_not_stored' && log.alerts.length === 1, 'marker without a stored attempt: nothing replayed, alert'); }
 { const { deps, log } = makeDeps([unk()], { guard: { allow: false, message: 'refused' }, results: [SUCCESS] }); const out = await P.runRetryPass(deps);
   ok(log.charges.length === 0 && out[0].reason === 'unknown_replay_guard_refused' && log.cleared.length === 0, 'replay is still behind the live-charge guard'); }
 { const { deps, log } = makeDeps([unk({ retry_requested_at: iso(1), retry_handled_at: iso(10) })], { results: [SUCCESS] }); await P.runRetryPass(deps);
   ok(log.charges.length === 1 && log.charges[0].idempotencyKey === 'dunning-retry-KEY-1' && log.charges[0].requestedAtMs === Date.parse(iso(10)), 'a NEWER request never changes the replayed key or request ms (C2)'); }
+
+{ const { deps, log } = makeDeps([unk()], { results: [SUCCESS], fresh: { status: 'processing' } }); await P.runRetryPass(deps);
+  ok(log.quote[0][1].payment_status === 'pending' && log.closed.length === 0, 'replay: cached says succeeded but the intent is now processing -> pending recorded (fresh state wins)'); }
+{ const { deps, log } = makeDeps([unk()], { results: [{ status: 'processing', paymentIntentId: 'pi_p' }], fresh: { status: 'succeeded' } }); await P.runRetryPass(deps);
+  ok(log.quote[0][1].payment_status === 'succeeded' && log.closed.length === 1, 'replay: cached processing, intent now succeeded -> succeeded recorded, dunning closed'); }
+{ const { deps, log } = makeDeps([unk()], { results: [{ status: 'processing', paymentIntentId: 'pi_p' }], fresh: { status: 'requires_payment_method' } }); const out = await P.runRetryPass(deps);
+  ok(out[0].result === 'declined' && log.quote.length === 0 && log.cleared.length === 1, 'replay: cached processing, intent later failed -> treated as a decline, nothing recorded as paid'); }
+{ const { deps, log } = makeDeps([unk()], { results: [SUCCESS], recordOk: false }); const out = await P.runRetryPass(deps);
+  ok(out[0].reason === 'replay_result_not_recorded' && log.cleared.length === 0, 'replay: quote write failed -> marker kept so the next pass records it'); }
+{ const { deps, log } = makeDeps([unk()], { results: [SUCCESS], closeWrites: 0, openLeft: 0 }); await P.runRetryPass(deps);
+  ok(!log.alerts.some((a) => a[0] === 'gh2105_zero_row_update'), 'overlapping reconcile ticks: a close that finds nothing left open is benign (no false alert)'); }
 
 // B2: the whole quote's rows are read; a request on the webhook row W while the scheduled row S is warning_sent is SERVED
 const W = (o = {}) => row({ id: 'W', homeowner_notify_at: null, dunning_status: 'active', retry_requested_at: iso(5), retry_request_count: 1, ...o });
@@ -207,7 +227,7 @@ const Sx = (o = {}) => row({ id: 'S', dunning_status: 'warning_sent', homeowner_
 // B3: success closes EVERY open row of the quote; a short write alerts
 { const { deps, log } = makeDeps([W(), Sx()], { results: [SUCCESS] }); await P.runRetryPass(deps);
   ok(log.closed.length === 1 && log.closed[0].slice().sort().join() === 'S,W', 'B3: success closes W and S (every open row of the quote)'); }
-{ const { deps, log } = makeDeps([W(), Sx()], { results: [SUCCESS], closeWrites: 1 }); await P.runRetryPass(deps);
+{ const { deps, log } = makeDeps([W(), Sx()], { results: [SUCCESS], closeWrites: 1, openLeft: 1 }); await P.runRetryPass(deps);
   ok(log.alerts.some((a) => a[0] === 'gh2105_zero_row_update' && /wrote 1 of 2/.test(a[1])), 'B3: short close write raises the zero-row alert'); }
 { const { deps, log } = makeDeps([W(), Sx()], { results: [SUCCESS], recordOk: false }); await P.runRetryPass(deps);
   ok(log.alerts.some((a) => a[0] === 'gh2105_zero_row_update' && /quotes write matched zero rows/.test(a[1])), 'quote write with zero rows raises the alert'); }
@@ -300,6 +320,7 @@ function makeStripe(script) {
   const st = { intents: [], byKey: new Map(), posts: [], gets: [] };
   let seq = 0;
   st.fetchFn = async (url, init) => {
+    if (init.method === 'GET' && /\/payment_intents\/pi_/.test(url)) { const i = st.intents.find((x) => url.endsWith(x.id)); return i ? j(200, { id: i.id, status: i.status }) : j(404, {}); }
     if (init.method === 'GET') { // /payment_intents/search : eventually consistent
       st.gets.push(url); const hits = st.intents.filter((i) => !i.slowIndex);
       return j(200, { data: hits.map((i) => ({ id: i.id, status: i.status })) });
@@ -318,6 +339,7 @@ function makeStripe(script) {
       : j(200, { id: intent.id, status: intent.status });
     st.byKey.set(key, { body: init.body, respond });
     if (act === 'ok-lost' || act === 'ok-lost-slow') throw new Error('connection reset (response lost)');
+    if (act === 'hang-created') return new Promise(() => {}); // the worker is killed / the call outlives the function: never resolves
     return respond();
   };
   st.succeeded = () => st.intents.filter((i) => i.status === 'succeeded').length;
@@ -410,6 +432,64 @@ const adv = (clock, min) => { clock.now = new Date(clock.now.getTime() + min * 6
   const w = world([wr(clock), sr(clock)], stripe, clock);
   await w.tick();
   ok((await H.heldQuoteIds(w.sb, [Q])).has(Q), 'C3: held right after the unknown outcome'); }
+
+
+// ═════════════ REVIEW 6276858298 D1 / D2: write-ahead ═════════════
+const tick0 = () => new Promise((r) => setTimeout(r, 25));
+// D1: the worker dies while the POST is in flight; Stripe has already created and charged pi_1
+{ const clock = { now: new Date(NOW) };
+  const stripe = makeStripe(() => 'hang-created');
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  void w.tick(); await tick0(); // this promise never settles: the "worker" is gone
+  ok(stripe.posts.length === 1 && stripe.succeeded() === 1, 'D1: POST left the building and Stripe charged (worker then dies)');
+  const Wr = w.t.payment_failures.find((r) => r.id === 'W');
+  ok(Wr.retry_unknown_at && Wr.retry_unknown_attempt?.req.idempotencyKey === stripe.posts[0].key, 'D1: the marker + exact request were written BEFORE the POST');
+  ok((await H.heldQuoteIds(w.sb, [Q])).has(Q), 'D1: the quote is held while the attempt is in doubt');
+  adv(clock, 30); const o2 = await w.tick();
+  ok(o2[0].outcome === 'reconciled' && stripe.posts.length === 2 && stripe.posts[1].key === stripe.posts[0].key, 'D1: a new worker replays the SAME key');
+  ok(stripe.succeeded() === 1 && w.t.quotes[0].payment_status === 'succeeded' && w.t.payment_failures.every((r) => r.dunning_status === 'resolved'), 'D1: exactly ONE succeeded intent, quote recorded, dunning closed');
+  adv(clock, 10); Wr.retry_requested_at = clock.now.toISOString(); Wr.retry_request_count = 2;
+  await w.tick(); ok(stripe.succeeded() === 1, 'D1: the contractor pressing Retry afterwards charges nothing more'); }
+
+// D2: the marker write does not land -> Stripe is not called at all
+{ const clock = { now: new Date(NOW) };
+  const stripe = makeStripe(() => 'ok');
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  const deps = w.mkDeps(); deps.markUnknown = async () => 0;
+  const out = await P.runRetryPass(deps);
+  ok(stripe.posts.length === 0 && out[0].reason === 'could_not_write_ahead', 'D2: markUnknown wrote 0 rows -> NO Stripe call');
+  ok(w.t.platform_alerts_log.some((a) => a.alert_type === 'dunning_retry_write_ahead_failed'), 'D2: alert raised');
+  adv(clock, 20); const Wr = w.t.payment_failures.find((r) => r.id === 'W'); Wr.retry_requested_at = clock.now.toISOString(); Wr.retry_request_count = 2;
+  await w.tick(); ok(stripe.succeeded() === 1 && stripe.posts.length === 1, 'D2: the contractor asks again -> one charge, one succeeded intent in total'); }
+// D2b: the marker write THROWS (db error) -> still no Stripe call
+{ const clock = { now: new Date(NOW) };
+  const stripe = makeStripe(() => 'ok');
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  const deps = w.mkDeps(); deps.markUnknown = async () => { throw new Error('db down'); };
+  let threw = false; try { await P.runRetryPass(deps); } catch { threw = true; }
+  ok(stripe.posts.length === 0, 'D2b: a throwing marker write also means no Stripe call (' + (threw ? 'pass aborted' : 'handled') + ')'); }
+// after a definite decline, the marker must be cleared before the next method is attempted; if it cannot be, stop
+{ const clock = { now: new Date(NOW) };
+  const stripe = makeStripe((pm) => (pm === 'pm_card1' ? 'decline' : 'ok'));
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  const deps = w.mkDeps(); deps.clearUnknown = async () => 0;
+  const out = await P.runRetryPass(deps);
+  ok(stripe.posts.length === 1 && out[0].reason === 'could_not_write_ahead' && stripe.succeeded() === 0, 'definite decline + marker cannot be cleared -> the second method is NOT charged'); }
+// decline then success: marker is swapped per method and ends cleared
+{ const clock = { now: new Date(NOW) };
+  const stripe = makeStripe((pm) => (pm === 'pm_card1' ? 'decline' : 'ok'));
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  const out = await w.tick();
+  ok(out[0].outcome === 'charged' && stripe.succeeded() === 1 && w.t.payment_failures.every((r) => r.retry_unknown_at == null && r.retry_unknown_attempt == null), 'normal path: decline -> next method succeeds -> marker cleared at the end'); }
+// timeout seam
+{ const src = fs.readFileSync(path.join(dir, 'retry-pass-supabase.ts'), 'utf8');
+  const m = src.match(/STRIPE_TIMEOUT_MS = ([0-9_]+)/);
+  ok(m && Number(m[1].replace(/_/g, '')) <= 20000 && src.includes('signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS)'), 'stripeHttp aborts a hung Stripe call within 20s (becomes unknown)');
+  const e = new Error('The operation was aborted due to timeout'); e.name = 'TimeoutError';
+  const res = await S.buildStripeCharge('sk_test_x', async () => { throw e; })({ ...base, method: { stripe_pm_id: 'pm', payment_type: 'card', cpm_id: null }, chargeAmountCents: 1, idempotencyKey: 'k', requestedAtMs: 1 });
+  ok(res.status === 'unknown', 'a timeout error is classed unknown, not a decline'); }
+// N4: columns the contractor can read
+ok(!/select\('\*/.test(fs.readFileSync(path.join(root, 'react-app/app/contractor/dashboard/use-dashboard-data.ts'), 'utf8').split("from('payment_failures')")[1]?.slice(0, 80) ?? ''), 'N4: react dashboard selects explicit payment_failures columns');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -17,7 +17,10 @@ export type StripeHttp = (
   path: string,
   init: { method: string; headers: Record<string, string>; body?: string },
 ) => Promise<{ ok: boolean; status: number; json: () => Promise<any> }>;
-export const stripeHttp: StripeHttp = (path, init) => fetch(`${STRIPE_API_BASE}${path}`, init);
+/** A hung Stripe call must become `unknown` inside the Edge Function wall-clock limit (REVIEW 6276858298 D1). */
+export const STRIPE_TIMEOUT_MS = 20_000;
+export const stripeHttp: StripeHttp = (path, init) =>
+  fetch(`${STRIPE_API_BASE}${path}`, { ...init, signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS) });
 
 export interface GuardApi {
   GUARD_SELECT: string;
@@ -158,6 +161,36 @@ export function buildRetryPassDeps(
         .is("retry_unknown_at", null)
         .select("id");
       if (error) { console.error("[process-dunning] retry_unknown_at write failed:", error); return 0; }
+      return Array.isArray(data) ? data.length : 0;
+    },
+    async markStuckAlerted(rowIds: string[], attempt: UnknownAttempt, nowIso: string): Promise<number> {
+      // Adds stuckAlertedAt to the stored attempt; the request and its key are copied unchanged. Guarded on the marker
+      // being the same attempt, so it cannot touch a different one.
+      const { data, error } = await supabase
+        .from("payment_failures")
+        .update({ retry_unknown_attempt: { ...attempt, stuckAlertedAt: nowIso } })
+        .in("id", rowIds)
+        .eq("retry_unknown_at", attempt.attemptedAt)
+        .select("id");
+      if (error) { console.error("[process-dunning] stuck-alert flag write failed:", error); return 0; }
+      return Array.isArray(data) ? data.length : 0;
+    },
+    async retrieveIntent(paymentIntentId: string) {
+      if (!/^pi_[A-Za-z0-9]+$/.test(paymentIntentId)) return { error: "bad_intent_id" };
+      try {
+        const resp = await httpFn(`/payment_intents/${paymentIntentId}`, {
+          method: "GET",
+          headers: { Authorization: `Basic ${btoa(`${stripeSecretKey}:`)}` },
+        });
+        const data = await resp.json();
+        if (!resp.ok || typeof data?.status !== "string") return { error: `HTTP ${resp.status}` };
+        return { status: data.status as string };
+      } catch (e) { return { error: String(e) }; }
+    },
+    async countOpenRows(rowIds: string[]) {
+      const { data, error } = await supabase
+        .from("payment_failures").select("id").in("id", rowIds).in("dunning_status", ["active", "warning_sent"]).is("resolved_at", null);
+      if (error) return rowIds.length; // cannot tell: treat as still open so the alert is raised
       return Array.isArray(data) ? data.length : 0;
     },
     async clearUnknown(rowIds: string[]): Promise<number> {

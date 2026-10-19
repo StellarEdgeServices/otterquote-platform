@@ -1727,7 +1727,7 @@
             try {
                 const { data: failures, error } = await sb
                     .from('payment_failures')
-                    .select('*, claims:claim_id (property_address)')
+                    .select('id, amount_cents, claims:claim_id (property_address)') // gh-2442: explicit columns; never '*' (retry_unknown_attempt holds Stripe ids)
                     .eq('contractor_id', currentContractor.id)
                     .eq('dunning_status', 'active')
                     .order('created_at', { ascending: false })

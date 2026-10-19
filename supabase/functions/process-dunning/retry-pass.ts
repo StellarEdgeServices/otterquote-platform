@@ -14,9 +14,12 @@
  * database (tests/gh2442-dunning-retry-pass.mjs runs this file under node type-stripping). The real wiring is in
  * retry-pass-supabase.ts. This file uses erasable TypeScript only (no enums, no parameter properties).
  *
- * AT-MOST-ONCE. `retry_handled_at` is written BEFORE any Stripe call. If that write fails or matches no row,
- * nothing is charged. A crash after the write loses the attempt (the contractor can ask again, subject to the
- * cap); it can never charge twice. The Stripe idempotency key carries the request timestamp as a second lock.
+ * AT-MOST-ONCE, WRITE-AHEAD. `retry_handled_at` is written BEFORE any Stripe call, and so is the in-doubt marker:
+ * before EVERY Stripe POST the pass compare-and-sets `retry_unknown_at` + `retry_unknown_attempt` (the exact request,
+ * idempotency key included) onto the quote's rows. If that write does not land, Stripe is not called. After a
+ * definite result the marker is cleared or settled. So a worker that dies mid-POST, a hung POST, or a failed
+ * post-call write all leave the marker set: the RPC refuses new requests, the hold applies, and the next pass
+ * replays the SAME request with the SAME key (Stripe returns the original result for 24h). (REVIEW 6276858298 D1/D2.)
  *
  * NOT DONE HERE: the card-surcharge formula is copied from TRIGGER mode (index.ts "MULTI-METHOD RETRY") rather than
  * extracted from it, so the live TRIGGER path is untouched by this change. tests/gh2442-dunning-retry-pass.mjs pins
@@ -73,6 +76,8 @@ export interface FailureRow {
 export interface UnknownAttempt {
   req: ChargeRequest;
   attemptedAt: string;
+  /** Set (once) when the "past 23h, verify in Stripe" alert has been sent, so it fires exactly once. */
+  stuckAlertedAt?: string;
 }
 
 export interface ChargeMethod {
@@ -122,6 +127,12 @@ export interface RetryPassDeps {
    */
   markUnknown: (rowIds: string[], attempt: UnknownAttempt) => Promise<number>;
   clearUnknown: (rowIds: string[]) => Promise<number>;
+  /** Flag the stored attempt as alerted (adds stuckAlertedAt, key untouched). Returns rows written. */
+  markStuckAlerted: (rowIds: string[], attempt: UnknownAttempt, nowIso: string) => Promise<number>;
+  /** The intent's CURRENT state (a replay returns the cached original response, which can be stale for ACH). */
+  retrieveIntent: (paymentIntentId: string) => Promise<{ status: string } | { error: string }>;
+  /** How many of these rows are still open (active / warning_sent, not resolved). */
+  countOpenRows: (rowIds: string[]) => Promise<number>;
   getQuotePaymentStatus: (quoteId: string) => Promise<string | null>;
   /** Live-charge guard (#1467): fails closed. */
   chargeGuard: (claimId: string | null) => Promise<{ allow: boolean; message: string }>;
@@ -254,13 +265,18 @@ async function closeGroup(deps: RetryPassDeps, g: Group, quoteId: string): Promi
   const want = openIds(g);
   const wrote = want.length ? await deps.closeDunningRows(want, deps.now().toISOString()) : 0;
   if (wrote < want.length) {
-    await deps.alert("gh2105_zero_row_update", `Retry pass for quote ${quoteId}: fee collected but closing the dunning rows wrote ${wrote} of ${want.length}; reminders may continue.`);
+    // A compare-and-set miss because an overlapping tick already closed them is benign; only alert if rows are STILL open.
+    const stillOpen = await deps.countOpenRows(want);
+    if (stillOpen > 0) {
+      await deps.alert("gh2105_zero_row_update", `Retry pass for quote ${quoteId}: fee collected but closing the dunning rows wrote ${wrote} of ${want.length} and ${stillOpen} are still open; reminders may continue.`);
+    }
   }
 }
 
-async function recordResult(deps: RetryPassDeps, quoteId: string, update: Record<string, unknown>, how: string): Promise<void> {
+async function recordResult(deps: RetryPassDeps, quoteId: string, update: Record<string, unknown>, how: string): Promise<boolean> {
   const recorded = await deps.recordQuoteResult(quoteId, update);
-  if (!recorded) await deps.alert("gh2105_zero_row_update", `Retry pass for quote ${quoteId}: ${how} but the quotes write matched zero rows.`);
+  if (!recorded) await deps.alert("gh2105_zero_row_update", `Retry pass for quote ${quoteId}: ${how} but the quotes write matched zero rows; the in-doubt marker is kept so the next pass records it.`);
+  return recorded;
 }
 
 /** A group carrying an unknown-outcome marker is only ever resolved by replaying the stored request; never charged anew. */
@@ -274,11 +290,14 @@ async function reconcile(deps: RetryPassDeps, g: Group, quoteId: string): Promis
   }
   const req = att.req;
   const age = deps.now().getTime() - ms(att.attemptedAt);
-  if (!(age <= UNKNOWN_REPLAY_MAX_MS)) {
-    // Past Stripe's idempotency window the replay could mint a NEW charge. Stop. Alert in the first hour past the
-    // limit only (the pass runs every 30 minutes; one alert is enough).
-    if (age - UNKNOWN_REPLAY_MAX_MS < 60 * 60 * 1000) {
-      await deps.alert("dunning_retry_unknown_stuck", `Retry pass: quote ${quoteId} in-doubt attempt (idempotency key ${req.idempotencyKey}, metadata quote_id=${req.quoteId} retry_requested_ms=${req.requestedAtMs}, ${req.method.payment_type} ****${req.method.stripe_pm_id.slice(-4)}) is older than 23h and can no longer be replayed. Verify in Stripe by idempotency key/metadata before clearing retry_unknown_at; do not clear it without checking.`);
+  if (!(age < UNKNOWN_REPLAY_MAX_MS)) {
+    // At 23h or more Stripe's 24h idempotency window is nearly shut and a replay could mint a NEW charge. Stop. Alert
+    // exactly once (stored flag), even if a cron hour was missed.
+    if (!att.stuckAlertedAt) {
+      const flagged = await deps.markStuckAlerted(ids, att, deps.now().toISOString());
+      if (flagged > 0) {
+        await deps.alert("dunning_retry_unknown_stuck", `Retry pass: quote ${quoteId} in-doubt attempt (idempotency key ${req.idempotencyKey}, metadata quote_id=${req.quoteId} retry_requested_ms=${req.requestedAtMs}, ${req.method.payment_type} ****${req.method.stripe_pm_id.slice(-4)}) is 23h or older and can no longer be replayed. Verify in Stripe by idempotency key/metadata before clearing retry_unknown_at; do not clear it without checking.`);
+      }
     }
     return { quoteKey: g.key, outcome: "skipped", reason: "unknown_replay_window_closed" };
   }
@@ -287,8 +306,19 @@ async function reconcile(deps: RetryPassDeps, g: Group, quoteId: string): Promis
     await deps.alert("platform_fee_refused_unauthorized_test", `${guard.message} Replay of in-doubt attempt refused for quote ${quoteId}; marker kept.`);
     return { quoteKey: g.key, outcome: "skipped", reason: "unknown_replay_guard_refused" };
   }
-  const res = await deps.charge(req); // IDENTICAL request, SAME idempotency key: Stripe returns the original result
+  let res = await deps.charge(req); // IDENTICAL request, SAME idempotency key: Stripe returns the original result
   if (res.status === "unknown") return { quoteKey: g.key, outcome: "skipped", reason: "unknown_still_unknown" };
+  if ((res.status === "succeeded" || res.status === "processing") && res.paymentIntentId) {
+    // The replay returns the CACHED original response. For a bank payment that may be stale: read the intent now.
+    const fresh = await deps.retrieveIntent(res.paymentIntentId);
+    if (!("error" in fresh)) {
+      if (fresh.status === "succeeded") res = { ...res, status: "succeeded" };
+      else if (fresh.status === "processing") res = { ...res, status: "processing" };
+      else if (["requires_payment_method", "canceled", "requires_action"].includes(fresh.status)) {
+        res = { status: "failed", paymentIntentId: res.paymentIntentId, declineCode: fresh.status, message: "intent no longer holds funds" };
+      }
+    }
+  }
   if (res.status === "failed") {
     await deps.clearUnknown(ids);
     await deps.alert("dunning_retry_unknown_resolved", `Retry pass: in-doubt attempt for quote ${quoteId} (key ${req.idempotencyKey}) resolved as a definite decline (${res.declineCode ?? "no code"}); no money moved. Marker cleared; the rest of the request was not attempted.`);
@@ -302,8 +332,9 @@ async function reconcile(deps: RetryPassDeps, g: Group, quoteId: string): Promis
   };
   if (req.method.cpm_id) update.payment_method_id = req.method.cpm_id;
   if (isCard) update.card_fee_cents = req.chargeAmountCents - req.feeCents;
-  await recordResult(deps, quoteId, update, `replayed in-doubt attempt: Stripe ${res.status} (payment_intent ${res.paymentIntentId})`);
+  const recorded = await recordResult(deps, quoteId, update, `replayed in-doubt attempt: Stripe ${res.status} (payment_intent ${res.paymentIntentId})`);
   if (res.status === "succeeded") await closeGroup(deps, g, quoteId);
+  if (!recorded) return { quoteKey: g.key, outcome: "skipped", reason: "replay_result_not_recorded" };
   await deps.clearUnknown(ids);
   await deps.alert("dunning_retry_unknown_resolved", `Retry pass: in-doubt attempt for quote ${quoteId} (key ${req.idempotencyKey}) resolved by replay: ${res.status}, payment_intent ${res.paymentIntentId}.`);
   return { quoteKey: g.key, outcome: "reconciled", result: res.status };
@@ -387,16 +418,25 @@ export async function runRetryPass(deps: RetryPassDeps): Promise<GroupOutcome[]>
         idempotencyKey: attemptIdempotencyKey(quoteId, method.stripe_pm_id, g.requestedAt),
         requestedAtMs,
       };
+      // WRITE-AHEAD (D1/D2): the marker + exact request land BEFORE the POST. No landed write = no Stripe call.
+      const attempt: UnknownAttempt = { req: chargeReq, attemptedAt: deps.now().toISOString() };
+      const landed = await deps.markUnknown(ids, attempt);
+      if (landed < 1) {
+        await deps.alert("dunning_retry_write_ahead_failed", `Retry pass: could not store the in-doubt marker for quote ${quoteId} (${method.payment_type} ****${method.stripe_pm_id.slice(-4)}); Stripe was NOT called.`);
+        outcomes.push({ quoteKey: g.key, outcome: "skipped", reason: "could_not_write_ahead" });
+        done = true;
+        break;
+      }
       const res = await deps.charge(chargeReq);
       if (res.status === "unknown") {
-        // The charge may exist. NEVER try another method (a different key would not dedupe): stop, mark, alert.
-        await deps.markUnknown(ids, { req: chargeReq, attemptedAt: deps.now().toISOString() });
+        // The charge may exist. The marker is already stored. NEVER try another method (a new key would not dedupe).
         await deps.alert("dunning_retry_unknown_outcome", `Retry pass: UNKNOWN Stripe outcome for quote ${quoteId} on ${method.payment_type} ****${method.stripe_pm_id.slice(-4)} (${res.message ?? "no detail"}). No further method tried; idempotency key ${chargeReq.idempotencyKey} is stored and the next pass replays that exact request.`);
         outcomes.push({ quoteKey: g.key, outcome: "unknown", methodType: method.payment_type });
         done = true;
         break;
       }
       if (res.status === "failed") {
+        await deps.clearUnknown(ids); // definite decline: nothing in doubt. (If this write fails the next write-ahead refuses.)
         if (isHardDecline(res.declineCode)) {
           hardDeclines++;
           await deps.alert("dunning_retry_hard_decline", `Retry pass: ${method.payment_type} ****${method.stripe_pm_id.slice(-4)} hard-declined (${res.declineCode}) for quote ${quoteId}.`);
@@ -410,8 +450,9 @@ export async function runRetryPass(deps: RetryPassDeps): Promise<GroupOutcome[]>
       };
       if (method.cpm_id) update.payment_method_id = method.cpm_id;
       if (isCard) update.card_fee_cents = chargeAmountCents - fee;
-      await recordResult(deps, quoteId, update, `Stripe ${res.status} (payment_intent ${res.paymentIntentId})`);
+      const recorded = await recordResult(deps, quoteId, update, `Stripe ${res.status} (payment_intent ${res.paymentIntentId})`);
       if (res.status === "succeeded") await closeGroup(deps, g, quoteId);
+      if (recorded) await deps.clearUnknown(ids); // settled; otherwise the marker stays and the next pass replays and records
       outcomes.push({
         quoteKey: g.key,
         outcome: res.status === "succeeded" ? "charged" : "processing",
