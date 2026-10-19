@@ -643,5 +643,16 @@ ok(!/select\('\*/.test(fs.readFileSync(path.join(root, 'react-app/app/contractor
   adv(clock, 5); await w.tick(); ok(stripe.succeeded() === 1, 'B2: and a further tick charges nothing more');
   ok(!w.t.payment_failures.some((r) => (r.retry_request_count ?? 0) > 0), 'B2: the contractor cap of 3 was not consumed'); }
 
+
+// refunded is terminal
+{ ok(P.PAYMENT_HOLD_STATUSES.includes('refunded'), 'refunded is in the payment-hold statuses');
+  const clock = { now: new Date(NOW) };
+  const stripe = makeStripe(() => 'ok');
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  w.t.quotes[0].payment_status = 'refunded';
+  const out = await w.tick();
+  ok(stripe.posts.length === 0 && out[0].outcome === 'refused' && out[0].reason === 'quote_payment_refunded', 'refunded quote: the retry pass refuses and makes no Stripe call');
+  const held = await H.heldQuoteIds(w.sb, [Q]); ok(held.has(Q), 'refunded quote: reminders/notices are held'); }
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

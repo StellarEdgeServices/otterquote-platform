@@ -15,11 +15,11 @@ type World = {
   lease: "free" | "held" | "unreadable"; marker: "none" | "set" | "error"; leaseHolder: string | null;
   isTest: boolean; quoteStatus: Record<string, string>;
   stripe: number; inflight: number; maxInflight: number; leaseTaken: number; leaseReleased: number;
-  inserts: Array<Record<string, unknown>>; alerts: string[]; quotePatches: string[];
+  claimReadable: boolean; notified: number; inserts: Array<Record<string, unknown>>; alerts: string[]; quotePatches: string[];
 };
 const world = (o: Partial<World> = {}): World => ({
   lease: "free", marker: "none", leaseHolder: null, isTest: false, quoteStatus: {},
-  stripe: 0, inflight: 0, maxInflight: 0, leaseTaken: 0, leaseReleased: 0, inserts: [], alerts: [], quotePatches: [], ...o,
+  claimReadable: true, notified: 0, stripe: 0, inflight: 0, maxInflight: 0, leaseTaken: 0, leaseReleased: 0, inserts: [], alerts: [], quotePatches: [], ...o,
 });
 
 async function post(w: World, quotes: string[]) {
@@ -57,12 +57,15 @@ async function post(w: World, quotes: string[]) {
       const id = (u.searchParams.get("id") ?? "").replace("eq.", ""); w.quotePatches.push(u.search);
       const cur = w.quoteStatus[id] ?? null;
       const or = u.searchParams.get("or") ?? "";
-      const guarded = or.includes("payment_status.not.in.(succeeded,pending,processing)");
-      if (guarded && cur && ["succeeded", "pending", "processing"].includes(cur)) return json([]);
+      const guarded = or.includes("payment_status.not.in.(succeeded,pending,processing,refunded)");
+      if (guarded && cur && ["succeeded", "pending", "processing", "refunded"].includes(cur)) return json([]);
       w.quoteStatus[id] = body.payment_status; return json([{ id }]);
     }
+    if (tb === "quotes" && m === "GET") { const id = (u.searchParams.get("id") ?? "").replace("eq.", ""); return json(single ? { payment_status: w.quoteStatus[id] ?? null } : [{ id, payment_status: w.quoteStatus[id] ?? null }]); }
+    if (tb === "claims" && m === "GET" && !w.claimReadable) return json({ message: "boom" }, 500);
+    if (tb === "notifications" && m === "POST") { w.notified++; return json([]); }
     if (tb === "claims" && m === "GET") return json({ id: "cl1", is_test: w.isTest, live_charge_authorized_at: null, property_address: "1 Main" });
-    if (tb === "contractors" && m === "GET") return json({ id: "c1", stripe_customer_id: "cus_1", company_name: "Co", timezone: "America/New_York", address_state: "IN", email: null, notification_emails: [], notification_phones: [], user_id: null });
+    if (tb === "contractors" && m === "GET") return json({ id: "c1", stripe_customer_id: "cus_1", company_name: "Co", timezone: "America/New_York", address_state: "IN", email: null, notification_emails: [], notification_phones: [], user_id: "u1" });
     if (tb === "contractor_payment_methods" && m === "GET") return json([{ id: "cpm1", contractor_id: "c1", is_default: true, payment_type: "card", stripe_payment_method_id: "pm_1" }]);
     if (m === "GET") return empty();
     return json([{ id: "x" }]);
@@ -127,4 +130,23 @@ Deno.test("N-k: two concurrent TRIGGERs really contend for the lease: charges ne
 Deno.test("N-k: lease held for the whole attempt window -> both skip the charge, both keep dunning and get a system request", async () => {
   const w = world({ lease: "held" }); await post(w, ["q3", "q4"]);
   assertEquals(w.stripe, 0); assertEquals(ids(w), ["q3", "q4"]); assert(w.inserts.every((i) => typeof i.retry_requested_at === "string"));
+});
+
+Deno.test("refunded quote is terminal: no dunning row, no Stripe call, no quote write (lease free, held, unreadable)", async () => {
+  for (const lease of ["free", "held", "unreadable"] as const) {
+    const w = world({ lease, quoteStatus: { qr: "refunded" } }); const [res] = await post(w, ["qr"]);
+    assertEquals(w.inserts.length, 0, `lease=${lease}`); assertEquals(w.stripe, 0); assertEquals(w.quotePatches.length, 0);
+    assertEquals(w.quoteStatus.qr, "refunded"); assertEquals(res.status, 200);
+  }
+});
+Deno.test("N-l: a quote that is already paid gets its failure row but NO 'payment declined' in-app notice", async () => {
+  const w = world({ quoteStatus: { qp: "succeeded" } }); await post(w, ["qp"]);
+  assertEquals(ids(w), ["qp"]); assertEquals(w.notified, 0);
+  const c = world(); await post(c, ["qn"]); assertEquals(c.notified, 1); // positive control: a normal failure still notifies
+});
+Deno.test("N-n: an unreadable claim has its own alert type and creates nothing", async () => {
+  const w = world({ claimReadable: false }); await post(w, ["qu"]);
+  assertEquals(w.inserts.length, 0); assertEquals(w.stripe, 0);
+  assert(w.alerts.some((a) => a.includes("platform_fee_refused_claim_unreadable")));
+  assert(!w.alerts.some((a) => a.includes("platform_fee_refused_unauthorized_test")));
 });

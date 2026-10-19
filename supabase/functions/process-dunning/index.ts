@@ -768,7 +768,7 @@ export async function handler(
       // that sweeps every dunning-status quote with no human in the loop.
       // So the #1467 defect on this path needs nobody to fire it, which is
       // a strictly worse shape than the ceremony path it was found on.
-      // Fails CLOSED: an unreadable claim refuses every retry.
+      // Fails CLOSED: an unreadable claim refuses the charge AND the dunning setup (nothing is created for it).
       {
         const { data: guardClaim } = await supabase
           .from("claims")
@@ -785,7 +785,10 @@ export async function handler(
           console.error(`[process-dunning] ${guardMessage}`);
           try {
             await supabase.from("platform_alerts_log").insert({
-              alert_type: "platform_fee_refused_unauthorized_test",
+              // N-n: an unreadable claim is an infrastructure fault, not an unauthorised test claim: its own alert type.
+              alert_type: chargeGuard.reason === "claim_unreadable"
+                ? "platform_fee_refused_claim_unreadable"
+                : "platform_fee_refused_unauthorized_test",
               function_name: "process-dunning",
               message: `${guardMessage} No retry attempted; dunning not initiated for quote ${quote_id}.`,
               sent_at: new Date().toISOString(),
@@ -807,6 +810,20 @@ export async function handler(
               status: 200,
               headers: { ...corsHeaders, "Content-Type": "application/json" },
             }
+          );
+        }
+      }
+
+      // A refunded quote is terminal (Marty, Tier A): no dunning row, no Stripe call. Unreadable status: proceed (the quote CAS
+      // below and payment-hold still protect it) but say so.
+      {
+        const { data: qNow, error: qNowErr } = await supabase.from("quotes").select("payment_status").eq("id", quote_id).maybeSingle();
+        if (qNowErr) console.error(`[process-dunning] TRIGGER could not read quote ${quote_id} payment_status:`, qNowErr);
+        else if (qNow?.payment_status === "refunded") {
+          console.error(`[process-dunning] TRIGGER for quote ${quote_id} ignored: quote is refunded (terminal).`);
+          return new Response(
+            JSON.stringify({ success: false, skipped: true, reason: "quote_refunded", quote_id }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
           );
         }
       }
@@ -1139,6 +1156,8 @@ export async function handler(
         .eq("id", quote_id)
         .or(`payment_status.is.null,payment_status.not.in.(${PAYMENT_HOLD_STATUSES.join(",")})`)
         .select("id");
+      // N-l: a CAS that wrote 0 rows means the quote is already paid / in progress: no "payment declined" notices.
+      const quoteAlreadySettled = !triggerDunningErr && !checkRowsWritten(triggerDunningRows).wroteRows;
       if (triggerDunningErr) {
         console.error(`[process-dunning] quotes payment_status=dunning update failed for quote ${quote_id}:`, triggerDunningErr);
       } else if (!checkRowsWritten(triggerDunningRows).wroteRows) {
@@ -1149,7 +1168,7 @@ export async function handler(
       const contacts = contractor ? await getContractorContacts(contractor as any, supabase) : { emails: [], phones: [] };
 
       // Send first notification immediately if applicable
-      if (sendImmediately && contacts.emails.length > 0) {
+      if (sendImmediately && !quoteAlreadySettled && contacts.emails.length > 0) {
         const html = hourlyReminderEmail(companyName);
         const sent = await sendEmailToAll(contacts.emails, "Action Required: Payment Declined — Otter Quotes", html);
         await sendSMSToAll(contacts.phones, HOURLY_SMS);
@@ -1177,7 +1196,7 @@ export async function handler(
       }
 
       // In-app notification for contractor
-      if (contractor?.user_id) {
+      if (contractor?.user_id && !quoteAlreadySettled) {
         await supabase.from("notifications").insert({
           user_id:           contractor.user_id,
           claim_id,

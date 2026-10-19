@@ -31,7 +31,8 @@ export const MAX_REQUEST_AGE_MS = 24 * 60 * 60 * 1000; // a request older than t
 export const MAX_QUOTES_PER_RUN = 10; // blast-radius cap per cron tick
 export const OPEN_STATUSES = ["active", "warning_sent"];
 /** quotes.payment_status values that mean the fee is paid or money is in motion: no charge, no reminders. */
-export const PAYMENT_HOLD_STATUSES = ["succeeded", "pending", "processing"];
+// "refunded" is terminal (Marty, Tier A): never enters dunning, never charged by the retry pass, reminders held.
+export const PAYMENT_HOLD_STATUSES = ["succeeded", "pending", "processing", "refunded"];
 /**
  * An in-doubt attempt is resolved ONLY by replaying the identical PaymentIntent create with the SAME stored
  * idempotency key (Stripe returns the original result for 24h). Past 23h we stop replaying (a replay could create a
