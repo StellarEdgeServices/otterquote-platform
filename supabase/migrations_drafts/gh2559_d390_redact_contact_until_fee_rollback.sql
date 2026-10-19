@@ -1,6 +1,6 @@
 -- STATUS (gh-1438, D-390): NOT APPLIED -- rollback of gh2559_d390_redact_contact_until_fee
--- DO NOT RUN FROM THIS DIRECTORY. Restores public.bidder_claim_summary to the applied text of ledger 20261008231303 (the selected contractor reads the
--- notes as typed), then drops the thread view, the restrictive policy and the function. Order matters: the view is restored BEFORE the function is
+-- DO NOT RUN FROM THIS DIRECTORY. Restores public.bidder_claim_summary to the fee-gated text (the applied ledger 20261008231303 view plus the #2931 gate on the
+-- estimate_filename and measurements_filename CASEs; the selected contractor reads the notes as typed), then drops the thread view, the restrictive policy and the function. Order matters: the view is restored BEFORE the function is
 -- dropped. No data is touched. Run in one transaction.
 BEGIN;
 SET LOCAL lock_timeout = '5s';
