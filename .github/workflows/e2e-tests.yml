@@ -475,6 +475,13 @@ jobs:
       - name: a bidding contractor reads the claim summary view, never the base claims row (gh-2559, D-368)
         run: node tests/gh2559-bidder-claims-view.mjs
 
+      # pgserver 0.1.4 ships wheels only for cp39-cp312; the ubuntu-26.04 image's default python3 has none
+      # (pip: "from versions: none"), so pin the interpreter for this step (CTO RUN 71).
+      - name: Set up Python 3.12 (pgserver 0.1.4 has no wheel for the runner's default python)
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
       - name: the bidder view hands out no street, unit, box, lot, phone or email -- view file run on a throwaway Postgres (gh-2559, D-371)
         run: |
           python3 -m pip install --quiet pgserver==0.1.4 psycopg2-binary==2.9.13
