@@ -27,5 +27,11 @@ psql -d postgres -qc "DROP DATABASE IF EXISTS g2881g2" -c "CREATE DATABASE g2881
 psql -d g2881g2 -q -v ON_ERROR_STOP=1 -c "CREATE OR REPLACE FUNCTION public.d390_redact_contact(p_text text) RETURNS text LANGUAGE sql IMMUTABLE STRICT AS \$f\$ SELECT p_text \$f\$" >/dev/null || FAIL=1
 B2=$(snap g2881g2); OUT=$(psql -d g2881g2 -v ON_ERROR_STOP=1 -f "$FOLD" 2>&1); R2=$?; A2=$(snap g2881g2)
 if [ "$R2" != 0 ] && echo "$OUT" | grep -q "is not the text PR #2880 applied" && [ "$B2" = "$A2" ]; then echo "CHECK PASS: G2 refuses a function body that is not #2880's (rc=$R2), database unchanged"; else echo "CHECK FAIL: G2 (rc=$R2)"; FAIL=1; fi
+# G3: rollback refuses (P0A96) when the live function is neither #2880's text nor this set's, and leaves the database unchanged
+ROLL=supabase/migrations_drafts/gh2881_d390_digit_fold_rollback.sql
+psql -d postgres -qc "DROP DATABASE IF EXISTS g2881g3" -c "CREATE DATABASE g2881g3" >/dev/null && psql -d g2881g3 -q -v ON_ERROR_STOP=1 -f "$W/model.sql" >/dev/null && psql -d g2881g3 -q -v ON_ERROR_STOP=1 -f supabase/migrations_drafts/gh2559_d390_redact_contact_until_fee.sql >/dev/null 2>&1 && psql -d g2881g3 -q -v ON_ERROR_STOP=1 -f "$FOLD" >/dev/null 2>&1 || FAIL=1
+psql -d g2881g3 -q -v ON_ERROR_STOP=1 -c "CREATE OR REPLACE FUNCTION public.d390_redact_contact(p_text text) RETURNS text LANGUAGE sql IMMUTABLE STRICT AS \$f\$ SELECT p_text \$f\$" >/dev/null || FAIL=1
+B3=$(snap g2881g3); OUT=$(psql -d g2881g3 -v ON_ERROR_STOP=1 -f "$ROLL" 2>&1); R3=$?; A3=$(snap g2881g3)
+if [ "$R3" != 0 ] && echo "$OUT" | grep -q "neither the #2880 text nor this set" && [ "$B3" = "$A3" ]; then echo "CHECK PASS: G3 rollback refuses a function body that is neither text (rc=$R3), database unchanged"; else echo "CHECK FAIL: G3 (rc=$R3)"; FAIL=1; fi
 [ "$FAIL" = 0 ] || { echo "GH2881_D390_DIGIT_FOLD: FAIL"; exit 1; }
 [ "$RC" = 0 ] && grep -q "failures=0" "$W/out.txt" && echo "GH2881_D390_DIGIT_FOLD: ALL PASS" || { echo "GH2881_D390_DIGIT_FOLD: FAIL"; exit 1; }
