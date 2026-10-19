@@ -5,7 +5,7 @@
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- Migration: gh2864_quotes_signature_stamps_platform_only
--- GitHub: #2864. Tier: 3B (trigger on the quotes money/contract path). Apply order: after #2913 (gh2819_quotes_client_select_refused)
+-- GitHub: #2864. Tier: 3B (trigger on the quotes money/contract path). Apply order: the page/React change in this PR deploys first; then, after #2913 (gh2819_quotes_client_select_refused)
 --   and the #2863 (gh-2803) notes-freeze trigger, the same quotes guard surface (gh2564 order). Because this file is a separate trigger it
 --   composes with them in any order; the order is kept for review and proof readability. Marty reviews, applies and verifies.
 -- Rollback: supabase/migrations_drafts/gh2864_quotes_signature_stamps_platform_only_rollback.sql
@@ -15,9 +15,10 @@
 -- The defect. The shared guard quotes_guard_homeowner_columns() puts homeowner_signed_at on the claim owner's column allow-list and
 -- contractor_signed_at on the bid contractor's, so a browser session can UPDATE either stamp, including back to NULL. Clearing a stamp
 -- reopens every rule keyed on it: the D-381 notes freeze (#2844, #2863, either signature per #2846) and anything that treats the bid
--- as signed. The only writers in the repo are service_role Edge Functions: docusign-webhook (sets both stamps; supabase/functions/
--- docusign-webhook/index.ts) and admin-reissue-contract (clears both on a re-issue, service_role). No page or react-app code writes
--- either stamp (grep, 2026-10-19). Blast radius today: 0 real signed quotes.
+-- as signed. The platform writers are service_role Edge Functions: docusign-webhook (sets both stamps; supabase/functions/
+-- docusign-webhook/index.ts) and admin-reissue-contract (clears both on a re-issue, service_role). Two BROWSER writers existed on main
+-- (contract-signing.html onSigningComplete() and the React twin recordHomeownerSigned()); this PR removes both (review 6275332957 B1),
+-- so merge and deploy that change BEFORE applying this file. Everything else only reads the stamps. Blast radius today: 0 real signed quotes.
 --
 -- The fix, and why it is a SEPARATE trigger and not an edit of quotes_guard_homeowner_columns(). That function is the shared surface of
 -- gh2564 (applied, ledger 20261018195342), PR #2863 (gh-2803) and, by the same pattern, PR #2913 (gh-2819). This file does NOT re-create

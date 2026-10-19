@@ -17,7 +17,7 @@
 --   AFTER-5 service_role clears and re-stamps both (the signing webhook / admin-reissue-contract path) -> expect ACCEPTED
 --   AFTER-6 owner-level SECURITY DEFINER function, called by the owner, clears a stamp -> expect ACCEPTED (platform path)
 --   AFTER-7 negative controls (expect ACCEPTED, unchanged behaviour): owner re-sends the same homeowner_signed_at; bid contractor edits notes;
---           owner declines the submitted quote
+--           owner declines the submitted quote (7b2 is informational: #2863's notes freeze refuses a notes edit on a signed quote)
 --   AFTER-8 owner sets a NULL homeowner_signed_at to a value, contractor sets a NULL contractor_signed_at to a value (forged first stamp) -> expect REJECTED 42501 (gh-2864)
 --   AFTER-9 trigger and function metadata, and the guard body md5 (untouched)
 
@@ -194,8 +194,19 @@ BEGIN
   END;
 
   BEGIN
+    -- stamps cleared first (superuser, rolled back): #2863's quotes_refuse_signed_notes_change (live in production since
+    -- ledger 20261019191903) refuses a client notes edit while a stamp is set, which is its rule, not this trigger's.
     EXECUTE reset_q;
-    v := v || E'\nAFTER-7b NEGATIVE CONTROL bid contractor edits notes on its own quote (expect ACCEPTED): '
+    EXECUTE format('UPDATE public.quotes SET homeowner_signed_at = NULL, contractor_signed_at = NULL WHERE id = %L', q);
+    v := v || E'\nAFTER-7b NEGATIVE CONTROL bid contractor edits notes on its own UNSIGNED quote (expect ACCEPTED): '
+           || pg_temp.try_as(k_user, format('UPDATE public.quotes SET notes = ''gh2864 proof'' WHERE id = %L', q));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL;
+  END;
+
+  BEGIN
+    EXECUTE reset_q;
+    v := v || E'\nAFTER-7b2 INFORMATIONAL bid contractor edits notes on its own SIGNED quote (expect REJECTED 42501 from #2863''s notes freeze once it is live, which it is in production; ACCEPTED if #2863 is absent; this trigger does not touch notes): '
            || pg_temp.try_as(k_user, format('UPDATE public.quotes SET notes = ''gh2864 proof'' WHERE id = %L', q));
     RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
   EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL;

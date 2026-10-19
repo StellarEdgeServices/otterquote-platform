@@ -17,18 +17,20 @@ Issue #2864 (ruling comment 6274566683; window closes 2026-10-20T18:40:35Z). For
 BEFORE triggers fire in name order: `quotes_guard_homeowner_columns` (INSERT OR UPDATE), `quotes_normalize_fee_amount` (INSERT OR UPDATE), then the new `quotes_refuse_client_signature_change`, then `set_updated_at_quotes`. (`quotes_refuse_client_select_status` from #2913, if applied, sorts between normalize and this one.) The new trigger never changes NEW, so order does not affect results. The other BEFORE UPDATE triggers touch no signature column.
 
 ## Apply order
-After #2913 and the #2863 trigger (same surface, gh2564 order), by ruling. The file composes with either in any order.
+Merge and deploy the page/React change in this PR first, then apply the migration, after #2913 and the #2863 trigger (live since ledger 20261019191903), by ruling. The file composes with either in any order.
 
-## Who writes the stamps (grep on main b5579ee, 2026-10-19)
-- `supabase/functions/docusign-webhook/index.ts:544` (contractor_signed_at, guarded `.is(..., null)`) and `:583` (homeowner_signed_at, guarded `.is(..., null)`): service_role client (`SUPABASE_SERVICE_ROLE_KEY` secret path). Passes.
-- `supabase/functions/admin-reissue-contract/index.ts` (clears both on a re-issue, `reissue-plan.ts` QUOTE_CLEAR): service_role client. Passes.
-- No `.html`, `react-app` or other client code writes either stamp; `contract-signing.html:1349` only reads `contractor_signed_at`.
-- SQL functions mentioning either column on production: `update_selected_bid_notes(uuid,text)` (SECURITY DEFINER, owner postgres; reads, does not write) and `quotes_guard_homeowner_columns()`.
-Re-run the search at apply time: `grep -rnE "(homeowner|contractor)_signed_at" --include=*.html --include=*.ts --include=*.tsx --include=*.js .`
+## Who writes the stamps (grep on main 0d509b8, 2026-10-19; corrects the first draft of this file)
+- `supabase/functions/docusign-webhook/index.ts:544` (contractor_signed_at, guarded `.is(..., null)`) and `:583` (homeowner_signed_at, guarded `.is(..., null)`): service_role client. Passes.
+- `supabase/functions/admin-reissue-contract/index.ts` (clears both on a re-issue): service_role client. Passes.
+- BROWSER writers that existed on main and are REMOVED IN THIS PR (review 6275332957 B1): `contract-signing.html` `onSigningComplete()` (updated `<role>_signed_at` from the browser on every signing) and the React twin `react-app/app/(homeowner)/contract-signing/use-contract-signing-data.ts` `recordHomeownerSigned()` (called from `page.tsx`). Deploy this PR's page/React change BEFORE applying the migration, or a signing would still try the browser write and be refused (the write is log-only on the static page, so the signer is not interrupted, but the page would log an error).
+- Everything else only reads the stamps: `contract-signing.html` (init gate, `recheckSigningState`), `contractor-dashboard.html:1473` (sign CTA), `react-app` contractor sign page and dashboard, `resolveSignGate`.
+- What changes for users: the stamp now appears when the webhook lands (seconds), not instantly. Contractor dashboard: for that gap the Won row can still show the "sign" CTA (`contractor-dashboard.html:1659`); a click opens contract-signing, which reads the fresh quote and shows already-signed. A homeowner arriving before the contractor's stamp lands sees the existing waiting state and uses "Check Again". The `contract_signed` GA4 event on the React page now fires on the DocuSign completion callback (once-guarded) rather than after a successful stamp write.
+- SQL functions mentioning either column on production: `update_selected_bid_notes(uuid,text)` (SECURITY DEFINER, reads), `quotes_guard_homeowner_columns()`, and #2863's `quotes_refuse_signed_notes_change` (live, ledger 20261019191903; reads).
+Re-run the search at apply time: `grep -rnE "(homeowner|contractor)_signed_at" --include=*.html --include=*.ts --include=*.tsx --include=*.js .` and confirm no `.update(` of either stamp outside `supabase/functions/`.
 
 ## Checks at apply time (read-only)
 - `SELECT tgname FROM pg_trigger WHERE tgrelid='public.quotes'::regclass AND NOT tgisinternal;` still lists the guard and no trigger of this name.
-- Existing stamped rows are untouched (census 2026-10-19: 8 quotes, 2 with homeowner_signed_at, 3 with contractor_signed_at, 0 of them non-test).
+- Existing stamped rows are untouched (census re-read 2026-10-19 after #2863: 8 quotes, 2 with homeowner_signed_at, 3 with contractor_signed_at, 0 stamped quotes are non-test).
 - After apply, walk one is_test signing (docusign-webhook sets both stamps via service_role) and confirm both stamps record.
 
 ## Proof and expected flip
