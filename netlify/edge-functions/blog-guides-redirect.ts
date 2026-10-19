@@ -101,6 +101,9 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/multiple-bids-roof-insurance-claim.html',
   '/guides/roof-bid-comparison-worksheet':
     '/guides/roof-bid-comparison-worksheet.html',
+  // gh-2905: the roofing bid comparison tool page, same extensionless -> .html 301.
+  '/guides/roof-bid-comparison-tool':
+    '/guides/roof-bid-comparison-tool.html',
   '/guides/siding-bid-comparison':
     '/guides/siding-bid-comparison.html',
   '/guides/gutter-bid-comparison':
