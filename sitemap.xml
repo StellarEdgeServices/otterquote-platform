@@ -447,6 +447,12 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://otterquote.com/locations/anderson-county-tn/roofing/</loc>
+    <lastmod>2026-10-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://otterquote.com/locations/blount-county-tn/roofing/</loc>
     <lastmod>2026-10-14</lastmod>
     <changefreq>monthly</changefreq>
@@ -496,6 +502,12 @@
   </url>
   <url>
     <loc>https://otterquote.com/locations/greene-county-oh/roofing/</loc>
+    <lastmod>2026-10-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/locations/greene-county-tn/roofing/</loc>
     <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
@@ -555,6 +567,12 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://otterquote.com/locations/madison-county-tn/roofing/</loc>
+    <lastmod>2026-10-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://otterquote.com/locations/mahoning-county-oh/roofing/</loc>
     <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
@@ -563,6 +581,12 @@
   <url>
     <loc>https://otterquote.com/locations/marion-county-in/roofing/</loc>
     <lastmod>2026-10-06</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/locations/maury-county-tn/roofing/</loc>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -579,8 +603,20 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://otterquote.com/locations/robertson-county-tn/roofing/</loc>
+    <lastmod>2026-10-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://otterquote.com/locations/rutherford-county-tn/roofing/</loc>
     <lastmod>2026-10-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/locations/sevier-county-tn/roofing/</loc>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>

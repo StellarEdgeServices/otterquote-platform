@@ -142,6 +142,8 @@ const REDIRECT_MAP: Record<string, string> = {
   // trailing-slash URL (same class as /blog/index.html above).
   '/locations/allen-county-in/roofing/index.html':
     '/locations/allen-county-in/roofing/',
+  '/locations/anderson-county-tn/roofing/index.html':
+    '/locations/anderson-county-tn/roofing/',
   '/locations/blount-county-tn/roofing/index.html':
     '/locations/blount-county-tn/roofing/',
   '/locations/butler-county-oh/roofing/index.html':
@@ -160,6 +162,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/franklin-county-oh/roofing/',
   '/locations/greene-county-oh/roofing/index.html':
     '/locations/greene-county-oh/roofing/',
+  '/locations/greene-county-tn/roofing/index.html':
+    '/locations/greene-county-tn/roofing/',
   '/locations/hamilton-county-oh/roofing/index.html':
     '/locations/hamilton-county-oh/roofing/',
   '/locations/hamilton-county-tn/roofing/index.html':
@@ -178,16 +182,24 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/lorain-county-oh/roofing/',
   '/locations/lucas-county-oh/roofing/index.html':
     '/locations/lucas-county-oh/roofing/',
+  '/locations/madison-county-tn/roofing/index.html':
+    '/locations/madison-county-tn/roofing/',
   '/locations/mahoning-county-oh/roofing/index.html':
     '/locations/mahoning-county-oh/roofing/',
   '/locations/marion-county-in/roofing/index.html':
     '/locations/marion-county-in/roofing/',
+  '/locations/maury-county-tn/roofing/index.html':
+    '/locations/maury-county-tn/roofing/',
   '/locations/montgomery-county-oh/roofing/index.html':
     '/locations/montgomery-county-oh/roofing/',
   '/locations/montgomery-county-tn/roofing/index.html':
     '/locations/montgomery-county-tn/roofing/',
+  '/locations/robertson-county-tn/roofing/index.html':
+    '/locations/robertson-county-tn/roofing/',
   '/locations/rutherford-county-tn/roofing/index.html':
     '/locations/rutherford-county-tn/roofing/',
+  '/locations/sevier-county-tn/roofing/index.html':
+    '/locations/sevier-county-tn/roofing/',
   '/locations/shelby-county-tn/roofing/index.html':
     '/locations/shelby-county-tn/roofing/',
   '/locations/st-louis-county-mo/roofing/index.html':
