@@ -343,7 +343,7 @@ DECLARE d text; s record; n int;
 BEGIN
   d := pg_get_viewdef('public.bidder_claim_summary'::regclass, true);
   IF md5(d) <> '7b0f2430b1cb7482ac34af28e17553db' OR length(d) <> 18697 THEN
-    RAISE EXCEPTION 'gh2931: new definition differs from the live definition with the estimate_filename CASE gated on platform_fee_charged (md5 %, length %)', md5(d), length(d) USING ERRCODE = 'P0A32';
+    RAISE EXCEPTION 'gh2931: new definition differs from the live definition with the estimate_filename and measurements_filename CASEs gated on platform_fee_charged (md5 %, length %)', md5(d), length(d) USING ERRCODE = 'P0A32';
   END IF;
   SELECT owner, options, acl, comment_text INTO s FROM gh2931_view_state;
   IF (SELECT c.relowner::regrole::text FROM pg_class c WHERE c.oid = 'public.bidder_claim_summary'::regclass) IS DISTINCT FROM s.owner THEN

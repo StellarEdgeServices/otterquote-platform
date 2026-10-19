@@ -8,9 +8,9 @@ The throwaway database gets the columns of claims/contractors/quotes/profiles/ca
 types, then the APPLIED view (supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql, verbatim). Checks:
   1. the applied view re-created here has the same pg_get_viewdef md5 as production (c8ad94c4...), so the 'before' is the live text;
   2. the built proof (live -> forward -> rollback) reports every read and the structure AS EXPECTED;
-  3. the forward file alone, then the rollback file alone, committed: columns 39 then 40, md5 b0689f5f then c8ad94c4;
+  3. the forward file alone, then the rollback file alone, committed: still 40 columns, md5 7b0f2430 then c8ad94c4;
   4. the forward file refuses (P0A31, nothing changed) when the view is not the expected definition;
-  5. NEGATIVE CONTROL: the proof with a forward that does nothing reports UNEXPECTED (reads would still show the filename);
+  5. NEGATIVE CONTROL: the proof with a forward that does nothing reports UNEXPECTED (the pre-fee paths would still be readable);
   6. NEGATIVE CONTROL: the proof template run unbuilt prints the live matrix only.
 Exit 0 only if all hold. pgserver / psycopg2 absent: exit 1 (set GH2931_ALLOW_SKIP=1 to skip).
 """

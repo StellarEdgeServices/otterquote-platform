@@ -1,10 +1,10 @@
 /**
- * gh-2931 -- public.bidder_claim_summary hands out claims.estimate_filename (the stored path, which holds the homeowner's original
- * upload name) (and measurements_filename) only to the selected contractor AND only once claims.platform_fee_charged IS TRUE (D-386). Static checks, no database:
+ * gh-2931 -- public.bidder_claim_summary hands out claims.estimate_filename and claims.measurements_filename (the stored paths; the estimate path holds the
+ * homeowner's original upload name) only to the selected contractor AND only once claims.platform_fee_charged IS TRUE (D-386). Static checks, no database:
  *   1. the draft forward file is CREATE OR REPLACE VIEW (the column set is unchanged) and its statement is the applied view
- *      (20261008231303) with exactly one clause changed: the estimate_filename CASE gains `AND c.platform_fee_charged IS TRUE`;
+ *      (20261008231303) with exactly two clauses changed: the estimate_filename and measurements_filename CASEs each gain `AND c.platform_fee_charged IS TRUE`;
  *   2. the rollback statement is the applied statement byte for byte; both files assert the definition md5s and carry the STATUS header;
- *   3. every other draft in the tree that re-creates the view carries the gated CASE (tripwire for PR #2880 and PR #2925, which
+ *   3. every other draft in the tree that re-creates the view carries both gated CASEs (tripwire for PR #2880 and PR #2925, which
  *      would otherwise put the pre-fee path back). Vacuous on main; GH2931_ROOT can point at the PR trees.
  * Run: node tests/gh2931-bidder-summary-no-filename.mjs
  */
