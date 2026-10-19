@@ -16,6 +16,9 @@
 //  5. Send path pinned (B2): sendSMSToAll passes its `message` parameter UNCHANGED as the second argument of
 //     the single sendSMS call, sendSMS appends exactly that parameter as the one Twilio "Body" and sends that
 //     same URLSearchParams as the fetch body, and neither parameter is reassigned/shadowed.
+//  6. Comments are stripped by a tokenizer that respects string/template/regex literals (X4/X5).
+//  7. A separate runtime test (sms-runtime-bodies.test.ts) drives the real handler with fetch stubbed and
+//     asserts every Twilio Body it captures begins "Otter Quotes".
 // Negative controls: in-memory mutations of the REAL index.ts (M0-M3, B1, B2a-d) must each produce violations.
 // Run: deno test --allow-read=supabase/functions supabase/functions/process-dunning/sms-all-bodies.test.ts
 
@@ -25,8 +28,78 @@ const BRAND = "Otter Quotes";
 
 // ---------------------------------------------------------------- scanning helpers
 
+/**
+ * Remove // and block comments WITHOUT touching string, template or regex literals (X4/X5: a "/*" or "//"
+ * inside a string must not delete live code). A small tokenizer, not a regex over the raw text.
+ */
+/** Same tokenizer, but string/template TEXT is replaced by underscores (code and ${} expressions kept), so identifiers in prose do not count. */
+export function maskLiterals(code: string): string {
+  return scanCode(code, 0, false, true)[0];
+}
+
 export function stripComments(raw: string): string {
-  return raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+  return scanCode(raw, 0, false)[0];
+}
+
+const REGEX_PREV = "(,=:[!&|?{};+-*%<>~^";
+
+function scanTemplate(s: string, start: number, mask: boolean): [string, number] {
+  let out = "`";
+  let i = start + 1;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === "\\") { out += mask ? "__" : s.slice(i, i + 2); i += 2; continue; }
+    if (c === "`") return [out + "`", i + 1];
+    if (c === "$" && s[i + 1] === "{") {
+      const [inner, end] = scanCode(s, i + 2, true, mask);
+      out += "${" + inner + "}";
+      i = end + 1;
+      continue;
+    }
+    out += mask ? "_" : c;
+    i++;
+  }
+  return [out, s.length];
+}
+
+function scanCode(s: string, start: number, inTemplateExpr: boolean, mask = false): [string, number] {
+  let out = "";
+  let i = start;
+  let depth = 0;
+  let prev = "";
+  while (i < s.length) {
+    const c = s[i];
+    const n = s[i + 1];
+    if (c === "/" && n === "/") { while (i < s.length && s[i] !== "\n") i++; continue; }
+    if (c === "/" && n === "*") { const e = s.indexOf("*/", i + 2); i = e < 0 ? s.length : e + 2; out += " "; continue; }
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < s.length && s[j] !== c) j += s[j] === "\\" ? 2 : 1;
+      j = Math.min(j + 1, s.length);
+      out += mask ? c + "_".repeat(Math.max(0, j - i - 2)) + s[j - 1] : s.slice(i, j); i = j; prev = c; continue;
+    }
+    if (c === "`") { const [t, e] = scanTemplate(s, i, mask); out += t; i = e; prev = "`"; continue; }
+    if (c === "/" && (prev === "" || REGEX_PREV.includes(prev))) {
+      let j = i + 1;
+      let cls = false;
+      while (j < s.length && s[j] !== "\n") {
+        const d = s[j];
+        if (d === "\\") { j += 2; continue; }
+        if (d === "[") cls = true; else if (d === "]") cls = false;
+        else if (d === "/" && !cls) { j++; break; }
+        j++;
+      }
+      out += s.slice(i, j); i = j; prev = "x"; continue;
+    }
+    if (inTemplateExpr) {
+      if (c === "{") depth++;
+      else if (c === "}") { if (depth === 0) return [out, i]; depth--; }
+    }
+    out += c;
+    if (!/\s/.test(c)) prev = c;
+    i++;
+  }
+  return [out, s.length];
 }
 
 /** Index just past the string/template literal starting at s[i] (quote char). */
@@ -92,6 +165,25 @@ export function constInitializer(src: string, name: string): string | null {
 const NOT_MEMBER = "(?<![\\w$.])";
 const NOT_IDENT = "(?![\\w$])";
 
+/** Count of parameter lists (function, method, arrow, catch) whose parameters mention `id`. Control-flow heads (if/for/while/switch/with) are not parameter lists. */
+export function paramGroupHits(src: string, idSource: string): number {
+  const id = new RegExp(`${NOT_MEMBER}${idSource}${NOT_IDENT}`);
+  let hits = 0;
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '"' || c === "'" || c === "`") { i = skipString(src, i); continue; }
+    if (c !== "(") { i++; continue; }
+    const close = skipBalanced(src, i);
+    const head = /([A-Za-z_$][\w$]*)?\s*$/.exec(src.slice(Math.max(0, i - 40), i))?.[1] ?? "";
+    const tail = src.slice(close, close + 200);
+    const isParamList = !/^(?:if|for|while|switch|with)$/.test(head) && /^\s*(?::[^;{}()]*?)?\s*(?:\{|=>)/.test(tail);
+    if (isParamList && id.test(src.slice(i + 1, close - 1))) hits++;
+    i++; // descend: nested parameter lists (callbacks) are checked too
+  }
+  return hits;
+}
+
 /**
  * Hazards that make a name unsafe to resolve with a text scan: more or fewer than one declaration
  * (const/let/var, destructuring, parameter) anywhere in the module, or any reassignment/increment.
@@ -102,10 +194,9 @@ export function identifierHazards(src: string, name: string, exactlyOne: boolean
   const id = `${NOT_MEMBER}${n}${NOT_IDENT}`;
   const decls =
     (src.match(new RegExp(`\\b(?:const|let|var)\\s+${n}${NOT_IDENT}`, "g")) ?? []).length +
-    (src.match(new RegExp(`\\b(?:const|let|var)\\s*[\\[{][^;=]*?${id}[^;=]*?[\\]}]\\s*=`, "g")) ?? []).length +
-    (src.match(new RegExp(`\\bfunction\\b[^(]*\\([^)]*${id}`, "g")) ?? []).length +
-    (src.match(new RegExp(`\\(([^()]*)\\)\\s*(?::[^=;{]+)?=>`, "g")) ?? []).filter((m) => new RegExp(id).test(m)).length +
-    (src.match(new RegExp(`${id}\\s*=>`, "g")) ?? []).length;
+    (src.match(new RegExp(`\\b(?:const|let|var)\\s*[\\[{][^;=]*?${id}[^;=]*?[\\]}]\\s*(?:=|of\\b|in\\b)`, "g")) ?? []).length +
+    (src.match(new RegExp(`${id}\\s*=>`, "g")) ?? []).length +
+    paramGroupHits(src, n);
   const v: string[] = [];
   if (exactlyOne ? decls !== 1 : decls > 1) v.push(`${name}: ${decls} declarations/shadows in the module (need exactly one, unambiguous scope)`);
   const assign = new RegExp(`(?<!\\b(?:const|let|var)\\s+)${id}\\s*\\]?\\s*\\}?\\s*(?:\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?|[-+*/%&|^])?=(?![=>])`, "g");
@@ -211,6 +302,7 @@ const FETCH_ALLOW = [/api\.mailgun\.net/, /STRIPE_API_BASE/];
 export function transportViolations(file: string, srcWithoutSendSms: string): string[] {
   const v: string[] = [];
   for (const re of FORBIDDEN_TRANSPORT) if (re.test(srcWithoutSendSms)) v.push(`${file}: ${re} outside the sendSMS helper`);
+  for (const r of nonCallReferences(maskLiterals(srcWithoutSendSms), "fetch")) v.push(`${file}: fetch used other than by a bare direct call: ${r}`);
   const re = /(?<![\w$.])fetch\s*\(/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(srcWithoutSendSms)) !== null) {
@@ -261,9 +353,9 @@ function bodyHazards(body: string, name: string, label: string): string[] {
   const n = name.replace(/[$]/g, "\\$&");
   const id = `${NOT_MEMBER}${n}${NOT_IDENT}`;
   const v: string[] = [];
-  if (new RegExp(`\\b(?:const|let|var)\\s*[\\[{]?[^;=]*?${id}`).test(body) && new RegExp(`\\b(?:const|let|var)\\s+${n}${NOT_IDENT}|\\b(?:const|let|var)\\s*[\\[{][^;=]*?${id}`).test(body)) v.push(`${label}: ${name} re-declared inside the function`);
+  if (new RegExp(`\\b(?:const|let|var)\\s*[\\[{]?[^;=]*?${id}`).test(body) && new RegExp(`\\b(?:const|let|var)\\s+${n}${NOT_IDENT}|\\b(?:const|let|var)\\s*[\\[{][^;=]*?${id}[^;=]*?[\\]}]\\s*(?:=|of\\b|in\\b)`).test(body)) v.push(`${label}: ${name} re-declared inside the function`);
   if (/\bfunction\b/.test(body)) v.push(`${label}: nested function declaration`);
-  if ((body.match(/\(([^()]*)\)\s*(?::[^=;{]+)?=>/g) ?? []).some((m) => new RegExp(id).test(m)) || new RegExp(`${id}\\s*=>`).test(body)) v.push(`${label}: ${name} shadowed by an arrow parameter`);
+  if (paramGroupHits(body, n) > 0 || new RegExp(`${id}\\s*=>`).test(body)) v.push(`${label}: ${name} shadowed by a parameter (arrow/method/catch)`);
   const assign = new RegExp(`${id}\\s*\\]?\\s*\\}?\\s*(?:\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?|[-+*/%&|^])?=(?![=>])`);
   if (assign.test(body)) v.push(`${label}: ${name} reassigned`);
   if (new RegExp(`${id}\\s*(?:\\+\\+|--)|(?:\\+\\+|--)\\s*${id}`).test(body)) v.push(`${label}: ${name} incremented/decremented`);
@@ -502,6 +594,13 @@ const fixtures: Array<[string, (s: string) => string]> = [
   ["B2b message reassigned before the sendSMS call", (s) => s.replace(/(const\s+ok\s*=\s*await\s+sendSMS\(\s*e164)/, 'message = message.replace("Otter Quotes: ", ""); $1')],
   ["B2c Body appended with a transformed message in sendSMS", (s) => s.replace('body.append("Body", message)', 'body.append("Body", message.replace("Otter Quotes: ", ""))')],
   ["B2d second Body key set after the append", (s) => s.replace('body.append("Body", message);', 'body.append("Body", message); body.set("Body", "hello");')],
+  ["X1 catch parameter shadows HOURLY_SMS", (s) => s + '\ntry { throw "Your card was declined. Pay now."; } catch (HOURLY_SMS: any) { await sendSMSToAll(contacts.phones, HOURLY_SMS); }\n'],
+  ["X2 method parameter shadows WARNING_SMS", (s) => s + '\nconst _o = { async go(WARNING_SMS: string) { await sendSMSToAll(contacts.phones, WARNING_SMS); } }; await _o.go("Your card was declined. Pay now.");\n'],
+  ["X3 destructured for-of binding shadows WARNING_SMS", (s) => s + '\nfor (const [, WARNING_SMS] of [[0, "Your card was declined. Pay now."]] as [number, string][]) await sendSMSToAll(contacts.phones, WARNING_SMS);\n'],
+  ["X4 /* and */ inside strings hide a live unbranded call", (s) => s + '\nconst _a = "/*"; await sendSMSToAll(contacts.phones, "Your card was declined. Pay now."); const _b = "*/";\n'],
+  ["X5 // inside a string hides a live unbranded call", (s) => s + '\nconst _u = "x//"; await sendSMSToAll(contacts.phones, "Your card was declined. Pay now.");\n'],
+  ["X6 member fetch (globalThis.fetch) to a split Twilio URL", (s) => s + '\nawait globalThis.fetch("https://api.twil" + "io.com/2010-04-01/Accounts/" + sid + "/Messages" + ".json", { method: "POST", body: new URLSearchParams({ To, Body: "Pay now." }).toString() });\n'],
+  ["X7 aliased fetch to a split Twilio URL", (s) => s + '\nconst _f = fetch; await _f(`https://api.twil${"io"}.com/2010-04-01/Accounts/${sid}/Messages${".json"}`, { method: "POST", body: "Body=Pay+now" });\n'],
   ["B2e fetch sends a different payload", (s) => s.replace(/(Messages\.json`,[\s\S]*?)body:\s*body\.toString\(\)/, '$1body: "To=" + to + "&Body=hello"')],
 ];
 
@@ -517,3 +616,20 @@ for (const [name, edit] of fixtures) {
     assert(v.length > 0, `mutation "${name}" slipped past the guard`);
   });
 }
+
+Deno.test("control: stripComments is a tokenizer - literals survive, real comments go (X4/X5)", () => {
+  assert(stripComments('const a = "/*"; call(); const b = "*/";').includes("call()"));
+  assert(stripComments('const u = "x//"; call();').includes("call()"));
+  assert(stripComments("const t = `a // ${ \"/*\" } b`; call(); /* */").includes("call()"));
+  assert(stripComments("const r = /\\/\\/[/]*/g; call();").includes("call()"));
+  assertEquals(stripComments("call(); // gone\nnext(); /* gone */ last();").replace(/\s+/g, " ").trim(), "call(); next(); last();");
+  assert(!stripComments("a(); /* sendSMSToAll(p, 'x') */").includes("sendSMSToAll"));
+});
+
+Deno.test("control: param-list shadows (X1-X3) are counted; if/for heads and plain calls are not", () => {
+  assertEquals(paramGroupHits("try {} catch (A: any) { f(A); }", "A"), 1);
+  assertEquals(paramGroupHits("const o = { async go(A: string) { f(A); } };", "A"), 1);
+  assertEquals(paramGroupHits("const g = (A) => A; const h = async (x, A): Promise<void> => {};", "A"), 2);
+  assertEquals(paramGroupHits("if (A) { f(A); } while (A) {} for (const x of A) {}", "A"), 0);
+  assertEquals(paramGroupHits("await sendSMSToAll(p, A);", "A"), 0);
+});
