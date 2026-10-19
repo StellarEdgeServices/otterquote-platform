@@ -30,6 +30,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts"; // gh-2105 batch 13 (remaining sites)
+import { detectEstimateKind } from "./estimate-kind.ts";
 
 const FUNCTION_NAME = "parse-loss-sheet";
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
@@ -352,6 +353,37 @@ serve(async (req) => {
     const arrayBuffer = await fileData.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
 
+    // ── gh-2559: decide the real file type from the bytes ───────────
+    // The estimate upload accepts PDF, JPG, PNG and Word; this function used to send every file as application/pdf, so an image
+    // or Word estimate never parsed and (with the bid-open guard) the claim could never open for bids. PDFs go as a document block,
+    // JPG/PNG as an image block; anything the provider cannot read is recorded as 'unsupported' (the guard lets such a claim open,
+    // the summary then carries no estimate fields) and an operator alert is written. Q6 for Ben on #2559.
+    const kind = detectEstimateKind(bytes);
+    if (!kind) {
+      const { data: unsRows, error: unsErr } = await supabase
+        .from("claims")
+        .update({ loss_sheet_parse_status: "unsupported" })
+        .eq("id", claim_id)
+        .select("id");
+      if (unsErr || !checkRowsWritten(unsRows).wroteRows) {
+        console.error(`[${FUNCTION_NAME}] could not record unsupported estimate type for claim ${claim_id}:`, unsErr);
+        return new Response(
+          JSON.stringify({ error: "Failed to record unsupported estimate type" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const { error: alertErr } = await supabase.from("platform_alerts_log").insert({
+        alert_type: "loss_sheet_unsupported_type",
+        function_name: FUNCTION_NAME,
+        message: `claim ${claim_id}: the uploaded estimate is not a PDF, JPG or PNG the parser can read (${bytes.length} bytes). The claim may open for bids without a parsed summary; an operator can re-run the parse with the service role (gh-2559 Q6).`,
+      });
+      if (alertErr) console.error(`[${FUNCTION_NAME}] platform_alerts_log insert failed:`, alertErr);
+      return new Response(
+        JSON.stringify({ success: false, unsupported: true, claim_id }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Encode to base64 in chunks (avoid call stack overflow on large files)
     let binary = "";
     const CHUNK = 8192;
@@ -378,10 +410,10 @@ serve(async (req) => {
             role: "user",
             content: [
               {
-                type: "document",
+                type: kind.block,
                 source: {
                   type: "base64",
-                  media_type: "application/pdf",
+                  media_type: kind.mediaType,
                   data: base64Pdf,
                 },
               },
@@ -470,6 +502,7 @@ serve(async (req) => {
         parsed_line_items: parsed,
         contractor_scope_summary: scopeSummary,
         loss_sheet_parsed_at: new Date().toISOString(),
+        loss_sheet_parse_status: "parsed",
         rcv_amount: rcvAmount,
         acv_amount: acvAmount,
         deductible_amount: deductibleAmount,

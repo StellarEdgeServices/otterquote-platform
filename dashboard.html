@@ -3223,14 +3223,25 @@
       async function waitForEstimateRead(claimId) {
         const deadline = Date.now() + ESTIMATE_READ_WAIT_MS;
         for (;;) {
-          const { data, error } = await sb
+          // loss_sheet_parse_status exists only once the gh-2559 migration is applied (pages publish first): fall back to
+          // the columns that exist today when it is not there yet.
+          let res = await sb
             .from('claims')
-            .select('estimate_filename, has_estimate, loss_sheet_parsed_at')
+            .select('estimate_filename, has_estimate, loss_sheet_parsed_at, loss_sheet_parse_status')
             .eq('id', claimId)
             .maybeSingle();
+          if (res.error) {
+            res = await sb
+              .from('claims')
+              .select('estimate_filename, has_estimate, loss_sheet_parsed_at')
+              .eq('id', claimId)
+              .maybeSingle();
+          }
+          const data = res.data, error = res.error;
           if (error || !data) return;                       // cannot tell: let the database decide
           if (!(data.estimate_filename || data.has_estimate)) return;   // no estimate on the claim: nothing to wait for
           if (data.loss_sheet_parsed_at) return;            // read
+          if (data.loss_sheet_parse_status === 'unsupported') return;   // the parser cannot read this file type: the database lets the claim open (Q6)
           if (Date.now() >= deadline) return;
           await new Promise(function (r) { setTimeout(r, ESTIMATE_READ_POLL_MS); });
         }

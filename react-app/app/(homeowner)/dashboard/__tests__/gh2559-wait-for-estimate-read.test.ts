@@ -51,6 +51,11 @@ describe('waitForEstimateRead (gh-2559)', () => {
     await waitForEstimateRead('c1', { waitMs: 2000, pollMs: 5 });
     expect(reads.n).toBe(3);
   });
+  it('stops waiting when the platform marked the file unsupported (the parser cannot read it)', async () => {
+    const reads = wire([{ estimate_filename: 'u/e.docx', loss_sheet_parsed_at: null, loss_sheet_parse_status: 'unsupported' }], () => Promise.resolve({ data: [], error: null }));
+    await waitForEstimateRead('c1', { waitMs: 2000, pollMs: 5 });
+    expect(reads.n).toBe(1);
+  });
   it('gives up at the deadline and lets the database decide (negative control: it does not hang)', async () => {
     const reads = wire([{ estimate_filename: 'u/e.pdf', loss_sheet_parsed_at: null }], () => Promise.resolve({ data: [], error: null }));
     await waitForEstimateRead('c1', { waitMs: 30, pollMs: 10 });
@@ -59,12 +64,17 @@ describe('waitForEstimateRead (gh-2559)', () => {
 });
 
 describe('submitForBids (gh-2559)', () => {
-  it('passes the database refusal through unchanged while the placeholder is null', async () => {
+  it('never shows the guard database text: error is undefined so Checklist uses its generic line (review 6276857463 blocker 2)', async () => {
     expect(BID_OPEN_REFUSAL_TEXT_PLACEHOLDER).toBeNull();
     wire([{ estimate_filename: null }], () =>
       Promise.resolve({ data: null, error: { message: '[gh2559-bid-open:unread_estimate] PLACEHOLDER-PENDING-BEN: x' } }));
     const res = await submitForBids('c1');
     expect(res.ok).toBe(false);
-    expect(res.error).toContain('[gh2559-bid-open');
+    expect(res.error).toBeUndefined();
+  });
+  it('negative control: an ordinary database error still passes through', async () => {
+    wire([{ estimate_filename: null }], () => Promise.resolve({ data: null, error: { message: 'permission denied' } }));
+    const res = await submitForBids('c1');
+    expect(res.error).toBe('permission denied');
   });
 });

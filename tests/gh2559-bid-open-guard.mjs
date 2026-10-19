@@ -27,6 +27,8 @@ const R = read('supabase/migrations_drafts/gh2559_claims_bid_open_guard_rollback
 const PF = read('supabase/migrations_drafts/gh2559_claims_bid_open_guard_pre-flight.md');
 const P = read('supabase/tests/gh2559_claims_bid_open_guard_proof.sql');
 const D = read('dashboard.html');
+const PL = read('supabase/functions/parse-loss-sheet/index.ts');
+const EK = read('supabase/functions/parse-loss-sheet/estimate-kind.ts');
 const A = read('react-app/app/(homeowner)/dashboard/actions.ts');
 
 ok(F.length > 0 && R.length > 0 && P.length > 0 && PF.length > 0, 'forward, rollback, pre-flight and proof exist');
@@ -37,9 +39,9 @@ ok(/COALESCE\(\s*p_parsed_at IS NOT NULL[\s\S]*?false\)/.test(F), 'the "read" pr
 ok(/profiles p WHERE p\.id = NEW\.user_id/.test(F) && /ARRAY\[NEW\.homeowner_name, v_owner\]/.test(F), 'condition 2 compares the profile name as well as claims.homeowner_name (finding 2)');
 ok(/NEW\.parsed_line_items IS NOT DISTINCT FROM OLD\.parsed_line_items/.test(F), 'condition 2 also fires on summary/identity changes on an open claim (finding 3)');
 ok(/SECURITY DEFINER\s+SET search_path = public, pg_temp/.test(F), 'trigger function is SECURITY DEFINER with a pinned search_path');
-ok(/REVOKE EXECUTE ON FUNCTION public\.claims_guard_bid_open\(\) FROM PUBLIC, anon, authenticated/.test(F)
+ok(/REVOKE EXECUTE ON FUNCTION public\.claims_estimate_parse_state_guard\(\) FROM PUBLIC, anon, authenticated/.test(F) && /REVOKE EXECUTE ON FUNCTION public\.claims_guard_bid_open\(\) FROM PUBLIC, anon, authenticated/.test(F)
    && /REVOKE EXECUTE ON FUNCTION public\.gh2559_summary_identity_hit\(jsonb, text, text\[\], text, text\) FROM PUBLIC, anon, authenticated/.test(F)
-   && /REVOKE EXECUTE ON FUNCTION public\.gh2559_estimate_is_read\(jsonb, timestamptz\) FROM PUBLIC, anon, authenticated/.test(F), 'EXECUTE revoked on all three functions');
+   && /REVOKE EXECUTE ON FUNCTION public\.gh2559_estimate_is_read\(jsonb, timestamptz\) FROM PUBLIC, anon, authenticated/.test(F), 'EXECUTE revoked on all four functions');
 ok(!/CREATE OR REPLACE FUNCTION public\.(claims_guard_award_columns|claims_guard_platform_fee_charged|claims_guard_referral_columns|claims_stamp_contractor_released_at)/.test(F), 'no existing claims function is re-created');
 ok(/PLACEHOLDER-PENDING-BEN/.test(F) && (F.match(/PLACEHOLDER-PENDING-BEN/g) || []).length >= 2, 'both refusal messages are marked PLACEHOLDER-PENDING-BEN');
 ok((F.match(/^BEGIN;/gm) || []).length === 1 && (F.match(/^COMMIT;/gm) || []).length === 1 && (R.match(/^BEGIN;/gm) || []).length === 1 && (R.match(/^COMMIT;/gm) || []).length === 1, 'one BEGIN/COMMIT in forward and rollback');
@@ -48,12 +50,12 @@ ok(!/\r/.test(F + R + P + PF), 'LF only');
 // rollback drops exactly what the forward creates
 const created = [...F.matchAll(/CREATE OR REPLACE FUNCTION public\.(\w+)\(/g)].map((m) => m[1]).sort();
 const dropped = [...R.matchAll(/DROP FUNCTION IF EXISTS public\.(\w+)\(/g)].map((m) => m[1]).sort();
-ok(created.length === 3 && JSON.stringify(created) === JSON.stringify(dropped), 'rollback drops the same three functions the forward creates');
-ok(/DROP TRIGGER IF EXISTS claims_guard_bid_open ON public\.claims/.test(R), 'rollback drops the trigger');
+ok(created.length === 4 && JSON.stringify(created) === JSON.stringify(dropped), 'rollback drops the same four functions the forward creates');
+ok(/DROP TRIGGER IF EXISTS claims_guard_bid_open ON public\.claims/.test(R) && /DROP TRIGGER IF EXISTS claims_guard_a0_parse_state ON public\.claims/.test(R) && /DROP COLUMN IF EXISTS loss_sheet_parse_status/.test(R), 'rollback drops both triggers and the additive column');
 
 // proof embeds the bodies byte for byte
 function body(t, start) { const i = t.indexOf(start); const j = t.lastIndexOf('COMMIT;'); if (i < 0 || j < 0) return null; return t.slice(i, j).replace(/COMMENT ON FUNCTION public\.claims_guard_bid_open\(\) IS\n  '[^;]*;\n\n/, '').replace(/^\n+|\n+$/g, '') + '\n'; }
-const fb = body(F, '-- Condition 1 predicate.'), rb = body(R, 'DROP TRIGGER IF EXISTS claims_guard_bid_open');
+const fb = body(F, '-- Schema: parse status column'), rb = body(R, 'DROP TRIGGER IF EXISTS claims_guard_bid_open');
 ok(fb !== null && P.includes('$fwd$\n' + fb + '$fwd$'), 'proof embeds the forward body byte-for-byte');
 ok(rb !== null && P.includes('$rb$\n' + rb + '$rb$'), 'proof embeds the rollback body byte-for-byte');
 ok(/BEFORE = today's schema \(the forbidden cases must print ACCEPTED/.test(P) && /RAISE EXCEPTION E'GH2559 PROOF \(rolled back\)/.test(P), 'proof documents the negative control and ends in a forced RAISE');
@@ -65,6 +67,16 @@ ok(/async function waitForEstimateRead\(claimId\)/.test(D) && /await waitForEsti
 ok(/const BID_OPEN_REFUSAL_TEXT_PLACEHOLDER = null;/.test(D) && /showError\('Failed to submit your project\. Please try again\.'\);/.test(D), 'dashboard.html: refusal text is a null PLACEHOLDER; the existing failure line is unchanged');
 ok(/export async function waitForEstimateRead\(/.test(A) && /await waitForEstimateRead\(claimId\);/.test(A) && /BID_OPEN_REFUSAL_TEXT_PLACEHOLDER: string \| null = null/.test(A), 'React actions.ts waits for the read; refusal text is a null PLACEHOLDER');
 ok(D.indexOf('await waitForEstimateRead(currentClaim.id)') < D.indexOf(".update(submitUpdate)") && D.indexOf('await waitForEstimateRead(currentClaim.id)') > 0, 'dashboard.html: the wait comes before the update');
+
+// review 6276857463 rulings
+ok(/NEW\.loss_sheet_parse_status IS DISTINCT FROM 'unsupported'/.test(F) && /CHECK \(loss_sheet_parse_status IS NULL OR loss_sheet_parse_status IN \('parsed', 'unsupported'\)\)/.test(F), "condition 1 lets a platform-marked 'unsupported' file open; the column is CHECK-constrained");
+ok(/current_user IN \('anon', 'authenticated'\)[\s\S]*?ERRCODE = '42501'/.test(F) && /NEW\.estimate_filename IS DISTINCT FROM OLD\.estimate_filename/.test(F) && /NEW\.parsed_line_items := NULL/.test(F) && /NEW\.loss_sheet_parsed_at := NULL/.test(F), 'a client cannot write the status; a changed estimate_filename clears the old parse (X2)');
+ok(/CREATE TRIGGER claims_guard_a0_parse_state\s+BEFORE INSERT OR UPDATE OF estimate_filename, loss_sheet_parse_status/.test(F), 'the parse-state trigger sorts before claims_guard_bid_open (name a0)');
+ok(/detectEstimateKind\(bytes\)/.test(PL) && /type: kind\.block/.test(PL) && /media_type: kind\.mediaType/.test(PL) && !/media_type: "application\/pdf"/.test(PL), 'parse-loss-sheet sends the real media type (no hard-coded application/pdf)');
+ok(/loss_sheet_parse_status: "unsupported"/.test(PL) && /platform_alerts_log/.test(PL) && /loss_sheet_unsupported_type/.test(PL) && /loss_sheet_parse_status: "parsed"/.test(PL), 'parse-loss-sheet records unsupported + parsed and writes an operator alert');
+ok(/image\/jpeg/.test(EK) && /image\/png/.test(EK) && /application\/pdf/.test(EK), 'estimate-kind.ts knows PDF, JPEG and PNG');
+ok(!/updErr\.message \}/.test(A.split('if (refused)')[0].split('const refused')[1] || '') && /if \(refused\) return \{ ok: false, error: BID_OPEN_REFUSAL_TEXT_PLACEHOLDER \?\? undefined \}/.test(A), 'React maps a guard refusal to undefined (Checklist falls back to its generic line), never the database text');
+ok(/loss_sheet_parse_status === 'unsupported'/.test(D) && /loss_sheet_parse_status === 'unsupported'/.test(A), 'both clients stop waiting for a file marked unsupported');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

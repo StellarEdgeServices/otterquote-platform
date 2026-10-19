@@ -11,7 +11,7 @@ def body(t, start):
     b = t[i:j]
     b = re.sub(r"COMMENT ON FUNCTION public\.claims_guard_bid_open\(\) IS\n  '[^;]*;\n\n", "", b)
     return b.strip("\n") + "\n"
-FWD = body(fwd, "-- Condition 1 predicate.")
+FWD = body(fwd, "-- Schema: parse status column")
 RB = body(rb, "DROP TRIGGER IF EXISTS claims_guard_bid_open")
 tpl = open(os.path.join(R, "tools", "gh2559-bid-open-guard-proof.tpl.sql")).read()
 out = tpl.replace("@@FWD@@", FWD).replace("@@RB@@", RB)

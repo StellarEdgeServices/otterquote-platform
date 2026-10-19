@@ -51,15 +51,26 @@ export async function waitForEstimateRead(
 ): Promise<void> {
   const deadline = Date.now() + (opts.waitMs ?? ESTIMATE_READ_WAIT_MS);
   for (;;) {
-    const { data, error } = await supabase
+    // loss_sheet_parse_status exists only once the gh-2559 migration is applied (pages publish first), so fall back to the
+    // columns that exist today when the status column is not there yet.
+    let res = await supabase
       .from('claims')
-      .select('estimate_filename, has_estimate, loss_sheet_parsed_at')
+      .select('estimate_filename, has_estimate, loss_sheet_parsed_at, loss_sheet_parse_status')
       .eq('id', claimId)
       .maybeSingle();
+    if (res.error) {
+      res = await supabase
+        .from('claims')
+        .select('estimate_filename, has_estimate, loss_sheet_parsed_at')
+        .eq('id', claimId)
+        .maybeSingle();
+    }
+    const { data, error } = res;
     if (error || !data) return; // cannot tell: let the database decide
-    const row = data as { estimate_filename?: string | null; has_estimate?: boolean | null; loss_sheet_parsed_at?: string | null };
+    const row = data as { estimate_filename?: string | null; has_estimate?: boolean | null; loss_sheet_parsed_at?: string | null; loss_sheet_parse_status?: string | null };
     if (!(row.estimate_filename || row.has_estimate)) return; // no estimate on the claim
     if (row.loss_sheet_parsed_at) return; // read
+    if (row.loss_sheet_parse_status === 'unsupported') return; // the parser cannot read this file type: the database lets the claim open (Q6)
     if (Date.now() >= deadline) return;
     await new Promise((r) => setTimeout(r, opts.pollMs ?? ESTIMATE_READ_POLL_MS));
   }
@@ -98,7 +109,10 @@ export async function submitForBids(claimId: string): Promise<ActionResult> {
     .select('id');
   if (updErr) {
     const refused = typeof updErr.message === 'string' && updErr.message.includes('[gh2559-bid-open');
-    return { ok: false, error: (refused && BID_OPEN_REFUSAL_TEXT_PLACEHOLDER) || updErr.message };
+    // A guard refusal never shows its database text: with the placeholder null, `error` stays undefined and Checklist.tsx falls back
+    // to its existing generic line ('Could not submit for bids. Please try again.'), the same as dashboard.html's generic line.
+    if (refused) return { ok: false, error: BID_OPEN_REFUSAL_TEXT_PLACEHOLDER ?? undefined };
+    return { ok: false, error: updErr.message };
   }
   if (!Array.isArray(updRows) || updRows.length === 0) {
     return { ok: false, error: 'submit_for_bids_zero_rows: no matching claim row was updated' };

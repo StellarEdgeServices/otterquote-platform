@@ -32,12 +32,26 @@
 -- a digit, compared with spaces and dashes removed against text values, and against a numeric value only when it equals the whole number
 -- (so a price or quantity never collides). Prices and quantities are never matched as names or streets (numbers are not text).
 --
+-- REVIEW 6276857463 CHANGES (Marty's rulings, Tier A, 2026-10-19):
+--  (1) A file the platform cannot read must not trap the claim. parse-loss-sheet now sends JPG/PNG as image blocks (it sent every file as
+--      application/pdf) and, for a type the provider genuinely cannot read (Word, HEIC, anything else), writes the new column
+--      claims.loss_sheet_parse_status = 'unsupported' and an operator row in platform_alerts_log. Condition 1 treats 'unsupported' as
+--      "nothing readable to wait for": the claim may open, and since no summary exists the bidder sees none of the estimate's fields. Only
+--      the platform (service_role / admin / owner-level functions) may write that column; a client write is refused 42501, otherwise a
+--      homeowner could skip condition 1 by typing it. Q6 for Ben (default built: allow open + admin alert). Re-trigger a parse:
+--      call parse-loss-sheet with the service-role bearer and {claim_id, storage_path} (its existing service-role path).
+--  (2) Replacing the estimate resets the parse. Any change of estimate_filename clears loss_sheet_parsed_at, parsed_line_items,
+--      contractor_scope_summary and loss_sheet_parse_status (each only if the same statement did not set it), so an old parse can never
+--      satisfy condition 1 for a new file. It is a separate BEFORE trigger, claims_guard_a0_parse_state, named to sort before
+--      claims_guard_bid_open. Side effect on an OPEN claim: a replaced estimate shows no summary until the new file is parsed.
+--  (3) The React client never shows the guard's database text (actions.ts); see the PR.
+--
 -- WHAT IS NOT DONE HERE, each recorded as a question in the pre-flight: the words a homeowner is told when this refuses (Ben, 6029315131 A:
 -- consent and trust wording, comes to him first) -- the message below is a marked PLACEHOLDER and the client shows only the existing generic
 -- failure; replacing an estimate on an ALREADY OPEN claim with an unparsed one (not refused: it would block a homeowner's upload); the four
 -- grandfathered open claims; the parser-side redaction (D-390, #2880).
 --
--- Separate trigger and separate functions; no existing function or trigger is edited. BEFORE triggers fire in name order, so
+-- Separate triggers and separate functions; no existing function or trigger is edited. One additive column (loss_sheet_parse_status). BEFORE triggers fire in name order, so
 -- claims_guard_bid_open runs after claims_guard_award_columns; it never changes NEW.
 -- Idempotent: CREATE OR REPLACE FUNCTION; DROP TRIGGER IF EXISTS before CREATE TRIGGER.
 -- Apply order: the dashboard.html / actions.ts change in the same PR (waits for the parse before it submits) is published FIRST, then this file.
@@ -58,8 +72,17 @@ BEGIN
        WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name IN ('id','full_name')) <> 2 THEN
     RAISE EXCEPTION 'gh2559 bid-open guard: profiles.id / full_name missing; refusing to apply';
   END IF;
+  IF to_regprocedure('public.is_admin_email()') IS NULL THEN
+    RAISE EXCEPTION 'gh2559 bid-open guard: public.is_admin_email() does not exist; refusing to apply';
+  END IF;
 END
 $gate$;
+
+-- Schema: parse status column (additive; NULL on every existing row).
+ALTER TABLE public.claims ADD COLUMN IF NOT EXISTS loss_sheet_parse_status text;
+ALTER TABLE public.claims DROP CONSTRAINT IF EXISTS claims_loss_sheet_parse_status_check;
+ALTER TABLE public.claims ADD CONSTRAINT claims_loss_sheet_parse_status_check
+  CHECK (loss_sheet_parse_status IS NULL OR loss_sheet_parse_status IN ('parsed', 'unsupported'));
 
 -- Condition 1 predicate.
 CREATE OR REPLACE FUNCTION public.gh2559_estimate_is_read(p_parsed jsonb, p_parsed_at timestamptz)
@@ -180,6 +203,7 @@ BEGIN
   -- Condition 1: only at the moment the claim opens.
   IF v_opening
      AND (NEW.estimate_filename IS NOT NULL OR NEW.has_estimate IS TRUE)
+     AND NEW.loss_sheet_parse_status IS DISTINCT FROM 'unsupported'   -- the parser cannot read this file type (Q6): nothing to wait for
      AND NOT public.gh2559_estimate_is_read(NEW.parsed_line_items, NEW.loss_sheet_parsed_at) THEN
     RAISE EXCEPTION '%', c_unread USING ERRCODE = 'check_violation';
   END IF;
@@ -210,9 +234,50 @@ $fn$;
 COMMENT ON FUNCTION public.claims_guard_bid_open() IS
   'gh-2559 (Ben 6029315131 A/B.4): BEFORE INSERT OR UPDATE trigger function on public.claims. When a claim opens for bids with an uploaded estimate that has not been read into a summary, or when the summary repeats the owner name / street / claim number, raises check_violation with a PLACEHOLDER message. Also re-checks identity when the summary or the identity columns change on an open claim. Never changes NEW.';
 
+-- Parse-state guard: (a) a client may not write loss_sheet_parse_status (same caller test as gh2864 / #2913: anon or authenticated,
+-- JWT role not service_role, not an admin); (b) a change of estimate_filename clears the old parse.
+CREATE OR REPLACE FUNCTION public.claims_estimate_parse_state_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_old_status text := CASE WHEN TG_OP = 'UPDATE' THEN OLD.loss_sheet_parse_status END;
+BEGIN
+  IF NEW.loss_sheet_parse_status IS DISTINCT FROM v_old_status
+     AND current_user IN ('anon', 'authenticated')
+     AND COALESCE(auth.role(), '') <> 'service_role'
+     AND NOT COALESCE(public.is_admin_email(), false) THEN
+    RAISE EXCEPTION 'claims: loss_sheet_parse_status can only be written by the platform (gh-2559)'
+      USING ERRCODE = '42501';
+  END IF;
+
+  IF TG_OP = 'UPDATE' AND NEW.estimate_filename IS DISTINCT FROM OLD.estimate_filename THEN
+    IF NEW.loss_sheet_parsed_at IS NOT DISTINCT FROM OLD.loss_sheet_parsed_at THEN NEW.loss_sheet_parsed_at := NULL; END IF;
+    IF NEW.parsed_line_items IS NOT DISTINCT FROM OLD.parsed_line_items THEN NEW.parsed_line_items := NULL; END IF;
+    IF NEW.contractor_scope_summary IS NOT DISTINCT FROM OLD.contractor_scope_summary THEN NEW.contractor_scope_summary := NULL; END IF;
+    IF NEW.loss_sheet_parse_status IS NOT DISTINCT FROM OLD.loss_sheet_parse_status THEN NEW.loss_sheet_parse_status := NULL; END IF;
+  END IF;
+  RETURN NEW;
+END
+$fn$;
+
+COMMENT ON FUNCTION public.claims_estimate_parse_state_guard() IS
+  'gh-2559: BEFORE INSERT OR UPDATE OF estimate_filename, loss_sheet_parse_status on public.claims. Refuses (42501) a client write of loss_sheet_parse_status; clears the previous parse (loss_sheet_parsed_at, parsed_line_items, contractor_scope_summary, loss_sheet_parse_status) when estimate_filename changes, unless the same statement set them.';
+
+REVOKE EXECUTE ON FUNCTION public.claims_estimate_parse_state_guard() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.gh2559_estimate_is_read(jsonb, timestamptz) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.gh2559_summary_identity_hit(jsonb, text, text[], text, text) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.claims_guard_bid_open() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS claims_guard_a0_parse_state ON public.claims;
+
+-- Named so that BEFORE triggers (fired in name order) run it before claims_guard_bid_open in the same statement.
+CREATE TRIGGER claims_guard_a0_parse_state
+  BEFORE INSERT OR UPDATE OF estimate_filename, loss_sheet_parse_status
+  ON public.claims
+  FOR EACH ROW
+  EXECUTE FUNCTION public.claims_estimate_parse_state_guard();
 
 DROP TRIGGER IF EXISTS claims_guard_bid_open ON public.claims;
 

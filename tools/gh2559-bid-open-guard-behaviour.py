@@ -27,6 +27,8 @@ STUB = """
 CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN BYPASSRLS;
 CREATE SCHEMA auth;
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$ SELECT coalesce(nullif(current_setting('request.jwt.claim.role', true), ''), 'anon') $$;
+CREATE FUNCTION public.is_admin_email() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT false $$;
 CREATE TABLE public.profiles (id uuid PRIMARY KEY, full_name text);
 CREATE TABLE public.claims (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, status text DEFAULT 'draft', ready_for_bids boolean,
@@ -93,6 +95,29 @@ op("I6d claim number '2500' vs deductible 2500 (legit)", "ACCEPT", claim=idc(cla
 op("I6e claim number 'Roof' / 'none' (legit)", "ACCEPT", claim=idc(with_item("roof"), claim_number="Roof"))
 op("I6f 7-digit claim number equal to a price (legit: quantity 98.25 != it)", "ACCEPT", claim=idc(claim_number="9825000"))
 
+# review 6276857463 (PR #2929): files the parser cannot read, forged status, replaced estimate
+# 'FORBID' = refused 42501 by the parse-state guard; needs_col cases error 42703 (no such column) where the column does not exist yet.
+NEEDCOL = set()
+def opx(label, expect, set_=None, claim=None, role="authenticated", needs_col=False):
+    OPEN.append((label, expect, dict(claim or {}), set_ if set_ is not None else {}, role))
+    if needs_col: NEEDCOL.add(label)
+opx("X1 parser cannot read the file (Word/HEIC): platform marked it unsupported, claim opens", "ACCEPT",
+    claim=dict(estimate_filename="u/c/estimate.docx", loss_sheet_parse_status="unsupported"), needs_col=True)
+opx("X1b client writes loss_sheet_parse_status itself", "FORBID", set_=dict(loss_sheet_parse_status="unsupported"),
+    claim=dict(estimate_filename="u/c/estimate.docx"), needs_col=True)
+opx("X1c client sets the status and opens in ONE statement", "FORBID", set_=dict(loss_sheet_parse_status="unsupported", ready_for_bids=True),
+    claim=dict(estimate_filename="u/c/estimate.docx"), needs_col=True)
+opx("X1d platform (service_role) marks the file unsupported", "ACCEPT", set_=dict(loss_sheet_parse_status="unsupported", ready_for_bids=False),
+    claim=dict(estimate_filename="u/c/estimate.docx"), role="service_role", needs_col=True)
+opx("X1e unsupported status does not excuse a DIFFERENT unread file: status cleared on replace, then open", "REFUSE",
+    set_=[dict(estimate_filename="u/c/new.pdf", ready_for_bids=False), dict(ready_for_bids=True)],
+    claim=dict(estimate_filename="u/c/estimate.docx", loss_sheet_parse_status="unsupported"), needs_col=True)
+opx("X2 parsed PDF, then replaced by an unparsed JPG, then submit (walk-around)", "REFUSE",
+    set_=[dict(estimate_filename="u/c/new.jpg", ready_for_bids=False), dict(ready_for_bids=True)], claim=dict(base))
+opx("X2b replaced by a file AND re-parsed in the same statement (platform path), then submit", "ACCEPT",
+    set_=[dict(estimate_filename="u/c/new.pdf", ready_for_bids=False, loss_sheet_parsed_at="2030-01-01T00:00:00Z", parsed_line_items=with_item("re-parsed")), dict(ready_for_bids=True)],
+    claim=dict(base), role="service_role")
+
 # already-open claims (summary written / identity edited afterwards)
 def opened(**kw):
     c = dict(base); c.update(property_address=ADDR, ready_for_bids=True); c.update(kw); return c
@@ -116,26 +141,35 @@ def lit(v):
 
 def run(conn, claim, preopen, setd, role):
     cur = conn.cursor()
+    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='claims'")
+    have = {r[0] for r in cur.fetchall()}
     cur.execute("BEGIN")
     try:
         cur.execute("SET LOCAL session_replication_role = replica")
         cur.execute("INSERT INTO public.profiles(id, full_name) VALUES (%s, %s)", (OWNER, NAME))
-        cols = dict(claim); cols["user_id"] = OWNER
+        cols = {k: v for k, v in claim.items() if k in have}; cols["user_id"] = OWNER
         cols.setdefault("ready_for_bids", False if not preopen else True)
         names = ",".join(cols); vals = ",".join(lit(v) for v in cols.values())
         cur.execute("INSERT INTO public.claims(%s) VALUES (%s) RETURNING id" % (names, vals))
         cid = cur.fetchone()[0]
         cur.execute("SET LOCAL session_replication_role = origin")
-        if not preopen: setd = {"ready_for_bids": True, **setd}
+        steps = setd if isinstance(setd, list) else [setd]
+        if not isinstance(setd, list) and not preopen: steps = [{"ready_for_bids": True, **setd}]
         cur.execute("SET LOCAL ROLE %s" % role)
         cur.execute("SELECT set_config('request.jwt.claim.sub', %s, true)", (OWNER,))
-        sets = ",".join("%s = %s" % (k, lit(v)) for k, v in setd.items())
-        cur.execute("UPDATE public.claims SET %s WHERE id = '%s'" % (sets, cid))
-        n = cur.rowcount
+        cur.execute("SELECT set_config('request.jwt.claim.role', %s, true)", (role,))
+        n = 0
+        for st in steps:
+            sets = ",".join("%s = %s" % (k, lit(v)) for k, v in st.items())
+            cur.execute("UPDATE public.claims SET %s WHERE id = '%s'" % (sets, cid))
+            n = cur.rowcount
         return "ACCEPT" if n == 1 else "NOROW"
     except psycopg2.Error as e:
         m = (e.pgerror or "")
-        return "REFUSE" if (e.pgcode == "23514" and "gh2559-bid-open" in m) else "ERR " + str(e.pgcode) + " " + m[:120]
+        if e.pgcode == "23514" and "gh2559-bid-open" in m: return "REFUSE"
+        if e.pgcode == "42501" and "gh-2559" in m: return "FORBID"
+        if e.pgcode == "42703": return "NOCOL"
+        return "ERR " + str(e.pgcode) + " " + m[:120]
     finally:
         cur.execute("ROLLBACK")
 
@@ -145,9 +179,49 @@ def phase(conn, name, expect_fn):
     for label, exp, claim, preopen, setd, role in cases:
         got = run(conn, claim, preopen, setd, role)
         want = expect_fn(exp)
+        if name != "AFTER":
+            steps_ = setd if isinstance(setd, list) else [setd]
+            if any("loss_sheet_parse_status" in st for st in steps_): want = "NOCOL"
         flag = "ok " if got == want else "BAD"
         if got != want: bad += 1
         print("%s [%-6s] %-70s want %-6s got %s" % (flag, name, label, want, got))
+    return bad
+
+def reset_checks(conn):
+    """Replacing the estimate clears the old parse (Required 3); a platform write in the same statement is kept."""
+    bad = 0
+    cur = conn.cursor()
+    def one(label, steps, want):
+        nonlocal bad
+        cur.execute("BEGIN")
+        try:
+            cur.execute("SET LOCAL session_replication_role = replica")
+            cur.execute("INSERT INTO public.profiles(id, full_name) VALUES (%s, %s)", (OWNER, NAME))
+            cur.execute("INSERT INTO public.claims(user_id, ready_for_bids, estimate_filename, loss_sheet_parsed_at, parsed_line_items, contractor_scope_summary, loss_sheet_parse_status) VALUES (%s, %s, 'u/old.pdf', now(), %s, 'scope', 'parsed') RETURNING id" , (OWNER, False, json.dumps(good())))
+            cid = cur.fetchone()[0]
+            cur.execute("SET LOCAL session_replication_role = origin")
+            for role, sql in steps:
+                cur.execute("SET LOCAL ROLE %s" % role)
+                cur.execute("SELECT set_config('request.jwt.claim.role', %s, true)", (role,))
+                cur.execute("SELECT set_config('request.jwt.claim.sub', %s, true)", (OWNER,))
+                cur.execute(sql % cid)
+                assert cur.rowcount == 1, "fixture update matched no row"
+                cur.execute("RESET ROLE")
+            cur.execute("SELECT loss_sheet_parsed_at IS NOT NULL, parsed_line_items IS NOT NULL, contractor_scope_summary IS NOT NULL, loss_sheet_parse_status FROM public.claims WHERE id = %s", (cid,))
+            got = cur.fetchone()
+        except psycopg2.Error as e:
+            got = ("ERR", e.pgcode)
+        finally:
+            cur.execute("ROLLBACK")
+        ok_ = got == want
+        if not ok_: bad += 1
+        print("%s [RESET ] %-70s want %s got %s" % ("ok " if ok_ else "BAD", label, want, got))
+    one("owner replaces the estimate file: old parse, summary, scope and status cleared",
+        [("authenticated", "UPDATE public.claims SET estimate_filename = 'u/new.jpg' WHERE id = '%s'")], (False, False, False, None))
+    one("platform replaces the file AND writes the new parse in one statement: the new timestamp and summary are kept (an unchanged status value cannot be told from an unwritten one, so it is cleared; parse-loss-sheet never does both in one statement)",
+        [("service_role", "UPDATE public.claims SET estimate_filename = 'u/new.pdf', loss_sheet_parsed_at = '2030-01-01T00:00:00Z', loss_sheet_parse_status = 'parsed', parsed_line_items = '{\"sections\":[{\"n\":1}]}' WHERE id = '%s'")], (True, True, False, None))
+    one("an unrelated update keeps the parse",
+        [("authenticated", "UPDATE public.claims SET status = 'draft' WHERE id = '%s'")], (True, True, True, "parsed"))
     return bad
 
 def main():
@@ -165,13 +239,17 @@ def main():
     bad += phase(conn, "AFTER", lambda e: e)
     # metadata
     cur.execute("SELECT count(*) FROM pg_trigger WHERE tgrelid='public.claims'::regclass AND tgname='claims_guard_bid_open' AND NOT tgisinternal"); t = cur.fetchone()[0]
-    cur.execute("SELECT count(*) FROM pg_proc WHERE proname IN ('claims_guard_bid_open','gh2559_summary_identity_hit','gh2559_estimate_is_read')"); f = cur.fetchone()[0]
+    cur.execute("SELECT count(*) FROM pg_proc WHERE proname IN ('claims_guard_bid_open','gh2559_summary_identity_hit','gh2559_estimate_is_read','claims_estimate_parse_state_guard')"); f = cur.fetchone()[0]
+    cur.execute("SELECT count(*) FROM pg_trigger WHERE tgrelid='public.claims'::regclass AND tgname IN ('claims_guard_bid_open','claims_guard_a0_parse_state') AND NOT tgisinternal"); t = cur.fetchone()[0]
     cur.execute("SELECT has_function_privilege('authenticated','public.claims_guard_bid_open()','EXECUTE') OR has_function_privilege('anon','public.gh2559_estimate_is_read(jsonb,timestamptz)','EXECUTE')"); px = cur.fetchone()[0]
     print("trigger=%s functions=%s client_execute=%s" % (t, f, px))
-    if (t, f, px) != (1, 3, False): bad += 1; print("BAD metadata")
+    if (t, f, px) != (2, 4, False): bad += 1; print("BAD metadata")
+    bad += reset_checks(conn)
     cur.execute(open(FWD).read())  # idempotent re-run
     cur.execute(open(RB).read())
-    cur.execute("SELECT count(*) FROM pg_proc WHERE proname IN ('claims_guard_bid_open','gh2559_summary_identity_hit','gh2559_estimate_is_read')"); left = cur.fetchone()[0]
+    cur.execute("SELECT count(*) FROM pg_proc WHERE proname IN ('claims_guard_bid_open','gh2559_summary_identity_hit','gh2559_estimate_is_read','claims_estimate_parse_state_guard')"); left = cur.fetchone()[0]
+    cur.execute("SELECT count(*) FROM information_schema.columns WHERE table_name='claims' AND column_name='loss_sheet_parse_status'"); col_left = cur.fetchone()[0]
+    if col_left: bad += 1; print("BAD column left after rollback")
     print("after rollback: functions left=%s" % left)
     if left: bad += 1
     print("== AFTER rollback (guard gone)")
