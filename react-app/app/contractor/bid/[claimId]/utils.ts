@@ -131,7 +131,7 @@ export function profileIncompleteRedirect(c: BidGateContractor | null | undefine
  * string equals contractor-bid-form.html's and the proof file's.
  */
 export const BIDDER_CLAIM_BID_COLS =
-  'id, trades, job_type, funding_type, damage_type, material_category, shingle_type, impact_class, designer_product, designer_manufacturer, rcv_amount, parsed_line_items, siding_bid_released_at, location_city, location_zip, carrier_profile_name, estimate_filename, measurements_filename, selected_contractor_id';
+  'id, trades, job_type, funding_type, damage_type, material_category, shingle_type, impact_class, designer_product, designer_manufacturer, rcv_amount, parsed_line_items, siding_bid_released_at, location_city, location_zip, carrier_profile_name, measurements_filename, selected_contractor_id';
 
 /** City and zip of a claim read from the summary view, e.g. "Carmel, IN 46032" (D-074: never the street). */
 export function claimLocationLabel(claim: Record<string, unknown> | null | undefined): string {

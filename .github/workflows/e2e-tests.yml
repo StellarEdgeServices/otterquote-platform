@@ -490,6 +490,11 @@ jobs:
       - name: a bidding contractor is offered no raw homeowner upload, only the selected contractor (gh-2559, D-368)
         run: node tests/gh2559-bidder-no-raw-files.mjs
 
+      - name: the bidder view returns no estimate_filename -- column lists, draft migration, rollback, other view redefinitions (gh-2931)
+        run: |
+          node tests/gh2931-bidder-summary-no-filename.mjs
+          python3 supabase/tests/gh2931_bidder_summary_no_filename_proof_run.py
+
       - name: contractor pages state the D-386 release timing for the estimate, phone and email (gh-2559, D-386)
         run: node tests/gh2559-contractor-access-window-copy.mjs
 

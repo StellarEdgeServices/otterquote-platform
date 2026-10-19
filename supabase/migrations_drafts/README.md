@@ -61,3 +61,9 @@ Two more sets were applied to production on 2026-10-18 (CTO RUN 70 filing; appli
 
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
+
+## Added 2026-10-19 (gh-2931, `bidder_claim_summary` stops returning `estimate_filename`): 2 files here, the proof in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2931_bidder_summary_no_filename` | forward, rollback (proof and its runner in `supabase/tests/`) | NOT APPLIED | drafted 2026-10-19 under #2931; production read-only 2026-10-19T21:22Z: `pg_get_viewdef` md5 `c8ad94c4…` (40 columns, `estimate_filename` at 39, `has_estimate` at 33), owner `postgres`, `security_barrier=true`, no dependents; the view returns the path to the selected contractor only (a bidder reads NULL). Tier 3B, R-097 24-hour notice; publish the page change first; PR #2880 and PR #2925 must drop the column too | none |

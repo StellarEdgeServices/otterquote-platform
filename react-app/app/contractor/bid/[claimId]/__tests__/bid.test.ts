@@ -543,9 +543,12 @@ describe('bid form claim summary view (gh-2559)', () => {
   });
   it('selects what the form prices and renders from', () => {
     for (const c of ['id', 'trades', 'job_type', 'funding_type', 'rcv_amount', 'parsed_line_items', 'damage_type', 'carrier_profile_name',
-      'location_city', 'location_zip', 'selected_contractor_id', 'estimate_filename', 'siding_bid_released_at']) {
+      'location_city', 'location_zip', 'selected_contractor_id', 'siding_bid_released_at']) {
       expect(cols).toContain(c);
     }
+  });
+  it('does not select estimate_filename (gh-2931: the view no longer returns the stored path or the homeowner\'s upload name)', () => {
+    expect(cols).not.toContain('estimate_filename');
   });
   it('claimLocationLabel is city and zip, never a street', () => {
     expect(claimLocationLabel({ location_city: 'Carmel', location_zip: '46032', property_address: '1 Main St' })).toBe('Carmel, IN 46032');
