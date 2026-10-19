@@ -3209,6 +3209,36 @@
       // every matched contractor. Guarding on `submitInFlight` instead of a
       // DOM node means a third future entry point is covered automatically.
       let submitInFlight = false;
+
+      // gh-2559 (Ben, #2569 6029315131 A/B.4): the database refuses to open a claim for bids while its uploaded
+      // estimate has not been read into a summary (parse-loss-sheet, routinely 15-60s, fire-and-forget at upload).
+      // So the submit waits, silently, for that read before it writes: the button already says "Submitting…" and no
+      // new sentence is shown. If the read never lands inside the wait the update goes ahead and the database
+      // decides; the failure then shows the EXISTING generic line below.
+      // PLACEHOLDER, null on purpose: the sentence a homeowner sees on a refused submit is Ben's wording
+      // (#2559 / #2569 6029315131 A). While it is null the existing 'Failed to submit your project' line is used.
+      const BID_OPEN_REFUSAL_TEXT_PLACEHOLDER = null;
+      const ESTIMATE_READ_WAIT_MS = 90000;
+      const ESTIMATE_READ_POLL_MS = 3000;
+      async function waitForEstimateRead(claimId) {
+        const deadline = Date.now() + ESTIMATE_READ_WAIT_MS;
+        for (;;) {
+          const { data, error } = await sb
+            .from('claims')
+            .select('estimate_filename, has_estimate, loss_sheet_parsed_at')
+            .eq('id', claimId)
+            .maybeSingle();
+          if (error || !data) return;                       // cannot tell: let the database decide
+          if (!(data.estimate_filename || data.has_estimate)) return;   // no estimate on the claim: nothing to wait for
+          if (data.loss_sheet_parsed_at) return;            // read
+          if (Date.now() >= deadline) return;
+          await new Promise(function (r) { setTimeout(r, ESTIMATE_READ_POLL_MS); });
+        }
+      }
+      function isBidOpenRefusal(err) {
+        return !!(err && typeof err.message === 'string' && err.message.indexOf('[gh2559-bid-open') !== -1);
+      }
+
       async function submitForBids() {
         if (submitInFlight) return;
         if (!currentClaim) return;
@@ -3238,6 +3268,7 @@
           });
 
           if (!CONFIG.DEMO_MODE && sb && currentClaim.id) {
+            await waitForEstimateRead(currentClaim.id);   // gh-2559: no bid opens on an unread estimate
             const { data: submittedRows, error } = await sb
               .from('claims')
               .update(submitUpdate)
@@ -3276,7 +3307,8 @@
           console.error('[submitForBids] Error:', err);
           if (btn) { btn.disabled = false; btn.textContent = 'Submit for Bids'; }
           if (readyBtn) { readyBtn.disabled = false; readyBtn.textContent = 'Submit for Bids'; }
-          showError('Failed to submit your project. Please try again.');
+          if (isBidOpenRefusal(err) && BID_OPEN_REFUSAL_TEXT_PLACEHOLDER) showError(BID_OPEN_REFUSAL_TEXT_PLACEHOLDER);
+          else showError('Failed to submit your project. Please try again.');
         } finally {
           // Always clears, success or failure — a failed submit must be
           // retryable, and this is the ONE guard both entry points share.

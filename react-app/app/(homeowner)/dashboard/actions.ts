@@ -34,8 +34,40 @@ export async function resendHoverLink(claimId: string): Promise<ActionResult> {
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+/**
+ * gh-2559 (Ben, #2569 6029315131 A/B.4): the database refuses to open a claim for bids while its uploaded estimate has not
+ * been read into a summary (parse-loss-sheet, routinely 15-60s, fire-and-forget at upload). So the submit waits, silently,
+ * for that read before it writes. If the read never lands inside the wait the update goes ahead and the database decides.
+ * PLACEHOLDER, null on purpose: the sentence a homeowner sees on a refused submit is Ben's wording; while it is null the
+ * existing error string is passed through unchanged.
+ */
+export const BID_OPEN_REFUSAL_TEXT_PLACEHOLDER: string | null = null;
+export const ESTIMATE_READ_WAIT_MS = 90_000;
+export const ESTIMATE_READ_POLL_MS = 3_000;
+
+export async function waitForEstimateRead(
+  claimId: string,
+  opts: { waitMs?: number; pollMs?: number } = {},
+): Promise<void> {
+  const deadline = Date.now() + (opts.waitMs ?? ESTIMATE_READ_WAIT_MS);
+  for (;;) {
+    const { data, error } = await supabase
+      .from('claims')
+      .select('estimate_filename, has_estimate, loss_sheet_parsed_at')
+      .eq('id', claimId)
+      .maybeSingle();
+    if (error || !data) return; // cannot tell: let the database decide
+    const row = data as { estimate_filename?: string | null; has_estimate?: boolean | null; loss_sheet_parsed_at?: string | null };
+    if (!(row.estimate_filename || row.has_estimate)) return; // no estimate on the claim
+    if (row.loss_sheet_parsed_at) return; // read
+    if (Date.now() >= deadline) return;
+    await new Promise((r) => setTimeout(r, opts.pollMs ?? ESTIMATE_READ_POLL_MS));
+  }
+}
+
 /** Submit the claim for bids: flip to active, then notify contractors (non-fatal). */
 export async function submitForBids(claimId: string): Promise<ActionResult> {
+  await waitForEstimateRead(claimId); // gh-2559: no bid opens on an unread estimate
   // #482: static-stack parity (PR #473) — stamp {trade}_bid_released_at for
   // releasable trades at submit. Siding releases via the D-164 design gate.
   const update: Record<string, unknown> = { status: 'active', ready_for_bids: true };
@@ -64,7 +96,10 @@ export async function submitForBids(claimId: string): Promise<ActionResult> {
     .update(update)
     .eq('id', claimId)
     .select('id');
-  if (updErr) return { ok: false, error: updErr.message };
+  if (updErr) {
+    const refused = typeof updErr.message === 'string' && updErr.message.includes('[gh2559-bid-open');
+    return { ok: false, error: (refused && BID_OPEN_REFUSAL_TEXT_PLACEHOLDER) || updErr.message };
+  }
   if (!Array.isArray(updRows) || updRows.length === 0) {
     return { ok: false, error: 'submit_for_bids_zero_rows: no matching claim row was updated' };
   }
