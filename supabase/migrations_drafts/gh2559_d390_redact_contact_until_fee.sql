@@ -85,7 +85,7 @@ REVOKE ALL ON FUNCTION public.d390_redact_contact(text) FROM anon;
 -- regexp_replace over its argument, no table access), so executing it grants nothing. No GRANT statement is written (the permissions ratchet has
 -- nothing to flag); the assertion below fails the migration if the defaults are not what this file assumes.
 
--- 2. the bidder view, one clause changed
+-- 2. the bidder view, three clauses changed: the selected contractor's homeowner_notes branch (redacted until the fee), and the estimate_filename and measurements_filename CASEs (gated on platform_fee_charged IS TRUE, from #2931)
 CREATE OR REPLACE VIEW public.bidder_claim_summary
 WITH (security_barrier = true)
 AS
