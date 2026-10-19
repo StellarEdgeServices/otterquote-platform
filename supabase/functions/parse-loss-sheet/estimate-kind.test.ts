@@ -30,22 +30,42 @@ Deno.test("an image over the provider's 5 MB limit is unsupported; a PDF of that
   assertEquals(detectEstimateKind(big), null);
 });
 
-const err = (message: string) => JSON.stringify({ type: "error", error: { type: "invalid_request_error", message } });
-
-Deno.test("file-caused provider rejections are 'failed' (413, and a 400 that names the file)", () => {
-  assertEquals(isFileRejection(413, "request_too_large"), true);
-  assertEquals(isFileRejection(400, err("messages.0.content.0.image.source.base64: image exceeds 5 MB maximum: 5300000 bytes > 5242880 bytes")), true);
-  assertEquals(isFileRejection(400, err("messages.0.content.0.document.source.base64.data: The PDF specified was not valid")), true);
-  assertEquals(isFileRejection(400, err("The PDF specified is password protected")), true);
-  assertEquals(isFileRejection(400, err("PDF has too many pages (limit 100)")), true);
-  assertEquals(isFileRejection(400, err("Could not process image")), true);
-});
-Deno.test("account / config 400s and every other status are NOT the file (transient 502 + alert, never 'failed')", () => {
-  assertEquals(isFileRejection(400, err("Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.")), false);
-  assertEquals(isFileRejection(400, err("model: claude-sonnet-x is not a valid model ID")), false);
-  assertEquals(isFileRejection(400, err("This organization has been disabled.")), false);
-  assertEquals(isFileRejection(400, err("max_tokens: 99999 > 8192, which is the maximum allowed number of output tokens for the model")), false);
-  assertEquals(isFileRejection(400, "<html>Bad Request</html>"), false);
-  assertEquals(isFileRejection(400, ""), false);
-  for (const st of [401, 403, 404, 408, 429, 500, 502, 503, 529]) assertEquals(isFileRejection(st, err("image document pdf")), false);
-});
+// Real provider error bodies (the reviewer's fixtures, REVIEW 6277457123 / 9a38cdeb probe).
+const e = (type: string, message: string) => JSON.stringify({ type: "error", error: { type, message }, request_id: "req_011CTestAbc" });
+const I = (m: string) => e("invalid_request_error", m);
+const CASES: Array<[string, number, string, boolean]> = [
+  ["image too large (base64 > 5 MB)", 400, I("messages.0.content.0.image.source.base64: image exceeds 5 MB maximum: 7062432 bytes > 5242880 bytes"), true],
+  ["image dimensions too large", 400, I("messages.0.content.0.image.source.base64.data: At least one of the image dimensions exceed max allowed size: 8000 pixels"), true],
+  ["PDF too many pages", 400, I("messages.0.content.0.document.source.base64.data: A maximum of 100 PDF pages may be provided."), true],
+  ["PDF not valid", 400, I("messages.0.content.0.document.source.base64.data: The PDF specified was not valid."), true],
+  ["PDF password protected", 400, I("messages.0.content.0.document.source.base64.data: The PDF specified is password protected."), true],
+  ["unsupported media type", 400, I("messages.0.content.0.image.source.base64.media_type: Input should be 'image/jpeg', 'image/png', 'image/gif' or 'image/webp'"), true],
+  ["media type mismatch", 400, I("messages.0.content.0.image.source.base64.data: Image does not match the provided media type image/jpeg"), true],
+  ["could not process image", 400, I("Could not process image"), true],
+  ["prompt too long (huge PDF)", 400, I("prompt is too long: 215832 tokens > 200000 maximum"), true],
+  ["input + max_tokens exceed context (huge PDF, N1)", 400, I("input length and `max_tokens` exceed context limit: 194120 + 8000 > 200000, decrease input length or `max_tokens` and try again"), true],
+  ["413 request_too_large", 413, e("request_too_large", "Request exceeds the maximum allowed number of bytes."), true],
+  ["credit balance too low", 400, I("Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."), false],
+  ["API usage limits reached", 400, I("You have reached your specified API usage limits. You will regain access on 2026-11-01 at 00:00 UTC."), false],
+  ["workspace usage limits", 400, I("You have reached your specified workspace API usage limits. You will regain access on 2026-11-01 at 00:00 UTC."), false],
+  ["organization disabled", 400, I("This organization has been disabled."), false],
+  ["authentication_error 401", 401, e("authentication_error", "invalid x-api-key"), false],
+  ["permission_error 403", 403, e("permission_error", "Your API key does not have permission to use the specified resource."), false],
+  ["billing_error 402", 402, e("billing_error", "Your account has an outstanding balance."), false],
+  ["not_found model 404", 404, e("not_found_error", "model: claude-sonnet-4-6-typo"), false],
+  ["model id invalid at 400", 400, I("model: claude-sonnet-x is not a valid model ID"), false],
+  ["max_tokens over model cap (4096 cap model)", 400, I("max_tokens: 8000 > 4096, which is the maximum allowed number of output tokens for claude-3-haiku-20240307"), false],
+  ["max_tokens over model cap (8192 cap model)", 400, I("max_tokens: 8000 > 8192, which is the maximum allowed number of output tokens for claude-3-5-haiku-20241022"), false],
+  ["bad anthropic-version header", 400, I("anthropic-version: invalid version"), false],
+  ["document block unsupported by model", 400, I("messages.0.content.0: PDF input is not supported by this model"), false],
+  ["overloaded 529", 529, e("overloaded_error", "Overloaded"), false],
+  ["rate limit 429", 429, e("rate_limit_error", "Number of request tokens has exceeded your per-minute rate limit"), false],
+  ["api_error 500", 500, e("api_error", "Internal server error"), false],
+  ["gateway html 400", 400, "<html><body>400 Bad Request</body></html>", false],
+  ["empty body 400", 400, "", false],
+];
+for (const [name, status, body, want] of CASES) {
+  Deno.test(`isFileRejection: ${name} -> ${want ? "file ('failed')" : "NOT the file (502 + alert, no mark)"}`, () => {
+    assertEquals(isFileRejection(status, body), want);
+  });
+}

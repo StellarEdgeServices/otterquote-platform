@@ -452,11 +452,11 @@ serve(async (req) => {
       console.error(`Anthropic API error: ${anthropicResponse.status} ${errorText}`);
       // gh-2559: a provider rejection that is about THIS FILE (HTTP 413, or a 400 whose error names the image/document/PDF/size) will fail the
       // same way every time: mark it 'failed'. A 400 about the account or configuration (credit balance, auth, model, ...), 429, 5xx and
-      // timeouts are transient for the claim: no mark, a 502, and (for a non-file 400/401/403) an operator alert so it is not silent.
+      // timeouts are transient for the claim: no mark, a 502, and (for a non-file 400/401/402/403/404) an operator alert so it is not silent.
       if (isFileRejection(anthropicResponse.status, errorText)) {
         return await markUnreadable("failed", "loss_sheet_parse_failed", `the provider rejected the uploaded estimate (HTTP ${anthropicResponse.status}: ${errorText.slice(0, 160).replace(/\s+/g, " ")})`);
       }
-      if ([400, 401, 403].includes(anthropicResponse.status)) {
+      if ([400, 401, 402, 403, 404].includes(anthropicResponse.status)) {
         const { error: provAlertErr } = await supabase.from("platform_alerts_log").insert({
           alert_type: "loss_sheet_provider_error",
           function_name: FUNCTION_NAME,
