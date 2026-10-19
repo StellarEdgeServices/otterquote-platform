@@ -489,6 +489,9 @@ jobs:
       - name: no client file selects * from claims or names a private note column (gh-2881, D-390)
         run: node tests/gh2881-claims-no-star-select.mjs
 
+      - name: the digit-fold draft is #2880's statements with one clause extended (gh-2881, D-390)
+        run: python3 tests/gh2881-d390-digit-fold-parity.py
+
       - name: the fee-gate draft migration, rollback and proof are consistent (gh-2559 fee leg, D-386)
         run: node tests/gh2559-claim-docs-fee-gate.mjs
 

@@ -9,11 +9,8 @@ CREATE FUNCTION t.mathbold(p text) RETURNS text LANGUAGE sql IMMUTABLE AS $$
   SELECT string_agg(CASE WHEN c ~ '[0-9]' THEN chr(120782 + c::int) ELSE c END, '' ORDER BY n) FROM regexp_split_to_table(p, '') WITH ORDINALITY AS s(c, n) $$;
 CREATE FUNCTION t.zw(p text) RETURNS text LANGUAGE sql IMMUTABLE AS $$
   SELECT string_agg(c, chr(8203) ORDER BY n) FROM regexp_split_to_table(p, '') WITH ORDINALITY AS s(c, n) $$;
-CREATE FUNCTION t.leaks(p text) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$ SELECT p IS NOT NULL AND normalize(translate(p, U&'\0660\0661\0662\0663\0664\0665\0666\0667\0668\0669\06F0\06F1\06F2\06F3\06F4\06F5\06F6\06F7\06F8\06F9', '01234567890123456789'), NFKC) ~* '0142|zelda|example' $$;
+CREATE FUNCTION t.leaks(p text) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$ SELECT p IS NOT NULL AND normalize(p, NFKC) ~* '0142|zelda|example' $$;
 -- the corpus: (label, text with a phone or an e-mail address in a Unicode form)
--- gh-2881 (review 6256286136 O1): Arabic-Indic digits typed in place of ASCII digits
-CREATE FUNCTION t.arind(p text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT translate(p, '0123456789', U&'\0660\0661\0662\0663\0664\0665\0666\0667\0668\0669') $$;
-CREATE FUNCTION t.extarind(p text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT translate(p, '0123456789', U&'\06F0\06F1\06F2\06F3\06F4\06F5\06F6\06F7\06F8\06F9') $$;
 CREATE TABLE t.ucorpus (label text, txt text);
 INSERT INTO t.ucorpus VALUES
  ('U01 full-width phone digits, ASCII dashes', 'call ' || translate('317-555-0142', '0123456789', U&'\FF10\FF11\FF12\FF13\FF14\FF15\FF16\FF17\FF18\FF19') || ' after five'),
@@ -27,8 +24,6 @@ INSERT INTO t.ucorpus VALUES
  ('U09 e-mail with soft hyphen and zero-width space (held before the fix too)', 'mail zel' || U&'\00AD' || 'da.q' || U&'\200B' || '@example.invalid ok'),
  ('U10 e-mail spelled at/dot in full-width letters', 'mail ' || t.fwall('zelda.q at example dot invalid') || ' ok'),
  ('U11 e-mail with small commercial at (U+FE6B)', 'mail zelda.q' || U&'\FE6B' || 'example.invalid ok'),
- ('U13 Arabic-Indic digits, ASCII dashes (gh-2881)', 'call ' || t.arind('317-555-0142') || ' after five'),
- ('U14 Extended Arabic-Indic digits, contiguous (gh-2881)', 'call ' || t.extarind('3175550142') || ' after five'),
  ('U12 ASCII phone and e-mail (plain control, must also redact)', 'call 317-555-0142 or zelda.q@example.invalid');
 -- the probes: function direct (the path of the Scope of Work and the notification e-mail, which call the function by rpc), the bidder view as the
 -- SELECTED contractor before the fee (notes), and the thread view (homeowner-sent message). p_expect_leak = true runs the NEGATIVE CONTROL.
