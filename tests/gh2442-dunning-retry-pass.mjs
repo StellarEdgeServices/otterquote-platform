@@ -681,5 +681,39 @@ ok(!/select\('\*/.test(fs.readFileSync(path.join(root, 'react-app/app/contractor
 { const { deps, log } = makeDeps([row()], {}); deps.chargeGuard = async () => ({ allow: false, message: 'm', reason: 'claim_unreadable' }); await P.runRetryPass(deps);
   ok(log.alerts.some((a) => a[0] === 'platform_fee_refused_claim_unreadable') && !log.alerts.some((a) => a[0] === 'platform_fee_refused_unauthorized_test'), 'N-r: the retry pass uses the distinct unreadable-claim alert'); }
 
+
+// ═════════════ REVIEW 6278652025 I-2: an unreadable quote status is never "OK to charge" ═════════════
+{ const unreadableQuotes = (w, failFrom = 1) => { // reads of quotes.payment_status fail from the Nth read on
+    const real = w.sb.from.bind(w.sb); let reads = 0;
+    w.sb.from = (tb) => { const b = real(tb); if (tb !== 'quotes') return b;
+      return { update: (...a) => b.update(...a),
+        select: (...a) => { const q = b.select(...a); return { eq: (...e) => ({ maybeSingle: async () => (++reads >= failFrom ? { data: null, error: { message: 'read failed' } } : q.eq(...e).maybeSingle()) }) }; } }; };
+    return { restore: () => { w.sb.from = real; } }; };
+  const alerts = (w, t) => w.t.platform_alerts_log.filter((a) => a.alert_type === t);
+  { // site 1: the retry pass itself
+    const clock = { now: new Date(NOW) }; const stripe = makeStripe(() => 'ok');
+    const w = world([wr(clock), sr(clock)], stripe, clock); const u = unreadableQuotes(w);
+    const out = await w.tick();
+    ok(stripe.posts.length === 0 && out[0].reason === 'quote_status_unreadable' && alerts(w, 'quote_status_unreadable').length === 1 && !alerts(w, 'gh2105_zero_row_update').length, 'I-2 site 1 (retry pass): unreadable status -> 0 POSTs, quote_status_unreadable alert');
+    ok(!w.t.payment_failures.some((r) => r.retry_handled_at), 'I-2 site 1: the request is NOT consumed');
+    u.restore(); adv(clock, 1); await w.tick(); ok(stripe.succeeded() === 1, 'I-2 site 1: once readable the request is charged exactly once'); }
+  { // site 2: reconcile of an in-doubt marker
+    const clock = { now: new Date(NOW) }; const stripe = makeStripe(() => 'ok-lost-slow');
+    const w = world([wr(clock), sr(clock)], stripe, clock); await w.tick();
+    const posts0 = stripe.posts.length; const u = unreadableQuotes(w); adv(clock, 30);
+    const out = await w.tick();
+    ok(stripe.posts.length === posts0 && out[0].reason === 'quote_status_unreadable' && w.t.payment_failures.every((r) => r.retry_unknown_at) && alerts(w, 'quote_status_unreadable').length === 1, 'I-2 site 2 (reconcile): unreadable status -> 0 POSTs, marker kept, alert');
+    u.restore(); adv(clock, 30); await w.tick(); ok(stripe.succeeded() === 1 && w.t.quotes[0].payment_status === 'succeeded', 'I-2 site 2: once readable the replay records the one intent'); }
+  { // site 3: recording a result
+    const clock = { now: new Date(NOW) }; const stripe = makeStripe(() => 'ok');
+    const w = world([wr(clock), sr(clock)], stripe, clock); const u = unreadableQuotes(w, 2); // 1st read (pass) ok, 2nd (record) fails
+    const out = await w.tick();
+    ok(stripe.succeeded() === 1 && w.t.quotes[0].payment_status === 'dunning' && w.t.payment_failures.some((r) => r.retry_unknown_at) && alerts(w, 'quote_status_unreadable').length === 1 && !alerts(w, 'gh2105_zero_row_update').length, 'I-2 site 3 (record): unreadable status -> quote NOT written, marker kept, quote_status_unreadable alert (not gh2105_zero_row_update)');
+    u.restore(); adv(clock, 30); await w.tick(); ok(stripe.succeeded() === 1 && w.t.quotes[0].payment_status === 'succeeded', 'I-2 site 3: next tick replays and records; still one intent'); }
+  { const sb = { from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => { throw new Error('socket'); } }) }) }) };
+    const d = S.buildRetryPassDeps(sb, 'sk_test_x', guardApi, undefined, () => NOW);
+    ok((await d.getQuotePaymentStatus('q')) === P.QUOTE_STATUS_UNREADABLE, 'I-2: a thrown read is the unreadable sentinel too'); }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

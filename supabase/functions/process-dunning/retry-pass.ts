@@ -32,6 +32,8 @@ export const MAX_QUOTES_PER_RUN = 10; // blast-radius cap per cron tick
 export const OPEN_STATUSES = ["active", "warning_sent"];
 /** quotes.payment_status values that mean the fee is paid or money is in motion: no charge, no reminders. */
 // "refunded" is terminal (Marty, Tier A): never enters dunning, never charged by the retry pass, reminders held.
+/** I-2 (REVIEW 6278652025): getQuotePaymentStatus returns this when the read FAILED. It is never "OK to charge". */
+export const QUOTE_STATUS_UNREADABLE = "__unreadable__";
 export const PAYMENT_HOLD_STATUSES = ["succeeded", "pending", "processing", "refunded"];
 /**
  * An in-doubt attempt is resolved ONLY by replaying the identical PaymentIntent create with the SAME stored
@@ -289,7 +291,12 @@ function guardAlertType(g: { reason?: string }): string {
 
 async function recordResult(deps: RetryPassDeps, quoteId: string, update: Record<string, unknown>, how: string): Promise<boolean | "refunded"> {
   // N-p (REVIEW 6278287285): a success is NEVER written over a refunded quote. Money moved on a refunded quote needs a human.
-  if ((await deps.getQuotePaymentStatus(quoteId)) === "refunded") {
+  const preStatus = await deps.getQuotePaymentStatus(quoteId);
+  if (preStatus === QUOTE_STATUS_UNREADABLE) {
+    await deps.alert("quote_status_unreadable", `Retry pass: ${how} for quote ${quoteId}, but the quote's payment_status could not be read, so nothing was written. The in-doubt marker (if any) is kept and the next pass records it.`);
+    return false;
+  }
+  if (preStatus === "refunded") {
     await deps.alert("dunning_retry_charged_refunded_quote", `URGENT: ${how} for quote ${quoteId}, but the quote is REFUNDED. quotes.payment_status was NOT changed. Refund or void the charge in Stripe (payment_intent ${String(update.payment_intent_id ?? "unknown")}); the dunning rows were closed and the in-doubt marker cleared.`);
     return "refunded";
   }
@@ -322,7 +329,12 @@ async function reconcile(deps: RetryPassDeps, g: Group, quoteId: string): Promis
   }
   // Refunded quote (Marty, Tier A): do NOT replay. A replay can create a brand-new charge if the original never reached Stripe.
   // Stop, keep the marker, never auto-clear; one URGENT manual-reconciliation alert (the stuck flag is the once-only CAS).
-  if ((await deps.getQuotePaymentStatus(quoteId)) === "refunded") {
+  const replayStatus = await deps.getQuotePaymentStatus(quoteId);
+  if (replayStatus === QUOTE_STATUS_UNREADABLE) {
+    await deps.alert("quote_status_unreadable", `Retry pass: quote ${quoteId}'s payment_status could not be read, so the in-doubt attempt (key ${req.idempotencyKey}) was NOT replayed this tick. Marker kept.`);
+    return { quoteKey: g.key, outcome: "skipped", reason: "quote_status_unreadable" };
+  }
+  if (replayStatus === "refunded") {
     if (!att.stuckAlertedAt) {
       const flagged = await deps.markStuckAlerted(ids, att, deps.now().toISOString());
       if (flagged > 0) {
@@ -431,6 +443,11 @@ async function runRetryPassLocked(deps: RetryPassDeps): Promise<GroupOutcome[]> 
     if (!quoteId || !claimId || !(fee > 0)) { await refuse("missing_quote_claim_or_amount"); continue; }
 
     const payStatus = await deps.getQuotePaymentStatus(quoteId);
+    if (payStatus === QUOTE_STATUS_UNREADABLE) {
+      await deps.alert("quote_status_unreadable", `Retry pass: quote ${quoteId}'s payment_status could not be read; no charge this tick. The request stays pending and is retried on the next tick.`);
+      outcomes.push({ quoteKey: g.key, outcome: "skipped", reason: "quote_status_unreadable" });
+      continue;
+    }
     if (payStatus && PAYMENT_HOLD_STATUSES.includes(payStatus)) { await refuse(`quote_payment_${payStatus}`); continue; }
 
     const guard = await deps.chargeGuard(claimId);

@@ -166,3 +166,12 @@ Deno.test("N-q: a quote already succeeded / pending / processing is never charge
     assertEquals(w.stripe, 0, st); assertEquals(ids(w), ["qs"]); assertEquals(w.notified, 0); assertEquals("retry_requested_at" in w.inserts[0], false); assertEquals(w.quoteStatus.qs, st);
   }
 });
+
+Deno.test("N-s: never mark a system retry request on a settled quote, even when the gate refuses the charge", async () => {
+  for (const lease of ["held", "unreadable"] as const) for (const st of ["succeeded", "pending", "processing"]) {
+    const w = world({ lease, quoteStatus: { qs: st } }); await post(w, ["qs"]);
+    assertEquals(w.stripe, 0, `${lease}/${st}`); assertEquals(ids(w), ["qs"]); assertEquals("retry_requested_at" in w.inserts[0], false, `${lease}/${st}`);
+  }
+  const w = world({ lease: "held", quoteStatus: { qn: "failed" } }); await post(w, ["qn"]); // control: unsettled quote still gets the mark
+  assert(typeof w.inserts[0].retry_requested_at === "string");
+});

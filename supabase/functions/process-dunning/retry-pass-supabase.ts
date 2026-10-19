@@ -5,6 +5,7 @@
  *
  * Every .update( chains .select( (gh-2105 ratchet): a zero-row write is reported, never assumed.
  */
+import { QUOTE_STATUS_UNREADABLE } from "./retry-pass.ts";
 import type { ChargeMethod, ChargeRequest, ChargeResult, FailureRow, RetryPassDeps, UnknownAttempt } from "./retry-pass.ts";
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -269,8 +270,12 @@ export function buildRetryPassDeps(
     acquireLease: () => leaseOps(supabase, nowFn).acquire(),
     releaseLease: (token: string) => leaseOps(supabase, nowFn).release(token),
     async getQuotePaymentStatus(quoteId: string) {
-      const { data } = await supabase.from("quotes").select("payment_status").eq("id", quoteId).maybeSingle();
-      return data?.payment_status ?? null;
+      // I-2: a failed read is NOT "no status": it is the distinct unreadable sentinel, which every caller treats as "do not charge".
+      try {
+        const { data, error } = await supabase.from("quotes").select("payment_status").eq("id", quoteId).maybeSingle();
+        if (error) { console.error(`[process-dunning] quote ${quoteId} payment_status read failed:`, error); return QUOTE_STATUS_UNREADABLE; }
+        return data?.payment_status ?? null;
+      } catch (e) { console.error(`[process-dunning] quote ${quoteId} payment_status read threw:`, e); return QUOTE_STATUS_UNREADABLE; }
     },
     async chargeGuard(claimId: string | null) {
       const { data: claim } = await supabase.from("claims").select(guard.GUARD_SELECT).eq("id", claimId ?? "").maybeSingle();

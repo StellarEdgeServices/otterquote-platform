@@ -1151,7 +1151,8 @@ export async function handler(
           warning_at:         warningAt.toISOString(),
           homeowner_notify_at: homeownerNotifyAt.toISOString(),
           reminder_count:     0,
-          ...triggerSystemRetryFields(quoteStatusUnreadable ? { proceed: false, reason: "quote_status_unreadable" } : triggerGate, now.toISOString()),
+          // N-s: never mark a system retry request on a quote that is already settled (succeeded / pending / processing).
+          ...(quoteSettledBeforeCharge ? {} : triggerSystemRetryFields(quoteStatusUnreadable ? { proceed: false, reason: "quote_status_unreadable" } : triggerGate, now.toISOString())),
         })
         .select()
         .single();
