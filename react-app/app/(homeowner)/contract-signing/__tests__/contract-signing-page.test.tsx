@@ -7,7 +7,7 @@
  *   • the verbatim Tier-3 copy from copy.ts is rendered in the Step-1 disclosures;
  *   • the "Proceed to Sign" button is GATED by the D-123 acknowledgment checkbox;
  *   • Proceed builds the envelope via createHomeownerEnvelope and, on completion,
- *     records homeowner_signed_at and redirects to the project-confirmation URL.
+ *     fires contract_signed (no stamp write, gh-2864) and redirects to the project-confirmation URL.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -22,14 +22,10 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 // Data layer mocked — the page test drives its return values directly.
-// gh-1940 fix2: recordHomeownerSigned now resolves a boolean (write ok?),
-// not void — see use-contract-signing-data.ts. Default true here so the
-// PRE-EXISTING tests below (written against the old void-return mock) keep
-// behaving the same way; the new tests further down override this per case.
+// gh-2864: the data layer has no recordHomeownerSigned any more (the stamp is webhook-only).
 vi.mock('../use-contract-signing-data', () => ({
   useContractSigningData: vi.fn(),
   createHomeownerEnvelope: vi.fn(),
-  recordHomeownerSigned: vi.fn(() => Promise.resolve(true)),
   sendContractorNudge: vi.fn(() => Promise.resolve(true)),
   requestBidRenewal: vi.fn(() => Promise.resolve(true)),
   buildProjectConfirmationUrl: (claimId: string) =>
@@ -42,7 +38,6 @@ import { useAuthReady } from '@/hooks/use-auth-ready';
 import {
   useContractSigningData,
   createHomeownerEnvelope,
-  recordHomeownerSigned,
 } from '../use-contract-signing-data';
 import { track } from '@/lib/track';
 import { SIGN_COPY as C } from '../copy';
@@ -169,7 +164,7 @@ describe('contract-signing page — already-signed / no-contract gates', () => {
 });
 
 describe('contract-signing page — init-time signed=true return', () => {
-  it('records homeowner_signed_at and redirects to project-confirmation on a signed return', async () => {
+  it('fires contract_signed (no stamp write, gh-2864) and redirects to project-confirmation on a signed return', async () => {
     window.history.replaceState({}, '', '/contract-signing?claim_id=c1&signed=true');
 
     // jsdom does not implement navigation; capture href assignments.
@@ -182,11 +177,6 @@ describe('contract-signing page — init-time signed=true return', () => {
 
     render(<ContractSigningPage />);
 
-    await waitFor(() =>
-      expect(recordHomeownerSigned as unknown as Fn).toHaveBeenCalledWith(
-        expect.objectContaining({ claimId: 'c1', quoteId: 'q1', contractorId: 'ctr1' }),
-      ),
-    );
     await waitFor(() =>
       expect(hrefSpy).toHaveBeenCalledWith(
         'https://otterquote.com/project-confirmation.html?claim_id=c1',
@@ -226,7 +216,6 @@ describe('contract-signing page — contract_signed once-guard (gh-1940 fix2, fi
   }
 
   it('fires contract_signed exactly once when DocuSign posts two completion messages in one tick', async () => {
-    (recordHomeownerSigned as unknown as Fn).mockResolvedValue(true);
     await proceedToSigningIframe();
 
     // Two independent completion signals in the same tick.
@@ -237,25 +226,12 @@ describe('contract-signing page — contract_signed once-guard (gh-1940 fix2, fi
       new MessageEvent('message', { data: JSON.stringify({ event: 'signing_complete' }) }),
     );
 
-    await waitFor(() => expect(recordHomeownerSigned as unknown as Fn).toHaveBeenCalledTimes(1));
-    expect(track as unknown as Fn).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(track as unknown as Fn).toHaveBeenCalledTimes(1));
     // fix3 (CEO ruling, PR #1979 comment 5698022815): no claim_id — a
     // per-homeowner database identifier must not reach GA4. contract_signed
     // now carries no params at all; the event NAME is the funnel step.
     expect(track as unknown as Fn).toHaveBeenCalledWith('contract_signed', {});
     const payload = (track as unknown as Fn).mock.calls[0][1];
     expect(payload).not.toHaveProperty('claim_id');
-  });
-
-  it('does not fire contract_signed when the signing write failed', async () => {
-    (recordHomeownerSigned as unknown as Fn).mockResolvedValue(false);
-    await proceedToSigningIframe();
-
-    window.dispatchEvent(
-      new MessageEvent('message', { data: JSON.stringify({ type: 'session_end' }) }),
-    );
-
-    await waitFor(() => expect(recordHomeownerSigned as unknown as Fn).toHaveBeenCalledTimes(1));
-    expect(track as unknown as Fn).not.toHaveBeenCalled();
   });
 });

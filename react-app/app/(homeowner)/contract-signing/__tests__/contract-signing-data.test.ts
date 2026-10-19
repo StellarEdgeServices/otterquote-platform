@@ -6,8 +6,7 @@
  *   • createHomeownerEnvelope sends the create-docusign-envelope body that equals
  *     the (PR1, tested) pure buildHomeownerEnvelopeRequest — INCLUDING the React-
  *     route return_url — and returns its signing_url.
- *   • recordHomeownerSigned writes quotes.homeowner_signed_at (quote-id path) and
- *     uses the claim_id+contractor_id fallback when no quote id is known.
+ *   • (gh-2864) no recordHomeownerSigned: the stamp is written only by the docusign-webhook.
  *   • buildProjectConfirmationUrl targets the static project-confirmation page.
  *   • sendContractorNudge asks the send-contractor-nudge EF to text the
  *     contractor (server-side consent lookup) and Dustin's alert line.
@@ -29,7 +28,6 @@ import { buildHomeownerEnvelopeRequest } from '../utils';
 import {
   buildProjectConfirmationUrl,
   createHomeownerEnvelope,
-  recordHomeownerSigned,
   requestBidRenewal,
   sendContractorNudge,
 } from '../use-contract-signing-data';
@@ -83,101 +81,10 @@ describe('createHomeownerEnvelope', () => {
   });
 });
 
-describe('recordHomeownerSigned', () => {
-  // gh-2105 batch 4: the update chain now ends in `.select('id')` (decision a
-  // -- detect a zero-row RLS/filter match instead of trusting `error: null`),
-  // so the mock's terminal call is `.select`, not `.eq`; `rows` controls what
-  // the update is made to "return" so both the row-written and zero-row
-  // paths can be exercised.
-  function wireQuotesUpdate(rows: Array<{ id: string }> | null = [{ id: 'q1' }]) {
-    const rec: { payload: unknown; eqs: [string, unknown][]; selectCol: string | null } = {
-      payload: null,
-      eqs: [],
-      selectCol: null,
-    };
-    sb.from.mockImplementation((table: string) => {
-      if (table !== 'quotes') return {};
-      return {
-        update: (payload: unknown) => {
-          rec.payload = payload;
-          const chain: Record<string, unknown> = {};
-          chain.eq = (col: string, val: unknown) => {
-            rec.eqs.push([col, val]);
-            return chain;
-          };
-          chain.select = (col: string) => {
-            rec.selectCol = col;
-            return Promise.resolve({ data: rows, error: null });
-          };
-          return chain;
-        },
-      };
-    });
-    return rec;
-  }
-
-  it('writes homeowner_signed_at keyed on the quote id and returns true on a row-written match', async () => {
-    const rec = wireQuotesUpdate([{ id: 'q1' }]);
-    const ok = await recordHomeownerSigned({
-      claimId: 'c1',
-      quoteId: 'q1',
-      contractorId: 'ctr1',
-      signedAt: '2026-06-23T00:00:00.000Z',
-    });
-    expect(ok).toBe(true);
-    expect(rec.payload).toEqual({ homeowner_signed_at: '2026-06-23T00:00:00.000Z' });
-    expect(rec.eqs).toEqual([['id', 'q1']]);
-    expect(rec.selectCol).toBe('id');
-  });
-
-  it('falls back to claim_id + contractor_id when no quote id is known', async () => {
-    const rec = wireQuotesUpdate([{ id: 'q1' }]);
-    const ok = await recordHomeownerSigned({
-      claimId: 'c1',
-      quoteId: null,
-      contractorId: 'ctr1',
-      signedAt: '2026-06-23T00:00:00.000Z',
-    });
-    expect(ok).toBe(true);
-    expect(rec.payload).toEqual({ homeowner_signed_at: '2026-06-23T00:00:00.000Z' });
-    expect(rec.eqs).toEqual([
-      ['claim_id', 'c1'],
-      ['contractor_id', 'ctr1'],
-    ]);
-  });
-
-  it('no-ops (no write) when neither quote id nor contractor id is known', async () => {
-    wireQuotesUpdate();
-    const ok = await recordHomeownerSigned({ claimId: 'c1', quoteId: null, contractorId: null, signedAt: 'x' });
-    expect(ok).toBe(true);
-    expect(sb.from).not.toHaveBeenCalled();
-  });
-
-  // gh-2105 batch 4 mandatory negative control (mirrors the #2103/batch-1
-  // pattern): before the fix, `.update()` with no `.select()` resolved
-  // `{ error: null }` on a zero-row RLS/filter match and this function
-  // returned `true` even though `quotes.homeowner_signed_at` was never
-  // written. After the fix, a zero-row match returns `false`.
-  it('gh-2105 negative control: returns false (not true) when the quote-id update matches zero rows', async () => {
-    wireQuotesUpdate([]);
-    const ok = await recordHomeownerSigned({
-      claimId: 'c1',
-      quoteId: 'q1',
-      contractorId: 'ctr1',
-      signedAt: '2026-06-23T00:00:00.000Z',
-    });
-    expect(ok).toBe(false);
-  });
-
-  it('gh-2105 negative control: returns false (not true) when the claim_id+contractor_id update matches zero rows', async () => {
-    wireQuotesUpdate([]);
-    const ok = await recordHomeownerSigned({
-      claimId: 'c1',
-      quoteId: null,
-      contractorId: 'ctr1',
-      signedAt: '2026-06-23T00:00:00.000Z',
-    });
-    expect(ok).toBe(false);
+describe('use-contract-signing-data exports (gh-2864)', () => {
+  it('has no signature-stamp writer: homeowner_signed_at is platform-only', async () => {
+    const mod = await import('../use-contract-signing-data');
+    expect('recordHomeownerSigned' in mod).toBe(false);
   });
 });
 
