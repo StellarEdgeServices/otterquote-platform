@@ -50,7 +50,7 @@ export async function redactContactOrRefuse(
 //     at most one separator character (space, dot, dash) between groups, or parentheses, or as 10 contiguous
 //     digits (11 with a leading 1). KNOWN RESIDUAL: a bare "250-500-1000" or "250 500 1000" or a 10-digit number starting 2-9 is phone-shaped. Digit boundaries: it never bites into a longer
 //     digit run (a 12-digit claim number), never into a dotted or comma figure (12500.00, 1,250.00), and there is no bare 7-digit rule.
-//   - e-mail: local@domain.tld with no space around the at-sign, local(at)domain.tld, local @ domain.tld with space(s) around the at-sign (only when the domain starts with
+//   - e-mail: local@domain.tld with no space around the at-sign, local(at)domain.tld, local @ domain.tld with space(s) on either side of the at-sign (only when the domain starts with
 //     a letter, has a dot and ends in a listed lower-case TLD), and the spelled-out forms with an explicit dot token ("jane at example dot com") or a listed TLD
 //     ("jane at example.com"). Never across a sentence break ("Leak at chimney. Please ..."), never "Shingles @ 400 per square". Residuals and advisory leaks of
 //     these rules (precision over recall) are named in the pre-flight, SOW section.
