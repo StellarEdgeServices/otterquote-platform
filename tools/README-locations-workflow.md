@@ -27,6 +27,20 @@ allow-list.** Nothing here replaces that read; it only keeps obvious problems ou
 
 Every generated page is indexable. The generator never injects `noindex`.
 
+**Hub and sibling links (gh-2893).** Each run also writes `locations/index.html` (served at
+`/locations/`): every generated page, grouped under its state, alphabetical, with the D-345
+sentence unchanged and the hub listed in `sitemap.xml`. Each county page gets, after `</main>`,
+a link to the hub (`All county roofing pages`) and links to up to 5 other pages of the same state
+and trade (the next 5 alphabetically, wrapping). The blocks sit outside `<main>`, which is all
+the strict-unique gate reads, so they cannot change a page's score; `generate()` re-checks this and
+fails the run if they do. A state with fewer than 6 pages cannot give 5 same-state links, so the
+remaining slots (5 links in all) are filled with same-trade pages of other states, alphabetical by
+state then county (never the page itself or one already linked), in a separate block headed
+`More county roofing pages`. A state with 6 or more pages gets no fill block. `_redirects` and the edge function map
+(`netlify/edge-functions/blog-guides-redirect.ts`) are still edited by hand: the hub needs
+`/locations/index.html -> /locations/` in both, like each county page. `guides/index.html` and
+`blog/index.html` carry the one `County roofing pages` link by hand.
+
 The repo-root `sitemap.xml` is written only when the output directory is the repo's
 `locations/`. With `--out-dir` elsewhere, the sitemap goes next to that directory
 (its parent). Refused with an error before anything is written: an `--out-dir` at the
