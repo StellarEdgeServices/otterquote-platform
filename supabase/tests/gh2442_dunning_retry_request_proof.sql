@@ -1,5 +1,5 @@
 -- gh-2442 proof: contractor "retry payment" request path, SQL only
--- (supabase/migrations_drafts/gh2442_dunning_retry_request.sql; rollback beside it).
+-- (supabase/migrations/20261009000257_gh2442_dunning_retry_request.sql; rollback in supabase/migrations_rollbacks/).
 -- ONE batch. Its last statement is a deliberate RAISE EXCEPTION, so every fixture row and the migration's DDL roll
 -- back whatever the client does; the findings are the exception text.
 -- WHERE IT HAS BEEN RUN: the 2026-10-07 revisions (cap per quote, CHECK, reason per state, sibling rows, rollback without the anon
