@@ -1,6 +1,6 @@
 -- STATUS (gh-1438, as of 2026-10-19T21:30:51Z): NOT APPLIED
 -- FILE ROLE: forward file of set gh2931_bidder_summary_no_filename (the STATUS is the set's)
--- EVIDENCE: production read-only (Supabase MCP SELECT, project yeszghaspzwwstvsrioa) 2026-10-19T21:30:51Z by the cto72-b2931 builder (CTO RUN 72): pg_get_viewdef of public.bidder_claim_summary has md5 c8ad94c45c52b5468ddf7c4979a2607c, length 18627; owner postgres; reloptions {security_barrier=true}; relacl {postgres=arwdDxtm/postgres,authenticated=rm/postgres,service_role=arwdDxtm/postgres}; 40 columns; no dependent view, function or policy; claims.platform_fee_charged boolean DEFAULT false, nullable. That definition is byte-identical to supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql (re-created on a throwaway Postgres 16 the same md5 comes back). This file's text yields md5 d57105ca5599312c3ad86b4b7edc7fce = the live text with one clause changed; the same replace() run on the live text on production gives that md5.
+-- EVIDENCE: production read-only (Supabase MCP SELECT, project yeszghaspzwwstvsrioa) 2026-10-19T21:30:51Z by the cto72-b2931 builder (CTO RUN 72): pg_get_viewdef of public.bidder_claim_summary has md5 c8ad94c45c52b5468ddf7c4979a2607c, length 18627; owner postgres; reloptions {security_barrier=true}; relacl {postgres=arwdDxtm/postgres,authenticated=rm/postgres,service_role=arwdDxtm/postgres}; 40 columns; no dependent view, function or policy; claims.platform_fee_charged boolean DEFAULT false, nullable. That definition is byte-identical to supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql (re-created on a throwaway Postgres 16 the same md5 comes back). This file's text yields md5 7b0f2430b1cb7482ac34af28e17553db = the live text with two CASE clauses changed; the same replace() run on the live text on production gives that md5.
 -- REPO COPY: none (not applied).
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md (Tier 3B path: review, R-097 notice, recorded apply).
 --
@@ -9,19 +9,19 @@
 -- Rollback: supabase/migrations_drafts/gh2931_bidder_summary_no_filename_rollback.sql
 -- Proof (rolled back, role-switched, is_test fixtures only): supabase/tests/gh2931_bidder_summary_no_filename_proof.sql (built and run by supabase/tests/gh2931_bidder_summary_no_filename_proof_run.py)
 --
--- ONE CHANGE: the estimate_filename column keeps its name, type and position; its CASE gains one condition:
---     CASE WHEN c.selected_contractor_id = ct.id AND c.platform_fee_charged IS TRUE THEN c.estimate_filename END
+-- ONE CHANGE, TWO COLUMNS: estimate_filename and measurements_filename keep their name, type and position; each CASE gains one condition:
+--     CASE WHEN c.selected_contractor_id = ct.id AND c.platform_fee_charged IS TRUE THEN c.estimate_filename END   (and the same for c.measurements_filename)
 -- The stored path is "<user uuid>/<claim uuid>/<epoch>-<original upload name>" and the original name is what the homeowner typed. Today the selected
 -- contractor reads it at selection; after this file only once claims.platform_fee_charged IS TRUE (NULL and false both refuse), the same signal
 -- the storage policy "Contractors can view biddable claim docs" already uses (20261018193726). A non-selected bidder reads NULL before and after.
--- has_estimate, measurements_filename and every other column are unchanged.
+-- WHY BOTH: the storage policy 'Contractors can view biddable claim docs' (read live 2026-10-19: bucket claim-documents, c.selected_contractor_id = ct.id AND c.platform_fee_charged IS TRUE) covers the whole claim folder, so a measurements path before the fee points at an object the policy refuses; the view now hands out no path the policy would refuse. The homeowner may upload a copy of the estimate in that slot. has_estimate, has_measurements and every other column are unchanged.
 --
 -- CREATE OR REPLACE VIEW is enough: the column list, names and types are identical, so Postgres keeps the view's owner, reloptions, grants and
 -- comment (the DO block still asserts all four equal what they were, and the definition md5).
 --
 -- VISIBLE EFFECT. The selected contractor loses the path between selection and fee collection, so the Loss Sheet button cannot sign a URL in that
 -- window (it already answered "Unable to open" there, because the storage policy refuses). After the fee nothing changes. No page change is needed;
--- the pages already treat an absent path as no button. measurements_filename is NOT changed here.
+-- the pages already treat an absent path as no button.
 -- PENDING DRAFTS THAT REDEFINE THIS VIEW (PR #2880 gh2559_d390_redact_contact_until_fee.sql, PR #2925 gh2881_d390_digit_fold.sql) carry the old CASE
 -- and would put the pre-fee path back: each must change that one line (see the PR body). Apply order is free: this file's precondition pins the live
 -- md5, so if #2880 lands first this file refuses (P0A31) and is regenerated against the new text.
@@ -125,7 +125,7 @@ SELECT
   -- the caller's own id, only when the caller is the selected contractor; null for every other caller
   CASE WHEN c.selected_contractor_id = ct.id THEN ct.id END                    AS selected_contractor_id,
   CASE WHEN c.selected_contractor_id = ct.id AND c.platform_fee_charged IS TRUE THEN c.estimate_filename END AS estimate_filename,
-  CASE WHEN c.selected_contractor_id = ct.id THEN c.measurements_filename END  AS measurements_filename
+  CASE WHEN c.selected_contractor_id = ct.id AND c.platform_fee_charged IS TRUE THEN c.measurements_filename END AS measurements_filename
 FROM public.claims c
 JOIN public.contractors ct ON ct.user_id = (SELECT auth.uid())
 LEFT JOIN public.carrier_profiles cp ON cp.id = c.carrier_id
@@ -342,7 +342,7 @@ DO $post$
 DECLARE d text; s record; n int;
 BEGIN
   d := pg_get_viewdef('public.bidder_claim_summary'::regclass, true);
-  IF md5(d) <> 'd57105ca5599312c3ad86b4b7edc7fce' OR length(d) <> 18662 THEN
+  IF md5(d) <> '7b0f2430b1cb7482ac34af28e17553db' OR length(d) <> 18697 THEN
     RAISE EXCEPTION 'gh2931: new definition differs from the live definition with the estimate_filename CASE gated on platform_fee_charged (md5 %, length %)', md5(d), length(d) USING ERRCODE = 'P0A32';
   END IF;
   SELECT owner, options, acl, comment_text INTO s FROM gh2931_view_state;

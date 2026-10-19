@@ -4,7 +4,7 @@
 -- REPO COPY: none (not applied). Never move into supabase/migrations/. Rollback only on a human decision, after saying so on #2931.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md.
 --
--- Rollback for gh2931_bidder_summary_no_filename.sql: restores the CASE as it was live (selected contractor reads the path from selection),
+-- Rollback for gh2931_bidder_summary_no_filename.sql: restores both CASEs (estimate_filename, measurements_filename) as they were live (selected contractor reads the paths from selection),
 -- keeps owner, reloptions, grants and comment (asserted), and fails unless the definition md5 is c8ad94c45c52b5468ddf7c4979a2607c again.
 BEGIN;
 
@@ -15,7 +15,7 @@ DECLARE d text;
 BEGIN
   -- fail closed: the view must be exactly what this file was written against (the gated definition of gh2931_bidder_summary_no_filename.sql).
   d := pg_get_viewdef('public.bidder_claim_summary'::regclass, true);
-  IF md5(d) <> 'd57105ca5599312c3ad86b4b7edc7fce' OR length(d) <> 18662 THEN
+  IF md5(d) <> '7b0f2430b1cb7482ac34af28e17553db' OR length(d) <> 18697 THEN
     RAISE EXCEPTION 'gh2931: bidder_claim_summary is not the expected definition (md5 %, length %); nothing changed', md5(d), length(d) USING ERRCODE = 'P0A31';
   END IF;
 END

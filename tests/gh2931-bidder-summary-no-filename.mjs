@@ -1,6 +1,6 @@
 /**
  * gh-2931 -- public.bidder_claim_summary hands out claims.estimate_filename (the stored path, which holds the homeowner's original
- * upload name) only to the selected contractor AND only once claims.platform_fee_charged IS TRUE (D-386). Static checks, no database:
+ * upload name) (and measurements_filename) only to the selected contractor AND only once claims.platform_fee_charged IS TRUE (D-386). Static checks, no database:
  *   1. the draft forward file is CREATE OR REPLACE VIEW (the column set is unchanged) and its statement is the applied view
  *      (20261008231303) with exactly one clause changed: the estimate_filename CASE gains `AND c.platform_fee_charged IS TRUE`;
  *   2. the rollback statement is the applied statement byte for byte; both files assert the definition md5s and carry the STATUS header;
@@ -20,7 +20,9 @@ function ok(c, m) { if (c) { passed++; console.log('PASS: ' + m); } else { faile
 
 const OLD = '  CASE WHEN c.selected_contractor_id = ct.id THEN c.estimate_filename END      AS estimate_filename,\n';
 const NEW = '  CASE WHEN c.selected_contractor_id = ct.id AND c.platform_fee_charged IS TRUE THEN c.estimate_filename END AS estimate_filename,\n';
-const GATED = /WHEN c\.selected_contractor_id = ct\.id AND c\.platform_fee_charged IS TRUE THEN c\.estimate_filename/;
+const OLDM = '  CASE WHEN c.selected_contractor_id = ct.id THEN c.measurements_filename END  AS measurements_filename';
+const NEWM = '  CASE WHEN c.selected_contractor_id = ct.id AND c.platform_fee_charged IS TRUE THEN c.measurements_filename END AS measurements_filename';
+const GATED = /WHEN c\.selected_contractor_id = ct\.id AND c\.platform_fee_charged IS TRUE THEN c\.estimate_filename[\s\S]*WHEN c\.selected_contractor_id = ct\.id AND c\.platform_fee_charged IS TRUE THEN c\.measurements_filename|WHEN c\.selected_contractor_id = ct\.id AND c\.platform_fee_charged IS TRUE THEN c\.estimate_filename END\s+AS estimate_filename,\s*\n\s*CASE WHEN c\.selected_contractor_id = ct\.id AND c\.platform_fee_charged IS TRUE THEN c\.measurements_filename/;
 
 const F = 'supabase/migrations_drafts/gh2931_bidder_summary_no_filename.sql';
 const R = 'supabase/migrations_drafts/gh2931_bidder_summary_no_filename_rollback.sql';
@@ -31,10 +33,10 @@ if (ex(F) && ex(R)) {
   const fc = createOf(fwd), ac = createOf(applied), rc = createOf(rb);
   ok(!!fc && !!ac && !!rc, 'CREATE statement found in the forward, rollback and applied files');
   ok(/^CREATE OR REPLACE VIEW/.test(fc) && !/DROP VIEW/.test(fwd.replace(/--[^\n]*/g, '')), 'forward: CREATE OR REPLACE VIEW, no DROP VIEW (same column set)');
-  ok(ac.split(OLD).length === 2 && fc === ac.replace(OLD, NEW), 'forward: the applied statement with exactly the estimate_filename CASE changed');
+  ok(ac.split(OLD).length === 2 && fc === ac.replace(OLD, NEW).replace(OLDM, NEWM) && ac.includes(OLDM), 'forward: the applied statement with exactly the estimate_filename and measurements_filename CASEs changed');
   ok(GATED.test(fc) && /AS has_estimate,/.test(fc), 'forward: gated CASE present, has_estimate unchanged');
   ok(rc === ac, 'rollback: the statement is the applied one, byte for byte');
-  ok(/c8ad94c45c52b5468ddf7c4979a2607c/.test(fwd) && /d57105ca5599312c3ad86b4b7edc7fce/.test(fwd) && /c8ad94c45c52b5468ddf7c4979a2607c/.test(rb), 'forward and rollback assert the definition md5s');
+  ok(/c8ad94c45c52b5468ddf7c4979a2607c/.test(fwd) && /7b0f2430b1cb7482ac34af28e17553db/.test(fwd) && /c8ad94c45c52b5468ddf7c4979a2607c/.test(rb), 'forward and rollback assert the definition md5s');
   ok(!/\bGRANT\b/.test(fwd.replace(/'[^']*'/g, '').replace(/--[^\n]*/g, '')), 'forward: no GRANT');
   const hdr = (s) => s.split('\n').slice(0, 12).join('\n');
   ok(/STATUS \(gh-1438, as of [^)]+\): NOT APPLIED/.test(hdr(fwd)) && /STATUS \(gh-1438, as of [^)]+\): NOT APPLIED/.test(hdr(rb)), 'both files carry the gh-1438 STATUS header');

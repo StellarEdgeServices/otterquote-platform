@@ -28,7 +28,7 @@ APPLIED = "supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql"
 FWD = "supabase/migrations_drafts/gh2931_bidder_summary_no_filename.sql"
 RB = "supabase/migrations_drafts/gh2931_bidder_summary_no_filename_rollback.sql"
 PROOF = "supabase/tests/gh2931_bidder_summary_no_filename_proof.sql"
-LIVE_MD5, NEW_MD5 = "c8ad94c45c52b5468ddf7c4979a2607c", "d57105ca5599312c3ad86b4b7edc7fce"
+LIVE_MD5, NEW_MD5 = "c8ad94c45c52b5468ddf7c4979a2607c", "7b0f2430b1cb7482ac34af28e17553db"
 
 
 def body(sql):

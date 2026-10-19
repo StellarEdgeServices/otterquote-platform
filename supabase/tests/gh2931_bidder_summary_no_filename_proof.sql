@@ -1,4 +1,4 @@
--- gh-2931 proof: public.bidder_claim_summary returns estimate_filename to the selected contractor only after claims.platform_fee_charged IS TRUE.
+-- gh-2931 proof: public.bidder_claim_summary returns estimate_filename and measurements_filename to the selected contractor only after claims.platform_fee_charged IS TRUE.
 -- Forward file : supabase/migrations_drafts/gh2931_bidder_summary_no_filename.sql
 -- Rollback file: supabase/migrations_drafts/gh2931_bidder_summary_no_filename_rollback.sql
 -- Run against production (yeszghaspzwwstvsrioa) as ONE statement. BEGIN; DO ...; ROLLBACK; -- the DO block's last action is a deliberate
@@ -18,11 +18,12 @@
 --   S1  selected contractor, fee NOT charged, reads estimate_filename IS NOT NULL   1 / 0 / 1   (today the path is handed out at selection)
 --   S1f selected contractor, fee charged                                            1 / 1 / 1   (after the fee nothing changes)
 --   Q1, Q1f bidder (not selected), fee not charged / charged                        0 / 0 / 0   (a bidder already reads NULL)
+--   M1, M1f, N1, N1f the same four reads for measurements_filename   1/0/1, 1/1/1, 0/0/0, 0/0/0
 --   S2, Q2 has_estimate (fee not charged)                                           1 / 1 / 1
 --   S3  selected, fee not charged: any column holds the original upload name        1 / 0 / 1
 --   S3f selected, fee charged                                                       1 / 1 / 1
 --   Q3  bidder: any column holds the original upload name                           0 / 0 / 0
--- Structure per phase: 40 columns, same names/types/order, owner, reloptions, relacl and comment identical to live; pg_get_viewdef md5 c8ad94c4 / d57105ca / c8ad94c4.
+-- Structure per phase: 40 columns, same names/types/order, owner, reloptions, relacl and comment identical to live; pg_get_viewdef md5 c8ad94c4 / 7b0f2430 / c8ad94c4.
 BEGIN;
 DO $proof$
 DECLARE
@@ -57,7 +58,8 @@ BEGIN
   END IF;
 
   -- fixture write (rolled back): a stored path of the real shape, original name included
-  UPDATE public.claims SET estimate_filename = gen_random_uuid()::text || '/' || id::text || '/1785930673843-' || c_name || ' - Acme Mutual - 0712345678.pdf' WHERE id IN (cS, cQ);
+  UPDATE public.claims SET estimate_filename = gen_random_uuid()::text || '/' || id::text || '/1785930673843-' || c_name || ' - Acme Mutual - 0712345678.pdf',
+         measurements_filename = gen_random_uuid()::text || '/' || id::text || '/1785930673844-' || c_name || ' measurements.pdf' WHERE id IN (cS, cQ);
 
   phases := CASE WHEN v_fwd IS NULL THEN ARRAY['live'] ELSE ARRAY['live', 'after forward', 'after rollback'] END;
   FOR pidx IN 1 .. array_length(phases, 1) LOOP
@@ -89,6 +91,10 @@ BEGIN
         ('S1f selected contractor, fee charged: estimate_filename IS NOT NULL',     kSu, cS, 'fn',  true,  ARRAY[1, 1, 1]::bigint[]),
         ('Q1  bidder, fee not charged: estimate_filename IS NOT NULL',              kQu, cQ, 'fn',  false, ARRAY[0, 0, 0]::bigint[]),
         ('Q1f bidder, fee charged: estimate_filename IS NOT NULL',                  kQu, cQ, 'fn',  true,  ARRAY[0, 0, 0]::bigint[]),
+        ('M1  selected contractor, fee not charged: measurements_filename IS NOT NULL', kSu, cS, 'mfn', false, ARRAY[1, 0, 1]::bigint[]),
+        ('M1f selected contractor, fee charged: measurements_filename IS NOT NULL',     kSu, cS, 'mfn', true,  ARRAY[1, 1, 1]::bigint[]),
+        ('N1  bidder, fee not charged: measurements_filename IS NOT NULL',              kQu, cQ, 'mfn', false, ARRAY[0, 0, 0]::bigint[]),
+        ('N1f bidder, fee charged: measurements_filename IS NOT NULL',                  kQu, cQ, 'mfn', true,  ARRAY[0, 0, 0]::bigint[]),
         ('S2  selected contractor: has_estimate',                                   kSu, cS, 'has', false, ARRAY[1, 1, 1]::bigint[]),
         ('Q2  bidder: has_estimate',                                                kQu, cQ, 'has', false, ARRAY[1, 1, 1]::bigint[]),
         ('S3  selected, fee not charged: any column holds the upload name',         kSu, cS, 'any', false, ARRAY[1, 0, 1]::bigint[]),
@@ -103,6 +109,8 @@ BEGIN
       BEGIN
         IF r.kind = 'fn' THEN
           EXECUTE 'SELECT count(*) FROM public.bidder_claim_summary WHERE id = $1 AND estimate_filename IS NOT NULL' INTO n USING r.target;
+        ELSIF r.kind = 'mfn' THEN
+          EXECUTE 'SELECT count(*) FROM public.bidder_claim_summary WHERE id = $1 AND measurements_filename IS NOT NULL' INTO n USING r.target;
         ELSIF r.kind = 'has' THEN
           EXECUTE 'SELECT count(*) FROM public.bidder_claim_summary WHERE id = $1 AND has_estimate' INTO n USING r.target;
         ELSIF r.kind = 'any' THEN
