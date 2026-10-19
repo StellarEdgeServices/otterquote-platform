@@ -3241,7 +3241,7 @@
           if (error || !data) return;                       // cannot tell: let the database decide
           if (!(data.estimate_filename || data.has_estimate)) return;   // no estimate on the claim: nothing to wait for
           if (data.loss_sheet_parsed_at) return;            // read
-          if (data.loss_sheet_parse_status === 'unsupported') return;   // the parser cannot read this file type: the database lets the claim open (Q6)
+          if (data.loss_sheet_parse_status === 'unsupported' || data.loss_sheet_parse_status === 'failed') return;   // the parser cannot read this file (type, or the provider rejected it): the database lets the claim open (Q6)
           if (Date.now() >= deadline) return;
           await new Promise(function (r) { setTimeout(r, ESTIMATE_READ_POLL_MS); });
         }

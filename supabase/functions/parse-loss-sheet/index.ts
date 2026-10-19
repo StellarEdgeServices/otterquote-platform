@@ -30,7 +30,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts"; // gh-2105 batch 13 (remaining sites)
-import { detectEstimateKind } from "./estimate-kind.ts";
+import { detectEstimateKind, isFileRejection } from "./estimate-kind.ts";
 
 const FUNCTION_NAME = "parse-loss-sheet";
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
@@ -450,10 +450,19 @@ serve(async (req) => {
     if (!anthropicResponse.ok) {
       const errorText = await anthropicResponse.text();
       console.error(`Anthropic API error: ${anthropicResponse.status} ${errorText}`);
-      // gh-2559: 400 (invalid request: corrupt/encrypted PDF, truncated image, over the page or size limits) and 413 (request too large)
-      // are about THIS FILE and will fail the same way every time; 429, 5xx and timeouts are transient and stay a 502 with no mark.
-      if (anthropicResponse.status === 400 || anthropicResponse.status === 413) {
+      // gh-2559: a provider rejection that is about THIS FILE (HTTP 413, or a 400 whose error names the image/document/PDF/size) will fail the
+      // same way every time: mark it 'failed'. A 400 about the account or configuration (credit balance, auth, model, ...), 429, 5xx and
+      // timeouts are transient for the claim: no mark, a 502, and (for a non-file 400/401/403) an operator alert so it is not silent.
+      if (isFileRejection(anthropicResponse.status, errorText)) {
         return await markUnreadable("failed", "loss_sheet_parse_failed", `the provider rejected the uploaded estimate (HTTP ${anthropicResponse.status}: ${errorText.slice(0, 160).replace(/\s+/g, " ")})`);
+      }
+      if ([400, 401, 403].includes(anthropicResponse.status)) {
+        const { error: provAlertErr } = await supabase.from("platform_alerts_log").insert({
+          alert_type: "loss_sheet_provider_error",
+          function_name: FUNCTION_NAME,
+          message: `claim ${claim_id}: the provider refused the parse request for a reason that is not the file (HTTP ${anthropicResponse.status}: ${errorText.slice(0, 160).replace(/\s+/g, " ")}). Check the account, key and model; the claim is NOT marked failed.`,
+        });
+        if (provAlertErr) console.error(`[${FUNCTION_NAME}] platform_alerts_log insert failed:`, provAlertErr);
       }
       return new Response(
         JSON.stringify({

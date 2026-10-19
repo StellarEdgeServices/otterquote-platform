@@ -22,3 +22,22 @@ export function detectEstimateKind(b: Uint8Array): EstimateKind | null {
   }
   return null;
 }
+
+// gh-2559: which provider failures are about THIS FILE (mark the claim 'failed', it will fail the same way every time) and which are
+// about the account or configuration (credit balance, auth, model, rate limits: transient for the claim, never 'failed').
+// 413 is always the file. A 400 is the file only when the provider's error text names it (image / document / pdf / media / page / size /
+// base64 / file) and does NOT name an account or config cause; anything else, including an unparseable body, is not the file.
+const ACCOUNT_OR_CONFIG = /credit|balance|billing|payment|api[ _-]?key|x-api-key|authenticat|authoriz|permission|organization|workspace|model|overloaded|rate[ _-]?limit|quota|spend|usage limit/i;
+const FILE_CAUSE = /image|document|pdf|media[ _-]?type|base64|page|too large|file size|exceeds|maximum|truncated|corrupt|encrypt|password|cannot be (?:processed|read|decoded)|could not (?:process|decode)/i;
+
+export function isFileRejection(status: number, errorText: string): boolean {
+  if (status === 413) return true;
+  if (status !== 400) return false;
+  let msg = errorText;
+  try {
+    const j = JSON.parse(errorText);
+    msg = [j?.error?.type, j?.error?.message, j?.message].filter((x) => typeof x === "string").join(" ");
+  } catch { /* not JSON: judge the raw text */ }
+  if (ACCOUNT_OR_CONFIG.test(msg)) return false;
+  return FILE_CAUSE.test(msg);
+}

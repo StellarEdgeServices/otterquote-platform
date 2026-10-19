@@ -70,7 +70,7 @@ export async function waitForEstimateRead(
     const row = data as { estimate_filename?: string | null; has_estimate?: boolean | null; loss_sheet_parsed_at?: string | null; loss_sheet_parse_status?: string | null };
     if (!(row.estimate_filename || row.has_estimate)) return; // no estimate on the claim
     if (row.loss_sheet_parsed_at) return; // read
-    if (row.loss_sheet_parse_status === 'unsupported') return; // the parser cannot read this file type: the database lets the claim open (Q6)
+    if (row.loss_sheet_parse_status === 'unsupported' || row.loss_sheet_parse_status === 'failed') return; // the parser cannot read this file (type, or the provider rejected it): the database lets the claim open (Q6)
     if (Date.now() >= deadline) return;
     await new Promise((r) => setTimeout(r, opts.pollMs ?? ESTIMATE_READ_POLL_MS));
   }

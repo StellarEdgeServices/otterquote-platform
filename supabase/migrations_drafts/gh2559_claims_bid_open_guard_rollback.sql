@@ -17,8 +17,8 @@ DROP FUNCTION IF EXISTS public.claims_guard_bid_open();
 DROP FUNCTION IF EXISTS public.gh2559_summary_identity_hit(jsonb, text, text[], text, text);
 DROP FUNCTION IF EXISTS public.gh2559_estimate_is_read(jsonb, timestamptz);
 
--- Removes the additive column (and its CHECK). Any 'unsupported' / 'parsed' marks written since the apply are lost; they are
--- re-derivable by re-running parse-loss-sheet with the service role. parse-loss-sheet writes this column, so redeploy the pre-gh2559
+-- Removes the additive column (and its CHECK). Any 'parsed' / 'unsupported' / 'failed' marks written since the apply are lost; they are
+-- re-derivable by re-running parse-loss-sheet with the service role (a claim that was open only because of an 'unsupported' or 'failed' mark has no parse again afterwards, so it is refused on its next opening until re-parsed). parse-loss-sheet writes this column, so redeploy the pre-gh2559
 -- version of that function BEFORE running this file, or its parse writes fail.
 ALTER TABLE public.claims DROP COLUMN IF EXISTS loss_sheet_parse_status;
 

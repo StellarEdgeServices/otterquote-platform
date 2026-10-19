@@ -56,6 +56,11 @@ describe('waitForEstimateRead (gh-2559)', () => {
     await waitForEstimateRead('c1', { waitMs: 2000, pollMs: 5 });
     expect(reads.n).toBe(1);
   });
+  it("stops waiting when the provider rejected the file (status 'failed')", async () => {
+    const reads = wire([{ estimate_filename: 'u/e.pdf', loss_sheet_parsed_at: null, loss_sheet_parse_status: 'failed' }], () => Promise.resolve({ data: [], error: null }));
+    await waitForEstimateRead('c1', { waitMs: 2000, pollMs: 5 });
+    expect(reads.n).toBe(1);
+  });
   it('gives up at the deadline and lets the database decide (negative control: it does not hang)', async () => {
     const reads = wire([{ estimate_filename: 'u/e.pdf', loss_sheet_parsed_at: null }], () => Promise.resolve({ data: [], error: null }));
     await waitForEstimateRead('c1', { waitMs: 30, pollMs: 10 });
