@@ -43,3 +43,7 @@ The forward file has a GRANT to `authenticated` (column SELECT, function EXECUTE
 - Other decimal-digit scripts (Devanagari, Thai, ...) are not folded (NFKC does not map them).
 - structure_names / shingle_color are not redacted: Marty ruled they are not homeowner-typed.
 - A CI rule that a new `claims` column carries a GRANT (section 5).
+
+## File-path gate carried from #2931 (4a3488e9 and this head)
+
+`gh2881_d390_digit_fold.sql` and its rollback re-create `bidder_claim_summary` with `estimate_filename` and `measurements_filename` returned only `WHEN c.selected_contractor_id = ct.id AND c.platform_fee_charged IS TRUE` (PR #2932 / #2931), the same text as #2880's forward and rollback. The fold rollback therefore restores #2880's fee-gated statements, not the bare 20261008231303 view. The guard md5s are of `d390_redact_contact`'s body and did not change. Apply order: #2932, then #2880, then this set.
