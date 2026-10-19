@@ -103,6 +103,65 @@ export function buildStripeCharge(stripeSecretKey: string, httpFn: StripeHttp) {
   };
 }
 
+async function insertAlert(supabase: any, alertType: string, message: string): Promise<void> {
+  try {
+    await supabase.from("platform_alerts_log").insert({
+      alert_type: alertType, function_name: "process-dunning", message, sent_at: new Date().toISOString(),
+    });
+  } catch (e) { console.error("[process-dunning] platform_alerts_log insert failed:", e); }
+}
+
+/**
+ * Single-row lease (dunning_retry_pass_lease), shared by the CRON retry pass and TRIGGER mode (N-g).
+ * Fails closed: an unreadable lease means "do not charge this tick", and that raises a platform_alerts_log alert (N-h),
+ * not only console.error.
+ */
+export function leaseOps(supabase: any, nowFn: () => Date = () => new Date()) {
+  return {
+    async acquire(): Promise<string | null> {
+      const token = crypto.randomUUID();
+      const t = nowFn();
+      const { data, error } = await supabase
+        .from("dunning_retry_pass_lease")
+        .update({ holder: token, locked_until: new Date(t.getTime() + LEASE_TTL_MS).toISOString() })
+        .eq("id", 1)
+        .lt("locked_until", t.toISOString())
+        .select("id");
+      if (error) {
+        console.error("[process-dunning] dunning lease unavailable; nothing charged this tick:", error);
+        await insertAlert(supabase, "dunning_retry_lease_unreadable",
+          `dunning_retry_pass_lease could not be read or written (${error.message ?? String(error)}); the retry pass / TRIGGER charge was skipped. Check the lease migration is applied.`);
+        return null;
+      }
+      return Array.isArray(data) && data.length > 0 ? token : null;
+    },
+    async release(token: string): Promise<void> {
+      await supabase
+        .from("dunning_retry_pass_lease")
+        .update({ locked_until: new Date(0).toISOString() })
+        .eq("id", 1)
+        .eq("holder", token)
+        .select("id");
+    },
+  };
+}
+
+/** TRIGGER-mode gate wiring (N-g). */
+export function buildTriggerGateDeps(supabase: any, nowFn: () => Date = () => new Date()) {
+  const lease = leaseOps(supabase, nowFn);
+  return {
+    acquireLease: () => lease.acquire(),
+    releaseLease: (t: string) => lease.release(t),
+    async quoteHasUnknownMarker(quoteId: string): Promise<boolean | "error"> {
+      const { data, error } = await supabase.from("payment_failures").select("id").eq("quote_id", quoteId).not("retry_unknown_at", "is", null);
+      if (error) return "error";
+      return Array.isArray(data) && data.length > 0;
+    },
+    alert: (type: string, message: string) => insertAlert(supabase, type, message),
+    sleep: (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
+  };
+}
+
 export function buildRetryPassDeps(
   supabase: any,
   stripeSecretKey: string,
@@ -207,27 +266,8 @@ export function buildRetryPassDeps(
       if (error) { console.error("[process-dunning] retry_unknown_at clear failed:", error); return 0; }
       return Array.isArray(data) ? data.length : 0;
     },
-    async acquireLease(): Promise<string | null> {
-      // Single-row lease with expiry (dunning_retry_pass_lease). Fails closed: unreadable lease = no pass this tick.
-      const token = crypto.randomUUID();
-      const t = nowFn();
-      const { data, error } = await supabase
-        .from("dunning_retry_pass_lease")
-        .update({ holder: token, locked_until: new Date(t.getTime() + LEASE_TTL_MS).toISOString() })
-        .eq("id", 1)
-        .lt("locked_until", t.toISOString())
-        .select("id");
-      if (error) { console.error("[process-dunning] retry pass lease unavailable; pass skipped this tick:", error); return null; }
-      return Array.isArray(data) && data.length > 0 ? token : null;
-    },
-    async releaseLease(token: string): Promise<void> {
-      await supabase
-        .from("dunning_retry_pass_lease")
-        .update({ locked_until: new Date(0).toISOString() })
-        .eq("id", 1)
-        .eq("holder", token)
-        .select("id");
-    },
+    acquireLease: () => leaseOps(supabase, nowFn).acquire(),
+    releaseLease: (token: string) => leaseOps(supabase, nowFn).release(token),
     async getQuotePaymentStatus(quoteId: string) {
       const { data } = await supabase.from("quotes").select("payment_status").eq("id", quoteId).maybeSingle();
       return data?.payment_status ?? null;

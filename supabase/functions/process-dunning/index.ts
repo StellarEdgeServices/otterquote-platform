@@ -47,8 +47,8 @@ import {
 // shared one; the local copy is deleted.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 // gh-2442: contractor-requested retry pass (CRON mode). Off unless DUNNING_RETRY_PASS_ENABLED=true.
-import { runRetryPass, selectRetryStripeKey } from "./retry-pass.ts";
-import { buildRetryPassDeps } from "./retry-pass-supabase.ts";
+import { runRetryPass, gateTrigger, selectRetryStripeKey } from "./retry-pass.ts";
+import { buildRetryPassDeps, buildTriggerGateDeps } from "./retry-pass-supabase.ts";
 import { dropHeld, heldQuoteIds } from "./payment-hold.ts"; // gh-2442 B4
 // gh-2309: inbound caller gate (service-role bearer on TRIGGER + CRON).
 import { acceptedServiceKeys, classifyRequest, gateResponse, validateHomeownerChoice } from "./caller-gate.ts";
@@ -759,6 +759,19 @@ export async function handler(
       console.log("TRIGGER mode: Attempting all payment methods before dunning for quote", body.quote_id);
 
       const { quote_id, contractor_id, claim_id, homeowner_id, amount_cents, stripe_error } = body;
+
+      // gh-2442 N-g (REVIEW 6277377025): no inline charge while an in-doubt retry attempt exists for this quote, and (when the
+      // retry pass is enabled) only while holding the same lease as the CRON pass.
+      const triggerGate = await gateTrigger(
+        buildTriggerGateDeps(supabase), quote_id, getEnv("DUNNING_RETRY_PASS_ENABLED") === "true",
+      );
+      if (!triggerGate.proceed) {
+        return new Response(
+          JSON.stringify({ success: false, skipped: true, reason: triggerGate.reason }),
+          { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      try {
       const now = new Date();
 
       // ── MULTI-METHOD RETRY: Try ALL payment methods before initiating dunning ──
@@ -1176,6 +1189,9 @@ export async function handler(
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+      } finally {
+        await triggerGate.release();
+      }
     }
 
     // MODE: CRON — Process all active dunning records

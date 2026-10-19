@@ -495,3 +495,38 @@ async function runRetryPassLocked(deps: RetryPassDeps): Promise<GroupOutcome[]> 
   }
   return outcomes;
 }
+
+/**
+ * N-g (REVIEW 6277377025): TRIGGER mode (stripe-webhook, async ACH failure) charges inline. It must not run while any row of
+ * the quote carries the in-doubt marker, and when the retry pass is enabled it takes the same lease as the CRON pass.
+ * Both refusals are logged and alerted; nothing is charged. Pure; wired by buildTriggerGateDeps.
+ */
+export interface TriggerGateDeps {
+  quoteHasUnknownMarker: (quoteId: string) => Promise<boolean | "error">;
+  acquireLease: () => Promise<string | null>;
+  releaseLease: (token: string) => Promise<void>;
+  alert: (type: string, message: string) => Promise<void>;
+  sleep: (ms: number) => Promise<void>;
+}
+export type TriggerGate = { proceed: true; release: () => Promise<void> } | { proceed: false; reason: string };
+
+export async function gateTrigger(deps: TriggerGateDeps, quoteId: string, leaseRequired: boolean): Promise<TriggerGate> {
+  const refuse = async (reason: string, text: string): Promise<TriggerGate> => {
+    console.error(`[process-dunning] TRIGGER for quote ${quoteId} skipped: ${reason}`);
+    await deps.alert("dunning_trigger_skipped", `TRIGGER charge for quote ${quoteId} skipped (${reason}). ${text}`);
+    return { proceed: false, reason };
+  };
+  let token: string | null = null;
+  if (leaseRequired) {
+    for (let i = 0; i < 3 && !token; i++) { token = await deps.acquireLease(); if (!token && i < 2) await deps.sleep(1500); }
+    if (!token) return refuse("another_pass_holds_the_lease", "The retry pass holds the lease (or it is unreadable); re-send the failure once it is free.");
+  }
+  const release = async () => { if (token) { try { await deps.releaseLease(token); } catch (_) { /* expires on its own */ } } };
+  const m = await deps.quoteHasUnknownMarker(quoteId);
+  if (m !== false) {
+    await release();
+    return refuse(m === "error" ? "unknown_marker_unreadable" : "unknown_outcome_pending",
+      "A retry attempt for this quote is in doubt (retry_unknown_at) and the quote may already be paid; resolve it first (replay by idempotency key) before any new charge.");
+  }
+  return { proceed: true, release };
+}

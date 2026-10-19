@@ -566,5 +566,61 @@ ok(!/select\('\*/.test(fs.readFileSync(path.join(root, 'react-app/app/contractor
   ok(/clearUnknown\(rowIds: string\[\], idempotencyKey: string\)/.test(src) && src.includes('.eq("retry_unknown_attempt->req->>idempotencyKey", idempotencyKey)'), 'wiring: clearUnknown is a CAS on the stored idempotency key');
   ok(!/attemptedAt\)\s*\.select/.test(src.split('async clearUnknown')[1]?.split('async acquireLease')[0] ?? ''), 'wiring: clearUnknown does not key on attemptedAt'); }
 
+
+// ═════════════ REVIEW 6277377025 N-g (TRIGGER gate) and N-h (lease alert) ═════════════
+{ // N-g: ACH async failure (TRIGGER mode) arrives while the retry pass holds an in-doubt attempt
+  const mkTrigger = (w, stripe, clock, { gated, leaseRequired }) => async () => {
+    const gd = S.buildTriggerGateDeps(w.sb, () => clock.now); gd.sleep = async () => {};
+    let gate = { proceed: true, release: async () => {} };
+    if (gated) gate = await P.gateTrigger(gd, Q, leaseRequired);
+    if (!gate.proceed) return { charged: false, reason: gate.reason };
+    try { await stripe.fetchFn('/payment_intents', { method: 'POST', headers: { 'Idempotency-Key': 'trigger-' + clock.now.getTime() }, body: 'amount=100&payment_method=pm_card1' }); return { charged: true }; } catch (_) { return { charged: true }; /* response lost: Stripe still saw the POST */ }
+    finally { await gate.release(); }
+  };
+  for (const gated of [false, true]) {
+    const clock = { now: new Date(NOW) };
+    const stripe = makeStripe(() => 'ok-lost-slow');
+    const w = world([wr(clock), sr(clock)], stripe, clock);
+    await w.tick();                                   // retry pass: charged at Stripe, response lost, marker stored
+    ok(stripe.succeeded() === 1 && w.t.payment_failures.every((r) => r.retry_unknown_at), `N-g setup (gated=${gated}): one succeeded intent, in-doubt marker on every row`);
+    const r = await mkTrigger(w, stripe, clock, { gated, leaseRequired: true })();
+    adv(clock, 30); await w.tick();                   // the next CRON tick reconciles by replay
+    if (!gated) ok(r.charged && stripe.succeeded() === 2, 'N-g negative control: without the gate the webhook TRIGGER makes a SECOND succeeded intent');
+    else ok(!r.charged && r.reason === 'unknown_outcome_pending' && stripe.succeeded() === 1 && w.t.quotes[0].payment_status === 'succeeded',
+      'N-g: TRIGGER refuses while the quote carries the in-doubt marker -> exactly one succeeded intent');
+    if (gated) ok(w.t.platform_alerts_log.some((a) => a.alert_type === 'dunning_trigger_skipped'), 'N-g: the refusal is alerted, not silent');
+  }
+  // the lease: TRIGGER waits/skips while the retry pass holds it, and takes then releases it otherwise
+  const clock = { now: new Date(NOW) };
+  const stripe = makeStripe(() => 'ok');
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  const gd = S.buildTriggerGateDeps(w.sb, () => clock.now); gd.sleep = async () => {};
+  const held = await w.mkDeps().acquireLease();
+  const g1 = await P.gateTrigger(gd, Q, true);
+  ok(!g1.proceed && g1.reason === 'another_pass_holds_the_lease', 'N-g: TRIGGER skips with a logged reason while the retry pass holds the lease');
+  ok(w.t.platform_alerts_log.some((a) => a.alert_type === 'dunning_trigger_skipped' && /lease/.test(a.message)), 'N-g: lease refusal alerted');
+  await w.mkDeps().releaseLease(held);
+  const g2 = await P.gateTrigger(gd, Q, true);
+  ok(g2.proceed, 'N-g: TRIGGER proceeds when the lease is free and no marker');
+  ok(!(await w.mkDeps().acquireLease()), 'N-g: ... and holds the lease while it works (the retry pass cannot start)');
+  await g2.release(); ok(await w.mkDeps().acquireLease(), 'N-g: lease released after the TRIGGER finishes');
+  const g3 = await P.gateTrigger(gd, Q, false); ok(g3.proceed, 'N-g: with the retry pass disabled the lease is not required (nothing else can charge)');
+  const brokenMarker = { ...gd, quoteHasUnknownMarker: async () => 'error' };
+  const g4 = await P.gateTrigger(brokenMarker, Q, false); ok(!g4.proceed && g4.reason === 'unknown_marker_unreadable', 'N-g: an unreadable marker read fails closed');
+  const src = fs.readFileSync(path.join(dir, 'index.ts'), 'utf8');
+  ok(/const triggerGate = await gateTrigger\(/.test(src) && src.indexOf('gateTrigger(') < src.indexOf('Get contractor\'s Stripe customer ID') && /finally \{\s*await triggerGate\.release\(\)/.test(src), 'wiring: index.ts gates TRIGGER before any Stripe call and releases in finally');
+}
+{ // N-h: unreadable lease raises an alert
+  const clock = { now: new Date(NOW) };
+  const stripe = makeStripe(() => 'ok');
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  const real = w.sb.from.bind(w.sb);
+  w.sb.from = (tb) => (tb === 'dunning_retry_pass_lease' ? { update: () => ({ eq: () => ({ lt: () => ({ select: async () => ({ data: null, error: { message: 'relation does not exist' } }) }) }) }) } : real(tb));
+  const out = await w.tick();
+  ok(out[0].reason === 'another_pass_holds_the_lease' && stripe.posts.length === 0, 'N-h: unreadable lease -> nothing charged');
+  const al = w.t.platform_alerts_log.filter((a) => a.alert_type === 'dunning_retry_lease_unreadable');
+  ok(al.length === 1 && /relation does not exist/.test(al[0].message), 'N-h: the unreadable lease raises a platform_alerts_log alert');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
