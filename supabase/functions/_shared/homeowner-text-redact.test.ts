@@ -93,7 +93,7 @@ Deno.test("wiring: the Scope of Work refuses on a redaction failure and the noti
   assert(!sow.includes("WITHHELD_TEXT") && !/Notes withheld/.test(sow), "no marker constant or marker wording in the Scope of Work path");
   // the four free-text project_confirmation keys are all wrapped (the form saves projectNotes/exclusions; the SOW reads homeownerNotes/workNotBeingDone)
   for (const k of ["homeownerNotes", "workNotBeingDone", "projectNotes", "exclusions"]) {
-    assertStringIncludes(sow, `${k}: await redactContactOrRefuse(supabase, claimData.project_confirmation.${k} ?? null, d390FeeCollected)`);
+    assertStringIncludes(sow, `${k}: redactSowTextOrRefuse(claimData.project_confirmation.${k} ?? null, d390FeeCollected)`);
   }
   // refusal: the SOW try/catch rethrows RedactionUnavailableError BEFORE the "non-fatal, continuing without SOW" branch, and the handler maps it to 503
   const catchAt = sow.indexOf("} catch (sowErr) {");
