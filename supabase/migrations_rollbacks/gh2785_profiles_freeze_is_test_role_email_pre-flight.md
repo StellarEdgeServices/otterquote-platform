@@ -17,7 +17,7 @@ Drops the own-row DELETE policy `"Users can delete own profile"` (no client code
 - Apply requires `auth.role()` (live).
 
 - `select policyname, cmd, roles from pg_policies where tablename='profiles';` (expect the DELETE policy "Users can delete own profile", profiles_user_insert, profiles_user_update, profiles_user_read).
-- Repair at apply, with service_role: `select p.id, p.role from public.profiles p join public.contractors c on c.user_id=p.id where p.role is distinct from 'contractor';` (rv6 read 1 row on 2026-10-14); then `update public.profiles p set role='contractor' from public.contractors c where c.user_id=p.id and p.role is distinct from 'contractor';`. The pin removes the client heal path.
+- Repair (now folded into the forward transaction per review 6254384170, so the UPDATE below is NOT a separate step; use this select as the before/after check): `select p.id, p.role from public.profiles p join public.contractors c on c.user_id=p.id where p.role is distinct from 'contractor';` (rv6 read 1 row on 2026-10-14); then `update public.profiles p set role='contractor' from public.contractors c where c.user_id=p.id and p.role is distinct from 'contractor';`. The pin removes the client heal path.
 - Closes-on wording: role is pinned, not refused, so the production check for role reads "refused or pinned".
 
 ## Rollback

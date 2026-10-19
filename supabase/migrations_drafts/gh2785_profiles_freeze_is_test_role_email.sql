@@ -51,14 +51,15 @@
 --     cascades to messages and home_profiles, so the policy was also a data-loss lever. profiles_user_insert is KEPT (the
 --     dashboard creates a missing profile client-side).
 -- APPLY NOTE (N2): production has one contractor whose profiles.role is not 'contractor' (read-only 2026-10-14, rv6). The pin
--- removes the client heal path (js/auth.js:1435), so repair that row with service_role at apply:
---   update public.profiles p set role='contractor' from public.contractors c where c.user_id=p.id and p.role is distinct from 'contractor';
+-- removes the client heal path (js/auth.js:1435), so the same transaction repairs that row (idempotent UPDATE before COMMIT; review 6254384170).
+-- SET LOCAL lock_timeout = '5s' after BEGIN makes the apply fail fast instead of stalling profile reads.
 -- service_role (every Edge Function), postgres/owner-level sessions and SECURITY DEFINER functions (current_user is the
 -- owner inside them) are untouched. SECURITY INVOKER on purpose: current_user must be the caller.
 -- Not changed: any existing trigger or function, any other policy, any grant, any data.
 -- Idempotent: CREATE OR REPLACE FUNCTION; DROP TRIGGER IF EXISTS before CREATE TRIGGER; DROP POLICY IF EXISTS. No GRANT or REVOKE.
 
 BEGIN;
+SET LOCAL lock_timeout = '5s';
 
 CREATE OR REPLACE FUNCTION public.profiles_freeze_privileged_columns()
 RETURNS trigger
@@ -97,5 +98,8 @@ CREATE TRIGGER profiles_freeze_privileged_columns
   FOR EACH ROW EXECUTE FUNCTION public.profiles_freeze_privileged_columns();
 
 DROP POLICY IF EXISTS "Users can delete own profile" ON public.profiles;
+
+-- N2 repair, in the same transaction (idempotent; runs as the migration owner, so the trigger does not touch it).
+UPDATE public.profiles p SET role = 'contractor' FROM public.contractors c WHERE c.user_id = p.id AND p.role IS DISTINCT FROM 'contractor';
 
 COMMIT;
