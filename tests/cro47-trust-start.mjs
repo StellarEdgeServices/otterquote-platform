@@ -45,7 +45,7 @@ const NEW_CONTACT_HEADLINE = 'How should we reach you?'; // "Almost done — " d
 // Sloane's ruling (Q2): the who-we-are line is the live partner-profile.html sentence, byte-for-byte. Derived from that file,
 // never retyped: the sentence spans two source lines and writes the dash as &mdash;.
 const WHO_WE_ARE = (function () {
-  const m = /Otter Quotes connects homeowners with multiple competing\s+contractor bids for their project &mdash; no fee to use Otter Quotes, with no obligation\./.exec(PROFILE);
+  const m = /Otter Quotes connects homeowners with multiple competing\s+contractor bids &mdash; no fee to use Otter Quotes, with no obligation\./.exec(PROFILE);
   if (!m) throw new Error('partner-profile.html who-we-are sentence not found (anchor moved)');
   return m[0].replace(/\s+/g, ' ').replace('&mdash;', '—');
 })();
