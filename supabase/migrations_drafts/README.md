@@ -61,3 +61,9 @@ Two more sets were applied to production on 2026-10-18 (CTO RUN 70 filing; appli
 
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
+
+## Added 2026-10-19 (gh-2875, D-391 layer 1: per-number SMS verification record and suppression list): 3 files here, the proof and runner in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2875_d391_contractor_sms_numbers` | forward, rollback, pre-flight (all three here) | NOT APPLIED | drafted 2026-10-19 under #2875 (D-391 + AMENDMENT 1); production read-only 2026-10-19: the tables do not exist. Throwaway-Postgres proof `supabase/tests/gh2875_d391_contractor_sms_numbers_proof_run.sh` (TODAY / AFTER / MUTANT / ROLLBACK). Tier 3B, R-097 notice #2875 6256733805; no disclosure row is inserted (wording waits on LEGAL-READ + R-177) | none |
