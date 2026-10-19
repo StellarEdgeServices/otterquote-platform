@@ -27,6 +27,10 @@ export const MAX_REQUESTS_PER_QUOTE = 3; // D-379
 export const MAX_REQUEST_AGE_MS = 24 * 60 * 60 * 1000; // a request older than this is never charged
 export const MAX_QUOTES_PER_RUN = 10; // blast-radius cap per cron tick
 export const OPEN_STATUSES = ["active", "warning_sent"];
+/** quotes.payment_status values that mean the fee is paid or money is in motion: no charge, no reminders. */
+export const PAYMENT_HOLD_STATUSES = ["succeeded", "pending", "processing"];
+/** An unknown Stripe outcome is re-checked against Stripe for this long before it is escalated. */
+export const UNKNOWN_ESCALATE_AFTER_MS = 2 * 60 * 60 * 1000;
 
 /** Bank says do not try this method again. Never retried with the same method; logged. */
 export const HARD_DECLINE_CODES = [
@@ -56,6 +60,7 @@ export interface FailureRow {
   retry_requested_at: string | null;
   retry_request_count: number | null;
   retry_handled_at: string | null;
+  retry_unknown_at?: string | null;
 }
 
 export interface ChargeMethod {
@@ -73,10 +78,17 @@ export interface ChargeRequest {
   feeCents: number;
   chargeAmountCents: number;
   idempotencyKey: string;
+  requestedAtMs: number;
 }
 
 export interface ChargeResult {
-  status: "succeeded" | "processing" | "failed";
+  /**
+   * succeeded / processing: money moved or is moving.
+   * failed:  a DEFINITE decline (Stripe answered 402 card_error, or the intent is requires_payment_method): no money moved.
+   * unknown: anything else (timeout, reset, non-JSON, 5xx, 409, 429, unexpected status). The charge may or may not exist.
+   *          The pass STOPS for this quote and never tries another method.
+   */
+  status: "succeeded" | "processing" | "failed" | "unknown";
   paymentIntentId: string | null;
   declineCode: string | null;
   message: string | null;
@@ -85,8 +97,20 @@ export interface ChargeResult {
 export interface RetryPassDeps {
   now: () => Date;
   listCandidateRows: (sinceIso: string) => Promise<FailureRow[]>;
-  /** Stamp retry_handled_at on these rows. Returns the number of rows actually written. */
-  markHandled: (rowIds: string[], nowIso: string) => Promise<number>;
+  /**
+   * Compare-and-set: stamp retry_handled_at on these rows only where it is NULL or older than the request.
+   * Returns the number of rows actually written (0 = someone else already consumed the request).
+   */
+  markHandled: (rowIds: string[], nowIso: string, requestedAtIso: string) => Promise<number>;
+  /** Give back one request on the row that carries it (a refusal must not use up the cap of 3). */
+  refundRequest: (rowId: string, currentCount: number) => Promise<boolean>;
+  /** Record / clear the unknown-outcome marker (payment_failures.retry_unknown_at) on these rows. */
+  markUnknown: (rowIds: string[], nowIso: string) => Promise<number>;
+  clearUnknown: (rowIds: string[]) => Promise<number>;
+  /** Find the PaymentIntent this request created (by metadata), without creating anything. */
+  lookupIntent: (quoteId: string, requestedAtMs: number) => Promise<
+    { found: true; id: string; status: string } | { found: false } | { error: string }
+  >;
   getQuotePaymentStatus: (quoteId: string) => Promise<string | null>;
   /** Live-charge guard (#1467): fails closed. */
   chargeGuard: (claimId: string | null) => Promise<{ allow: boolean; message: string }>;
@@ -96,7 +120,7 @@ export interface RetryPassDeps {
     quoteId: string,
     update: Record<string, unknown>,
   ) => Promise<boolean>;
-  /** Stop the reminder sequence for a quote whose fee has now been collected. Rows written. */
+  /** Stop the reminder sequence for a quote whose fee has now been collected. Returns rows written. */
   closeDunningRows: (rowIds: string[], nowIso: string) => Promise<number>;
   alert: (alertType: string, message: string) => Promise<void>;
 }
@@ -105,8 +129,27 @@ export type GroupOutcome =
   | { quoteKey: string; outcome: "charged"; paymentIntentId: string; methodType: string }
   | { quoteKey: string; outcome: "processing"; paymentIntentId: string; methodType: string }
   | { quoteKey: string; outcome: "all_methods_failed"; hardDeclines: number }
+  | { quoteKey: string; outcome: "unknown"; methodType: string }
+  | { quoteKey: string; outcome: "reconciled"; result: string }
   | { quoteKey: string; outcome: "refused"; reason: string }
   | { quoteKey: string; outcome: "skipped"; reason: string };
+
+/**
+ * Which Stripe key the pass may use. TEST MODE IS THE DEFAULT: setting DUNNING_RETRY_PASS_ENABLED=true alone can
+ * only ever touch STRIPE_SECRET_KEY_TEST. Live charging needs the separate explicit DUNNING_RETRY_PASS_LIVE=true,
+ * and the key prefix must match the mode (a test key never runs live; a live key never runs as test).
+ */
+export function selectRetryStripeKey(
+  getEnv: (name: string) => string | undefined,
+): { ok: true; key: string; mode: "test" | "live" } | { ok: false; reason: string } {
+  const live = getEnv("DUNNING_RETRY_PASS_LIVE") === "true";
+  const key = live ? getEnv("STRIPE_SECRET_KEY") : getEnv("STRIPE_SECRET_KEY_TEST");
+  if (!key) return { ok: false, reason: live ? "live mode: STRIPE_SECRET_KEY not set" : "test mode: STRIPE_SECRET_KEY_TEST not set" };
+  const isTestKey = key.startsWith("sk_test_") || key.startsWith("rk_test_");
+  if (!live && !isTestKey) return { ok: false, reason: "test mode refuses a key that is not a Stripe test key" };
+  if (live && isTestKey) return { ok: false, reason: "live mode refuses a Stripe test key" };
+  return { ok: true, key, mode: live ? "live" : "test" };
+}
 
 /** Same arithmetic as process-dunning/index.ts TRIGGER mode (card = fee + 30c grossed up for 2.9%). */
 export function cardChargeAmount(feeCents: number): number {
@@ -182,23 +225,92 @@ export function refusalReason(g: Group, now: Date): string | null {
   return null;
 }
 
+function openIds(g: Group): string[] {
+  return g.rows.filter((r) => OPEN_STATUSES.includes(r.dunning_status ?? "") && !r.resolved_at).map((r) => r.id);
+}
+
+/** The row that carries the newest request (the one the SQL function incremented). */
+function requestRow(g: Group): FailureRow | null {
+  let best: FailureRow | null = null;
+  for (const r of g.rows) {
+    if (!r.retry_requested_at || !(r.retry_request_count && r.retry_request_count > 0)) continue;
+    if (!best || ms(r.retry_requested_at) > ms(best.retry_requested_at)) best = r;
+  }
+  return best;
+}
+
+async function closeGroup(deps: RetryPassDeps, g: Group, quoteId: string): Promise<void> {
+  const want = openIds(g);
+  const wrote = want.length ? await deps.closeDunningRows(want, deps.now().toISOString()) : 0;
+  if (wrote < want.length) {
+    await deps.alert("gh2105_zero_row_update", `Retry pass for quote ${quoteId}: fee collected but closing the dunning rows wrote ${wrote} of ${want.length}; reminders may continue.`);
+  }
+}
+
+async function recordResult(deps: RetryPassDeps, quoteId: string, update: Record<string, unknown>, how: string): Promise<void> {
+  const recorded = await deps.recordQuoteResult(quoteId, update);
+  if (!recorded) await deps.alert("gh2105_zero_row_update", `Retry pass for quote ${quoteId}: ${how} but the quotes write matched zero rows.`);
+}
+
+/** A group carrying an unknown-outcome marker is only ever reconciled, never charged. */
+async function reconcile(deps: RetryPassDeps, g: Group, quoteId: string): Promise<GroupOutcome> {
+  const ids = g.rows.map((r) => r.id);
+  const found = await deps.lookupIntent(quoteId, ms(g.requestedAt));
+  if ("error" in found) return { quoteKey: g.key, outcome: "skipped", reason: "reconcile_lookup_failed" };
+  if (found.found) {
+    if (found.status === "succeeded") {
+      await recordResult(deps, quoteId, { payment_intent_id: found.id, payment_status: "succeeded" }, `reconciled Stripe intent ${found.id} succeeded`);
+      await closeGroup(deps, g, quoteId);
+      await deps.clearUnknown(ids);
+      await deps.alert("dunning_retry_reconciled", `Retry pass: unknown outcome for quote ${quoteId} reconciled: intent ${found.id} succeeded.`);
+      return { quoteKey: g.key, outcome: "reconciled", result: "succeeded" };
+    }
+    if (found.status === "processing") {
+      await recordResult(deps, quoteId, { payment_intent_id: found.id, payment_status: "pending" }, `reconciled Stripe intent ${found.id} processing`);
+      await deps.clearUnknown(ids);
+      return { quoteKey: g.key, outcome: "reconciled", result: "processing" };
+    }
+    await deps.clearUnknown(ids); // requires_payment_method / canceled / requires_action: no money moved
+    return { quoteKey: g.key, outcome: "reconciled", result: `not_charged:${found.status}` };
+  }
+  const since = deps.now().getTime() - Math.max(...g.rows.map((r) => ms(r.retry_unknown_at ?? null) || 0));
+  if (since > UNKNOWN_ESCALATE_AFTER_MS) {
+    await deps.alert("dunning_retry_unknown_stuck", `Retry pass: quote ${quoteId} has an unknown Stripe outcome with no matching intent after ${Math.round(since / 60000)} min. No further charge until a person reconciles it (clear retry_unknown_at).`);
+  }
+  return { quoteKey: g.key, outcome: "skipped", reason: "unknown_awaiting_reconciliation" };
+}
+
 export async function runRetryPass(deps: RetryPassDeps): Promise<GroupOutcome[]> {
   const now = deps.now();
   const sinceIso = new Date(now.getTime() - 3 * MAX_REQUEST_AGE_MS).toISOString();
   const rows = await deps.listCandidateRows(sinceIso);
-  const pending = groupRows(rows).filter(isPending);
+  const groups = groupRows(rows);
   const outcomes: GroupOutcome[] = [];
   let charged = 0;
 
-  for (const g of pending) {
+  for (const g of groups) {
     const nowIso = deps.now().toISOString();
     const ids = g.rows.map((r) => r.id);
-    const reason = refusalReason(g, deps.now());
-    if (reason) {
-      await deps.markHandled(ids, nowIso); // consume it so it is not rescanned; no charge
-      outcomes.push({ quoteKey: g.key, outcome: "refused", reason });
+
+    if (g.rows.some((r) => r.retry_unknown_at)) {
+      if (g.quoteId) outcomes.push(await reconcile(deps, g, g.quoteId));
       continue;
     }
+    if (!isPending(g)) continue;
+
+    // A refusal consumes the request (so it is not rescanned) but gives the request back: it must not use up the cap.
+    const refuse = async (reason: string, alertType?: string, alertMsg?: string) => {
+      const wrote = await deps.markHandled(ids, nowIso, g.requestedAt);
+      if (wrote > 0) {
+        const carrier = requestRow(g);
+        if (carrier) await deps.refundRequest(carrier.id, carrier.retry_request_count as number);
+      }
+      if (alertType && alertMsg) await deps.alert(alertType, alertMsg);
+      outcomes.push({ quoteKey: g.key, outcome: "refused", reason });
+    };
+
+    const reason = refusalReason(g, deps.now());
+    if (reason) { await refuse(reason); continue; }
     if (charged >= MAX_QUOTES_PER_RUN) {
       outcomes.push({ quoteKey: g.key, outcome: "skipped", reason: "run_cap_next_tick" }); // left pending
       continue;
@@ -207,42 +319,29 @@ export async function runRetryPass(deps: RetryPassDeps): Promise<GroupOutcome[]>
     const claimId = g.rows.find((r) => r.claim_id)?.claim_id ?? null;
     const fee = g.rows.reduce((m, r) => (r.amount_cents > m ? r.amount_cents : m), 0);
     const contractorId = g.rows[0].contractor_id;
-    if (!quoteId || !claimId || !(fee > 0)) {
-      await deps.markHandled(ids, nowIso);
-      outcomes.push({ quoteKey: g.key, outcome: "refused", reason: "missing_quote_claim_or_amount" });
-      continue;
-    }
+    if (!quoteId || !claimId || !(fee > 0)) { await refuse("missing_quote_claim_or_amount"); continue; }
 
     const payStatus = await deps.getQuotePaymentStatus(quoteId);
-    if (payStatus === "succeeded" || payStatus === "pending") {
-      await deps.markHandled(ids, nowIso);
-      outcomes.push({ quoteKey: g.key, outcome: "refused", reason: `quote_payment_${payStatus}` });
-      continue;
-    }
+    if (payStatus && PAYMENT_HOLD_STATUSES.includes(payStatus)) { await refuse(`quote_payment_${payStatus}`); continue; }
 
     const guard = await deps.chargeGuard(claimId);
     if (!guard.allow) {
-      await deps.markHandled(ids, nowIso);
-      await deps.alert("platform_fee_refused_unauthorized_test", `${guard.message} Retry-pass charge refused for quote ${quoteId}.`);
-      outcomes.push({ quoteKey: g.key, outcome: "refused", reason: "live_charge_guard" });
+      await refuse("live_charge_guard", "platform_fee_refused_unauthorized_test", `${guard.message} Retry-pass charge refused for quote ${quoteId}.`);
       continue;
     }
 
     const cm = await deps.getChargeMethods(contractorId);
-    if (!cm || cm.methods.length === 0) {
-      await deps.markHandled(ids, nowIso);
-      outcomes.push({ quoteKey: g.key, outcome: "refused", reason: "no_payment_method" });
-      continue;
-    }
+    if (!cm || cm.methods.length === 0) { await refuse("no_payment_method"); continue; }
 
-    // AT-MOST-ONCE: consume the request BEFORE any Stripe call; no row written = no charge.
-    const written = await deps.markHandled(ids, nowIso);
+    // AT-MOST-ONCE: consume the request BEFORE any Stripe call (compare-and-set); no row written = no charge.
+    const written = await deps.markHandled(ids, nowIso, g.requestedAt);
     if (written < 1) {
       outcomes.push({ quoteKey: g.key, outcome: "skipped", reason: "could_not_consume_request" });
       continue;
     }
     charged++;
 
+    const requestedAtMs = ms(g.requestedAt);
     let hardDeclines = 0;
     let done = false;
     for (const method of cm.methods) {
@@ -257,13 +356,22 @@ export async function runRetryPass(deps: RetryPassDeps): Promise<GroupOutcome[]>
         feeCents: fee,
         chargeAmountCents,
         idempotencyKey: attemptIdempotencyKey(quoteId, method.stripe_pm_id, g.requestedAt),
+        requestedAtMs,
       });
+      if (res.status === "unknown") {
+        // The charge may exist. NEVER try another method (a different key would not dedupe): stop, mark, alert.
+        await deps.markUnknown(ids, deps.now().toISOString());
+        await deps.alert("dunning_retry_unknown_outcome", `Retry pass: UNKNOWN Stripe outcome for quote ${quoteId} on ${method.payment_type} ****${method.stripe_pm_id.slice(-4)} (${res.message ?? "no detail"}). No further method tried; the next pass looks the intent up by metadata before anything else.`);
+        outcomes.push({ quoteKey: g.key, outcome: "unknown", methodType: method.payment_type });
+        done = true;
+        break;
+      }
       if (res.status === "failed") {
         if (isHardDecline(res.declineCode)) {
           hardDeclines++;
           await deps.alert("dunning_retry_hard_decline", `Retry pass: ${method.payment_type} ****${method.stripe_pm_id.slice(-4)} hard-declined (${res.declineCode}) for quote ${quoteId}.`);
         }
-        continue; // next method; this method is not tried again in this request
+        continue; // a DEFINITE decline: next method; this method is not tried again in this request
       }
       const update: Record<string, unknown> = {
         payment_intent_id: res.paymentIntentId,
@@ -272,11 +380,8 @@ export async function runRetryPass(deps: RetryPassDeps): Promise<GroupOutcome[]>
       };
       if (method.cpm_id) update.payment_method_id = method.cpm_id;
       if (isCard) update.card_fee_cents = chargeAmountCents - fee;
-      const recorded = await deps.recordQuoteResult(quoteId, update);
-      if (!recorded) {
-        await deps.alert("gh2105_zero_row_update", `Retry pass for quote ${quoteId}: Stripe ${res.status} (payment_intent ${res.paymentIntentId}) but the quotes write matched zero rows.`);
-      }
-      if (res.status === "succeeded") await deps.closeDunningRows(ids, deps.now().toISOString());
+      await recordResult(deps, quoteId, update, `Stripe ${res.status} (payment_intent ${res.paymentIntentId})`);
+      if (res.status === "succeeded") await closeGroup(deps, g, quoteId);
       outcomes.push({
         quoteKey: g.key,
         outcome: res.status === "succeeded" ? "charged" : "processing",

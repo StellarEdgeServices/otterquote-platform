@@ -7,9 +7,9 @@
 # Pre-flight: gh2442_dunning_retry_pass_column (Tier 3B, NOT APPLIED)
 
 ```sql
--- 1. column absent before (expect 0 rows); after apply expect 1 row, timestamp with time zone, nullable
+-- 1. columns absent before (expect 0 rows); after apply expect 2 rows, timestamp with time zone, nullable
 select column_name, data_type, is_nullable from information_schema.columns
- where table_schema='public' and table_name='payment_failures' and column_name='retry_handled_at';
+ where table_schema='public' and table_name='payment_failures' and column_name in ('retry_handled_at','retry_unknown_at');
 -- 2. negative control: the sibling column from the applied gh2442 set is present (expect 1 row)
 select column_name from information_schema.columns
  where table_schema='public' and table_name='payment_failures' and column_name='retry_requested_at';

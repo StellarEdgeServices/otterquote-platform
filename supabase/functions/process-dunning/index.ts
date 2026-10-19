@@ -47,8 +47,9 @@ import {
 // shared one; the local copy is deleted.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 // gh-2442: contractor-requested retry pass (CRON mode). Off unless DUNNING_RETRY_PASS_ENABLED=true.
-import { runRetryPass } from "./retry-pass.ts";
+import { runRetryPass, selectRetryStripeKey } from "./retry-pass.ts";
 import { buildRetryPassDeps } from "./retry-pass-supabase.ts";
+import { dropHeld, heldQuoteIds } from "./payment-hold.ts"; // gh-2442 B4
 // gh-2309: inbound caller gate (service-role bearer on TRIGGER + CRON).
 import { acceptedServiceKeys, classifyRequest, gateResponse, validateHomeownerChoice } from "./caller-gate.ts";
 // gh-1824: email bodies live in templates.ts (pinned by templates.test.ts).
@@ -1184,18 +1185,18 @@ export async function handler(
 
     // ── gh-2442 RETRY PASS: contractor-requested retries (request_dunning_retry) ──
     // OFF by default: deploying this code charges nothing until DUNNING_RETRY_PASS_ENABLED=true is set.
-    // DUNNING_RETRY_PASS_TEST_MODE=true switches the pass to STRIPE_SECRET_KEY_TEST (required first proof, Tier 3B).
+    // TEST MODE IS THE DEFAULT even when enabled (STRIPE_SECRET_KEY_TEST only); live needs the separate explicit
+    // DUNNING_RETRY_PASS_LIVE=true and a non-test key (selectRetryStripeKey). Tier 3B: test-mode proof first.
     let retryPassOutcomes: unknown[] = [];
     if (getEnv("DUNNING_RETRY_PASS_ENABLED") === "true") {
       try {
-        const retryKey = getEnv("DUNNING_RETRY_PASS_TEST_MODE") === "true"
-          ? getEnv("STRIPE_SECRET_KEY_TEST")
-          : getEnv("STRIPE_SECRET_KEY");
-        if (!retryKey) {
-          console.error("[process-dunning] retry pass enabled but no Stripe key is set; skipped.");
+        const retryKey = selectRetryStripeKey(getEnv);
+        if (!retryKey.ok) {
+          console.error(`[process-dunning] retry pass enabled but skipped: ${retryKey.reason}`);
         } else {
+          console.log(`[process-dunning] retry pass running in ${retryKey.mode} mode`);
           retryPassOutcomes = await runRetryPass(
-            buildRetryPassDeps(supabase, retryKey, { GUARD_SELECT, evaluateLiveChargeGuard, describeGuardVerdict }),
+            buildRetryPassDeps(supabase, retryKey.key, { GUARD_SELECT, evaluateLiveChargeGuard, describeGuardVerdict }),
           );
           console.log(`[process-dunning] retry pass: ${JSON.stringify(retryPassOutcomes)}`);
         }
@@ -1221,7 +1222,9 @@ export async function handler(
 
     if (fetchErr) throw new Error(`Failed to fetch active dunning records: ${fetchErr.message}`);
 
-    for (const failure of (activeFailures || [])) {
+    // gh-2442 B4: no reminders / warnings for a quote that is paid or has a payment in flight.
+    const heldActive = await heldQuoteIds(supabase, (activeFailures || []).map((f: any) => f.quote_id));
+    for (const failure of dropHeld(activeFailures || [], heldActive)) {
       const contractor  = failure.contractors as any;
       const claim       = failure.claims as any;
       const companyName = contractor?.company_name || "Contractor";
@@ -1309,7 +1312,8 @@ export async function handler(
 
     if (warnErr) throw new Error(`Failed to fetch warning_sent records: ${warnErr.message}`);
 
-    for (const failure of (warnedFailures || [])) {
+    const heldWarned = await heldQuoteIds(supabase, (warnedFailures || []).map((f: any) => f.quote_id));
+    for (const failure of dropHeld(warnedFailures || [], heldWarned)) {
       const contractor  = failure.contractors as any;
       const companyName = contractor?.company_name || "Contractor";
 
