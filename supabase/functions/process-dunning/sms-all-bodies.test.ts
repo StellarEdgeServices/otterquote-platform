@@ -11,6 +11,12 @@
 //  3. Bodies: for every sendSMSToAll(phones, body) call, EVERY branch of the body expression (each arm
 //     of ?: / || / ??, and the start of every concatenation) must begin with a string/template literal
 //     starting "Otter Quotes". A brand on only a dead/optional branch does not count.
+//  4. Scope-aware names (B1): an identifier used as a body must have exactly ONE declaration in the module
+//     (no block-scoped duplicate/shadow, no let/var/destructure/parameter shadow) and no reassignment.
+//  5. Send path pinned (B2): sendSMSToAll passes its `message` parameter UNCHANGED as the second argument of
+//     the single sendSMS call, sendSMS appends exactly that parameter as the one Twilio "Body" and sends that
+//     same URLSearchParams as the fetch body, and neither parameter is reassigned/shadowed.
+// Negative controls: in-memory mutations of the REAL index.ts (M0-M3, B1, B2a-d) must each produce violations.
 // Run: deno test --allow-read=supabase/functions supabase/functions/process-dunning/sms-all-bodies.test.ts
 
 import { assert, assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
@@ -81,6 +87,33 @@ export function constInitializer(src: string, name: string): string | null {
   return splitTop(rest, [";"])[0].trim();
 }
 
+// ---------------------------------------------------------------- identifier hazards (B1)
+
+const NOT_MEMBER = "(?<![\\w$.])";
+const NOT_IDENT = "(?![\\w$])";
+
+/**
+ * Hazards that make a name unsafe to resolve with a text scan: more or fewer than one declaration
+ * (const/let/var, destructuring, parameter) anywhere in the module, or any reassignment/increment.
+ * `exactlyOne` additionally requires a declaration to exist (a body identifier must resolve to one).
+ */
+export function identifierHazards(src: string, name: string, exactlyOne: boolean): string[] {
+  const n = name.replace(/[$]/g, "\\$&");
+  const id = `${NOT_MEMBER}${n}${NOT_IDENT}`;
+  const decls =
+    (src.match(new RegExp(`\\b(?:const|let|var)\\s+${n}${NOT_IDENT}`, "g")) ?? []).length +
+    (src.match(new RegExp(`\\b(?:const|let|var)\\s*[\\[{][^;=]*?${id}[^;=]*?[\\]}]\\s*=`, "g")) ?? []).length +
+    (src.match(new RegExp(`\\bfunction\\b[^(]*\\([^)]*${id}`, "g")) ?? []).length +
+    (src.match(new RegExp(`\\(([^()]*)\\)\\s*(?::[^=;{]+)?=>`, "g")) ?? []).filter((m) => new RegExp(id).test(m)).length +
+    (src.match(new RegExp(`${id}\\s*=>`, "g")) ?? []).length;
+  const v: string[] = [];
+  if (exactlyOne ? decls !== 1 : decls > 1) v.push(`${name}: ${decls} declarations/shadows in the module (need exactly one, unambiguous scope)`);
+  const assign = new RegExp(`(?<!\\b(?:const|let|var)\\s+)${id}\\s*\\]?\\s*\\}?\\s*(?:\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?|[-+*/%&|^])?=(?![=>])`, "g");
+  if (assign.test(src)) v.push(`${name}: reassigned`);
+  if (new RegExp(`${id}\\s*(?:\\+\\+|--)|(?:\\+\\+|--)\\s*${id}`).test(src)) v.push(`${name}: incremented/decremented`);
+  return v;
+}
+
 // ---------------------------------------------------------------- body check
 
 /**
@@ -117,6 +150,8 @@ export function bodyViolations(src: string, expr: string, depth = 0): string[] {
     return text.startsWith(BRAND) ? [] : [`literal does not begin with "${BRAND}": ${JSON.stringify(text.slice(0, 50))}`];
   }
   if (/^[A-Za-z_$][\w$]*$/.test(first)) {
+    const hazards = identifierHazards(src, first, true);
+    if (hazards.length) return hazards;
     const init = constInitializer(src, first);
     return init === null ? [`cannot resolve identifier ${first}`] : bodyViolations(src, init, depth + 1);
   }
@@ -195,6 +230,94 @@ export function localImports(src: string): string[] {
   return [...out];
 }
 
+// ---------------------------------------------------------------- send path (B2)
+
+/** Parameter names of `function name(...)` (fails closed on destructuring/defaults/rest). */
+export function paramNames(src: string, name: string): string[] | null {
+  const m = new RegExp(`function\\s+${name}\\s*\\(`).exec(src);
+  if (!m) return null;
+  const open = m.index + m[0].length - 1;
+  const params = splitTop(src.slice(open + 1, skipBalanced(src, open) - 1), [","]).map((p) => p.trim()).filter((p) => p !== "");
+  const names: string[] = [];
+  for (const p of params) {
+    const mm = /^([A-Za-z_$][\w$]*)\s*:\s*[^=]+$/.exec(p);
+    if (!mm) return null;
+    names.push(mm[1]);
+  }
+  return names;
+}
+
+/** Text of the function body (from its opening brace), or null. */
+function bodyText(src: string, name: string): string | null {
+  const r = functionRange(src, name);
+  if (!r) return null;
+  const fn = src.slice(r[0], r[1]);
+  const open = fn.indexOf("{", skipBalanced(fn, fn.indexOf("(")));
+  return fn.slice(open);
+}
+
+/** Hazards for a name INSIDE a function body: declared, shadowed, or reassigned there. */
+function bodyHazards(body: string, name: string, label: string): string[] {
+  const n = name.replace(/[$]/g, "\\$&");
+  const id = `${NOT_MEMBER}${n}${NOT_IDENT}`;
+  const v: string[] = [];
+  if (new RegExp(`\\b(?:const|let|var)\\s*[\\[{]?[^;=]*?${id}`).test(body) && new RegExp(`\\b(?:const|let|var)\\s+${n}${NOT_IDENT}|\\b(?:const|let|var)\\s*[\\[{][^;=]*?${id}`).test(body)) v.push(`${label}: ${name} re-declared inside the function`);
+  if (/\bfunction\b/.test(body)) v.push(`${label}: nested function declaration`);
+  if ((body.match(/\(([^()]*)\)\s*(?::[^=;{]+)?=>/g) ?? []).some((m) => new RegExp(id).test(m)) || new RegExp(`${id}\\s*=>`).test(body)) v.push(`${label}: ${name} shadowed by an arrow parameter`);
+  const assign = new RegExp(`${id}\\s*\\]?\\s*\\}?\\s*(?:\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?|[-+*/%&|^])?=(?![=>])`);
+  if (assign.test(body)) v.push(`${label}: ${name} reassigned`);
+  if (new RegExp(`${id}\\s*(?:\\+\\+|--)|(?:\\+\\+|--)\\s*${id}`).test(body)) v.push(`${label}: ${name} incremented/decremented`);
+  return v;
+}
+
+/**
+ * The body that reaches Twilio must be exactly the `message` passed to sendSMSToAll:
+ *  - sendSMSToAll(phones, M): its single sendSMS call is sendSMS(<to>, M) with M never reassigned or shadowed;
+ *  - sendSMS(to, Q): exactly one "Body" key, appended as V.append("Body", Q) to the single
+ *    `const V = new URLSearchParams()`, V is what fetch sends (`body: V.toString()`), Q/V never reassigned.
+ */
+export function sendPathViolations(src: string): string[] {
+  const v: string[] = [];
+  const all = paramNames(src, "sendSMSToAll");
+  const one = paramNames(src, "sendSMS");
+  if (!all || all.length !== 2) return ["sendSMSToAll must have exactly two plain typed parameters (phones, message)"];
+  if (!one || one.length !== 2) return ["sendSMS must have exactly two plain typed parameters (to, message)"];
+  const M = all[1];
+  const Q = one[1];
+
+  const allBody = bodyText(src, "sendSMSToAll")!;
+  const inner = callArgs(allBody, "sendSMS");
+  if (inner.length !== 1) v.push(`sendSMSToAll must contain exactly one sendSMS call, found ${inner.length}`);
+  for (const a of inner) {
+    if (a.length !== 2 || a[1] !== M) v.push(`sendSMSToAll must pass its ${M} parameter unchanged: sendSMS(${a.join(", ")})`);
+  }
+  v.push(...bodyHazards(allBody, M, "sendSMSToAll"));
+
+  const smsBody = bodyText(src, "sendSMS")!;
+  v.push(...bodyHazards(smsBody, Q, "sendSMS"));
+  const bodyKeys = (smsBody.match(/["'`]Body["'`]/g) ?? []).length;
+  if (bodyKeys !== 1) v.push(`sendSMS must set the "Body" form key exactly once, found ${bodyKeys}`);
+  const params = [...smsBody.matchAll(/\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*new\s+URLSearchParams\s*\(([^)]*)\)/g)];
+  if (params.length !== 1 || (params[0] && params[0][2].trim() !== "")) {
+    v.push("sendSMS must create exactly one empty URLSearchParams");
+  } else {
+    const V = params[0][1];
+    const vn = V.replace(/[$]/g, "\\$&");
+    if (!new RegExp(`${NOT_MEMBER}${vn}\\s*\\.\\s*append\\s*\\(\\s*["']Body["']\\s*,\\s*${Q.replace(/[$]/g, "\\$&")}\\s*\\)`).test(smsBody)) {
+      v.push(`sendSMS must append the Body as ${V}.append("Body", ${Q}) with its own message parameter`);
+    }
+    const fetchBodies = smsBody.match(/\bbody\s*:\s*[^,}]+/g) ?? [];
+    if (fetchBodies.length !== 1 || fetchBodies[0].replace(/\s+/g, "") !== `body:${V}.toString()`) {
+      v.push(`sendSMS fetch must send exactly body: ${V}.toString(); found ${fetchBodies.join(" | ") || "none"}`);
+    }
+    if (new RegExp(`${NOT_MEMBER}${vn}\\s*\\.\\s*(?:set|delete|append)\\s*\\(`, "g").test(smsBody.replace(new RegExp(`${NOT_MEMBER}${vn}\\s*\\.\\s*append\\s*\\(\\s*["'](?:To|Body|MessagingServiceSid|From)["']`, "g"), ""))) {
+      v.push(`sendSMS mutates ${V} outside the known To/Body/sender appends`);
+    }
+    v.push(...bodyHazards(smsBody.replace(params[0][0], ""), V, "sendSMS").filter((h) => !h.includes("nested function")));
+  }
+  return v;
+}
+
 async function loadModules(): Promise<Map<string, string>> {
   const mods = new Map<string, string>();
   const queue: URL[] = [new URL("./index.ts", import.meta.url)];
@@ -210,43 +333,73 @@ async function loadModules(): Promise<Map<string, string>> {
 
 const indexUrl = () => new URL("./index.ts", import.meta.url).href;
 
-// ---------------------------------------------------------------- tests
+// ---------------------------------------------------------------- whole-module checks (shared by the real run and the mutation fixtures)
 
-Deno.test("gh-2884 process-dunning: every SMS body at every sendSMSToAll call site names the sender on EVERY branch", async () => {
-  const src = (await loadModules()).get(indexUrl())!;
+export function bodyCheck(src: string): string[] {
   const calls = callArgs(src, "sendSMSToAll");
-  assert(calls.length >= 4, `expected at least 4 sendSMSToAll call sites, found ${calls.length}`);
+  const v: string[] = [];
+  if (calls.length < 4) v.push(`expected at least 4 sendSMSToAll call sites, found ${calls.length}`);
   for (const args of calls) {
-    assertEquals(args.length, 2, `sendSMSToAll must be called with exactly (phones, body): ${args.join(" , ")}`);
-    const v = bodyViolations(src, args[1]);
-    assertEquals(v, [], `SMS body "${args[1].slice(0, 40)}" has a branch without the sender name`);
+    if (args.length !== 2) { v.push(`sendSMSToAll must be called with exactly (phones, body): ${args.join(" , ")}`); continue; }
+    v.push(...bodyViolations(src, args[1]).map((x) => `body ${args[1].slice(0, 40)}: ${x}`));
   }
-});
+  return v;
+}
 
-Deno.test("gh-2884 process-dunning: sendSMS and sendSMSToAll are only ever directly called (no alias, destructure, or value use)", async () => {
-  const src = (await loadModules()).get(indexUrl())!;
+export function referenceCheck(src: string): string[] {
+  const v: string[] = [];
   for (const name of ["sendSMS", "sendSMSToAll"]) {
-    assertEquals(nonCallReferences(src, name), [], `${name} referenced other than by a direct call`);
+    for (const r of nonCallReferences(src, name)) v.push(`${name} referenced other than by a direct call: ${r}`);
   }
-  assertEquals(callArgs(src, "sendSMS").length, 1, "sendSMS( must have exactly one call site (inside sendSMSToAll)");
-});
+  const n = callArgs(src, "sendSMS").length;
+  if (n !== 1) v.push(`sendSMS( must have exactly one call site (inside sendSMSToAll), found ${n}`);
+  return v;
+}
 
-Deno.test("gh-2884 process-dunning: the sendSMS helper is the only SMS transport in index.ts and every local module it imports", async () => {
-  const mods = await loadModules();
-  assert(mods.size >= 2, "expected index.ts plus at least one local import");
+export function transportCheck(mods: Map<string, string>): string[] {
   const violations: string[] = [];
   for (const [href, src] of mods) {
     let rest = src;
     if (href === indexUrl()) {
       const r = functionRange(src, "sendSMS");
-      assert(r !== null, "sendSMS helper not found in index.ts");
-      const inside = src.slice(r![0], r![1]);
-      assert(/api\.twilio\.com/.test(inside) && /Messages\.json/.test(inside), "sendSMS no longer holds the Twilio endpoint; update this guard");
-      rest = src.slice(0, r![0]) + src.slice(r![1]);
+      if (r === null) { violations.push("sendSMS helper not found in index.ts"); continue; }
+      const inside = src.slice(r[0], r[1]);
+      if (!(/api\.twilio\.com/.test(inside) && /Messages\.json/.test(inside))) violations.push("sendSMS no longer holds the Twilio endpoint; update this guard");
+      rest = src.slice(0, r[0]) + src.slice(r[1]);
     }
     violations.push(...transportViolations(href.split("/").slice(-2).join("/"), rest));
   }
-  assertEquals(violations, [], "a second SMS transport (or an un-allow-listed fetch) exists");
+  return violations;
+}
+
+/** Everything the guard enforces, over a module map (index.ts keyed by indexUrl()). */
+export function allViolations(mods: Map<string, string>): string[] {
+  const src = mods.get(indexUrl())!;
+  return [...bodyCheck(src), ...referenceCheck(src), ...sendPathViolations(src), ...transportCheck(mods)];
+}
+
+// ---------------------------------------------------------------- tests
+
+Deno.test("gh-2884 process-dunning: every SMS body at every sendSMSToAll call site names the sender on EVERY branch", async () => {
+  const src = (await loadModules()).get(indexUrl())!;
+  assert(callArgs(src, "sendSMSToAll").length >= 4, "expected at least 4 sendSMSToAll call sites");
+  assertEquals(bodyCheck(src), []);
+});
+
+Deno.test("gh-2884 process-dunning: sendSMS and sendSMSToAll are only ever directly called (no alias, destructure, or value use)", async () => {
+  const src = (await loadModules()).get(indexUrl())!;
+  assertEquals(referenceCheck(src), []);
+});
+
+Deno.test("gh-2884 process-dunning: the sendSMS helper is the only SMS transport in index.ts and every local module it imports", async () => {
+  const mods = await loadModules();
+  assert(mods.size >= 2, "expected index.ts plus at least one local import");
+  assertEquals(transportCheck(mods), [], "a second SMS transport (or an un-allow-listed fetch) exists");
+});
+
+Deno.test("gh-2884 process-dunning: the body reaching Twilio is exactly sendSMSToAll's message parameter (B2 pin)", async () => {
+  const src = (await loadModules()).get(indexUrl())!;
+  assertEquals(sendPathViolations(src), []);
 });
 
 // ---------------------------------------------------------------- controls on the scanners themselves
@@ -283,3 +436,84 @@ Deno.test("control: a second Twilio fetch and an un-allow-listed fetch are caugh
   assert(transportViolations("x", 'await fetch("https://example.com/hook", {});').length > 0);
   assertEquals(transportViolations("x", "await fetch(`https://api.mailgun.net/v3/${d}/messages`, {});"), []);
 });
+
+Deno.test("control: identifier hazards (B1) - duplicate, shadow, reassignment and missing declarations are refused", () => {
+  const ok = 'const A = "Otter Quotes: a";\nsend(p, A);';
+  assertEquals(bodyViolations(ok, "A"), []);
+  assert(bodyViolations('const A = "Otter Quotes: a";\n{ const A = "bad"; }', "A").length > 0);
+  assert(bodyViolations('const A = "Otter Quotes: a";\nlet A2 = 1; var A = "bad";', "A").length > 0);
+  assert(bodyViolations('const A = "Otter Quotes: a";\nA = "bad";', "A").length > 0);
+  assert(bodyViolations('let A = "Otter Quotes: a";\nA += "x";', "A").length > 0);
+  assert(bodyViolations('const A = "Otter Quotes: a";\nconst f = (A) => A;', "A").length > 0);
+  assert(bodyViolations('const A = "Otter Quotes: a";\nconst { A: B } = o; const [A] = z;', "A").length > 0);
+  assert(bodyViolations("send(p, A);", "A").length > 0);
+});
+
+Deno.test("control: send path (B2) - minimal sendSMSToAll/sendSMS pair passes, each rewrite is refused", () => {
+  const good = [
+    "async function sendSMS(to: string, message: string): Promise<boolean> {",
+    "  const body = new URLSearchParams();",
+    '  body.append("To", to);',
+    '  body.append("Body", message);',
+    '  const r = await fetch("https://api.twilio.com/x/Messages.json", { method: "POST", body: body.toString() });',
+    "  return r.ok;",
+    "}",
+    "async function sendSMSToAll(phones: string[], message: string): Promise<number> {",
+    "  let count = 0;",
+    "  for (const phone of phones) { const ok = await sendSMS(phone, message); if (ok) count++; }",
+    "  return count;",
+    "}",
+  ].join("\n");
+  assertEquals(sendPathViolations(good), []);
+  const bad = (from: string, to: string) => {
+    assert(good.includes(from), `fixture precondition: ${from}`);
+    return sendPathViolations(good.replace(from, to));
+  };
+  assert(bad("sendSMS(phone, message)", 'sendSMS(phone, `Reminder: ${message.replace("Otter Quotes: ", "")}`)').length > 0);
+  assert(bad("let count = 0;", 'let count = 0; message = message.slice(14);').length > 0);
+  assert(bad("let count = 0;", 'let count = 0; { const message = "x"; }').length > 0);
+  assert(bad('body.append("Body", message);', 'body.append("Body", message.slice(14));').length > 0);
+  assert(bad('body.append("Body", message);', 'body.append("Body", message); body.set("Body", "hi");').length > 0);
+  assert(bad("body: body.toString()", 'body: "Body=hi"').length > 0);
+  assert(bad("  return r.ok;", "  message = 'x'; return r.ok;").length > 0);
+});
+
+// Mutations applied IN MEMORY to the real index.ts. Each must produce violations; the unmutated file must not.
+async function realIndex(): Promise<{ mods: Map<string, string>; src: string }> {
+  const mods = await loadModules();
+  return { mods, src: mods.get(indexUrl())! };
+}
+function mutated(mods: Map<string, string>, src: string, edit: (s: string) => string): Map<string, string> {
+  const out = edit(src);
+  assert(out !== src, "mutation did not change index.ts - update the fixture");
+  const m = new Map(mods);
+  m.set(indexUrl(), out);
+  return m;
+}
+const fixtures: Array<[string, (s: string) => string]> = [
+  ["M0 prefix removed from HOURLY_SMS", (s) => s.replace(/(const\s+HOURLY_SMS\s*=\s*[`"'])Otter Quotes/, "$1Hello")],
+  ["M1 extra direct fetch to Twilio Messages.json", (s) => s + '\nawait fetch("https://api.twilio.com/2010-04-01/Accounts/x/Messages.json", { method: "POST", body: "Body=hello" });\n'],
+  ["M2 alias const go = sendSMSToAll", (s) => s + '\nconst go = sendSMSToAll; await go(["1"], "hello nobody");\n'],
+  ["M3 brand only on a dead ternary branch", (s) => s + '\nawait sendSMSToAll(p, (cond ? "Otter Quotes" : "") + "You have a balance");\n'],
+  ["B1 block-scoped duplicate const proceedSMS", (s) => s + '\n{ const proceedSMS = "Your card failed, pay now"; await sendSMSToAll(contacts.phones, proceedSMS); }\n'],
+  ["B1b block-scoped duplicate const WARNING_SMS before the real one", (s) => '{ const WARNING_SMS = "bad"; }\n' + s],
+  ["B1c reassignment of a body const via let shadow", (s) => s + '\n{ let lostSMS = "x"; lostSMS = "bad"; await sendSMSToAll(p, lostSMS); }\n'],
+  ["B2a body rewritten between sendSMSToAll and sendSMS", (s) => s.replace(/sendSMS\(\s*e164\s*,\s*message\s*\)/, 'sendSMS(e164, `Reminder: ${message.replace("Otter Quotes: ", "")}`)')],
+  ["B2b message reassigned before the sendSMS call", (s) => s.replace(/(const\s+ok\s*=\s*await\s+sendSMS\(\s*e164)/, 'message = message.replace("Otter Quotes: ", ""); $1')],
+  ["B2c Body appended with a transformed message in sendSMS", (s) => s.replace('body.append("Body", message)', 'body.append("Body", message.replace("Otter Quotes: ", ""))')],
+  ["B2d second Body key set after the append", (s) => s.replace('body.append("Body", message);', 'body.append("Body", message); body.set("Body", "hello");')],
+  ["B2e fetch sends a different payload", (s) => s.replace(/(Messages\.json`,[\s\S]*?)body:\s*body\.toString\(\)/, '$1body: "To=" + to + "&Body=hello"')],
+];
+
+Deno.test("gh-2884 mutation fixtures: the unmutated real index.ts is clean", async () => {
+  const { mods } = await realIndex();
+  assertEquals(allViolations(mods), []);
+});
+
+for (const [name, edit] of fixtures) {
+  Deno.test(`gh-2884 mutation fixture FAILS the guard: ${name}`, async () => {
+    const { mods, src } = await realIndex();
+    const v = allViolations(mutated(mods, src, edit));
+    assert(v.length > 0, `mutation "${name}" slipped past the guard`);
+  });
+}
