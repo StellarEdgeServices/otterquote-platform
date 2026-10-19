@@ -131,8 +131,8 @@ SELECT
   cp.carrier_name                                                              AS carrier_profile_name,
   -- the caller's own id, only when the caller is the selected contractor; null for every other caller
   CASE WHEN c.selected_contractor_id = ct.id THEN ct.id END                    AS selected_contractor_id,
-  CASE WHEN c.selected_contractor_id = ct.id THEN c.estimate_filename END      AS estimate_filename,
-  CASE WHEN c.selected_contractor_id = ct.id THEN c.measurements_filename END  AS measurements_filename
+  CASE WHEN c.selected_contractor_id = ct.id AND c.platform_fee_charged IS TRUE THEN c.estimate_filename END      AS estimate_filename,
+  CASE WHEN c.selected_contractor_id = ct.id AND c.platform_fee_charged IS TRUE THEN c.measurements_filename END  AS measurements_filename
 FROM public.claims c
 JOIN public.contractors ct ON ct.user_id = (SELECT auth.uid())
 LEFT JOIN public.carrier_profiles cp ON cp.id = c.carrier_id
