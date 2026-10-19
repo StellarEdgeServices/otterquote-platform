@@ -1,10 +1,11 @@
 
 // [gh-2559 / D-390] Homeowner-typed text that reaches the SELECTED contractor before the Platform Fee is collected has its phone-shaped and
-// e-mail-shaped text removed. The patterns live in ONE place, the Postgres function public.d390_redact_contact (the bidder rule b/c patterns of
-// ledger 20261008231303), so the browser views, the Scope of Work and the notification e-mail redact identically. This helper only decides WHEN
+// e-mail-shaped text removed. For the bidder view, the thread view and the notification e-mail preview the patterns live in ONE place, the Postgres function
+// public.d390_redact_contact (the bidder rule b/c patterns of ledger 20261008231303), so those three redact identically. The signed Scope of Work does NOT: it uses
+// its own narrower in-process patterns (SOW_PATTERNS below; LEGAL-READ 6256737488 L4; precision over recall). This helper only decides WHEN
 // (fee not collected) and fails CLOSED: if the function cannot be reached, the typed text is never passed on. What happens instead depends on the
 // surface, and neither prints any wording of our own (LEGAL-READ 6256212786 L1):
-//   - Scope of Work (a signed document): redactContactOrRefuse() throws RedactionUnavailableError; the caller refuses to build the envelope.
+//   - Scope of Work (a signed document): redactSowTextOrRefuse() (in-process, no rpc) throws RedactionUnavailableError; the caller refuses to build the envelope.
 //   - e-mail preview: homeownerTextForContractor() returns REMOVED_TOKEN, the same token the success path produces.
 //
 // feeCollected must be `claims.platform_fee_charged === true` (the column is nullable: null and false both redact).
@@ -50,9 +51,10 @@ export async function redactContactOrRefuse(
 //     at most one separator character (space, dot, dash) between groups, or parentheses, or as 10 contiguous
 //     digits (11 with a leading 1). KNOWN RESIDUAL: a bare "250-500-1000" or "250 500 1000" or a 10-digit number starting 2-9 is phone-shaped. Digit boundaries: it never bites into a longer
 //     digit run (a 12-digit claim number), never into a dotted or comma figure (12500.00, 1,250.00), and there is no bare 7-digit rule.
-//   - e-mail: local@domain.tld (no spaces around the at-sign), local(at)domain.tld, and the spelled-out forms with an explicit dot token
-//     ("jane at example dot com") or a common TLD ("jane at example.com"). Never across a sentence break ("Leak at chimney. Please ..."),
-//     never "Shingles @ 400 per square".
+//   - e-mail: local@domain.tld with no space around the at-sign, local(at)domain.tld, local @ domain.tld with space(s) on either side of the at-sign (only when the domain starts with
+//     a letter, has a dot and ends in a listed lower-case TLD), and the spelled-out forms with an explicit dot token ("jane at example dot com") or a listed TLD
+//     ("jane at example.com"). Never across a sentence break ("Leak at chimney. Please ..."), never "Shingles @ 400 per square". Residuals and advisory leaks of
+//     these rules (precision over recall) are named in the pre-flight, SOW section.
 // Matching runs on a length-preserving folded copy (full-width and compatibility characters become their plain form for DETECTION only); the
 // matched spans are then cut out of the ORIGINAL text, so every unmatched character prints exactly as typed (cafe accent, ft squared, one half).
 // The text is never truncated. All patterns are linear: each token pattern starts only at a token boundary (lookbehind).
