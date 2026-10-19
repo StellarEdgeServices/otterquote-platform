@@ -19,6 +19,8 @@ export type StripeHttp = (
 ) => Promise<{ ok: boolean; status: number; json: () => Promise<any> }>;
 /** A hung Stripe call must become `unknown` inside the Edge Function wall-clock limit (REVIEW 6276858298 D1). */
 export const STRIPE_TIMEOUT_MS = 20_000;
+/** A pass that dies leaves the lease to expire after this long. */
+export const LEASE_TTL_MS = 10 * 60 * 1000;
 export const stripeHttp: StripeHttp = (path, init) =>
   fetch(`${STRIPE_API_BASE}${path}`, { ...init, signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS) });
 
@@ -164,13 +166,14 @@ export function buildRetryPassDeps(
       return Array.isArray(data) ? data.length : 0;
     },
     async markStuckAlerted(rowIds: string[], attempt: UnknownAttempt, nowIso: string): Promise<number> {
-      // Adds stuckAlertedAt to the stored attempt; the request and its key are copied unchanged. Guarded on the marker
-      // being the same attempt, so it cannot touch a different one.
+      // Adds stuckAlertedAt to the stored attempt (request and key copied unchanged). Compare-and-set: only rows that
+      // still hold THIS attempt (by key) and have no flag yet, so exactly one tick wins and alerts.
       const { data, error } = await supabase
         .from("payment_failures")
         .update({ retry_unknown_attempt: { ...attempt, stuckAlertedAt: nowIso } })
         .in("id", rowIds)
-        .eq("retry_unknown_at", attempt.attemptedAt)
+        .eq("retry_unknown_attempt->req->>idempotencyKey", attempt.req.idempotencyKey)
+        .is("retry_unknown_attempt->>stuckAlertedAt", null)
         .select("id");
       if (error) { console.error("[process-dunning] stuck-alert flag write failed:", error); return 0; }
       return Array.isArray(data) ? data.length : 0;
@@ -193,10 +196,37 @@ export function buildRetryPassDeps(
       if (error) return rowIds.length; // cannot tell: treat as still open so the alert is raised
       return Array.isArray(data) ? data.length : 0;
     },
-    async clearUnknown(rowIds: string[]): Promise<number> {
-      const { data, error } = await supabase.from("payment_failures").update({ retry_unknown_at: null, retry_unknown_attempt: null }).in("id", rowIds).select("id");
+    async clearUnknown(rowIds: string[], idempotencyKey: string): Promise<number> {
+      // Compare-and-set on the stored attempt's idempotency key (never a timestamp): only clears the attempt it settles.
+      const { data, error } = await supabase
+        .from("payment_failures")
+        .update({ retry_unknown_at: null, retry_unknown_attempt: null })
+        .in("id", rowIds)
+        .eq("retry_unknown_attempt->req->>idempotencyKey", idempotencyKey)
+        .select("id");
       if (error) { console.error("[process-dunning] retry_unknown_at clear failed:", error); return 0; }
       return Array.isArray(data) ? data.length : 0;
+    },
+    async acquireLease(): Promise<string | null> {
+      // Single-row lease with expiry (dunning_retry_pass_lease). Fails closed: unreadable lease = no pass this tick.
+      const token = crypto.randomUUID();
+      const t = nowFn();
+      const { data, error } = await supabase
+        .from("dunning_retry_pass_lease")
+        .update({ holder: token, locked_until: new Date(t.getTime() + LEASE_TTL_MS).toISOString() })
+        .eq("id", 1)
+        .lt("locked_until", t.toISOString())
+        .select("id");
+      if (error) { console.error("[process-dunning] retry pass lease unavailable; pass skipped this tick:", error); return null; }
+      return Array.isArray(data) && data.length > 0 ? token : null;
+    },
+    async releaseLease(token: string): Promise<void> {
+      await supabase
+        .from("dunning_retry_pass_lease")
+        .update({ locked_until: new Date(0).toISOString() })
+        .eq("id", 1)
+        .eq("holder", token)
+        .select("id");
     },
     async getQuotePaymentStatus(quoteId: string) {
       const { data } = await supabase.from("quotes").select("payment_status").eq("id", quoteId).maybeSingle();

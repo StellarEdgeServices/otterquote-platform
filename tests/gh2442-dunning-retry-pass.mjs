@@ -33,16 +33,18 @@ function makeDeps(rows, over = {}) {
     markHandled: async (ids, t, req) => { log.handled.push([ids, t, req]); return over.markWrites ?? ids.length; },
     refundRequest: async (id, n) => { log.refunds.push([id, n]); return true; },
     markUnknown: async (ids, attempt) => { log.unknown.push([ids, attempt]); return over.markUnknownWrites ?? ids.length; },
-    clearUnknown: async (ids) => { log.cleared.push(ids); return over.clearWrites ?? ids.length; },
+    clearUnknown: async (ids, key) => { log.cleared.push(ids); (log.clearKeys ??= []).push(key); return over.clearWrites ?? ids.length; },
+    acquireLease: async () => (over.lease === false ? null : 'tok'),
+    releaseLease: async (t) => { log.released = t; },
     markStuckAlerted: async (ids, att, t) => { log.stuck = (log.stuck ?? 0) + 1; return over.stuckCas ?? ids.length; },
-    retrieveIntent: async () => over.fresh ?? { error: 'not available' },
+    retrieveIntent: async () => over.fresh ?? (log.lastStatus ? { status: log.lastStatus } : { error: 'no intent' }),
     countOpenRows: async () => over.openLeft ?? 1,
     getQuotePaymentStatus: async () => over.payStatus ?? 'failed',
     chargeGuard: async () => over.guard ?? { allow: true, message: '' },
     getChargeMethods: async () => over.methods === undefined
       ? { customerId: 'cus_1', methods: [{ stripe_pm_id: 'pm_ach1', payment_type: 'us_bank_account', cpm_id: 'cpm1' }, { stripe_pm_id: 'pm_card1', payment_type: 'card', cpm_id: 'cpm2' }] }
       : over.methods,
-    charge: async (req) => { log.charges.push(req); return (over.results ?? [])[log.charges.length - 1] ?? { status: 'failed', paymentIntentId: null, declineCode: 'card_declined', message: 'x' }; },
+    charge: async (req) => { log.charges.push(req); const r = (over.results ?? [])[log.charges.length - 1] ?? { status: 'failed', paymentIntentId: null, declineCode: 'card_declined', message: 'x' }; log.lastStatus = r.status === 'unknown' ? null : r.status; return r; },
     recordQuoteResult: async (q, u) => { log.quote.push([q, u]); return over.recordOk ?? true; },
     closeDunningRows: async (ids) => { log.closed.push(ids); return over.closeWrites ?? ids.length; },
     alert: async (t, m) => { log.alerts.push([t, m]); },
@@ -235,12 +237,14 @@ const Sx = (o = {}) => row({ id: 'S', dunning_status: 'warning_sent', homeowner_
 // In-memory supabase fake for the real wiring (listCandidateRows two-step read, CAS, close filter, hold lookup, replay)
 function fakeSb(tables) {
   const calls = [];
+  const col = (r, c) => { const t = c.split(/->>?/); let v = r[t[0]]; for (const k of t.slice(1)) v = v == null ? null : v[k]; return v ?? null; };
   const match = (r, f) => {
-    if (f[0] === 'notnull') return r[f[1]] != null;
-    if (f[0] === 'isnull') return r[f[1]] == null;
-    if (f[0] === 'gte') return r[f[1]] >= f[2];
-    if (f[0] === 'in') return f[2].includes(r[f[1]]);
-    if (f[0] === 'eq') return r[f[1]] === f[2];
+    if (f[0] === 'notnull') return col(r, f[1]) != null;
+    if (f[0] === 'isnull') return col(r, f[1]) == null;
+    if (f[0] === 'gte') return col(r, f[1]) >= f[2];
+    if (f[0] === 'lt') return col(r, f[1]) != null && col(r, f[1]) < f[2];
+    if (f[0] === 'in') return f[2].includes(col(r, f[1]));
+    if (f[0] === 'eq') return col(r, f[1]) === f[2];
     if (f[0] === 'or') return f[1].split(',').some((c) => { const [col, op, ...v] = c.split('.'); const val = v.join('.'); return op === 'is' ? r[col] == null : op === 'lt' ? (r[col] != null && r[col] < val) : false; });
     return true;
   };
@@ -256,7 +260,7 @@ function fakeSb(tables) {
     const api = {
       select() { return api; }, update(v) { q.upd = v; return api; }, insert(v) { q.ins = v; return api; }, order() { return api; },
       not(c, op, v) { q.filters.push(['notnull', c]); return api; }, is(c, v) { q.filters.push(['isnull', c]); return api; },
-      gte(c, v) { q.filters.push(['gte', c, v]); return api; }, in(c, v) { q.filters.push(['in', c, v]); return api; },
+      gte(c, v) { q.filters.push(['gte', c, v]); return api; }, lt(c, v) { q.filters.push(['lt', c, v]); return api; }, in(c, v) { q.filters.push(['in', c, v]); return api; },
       eq(c, v) { q.filters.push(['eq', c, v]); return api; }, or(s2) { q.filters.push(['or', s2]); return api; },
       maybeSingle() { return Promise.resolve({ data: run()[0] ?? null, error: null }); }, single() { return Promise.resolve({ data: run()[0] ?? null, error: null }); },
       then(res, rej) { try { res({ data: run(), error: null }); } catch (e) { (rej || (() => { throw e; }))(e); } },
@@ -317,7 +321,7 @@ const mkTables = () => ({ payment_failures: [
 // The simulated Stripe honours idempotency keys exactly like Stripe does: the same key returns the ORIGINAL response
 // (even when that response was lost on the wire); a different key makes a new intent. Search lags for intents flagged slow.
 function makeStripe(script) {
-  const st = { intents: [], byKey: new Map(), posts: [], gets: [] };
+  const st = { intents: [], byKey: new Map(), posts: [], gets: [], hold: new Map() };
   let seq = 0;
   st.fetchFn = async (url, init) => {
     if (init.method === 'GET' && /\/payment_intents\/pi_/.test(url)) { const i = st.intents.find((x) => url.endsWith(x.id)); return i ? j(200, { id: i.id, status: i.status }) : j(404, {}); }
@@ -328,8 +332,9 @@ function makeStripe(script) {
     if (!url.endsWith('/payment_intents')) return j(200, {});
     const key = init.headers['Idempotency-Key']; const body = new URLSearchParams(init.body);
     st.posts.push({ key, pm: body.get('payment_method'), body: init.body });
+    const nth = st.posts.length; const held = async () => { if (st.hold.has(nth)) await st.hold.get(nth); };
     const prev = st.byKey.get(key);
-    if (prev) { if (prev.body !== init.body) return j(400, { error: { type: 'idempotency_error' } }); return prev.respond(); }
+    if (prev) { if (prev.body !== init.body) return j(400, { error: { type: 'idempotency_error' } }); await held(); return prev.respond(); }
     const act = script(body.get('payment_method'), st.posts.length);
     if (act === 'lost-before') throw new Error('network timeout (request never arrived)');
     const intent = { id: 'pi_' + (++seq), status: act === 'decline' ? 'requires_payment_method' : act === 'processing' ? 'processing' : 'succeeded', amount: Number(body.get('amount')), slowIndex: act === 'ok-lost-slow' };
@@ -340,6 +345,7 @@ function makeStripe(script) {
     st.byKey.set(key, { body: init.body, respond });
     if (act === 'ok-lost' || act === 'ok-lost-slow') throw new Error('connection reset (response lost)');
     if (act === 'hang-created') return new Promise(() => {}); // the worker is killed / the call outlives the function: never resolves
+    await held();
     return respond();
   };
   st.succeeded = () => st.intents.filter((i) => i.status === 'succeeded').length;
@@ -352,7 +358,7 @@ function world(rows, stripe, clock) {
     contractor_payment_methods: [
       { id: 'cpm1', contractor_id: 'c1', is_default: true, payment_type: 'card', stripe_payment_method_id: 'pm_card1' },
       { id: 'cpm2', contractor_id: 'c1', is_default: false, payment_type: 'card', stripe_payment_method_id: 'pm_card2' }],
-    platform_alerts_log: [],
+    platform_alerts_log: [], dunning_retry_pass_lease: [{ id: 1, holder: null, locked_until: '1970-01-01T00:00:00.000Z' }],
   };
   const sb = fakeSb(t);
   const mkDeps = () => S.buildRetryPassDeps(sb, 'sk_test_x', guardApi, stripe.fetchFn, () => clock.now);
@@ -474,7 +480,7 @@ const tick0 = () => new Promise((r) => setTimeout(r, 25));
   const w = world([wr(clock), sr(clock)], stripe, clock);
   const deps = w.mkDeps(); deps.clearUnknown = async () => 0;
   const out = await P.runRetryPass(deps);
-  ok(stripe.posts.length === 1 && out[0].reason === 'could_not_write_ahead' && stripe.succeeded() === 0, 'definite decline + marker cannot be cleared -> the second method is NOT charged'); }
+  ok(stripe.posts.length === 1 && out[0].reason === 'marker_moved_on' && stripe.succeeded() === 0, 'definite decline + marker cannot be cleared (CAS missed) -> stop, the second method is NOT charged'); }
 // decline then success: marker is swapped per method and ends cleared
 { const clock = { now: new Date(NOW) };
   const stripe = makeStripe((pm) => (pm === 'pm_card1' ? 'decline' : 'ok'));
@@ -490,6 +496,75 @@ const tick0 = () => new Promise((r) => setTimeout(r, 25));
   ok(res.status === 'unknown', 'a timeout error is classed unknown, not a decline'); }
 // N4: columns the contractor can read
 ok(!/select\('\*/.test(fs.readFileSync(path.join(root, 'react-app/app/contractor/dashboard/use-dashboard-data.ts'), 'utf8').split("from('payment_failures')")[1]?.slice(0, 80) ?? ''), 'N4: react dashboard selects explicit payment_failures columns');
+
+
+// ═════════════ REVIEW 6277096279 E1: overlapping ticks must not clear each other's marker ═════════════
+{ const clock = { now: new Date(NOW) };
+  const stripe = makeStripe((pm) => (pm === 'pm_card1' ? 'decline' : 'ok-lost-slow'));
+  // gate 1 = tick A's card1 response, gate 2 = tick B's replay response
+  let g1, g2; stripe.hold.set(1, new Promise((r) => { g1 = r; })); stripe.hold.set(2, new Promise((r) => { g2 = r; }));
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  // The lease would stop tick B from starting at all; this test takes it away to prove the key-CAS holds on its own.
+  const depsA = w.mkDeps(); const depsB = w.mkDeps(); depsA.acquireLease = depsB.acquireLease = async () => 'no-lease';
+  const A = P.runRetryPass(depsA); await tick0();                     // A: write-ahead card1, POST card1, response held
+  ok(stripe.posts.length === 1 && w.t.payment_failures.find((r) => r.id === 'W').retry_unknown_attempt?.req.method.stripe_pm_id === 'pm_card1', 'E1 setup: A is mid-POST on card1 with its marker stored');
+  const B = P.runRetryPass(depsB); await tick0();                     // B: reads the card1 marker, replays card1, response held
+  ok(stripe.posts.length === 2 && stripe.posts[1].key === stripe.posts[0].key, 'E1 setup: B (stale snapshot) is replaying the card1 key');
+  g1();                                                                // A gets the 402, clears card1, write-ahead card2, POSTs card2 (response lost)
+  const oA = await A;
+  const markerNow = w.t.payment_failures.find((r) => r.id === 'W').retry_unknown_attempt;
+  ok(oA[0].outcome === 'unknown' && markerNow?.req.method.stripe_pm_id === 'pm_card2' && stripe.succeeded() === 1, 'E1 setup: A moved on to card2 (charged at Stripe, response lost) with card2 as the live marker');
+  g2();                                                                // B now gets the cached card1 decline and tries to clear
+  const oB = await B;
+  ok(oB[0].reason === 'marker_moved_on', 'E1: B\'s clear compared the card1 key, wrote 0 rows and stopped');
+  ok(w.t.payment_failures.every((r) => r.retry_unknown_attempt?.req.method.stripe_pm_id === 'pm_card2'), 'E1: A\'s card2 marker is still on every row');
+  ok(!w.t.platform_alerts_log.some((a) => a.alert_type === 'dunning_retry_unknown_resolved'), 'E1: B did not report a resolution it did not make');
+  adv(clock, 30); const oC = await w.tick();
+  ok(oC[0].outcome === 'reconciled' && stripe.succeeded() === 1 && w.t.quotes[0].payment_status === 'succeeded', 'E1: the next tick replays card2 and records pi_2');
+  adv(clock, 5); const Wr = w.t.payment_failures.find((r) => r.id === 'W'); Wr.retry_requested_at = clock.now.toISOString(); Wr.retry_request_count = 2;
+  await w.tick(); ok(stripe.succeeded() === 1, 'E1: a later Retry charges nothing: exactly ONE succeeded intent'); }
+
+// run lease
+{ const clock = { now: new Date(NOW) };
+  const stripe = makeStripe(() => 'ok');
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  const dA = w.mkDeps(), dB = w.mkDeps();
+  const tokA = await dA.acquireLease(); const tokB = await dB.acquireLease();
+  ok(tokA && !tokB, 'lease: a second tick cannot take the lease while the first holds it');
+  const outB = await P.runRetryPass(dB); ok(outB[0].reason === 'another_pass_holds_the_lease' && stripe.posts.length === 0, 'lease: the pass does nothing without the lease');
+  await dA.releaseLease(tokA); ok(await dB.acquireLease(), 'lease: free again after release');
+  adv(clock, 11); ok(await dA.acquireLease(), 'lease: a crashed holder\'s lease expires after the TTL (10 min)'); }
+{ const clock = { now: new Date(NOW) };
+  const stripe = makeStripe(() => 'ok');
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  w.t.dunning_retry_pass_lease.length = 0; // lease table missing / unreadable -> fail closed
+  const out = await w.tick(); ok(out[0].reason === 'another_pass_holds_the_lease' && stripe.posts.length === 0, 'lease: no readable lease row -> the pass is skipped (fails closed)'); }
+{ const { deps, log } = makeDeps([row()], { results: [SUCCESS] }); await P.runRetryPass(deps);
+  ok(log.released === 'tok', 'lease: released when the pass finishes'); }
+{ const { deps, log } = makeDeps([row()], { lease: false }); const out = await P.runRetryPass(deps);
+  ok(out[0].reason === 'another_pass_holds_the_lease' && log.charges.length === 0 && log.handled.length === 0, 'lease held elsewhere: nothing read, nothing charged'); }
+
+// CAS keys on every clear
+{ const { deps, log } = makeDeps([row()], { results: [{ status: 'failed', declineCode: 'card_declined' }, SUCCESS] }); await P.runRetryPass(deps);
+  ok(log.clearKeys.length === 2 && log.clearKeys.every((k) => k.startsWith('dunning-retry-')) && log.clearKeys[0].includes('pm_ach1') && log.clearKeys[1].includes('pm_card1'), 'every clear is keyed on the idempotency key of the attempt it settles'); }
+{ const { deps, log } = makeDeps([unk()], { results: [{ status: 'failed', paymentIntentId: 'pi_d', declineCode: 'x' }], clearWrites: 0 }); const out = await P.runRetryPass(deps);
+  ok(out[0].reason === 'marker_moved_on' && log.alerts.length === 0, 'reconcile: a clear that writes 0 rows stops the tick and says nothing'); }
+{ const { deps, log } = makeDeps([unk()], { results: [SUCCESS], clearWrites: 0 }); const out = await P.runRetryPass(deps);
+  ok(out[0].reason === 'marker_moved_on' && !log.alerts.some((a) => a[0] === 'dunning_retry_unknown_resolved'), 'reconcile success path: 0-row clear also stops without a "resolved" alert'); }
+{ const { deps, log } = makeDeps([unk()], { results: [SUCCESS], fresh: { error: 'HTTP 500' } }); const out = await P.runRetryPass(deps);
+  ok(out[0].reason === 'reconcile_fresh_state_unavailable' && log.quote.length === 0 && log.cleared.length === 0 && log.closed.length === 0, 'N-f: the fresh-state read failed -> nothing recorded and the marker is KEPT'); }
+// N1b stuck flag is compare-and-set against the real wiring
+{ const clock = { now: new Date(NOW) };
+  const stripe = makeStripe(() => 'ok-lost-slow');
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  await w.tick(); adv(clock, 24 * 60);
+  const dA = w.mkDeps(), dB = w.mkDeps(); dA.acquireLease = dB.acquireLease = async () => 'x';
+  await Promise.all([P.runRetryPass(dA), P.runRetryPass(dB)]);
+  ok(w.t.platform_alerts_log.filter((a) => a.alert_type === 'dunning_retry_unknown_stuck').length === 1, 'N1b: two ticks at 23h+ -> exactly ONE stuck alert (flag is unset->set CAS)'); }
+// source pins
+{ const src = fs.readFileSync(path.join(dir, 'retry-pass-supabase.ts'), 'utf8');
+  ok(/clearUnknown\(rowIds: string\[\], idempotencyKey: string\)/.test(src) && src.includes('.eq("retry_unknown_attempt->req->>idempotencyKey", idempotencyKey)'), 'wiring: clearUnknown is a CAS on the stored idempotency key');
+  ok(!/attemptedAt\)\s*\.select/.test(src.split('async clearUnknown')[1]?.split('async acquireLease')[0] ?? ''), 'wiring: clearUnknown does not key on attemptedAt'); }
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

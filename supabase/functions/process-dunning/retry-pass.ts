@@ -126,8 +126,16 @@ export interface RetryPassDeps {
    * Write-once: only rows whose marker is NULL are written, so a later request can never move the stored key.
    */
   markUnknown: (rowIds: string[], attempt: UnknownAttempt) => Promise<number>;
-  clearUnknown: (rowIds: string[]) => Promise<number>;
-  /** Flag the stored attempt as alerted (adds stuckAlertedAt, key untouched). Returns rows written. */
+  /**
+   * Compare-and-set clear: only rows whose stored attempt still carries THIS idempotency key. Returns rows written.
+   * Never keyed on a timestamp, never unconditional: an overlapping tick may already have moved the marker on to the
+   * next attempt, and wiping that one would bring back the double charge (REVIEW 6277096279 E1).
+   */
+  clearUnknown: (rowIds: string[], idempotencyKey: string) => Promise<number>;
+  /** Run lease: one pass at a time. Returns a token, or null when another pass holds it (or the lease cannot be read). */
+  acquireLease: () => Promise<string | null>;
+  releaseLease: (token: string) => Promise<void>;
+  /** Flag the stored attempt as alerted (adds stuckAlertedAt, key untouched); compare-and-set unset -> set. Returns rows written. */
   markStuckAlerted: (rowIds: string[], attempt: UnknownAttempt, nowIso: string) => Promise<number>;
   /** The intent's CURRENT state (a replay returns the cached original response, which can be stale for ACH). */
   retrieveIntent: (paymentIntentId: string) => Promise<{ status: string } | { error: string }>;
@@ -311,16 +319,19 @@ async function reconcile(deps: RetryPassDeps, g: Group, quoteId: string): Promis
   if ((res.status === "succeeded" || res.status === "processing") && res.paymentIntentId) {
     // The replay returns the CACHED original response. For a bank payment that may be stale: read the intent now.
     const fresh = await deps.retrieveIntent(res.paymentIntentId);
-    if (!("error" in fresh)) {
-      if (fresh.status === "succeeded") res = { ...res, status: "succeeded" };
-      else if (fresh.status === "processing") res = { ...res, status: "processing" };
-      else if (["requires_payment_method", "canceled", "requires_action"].includes(fresh.status)) {
-        res = { status: "failed", paymentIntentId: res.paymentIntentId, declineCode: fresh.status, message: "intent no longer holds funds" };
-      }
+    // If the current state cannot be read, record nothing and KEEP the marker: the next pass replays and reads again.
+    if ("error" in fresh) return { quoteKey: g.key, outcome: "skipped", reason: "reconcile_fresh_state_unavailable" };
+    if (fresh.status === "succeeded") res = { ...res, status: "succeeded" };
+    else if (fresh.status === "processing") res = { ...res, status: "processing" };
+    else if (["requires_payment_method", "canceled", "requires_action"].includes(fresh.status)) {
+      res = { status: "failed", paymentIntentId: res.paymentIntentId, declineCode: fresh.status, message: "intent no longer holds funds" };
+    } else {
+      return { quoteKey: g.key, outcome: "skipped", reason: "reconcile_fresh_state_unexpected" };
     }
   }
   if (res.status === "failed") {
-    await deps.clearUnknown(ids);
+    // CAS on the key: if another tick has moved the marker on to its next attempt, leave it alone and do nothing more.
+    if ((await deps.clearUnknown(ids, req.idempotencyKey)) < 1) return { quoteKey: g.key, outcome: "skipped", reason: "marker_moved_on" };
     await deps.alert("dunning_retry_unknown_resolved", `Retry pass: in-doubt attempt for quote ${quoteId} (key ${req.idempotencyKey}) resolved as a definite decline (${res.declineCode ?? "no code"}); no money moved. Marker cleared; the rest of the request was not attempted.`);
     return { quoteKey: g.key, outcome: "reconciled", result: "declined" };
   }
@@ -335,12 +346,23 @@ async function reconcile(deps: RetryPassDeps, g: Group, quoteId: string): Promis
   const recorded = await recordResult(deps, quoteId, update, `replayed in-doubt attempt: Stripe ${res.status} (payment_intent ${res.paymentIntentId})`);
   if (res.status === "succeeded") await closeGroup(deps, g, quoteId);
   if (!recorded) return { quoteKey: g.key, outcome: "skipped", reason: "replay_result_not_recorded" };
-  await deps.clearUnknown(ids);
+  if ((await deps.clearUnknown(ids, req.idempotencyKey)) < 1) return { quoteKey: g.key, outcome: "skipped", reason: "marker_moved_on" };
   await deps.alert("dunning_retry_unknown_resolved", `Retry pass: in-doubt attempt for quote ${quoteId} (key ${req.idempotencyKey}) resolved by replay: ${res.status}, payment_intent ${res.paymentIntentId}.`);
   return { quoteKey: g.key, outcome: "reconciled", result: res.status };
 }
 
 export async function runRetryPass(deps: RetryPassDeps): Promise<GroupOutcome[]> {
+  // Belt and braces: one pass at a time. The key-CAS above is what makes an overlap harmless; the lease makes it rare.
+  const lease = await deps.acquireLease();
+  if (!lease) return [{ quoteKey: "-", outcome: "skipped", reason: "another_pass_holds_the_lease" }];
+  try {
+    return await runRetryPassLocked(deps);
+  } finally {
+    try { await deps.releaseLease(lease); } catch (_) { /* the lease expires on its own */ }
+  }
+}
+
+async function runRetryPassLocked(deps: RetryPassDeps): Promise<GroupOutcome[]> {
   const now = deps.now();
   const sinceIso = new Date(now.getTime() - 3 * MAX_REQUEST_AGE_MS).toISOString();
   const rows = await deps.listCandidateRows(sinceIso);
@@ -436,7 +458,14 @@ export async function runRetryPass(deps: RetryPassDeps): Promise<GroupOutcome[]>
         break;
       }
       if (res.status === "failed") {
-        await deps.clearUnknown(ids); // definite decline: nothing in doubt. (If this write fails the next write-ahead refuses.)
+        // definite decline: nothing in doubt. CAS on this attempt's key; if it does not land (an overlapping tick moved
+        // the marker, or the write failed) STOP: the marker that is there is not ours to touch and not ours to outrun.
+        if ((await deps.clearUnknown(ids, chargeReq.idempotencyKey)) < 1) {
+          await deps.alert("dunning_retry_marker_moved", `Retry pass: after a definite decline for quote ${quoteId} the in-doubt marker no longer held key ${chargeReq.idempotencyKey}; stopped without trying another method.`);
+          outcomes.push({ quoteKey: g.key, outcome: "skipped", reason: "marker_moved_on" });
+          done = true;
+          break;
+        }
         if (isHardDecline(res.declineCode)) {
           hardDeclines++;
           await deps.alert("dunning_retry_hard_decline", `Retry pass: ${method.payment_type} ****${method.stripe_pm_id.slice(-4)} hard-declined (${res.declineCode}) for quote ${quoteId}.`);
@@ -452,7 +481,7 @@ export async function runRetryPass(deps: RetryPassDeps): Promise<GroupOutcome[]>
       if (isCard) update.card_fee_cents = chargeAmountCents - fee;
       const recorded = await recordResult(deps, quoteId, update, `Stripe ${res.status} (payment_intent ${res.paymentIntentId})`);
       if (res.status === "succeeded") await closeGroup(deps, g, quoteId);
-      if (recorded) await deps.clearUnknown(ids); // settled; otherwise the marker stays and the next pass replays and records
+      if (recorded) await deps.clearUnknown(ids, chargeReq.idempotencyKey); // settled; otherwise the marker stays and the next pass replays and records
       outcomes.push({
         quoteKey: g.key,
         outcome: res.status === "succeeded" ? "charged" : "processing",
