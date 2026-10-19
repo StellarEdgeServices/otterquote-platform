@@ -46,6 +46,9 @@ import {
 // #2105 5848495644). Switched from this batch's original local copy to the
 // shared one; the local copy is deleted.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+// gh-2442: contractor-requested retry pass (CRON mode). Off unless DUNNING_RETRY_PASS_ENABLED=true.
+import { runRetryPass } from "./retry-pass.ts";
+import { buildRetryPassDeps } from "./retry-pass-supabase.ts";
 // gh-2309: inbound caller gate (service-role bearer on TRIGGER + CRON).
 import { acceptedServiceKeys, classifyRequest, gateResponse, validateHomeownerChoice } from "./caller-gate.ts";
 // gh-1824: email bodies live in templates.ts (pinned by templates.test.ts).
@@ -1179,6 +1182,28 @@ export async function handler(
     const now = new Date();
     let processed = 0;
 
+    // ── gh-2442 RETRY PASS: contractor-requested retries (request_dunning_retry) ──
+    // OFF by default: deploying this code charges nothing until DUNNING_RETRY_PASS_ENABLED=true is set.
+    // DUNNING_RETRY_PASS_TEST_MODE=true switches the pass to STRIPE_SECRET_KEY_TEST (required first proof, Tier 3B).
+    let retryPassOutcomes: unknown[] = [];
+    if (getEnv("DUNNING_RETRY_PASS_ENABLED") === "true") {
+      try {
+        const retryKey = getEnv("DUNNING_RETRY_PASS_TEST_MODE") === "true"
+          ? getEnv("STRIPE_SECRET_KEY_TEST")
+          : getEnv("STRIPE_SECRET_KEY");
+        if (!retryKey) {
+          console.error("[process-dunning] retry pass enabled but no Stripe key is set; skipped.");
+        } else {
+          retryPassOutcomes = await runRetryPass(
+            buildRetryPassDeps(supabase, retryKey, { GUARD_SELECT, evaluateLiveChargeGuard, describeGuardVerdict }),
+          );
+          console.log(`[process-dunning] retry pass: ${JSON.stringify(retryPassOutcomes)}`);
+        }
+      } catch (retryErr) {
+        console.error("[process-dunning] retry pass failed (reminder passes continue):", retryErr);
+      }
+    }
+
     // ── PASS 1: Active records — hourly reminders and warning transitions ──
     const { data: activeFailures, error: fetchErr } = await supabase
       .from("payment_failures")
@@ -1358,6 +1383,7 @@ export async function handler(
         processed,
         active_processed: activeFailures?.length || 0,
         homeowner_notified: warnedFailures?.length || 0,
+        retry_pass: retryPassOutcomes.length,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
