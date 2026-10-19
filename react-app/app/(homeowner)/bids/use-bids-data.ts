@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { resolveOwnerPhotoUrl } from './actions';
 import type { BidRow, BidNotification, BidsClaim, ContractorProfile, PublicLicense } from './types';
+import { CLAIM_PUBLIC_COLUMNS } from '@/lib/claim-columns';
 
 // ── Claim resolution (bids.html:554-567) ─────────────────────────────────────
 
@@ -52,7 +53,7 @@ export function useBidsClaim(
 
     (async () => {
       try {
-        let query = supabase.from('claims').select('*').eq('user_id', userId);
+        let query = supabase.from('claims').select(CLAIM_PUBLIC_COLUMNS).eq('user_id', userId);
         query = claimIdParam
           ? query.eq('id', claimIdParam)
           : query.order('created_at', { ascending: false }).limit(1);

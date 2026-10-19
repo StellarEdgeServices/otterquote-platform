@@ -38,6 +38,7 @@ import {
   resolveSignGate,
   type SignGateState,
 } from './utils';
+import { CLAIM_PUBLIC_COLUMNS } from '@/lib/claim-columns';
 
 /** Claim row (superset of utils.SigningClaim — adds the fields the page renders). */
 export interface SigningClaimRow {
@@ -171,7 +172,7 @@ export function useContractSigningData(
         // ── Load the claim ──
         const { data: claimData, error: claimErr } = await supabase
           .from('claims')
-          .select('*')
+          .select(CLAIM_PUBLIC_COLUMNS)
           .eq('id', claimId)
           .single();
         if (claimErr || !claimData) throw new Error('Claim not found.');

@@ -6,7 +6,13 @@
 import re, sys, os
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 rd = lambda p: open(os.path.join(ROOT, p)).read()
-applied = rd("supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql")
+applied_raw = rd("supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql")
+# gh-2881 (review 6256286136 O1): the draft's Unicode fold additionally maps Arabic-Indic (U+0660-0669) and Extended Arabic-Indic (U+06F0-06F9) digits to ASCII,
+# in the function AND in the draft's replacement view. The comparison is against the applied view WITH that one extension, so it still catches any other drift.
+FOLD_OLD = r"""U&'\0142\0141\00F8\00D8\0131\0111\0110\00F0\0127\0126', 'lLoOidDdhH')"""
+FOLD_NEW = r"""U&'\0142\0141\00F8\00D8\0131\0111\0110\00F0\0127\0126\0660\0661\0662\0663\0664\0665\0666\0667\0668\0669\06F0\06F1\06F2\06F3\06F4\06F5\06F6\06F7\06F8\06F9', 'lLoOidDdhH01234567890123456789')"""
+assert applied_raw.count(FOLD_OLD) == 5, applied_raw.count(FOLD_OLD)
+applied = applied_raw.replace(FOLD_OLD, FOLD_NEW)
 fwd = rd("supabase/migrations_drafts/gh2559_d390_redact_contact_until_fee.sql")
 rb = rd("supabase/migrations_drafts/gh2559_d390_redact_contact_until_fee_rollback.sql")
 def stmt(t):
@@ -37,6 +43,6 @@ if not (len(minus) == 3 and all("homeowner_notes" in l or "THEN c." in l or "ELS
     ok = False
 if len(minus) > 3 or any("platform_fee_charged" in l for l in minus): ok = False; print("FAIL (2)")
 if not any("d390_redact_contact" in l for l in plus): ok = False; print("FAIL (2): no call")
-if stmt(rb) != a: ok = False; print("FAIL (3): rollback view differs from the applied view")
+if stmt(rb) != stmt(applied_raw): ok = False; print("FAIL (3): rollback view differs from the applied view")
 else: print("rollback view == applied view: identical")
 print("PARITY:", "PASS" if ok else "FAIL"); sys.exit(0 if ok else 1)

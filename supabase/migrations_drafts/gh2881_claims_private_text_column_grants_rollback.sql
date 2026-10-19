@@ -6,7 +6,7 @@
 --
 -- Rollback: gh2881_claims_private_text_column_grants
 -- Restores the table-level SELECT that `authenticated` held before (Supabase default privileges on public give authenticated ALL on a table),
--- then drops the owner RPC. The column grants the forward file added are revoked so the ACL is clean (a column REVOKE does not touch the
+-- and leaves the owner RPC in place (the published pages call it). The column grants the forward file added are revoked so the ACL is clean (a column REVOKE does not touch the
 -- table-level grant). Safe to run twice. Run it first if any page breaks after the forward file: the cost is that the three columns are readable
 -- again by the roles that could read them before (the exposure this set closes returns).
 -- The line below restores SELECT only, because the forward file never touched any other privilege. The pre-flight records the ACL to compare (section 2).
@@ -31,8 +31,6 @@ BEGIN
   END LOOP;
 END
 $restore$;
-
-DROP FUNCTION IF EXISTS public.claim_private_text(uuid);
 
 DO $assert$
 BEGIN

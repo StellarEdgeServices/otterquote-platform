@@ -16,19 +16,19 @@ NOT APPLIED. Refs #2881, #2559, #2882, PR #2880 (review 6256187448 finding D2). 
 - 9 claims have non-empty `homeowner_notes`.
 Rollback ACL to compare: the four entries above.
 
-## 3. Callers that break at apply (the gate exists for these)
-A `select=*` or a bare `.select()` after an insert/update (RETURNING *) from a browser session fails with 42501 once the columns are gone. Found at this branch by a scan of `.from('claims')` statements (excluding tests): 13 sites, all must name their columns first (and read the three through `claim_private_text` where they need them):
-`bids.html:588`, `contract-signing.html:1266`, `dashboard.html:1753`, `dashboard.html:2920` (bare `.select()` after update), `help-estimate.html:847`, `help-measurements.html:819`, `project-confirmation.html:2170`, `react-app/app/(homeowner)/bids/use-bids-data.ts:55`, `.../contract-signing/use-contract-signing-data.ts:173`, `.../help-estimate/use-help-estimate-data.ts:42`, `.../help-measurements/use-help-measurements-data.ts:98`, `.../project-confirmation/use-project-confirmation-data.ts:117`, `react-app/app/hooks/use-claim-status.ts:51`.
-Direct readers of the hidden columns by name: `dashboard.html:2779-2786` (edit form: notes, urgency reason, confirmation flag) and `project-confirmation.html:2273` and the React twin read `claim.project_confirmation` off the `*` row. The writes (`project-info-*.html`, `dashboard.html:2912`, `project-confirmation` save) only SET the columns and keep working (proof: write path probe).
-Not enumerated and owed before apply: edge functions that read `claims` with the caller's JWT instead of the service role (14 functions pass the caller's Authorization header and mention `claims`; most use it only for `auth.getUser`), and any `security_invoker` view or definer-less function reading the columns (section 2 found none in the catalog).
-**These page changes are NOT in this PR.** They are a separate, published-first step; the forward file refuses to run until the operator states they are live (`SET LOCAL gh2881.pages_published = 'yes'`).
+## 3. Callers that would break at apply: moved in this PR (gate still applies)
+A `select=*` or a bare `.select()` after an insert/update (RETURNING *) from a browser session fails with 42501 once the columns are gone. The 13 sites found by a scan of `.from('claims')` statements (excluding tests) now name an explicit column list (every `claims` column except the three; 128 columns at 2026-10-19; one shared constant `react-app/app/lib/claim-columns.ts`, the same literal inlined in the static pages):
+`bids.html:588`, `contract-signing.html:1266`, `dashboard.html:1753` (+ the RPC read), `dashboard.html:2920` (update RETURNING, + the RPC read), `help-estimate.html:847`, `help-measurements.html:819`, `project-confirmation.html:2170` (+ the RPC read of `project_confirmation`), `react-app/.../bids/use-bids-data.ts:55`, `.../contract-signing/use-contract-signing-data.ts:173`, `.../help-estimate/use-help-estimate-data.ts:42`, `.../help-measurements/use-help-measurements-data.ts:98`, `.../project-confirmation/use-project-confirmation-data.ts:117` (+ RPC read via `fetchClaimPrivateText`), `react-app/app/hooks/use-claim-status.ts:51`.
+Where the owner needs the notes (the dashboard edit form, the project-confirmation restore) the page reads them through `claim_private_text()`. The dashboard never saves a blank over notes it could not read (`__privateTextLoaded`), which is why **the RPC (step 1) must be applied before the pages are published**.
+`tests/gh2881-claims-no-star-select.mjs` (wired into e2e-tests.yml) fails if any client file selects `*` (or nothing) from `claims`, names one of the three in a claims select list, or lets an inlined list drift from the shared constant; run against the pre-change tree it reports exactly the 13 sites (negative control).
+Still not enumerated, owed before apply: edge functions that read `claims` with the caller's JWT instead of the service role (14 functions pass the caller's Authorization header and mention `claims`; most use it only for `auth.getUser`). Production catalog: no view or function other than `bidder_claim_summary` depends on the columns.
 
-## 4. Apply order
-1. PR #2880 merged and applied first is NOT required by this file (it has no dependency on `d390_redact_contact`), but the Arabic-Indic fold fix for the SQL side belongs there (section 7).
-2. Page and function changes of section 3 merged and published.
-3. R-097 notice; then in one transaction: `SET LOCAL gh2881.pages_published = 'yes';` followed by the forward file (BEGIN/COMMIT inside it are its own; run the file whole).
-4. Verify with the proof (`supabase/tests/gh2881_claims_private_text_proof.sql`) against production inside its rolled-back block, with an is_test contractor beside the negative control from before the apply.
-Rollback: `gh2881_claims_private_text_column_grants_rollback.sql` (restores table-level SELECT; drops the RPC; safe twice).
+## 4. Apply order (three steps)
+1. `gh2881_claim_private_text_rpc.sql` (additive; no gate).
+2. Merge and PUBLISH the page and react-app changes in this PR (Netlify production is locked until published).
+3. R-097 notice; then in one transaction `SET LOCAL gh2881.pages_published = 'yes';` followed by `gh2881_claims_private_text_column_grants.sql`.
+4. Verify with `supabase/tests/gh2881_claims_private_text_proof.sql` against production inside its rolled-back block, with an is_test contractor beside the negative control from before the apply.
+Rollback: `gh2881_claims_private_text_column_grants_rollback.sql` (restores table-level SELECT; keeps the RPC), then, only if the pages are also reverted, `gh2881_claim_private_text_rpc_rollback.sql`.
 
 ## 5. Standing rule this introduces
 A column added to `public.claims` after the apply is NOT readable by `authenticated` until `GRANT SELECT (<col>) ON public.claims TO authenticated`. Every later claims migration must carry that line. (CI check for this is not in this PR; recommended follow-up.)
@@ -36,7 +36,10 @@ A column added to `public.claims` after the apply is NOT readable by `authentica
 ## 6. permissions-ratchet
 The forward file has a GRANT to `authenticated` (column SELECT, function EXECUTE) and a SECURITY DEFINER function: the PR needs the label `permissions-ratchet: reviewed` after a human reads both.
 
-## 7. Not done here, named
-- SQL-side Arabic-Indic digit fold (issue comment 6256295897): the TypeScript fold used by the Scope of Work and project_confirmation redaction is fixed in this PR with tests. The Postgres fold lives in `d390_redact_contact` (PR #2880's unapplied migration) and in the LIVE `bidder_claim_summary` view; fixing it means editing #2880's migration and replacing the live view. Not attempted in this draft.
-- Other free-text fields on the project_confirmation document (`structure_names`, `shingle_color`) are not redacted.
-- Other decimal-digit scripts (Devanagari, Thai, full-width are NFKC-folded; Devanagari etc. are not) are not folded.
+## 7. SQL-side Arabic-Indic digit fold (issue comment 6256295897), done in this PR
+`gh2559_d390_redact_contact_until_fee.sql` (PR #2880's draft, edited here per Marty's ruling) maps U+0660-0669 and U+06F0-06F9 to ASCII in the shared Unicode fold, in `d390_redact_contact` AND in the draft's replacement `bidder_claim_summary` view (5 view copies + 1 function copy). Proof: `bash supabase/tests/gh2559_d390_redact_proof_run.sh` (268 probes, 0 failures) now carries U13/U14 (function, notes view, thread view: redacted; the previous-fold negative control LEAKS). `tests/gh2559-d390-regex-parity.py` compares against the applied view with exactly that one extension. The LIVE view only gains the fold when #2880's migration is applied (it replaces the view); until then the bidder view's fold is unchanged. The rollback of #2880 restores the applied view verbatim.
+
+## 8. Still not done, named
+- Other decimal-digit scripts (Devanagari, Thai, ...) are not folded (NFKC does not map them).
+- structure_names / shingle_color are not redacted: Marty ruled they are not homeowner-typed.
+- A CI rule that a new `claims` column carries a GRANT (section 5).

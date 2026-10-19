@@ -17,6 +17,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Services, type CarrierProfile } from '@/lib/services';
 import type { HelpEstimateClaim, HelpEstimateProfile } from './types';
+import { CLAIM_PUBLIC_COLUMNS } from '@/lib/claim-columns';
 
 export interface ClaimResult {
   claim: HelpEstimateClaim | null;
@@ -40,7 +41,7 @@ export function useHelpEstimateClaim(userId: string | null | undefined): ClaimRe
       try {
         const { data, error: fetchErr } = await supabase
           .from('claims')
-          .select('*')
+          .select(CLAIM_PUBLIC_COLUMNS)
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(1)

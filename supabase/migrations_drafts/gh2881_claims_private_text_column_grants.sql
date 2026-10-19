@@ -1,5 +1,5 @@
 -- STATUS (gh-1438, as of 2026-10-19T19:10:11Z): NOT APPLIED
--- FILE ROLE: forward file of set gh2881_claims_private_text_column_grants (the only forward file in the set)
+-- FILE ROLE: step 3 of 3 of set gh2881_claims_private_text_column_grants: the gated column revoke (steps 1 and 2: gh2881_claim_private_text_rpc.sql, then publish the pages)
 -- EVIDENCE: drafted 2026-10-19T19:10:11Z under #2881 (CTO RUN 72 worker cto72-b2881). No ledger row exists. Production was not touched by this draft; the proof ran on a throwaway Postgres only (supabase/tests/gh2881_claims_private_text_proof_run.sh).
 -- REPO COPY: none. When applied, file the forward under its real ledger version in supabase/migrations/ and the rollback and pre-flight in supabase/migrations_rollbacks/.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
@@ -8,7 +8,7 @@
 -- GitHub: #2881 (D-390 follow-up; review 6256187448 finding D2 on PR #2880). Refs #2559, #2882.
 -- Tier: 3B. It REMOVES a read capability from the `authenticated` role on three columns of public.claims. R-177 pair, LEGAL-READ and an
 --   R-097 24-hour notice come first. It is also a BREAKING CHANGE for every browser read that asks for those columns or for `*` (see the gate).
--- Rollback: supabase/migrations_drafts/gh2881_claims_private_text_column_grants_rollback.sql
+-- Rollback: supabase/migrations_drafts/gh2881_claims_private_text_column_grants_rollback.sql (restores the grants only; the RPC stays for the pages)
 -- Pre-flight: supabase/migrations_drafts/gh2881_claims_private_text_column_grants_pre-flight.md (caller inventory, apply order, open questions)
 -- Proof (rolled back, role-switched): supabase/tests/gh2881_claims_private_text_proof.sql (runner: gh2881_claims_private_text_proof_run.sh)
 --
@@ -26,7 +26,7 @@
 --   table itself. The only ways to close it are (a) take the columns away from the role (this file), or (b) move the data to a table the role
 --   cannot read (a bigger change: every homeowner write path moves too). (a) is smaller, reversible in one statement, and leaves the homeowner's
 --   writes untouched (INSERT and UPDATE privileges are NOT changed). The homeowner and admin read the three columns through
---   public.claim_private_text(), which is SECURITY DEFINER and answers only for the claim's owner or an admin. service_role, SECURITY DEFINER
+--   public.claim_private_text() (step 1, gh2881_claim_private_text_rpc.sql), which is SECURITY DEFINER and answers only for the claim's owner or an admin. service_role, SECURITY DEFINER
 --   functions owned by postgres (bidder_claim_summary, accept_bid, the D-390 functions) and the edge functions are unaffected.
 --
 -- WHAT THIS CHANGES FOR EVERYONE ELSE (read before you apply)
@@ -56,32 +56,17 @@ BEGIN
   IF coalesce(current_setting('gh2881.pages_published', true), '') <> 'yes' THEN
     RAISE EXCEPTION 'gh2881: refused. Run SET LOCAL gh2881.pages_published = ''yes''; in the same transaction ONLY after the pages and functions that read claims.homeowner_notes, urgency_reason, project_confirmation or select=* as a browser user are published (pre-flight section 3).' USING ERRCODE = 'P0A81';
   END IF;
-  IF to_regprocedure('public.is_admin_email()') IS NULL THEN
-    RAISE EXCEPTION 'gh2881: public.is_admin_email() does not exist' USING ERRCODE = 'P0A82';
-  END IF;
 END
 $gate$;
 
--- 1. The owner/admin read path. Created before the revoke so there is never a moment with no way to read.
-CREATE OR REPLACE FUNCTION public.claim_private_text(p_claim_id uuid)
-RETURNS TABLE (homeowner_notes text, urgency_reason text, project_confirmation jsonb)
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $fn$
-  SELECT c.homeowner_notes, c.urgency_reason, c.project_confirmation
-    FROM public.claims c
-   WHERE c.id = p_claim_id
-     AND (c.user_id = (SELECT auth.uid()) OR public.is_admin_email());
-$fn$;
-
-COMMENT ON FUNCTION public.claim_private_text(uuid) IS
-  'gh-2881 / D-390: the claim owner''s (or an admin''s) read of the three homeowner-typed columns that authenticated can no longer SELECT on public.claims. One row or none.';
-
-REVOKE ALL ON FUNCTION public.claim_private_text(uuid) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.claim_private_text(uuid) FROM anon;
-GRANT EXECUTE ON FUNCTION public.claim_private_text(uuid) TO authenticated;
+-- 1. The read path must already exist (step 1 of the set).
+DO $need$
+BEGIN
+  IF to_regprocedure('public.claim_private_text(uuid)') IS NULL THEN
+    RAISE EXCEPTION 'gh2881: public.claim_private_text(uuid) does not exist; apply gh2881_claim_private_text_rpc.sql first' USING ERRCODE = 'P0A89';
+  END IF;
+END
+$need$;
 
 -- 2. The column privileges. Column list read from the live catalog so a column added since drafting is not silently dropped.
 --    Done for authenticated and, if it holds any SELECT on the table, anon (anon has no row policy on claims, so it reads nothing today; the
