@@ -4,7 +4,7 @@
 // its own narrower in-process patterns (SOW_PATTERNS below; LEGAL-READ 6256737488 L4; precision over recall). This helper only decides WHEN
 // (fee not collected) and fails CLOSED: if the function cannot be reached, the typed text is never passed on. What happens instead depends on the
 // surface, and neither prints any wording of our own (LEGAL-READ 6256212786 L1):
-//   - Scope of Work (a signed document): redactContactOrRefuse() throws RedactionUnavailableError; the caller refuses to build the envelope.
+//   - Scope of Work (a signed document): redactSowTextOrRefuse() (in-process, no rpc) throws RedactionUnavailableError; the caller refuses to build the envelope.
 //   - e-mail preview: homeownerTextForContractor() returns REMOVED_TOKEN, the same token the success path produces.
 //
 // feeCollected must be `claims.platform_fee_charged === true` (the column is nullable: null and false both redact).
