@@ -91,6 +91,10 @@ const TLD_END = "(?![A-Za-z0-9\\-])";
 const TLD_LIST = ["com", "net", "org", "edu", "gov", "io", "dev", "ca", "uk", "co", "pro"];
 const TLDS = `(?:${[...TLD_LIST, ...TLD_LIST.map((t) => t.toUpperCase())].join("|")})`;
 const TLDS_LOWER = `(?:${TLD_LIST.join("|")})`;
+// "Look at the dot com era": the word right before "dot" is an article or determiner, so it is prose, not a domain (any case). A proper-noun-shaped word
+// domain ("CALL AT FRONT DOT COM") is a named residual and is still removed.
+const DETERMINERS = ["the", "a", "an", "this", "that", "these", "those", "our", "your", "my", "his", "her", "its", "their", "some", "any"].map(ci).join("|");
+const NOT_DETERMINER = `(?<!(?<![A-Za-z0-9\\-])(?:${DETERMINERS}))`;
 const SPACED_DOT = `(?:${DOT_TOKEN}|[ \\t]*\\.)`;
 
 const SOW_PATTERNS: RegExp[] = [
@@ -112,7 +116,7 @@ const SOW_PATTERNS: RegExp[] = [
     "g",
   ),
   // e-mail: "local at domain dot tld" (explicit dot token, listed TLD)
-  new RegExp(`${LOCAL}[ \\t]+${AT_W}[ \\t]+(?:${LABEL}\\.)*${LABEL}${DOT_TOKEN}(?:${LABEL}${DOT_ANY})*${TLDS}${TLD_END}`, "g"),
+  new RegExp(`${LOCAL}[ \\t]+${AT_W}[ \\t]+(?:${LABEL}\\.)*${LABEL}${NOT_DETERMINER}${DOT_TOKEN}(?:${LABEL}${DOT_ANY})*${TLDS}${TLD_END}`, "g"),
   // e-mail: "local at domain.tld" with a listed TLD (multi-label such as gmail.co.uk is taken whole)
   new RegExp(`${LOCAL}[ \\t]+${AT_W}[ \\t]+(?:${LABEL}\\.)+${TLDS}${TLD_END}`, "g"),
 ];
