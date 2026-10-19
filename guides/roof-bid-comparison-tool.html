@@ -82,9 +82,10 @@
 #bt .gap{color:var(--bt-amber-deep)}
 #bt td small{display:block;color:var(--bt-muted);font-size:12px}
 #bt .flags{margin:14px 0 0;display:grid;gap:10px}
-#bt .flag{background:var(--bt-card);border:1px solid var(--bt-line);border-radius:10px;padding:12px 14px;font-size:15px;color:var(--bt-body)}
+#bt .flag{overflow-wrap:anywhere;background:var(--bt-card);border:1px solid var(--bt-line);border-radius:10px;padding:12px 14px;font-size:15px;color:var(--bt-body)}
 #bt .flag b{color:var(--bt-ink)}
 #bt .flag.top{border-color:var(--bt-amber);border-left-width:4px}
+#bt .sr{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 #bt .empty{padding:24px;text-align:center;color:var(--bt-muted);border:1px dashed var(--bt-muted);border-radius:16px}
 #bt .notes{margin:32px 0 0;padding:20px 0 40px;border-top:1px solid var(--bt-line);color:var(--bt-muted);font-size:14px}
 #bt .notes p{margin:0 0 8px;color:var(--bt-muted)}
@@ -168,12 +169,21 @@ var OTHER=[
  {k:'disposal',label:'Disposal',help:'Hauling away old materials and job debris.'}
 ];
 var DEFS=TARGET.concat(OTHER);
-var st={n:0,c:[]};
+var st={n:0,c:[]},armT=null;
 var $=function(i){return document.getElementById(i)};
 
-function load(){try{var s=localStorage.getItem(KEY);if(s){var o=JSON.parse(s);if(o&&Array.isArray(o.c)){st=o}}}catch(e){}}
+function normC(c,i){
+ if(!c||typeof c!=='object'||Array.isArray(c))return null;
+ var items={};
+ DEFS.forEach(function(d){var it=(c.items&&typeof c.items==='object')?c.items[d.k]:null;
+  items[d.k]={on:!!(it&&typeof it==='object'&&it.on===true),v:(it&&typeof it==='object'&&typeof it.v==='string')?it.v:''}});
+ var custom=[];
+ if(Array.isArray(c.custom))c.custom.forEach(function(x){if(x&&typeof x==='object'&&typeof x.k==='string'&&x.k&&typeof x.label==='string')custom.push({k:x.k,label:x.label.slice(0,60),on:x.on===true,v:typeof x.v==='string'?x.v:''})});
+ return {id:(typeof c.id==='string'&&c.id)?c.id:'c'+Date.now()+'-'+i,name:typeof c.name==='string'?c.name:'Contractor '+(i+1),price:typeof c.price==='string'?c.price:'',items:items,custom:custom};
+}
+function load(){try{var s=localStorage.getItem(KEY);if(s){var o=JSON.parse(s);if(o&&typeof o==='object'&&Array.isArray(o.c)){var cs=[],seen={};o.c.forEach(function(c,i){var n=normC(c,i);if(n&&!seen[n.id]){seen[n.id]=1;cs.push(n)}});st={n:(typeof o.n==='number'&&isFinite(o.n)&&o.n>=cs.length)?o.n:cs.length,c:cs}}}}catch(e){}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}}
-function track(n,p){try{(window.dataLayer=window.dataLayer||[]).push(Object.assign({event:n},p||{}))}catch(e){}}
+function track(n,p){try{if(typeof gtag==='function')gtag('event',n,p||{})}catch(e){}}
 
 function newC(){
  st.n++;
@@ -187,9 +197,9 @@ function detailText(d,it){if(!it.on||!it.v)return '';return d&&d.u?(it.v+' '+d.u
 
 function rowHtml(c,key,label,help,d,it,custom){
  var id=c.id+'-'+key, on=!!it.on;
- var h='<div class="row'+(on?' on':'')+'"><div class="row-top"><div class="row-label" id="l-'+id+'">'+esc(label)+(help?'<small>'+esc(help)+'</small>':'')+'</div>'+
+ var h='<div class="row'+(on?' on':'')+'"><div class="row-top"><div class="row-label"><span id="l-'+id+'">'+esc(label)+'</span>'+(help?'<small id="d-'+id+'">'+esc(help)+'</small>':'')+'</div>'+
  '<span class="state">'+(on?'Yes':'No')+'</span>'+
- '<button type="button" class="sw" role="switch" aria-checked="'+on+'" aria-labelledby="l-'+id+'" data-c="'+c.id+'" data-k="'+key+'"'+(custom?' data-custom="1"':'')+'></button></div>';
+ '<button type="button" class="sw" role="switch" aria-checked="'+on+'" aria-labelledby="l-'+id+'"'+(help?' aria-describedby="d-'+id+'"':'')+' data-c="'+c.id+'" data-k="'+key+'"'+(custom?' data-custom="1"':'')+'></button></div>';
  if(on&&d){h+='<div class="detail"><input type="'+(d.t==='num'?'number':'text')+'"'+(d.t==='num'?' inputmode="numeric" min="0"':'')+' placeholder="'+esc(d.ph)+'" value="'+esc(it.v||'')+'" aria-label="'+esc(label)+' detail" data-c="'+c.id+'" data-k="'+key+'" data-detail="1"></div>'}
  if(custom)h+='<button type="button" class="rm" data-c="'+c.id+'" data-k="'+key+'" data-rmitem="1">Remove this item</button>';
  return h+'</div>';
@@ -222,7 +232,7 @@ function render(active){
 
 function summary(){
  var s=$('summary');
- if(st.c.length<2&&st.c.length===0){s.hidden=true;return}
+ if(st.c.length===0){s.hidden=true;return}
  s.hidden=false;
  var max=Math.max.apply(null,st.c.map(count));
  var tops=st.c.filter(function(c){return count(c)===max});
@@ -233,8 +243,8 @@ function summary(){
   h+='<tr><th scope="row">'+esc(d.label)+'</th>'+st.c.map(function(c){
    var it=tag==='c'?c.custom.filter(function(x){return x.k===d.k})[0]:c.items[d.k];
    if(!it)return '<td><span class="n">n/a</span></td>';
-   if(it.on){var t=detailText(d.d,it);return '<td><span class="y" aria-label="Included">&#10003;</span><span class="sr" style="position:absolute;left:-9999px"> Included</span>'+(t?'<small>'+esc(t)+'</small>':'')+'</td>'}
-   return '<td><span class="n" aria-label="Not included">&mdash;</span></td>';
+   if(it.on){var t=detailText(d.d,it);return '<td><span class="y" aria-hidden="true">&#10003;</span><span class="sr">Included</span>'+(t?'<small>'+esc(t)+'</small>':'')+'</td>'}
+   return '<td><span class="n" aria-hidden="true">&mdash;</span><span class="sr">Not included</span></td>';
   }).join('')+'</tr>';
  }
  TARGET.forEach(function(d){line(d,'t')});
@@ -265,7 +275,9 @@ document.addEventListener('click',function(e){
  if(t.classList.contains('sw')){
   var k=t.dataset.k,it=t.dataset.custom?c.custom.filter(function(x){return x.k===k})[0]:c.items[k];
   it.on=!it.on;render();track('bidtool_toggle',{item:k,on:it.on});return}
- if(t.dataset.rmc){if(!window.confirm('Remove '+(c.name||'this contractor')+'?'))return;st.c=st.c.filter(function(x){return x!==c});render();track('bidtool_contractor_removed');return}
+ if(t.dataset.rmc){
+  if(t.dataset.armed!=='1'){t.dataset.armed='1';t.textContent='Tap again to remove';clearTimeout(armT);armT=setTimeout(function(){t.dataset.armed='';t.textContent='Remove this contractor'},4000);return}
+  clearTimeout(armT);st.c=st.c.filter(function(x){return x!==c});render();track('bidtool_contractor_removed');return}
  if(t.dataset.rmitem){c.custom=c.custom.filter(function(x){return x.k!==t.dataset.k});render();return}
  if(t.dataset.addcustom){addCustom(c)}
 });
@@ -285,7 +297,7 @@ document.addEventListener('input',function(e){
 
 load();
 if(!st.c.length){st.c.push(newC(),newC())}
-render();
+try{render()}catch(e){st={n:0,c:[]};try{localStorage.removeItem(KEY)}catch(e2){}st.c.push(newC(),newC());render()}
 window.__oqBid={state:function(){return st}};
 })();
 </script>
