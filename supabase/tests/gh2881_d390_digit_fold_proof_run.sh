@@ -5,7 +5,7 @@ W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 APPLIED=supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql
 grep -v -E '^\s*(BEGIN|COMMIT);\s*$' "$APPLIED" > "$W/applied_view.sql"
 export PGOPTIONS='-c client_min_messages=warning'
-echo "== static parity (the fold migration is #2880's statements with ONE clause extended; rollback verbatim) =="
+echo "== static parity (the fold migration is #2880's statements (already fee-gated per #2931) with ONE clause, the digit fold, extended; rollback verbatim) =="
 python3 tests/gh2881-d390-digit-fold-parity.py || exit 1
 echo "== proof (A before / B after / C rollback) =="
 psql -d postgres -qc "DROP DATABASE IF EXISTS g2881d" -c "CREATE DATABASE g2881d" || exit 1

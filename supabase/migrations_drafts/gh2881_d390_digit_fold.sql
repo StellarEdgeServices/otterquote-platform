@@ -9,7 +9,7 @@
 -- WHAT: the shared Unicode fold in public.d390_redact_contact and in public.bidder_claim_summary (the selected contractor's notes) additionally maps
 --   Arabic-Indic digits (U+0660-0669) and Extended Arabic-Indic digits (U+06F0-06F9) to ASCII 0-9 before the phone patterns run, so a phone typed in
 --   them no longer passes through. Nothing else changes: the function and the view below are the statements of PR #2880's
---   gh2559_d390_redact_contact_until_fee.sql with that ONE clause extended (tests/gh2881-d390-digit-fold-parity.py checks this byte for byte).
+--   gh2559_d390_redact_contact_until_fee.sql with that ONE clause (the digit fold) extended; #2880's text already carries the #2931 fee-gate clauses (tests/gh2881-d390-digit-fold-parity.py checks this byte for byte).
 -- REQUIRES PR #2880's migration applied first (the gate below refuses otherwise, so this file can never apply a half of #2880).
 -- Grants, comments and the other views are untouched (CREATE OR REPLACE keeps them); contractor_thread_messages calls the function and gains the fold with it.
 -- Rollback: supabase/migrations_drafts/gh2881_d390_digit_fold_rollback.sql (restores #2880's function and view text). Proof: supabase/tests/gh2881_d390_digit_fold_proof.sql

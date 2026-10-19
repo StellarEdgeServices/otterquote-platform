@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """gh-2881 static check (no database): the digit-fold migration changes PR #2880's d390_redact_contact and bidder_claim_summary statements in exactly
-ONE clause (the Unicode fold's translate() list gains U+0660-0669 and U+06F0-06F9 mapped to 0-9), and its rollback restores #2880's statements verbatim."""
+ONE clause (the digit fold; #2880's text already carries the #2931 fee gate) (the Unicode fold's translate() list gains U+0660-0669 and U+06F0-06F9 mapped to 0-9), and its rollback restores #2880's statements verbatim."""
 import re, sys, os
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 rd = lambda p: open(os.path.join(ROOT, p)).read()
