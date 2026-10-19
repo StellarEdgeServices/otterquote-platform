@@ -134,6 +134,7 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 # above. The edge function (netlify/edge-functions/blog-guides-redirect.ts) is what actually fires;
 # these lines are the documented source of truth. scripts/check-sitemap.py fails if a generated
 # page lacks its rule here and its entry in the edge function map.
+/locations/index.html /locations/ 301
 /locations/allen-county-in/roofing/index.html /locations/allen-county-in/roofing/ 301
 /locations/butler-county-oh/roofing/index.html /locations/butler-county-oh/roofing/ 301
 /locations/cuyahoga-county-oh/roofing/index.html /locations/cuyahoga-county-oh/roofing/ 301
