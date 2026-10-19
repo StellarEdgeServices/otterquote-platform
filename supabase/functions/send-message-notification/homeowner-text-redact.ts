@@ -47,7 +47,8 @@ export async function redactContactOrRefuse(
 // function public.d390_redact_contact is left as it is (over-redaction is the safe side on a non-contract view); on a document both parties sign,
 // a deleted date, dollar figure or sentence changes the contract, so this path removes ONLY phone numbers and e-mail addresses:
 //   - phone: North American shapes only. Optional +1 / 1, then area code and exchange (each first digit 2-9) and a 4-digit line, written with
-//     spaces, dots, dashes or parentheses, or as 10 contiguous digits (11 with a leading 1). Digit boundaries: it never bites into a longer
+//     at most one separator character (space, dot, dash, slash, underscore, middle dot, bullet) between groups, or parentheses, or as 10 contiguous
+//     digits (11 with a leading 1). KNOWN RESIDUAL: a bare "250-500-1000" or "250 500 1000" or a 10-digit number starting 2-9 is phone-shaped. Digit boundaries: it never bites into a longer
 //     digit run (a 12-digit claim number), never into a dotted or comma figure (12500.00, 1,250.00), and there is no bare 7-digit rule.
 //   - e-mail: local@domain.tld (no spaces around the at-sign), local(at)domain.tld, and the spelled-out forms with an explicit dot token
 //     ("jane at example dot com") or a common TLD ("jane at example.com"). Never across a sentence break ("Leak at chimney. Please ..."),
@@ -71,26 +72,38 @@ export function foldForDetection(text: string): string {
   return out;
 }
 
-const SEP = "[ \\t\\u00a0\\u00ad\\u200b-\\u200d\\u2060\\ufeff.\\-\\u2010-\\u2015]";
+// Phone group gap: at most ONE separator character (a run of plain spaces counts as one). A dash, dot or slash with spaces around it ("250 - 500 - 1000")
+// is two characters and is not a phone gap, so a figure list survives. A bullet or middle dot may carry spaces ("317 . 555 . 0142" style layouts).
+// Zero-width and soft-hyphen characters are ignored around a gap.
+const ZW = "[\\u00ad\\u200b-\\u200d\\u2060\\ufeff]*";
+const GAP = `${ZW}(?:[ \\t\\u00a0]+|[.\\-\\u2010-\\u2015/_]|[ \\t\\u00a0]*[\\u00b7\\u2022][ \\t\\u00a0]*)?${ZW}`;
+const ci = (w: string) => [...w].map((c) => `[${c.toUpperCase()}${c.toLowerCase()}]`).join("");
+const AT_W = ci("at");
+const DOT_W = ci("dot");
 const LOCAL = "(?<![A-Za-z0-9._%+\\-])[A-Za-z0-9._%+\\-]+";
 const LABEL = "[A-Za-z0-9](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?";
-const DOT_TOKEN = "(?:[ \\t]*[\\(\\[\\{<][ \\t]*dot[ \\t]*[\\)\\]\\}>][ \\t]*|[ \\t]+dot[ \\t]+)";
-const DOT_ANY = `(?:${DOT_TOKEN}|\\.)`;
+const DOT_TOKEN = `(?:[ \\t]*[\\(\\[\\{<][ \\t]*${DOT_W}[ \\t]*[\\)\\]\\}>][ \\t]*|[ \\t]+${DOT_W}[ \\t]+)`;
+const DOT_ANY = `(?:${DOT_TOKEN}|[ \\t]*\\.)`;
 const TLD_END = "(?![A-Za-z0-9\\-])";
-const COMMON_TLD = "(?:com|net|org|edu|gov|io|co|us|biz|info)";
+const TLD_LIST = ["com", "net", "org", "edu", "gov", "mil", "io", "co", "us", "biz", "info", "ca", "me", "dev", "app", "ai", "xyz", "online", "email", "uk", "au", "nz", "de", "fr", "es", "it", "nl", "in", "ie"];
+// lower case or all upper case only: a sentence-initial capital ("front.Back", "roof.In") is not a TLD
+const TLDS = `(?:${[...TLD_LIST, ...TLD_LIST.map((t) => t.toUpperCase())].join("|")})`;
 
 const SOW_PATTERNS: RegExp[] = [
-  // phone
+  // phone: NANP, group gaps of at most one separator character
   new RegExp(
-    `(?<!\\d)(?<!\\d[.,\\-])(?:\\+?1${SEP}*)?(?:\\(\\s*[2-9]\\d{2}\\s*\\)|[2-9]\\d{2})${SEP}*[2-9]\\d{2}${SEP}*\\d{4}(?!\\d)(?![.,]\\d)`,
+    `(?<!\\d)(?<!\\d[.,\\-])(?:\\+?1${GAP})?(?:\\(\\s*[2-9]\\d{2}\\s*\\)|[2-9]\\d{2})${GAP}[2-9]\\d{2}${GAP}\\d{4}(?!\\d)(?![.,]\\d)`,
     "g",
   ),
-  // e-mail: local @ or (at), then a domain with at least one dot or dot token and a letter-only last label
-  new RegExp(`${LOCAL}(?:@|[ \\t]*[\\(\\[\\{<][ \\t]*at[ \\t]*[\\)\\]\\}>][ \\t]*)${LABEL}(?:${DOT_ANY}${LABEL})+${TLD_END}`, "g"),
-  // e-mail: "local at domain dot tld" (an explicit dot token is required somewhere)
-  new RegExp(`${LOCAL}[ \\t]+at[ \\t]+${LABEL}(?:\\.${LABEL})*${DOT_TOKEN}${LABEL}(?:${DOT_ANY}${LABEL})*${TLD_END}`, "gi"),
-  // e-mail: "local at domain.tld" with a common TLD
-  new RegExp(`${LOCAL}[ \\t]+at[ \\t]+${LABEL}(?:\\.${LABEL})*\\.${COMMON_TLD}${TLD_END}`, "gi"),
+  // e-mail: local, then "@" (spaces allowed) or "(at)" in any case, then a domain whose LAST label is letters only (2+); at least one dot or dot token
+  new RegExp(
+    `${LOCAL}(?:[ \\t]*@[ \\t]*|[ \\t]*[\\(\\[\\{<][ \\t]*${AT_W}[ \\t]*[\\)\\]\\}>][ \\t]*)${LABEL}(?:${DOT_ANY}${LABEL})*${DOT_ANY}[A-Za-z]{2,}${TLD_END}`,
+    "g",
+  ),
+  // e-mail: "local at domain dot tld" (explicit dot token, common TLD)
+  new RegExp(`${LOCAL}[ \\t]+${AT_W}[ \\t]+(?:${LABEL}\\.)*${LABEL}${DOT_TOKEN}(?:${LABEL}${DOT_ANY})*${TLDS}${TLD_END}`, "g"),
+  // e-mail: "local at domain.tld" with a common TLD (multi-label such as gmail.co.uk is taken whole)
+  new RegExp(`${LOCAL}[ \\t]+${AT_W}[ \\t]+(?:${LABEL}\\.)+${TLDS}${TLD_END}`, "g"),
 ];
 
 // Returns the text with phone and e-mail spans replaced by REMOVED_TOKEN and everything else byte-for-byte as typed.

@@ -38,6 +38,22 @@ const SURVIVE = [
   "Install by 11/15/2026, $1,250.00, 8/12 pitch, 2400 sq ft",
   "café — 40 ft² and ½ inch gap",
   "Call after 5 pm; ask for the 555-0142 line",
+  // fix2880d B1 (item@price) and B2 (figure lists with spaced separators)
+  "3 bundles@32.50 each",
+  "Drip edge 10pcs@12.50",
+  "Shingles@400.00/sq",
+  "Shingles @400 per square",
+  "Shingles@ 400 per sq",
+  "2 rolls@85",
+  "ice & water 2 rolls @ 85.00",
+  "Paid 250 - 500 - 1000",
+  "Paid 250 . 500 . 1000",
+  "Bids 850, 900, 1200",
+  "Policy 123456789012",
+  "Window 10:30-12:00 on 11/15",
+  "Meet at gate dot five",
+  "Leak at back dot matrix",
+  "Paid at closing.Net amount $5000",
 ];
 const REDACT: Array<[string, string]> = [
   ["call (317) 555-0142 today", "call [removed] today"],
@@ -53,6 +69,29 @@ const REDACT: Array<[string, string]> = [
   ["mail jane (at) example (dot) com now", "mail [removed] now"],
   ["mail jane at example.com now", "mail [removed] now"],
   ["mail jane＠example.com now", "mail [removed] now"],
+  // fix2880d B3 (regression: spaces around the at-sign, case-insensitive (at)/(dot), space before the dot) and advisories
+  ["jane @ gmail.com", "[removed]"],
+  ["jane@ gmail.com", "[removed]"],
+  ["jane @gmail.com", "[removed]"],
+  ["jane@gmail .com", "[removed]"],
+  ["jane(AT)gmail.com", "[removed]"],
+  ["jane (AT) gmail (DOT) com", "[removed]"],
+  ["jane AT gmail DOT com", "[removed]"],
+  ["JANE@GMAIL.COM", "[removed]"],
+  ["jane at gmail.co.uk", "[removed]"],
+  ["jane at gmail dot co dot uk", "[removed]"],
+  ["jane at yahoo.ca", "[removed]"],
+  ["jane at proton.me", "[removed]"],
+  ["jane at mail.dev", "[removed]"],
+  ["jane at mail.io", "[removed]"],
+  ["mail jane@example.com.", "mail [removed]."],
+  ["317/555-0142", "[removed]"],
+  ["317\u00b7555\u00b70142", "[removed]"],
+  ["317 \u2022 555 \u2022 0142", "[removed]"],
+  ["317_555_0142", "[removed]"],
+  ["317\u2013555\u20130142", "[removed]"],
+  ["(317)555-0142", "[removed]"],
+  ["317-555-0142 ext 12", "[removed] ext 12"],
   ["Install by 11-15-2026, call 317-555-0142 or jane@example.com", "Install by 11-15-2026, call [removed] or [removed]"],
 ];
 
@@ -62,6 +101,37 @@ Deno.test("SOW redaction: every must-survive row prints verbatim", () => {
 
 Deno.test("SOW redaction: every must-redact row has the contact detail cut out and nothing else changed", () => {
   for (const [t, want] of REDACT) assertEquals(redactSowText(t), want, t);
+});
+
+// KNOWN RESIDUAL (carve-out question for Ben, not solved here): these are phone-shaped and ARE removed. Asserting the current behaviour keeps it visible.
+Deno.test("KNOWN RESIDUAL: bare 3-3-4 figures with groups starting 2-9, and 10-digit numbers starting 2-9, are removed as phone-shaped", () => {
+  assertEquals(redactSowText("Paid 250-500-1000"), "Paid [removed]");
+  assertEquals(redactSowText("Paid 250 500 1000"), "Paid [removed]");
+  assertEquals(redactSowText("Policy 9876543210"), "Policy [removed]");
+  assertEquals(redactSowText("Looked at roof.com was not involved"), "[removed] was not involved"); // spelled-at plus common TLD cannot tell a word from a handle
+});
+
+// the patterns of head 2f6d1753 (one-separator rule, letters-only TLD and the B3 forms were absent); a second negative control
+const PREV_SEP = "[ \\t\\u00a0\\u00ad\\u200b-\\u200d\\u2060\\ufeff.\\-\\u2010-\\u2015]";
+const PREV_LOCAL = "(?<![A-Za-z0-9._%+\\-])[A-Za-z0-9._%+\\-]+";
+const PREV_LABEL = "[A-Za-z0-9](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?";
+const PREV_DOT = "(?:[ \\t]*[\\(\\[\\{<][ \\t]*dot[ \\t]*[\\)\\]\\}>][ \\t]*|[ \\t]+dot[ \\t]+)";
+const PREV_PATTERNS: RegExp[] = [
+  new RegExp(`(?<!\\d)(?<!\\d[.,\\-])(?:\\+?1${PREV_SEP}*)?(?:\\(\\s*[2-9]\\d{2}\\s*\\)|[2-9]\\d{2})${PREV_SEP}*[2-9]\\d{2}${PREV_SEP}*\\d{4}(?!\\d)(?![.,]\\d)`, "g"),
+  new RegExp(`${PREV_LOCAL}(?:@|[ \\t]*[\\(\\[\\{<][ \\t]*at[ \\t]*[\\)\\]\\}>][ \\t]*)${PREV_LABEL}(?:(?:${PREV_DOT}|\\.)${PREV_LABEL})+(?![A-Za-z0-9\\-])`, "g"),
+  new RegExp(`${PREV_LOCAL}[ \\t]+at[ \\t]+${PREV_LABEL}(?:\\.${PREV_LABEL})*${PREV_DOT}${PREV_LABEL}(?:(?:${PREV_DOT}|\\.)${PREV_LABEL})*(?![A-Za-z0-9\\-])`, "gi"),
+  new RegExp(`${PREV_LOCAL}[ \\t]+at[ \\t]+${PREV_LABEL}(?:\\.${PREV_LABEL})*\\.(?:com|net|org|edu|gov|io|co|us|biz|info)(?![A-Za-z0-9\\-])`, "gi"),
+];
+const prevModel = (t: string) => PREV_PATTERNS.reduce((o, re) => o.replace(re, "[removed]"), t);
+
+Deno.test("NEGATIVE CONTROL 2 (head 2f6d1753): the previous SOW patterns damage the fix2880d must-survive rows and leak the B3 / advisory forms", () => {
+  for (const t of ["3 bundles@32.50 each", "Drip edge 10pcs@12.50", "Shingles@400.00/sq", "Paid 250 - 500 - 1000", "Paid 250 . 500 . 1000"]) {
+    assertNotEquals(prevModel(t), t, `previous patterns should damage: ${t}`);
+  }
+  for (const t of ["jane @ gmail.com", "jane@ gmail.com", "jane @gmail.com", "jane@gmail .com", "jane(AT)gmail.com", "jane (AT) gmail (DOT) com", "317/555-0142", "317\u00b7555\u00b70142", "jane at yahoo.ca", "jane at gmail.co.uk"]) {
+    assert(!/^\[removed\]$/.test(prevModel(t)), `previous patterns should leak (not fully redact): ${t} -> ${prevModel(t)}`);
+    assertEquals(redactSowText(t), "[removed]", t);
+  }
 });
 
 Deno.test("SOW redaction: no truncation (a 50000-character note is redacted whole and finishes quickly)", () => {
