@@ -158,7 +158,7 @@ class GeneratorTests(unittest.TestCase):
             self.assertEqual(page.count('application/ld+json'), 3)  # JSON-LD kept
         self.assertGreaterEqual(summary["min_strict_unique_words"], glp.MIN_WORDS)
         sm = self.sitemap.read_text(encoding="utf-8")
-        self.assertEqual(sm.count("/locations/"), 3 * 4)
+        self.assertEqual(sm.count("/locations/"), 3 * 4 + 1)   # 12 pages + the /locations/ hub (gh-2893)
         self.assertIn("https://otterquote.com/locations/alpha-county-zz/roofing/", sm)
 
     def test_indiana_only_counties_with_county_content_emit(self):
@@ -173,7 +173,7 @@ class GeneratorTests(unittest.TestCase):
                           ("marion-county-in", "roofing")])
         self.assertLess(summary["median_strict_unique_words"], glp.MIN_WORDS)
         self.assertEqual(sorted(p.name for p in self.out.iterdir()),
-                         ["allen-county-in", "lake-county-in", "marion-county-in"])
+                         ["allen-county-in", "index.html", "lake-county-in", "marion-county-in"])   # index.html = hub (gh-2893)
         self.assertNotEqual(self.sitemap.read_text(encoding="utf-8"), SITEMAP_SEED)
 
     def test_every_indiana_template_page_passes_the_lint(self):
@@ -270,7 +270,7 @@ class GeneratorTests(unittest.TestCase):
         self.assertEqual(repo_sitemap.read_bytes(), before)
         own = self.tmp / "elsewhere" / "sitemap.xml"
         self.assertTrue(own.exists())
-        self.assertEqual(own.read_text(encoding="utf-8").count("/locations/"), 3 * 4)
+        self.assertEqual(own.read_text(encoding="utf-8").count("/locations/"), 3 * 4 + 1)   # + hub (gh-2893)
         self.assertEqual(glp.resolve_sitemap_path(out), own)
         self.assertEqual(glp.resolve_sitemap_path(glp.LOCATIONS_DIR), glp.SITEMAP_PATH)
 
@@ -316,6 +316,8 @@ class GeneratorTests(unittest.TestCase):
         pages = sorted(self.out.glob("*/*/index.html"))
         self.assertGreater(len(pages), 0)
         urls = {f"{glp.SITE_BASE}/locations/{p.parent.parent.name}/{p.parent.name}/" for p in pages}
+        urls.add(glp.HUB_URL)   # the hub (gh-2893) is a generated /locations/ URL too
+        self.assertTrue((self.out / "index.html").is_file())
         def walk(o):
             if isinstance(o, dict):
                 for v in o.values():
@@ -485,7 +487,7 @@ class GeneratorTests(unittest.TestCase):
         own = self.tmp / "own-sitemap.xml"
         quiet(glp.generate, ["ZZ"], out_dir=self.tmp / "o3" / "locations", sitemap_path=own,
               counties_path=self.fx_counties, profiles_dir=self.fx_profiles)
-        self.assertEqual(own.read_text(encoding="utf-8").count("/locations/"), 12)
+        self.assertEqual(own.read_text(encoding="utf-8").count("/locations/"), 13)   # 12 pages + hub (gh-2893)
         self.assertEqual(repo_sitemap.read_bytes(), before)
 
     # round 5 --------------------------------------------------------------------
@@ -1168,6 +1170,153 @@ class GeneratorTests(unittest.TestCase):
                      "fetch_approved_contractors", "compute_tuples", "coverage_stats_html",
                      "profile_links_html", "load_service_key", "REQUIRED_PATTERN"):
             self.assertFalse(hasattr(glp, dead), dead)
+
+
+
+class HubAndSiblingLinkTests(unittest.TestCase):
+    """gh-2893: the /locations/ hub, the same-state sibling links, and proof that neither
+    changes a county page's strict-unique score."""
+
+    # Reuse the fixture plumbing of GeneratorTests without inheriting (and re-running) its tests.
+    tearDown = GeneratorTests.tearDown
+    run_gen = GeneratorTests.run_gen
+    run_fx = GeneratorTests.run_fx
+
+    def setUp(self):
+        GeneratorTests.setUp(self)
+        counties = [f"{n}ville" for n in ("A", "B", "C", "D", "E", "F", "G", "H")]
+        self.write_state(counties)
+        self.counties = counties
+
+    def write_state(self, counties):
+        self.fx_counties.write_text(json.dumps(
+            {"states": [{"code": "ZZ", "name": "Zedland", "counties": counties}]}), encoding="utf-8")
+        prof = json.loads(json.dumps(FIXTURE_PROFILE))
+        prof["regions"] = {"north": {"label": "northern Zedland", "counties": counties,
+                                     "climate": [FIXTURE_CLIMATE % "northern"]}}
+        prof["county_content"] = {c: {t: fixture_content(c, t) for t in ("roofing", "siding", "gutters", "windows")}
+                                  for c in counties}
+        (self.fx_profiles / "ZZ.json").write_text(json.dumps(prof), encoding="utf-8")
+
+    def page(self, county, trade="roofing"):
+        return (self.out / glp.county_slug(county, "ZZ") / trade / "index.html").read_text(encoding="utf-8")
+
+    @staticmethod
+    def hrefs(block):
+        return re.findall(r'<a href="([^"]+)"', block)
+
+    def link_block(self, page):
+        m = re.search(r'<nav class="loc-more".*?</nav>', page, re.S)
+        self.assertIsNotNone(m)
+        return m.group(0)
+
+    def test_hub_is_written_listed_and_wired(self):
+        summary = self.run_fx()
+        self.assertTrue(summary["hub"])
+        hub = (self.out / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<link rel="canonical" href="https://otterquote.com/locations/">', hub)
+        self.assertNotIn("noindex", hub.lower())
+        self.assertEqual(hub.count("<h2>Zedland</h2>"), 1)
+        self.assertEqual(hub.count("<h1>"), 1)
+        # one sentence of copy, the D-345 sentence unchanged
+        self.assertIn(f">{glp.D345_SENTENCE}</p>", hub)
+        self.assertIn("send it to local contractors", hub)
+        glp.compliance_lint(hub, "hub")
+        # every generated page, alphabetical within its state, with the specified anchor text
+        main = hub.split("<main>")[1].split("</main>")[0]
+        anchors = re.findall(r'<li><a href="([^"]+)">([^<]+)</a></li>', main)
+        expected = [(f"/locations/{glp.county_slug(c, 'ZZ')}/{t}/", f"{c} County {t} page")
+                    for c in sorted(self.counties) for t in ("roofing", "siding", "gutters", "windows")]
+        self.assertEqual(sorted(anchors), sorted(expected))
+        self.assertEqual([a for a in anchors if a[1].endswith("roofing page")],
+                         [e for e in expected if e[1].endswith("roofing page")])
+        self.assertEqual(len(anchors), summary["written"])
+        # BreadcrumbList: Home, Locations
+        ld = [json.loads(x) for x in re.findall(r'<script type="application/ld\+json">(.*?)</script>', hub, re.S)]
+        crumb = next(x for x in ld if x["@type"] == "BreadcrumbList")
+        self.assertEqual([(i["position"], i["name"], i["item"]) for i in crumb["itemListElement"]],
+                         [(1, "Home", "https://otterquote.com/"), (2, "Locations", "https://otterquote.com/locations/")])
+        # sitemap
+        sm = self.sitemap.read_text(encoding="utf-8")
+        self.assertEqual(sm.count("<loc>https://otterquote.com/locations/</loc>"), 1)
+        self.assertEqual(sm.count("/locations/"), summary["written"] + 1)
+
+    def test_every_county_page_links_the_hub_and_five_same_state_siblings_wrapping(self):
+        self.run_fx()
+        ordered = sorted(self.counties)
+        for i, c in enumerate(ordered):
+            block = self.link_block(self.page(c))
+            hrefs = self.hrefs(block)
+            self.assertEqual(hrefs[0], "/locations/")
+            self.assertIn(">All county roofing pages</a>", block)
+            want = [f"/locations/{glp.county_slug(ordered[(i + k) % len(ordered)], 'ZZ')}/roofing/" for k in range(1, 6)]
+            self.assertEqual(hrefs[1:], want)
+            self.assertNotIn(f"/locations/{glp.county_slug(c, 'ZZ')}/roofing/", hrefs)
+        # the block sits after </main>, before the footer
+        page = self.page("Aville")
+        self.assertLess(page.index("</main>"), page.index('class="loc-more"'))
+        self.assertLess(page.index('class="loc-more"'), page.index("<footer"))
+
+    def test_small_state_links_every_other_page_only(self):
+        self.write_state(["Aville", "Bville"])
+        self.run_fx()
+        self.assertEqual(self.hrefs(self.link_block(self.page("Aville"))),
+                         ["/locations/", "/locations/bville-county-zz/roofing/"])
+
+    def test_link_blocks_never_change_a_strict_unique_score(self):
+        # Score every page of the run with and without the blocks: identical word lists and
+        # identical strict-unique counts; the block is invisible to the gate's text extraction.
+        summary = self.run_fx()
+        profile = glp.load_profile("ZZ", self.fx_profiles)
+        counties = glp.load_counties("ZZ", self.fx_counties)
+        mask = glp.StateMask("ZZ", profile["name"], counties,
+                             list(profile["region_label"].values()) + list(profile["region_label"]))
+        with_blocks, without_blocks = [], []
+        for c in counties:
+            for t in glp.ELIGIBLE_TRADES:
+                plain = glp.build_page(c, t, "2026-01-01", "ZZ", profile=profile)
+                linked = self.page(c, t)
+                self.assertIn('class="loc-more"', linked)
+                self.assertNotIn('class="loc-more"', plain)
+                without_blocks.append(glp.main_words(plain, mask))
+                with_blocks.append(glp.main_words(linked, mask))
+        baselines = glp.template_baseline_words(["ZZ"], {"ZZ": profile}, "2026-01-01", {"ZZ": mask})
+        self.assertEqual(glp.strict_unique_counts(with_blocks, baselines),
+                         glp.strict_unique_counts(without_blocks, baselines))
+        self.assertGreaterEqual(summary["min_strict_unique_words"], glp.MIN_WORDS)
+
+    def test_a_block_inside_main_would_be_caught(self):
+        # Guard on the guard: text inside <main> does reach the gate, text after </main> does not.
+        mask = glp.StateMask("ZZ", "Zedland", ["Aville"], ["northern Zedland"])
+        base = glp.main_words("<main><p>one two</p></main>", mask)
+        after = '<main><p>one two</p></main><nav class="loc-more"><a href="/x">extra words</a></nav>'
+        inside = '<main><p>one two</p><nav><a href="/x">extra words</a></nav></main>'
+        self.assertEqual(glp.main_words(after, mask), base)
+        self.assertNotEqual(glp.main_words(inside, mask), base)
+
+    def test_empty_run_writes_no_hub_and_removes_its_sitemap_entry(self):
+        self.run_fx()
+        self.assertTrue((self.out / "index.html").exists())
+        quiet(glp.generate, [], out_dir=self.out, sitemap_path=self.sitemap)
+        self.assertNotIn("/locations/", self.sitemap.read_text(encoding="utf-8"))
+
+    def test_sitemap_is_written_with_lf_endings(self):
+        self.run_fx()
+        self.assertNotIn(b"\r", self.sitemap.read_bytes())
+
+    def test_committed_pages_carry_the_hub_link_and_the_hub_lists_them(self):
+        loc = REPO_ROOT / "locations"
+        hub = (loc / "index.html").read_text(encoding="utf-8")
+        pages = sorted(loc.glob("*/*/index.html"))
+        self.assertTrue(pages)
+        for f in pages:
+            rel = "/" + f.relative_to(REPO_ROOT).as_posix()[: -len("index.html")]
+            with self.subTest(rel):
+                self.assertIn(f'href="{rel}"', hub)
+                self.assertIn(">All county roofing pages</a>", f.read_text(encoding="utf-8"))
+        for guide in ("guides", "blog"):
+            self.assertIn('<a href="/locations/">County roofing pages</a>',
+                          (REPO_ROOT / guide / "index.html").read_text(encoding="utf-8"))
 
 
 class LintTests(unittest.TestCase):

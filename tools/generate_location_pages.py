@@ -1686,6 +1686,194 @@ footer a:hover {{ color: var(--link-on-light-deep, #7A4200) !important; }}
 
 
 # ---------------------------------------------------------------------------
+# /locations/ hub and county-page link blocks (gh-2893)
+# ---------------------------------------------------------------------------
+# Every county page used to be an orphan. The hub lists every generated page
+# grouped by state, and each county page gets, after </main>, a link to the hub
+# and links to up to SIBLING_LINKS other pages of the same state and trade (next
+# in alphabetical order, wrapping). Both blocks are navigation only: the
+# strict-unique gate reads <main> only (_UniqueTextParser), so a block placed
+# after </main> and marked data-boilerplate can never change a page's score.
+# generate() asserts that.
+
+HUB_URL = f"{SITE_BASE}/locations/"
+SIBLING_LINKS = 5
+HUB_LINK_TEXT = "All county roofing pages"
+HUB_TITLE = "County Roofing Pages"
+# The D-345 sentence the county template already carries (hero paragraph, meta
+# description, Organization description). Reused unchanged; it is in APPROVED_SENTENCES.
+D345_SENTENCE = "We create a scope of work and send it to local contractors."
+LINK_BLOCK_MARK = 'class="loc-more"'
+
+
+def _entry_sort_key(entry: dict) -> tuple:
+    return (entry["county"].casefold(), entry["county"], entry["trade"])
+
+
+def page_anchor_text(entry: dict) -> str:
+    return f'{entry["county"]} County {TRADE_LABELS[entry["trade"]].lower()} page'
+
+
+def page_href(entry: dict) -> str:
+    return f'/locations/{entry["slug"]}/{entry["trade"]}/'
+
+
+def sibling_entries(entry: dict, entries: list) -> list:
+    """Up to SIBLING_LINKS other pages of the same state and trade: the next ones
+    in alphabetical order, wrapping around the end of the list."""
+    group = sorted((e for e in entries if e["state"] == entry["state"] and e["trade"] == entry["trade"]),
+                   key=_entry_sort_key)
+    i = next(n for n, e in enumerate(group) if e["slug"] == entry["slug"])
+    return [group[(i + k) % len(group)] for k in range(1, min(SIBLING_LINKS, len(group) - 1) + 1)]
+
+
+def build_link_block(entry: dict, entries: list) -> str:
+    sibs = sibling_entries(entry, entries)
+    items = "".join(
+        f'\n      <li><a href="{page_href(s)}">{html.escape(page_anchor_text(s))}</a></li>' for s in sibs)
+    sib_html = f'\n    <ul style="margin:0.5rem 0 0 1.2rem;">{items}\n    </ul>' if sibs else ""
+    return (
+        f'<nav {LINK_BLOCK_MARK} data-boilerplate aria-label="County roofing pages" '
+        f'style="max-width:820px;margin:0 auto;padding:0 var(--sp-6) var(--sp-8);">\n'
+        f'    <p><a href="/locations/" style="color:var(--link-on-light, #A85C00);">{HUB_LINK_TEXT}</a></p>'
+        f'{sib_html}\n  </nav>\n\n'
+    )
+
+
+def inject_link_block(page_html: str, block: str) -> str:
+    """Place the block directly after </main> (before the footer). Idempotent."""
+    if LINK_BLOCK_MARK in page_html:
+        return page_html
+    idx = page_html.rfind("</main>")
+    if idx != -1:
+        idx += len("</main>")
+        return page_html[:idx] + "\n\n  " + block.rstrip("\n") + page_html[idx:]
+    idx = page_html.rfind("</body>")
+    if idx == -1:
+        raise RuntimeError("cannot place the county link block: page has neither </main> nor </body>")
+    return page_html[:idx] + block + page_html[idx:]
+
+
+def build_hub_page(entries: list, state_names: dict) -> str:
+    """The /locations/ hub: every generated page, grouped under its state, alphabetical."""
+    by_state = {}
+    for e in entries:
+        by_state.setdefault(e["state"], []).append(e)
+    sections = []
+    for st in sorted(by_state, key=lambda c: (state_names[c].casefold(), c)):
+        items = "\n".join(
+            f'      <li><a href="{page_href(e)}">{html.escape(page_anchor_text(e))}</a></li>'
+            for e in sorted(by_state[st], key=_entry_sort_key))
+        sections.append(f"    <h2>{html.escape(state_names[st])}</h2>\n    <ul>\n{items}\n    </ul>")
+    sections_html = "\n\n".join(sections)
+    title = f"{HUB_TITLE} · Otter Quotes"
+    meta_desc = html.escape(D345_SENTENCE + " Homeowners can compare any written bids they receive.", quote=True)
+    organization = {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "@id": f"{SITE_BASE}/#organization",
+        "name": "Otter Quotes",
+        "url": f"{SITE_BASE}/",
+        "description": "We create a scope of work and send it to local contractors. Homeowners can compare any written bids they receive.",
+    }
+    breadcrumb = {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "Home", "item": f"{SITE_BASE}/"},
+            {"@type": "ListItem", "position": 2, "name": "Locations", "item": HUB_URL},
+        ],
+    }
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>{html.escape(title, quote=True)}</title>
+<meta name="description" content="{meta_desc}">
+<link rel="canonical" href="{HUB_URL}">
+<meta property="og:title" content="{html.escape(title, quote=True)}">
+<meta property="og:description" content="{meta_desc}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{HUB_URL}">
+<meta property="og:site_name" content="Otter Quotes">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script src="/js/linkedin-insight-gate.js"></script>
+<script src="/js/reddit-pixel-gate.js"></script>
+<script>gtag('config','G-D1Y1TLGEFY');</script>
+
+<script type="application/ld+json">{safe_jsonld(organization)}</script>
+<script type="application/ld+json">{safe_jsonld(breadcrumb)}</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/design-system.css">
+<link rel="stylesheet" href="/css/nav.css">
+
+<style>
+.loc-hero {{
+  padding: var(--sp-12) var(--sp-6) var(--sp-8);
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+  text-align: center;
+}}
+.loc-hero h1 {{ font-size: clamp(1.5rem, 4vw, 2.3rem); margin-bottom: var(--sp-3); }}
+.loc-body {{ max-width: 820px; margin: 0 auto; padding: var(--sp-8) var(--sp-6) var(--sp-10); }}
+.loc-body h2 {{ margin: var(--sp-8) 0 var(--sp-3); font-size: 1.25rem; }}
+.loc-body li {{ color: #3D4F60; line-height: 1.75; margin-bottom: var(--sp-2); }}
+.loc-body ul {{ margin: 0 0 var(--sp-4) 1.2rem; }}
+.loc-body a {{ color: var(--link-on-light, #A85C00); }}
+.loc-body a:hover {{ color: var(--link-on-light-deep, #7A4200); }}
+.site-nav {{ position: sticky; top: 0; z-index: 100; background: rgba(10, 30, 44, 0.95); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); }}
+footer p {{ color: #3D4F60; }}
+.breadcrumb {{ font-size: 0.85rem; color: #3D4F60; padding: var(--sp-4) 0 0; text-align: center; }}
+.breadcrumb a {{ color: var(--link-on-light-hero, #9E5600); text-decoration: none; }}
+.breadcrumb a:hover {{ color: var(--link-on-light-deep, #7A4200); }}
+footer a {{ color: var(--link-on-light, #A85C00) !important; }}
+footer a:hover {{ color: var(--link-on-light-deep, #7A4200) !important; }}
+</style>
+</head>
+<body>
+
+<script>
+(function() {{
+  var navHtml = '<nav class="site-nav"><div class="nav-inner container"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;"></a><div class="nav-links"><a href="/how-it-works.html" class="nav-link">How It Works</a><a href="/contractor-join.html" class="nav-link">For Contractors</a><a href="/start.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';
+  document.write(navHtml);
+}})();
+</script>
+
+<main>
+  <div class="loc-hero">
+    <div class="breadcrumb" data-boilerplate>
+      <a href="/">Home</a> &rsaquo; Locations
+    </div>
+    <div style="padding: var(--sp-8) var(--sp-6) 0;">
+      <h1>{HUB_TITLE}</h1>
+      <p style="color:#3D4F60; max-width:640px; margin:0 auto;">{D345_SENTENCE}</p>
+    </div>
+  </div>
+
+  <div class="loc-body">
+
+{sections_html}
+
+  </div>
+</main>
+
+<footer style="text-align:center; padding: var(--sp-8); color: #3D4F60; font-size:0.85rem; border-top: 1px solid rgba(255,255,255,0.06);">
+  <p>&copy; {datetime.date.today().year} Stellar Edge Services, LLC &mdash; Otter Quotes</p>
+  <p><a href="/terms.html" style="color:var(--amber)">Terms</a> &bull; <a href="/privacy.html" style="color:var(--amber)">Privacy</a> &bull; <a href="/privacy.html#do-not-sell-or-share" style="color:var(--amber)">Do Not Sell or Share My Personal Information</a></p>
+</footer>
+
+</body>
+</html>
+"""
+
+
+# ---------------------------------------------------------------------------
 # Sitemap (mirrors generate_contractor_pages.update_sitemap; targets
 # the repo-root sitemap.xml, lastmod = generation timestamp)
 # ---------------------------------------------------------------------------
@@ -1752,7 +1940,8 @@ def resolve_sitemap_path(out_dir, sitemap_path=None) -> pathlib.Path:
     return derived
 
 
-def update_sitemap(generated_paths: list, generated_on: str, dry_run: bool, sitemap_path=None) -> None:
+def update_sitemap(generated_paths: list, generated_on: str, dry_run: bool, sitemap_path=None,
+                  hub: bool = False) -> None:
     """Rewrite the /locations/ entries so they list exactly the pages
     generated this run (and nothing else)."""
     sitemap_path = pathlib.Path(sitemap_path or SITEMAP_PATH)
@@ -1770,14 +1959,15 @@ def update_sitemap(generated_paths: list, generated_on: str, dry_run: bool, site
     )
 
     if generated_paths:
+        locs = ([HUB_URL] if hub else []) + [f"{SITE_BASE}/locations/{cs}/{ts}/" for cs, ts in sorted(generated_paths)]
         new_entries = "\n".join(
             f"""  <url>
-    <loc>{SITE_BASE}/locations/{cs}/{ts}/</loc>
+    <loc>{loc}</loc>
     <lastmod>{generated_on}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>"""
-            for cs, ts in sorted(generated_paths)
+            for loc in locs
         )
         sitemap_text = sitemap_text.replace("</urlset>", f"\n{new_entries}\n</urlset>")
 
@@ -1788,7 +1978,8 @@ def update_sitemap(generated_paths: list, generated_on: str, dry_run: bool, site
     if dry_run:
         print(f"[DRY RUN] Would update {sitemap_path} with {len(generated_paths)} location URLs")
     else:
-        sitemap_path.write_text(sitemap_text, encoding="utf-8")
+        # newline=LF: write_text would turn LF into CRLF on Windows and churn every sitemap line.
+        sitemap_path.write_text(sitemap_text, encoding="utf-8", newline="\n")
         print(f"Updated {sitemap_path}: {len(generated_paths)} location URLs")
 
 
@@ -1881,10 +2072,11 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
     masks = {st: StateMask(st, profiles[st]["name"], load_counties(st, counties_path),
                            list(profiles[st]["region_label"].values()) + list(profiles[st]["region_label"]))
              for st in states}
-    built, page_states = [], []
+    built, page_states, built_meta = [], [], []
     for state, county, trade in tuples:
         built.append((county_slug(county, state), trade, build_fn(county, trade, generated_on, state)))
         page_states.append(state)
+        built_meta.append({"state": state, "county": county, "trade": trade, "slug": county_slug(county, state)})
     word_lists = [main_words(page_html, masks[st]) for (_, _, page_html), st in zip(built, page_states)]
     baseline_lists = template_baseline_words(states, profiles, generated_on, masks)
     strict = strict_unique_counts(word_lists, baseline_lists)
@@ -1899,6 +2091,23 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
             summary["skipped_thin"].append(page_id)
             continue
         passing.append((c_slug, trade, page_html, wc))
+    # gh-2893: add the hub link and same-state sibling links to every passing page, AFTER the
+    # gate has scored it, then prove the block cannot have changed what the gate measures.
+    meta_by_key = {(m["slug"], m["trade"]): m for m in built_meta}
+    pass_entries = [meta_by_key[(c, t)] for c, t, _h, _w in passing]
+    linked = []
+    for c_slug, trade, page_html, wc in passing:
+        entry = meta_by_key[(c_slug, trade)]
+        new_html = inject_link_block(page_html, build_link_block(entry, pass_entries))
+        st = entry["state"]
+        if main_words(new_html, masks[st]) != main_words(page_html, masks[st]):
+            raise RuntimeError(f"INTEGRITY FAIL [{c_slug}/{trade}]: the county link block changed the strict-gate text")
+        linked.append((c_slug, trade, new_html, wc))
+    passing = linked
+    state_names = {st: profiles[st]["name"] for st in states}
+    hub_html = build_hub_page(pass_entries, state_names) if passing else None
+    if hub_html is not None:
+        compliance_lint(hub_html, "locations/index")
     for c_slug, trade, page_html, _wc in passing:
         page_id = f"{c_slug}/{trade}"
         compliance_lint(page_html, page_id)
@@ -1917,6 +2126,15 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
             print(f"  Written: {page_path} ({wc} strict-unique words)")
         summary["written"] += 1
         summary["paths"].append((c_slug, trade))
+    if hub_html is not None:
+        hub_path = out_dir / "index.html"
+        if dry_run:
+            print(f"  [DRY RUN] Would write {hub_path} (hub, {len(passing)} pages)")
+        else:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            hub_path.write_text(hub_html, encoding="utf-8", newline="\n")
+            print(f"  Written: {hub_path} (hub, {len(passing)} pages)")
+    summary["hub"] = hub_html is not None
 
     if strict:
         summary["min_strict_unique_words"] = min(strict)
@@ -1931,7 +2149,7 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
               f"informational, not a gate): min {summary['min_unshared_shingles']:.1%}, "
               f"median {summary['median_unshared_shingles']:.1%}")
 
-    update_sitemap(summary["paths"], generated_on, dry_run, sitemap_path)
+    update_sitemap(summary["paths"], generated_on, dry_run, sitemap_path, hub=hub_html is not None)
     return summary
 
 
