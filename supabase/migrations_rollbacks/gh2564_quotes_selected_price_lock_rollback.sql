@@ -1,4 +1,4 @@
--- Rollback for supabase/migrations_drafts/gh2564_quotes_selected_price_lock.sql (gh-2564, D-369).
+-- Rollback for supabase/migrations/20261018195342_gh2564_quotes_selected_price_lock.sql (gh-2564, D-369).
 -- WARNING: this RE-OPENS the selected bid: the bidding contractor can again change the price, the decking and
 -- redeck prices and the per-trade prices of a bid the homeowner has already selected.
 -- It restores quotes_guard_homeowner_columns() to the body of gh2519_quotes_server_set_fee.sql, byte for byte, with its

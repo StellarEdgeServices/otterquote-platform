@@ -2,8 +2,8 @@
  * gh-2559 fee leg / D-386 -- static checks on the DRAFT migration that gates the selected contractor's read of the
  * homeowner's claim files on fee collection.
  *
- *   supabase/migrations_drafts/gh2559_claim_docs_fee_gate.sql           (forward)
- *   supabase/migrations_drafts/gh2559_claim_docs_fee_gate_rollback.sql  (rollback)
+ *   supabase/migrations/20261018193726_gh2559_claim_docs_fee_gate.sql           (forward)
+ *   supabase/migrations_rollbacks/gh2559_claim_docs_fee_gate_rollback.sql  (rollback)
  *   supabase/tests/gh2559_claim_docs_fee_gate_proof.sql                 (self-rolling-back proof)
  *
  * Checks: the forward policy keeps the selected-contractor leg and adds "platform_fee_charged IS TRUE" (the signal that
@@ -25,10 +25,10 @@ let passed = 0, failed = 0;
 function ok(c, m) { if (c) { passed++; console.log('PASS: ' + m); } else { failed++; console.log('FAIL: ' + m); } }
 function read(rel) { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch { return ''; } }
 
-const F = 'supabase/migrations_drafts/gh2559_claim_docs_fee_gate.sql';
-const R = 'supabase/migrations_drafts/gh2559_claim_docs_fee_gate_rollback.sql';
+const F = 'supabase/migrations/20261018193726_gh2559_claim_docs_fee_gate.sql';
+const R = 'supabase/migrations_rollbacks/gh2559_claim_docs_fee_gate_rollback.sql';
 const P = 'supabase/tests/gh2559_claim_docs_fee_gate_proof.sql';
-const PF = 'supabase/migrations_drafts/gh2559_claim_docs_fee_gate_pre-flight.md';
+const PF = 'supabase/migrations_rollbacks/gh2559_claim_docs_fee_gate_pre-flight.md';
 const fwd = read(F), rb = read(R), proof = read(P), pre = read(PF);
 
 function body(sql) {

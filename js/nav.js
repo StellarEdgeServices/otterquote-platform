@@ -129,7 +129,7 @@ const Nav = {
   // shared nav-rendered link (Partner Login, footer, etc.) treats an hi-4.html
   // visitor identically to an hi-1.html visitor, never surfacing fee-bearing
   // copy or a "join the referral program" link (D-333).
-  _INSPECTOR_PAGES: ['hi-1', 'hi-4', 'partner-inspectors', 'partner-agreement-inspector'],
+  _INSPECTOR_PAGES: ['hi-1', 'hi-4', 'partner-inspectors', 'partner-agreement-inspector', 'how-a-home-inspector-can-point-a-client-to-bids'],
 
   /** Strip a trailing "/" and a trailing ".html" so a Netlify pretty URL
    *  (no extension) and the literal filename both normalize to the same
