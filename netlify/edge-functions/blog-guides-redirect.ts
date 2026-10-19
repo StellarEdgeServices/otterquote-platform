@@ -151,6 +151,18 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/roof-permit-in-your-bid.html',
   '/guides/roof-tarp-while-you-wait-for-repairs':
     '/guides/roof-tarp-while-you-wait-for-repairs.html',
+  '/guides/roof-wind-ratings-explained':
+    '/guides/roof-wind-ratings-explained.html',
+  '/guides/class-4-impact-resistant-shingles':
+    '/guides/class-4-impact-resistant-shingles.html',
+  '/guides/algae-resistant-shingle-warranties':
+    '/guides/algae-resistant-shingle-warranties.html',
+  '/guides/contractor-workmanship-warranty':
+    '/guides/contractor-workmanship-warranty.html',
+  '/guides/limited-lifetime-shingle-warranty':
+    '/guides/limited-lifetime-shingle-warranty.html',
+  '/guides/manufacturer-backed-roof-warranties':
+    '/guides/manufacturer-backed-roof-warranties.html',
 
   // CRO RUN 52 / #2423: generated /locations/ pages -- the index.html twin 301s to the
   // trailing-slash URL (same class as /blog/index.html above).
