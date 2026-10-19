@@ -1727,11 +1727,34 @@ def sibling_entries(entry: dict, entries: list) -> list:
     return [group[(i + k) % len(group)] for k in range(1, min(SIBLING_LINKS, len(group) - 1) + 1)]
 
 
-def build_link_block(entry: dict, entries: list) -> str:
+FILL_HEADING = "More county roofing pages"
+
+
+def fill_entries(entry: dict, entries: list, state_names: dict, linked: list) -> list:
+    """A state with fewer than SIBLING_LINKS + 1 pages cannot give a page 5 same-state links, so the
+    remaining slots (up to SIBLING_LINKS links in all) go to same-trade pages of OTHER states, ordered
+    alphabetically by state name then county, never the page itself or one already linked."""
+    need = SIBLING_LINKS - len(linked)
+    if need <= 0:
+        return []
+    taken = {e["slug"] for e in linked} | {entry["slug"]}
+    pool = sorted((e for e in entries if e["state"] != entry["state"] and e["trade"] == entry["trade"]
+                   and e["slug"] not in taken),
+                  key=lambda e: (state_names.get(e["state"], e["state"]).casefold(), e["state"]) + _entry_sort_key(e))
+    return pool[:need]
+
+
+def build_link_block(entry: dict, entries: list, state_names: dict = None) -> str:
     sibs = sibling_entries(entry, entries)
     items = "".join(
         f'\n      <li><a href="{page_href(s)}">{html.escape(page_anchor_text(s))}</a></li>' for s in sibs)
     sib_html = f'\n    <ul style="margin:0.5rem 0 0 1.2rem;">{items}\n    </ul>' if sibs else ""
+    fill = fill_entries(entry, entries, state_names or {}, sibs)
+    if fill:
+        fitems = "".join(
+            f'\n      <li><a href="{page_href(s)}">{html.escape(page_anchor_text(s))}</a></li>' for s in fill)
+        sib_html += (f'\n    <h2 class="loc-more-fill" style="margin:1rem 0 0;font-size:1.05rem;">{FILL_HEADING}</h2>'
+                     f'\n    <ul style="margin:0.5rem 0 0 1.2rem;">{fitems}\n    </ul>')
     return (
         f'<nav {LINK_BLOCK_MARK} data-boilerplate aria-label="County roofing pages" '
         f'style="max-width:820px;margin:0 auto;padding:0 var(--sp-6) var(--sp-8);">\n'
@@ -2095,16 +2118,16 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
     # gate has scored it, then prove the block cannot have changed what the gate measures.
     meta_by_key = {(m["slug"], m["trade"]): m for m in built_meta}
     pass_entries = [meta_by_key[(c, t)] for c, t, _h, _w in passing]
+    state_names = {st: profiles[st]["name"] for st in states}
     linked = []
     for c_slug, trade, page_html, wc in passing:
         entry = meta_by_key[(c_slug, trade)]
-        new_html = inject_link_block(page_html, build_link_block(entry, pass_entries))
+        new_html = inject_link_block(page_html, build_link_block(entry, pass_entries, state_names))
         st = entry["state"]
         if main_words(new_html, masks[st]) != main_words(page_html, masks[st]):
             raise RuntimeError(f"INTEGRITY FAIL [{c_slug}/{trade}]: the county link block changed the strict-gate text")
         linked.append((c_slug, trade, new_html, wc))
     passing = linked
-    state_names = {st: profiles[st]["name"] for st in states}
     hub_html = build_hub_page(pass_entries, state_names) if passing else None
     if hub_html is not None:
         compliance_lint(hub_html, "locations/index")

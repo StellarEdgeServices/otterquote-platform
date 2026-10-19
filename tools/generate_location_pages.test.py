@@ -1294,6 +1294,59 @@ class HubAndSiblingLinkTests(unittest.TestCase):
         self.assertEqual(glp.main_words(after, mask), base)
         self.assertNotEqual(glp.main_words(inside, mask), base)
 
+    def write_two_states(self):
+        """ZZ (Zedland) with 2 pages and YY (Yedland) with exactly 6, in one run."""
+        zz = ["Aville", "Bville"]
+        yy = [f"{n}ton" for n in ("C", "D", "E", "F", "G", "H")]
+        self.fx_counties.write_text(json.dumps({"states": [
+            {"code": "ZZ", "name": "Zedland", "counties": zz},
+            {"code": "YY", "name": "Yedland", "counties": yy}]}), encoding="utf-8")
+        for code, name, cs in (("ZZ", "Zedland", zz), ("YY", "Yedland", yy)):
+            prof = json.loads(json.dumps(FIXTURE_PROFILE))
+            prof["code"], prof["name"] = code, name
+            prof["regions"] = {"north": {"label": f"northern {name}", "counties": cs,
+                                         "climate": [FIXTURE_CLIMATE % "northern"]}}
+            prof["county_content"] = {c: {t: fixture_content(c, t) for t in ("roofing", "siding", "gutters", "windows")}
+                                      for c in cs}
+            (self.fx_profiles / f"{code}.json").write_text(json.dumps(prof), encoding="utf-8")
+        return zz, yy
+
+    def test_small_state_is_filled_from_other_states_in_a_separate_block(self):
+        zz, yy = self.write_two_states()
+        self.run_fx(states=("ZZ", "YY"))
+        # a 2-page state: 1 same-state link, then 4 other-state links (state name then county order)
+        a = self.page_in("Aville", "ZZ")
+        block = self.link_block(a)
+        same, fill = block.split(glp.FILL_HEADING)
+        self.assertEqual(self.hrefs(same), ["/locations/", "/locations/bville-county-zz/roofing/"])
+        self.assertEqual(self.hrefs(fill), [f"/locations/{glp.county_slug(c, 'YY')}/roofing/" for c in yy[:4]])
+        self.assertNotIn("zz/", "".join(self.hrefs(fill)))
+        self.assertEqual(len(self.hrefs(same)) - 1 + len(self.hrefs(fill)), 5)
+        self.assertEqual(block.count(glp.FILL_HEADING), 1)
+        # YY pages have 5 same-state siblings: no fill block
+        for c in yy:
+            b = self.link_block(self.page_in(c, "YY"))
+            self.assertNotIn(glp.FILL_HEADING, b)
+            self.assertEqual(len(self.hrefs(b)), 6)
+            self.assertTrue(all(h.endswith("-yy/roofing/") for h in self.hrefs(b)[1:]))
+
+    def test_fill_blocks_do_not_change_strict_unique_scores(self):
+        zz, yy = self.write_two_states()
+        self.run_fx(states=("ZZ", "YY"))
+        for st, cs in (("ZZ", zz), ("YY", yy)):
+            profile = glp.load_profile(st, self.fx_profiles)
+            counties = glp.load_counties(st, self.fx_counties)
+            mask = glp.StateMask(st, profile["name"], counties,
+                                 list(profile["region_label"].values()) + list(profile["region_label"]))
+            for c in cs:
+                linked = self.page_in(c, st)
+                plain = glp.build_page(c, "roofing", "2026-01-01", st, profile=profile)
+                self.assertEqual(glp.main_words(linked, mask), glp.main_words(plain, mask))
+        self.assertIn(glp.FILL_HEADING, self.page_in("Aville", "ZZ"))
+
+    def page_in(self, county, state, trade="roofing"):
+        return (self.out / glp.county_slug(county, state) / trade / "index.html").read_text(encoding="utf-8")
+
     def test_empty_run_writes_no_hub_and_removes_its_sitemap_entry(self):
         self.run_fx()
         self.assertTrue((self.out / "index.html").exists())
