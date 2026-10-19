@@ -1173,6 +1173,106 @@ class GeneratorTests(unittest.TestCase):
 
 
 
+_COUNTY_LINK_RE = re.compile(r'<a href="(/locations/[^/"]+/[^/"]+/)">([^<]*)</a>')
+_H1_RE = re.compile(r"<h1>(.*?)</h1>", re.S)
+
+
+def anchor_h1_mismatches(pages: dict) -> list:
+    """pages maps a URL path ("/locations/" or "/locations/<slug>/<trade>/") to its HTML. Every link to a
+    county page found in any of them must carry, as its visible text, the target page's H1 verbatim
+    (PR #2901 LEGAL-READ 6278821361). Returns (source, href, anchor, target H1) for each link that does
+    not, and for each link whose target is not among the pages."""
+    bad = []
+    for src, page in pages.items():
+        for href, text in _COUNTY_LINK_RE.findall(page):
+            target = pages.get(href)
+            m = _H1_RE.search(target) if target else None
+            h1 = html.unescape(m.group(1).strip()) if m else None
+            if html.unescape(text) != h1:
+                bad.append((src, href, html.unescape(text), h1))
+    return bad
+
+
+def link_count(pages: dict) -> int:
+    return sum(len(_COUNTY_LINK_RE.findall(p)) for p in pages.values())
+
+
+def committed_location_pages() -> dict:
+    loc = REPO_ROOT / "locations"
+    pages = {"/locations/": (loc / "index.html").read_text(encoding="utf-8")}
+    for f in sorted(loc.glob("*/*/index.html")):
+        pages["/" + f.relative_to(REPO_ROOT).as_posix()[: -len("index.html")]] = f.read_text(encoding="utf-8")
+    return pages
+
+
+class AnchorEqualsTargetH1Tests(unittest.TestCase):
+    """PR #2901 retro LEGAL-READ FAIL (6278821361): every link to a county page (same-state siblings,
+    the "More county roofing pages" cross-state fill, and the /locations/ hub) reads exactly as the
+    target page's H1, which names the county and its state."""
+
+    tearDown = GeneratorTests.tearDown
+    run_fx = GeneratorTests.run_fx
+    run_gen = GeneratorTests.run_gen
+
+    def setUp(self):
+        GeneratorTests.setUp(self)
+
+    def fixture_pages(self):
+        HubAndSiblingLinkTests.write_two_states(self)
+        self.run_fx(states=("ZZ", "YY"))
+        pages = {"/locations/": (self.out / "index.html").read_text(encoding="utf-8")}
+        for f in sorted(self.out.glob("*/*/index.html")):
+            pages["/locations/" + f.relative_to(self.out).as_posix()[: -len("index.html")]] = \
+                f.read_text(encoding="utf-8")
+        return pages
+
+    def test_every_generated_link_reads_as_the_target_h1_including_the_fill_block(self):
+        pages = self.fixture_pages()
+        self.assertIn(glp.FILL_HEADING, pages["/locations/aville-county-zz/roofing/"])  # fill block exercised
+        self.assertGreater(link_count(pages), 0)
+        self.assertEqual(anchor_h1_mismatches(pages), [])
+        fill = pages["/locations/aville-county-zz/roofing/"].split(glp.FILL_HEADING)[1]
+        self.assertIn(">Comparing Roofing Bids in Cton County, Yedland</a>", fill)
+
+    def test_committed_pages_every_county_link_reads_as_the_target_h1(self):
+        pages = committed_location_pages()
+        self.assertGreaterEqual(len(pages), 24)
+        self.assertGreater(link_count(pages), 0)
+        self.assertEqual(anchor_h1_mismatches(pages), [])
+        # the three cases LEGAL-READ 6278821361 named now carry their state
+        jackson = pages["/locations/jackson-county-mo/roofing/"]
+        self.assertIn(">Comparing Roofing Bids in Marion County, Indiana</a>", jackson)
+        self.assertIn(">Comparing Roofing Bids in Butler County, Ohio</a>", jackson)
+        self.assertIn(">Comparing Roofing Bids in Jackson County, Missouri</a>",
+                      pages["/locations/allen-county-in/roofing/"])
+        for src, page in pages.items():
+            with self.subTest(src):
+                self.assertNotRegex(page, r">[^<>]* County roofing page</a>")
+
+    def test_negative_control_old_bare_anchor_text_fails(self):
+        # The pre-fix text ("<County> County roofing page", no state) must be caught by the check above.
+        pages = committed_location_pages()
+        good = '<a href="/locations/marion-county-in/roofing/">Comparing Roofing Bids in Marion County, Indiana</a>'
+        src = "/locations/jackson-county-mo/roofing/"
+        self.assertIn(good, pages[src])
+        pages[src] = pages[src].replace(
+            good, '<a href="/locations/marion-county-in/roofing/">Marion County roofing page</a>')
+        self.assertEqual(anchor_h1_mismatches(pages),
+                         [(src, "/locations/marion-county-in/roofing/", "Marion County roofing page",
+                           "Comparing Roofing Bids in Marion County, Indiana")])
+        # and a fixture run that used the old anchor function fails the same way
+        old = glp.page_anchor_text
+        glp.page_anchor_text = lambda e, sn: f'{e["county"]} County {glp.TRADE_LABELS[e["trade"]].lower()} page'
+        try:
+            fx = self.fixture_pages()
+        finally:
+            glp.page_anchor_text = old
+        bad = anchor_h1_mismatches(fx)
+        self.assertEqual(len(bad), link_count(fx))
+        self.assertIn(("/locations/aville-county-zz/roofing/", "/locations/cton-county-yy/roofing/",
+                       "Cton County roofing page", "Comparing Roofing Bids in Cton County, Yedland"), bad)
+
+
 class HubAndSiblingLinkTests(unittest.TestCase):
     """gh-2893: the /locations/ hub, the same-state sibling links, and proof that neither
     changes a county page's strict-unique score."""
@@ -1225,11 +1325,12 @@ class HubAndSiblingLinkTests(unittest.TestCase):
         # every generated page, alphabetical within its state, with the specified anchor text
         main = hub.split("<main>")[1].split("</main>")[0]
         anchors = re.findall(r'<li><a href="([^"]+)">([^<]+)</a></li>', main)
-        expected = [(f"/locations/{glp.county_slug(c, 'ZZ')}/{t}/", f"{c} County {t} page")
+        expected = [(f"/locations/{glp.county_slug(c, 'ZZ')}/{t}/", glp.page_h1_text(c, t, "Zedland"))
                     for c in sorted(self.counties) for t in ("roofing", "siding", "gutters", "windows")]
         self.assertEqual(sorted(anchors), sorted(expected))
-        self.assertEqual([a for a in anchors if a[1].endswith("roofing page")],
-                         [e for e in expected if e[1].endswith("roofing page")])
+        self.assertEqual([a for a in anchors if a[0].endswith("/roofing/")],
+                         [e for e in expected if e[0].endswith("/roofing/")])
+        self.assertIn('<a href="/locations/aville-county-zz/roofing/">Comparing Roofing Bids in Aville County, Zedland</a>', main)
         self.assertEqual(len(anchors), summary["written"])
         # BreadcrumbList: Home, Locations
         ld = [json.loads(x) for x in re.findall(r'<script type="application/ld\+json">(.*?)</script>', hub, re.S)]

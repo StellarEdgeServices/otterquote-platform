@@ -36,7 +36,9 @@ the strict-unique gate reads, so they cannot change a page's score; `generate()`
 fails the run if they do. A state with fewer than 6 pages cannot give 5 same-state links, so the
 remaining slots (5 links in all) are filled with same-trade pages of other states, alphabetical by
 state then county (never the page itself or one already linked), in a separate block headed
-`More county roofing pages`. A state with 6 or more pages gets no fill block. `_redirects` and the edge function map
+`More county roofing pages`. A state with 6 or more pages gets no fill block. Every link to a county page (hub,
+siblings, fill) reads exactly as the target page's H1, which names the county and its state
+(`page_anchor_text` = `page_h1_text`; PR #2901 LEGAL-READ 6278821361). `_redirects` and the edge function map
 (`netlify/edge-functions/blog-guides-redirect.ts`) are still edited by hand: the hub needs
 `/locations/index.html -> /locations/` in both, like each county page. `guides/index.html` and
 `blog/index.html` carry the one `County roofing pages` link by hand.
