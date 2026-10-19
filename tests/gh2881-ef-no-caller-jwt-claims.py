@@ -162,7 +162,7 @@ def bind(text, start):
     ('var', name) | ('prop', 'a.b') | ('factory', name) | None. Works backwards to the nearest plain `=` at bracket depth 0, so an enclosing
     `Deno.serve(async (req: Request) => { ... })` or a `cond ? createClient(..) : createClient(..)` ternary cannot capture or hide the binding."""
     tail = text[:start]
-    a = re.search(r"([A-Za-z_$][\w$]*)\s*[:=]\s*(?:async\s*)?(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*(?::[^=>]+)?=>\s*$", tail)
+    a = re.search(r"([A-Za-z_$][\w$]*)\s*[:=]\s*(?:async\s*)?(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*(?::[^=>]+)?=>\s*\(?\s*(?:[\w$.]+\s*(?:\?\?|\|\||&&)=\s*)?(?:await\s+)?$", tail)
     if a: return ("factory", a.group(1))
     if re.search(r"=>\s*$", tail): return None
     if re.search(r"\breturn\s*$", tail):
@@ -191,37 +191,70 @@ def bind(text, start):
     return None
 
 
+def client_names(text):
+    """createClient plus every identifier bound to it: `const mk = createClient`, `makeClient: typeof createClient = createClient` (default param), `{ makeClient: createClient }`"""
+    names = {"createClient"}
+    for m in re.finditer(r"([A-Za-z_$][\w$]*)\s*(?::[^=,)]+?)?[=:]\s*createClient\b(?!\s*[(<])", text):
+        if m.group(1) not in ("typeof", "ReturnType"): names.add(m.group(1))
+    return names
+
+
+def factory_sites(text, f, defs, label):
+    """every call of factory f: assigned (then its uses are checked), chained straight into .auth (fine), or a problem. returns (problems, sites)"""
+    probs = []; sites = 0
+    for m in re.finditer(r"(?<![\w$])" + re.escape(f) + r"\s*(?:<[^()]*?>)?\s*\(", text):
+        if re.search(r"function\s+$", text[max(0, m.start() - 12):m.start()]): continue  # the definition itself
+        sites += 1
+        j = match_close(text, m.end() - 1)
+        line = text.count("\n", 0, m.start()) + 1
+        a = re.search(r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:await\s+)?(?:[\w$.]*\.)?$", text[max(0, m.start() - 120):m.start()])
+        c = re.match(r"\s*\.\s*(\w+)", text[j + 1:j + 40])
+        if a: probs += check_uses(a.group(1), text[j + 1:], defs, 0, "%s:%d client from %s() -> %s" % (label, line, f, a.group(1)))
+        elif c and c.group(1) == "auth": pass
+        elif c: probs.append("%s:%d %s().%s used inline on a caller client" % (label, line, f, c.group(1)))
+        else: probs.append("%s:%d result of %s() is not assigned or used for .auth only: cannot be followed" % (label, line, f))
+    return probs, sites
+
+
 def scan_text(text, label, extra_defs=None):
     """returns (caller client count, bound-and-scanned count, problems)"""
     text = strip_comments(text)
     defs = func_defs(text)
     if extra_defs: defs = {**extra_defs, **defs}
-    n = 0; scanned = 0; probs = []; factories = set()
-    for m in re.finditer(r"createClient\(", text):
-        pre = text[max(0, m.start() - 12):m.start()]
-        if re.search(r"(import|function|typeof)\s*$", pre) or text[max(0, m.start() - 1):m.start()] in ("{", ","):
-            continue
+    n = 0; scanned = 0; probs = []; factories = []
+    names = client_names(text)
+    for m in re.finditer(r"(?:(?<![\w$.])createClient|(?<![\w$])(?:" + "|".join(re.escape(x) for x in sorted(names - {"createClient"}) or ["\0"]) + r"))\s*(?:<[^()]*?>)?\s*\(", text):
+        if re.search(r"(import|function|typeof)\s*$", text[max(0, m.start() - 12):m.start()]): continue
         i = m.end() - 1; j = match_close(text, i)
         if classify(text[i + 1:j], text) != "caller": continue
         n += 1
         line = text.count("\n", 0, m.start()) + 1
         b = bind(text, m.start())
-        if b and b[0] == "factory": factories.add(b[1]); scanned += 1; continue
+        if b and b[0] == "factory": factories.append((b[1], line)); continue
         if not b:
             if re.match(r"\s*\.\s*auth\b", text[j + 1:j + 12]): scanned += 1; continue
             probs.append("%s:%d: caller client not bound to a variable, property or factory (chained or passed inline): cannot be shown to be auth-only" % (label, line)); continue
         scanned += 1
         probs += check_uses(b[1], text if b[0] == "prop" else text[j + 1:], defs, 0, "%s:%d %s" % (label, line, b[1]))
-    for f in factories:  # a function/arrow/injected property that returns a caller client: every client it hands out is checked the same way
-        for m in re.finditer(r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:await\s+)?(?:[\w$.]*\.)?" + re.escape(f) + r"\s*\(", text):
-            j = match_close(text, m.end() - 1)
-            probs += check_uses(m.group(1), text[j + 1:], defs, 0, "%s: client from %s() -> %s" % (label, f, m.group(1)))
+    for f, line in factories:  # a function/arrow/injected property that returns a caller client: every call site must be checked
+        p, sites = factory_sites(text, f, defs, label)
+        probs += p
+        if sites and not p: scanned += 1
+        elif not sites: probs.append("%s:%d factory %s() returns a caller client but has no call site in this file" % (label, line, f))
     return n, scanned, probs
 
 
 # ---- mutation fixtures: each of these MUST be reported as a problem, and the clean ones must not ----
 ANON = 'const URL = "x";\n'
 MUT = {
+    "createClient<Database>(...) generic call": 'const sb = createClient<Database>(URL, tok);\nawait sb.from("claims").select("*");',
+    "alias: const mk = createClient": 'const mk = createClient;\nconst sb = mk(URL, tok);\nawait sb.from("claims").select("*");',
+    "alias: default param typeof createClient = createClient": 'export async function h(req: Request, makeClient: typeof createClient = createClient) {\n  const sb = makeClient(URL, tok);\n  return sb.from("claims").select("*");\n}',
+    "alias: injected property { makeClient: createClient }": 'const deps = { makeClient: createClient };\nconst sb = deps.makeClient(URL, tok);\nawait sb.from("claims").select("*");',
+    "factory result used inline: mk(tok).from": 'const mk = (t) => createClient(URL, t);\nawait mk(tok).from("claims").select("*");',
+    "factory result used inline: getClient().from (lazy ??= pattern)": 'let client;\nconst getClient = () => (client ??= createClient(URL, tok));\nawait getClient().from("claims").select("*");',
+    "factory result passed to something unknown": 'const mk = (t) => createClient(URL, t);\nawait other(mk(tok));',
+    "factory with no call site in the file": 'export const mk = (t) => createClient(URL, t);',
     "caller token as key, any name, reads claims": ANON + 'const sbCaller = createClient(URL, callerToken);\nawait sbCaller.from("claims").select("*");',
     "lower-case authorization header, reads claims": ANON + 'const db = createClient(URL, ANON_KEY, { global: { headers: { authorization: h } } });\nawait db.from("claims").select("id");',
     "mixed-case Authorization via anon key, reads a table": ANON + 'const weird_name9 = createClient(URL, Deno.env.get("SUPABASE_ANON_KEY"), { global: { headers: { Authorization: authHeader } } });\nawait weird_name9.rpc("x");',
@@ -243,6 +276,9 @@ MUT = {
     "arrow factory": 'const mk = (t) => createClient(URL, t);\nconst c = await mk(tok);\nawait c.rpc("x");',
 }
 CLEAN = {
+    "createClient<Database> with a service key": 'const sb = createClient<Database>(URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);\nawait sb.from("claims").select("*");',
+    "alias with a service key": 'export async function h(makeClient: typeof createClient = createClient) {\n  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;\n  const sb = makeClient(URL, key);\n  return sb.from("claims").select("*");\n}',
+    "factory result used for .auth only, inline": 'const mk = (t) => createClient(URL, t);\nawait mk(tok).auth.getUser();',
     "service client reads claims": 'const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");\nconst sb = createClient(URL, supabaseKey);\nawait sb.from("claims").select("*");',
     "caller client used for auth only": 'const sbCaller = createClient(URL, callerToken);\nconst { data } = await sbCaller.auth.getUser();',
     "typed handler, auth only": 'Deno.serve(async (req: Request) => {\n  const sb = createClient(URL, tok);\n  await sb.auth.getUser();\n});',
@@ -261,6 +297,21 @@ for name, src in CLEAN.items():
     n, sc, p = scan_text(src, "fixture")
     ok = not p
     print(("PASS: " if ok else "FAIL: ") + "must not be flagged: " + name + ("" if ok else "  " + str(p))); fails += (not ok)
+
+# ---- tree mutation fixtures: the real files, with the service key swapped for the anon key, must FAIL (the four injectable-makeClient functions) ----
+SWAPS = [
+    ("process-hover-rebate/index.ts", 'getEnv("SUPABASE_SERVICE_ROLE_KEY")!;\n  const supabase = makeClient', 'getEnv("SUPABASE_ANON_KEY")!;\n  const supabase = makeClient'),
+    ("send-message-notification/index.ts", 'const supabaseKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");', 'const supabaseKey = getEnv("SUPABASE_ANON_KEY");'),
+    ("notify-contractors/index.ts", 'const supabaseKey = getEnv("SUPABASE_SERVICE_ROLE_KEY")!;', 'const supabaseKey = getEnv("SUPABASE_ANON_KEY")!;'),
+    ("send-support-email/index.ts", 'getEnv("SUPABASE_SERVICE_ROLE_KEY") || ""', 'getEnv("SUPABASE_ANON_KEY") || ""'),
+]
+for rel, old, new in SWAPS:
+    src = open(os.path.join(ROOT, rel), errors="ignore").read()
+    if old not in src:
+        print("FAIL: tree fixture target text not found in " + rel); fails += 1; continue
+    n, sc, p = scan_text(src.replace(old, new, 1), rel)
+    ok = bool(p) and n > 0
+    print(("PASS: " if ok else "FAIL: ") + "tree mutation (anon key swapped in) must be flagged: " + rel + " (caller clients %d, problems %d)" % (n, len(p))); fails += (not ok)
 
 # ---- the tree: every non-test .ts under supabase/functions ----
 files = []
