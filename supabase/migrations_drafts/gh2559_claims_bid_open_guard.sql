@@ -37,8 +37,11 @@
 --      application/pdf) and, for a type the provider genuinely cannot read (Word, HEIC, anything else), writes the new column
 --      claims.loss_sheet_parse_status = 'unsupported' and an operator row in platform_alerts_log. Condition 1 treats 'unsupported' as
 --      "nothing readable to wait for": the claim may open, and since no summary exists the bidder sees none of the estimate's fields. Only
---      the platform (service_role / admin / owner-level functions) may write that column; a client write is refused 42501, otherwise a
---      homeowner could skip condition 1 by typing it. Q6 for Ben (default built: allow open + admin alert). Re-trigger a parse:
+--      the platform (service_role / admin / owner-level functions) may write that column AND the three parse results it stands beside
+--      (loss_sheet_parsed_at, parsed_line_items, contractor_scope_summary); a client write of any of them is refused 42501, otherwise a
+--      homeowner could skip condition 1 by typing a status or a fake parse (review 6277230163 F1/F1b; grep: no client code writes them).
+--      The provider rejecting a file (HTTP 400/413: corrupt or encrypted PDF, truncated image, over its limits) is recorded the same way
+--      as status 'failed' + platform_alerts_log 'loss_sheet_parse_failed', and condition 1 treats 'failed' like 'unsupported'. Q6 for Ben (default built: allow open + admin alert). Re-trigger a parse:
 --      call parse-loss-sheet with the service-role bearer and {claim_id, storage_path} (its existing service-role path).
 --  (2) Replacing the estimate resets the parse. Any change of estimate_filename clears loss_sheet_parsed_at, parsed_line_items,
 --      contractor_scope_summary and loss_sheet_parse_status (each only if the same statement did not set it), so an old parse can never
@@ -82,7 +85,7 @@ $gate$;
 ALTER TABLE public.claims ADD COLUMN IF NOT EXISTS loss_sheet_parse_status text;
 ALTER TABLE public.claims DROP CONSTRAINT IF EXISTS claims_loss_sheet_parse_status_check;
 ALTER TABLE public.claims ADD CONSTRAINT claims_loss_sheet_parse_status_check
-  CHECK (loss_sheet_parse_status IS NULL OR loss_sheet_parse_status IN ('parsed', 'unsupported'));
+  CHECK (loss_sheet_parse_status IS NULL OR loss_sheet_parse_status IN ('parsed', 'unsupported', 'failed'));
 
 -- Condition 1 predicate.
 CREATE OR REPLACE FUNCTION public.gh2559_estimate_is_read(p_parsed jsonb, p_parsed_at timestamptz)
@@ -203,7 +206,7 @@ BEGIN
   -- Condition 1: only at the moment the claim opens.
   IF v_opening
      AND (NEW.estimate_filename IS NOT NULL OR NEW.has_estimate IS TRUE)
-     AND NEW.loss_sheet_parse_status IS DISTINCT FROM 'unsupported'   -- the parser cannot read this file type (Q6): nothing to wait for
+     AND COALESCE(NEW.loss_sheet_parse_status, '') NOT IN ('unsupported', 'failed')   -- the parser cannot read this file (type unsupported, or the provider rejected it; Q6): nothing to wait for
      AND NOT public.gh2559_estimate_is_read(NEW.parsed_line_items, NEW.loss_sheet_parsed_at) THEN
     RAISE EXCEPTION '%', c_unread USING ERRCODE = 'check_violation';
   END IF;
@@ -244,11 +247,16 @@ AS $fn$
 DECLARE
   v_old_status text := CASE WHEN TG_OP = 'UPDATE' THEN OLD.loss_sheet_parse_status END;
 BEGIN
-  IF NEW.loss_sheet_parse_status IS DISTINCT FROM v_old_status
+  -- Only the platform writes the parse results. A client that could type loss_sheet_parsed_at / parsed_line_items / contractor_scope_summary
+  -- (authenticated holds column UPDATE on them) could forge a "read" estimate and skip condition 1 (review 6277230163, F1/F1b).
+  IF (NEW.loss_sheet_parse_status IS DISTINCT FROM v_old_status
+      OR NEW.loss_sheet_parsed_at IS DISTINCT FROM CASE WHEN TG_OP = 'UPDATE' THEN OLD.loss_sheet_parsed_at END
+      OR NEW.parsed_line_items IS DISTINCT FROM CASE WHEN TG_OP = 'UPDATE' THEN OLD.parsed_line_items END
+      OR NEW.contractor_scope_summary IS DISTINCT FROM CASE WHEN TG_OP = 'UPDATE' THEN OLD.contractor_scope_summary END)
      AND current_user IN ('anon', 'authenticated')
      AND COALESCE(auth.role(), '') <> 'service_role'
      AND NOT COALESCE(public.is_admin_email(), false) THEN
-    RAISE EXCEPTION 'claims: loss_sheet_parse_status can only be written by the platform (gh-2559)'
+    RAISE EXCEPTION 'claims: the parse results (loss_sheet_parse_status, loss_sheet_parsed_at, parsed_line_items, contractor_scope_summary) can only be written by the platform (gh-2559)'
       USING ERRCODE = '42501';
   END IF;
 
@@ -263,7 +271,7 @@ END
 $fn$;
 
 COMMENT ON FUNCTION public.claims_estimate_parse_state_guard() IS
-  'gh-2559: BEFORE INSERT OR UPDATE OF estimate_filename, loss_sheet_parse_status on public.claims. Refuses (42501) a client write of loss_sheet_parse_status; clears the previous parse (loss_sheet_parsed_at, parsed_line_items, contractor_scope_summary, loss_sheet_parse_status) when estimate_filename changes, unless the same statement set them.';
+  'gh-2559: BEFORE INSERT OR UPDATE OF estimate_filename and the four parse-result columns on public.claims. Refuses (42501) a client write of loss_sheet_parse_status, loss_sheet_parsed_at, parsed_line_items or contractor_scope_summary; clears the previous parse (loss_sheet_parsed_at, parsed_line_items, contractor_scope_summary, loss_sheet_parse_status) when estimate_filename changes, unless the same statement set them.';
 
 REVOKE EXECUTE ON FUNCTION public.claims_estimate_parse_state_guard() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.gh2559_estimate_is_read(jsonb, timestamptz) FROM PUBLIC, anon, authenticated;
@@ -274,7 +282,7 @@ DROP TRIGGER IF EXISTS claims_guard_a0_parse_state ON public.claims;
 
 -- Named so that BEFORE triggers (fired in name order) run it before claims_guard_bid_open in the same statement.
 CREATE TRIGGER claims_guard_a0_parse_state
-  BEFORE INSERT OR UPDATE OF estimate_filename, loss_sheet_parse_status
+  BEFORE INSERT OR UPDATE OF estimate_filename, loss_sheet_parse_status, loss_sheet_parsed_at, parsed_line_items, contractor_scope_summary
   ON public.claims
   FOR EACH ROW
   EXECUTE FUNCTION public.claims_estimate_parse_state_guard();

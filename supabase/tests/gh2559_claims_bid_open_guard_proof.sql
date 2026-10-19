@@ -38,7 +38,7 @@ DECLARE
 ALTER TABLE public.claims ADD COLUMN IF NOT EXISTS loss_sheet_parse_status text;
 ALTER TABLE public.claims DROP CONSTRAINT IF EXISTS claims_loss_sheet_parse_status_check;
 ALTER TABLE public.claims ADD CONSTRAINT claims_loss_sheet_parse_status_check
-  CHECK (loss_sheet_parse_status IS NULL OR loss_sheet_parse_status IN ('parsed', 'unsupported'));
+  CHECK (loss_sheet_parse_status IS NULL OR loss_sheet_parse_status IN ('parsed', 'unsupported', 'failed'));
 
 -- Condition 1 predicate.
 CREATE OR REPLACE FUNCTION public.gh2559_estimate_is_read(p_parsed jsonb, p_parsed_at timestamptz)
@@ -159,7 +159,7 @@ BEGIN
   -- Condition 1: only at the moment the claim opens.
   IF v_opening
      AND (NEW.estimate_filename IS NOT NULL OR NEW.has_estimate IS TRUE)
-     AND NEW.loss_sheet_parse_status IS DISTINCT FROM 'unsupported'   -- the parser cannot read this file type (Q6): nothing to wait for
+     AND COALESCE(NEW.loss_sheet_parse_status, '') NOT IN ('unsupported', 'failed')   -- the parser cannot read this file (type unsupported, or the provider rejected it; Q6): nothing to wait for
      AND NOT public.gh2559_estimate_is_read(NEW.parsed_line_items, NEW.loss_sheet_parsed_at) THEN
     RAISE EXCEPTION '%', c_unread USING ERRCODE = 'check_violation';
   END IF;
@@ -197,11 +197,16 @@ AS $fn$
 DECLARE
   v_old_status text := CASE WHEN TG_OP = 'UPDATE' THEN OLD.loss_sheet_parse_status END;
 BEGIN
-  IF NEW.loss_sheet_parse_status IS DISTINCT FROM v_old_status
+  -- Only the platform writes the parse results. A client that could type loss_sheet_parsed_at / parsed_line_items / contractor_scope_summary
+  -- (authenticated holds column UPDATE on them) could forge a "read" estimate and skip condition 1 (review 6277230163, F1/F1b).
+  IF (NEW.loss_sheet_parse_status IS DISTINCT FROM v_old_status
+      OR NEW.loss_sheet_parsed_at IS DISTINCT FROM CASE WHEN TG_OP = 'UPDATE' THEN OLD.loss_sheet_parsed_at END
+      OR NEW.parsed_line_items IS DISTINCT FROM CASE WHEN TG_OP = 'UPDATE' THEN OLD.parsed_line_items END
+      OR NEW.contractor_scope_summary IS DISTINCT FROM CASE WHEN TG_OP = 'UPDATE' THEN OLD.contractor_scope_summary END)
      AND current_user IN ('anon', 'authenticated')
      AND COALESCE(auth.role(), '') <> 'service_role'
      AND NOT COALESCE(public.is_admin_email(), false) THEN
-    RAISE EXCEPTION 'claims: loss_sheet_parse_status can only be written by the platform (gh-2559)'
+    RAISE EXCEPTION 'claims: the parse results (loss_sheet_parse_status, loss_sheet_parsed_at, parsed_line_items, contractor_scope_summary) can only be written by the platform (gh-2559)'
       USING ERRCODE = '42501';
   END IF;
 
@@ -216,7 +221,7 @@ END
 $fn$;
 
 COMMENT ON FUNCTION public.claims_estimate_parse_state_guard() IS
-  'gh-2559: BEFORE INSERT OR UPDATE OF estimate_filename, loss_sheet_parse_status on public.claims. Refuses (42501) a client write of loss_sheet_parse_status; clears the previous parse (loss_sheet_parsed_at, parsed_line_items, contractor_scope_summary, loss_sheet_parse_status) when estimate_filename changes, unless the same statement set them.';
+  'gh-2559: BEFORE INSERT OR UPDATE OF estimate_filename and the four parse-result columns on public.claims. Refuses (42501) a client write of loss_sheet_parse_status, loss_sheet_parsed_at, parsed_line_items or contractor_scope_summary; clears the previous parse (loss_sheet_parsed_at, parsed_line_items, contractor_scope_summary, loss_sheet_parse_status) when estimate_filename changes, unless the same statement set them.';
 
 REVOKE EXECUTE ON FUNCTION public.claims_estimate_parse_state_guard() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.gh2559_estimate_is_read(jsonb, timestamptz) FROM PUBLIC, anon, authenticated;
@@ -227,7 +232,7 @@ DROP TRIGGER IF EXISTS claims_guard_a0_parse_state ON public.claims;
 
 -- Named so that BEFORE triggers (fired in name order) run it before claims_guard_bid_open in the same statement.
 CREATE TRIGGER claims_guard_a0_parse_state
-  BEFORE INSERT OR UPDATE OF estimate_filename, loss_sheet_parse_status
+  BEFORE INSERT OR UPDATE OF estimate_filename, loss_sheet_parse_status, loss_sheet_parsed_at, parsed_line_items, contractor_scope_summary
   ON public.claims
   FOR EACH ROW
   EXECUTE FUNCTION public.claims_estimate_parse_state_guard();
@@ -291,7 +296,10 @@ BEGIN
    (12,'C5 control: open claim, unrelated column',                 'u/est.pdf', good,  true,  NULL, NULL, NULL, true, 'authenticated', 'urgency_note_probe = 1', 'ACCEPTED', NULL, NULL),
    (13,'X1 file the parser cannot read (Word/HEIC), platform marked it unsupported: opens', 'u/est.docx', NULL, false, NULL, NULL, NULL, false, 'authenticated', 'ready_for_bids = true', 'ACCEPTED', 'unsupported', NULL),
    (14,'X1b client writes loss_sheet_parse_status itself (column absent BEFORE: 42703)', 'u/est.docx', NULL, false, NULL, NULL, NULL, false, 'authenticated', $q$loss_sheet_parse_status = 'unsupported'$q$, 'REJECTED', NULL, NULL),
-   (15,'X2 parsed PDF, then replaced by an unparsed JPG, then submit (walk-around)', 'u/est.pdf', good, true, NULL, NULL, NULL, false, 'authenticated', 'ready_for_bids = true', 'REJECTED', NULL, $q$estimate_filename = 'u/new.jpg'$q$);
+   (15,'X2 parsed PDF, then replaced by an unparsed JPG, then submit (walk-around)', 'u/est.pdf', good, true, NULL, NULL, NULL, false, 'authenticated', 'ready_for_bids = true', 'REJECTED', NULL, $q$estimate_filename = 'u/new.jpg'$q$),
+   (16,'F1 client forges a parse (loss_sheet_parsed_at + parsed_line_items) itself', 'u/est.pdf', NULL, false, NULL, NULL, NULL, false, 'authenticated', $q$loss_sheet_parsed_at = now(), parsed_line_items = '{"sections":[{"n":1}]}'::jsonb$q$, 'REJECTED', NULL, NULL),
+   (17,'F1b client replaces the file, forges the parse and opens in ONE statement', 'u/est.pdf', good, true, NULL, NULL, NULL, false, 'authenticated', $q$estimate_filename = 'u/new.pdf', loss_sheet_parsed_at = now() + interval '1 minute', parsed_line_items = '{"sections":[{"n":2}]}'::jsonb, ready_for_bids = true$q$, 'REJECTED', NULL, NULL),
+   (18,'X1f provider rejected the file (status failed, platform-set): opens', 'u/est.pdf', NULL, false, NULL, NULL, NULL, false, 'authenticated', 'ready_for_bids = true', 'ACCEPTED', 'failed', NULL);
   -- C5 uses a column every claims row has; replace the placeholder with a harmless self-assignment
   UPDATE cases SET upd = 'status = status' WHERE id = 12;
 

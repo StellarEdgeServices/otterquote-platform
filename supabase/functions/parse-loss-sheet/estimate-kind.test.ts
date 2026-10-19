@@ -17,6 +17,14 @@ Deno.test("Word (.docx is a zip, .doc is OLE), HEIC, text and empty files are un
   assertEquals(detectEstimateKind(new Uint8Array(0)), null);
   assertEquals(detectEstimateKind(new TextEncoder().encode("hello")), null);
 });
+Deno.test("the image cap is the raw size whose BASE64 fits in 5 MiB (3,932,160), not 5 MiB raw", () => {
+  assertEquals(MAX_IMAGE_BYTES, 3932160);
+  assertEquals(Math.ceil(MAX_IMAGE_BYTES / 3) * 4 <= 5 * 1024 * 1024, true);
+  const ok = new Uint8Array(MAX_IMAGE_BYTES); ok[0] = 0xff; ok[1] = 0xd8; ok[2] = 0xff;
+  assertEquals(detectEstimateKind(ok)?.block, "image");
+  const big = new Uint8Array(4 * 1024 * 1024); big[0] = 0xff; big[1] = 0xd8; big[2] = 0xff; // 4 MiB raw = 5.33 MiB base64
+  assertEquals(detectEstimateKind(big), null);
+});
 Deno.test("an image over the provider's 5 MB limit is unsupported; a PDF of that size is not judged here", () => {
   const big = new Uint8Array(MAX_IMAGE_BYTES + 1); big[0] = 0xff; big[1] = 0xd8; big[2] = 0xff;
   assertEquals(detectEstimateKind(big), null);

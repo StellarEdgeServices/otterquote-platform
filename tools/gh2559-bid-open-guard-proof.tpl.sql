@@ -73,7 +73,10 @@ BEGIN
    (12,'C5 control: open claim, unrelated column',                 'u/est.pdf', good,  true,  NULL, NULL, NULL, true, 'authenticated', 'urgency_note_probe = 1', 'ACCEPTED', NULL, NULL),
    (13,'X1 file the parser cannot read (Word/HEIC), platform marked it unsupported: opens', 'u/est.docx', NULL, false, NULL, NULL, NULL, false, 'authenticated', 'ready_for_bids = true', 'ACCEPTED', 'unsupported', NULL),
    (14,'X1b client writes loss_sheet_parse_status itself (column absent BEFORE: 42703)', 'u/est.docx', NULL, false, NULL, NULL, NULL, false, 'authenticated', $q$loss_sheet_parse_status = 'unsupported'$q$, 'REJECTED', NULL, NULL),
-   (15,'X2 parsed PDF, then replaced by an unparsed JPG, then submit (walk-around)', 'u/est.pdf', good, true, NULL, NULL, NULL, false, 'authenticated', 'ready_for_bids = true', 'REJECTED', NULL, $q$estimate_filename = 'u/new.jpg'$q$);
+   (15,'X2 parsed PDF, then replaced by an unparsed JPG, then submit (walk-around)', 'u/est.pdf', good, true, NULL, NULL, NULL, false, 'authenticated', 'ready_for_bids = true', 'REJECTED', NULL, $q$estimate_filename = 'u/new.jpg'$q$),
+   (16,'F1 client forges a parse (loss_sheet_parsed_at + parsed_line_items) itself', 'u/est.pdf', NULL, false, NULL, NULL, NULL, false, 'authenticated', $q$loss_sheet_parsed_at = now(), parsed_line_items = '{"sections":[{"n":1}]}'::jsonb$q$, 'REJECTED', NULL, NULL),
+   (17,'F1b client replaces the file, forges the parse and opens in ONE statement', 'u/est.pdf', good, true, NULL, NULL, NULL, false, 'authenticated', $q$estimate_filename = 'u/new.pdf', loss_sheet_parsed_at = now() + interval '1 minute', parsed_line_items = '{"sections":[{"n":2}]}'::jsonb, ready_for_bids = true$q$, 'REJECTED', NULL, NULL),
+   (18,'X1f provider rejected the file (status failed, platform-set): opens', 'u/est.pdf', NULL, false, NULL, NULL, NULL, false, 'authenticated', 'ready_for_bids = true', 'ACCEPTED', 'failed', NULL);
   -- C5 uses a column every claims row has; replace the placeholder with a harmless self-assignment
   UPDATE cases SET upd = 'status = status' WHERE id = 12;
 

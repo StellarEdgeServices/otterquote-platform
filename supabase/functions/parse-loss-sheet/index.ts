@@ -358,38 +358,50 @@ serve(async (req) => {
     // or Word estimate never parsed and (with the bid-open guard) the claim could never open for bids. PDFs go as a document block,
     // JPG/PNG as an image block; anything the provider cannot read is recorded as 'unsupported' (the guard lets such a claim open,
     // the summary then carries no estimate fields) and an operator alert is written. Q6 for Ben on #2559.
-    const kind = detectEstimateKind(bytes);
-    if (!kind) {
-      const { data: unsRows, error: unsErr } = await supabase
+    // Records a file the parser cannot turn into a summary (never retried by the platform): status 'unsupported' (a type the provider
+    // cannot read) or 'failed' (the provider rejected this file: corrupt or encrypted PDF, truncated image, over its limits), plus an
+    // operator row in platform_alerts_log. The bid-open guard lets such a claim open without an estimate summary (Q6). Stale-safe:
+    // nothing is written if the claim no longer points at this file.
+    const markUnreadable = async (
+      status: "unsupported" | "failed",
+      alertType: "loss_sheet_unsupported_type" | "loss_sheet_parse_failed",
+      detail: string,
+    ): Promise<Response> => {
+      const { data: rows, error: markErr } = await supabase
         .from("claims")
-        .update({ loss_sheet_parse_status: "unsupported" })
+        .update({ loss_sheet_parse_status: status })
         .eq("id", claim_id)
         .eq("estimate_filename", storage_path) // stale guard, as for the parse write below
         .select("id");
-      if (!unsErr && !checkRowsWritten(unsRows).wroteRows) {
-        console.warn(`[${FUNCTION_NAME}] unsupported mark skipped for claim ${claim_id}: estimate_filename no longer ${storage_path}`);
+      if (!markErr && !checkRowsWritten(rows).wroteRows) {
+        console.warn(`[${FUNCTION_NAME}] ${status} mark skipped for claim ${claim_id}: estimate_filename no longer ${storage_path}`);
         return new Response(
           JSON.stringify({ success: false, stale: true, claim_id }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (unsErr) {
-        console.error(`[${FUNCTION_NAME}] could not record unsupported estimate type for claim ${claim_id}:`, unsErr);
+      if (markErr) {
+        console.error(`[${FUNCTION_NAME}] could not record ${status} estimate for claim ${claim_id}:`, markErr);
         return new Response(
-          JSON.stringify({ error: "Failed to record unsupported estimate type" }),
+          JSON.stringify({ error: `Failed to record ${status} estimate` }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       const { error: alertErr } = await supabase.from("platform_alerts_log").insert({
-        alert_type: "loss_sheet_unsupported_type",
+        alert_type: alertType,
         function_name: FUNCTION_NAME,
-        message: `claim ${claim_id}: the uploaded estimate is not a PDF, JPG or PNG the parser can read (${bytes.length} bytes). The claim may open for bids without a parsed summary; an operator can re-run the parse with the service role (gh-2559 Q6).`,
+        message: `claim ${claim_id}: ${detail} (${bytes.length} bytes). The claim may open for bids without a parsed summary; an operator can re-run the parse with the service role, passing the claim's current estimate_filename as storage_path (gh-2559 Q6).`,
       });
       if (alertErr) console.error(`[${FUNCTION_NAME}] platform_alerts_log insert failed:`, alertErr);
       return new Response(
-        JSON.stringify({ success: false, unsupported: true, claim_id }),
+        JSON.stringify({ success: false, [status]: true, claim_id }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    };
+
+    const kind = detectEstimateKind(bytes);
+    if (!kind) {
+      return await markUnreadable("unsupported", "loss_sheet_unsupported_type", "the uploaded estimate is not a PDF, JPG or PNG the parser can read, or is an image over the provider's size limit");
     }
 
     // Encode to base64 in chunks (avoid call stack overflow on large files)
@@ -438,6 +450,11 @@ serve(async (req) => {
     if (!anthropicResponse.ok) {
       const errorText = await anthropicResponse.text();
       console.error(`Anthropic API error: ${anthropicResponse.status} ${errorText}`);
+      // gh-2559: 400 (invalid request: corrupt/encrypted PDF, truncated image, over the page or size limits) and 413 (request too large)
+      // are about THIS FILE and will fail the same way every time; 429, 5xx and timeouts are transient and stay a 502 with no mark.
+      if (anthropicResponse.status === 400 || anthropicResponse.status === 413) {
+        return await markUnreadable("failed", "loss_sheet_parse_failed", `the provider rejected the uploaded estimate (HTTP ${anthropicResponse.status}: ${errorText.slice(0, 160).replace(/\s+/g, " ")})`);
+      }
       return new Response(
         JSON.stringify({
           error: "Anthropic API call failed",

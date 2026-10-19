@@ -118,13 +118,26 @@ opx("X2b replaced by a file AND re-parsed in the same statement (platform path),
     set_=[dict(estimate_filename="u/c/new.pdf", ready_for_bids=False, loss_sheet_parsed_at="2030-01-01T00:00:00Z", parsed_line_items=with_item("re-parsed")), dict(ready_for_bids=True)],
     claim=dict(base), role="service_role")
 
+opx("F1 client forges a parse (parsed_at + summary) on a closed claim, then opens", "FORBID",
+    set_=[dict(loss_sheet_parsed_at="2030-01-01T00:00:00Z", parsed_line_items=good(), ready_for_bids=False), dict(ready_for_bids=True)],
+    claim=dict(estimate_filename="u/c/e.pdf"))
+opx("F1b client replaces the file AND forges the parse AND opens in ONE statement", "FORBID",
+    set_=dict(estimate_filename="u/c/new.pdf", loss_sheet_parsed_at="2030-01-01T00:00:00Z", parsed_line_items=good(), ready_for_bids=True),
+    claim=dict(base))
+opx("X1f provider rejected the file (status 'failed', platform-set): claim opens", "ACCEPT",
+    claim=dict(estimate_filename="u/c/estimate.pdf", loss_sheet_parse_status="failed"), needs_col=True)
+opx("X1g client writes status 'failed' itself", "FORBID", set_=dict(loss_sheet_parse_status="failed"),
+    claim=dict(estimate_filename="u/c/estimate.pdf"), needs_col=True)
+
 # already-open claims (summary written / identity edited afterwards)
 def opened(**kw):
     c = dict(base); c.update(property_address=ADDR, ready_for_bids=True); c.update(kw); return c
 LATER = [
-    ("W1 open claim: parse writes a summary with the owner name (client)", "REFUSE", opened(), dict(parsed_line_items=with_item("Zelda Quixote")), "authenticated"),
+    ("W1 open claim: a CLIENT writes a summary (any content): platform-only columns", "FORBID", opened(), dict(parsed_line_items=with_item("clean")), "authenticated"),
+    ("W1c open claim: parse (service_role) writes a summary with the owner name", "REFUSE", opened(), dict(parsed_line_items=with_item("Zelda Quixote")), "service_role"),
     ("W1b same, as service_role (parse-loss-sheet)", "REFUSE", opened(), dict(parsed_line_items=with_item("Zelda Quixote")), "service_role"),
-    ("W2 open claim: scope summary gets the street", "REFUSE", opened(), dict(contractor_scope_summary="at 4417 Larkspur Hollow"), "authenticated"),
+    ("W2 open claim: scope summary gets the street (platform write)", "REFUSE", opened(), dict(contractor_scope_summary="at 4417 Larkspur Hollow"), "service_role"),
+    ("W2b open claim: a CLIENT writes the scope summary", "FORBID", opened(), dict(contractor_scope_summary="anything"), "authenticated"),
     ("W3 open claim: owner edits address to match the summary", "REFUSE", opened(parsed_line_items=with_item("see 55 Elmwood Ln")), dict(property_address="55 Elmwood Ln, Carmel"), "authenticated"),
     ("W4 open claim: clean summary rewrite (legit)", "ACCEPT", opened(), dict(parsed_line_items=with_item("clean")), "service_role"),
     ("W5 open claim: unrelated column (legit)", "ACCEPT", opened(), dict(notes="hello"), "authenticated"),
