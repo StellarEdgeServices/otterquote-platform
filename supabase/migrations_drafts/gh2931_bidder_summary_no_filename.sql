@@ -1,39 +1,30 @@
--- STATUS (gh-1438, as of 2026-10-19T21:22:47Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-10-19T21:30:51Z): NOT APPLIED
 -- FILE ROLE: forward file of set gh2931_bidder_summary_no_filename (the STATUS is the set's)
--- EVIDENCE: production read-only (Supabase MCP SELECT, project yeszghaspzwwstvsrioa) 2026-10-19T21:22:47Z by the cto72-b2931 builder (CTO RUN 72): pg_get_viewdef of public.bidder_claim_summary has md5 c8ad94c45c52b5468ddf7c4979a2607c, length 18627; owner postgres; reloptions {security_barrier=true}; relacl {postgres=arwdDxtm/postgres,authenticated=rm/postgres,service_role=arwdDxtm/postgres}; 40 columns, estimate_filename is column 39; no dependent view, function or policy. That definition is byte-identical to supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql (ledger version 20261008231303): re-created on a throwaway Postgres 16 the same md5 comes back, and this file's CREATE VIEW yields md5 b0689f5f03d6d554371ff9dae871befb = the live text minus the estimate_filename column.
+-- EVIDENCE: production read-only (Supabase MCP SELECT, project yeszghaspzwwstvsrioa) 2026-10-19T21:30:51Z by the cto72-b2931 builder (CTO RUN 72): pg_get_viewdef of public.bidder_claim_summary has md5 c8ad94c45c52b5468ddf7c4979a2607c, length 18627; owner postgres; reloptions {security_barrier=true}; relacl {postgres=arwdDxtm/postgres,authenticated=rm/postgres,service_role=arwdDxtm/postgres}; 40 columns; no dependent view, function or policy; claims.platform_fee_charged boolean DEFAULT false, nullable. That definition is byte-identical to supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql (re-created on a throwaway Postgres 16 the same md5 comes back). This file's text yields md5 d57105ca5599312c3ad86b4b7edc7fce = the live text with one clause changed; the same replace() run on the live text on production gives that md5.
 -- REPO COPY: none (not applied).
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md (Tier 3B path: review, R-097 notice, recorded apply). PUBLISH THE PAGES FIRST (see ORDER).
+-- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md (Tier 3B path: review, R-097 notice, recorded apply).
 --
 -- Migration: gh2931_bidder_summary_no_filename
--- GitHub: #2931 (found by the LEGAL-READ on PR #2929). Decisions: D-368, D-371 (bidders see city and zip only). Tier: 3B (read access to homeowner files, privacy). Candidate for R-134 (it only removes capability from a caller).
+-- GitHub: #2931. Decisions: D-368, D-371, D-386 (the estimate is released to the selected contractor only after the Platform Fee is collected). Tier: 3B/A per Marty's ruling; only removes capability from a caller.
 -- Rollback: supabase/migrations_drafts/gh2931_bidder_summary_no_filename_rollback.sql
 -- Proof (rolled back, role-switched, is_test fixtures only): supabase/tests/gh2931_bidder_summary_no_filename_proof.sql (built and run by supabase/tests/gh2931_bidder_summary_no_filename_proof_run.py)
 --
--- ONE CHANGE: public.bidder_claim_summary no longer has the column estimate_filename. Every other column keeps its name, type,
--- expression and relative order (measurements_filename moves from position 40 to 39). The column has_estimate that already
--- exists (position 33: estimate_filename IS NOT NULL OR coalesce(has_estimate, false)) is the replacement; no column is added.
--- The stored path is "<user uuid>/<claim uuid>/<epoch>-<original upload name>", and the original name is what the homeowner typed.
+-- ONE CHANGE: the estimate_filename column keeps its name, type and position; its CASE gains one condition:
+--     CASE WHEN c.selected_contractor_id = ct.id AND c.platform_fee_charged IS TRUE THEN c.estimate_filename END
+-- The stored path is "<user uuid>/<claim uuid>/<epoch>-<original upload name>" and the original name is what the homeowner typed. Today the selected
+-- contractor reads it at selection; after this file only once claims.platform_fee_charged IS TRUE (NULL and false both refuse), the same signal
+-- the storage policy "Contractors can view biddable claim docs" already uses (20261018193726). A non-selected bidder reads NULL before and after.
+-- has_estimate, measurements_filename and every other column are unchanged.
 --
--- WHY DROP VIEW + CREATE VIEW. CREATE OR REPLACE VIEW cannot remove a column ("cannot drop columns from view"), so the view is
--- dropped and created in one transaction (readers block on the lock until COMMIT; lock_timeout 5s). Nothing depends on the view.
--- A new relation takes Supabase's default privileges (anon, authenticated, service_role all), so the same REVOKEs as the original
--- file run, and the DO block at the end proves owner, reloptions, relacl and comment equal what they were before the DROP.
+-- CREATE OR REPLACE VIEW is enough: the column list, names and types are identical, so Postgres keeps the view's owner, reloptions, grants and
+-- comment (the DO block still asserts all four equal what they were, and the definition md5).
 --
--- WHAT THIS DOES NOT CHANGE: claims.estimate_filename itself; the base-table policies and the claim-documents storage policy;
--- every other view column and its expression; measurements_filename (still returned to the selected contractor only).
---
--- VISIBLE EFFECT, STATED PLAINLY. A non-selected bidder already reads NULL for estimate_filename today (the CASE below keeps the path for
--- the selected contractor only), so for a bidder nothing visible changes. The contractor the homeowner SELECTED loses the path, and with
--- it the "View Loss Sheet" / estimate button on the bid form and the opportunities page, which sign a download URL from that path.
--- That is a product decision for Dustin (see the PR body, option B) and not something this file decides.
---
--- ORDER (blocking). 1. Merge and publish the page change in the same PR (the five column lists stop naming estimate_filename).
--- 2. Wait for the publish and any service-worker cache to roll over. 3. Apply this file. Applied before the pages, every select
--- that still names estimate_filename answers 42703 and the bidder pages show empty lists. Rollback of the pages is not needed to roll
--- this file back (the old pages simply read the column again).
--- PENDING DRAFTS THAT REDEFINE THIS VIEW must drop the column too or it comes back: PR #2880 (gh2559_d390_redact_contact_until_fee.sql) and
--- PR #2925 (gh2881_d390_digit_fold.sql); exact lines are in the PR body. Whichever applies second runs CREATE OR REPLACE VIEW,
--- which cannot drop a column, so the second one fails closed on a column-name mismatch if its text still carries estimate_filename.
+-- VISIBLE EFFECT. The selected contractor loses the path between selection and fee collection, so the Loss Sheet button cannot sign a URL in that
+-- window (it already answered "Unable to open" there, because the storage policy refuses). After the fee nothing changes. No page change is needed;
+-- the pages already treat an absent path as no button. measurements_filename is NOT changed here.
+-- PENDING DRAFTS THAT REDEFINE THIS VIEW (PR #2880 gh2559_d390_redact_contact_until_fee.sql, PR #2925 gh2881_d390_digit_fold.sql) carry the old CASE
+-- and would put the pre-fee path back: each must change that one line (see the PR body). Apply order is free: this file's precondition pins the live
+-- md5, so if #2880 lands first this file refuses (P0A31) and is regenerated against the new text.
 BEGIN;
 
 SET LOCAL lock_timeout = '5s';
@@ -41,7 +32,7 @@ SET LOCAL lock_timeout = '5s';
 DO $pre$
 DECLARE d text;
 BEGIN
-  -- fail closed: the view must be exactly what this file was written against (the live definition read 2026-10-19T21:22:47Z).
+  -- fail closed: the view must be exactly what this file was written against (the live definition read 2026-10-19T21:30:51Z).
   d := pg_get_viewdef('public.bidder_claim_summary'::regclass, true);
   IF md5(d) <> 'c8ad94c45c52b5468ddf7c4979a2607c' OR length(d) <> 18627 THEN
     RAISE EXCEPTION 'gh2931: bidder_claim_summary is not the expected definition (md5 %, length %); nothing changed', md5(d), length(d) USING ERRCODE = 'P0A31';
@@ -55,9 +46,7 @@ SELECT c.relowner::regrole::text AS owner, c.reloptions::text AS options, c.rela
        obj_description(c.oid, 'pg_class') AS comment_text
 FROM pg_class c WHERE c.oid = 'public.bidder_claim_summary'::regclass;
 
-DROP VIEW public.bidder_claim_summary;
-
-CREATE VIEW public.bidder_claim_summary
+CREATE OR REPLACE VIEW public.bidder_claim_summary
 WITH (security_barrier = true)
 AS
 SELECT
@@ -135,6 +124,7 @@ SELECT
   cp.carrier_name                                                              AS carrier_profile_name,
   -- the caller's own id, only when the caller is the selected contractor; null for every other caller
   CASE WHEN c.selected_contractor_id = ct.id THEN ct.id END                    AS selected_contractor_id,
+  CASE WHEN c.selected_contractor_id = ct.id AND c.platform_fee_charged IS TRUE THEN c.estimate_filename END AS estimate_filename,
   CASE WHEN c.selected_contractor_id = ct.id THEN c.measurements_filename END  AS measurements_filename
 FROM public.claims c
 JOIN public.contractors ct ON ct.user_id = (SELECT auth.uid())
@@ -348,21 +338,12 @@ WHERE (   ct.status = 'active'
    OR c.selected_contractor_id = ct.id
    OR EXISTS (SELECT 1 FROM public.quotes q WHERE q.claim_id = c.id AND q.contractor_id = ct.id);
 
-COMMENT ON VIEW public.bidder_claim_summary IS
-  'gh-2559 / D-368: what a contractor may read of a claim before selection (summary, no homeowner identity or contact). Owner-run; filters its own rows by auth.uid(). Raw file paths only for the selected contractor. Allow-list: supabase/migrations_drafts/gh2559_bidder_claims_view_pre-flight.md.';
-
--- GRANTS: none written, on purpose (same as the original file). The REVOKEs below remove what the defaults add;
--- the DO block compares the result with the ACL captured before the DROP.
-REVOKE ALL ON public.bidder_claim_summary FROM PUBLIC;
-REVOKE ALL ON public.bidder_claim_summary FROM anon;
-REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON public.bidder_claim_summary FROM authenticated;
-
 DO $post$
 DECLARE d text; s record; n int;
 BEGIN
   d := pg_get_viewdef('public.bidder_claim_summary'::regclass, true);
-  IF md5(d) <> 'b0689f5f03d6d554371ff9dae871befb' OR length(d) <> 18477 THEN
-    RAISE EXCEPTION 'gh2931: new definition differs from the live definition minus the estimate_filename column (md5 %, length %)', md5(d), length(d) USING ERRCODE = 'P0A32';
+  IF md5(d) <> 'd57105ca5599312c3ad86b4b7edc7fce' OR length(d) <> 18662 THEN
+    RAISE EXCEPTION 'gh2931: new definition differs from the live definition with the estimate_filename CASE gated on platform_fee_charged (md5 %, length %)', md5(d), length(d) USING ERRCODE = 'P0A32';
   END IF;
   SELECT owner, options, acl, comment_text INTO s FROM gh2931_view_state;
   IF (SELECT c.relowner::regrole::text FROM pg_class c WHERE c.oid = 'public.bidder_claim_summary'::regclass) IS DISTINCT FROM s.owner THEN
@@ -379,7 +360,7 @@ BEGIN
     RAISE EXCEPTION 'gh2931: view comment changed' USING ERRCODE = 'P0A36';
   END IF;
   n := (SELECT count(*) FROM pg_attribute WHERE attrelid = 'public.bidder_claim_summary'::regclass AND attnum > 0 AND NOT attisdropped);
-  IF n <> 39 THEN RAISE EXCEPTION 'gh2931: expected 39 columns, found %', n USING ERRCODE = 'P0A37'; END IF;
+  IF n <> 40 THEN RAISE EXCEPTION 'gh2931: expected 40 columns, found %', n USING ERRCODE = 'P0A37'; END IF;
 END
 $post$;
 

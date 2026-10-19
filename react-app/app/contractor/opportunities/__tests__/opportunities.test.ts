@@ -156,7 +156,6 @@ describe('mapClaimToOpportunity estimate file (gh-2559, D-368)', () => {
   const claim: RawClaim = {
     id: 'CL2', property_address: '123 Main St, Carmel, IN 46032',
     estimate_filename: 'uid-1/CL2/1785930673843-estimate.pdf',
-    has_estimate: true,  // gh-2931: the view's flag; availability no longer reads the file name
     contractor_scope_summary: 'Carrier: Example',
   };
   it('withholds the estimate path from a bidder and keeps the summary and the availability badge', () => {
@@ -327,10 +326,6 @@ describe('BIDDER_CLAIM_OPP_COLS (gh-2559)', () => {
   it('selects no identity, contact or reference-id column and no star', () => {
     for (const f of FORBIDDEN) expect(cols).not.toContain(f);
     expect(BIDDER_CLAIM_OPP_COLS).not.toContain('*');
-  });
-  it('does not select estimate_filename (gh-2931) and keeps has_estimate', () => {
-    expect(cols).not.toContain('estimate_filename');
-    expect(cols).toContain('has_estimate');
   });
   it('selects everything the card mapper reads from the view', () => {
     for (const c of ['id', 'location_city', 'location_zip', 'has_estimate', 'has_measurements', 'measured_squares', 'selected_contractor_id',

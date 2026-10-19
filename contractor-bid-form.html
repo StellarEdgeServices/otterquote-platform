@@ -3259,7 +3259,7 @@
           // (homeowner name, claim number, adjuster contact, street address, user id). The view returns the
           // carrier's name as carrier_profile_name (Bug Fix #2 used a carrier_profiles join) and the
           // estimate / measurements file names to the selected contractor only.
-          const BIDDER_CLAIM_BID_COLS = 'id, trades, job_type, funding_type, damage_type, material_category, shingle_type, impact_class, designer_product, designer_manufacturer, rcv_amount, parsed_line_items, siding_bid_released_at, location_city, location_zip, carrier_profile_name, measurements_filename, selected_contractor_id';
+          const BIDDER_CLAIM_BID_COLS = 'id, trades, job_type, funding_type, damage_type, material_category, shingle_type, impact_class, designer_product, designer_manufacturer, rcv_amount, parsed_line_items, siding_bid_released_at, location_city, location_zip, carrier_profile_name, estimate_filename, measurements_filename, selected_contractor_id';
           const { data, error } = await sb
             .from('bidder_claim_summary')
             .select(BIDDER_CLAIM_BID_COLS)

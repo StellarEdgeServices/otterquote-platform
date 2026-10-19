@@ -191,7 +191,7 @@ export function computeZipDistance(
  * in supabase/tests/gh2559_bidder_claims_view_proof.sql.
  */
 export const BIDDER_CLAIM_OPP_COLS =
-  'id, status, ready_for_bids, created_at, trades, job_type, funding_type, damage_type, existing_shingle_brand, existing_shingle_color, rcv_amount, acv_amount, deductible_amount, roof_squares, repair_squares, measured_squares, measurement_shape, contractor_scope_summary, parsed_line_items, urgency, urgency_deadline, homeowner_notes, roofing_bid_released_at, gutters_bid_released_at, siding_bid_released_at, windows_bid_released_at, bid_window_expires_at, has_estimate, has_measurements, location_city, location_zip, measurements_filename, selected_contractor_id';
+  'id, status, ready_for_bids, created_at, trades, job_type, funding_type, damage_type, existing_shingle_brand, existing_shingle_color, rcv_amount, acv_amount, deductible_amount, roof_squares, repair_squares, measured_squares, measurement_shape, contractor_scope_summary, parsed_line_items, urgency, urgency_deadline, homeowner_notes, roofing_bid_released_at, gutters_bid_released_at, siding_bid_released_at, windows_bid_released_at, bid_window_expires_at, has_estimate, has_measurements, location_city, location_zip, estimate_filename, measurements_filename, selected_contractor_id';
 
 /** Loose shape of a `claims` row (only the columns the page reads). */
 export interface RawClaim {
@@ -349,7 +349,7 @@ export function mapClaimToOpportunity(
     existingShingle: claim.existing_shingle_brand
       ? `${claim.existing_shingle_brand} - ${claim.existing_shingle_color}`
       : null,
-    estimateAvailable: !!claim.has_estimate,  // gh-2931: has_estimate already folds in the file-name test (view); the view no longer returns the name
+    estimateAvailable: !!(claim.estimate_filename || claim.has_estimate),
     estimateSummaryAvailable:
       !!claim.contractor_scope_summary && estimateSummaryHasLineItems(claim.parsed_line_items),
     isSelectedContractor: !!contractorId && claim.selected_contractor_id === contractorId,

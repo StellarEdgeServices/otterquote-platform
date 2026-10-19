@@ -1,14 +1,11 @@
--- STATUS (gh-1438, as of 2026-10-19T21:22:47Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-10-19T21:30:51Z): NOT APPLIED
 -- FILE ROLE: rollback file of set gh2931_bidder_summary_no_filename (the STATUS is the set's; it describes the forward migration)
--- EVIDENCE: the CREATE VIEW below is the statement of supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql, and its result is checked in-file against the live definition read 2026-10-19T21:22:47Z (md5 c8ad94c45c52b5468ddf7c4979a2607c, length 18627); the same text re-created on a throwaway Postgres 16 returns that md5.
--- REPO COPY: none (not applied). Never move into supabase/migrations/ (the CLI would replay it forward). Rollback only on a human decision, after saying so on #2931.
+-- EVIDENCE: the CREATE OR REPLACE VIEW below is the statement of supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql; its result is checked in-file against the live definition read 2026-10-19T21:30:51Z (md5 c8ad94c45c52b5468ddf7c4979a2607c, length 18627).
+-- REPO COPY: none (not applied). Never move into supabase/migrations/. Rollback only on a human decision, after saying so on #2931.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md.
 --
--- Rollback for gh2931_bidder_summary_no_filename.sql. Drops the 39-column view and re-creates the 40-column view EXACTLY as it was live
--- before the forward file (estimate_filename back at position 39, selected contractor only), then restores owner, reloptions, grants and
--- comment, and fails the transaction if the definition md5 is not c8ad94c45c52b5468ddf7c4979a2607c. Needed only if the forward file is applied and the
--- selected contractor's estimate button has to come back; the pages that read the column must then be published too (the PR's page change
--- reverts with its commit).
+-- Rollback for gh2931_bidder_summary_no_filename.sql: restores the CASE as it was live (selected contractor reads the path from selection),
+-- keeps owner, reloptions, grants and comment (asserted), and fails unless the definition md5 is c8ad94c45c52b5468ddf7c4979a2607c again.
 BEGIN;
 
 SET LOCAL lock_timeout = '5s';
@@ -16,9 +13,9 @@ SET LOCAL lock_timeout = '5s';
 DO $pre$
 DECLARE d text;
 BEGIN
-  -- fail closed: the view must be exactly what this file was written against (the 39-column definition of gh2931_bidder_summary_no_filename.sql).
+  -- fail closed: the view must be exactly what this file was written against (the gated definition of gh2931_bidder_summary_no_filename.sql).
   d := pg_get_viewdef('public.bidder_claim_summary'::regclass, true);
-  IF md5(d) <> 'b0689f5f03d6d554371ff9dae871befb' OR length(d) <> 18477 THEN
+  IF md5(d) <> 'd57105ca5599312c3ad86b4b7edc7fce' OR length(d) <> 18662 THEN
     RAISE EXCEPTION 'gh2931: bidder_claim_summary is not the expected definition (md5 %, length %); nothing changed', md5(d), length(d) USING ERRCODE = 'P0A31';
   END IF;
 END
@@ -30,9 +27,7 @@ SELECT c.relowner::regrole::text AS owner, c.reloptions::text AS options, c.rela
        obj_description(c.oid, 'pg_class') AS comment_text
 FROM pg_class c WHERE c.oid = 'public.bidder_claim_summary'::regclass;
 
-DROP VIEW public.bidder_claim_summary;
-
-CREATE VIEW public.bidder_claim_summary
+CREATE OR REPLACE VIEW public.bidder_claim_summary
 WITH (security_barrier = true)
 AS
 SELECT
@@ -323,13 +318,6 @@ WHERE (   ct.status = 'active'
       AND c.is_test = ct.is_test)
    OR c.selected_contractor_id = ct.id
    OR EXISTS (SELECT 1 FROM public.quotes q WHERE q.claim_id = c.id AND q.contractor_id = ct.id);
-
-COMMENT ON VIEW public.bidder_claim_summary IS
-  'gh-2559 / D-368: what a contractor may read of a claim before selection (summary, no homeowner identity or contact). Owner-run; filters its own rows by auth.uid(). Raw file paths only for the selected contractor. Allow-list: supabase/migrations_drafts/gh2559_bidder_claims_view_pre-flight.md.';
-
-REVOKE ALL ON public.bidder_claim_summary FROM PUBLIC;
-REVOKE ALL ON public.bidder_claim_summary FROM anon;
-REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON public.bidder_claim_summary FROM authenticated;
 
 DO $post$
 DECLARE d text; s record; n int;
