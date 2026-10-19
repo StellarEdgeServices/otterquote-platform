@@ -26,11 +26,11 @@
 -- quotes_guard_homeowner_columns and quotes_normalize_fee_amount and before set_updated_at_quotes.
 --
 -- The rule. For client callers only (current_user anon/authenticated, JWT role not service_role, not an admin -- the same condition the
--- guard and #2913 use), an UPDATE that CHANGES a NON-NULL homeowner_signed_at or contractor_signed_at is refused 42501, setting it to NULL
--- included. Callers that still write the stamps: service_role (docusign-webhook, admin-reissue-contract), admins, and owner-level
+-- guard and #2913 use), an UPDATE that CHANGES either homeowner_signed_at or contractor_signed_at is refused 42501: clearing it to NULL, overwriting it, and
+-- setting a NULL stamp to a value (forging a first signature, Marty CTO RUN 72 extension) alike. Callers that still write the stamps: service_role (docusign-webhook, admin-reissue-contract), admins, and owner-level
 -- SECURITY DEFINER functions (current_user is then the function owner, not anon/authenticated, so the trigger never refuses them).
--- NOT covered, per the ruling: a client setting a stamp that is NULL to a value (first stamp), and a value re-sent unchanged (not a
--- change). INSERT is not covered: the guard already refuses any client-created quote carrying either stamp (gh-2479). No data change.
+-- NOT covered: a value re-sent unchanged (not a change). INSERT is not covered: the guard already refuses any client-created quote
+-- carrying either stamp (gh-2479). No data change.
 -- Idempotent: CREATE OR REPLACE FUNCTION; DROP TRIGGER IF EXISTS before CREATE TRIGGER.
 
 BEGIN;
@@ -58,9 +58,9 @@ BEGIN
   IF current_user IN ('anon', 'authenticated')
      AND COALESCE(auth.role(), '') <> 'service_role'
      AND NOT COALESCE(public.is_admin_email(), false)
-     AND ((OLD.homeowner_signed_at IS NOT NULL AND NEW.homeowner_signed_at IS DISTINCT FROM OLD.homeowner_signed_at)
-          OR (OLD.contractor_signed_at IS NOT NULL AND NEW.contractor_signed_at IS DISTINCT FROM OLD.contractor_signed_at)) THEN
-    RAISE EXCEPTION 'quotes: a recorded signature (homeowner_signed_at / contractor_signed_at) can only be changed by the platform; a direct write is refused (gh-2864)'
+     AND (NEW.homeowner_signed_at IS DISTINCT FROM OLD.homeowner_signed_at
+          OR NEW.contractor_signed_at IS DISTINCT FROM OLD.contractor_signed_at) THEN
+    RAISE EXCEPTION 'quotes: a signature stamp (homeowner_signed_at / contractor_signed_at) can only be written by the platform; a direct write is refused (gh-2864)'
       USING ERRCODE = '42501';
   END IF;
   RETURN NEW;
@@ -68,7 +68,7 @@ END;
 $fn$;
 
 COMMENT ON FUNCTION public.quotes_refuse_client_signature_change() IS
-  'gh-2864: BEFORE UPDATE trigger function on public.quotes. Refuses (42501) a client caller (anon/authenticated, not service_role, not an admin) changing a non-null homeowner_signed_at or contractor_signed_at, NULL included; service_role (docusign-webhook, admin-reissue-contract), admins and SECURITY DEFINER functions pass. Separate from quotes_guard_homeowner_columns() on purpose (no composition with gh2564 / #2863 / #2913).';
+  'gh-2864: BEFORE UPDATE trigger function on public.quotes. Refuses (42501) a client caller (anon/authenticated, not service_role, not an admin) changing homeowner_signed_at or contractor_signed_at in any way (clear, overwrite, or first stamp); service_role (docusign-webhook, admin-reissue-contract), admins and SECURITY DEFINER functions pass. Separate from quotes_guard_homeowner_columns() on purpose (no composition with gh2564 / #2863 / #2913).';
 
 -- A trigger function is not called by clients; no client role needs EXECUTE on it.
 REVOKE EXECUTE ON FUNCTION public.quotes_refuse_client_signature_change() FROM PUBLIC, anon, authenticated;
@@ -78,8 +78,8 @@ DROP TRIGGER IF EXISTS quotes_refuse_client_signature_change ON public.quotes;
 CREATE TRIGGER quotes_refuse_client_signature_change
   BEFORE UPDATE ON public.quotes
   FOR EACH ROW
-  WHEN ((OLD.homeowner_signed_at IS NOT NULL AND NEW.homeowner_signed_at IS DISTINCT FROM OLD.homeowner_signed_at)
-        OR (OLD.contractor_signed_at IS NOT NULL AND NEW.contractor_signed_at IS DISTINCT FROM OLD.contractor_signed_at))
+  WHEN (NEW.homeowner_signed_at IS DISTINCT FROM OLD.homeowner_signed_at
+        OR NEW.contractor_signed_at IS DISTINCT FROM OLD.contractor_signed_at)
   EXECUTE FUNCTION public.quotes_refuse_client_signature_change();
 
 COMMIT;

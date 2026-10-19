@@ -10,7 +10,7 @@ Issue #2864 (ruling comment 6274566683; window closes 2026-10-20T18:40:35Z). For
 
 ## What changes
 1. New function `public.quotes_refuse_client_signature_change()` (SECURITY INVOKER, `search_path = public, pg_temp`), EXECUTE revoked from PUBLIC, anon, authenticated.
-2. New trigger `quotes_refuse_client_signature_change`, BEFORE UPDATE on `public.quotes`, firing only when a non-null `homeowner_signed_at` or `contractor_signed_at` changes (NULL included).
+2. New trigger `quotes_refuse_client_signature_change`, BEFORE UPDATE on `public.quotes`, firing only when `homeowner_signed_at` or `contractor_signed_at` changes in any way (clear, overwrite, or NULL-to-value first stamp).
 3. Nothing else. `quotes_guard_homeowner_columns()` is not re-created, so there is no composition with gh2564 (applied), PR #2863 (gh-2803) or PR #2913 (gh-2819).
 
 ## Live trigger list on quotes (read-only, 2026-10-19), and firing order
@@ -32,10 +32,10 @@ Re-run the search at apply time: `grep -rnE "(homeowner|contractor)_signed_at" -
 - After apply, walk one is_test signing (docusign-webhook sets both stamps via service_role) and confirm both stamps record.
 
 ## Proof and expected flip
-Run `supabase/tests/gh2864_quotes_signature_stamps_platform_only_proof.sql` on production (it ends in a forced rollback; every write is undone). BEFORE-1 and BEFORE-2 print `rows=1 ACCEPTED` (the defect), AFTER-1 to AFTER-4 print `REJECTED 42501 ... (gh-2864)`, AFTER-5 (service_role) and AFTER-6 (SECURITY DEFINER) print ACCEPTED, and the negative controls stay ACCEPTED.
+Run `supabase/tests/gh2864_quotes_signature_stamps_platform_only_proof.sql` on production (it ends in a forced rollback; every write is undone). BEFORE-1 to BEFORE-3 (clear, clear, NULL-to-value) print `rows=1 ACCEPTED` (the defect), AFTER-1 to AFTER-4 and AFTER-8 (NULL-to-value, both stamps) print `REJECTED 42501 ... (gh-2864)`, AFTER-5 (service_role) and AFTER-6 (SECURITY DEFINER) print ACCEPTED, and the negative controls stay ACCEPTED.
 
-## Open question (does not block the draft)
-The ruling covers changing a NON-NULL stamp. A client can still set a NULL stamp to a value (forge a first signature); no client code does. Recommended default: leave it as ruled and file a follow-up to extend the WHEN clause to NULL-to-value, after the signing walk shows no client write.
+## Scope decision
+Marty CTO RUN 72 extended the rule to NULL-to-value (a client forging a first signature): stamps are platform-only by design and both writers are service_role, so no legitimate client path is lost. Only a value re-sent unchanged passes.
 
 ## Rollback
 `DROP TRIGGER` and `DROP FUNCTION` (sibling rollback file). No data is changed either way.

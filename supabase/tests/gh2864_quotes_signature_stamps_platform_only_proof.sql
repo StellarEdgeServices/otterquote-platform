@@ -8,7 +8,7 @@
 -- Fixtures are looked up at run time (nothing hard-coded): an is_test homeowner's is_test claim in 'bidding' that has a submitted, active
 -- is_test quote whose contractor is an is_test contractor with a user. Both stamps are set on it by a rolled-back superuser write.
 -- Phases (each attempt runs as the named role with the caller's JWT sub, in its own savepoint):
---   BEFORE  live schema  : owner clears homeowner_signed_at -> expect ACCEPTED (the defect, the negative control); contractor clears contractor_signed_at -> expect ACCEPTED
+--   BEFORE  live schema  : owner clears homeowner_signed_at -> expect ACCEPTED (the defect, the negative control); contractor clears contractor_signed_at -> expect ACCEPTED; BEFORE-3 NULL-to-value by owner and contractor -> expect ACCEPTED
 --   FORWARD applied
 --   AFTER-1 owner sets homeowner_signed_at = NULL            -> expect REJECTED 42501 ending (gh-2864)
 --   AFTER-2 owner overwrites homeowner_signed_at with another time -> expect REJECTED 42501 (gh-2864)
@@ -18,7 +18,7 @@
 --   AFTER-6 owner-level SECURITY DEFINER function, called by the owner, clears a stamp -> expect ACCEPTED (platform path)
 --   AFTER-7 negative controls (expect ACCEPTED, unchanged behaviour): owner re-sends the same homeowner_signed_at; bid contractor edits notes;
 --           owner declines the submitted quote
---   AFTER-8 INFORMATIONAL, not asserted: owner sets a NULL homeowner_signed_at to a value (first stamp). The ruling covers non-null stamps only.
+--   AFTER-8 owner sets a NULL homeowner_signed_at to a value, contractor sets a NULL contractor_signed_at to a value (forged first stamp) -> expect REJECTED 42501 (gh-2864)
 --   AFTER-9 trigger and function metadata, and the guard body md5 (untouched)
 
 CREATE FUNCTION pg_temp.try_as(p_sub uuid, p_sql text, p_role text DEFAULT 'authenticated') RETURNS text
@@ -51,9 +51,9 @@ BEGIN
   IF current_user IN ('anon', 'authenticated')
      AND COALESCE(auth.role(), '') <> 'service_role'
      AND NOT COALESCE(public.is_admin_email(), false)
-     AND ((OLD.homeowner_signed_at IS NOT NULL AND NEW.homeowner_signed_at IS DISTINCT FROM OLD.homeowner_signed_at)
-          OR (OLD.contractor_signed_at IS NOT NULL AND NEW.contractor_signed_at IS DISTINCT FROM OLD.contractor_signed_at)) THEN
-    RAISE EXCEPTION 'quotes: a recorded signature (homeowner_signed_at / contractor_signed_at) can only be changed by the platform; a direct write is refused (gh-2864)'
+     AND (NEW.homeowner_signed_at IS DISTINCT FROM OLD.homeowner_signed_at
+          OR NEW.contractor_signed_at IS DISTINCT FROM OLD.contractor_signed_at) THEN
+    RAISE EXCEPTION 'quotes: a signature stamp (homeowner_signed_at / contractor_signed_at) can only be written by the platform; a direct write is refused (gh-2864)'
       USING ERRCODE = '42501';
   END IF;
   RETURN NEW;
@@ -67,8 +67,8 @@ DROP TRIGGER IF EXISTS quotes_refuse_client_signature_change ON public.quotes;
 CREATE TRIGGER quotes_refuse_client_signature_change
   BEFORE UPDATE ON public.quotes
   FOR EACH ROW
-  WHEN ((OLD.homeowner_signed_at IS NOT NULL AND NEW.homeowner_signed_at IS DISTINCT FROM OLD.homeowner_signed_at)
-        OR (OLD.contractor_signed_at IS NOT NULL AND NEW.contractor_signed_at IS DISTINCT FROM OLD.contractor_signed_at))
+  WHEN (NEW.homeowner_signed_at IS DISTINCT FROM OLD.homeowner_signed_at
+        OR NEW.contractor_signed_at IS DISTINCT FROM OLD.contractor_signed_at)
   EXECUTE FUNCTION public.quotes_refuse_client_signature_change();
 $fwd$;
   reset_q text;
@@ -112,6 +112,16 @@ BEGIN
     v := v || E'\nBEFORE-2 NEGATIVE CONTROL contractor sets contractor_signed_at = NULL (defect, expect ACCEPTED): '
            || pg_temp.try_as(k_user, format('UPDATE public.quotes SET contractor_signed_at = NULL WHERE id = %L', q));
     v := v || format(' -> contractor_signed_at=%s', (SELECT contractor_signed_at FROM quotes WHERE id=q));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL;
+  END;
+
+  BEGIN
+    EXECUTE format('UPDATE public.quotes SET homeowner_signed_at = NULL, contractor_signed_at = NULL WHERE id = %L', q);
+    v := v || E'\nBEFORE-3 NEGATIVE CONTROL owner sets NULL homeowner_signed_at to a value (forged first stamp, expect ACCEPTED): '
+           || pg_temp.try_as(owner_id, format('UPDATE public.quotes SET homeowner_signed_at = now() WHERE id = %L', q));
+    v := v || E'\nBEFORE-3b NEGATIVE CONTROL contractor sets NULL contractor_signed_at to a value (expect ACCEPTED): '
+           || pg_temp.try_as(k_user, format('UPDATE public.quotes SET contractor_signed_at = now() WHERE id = %L', q));
     RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
   EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL;
   END;
@@ -201,8 +211,10 @@ BEGIN
 
   BEGIN
     EXECUTE format('UPDATE public.quotes SET homeowner_signed_at = NULL, contractor_signed_at = NULL WHERE id = %L', q);
-    v := v || E'\nAFTER-8 INFORMATIONAL (not asserted; the ruling covers non-null stamps) owner sets a NULL homeowner_signed_at to a value: '
+    v := v || E'\nAFTER-8 owner sets a NULL homeowner_signed_at to a value (expect REJECTED 42501 ... (gh-2864)): '
            || pg_temp.try_as(owner_id, format('UPDATE public.quotes SET homeowner_signed_at = now() WHERE id = %L', q));
+    v := v || E'\nAFTER-8b contractor sets a NULL contractor_signed_at to a value (expect REJECTED 42501 ... (gh-2864)): '
+           || pg_temp.try_as(k_user, format('UPDATE public.quotes SET contractor_signed_at = now() WHERE id = %L', q));
     RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
   EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL;
   END;
