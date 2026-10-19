@@ -615,5 +615,17 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspector
     'the home-inspector guide renders no dollar sign, referral fee or recruit bonus text');
 }
 
+// cro64 (P04): the listing-agent guide under /partners/ is a real-estate partner page, not an inspector-context page.
+{
+  ok(pageRole('partners/what-a-listing-agent-can-do-about-storm-damage-before-listing.html') === 'partner',
+    'nav.js: the listing-agent storm-damage guide is a partner page (_roleFromUrl() === partner)');
+  const ctx = { window: { location: { pathname: '/partners/what-a-listing-agent-can-do-about-storm-damage-before-listing.html', search: '' }, URLSearchParams }, URLSearchParams };
+  ctx.window.window = ctx.window;
+  vm.createContext(ctx);
+  vm.runInContext(navBody, ctx);
+  ok(ctx.Nav._isInspectorTrackImmediate() === false,
+    'nav.js: the listing-agent storm-damage guide is NOT an inspector-context page');
+}
+
 console.log(`\n${pass} passed, ${fail} failed.`);
 process.exit(fail === 0 ? 0 : 1);

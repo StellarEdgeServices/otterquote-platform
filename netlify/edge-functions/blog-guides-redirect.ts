@@ -137,6 +137,20 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/hail-damaged-siding-matching-bids.html',
   '/guides/roof-insurance-check-mortgage-contractor-payment':
     '/guides/roof-insurance-check-mortgage-contractor-payment.html',
+  '/guides/roof-replacement-in-cold-weather':
+    '/guides/roof-replacement-in-cold-weather.html',
+  '/guides/how-long-does-roof-replacement-take':
+    '/guides/how-long-does-roof-replacement-take.html',
+  '/guides/roof-change-orders-hidden-damage':
+    '/guides/roof-change-orders-hidden-damage.html',
+  '/guides/roofing-contract-checklist-before-you-sign':
+    '/guides/roofing-contract-checklist-before-you-sign.html',
+  '/guides/roof-bid-much-lower-than-the-others':
+    '/guides/roof-bid-much-lower-than-the-others.html',
+  '/guides/roof-permit-in-your-bid':
+    '/guides/roof-permit-in-your-bid.html',
+  '/guides/roof-tarp-while-you-wait-for-repairs':
+    '/guides/roof-tarp-while-you-wait-for-repairs.html',
 
   // CRO RUN 52 / #2423: generated /locations/ pages -- the index.html twin 301s to the
   // trailing-slash URL (same class as /blog/index.html above).
