@@ -112,7 +112,7 @@ const base = { quoteId: 'q1aaaaaaaa', contractorId: 'c1', claimId: 'cl1', custom
 { let seen = null; const fakeFetch = async (url, init) => { seen = { url, init }; return { ok: true, json: async () => ({ id: 'pi_x', status: 'succeeded' }) }; };
   const res = await S.buildStripeCharge('sk_test_dummy', fakeFetch)({ ...base, method: { stripe_pm_id: 'pm_card1', payment_type: 'card', cpm_id: null }, chargeAmountCents: P.cardChargeAmount(18000), idempotencyKey: 'dunning-retry-q1-pm_card1-1' });
   const body = new URLSearchParams(seen.init.body);
-  ok(res.status === 'succeeded' && seen.url === 'https://api.stripe.com/v1/payment_intents', 'POST /v1/payment_intents');
+  ok(res.status === 'succeeded' && seen.url === '/payment_intents', 'POST /v1/payment_intents');
   ok(seen.init.headers['Idempotency-Key'] === 'dunning-retry-q1-pm_card1-1', 'sends the per-attempt idempotency key');
   ok(body.get('off_session') === 'true' && body.get('confirm') === 'true' && body.get('amount') === String(P.cardChargeAmount(18000)) && body.get('metadata[platform_fee_cents]') === '18000' && body.get('metadata[source]') === 'dunning_retry_request', 'form body: off_session, confirm, gross amount, fee metadata'); }
 { const failFetch = async () => ({ ok: false, status: 402, json: async () => ({ error: { type: 'card_error', code: 'card_declined', decline_code: 'stolen_card', message: 'm' } }) });
@@ -120,6 +120,7 @@ const base = { quoteId: 'q1aaaaaaaa', contractorId: 'c1', claimId: 'cl1', custom
   ok(res.status === 'failed' && res.declineCode === 'stolen_card', 'decline_code surfaced for the hard-decline check'); }
 
 // ── static wiring
+ok(fs.readFileSync(path.join(dir, 'retry-pass-supabase.ts'), 'utf8').includes('const STRIPE_API_BASE = "https://api.stripe.com/v1";'), 'Stripe base URL is https://api.stripe.com/v1 (the only host this module calls)');
 ok(/DUNNING_RETRY_PASS_ENABLED"\) === "true"/.test(idx), 'index.ts: pass is OFF unless DUNNING_RETRY_PASS_ENABLED=true');
 ok(idx.includes('selectRetryStripeKey(getEnv)') && !idx.includes('DUNNING_RETRY_PASS_TEST_MODE'), 'index.ts: key comes from selectRetryStripeKey (test mode default)');
 ok(idx.includes('dropHeld(activeFailures || [], heldActive)') && idx.includes('dropHeld(warnedFailures || [], heldWarned)'), 'index.ts: PASS 1 and PASS 2 both skip quotes that are paid or in flight (B4)');
@@ -246,10 +247,10 @@ const guardApi = { GUARD_SELECT: 'id', evaluateLiveChargeGuard: () => ({ allow: 
 const mkTables = () => ({ payment_failures: [
   { ...W(), id: 'W', quote_id: 'qq' }, { ...Sx(), id: 'S', quote_id: 'qq' },
   { ...row({ id: 'X', quote_id: 'other', retry_requested_at: null, retry_request_count: 0 }) } ], quotes: [] });
-{ const sb = fakeSb(mkTables()); const d = S.buildRetryPassDeps(sb, 'sk_test_x', guardApi, fetch, () => NOW);
+{ const sb = fakeSb(mkTables()); const d = S.buildRetryPassDeps(sb, 'sk_test_x', guardApi, undefined, () => NOW);
   const got = await d.listCandidateRows(new Date(NOW.getTime() - 72 * 3600000).toISOString());
   ok(got.map((r) => r.id).sort().join() === 'S,W', 'B2 wiring: reads the request row AND its quote siblings, not unrelated quotes'); }
-{ const t = mkTables(); const sb = fakeSb(t); const d = S.buildRetryPassDeps(sb, 'sk_test_x', guardApi, fetch, () => NOW);
+{ const t = mkTables(); const sb = fakeSb(t); const d = S.buildRetryPassDeps(sb, 'sk_test_x', guardApi, undefined, () => NOW);
   const reqIso = t.payment_failures[0].retry_requested_at;
   const first = await d.markHandled(['W', 'S'], NOW.toISOString(), reqIso);
   const second = await d.markHandled(['W', 'S'], NOW.toISOString(), reqIso);
@@ -260,11 +261,11 @@ const mkTables = () => ({ payment_failures: [
     deps.markHandled = async (ids) => { if (handled) return 0; handled = true; return ids.length; }; return { deps, log }; };
   const a = mk(), b = mk(); await Promise.all([P.runRetryPass(a.deps), P.runRetryPass(b.deps)]);
   ok(a.log.charges.length + b.log.charges.length === 1, 'N2: two overlapping ticks charge once'); }
-{ const t = mkTables(); const sb = fakeSb(t); const d = S.buildRetryPassDeps(sb, 'sk_test_x', guardApi, fetch, () => NOW);
+{ const t = mkTables(); const sb = fakeSb(t); const d = S.buildRetryPassDeps(sb, 'sk_test_x', guardApi, undefined, () => NOW);
   const n = await d.closeDunningRows(['W', 'S'], NOW.toISOString());
   const qS = sb.calls.find(([tbl, q]) => q.upd && q.upd.dunning_status === 'resolved')[1];
   ok(n === 2 && qS.filters.some((f) => f[0] === 'in' && f[1] === 'dunning_status'), 'B3 wiring: close only touches open rows and reports the count'); }
-{ const t = mkTables(); const sb = fakeSb(t); const d = S.buildRetryPassDeps(sb, 'sk_test_x', guardApi, fetch, () => NOW);
+{ const t = mkTables(); const sb = fakeSb(t); const d = S.buildRetryPassDeps(sb, 'sk_test_x', guardApi, undefined, () => NOW);
   const ok1 = await d.refundRequest('W', 1); const ok2 = await d.refundRequest('W', 1);
   ok(ok1 === true && ok2 === false && t.payment_failures[0].retry_request_count === 0, 'refund wiring: compare-and-set on the current count, never below 0'); }
 

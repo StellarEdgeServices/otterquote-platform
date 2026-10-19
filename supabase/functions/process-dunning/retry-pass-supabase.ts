@@ -1,6 +1,6 @@
 /**
- * gh-2442 -- real wiring for retry-pass.ts: Supabase (service role) + Stripe over fetch.
- * Kept separate so retry-pass.ts stays pure. `fetchFn` is injectable so the Stripe request (URL, headers,
+ * gh-2442 -- real wiring for retry-pass.ts: Supabase (service role) + Stripe over HTTPS.
+ * Kept separate so retry-pass.ts stays pure. `httpFn` is injectable so the Stripe request (URL, headers,
  * idempotency key, form body) is asserted in tests/gh2442-dunning-retry-pass.mjs without a network.
  *
  * Every .update( chains .select( (gh-2105 ratchet): a zero-row write is reported, never assumed.
@@ -9,13 +9,23 @@ import type { ChargeMethod, ChargeRequest, ChargeResult, FailureRow, RetryPassDe
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 
+/**
+ * The only network call in this module. Takes a PATH under STRIPE_API_BASE (not a URL) so that the gh-2884 transport
+ * guard (sms-all-bodies.test.ts) can see every request goes to the allow-listed Stripe base; tests inject a fake.
+ */
+export type StripeHttp = (
+  path: string,
+  init: { method: string; headers: Record<string, string>; body?: string },
+) => Promise<{ ok: boolean; status: number; json: () => Promise<any> }>;
+export const stripeHttp: StripeHttp = (path, init) => fetch(`${STRIPE_API_BASE}${path}`, init);
+
 export interface GuardApi {
   GUARD_SELECT: string;
   evaluateLiveChargeGuard: (claim: any) => { allow: boolean };
   describeGuardVerdict: (verdict: any, claimId: string | null, amountCents: number) => string;
 }
 
-export function buildStripeCharge(stripeSecretKey: string, fetchFn: typeof fetch) {
+export function buildStripeCharge(stripeSecretKey: string, httpFn: StripeHttp) {
   const basicAuth = btoa(`${stripeSecretKey}:`);
   return async (req: ChargeRequest): Promise<ChargeResult> => {
     const form = new URLSearchParams();
@@ -36,7 +46,7 @@ export function buildStripeCharge(stripeSecretKey: string, fetchFn: typeof fetch
     form.append("metadata[retry_requested_ms]", String(req.requestedAtMs));
     form.append("payment_method_types[]", req.method.payment_type === "us_bank_account" ? "us_bank_account" : "card");
     try {
-      const resp = await fetchFn(`${STRIPE_API_BASE}/payment_intents`, {
+      const resp = await httpFn("/payment_intents", {
         method: "POST",
         headers: {
           Authorization: `Basic ${basicAuth}`,
@@ -69,7 +79,7 @@ export function buildStripeCharge(stripeSecretKey: string, fetchFn: typeof fetch
       const stuckId = data?.id ?? data?.error?.payment_intent?.id;
       if (stuckId && (data?.status === "requires_action" || data?.status === "requires_payment_method")) {
         try {
-          await fetchFn(`${STRIPE_API_BASE}/payment_intents/${stuckId}/cancel`, {
+          await httpFn(`/payment_intents/${stuckId}/cancel`, {
             method: "POST",
             headers: { Authorization: `Basic ${basicAuth}`, "Content-Type": "application/x-www-form-urlencoded" },
           });
@@ -92,7 +102,7 @@ export function buildRetryPassDeps(
   supabase: any,
   stripeSecretKey: string,
   guard: GuardApi,
-  fetchFn: typeof fetch = fetch,
+  httpFn: StripeHttp = stripeHttp,
   nowFn: () => Date = () => new Date(),
 ): RetryPassDeps {
   return {
@@ -184,7 +194,7 @@ export function buildRetryPassDeps(
       }
       return { customerId: c.stripe_customer_id, methods };
     },
-    charge: buildStripeCharge(stripeSecretKey, fetchFn),
+    charge: buildStripeCharge(stripeSecretKey, httpFn),
     async recordQuoteResult(quoteId: string, update: Record<string, unknown>) {
       const { data, error } = await supabase.from("quotes").update(update).eq("id", quoteId).select("id");
       if (error) { console.error(`[process-dunning] retry pass quotes update failed for ${quoteId}:`, error); return false; }
