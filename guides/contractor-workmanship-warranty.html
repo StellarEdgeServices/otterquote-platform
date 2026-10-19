@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Roofer Workmanship Warranty: What It Covers | Otter Quotes</title>
+<meta name="description" content="What a roofer's workmanship warranty covers, how it differs from the manufacturer's warranty, what to get in writing, and what to ask each bidder.">
+<link rel="canonical" href="https://otterquote.com/guides/contractor-workmanship-warranty.html">
+<meta property="og:title" content="Roofer Workmanship Warranty: What It Covers | Otter Quotes">
+<meta property="og:description" content="What a roofer's workmanship warranty covers, how it differs from the manufacturer's warranty, what to get in writing, and what to ask each bidder.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/contractor-workmanship-warranty.html">
+<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Otter Quotes logo">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-10-19">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds (same values as PR #2499; defined here until it merges) */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol, .step ul { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+.definition-table td { color: var(--dark-gray); border-bottom: 1px solid #D9DEE7; }
+.definition-table td:first-child { color: var(--navy); }
+.definition-table tr:last-child td { border-bottom: none; }
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>The Contractor Workmanship Warranty: What It Covers and Why It Is Only as Good as the Company</h1>
+    <p class="meta">Otter Quotes &middot; Updated October 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>A workmanship warranty is a contractor&rsquo;s written promise about the installation, and it is only as strong as the company that signs it. This guide explains what it covers, how it differs from the manufacturer&rsquo;s warranty, what to get in writing and what to ask every bidder. It states no outcome and promises nothing about what any contractor will offer.</p>
+    </div>
+
+    <section class="step">
+      <h2>What is a workmanship warranty, and how is it different from the manufacturer&rsquo;s warranty?</h2>
+      <p>A roof usually carries two promises from two different parties. A Hawaii state consumer agency, the Regulated Industries Complaints Office, puts it this way in its roofing brochure: &ldquo;In roofing, there are usually two guarantees &ndash; the manufacturer&rsquo;s and the contractor&rsquo;s.&rdquo; The manufacturer stands behind the product. The contractor stands behind the labor.</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr><th>Warranty</th><th>Who signs it</th><th>What it is about</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Manufacturer (material)</td><td>The shingle maker</td><td>The product. The Hawaii brochure says most manufacturer guarantees are &ldquo;for merchantability &ndash; the product is what they say it is.&rdquo;</td></tr>
+            <tr><td>Contractor workmanship (labor)</td><td>The roofing company</td><td>The installation. The same brochure says contractor guarantees &ldquo;usually apply only to water tightness and not appearance.&rdquo;</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The two do not overlap the way most people assume. A shingle can be made perfectly and still leak at a flashing because of how it was put on. That is a workmanship question, and the manufacturer&rsquo;s base warranty is not where it gets answered.</p>
+    </section>
+
+    <section class="step">
+      <h2>Does the shingle manufacturer cover installation mistakes?</h2>
+      <p>Under the base warranty, the sources we read say no. GAF&rsquo;s homeowner warranty page lists workmanship as &ldquo;Not covered&rdquo; for its Shingle &amp; Accessory, Roofing System and System Plus limited warranties. A footnote on GAF&rsquo;s warranty comparison chart reads: &ldquo;Some limited workmanship coverage may be available through your contractor.&rdquo; The same chart says contractors in GAF&rsquo;s certification programs &ldquo;are not employees or agents of GAF.&rdquo;</p>
+      <p>The wording of the warranty itself points the same way. GAF&rsquo;s current Shingle &amp; Accessory Limited Warranty (RESWT160L-0426) excludes damage from &ldquo;improper fastening of your shingles or accessories or application not in strict accordance with GAF&rsquo;s printed application instructions, if the improper installation was the cause of the damage.&rdquo; Warranty text changes, so read the document that comes with your roof.</p>
+      <div class="highlight-box">
+        <p><strong>The exception to know about.</strong> Some manufacturers back workmanship through an enhanced warranty sold only through credentialed contractors. GAF lists workmanship coverage on its Silver Pledge, Golden Pledge and President&rsquo;s Club tiers, each tied to a certification level. Owens Corning&rsquo;s Platinum Protection document lists a Lifetime workmanship period for a single-family detached home with its lifetime shingles, prorated after the first 25 years, and says the contractor is responsible for the first two years of workmanship. It also says the warranty &ldquo;must be registered by Purchaser&rsquo;s Owens Corning Roofing Platinum Preferred Contractor with Owens Corning within 60 days of the installation.&rdquo; CertainTeed says contractors with its ShingleMaster PRO or PREMIER designation can offer SureStart PLUS 4-Star or 5-Star coverage. Those are a different product from the contractor&rsquo;s own warranty. Our guide to <a href="/blog/roof-shingle-warranty-tiers-explained.html">roof shingle warranty tiers</a> explains how the tiers are laid out.</p>
+      </div>
+    </section>
+
+    <section class="step">
+      <h2>How long is a typical contractor workmanship warranty?</h2>
+      <p>Terms vary, so read yours. CertainTeed&rsquo;s consumer page says &ldquo;Contractor workmanship warranties typically are for one to five years.&rdquo; That is a manufacturer describing contractors, and we found no regulator or trade source that sets a standard length. Whatever number a bid prints is the number being offered, and a longer number only matters if the company is still around to honor it.</p>
+    </section>
+
+    <section class="step">
+      <h2>Why is a workmanship warranty only as good as the company?</h2>
+      <p>The Hawaii brochure says it plainly: &ldquo;A guarantee is only as good as the company that issues it.&rdquo; It continues: &ldquo;If the company goes out of business, your guarantee becomes ineffective.&rdquo;</p>
+      <p>Consider what that means when you compare bids. A long term on paper says nothing about whether the company will exist in year eight. This is our reading, not a sourced rule, but it follows from the quotation: the warranty is a promise from a business, so the business is part of what you are buying. The Indiana Attorney General&rsquo;s consumer protection office says in its storm-chaser guidance: &ldquo;Opt for the local, well-established contractor.&rdquo; Ohio&rsquo;s Attorney General warned in a June 2014 release that &ldquo;fly-by-night contractors may descend on a community offering great deals but doing poor work or nothing at all.&rdquo;</p>
+      <p>Questions that test the company behind the promise:</p>
+      <ul>
+        <li><strong>Who issues it?</strong> Ask for the legal name of the company that signs the warranty, and check that it matches the name on the contract and the license.</li>
+        <li><strong>How long has that company operated?</strong> Ask for it in writing.</li>
+        <li><strong>Where is the office?</strong> Ask for the address and the phone number a claim would go to.</li>
+        <li><strong>Is a manufacturer-backed option available on this roof?</strong> If a credentialed contractor can register an enhanced warranty, the manufacturer is a second party on the paper. Ask which one and ask who registers it.</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>What should a workmanship warranty say in writing?</h2>
+      <p>The Indiana Attorney General&rsquo;s guidance says: &ldquo;If a contractor guarantees labor and/or materials, those warranties should be in writing.&rdquo; Connecticut&rsquo;s Attorney General says promises like these are &ldquo;only enforceable if in writing.&rdquo; A verbal &ldquo;we stand behind our work&rdquo; is not a warranty. Use the list below to read the actual document.</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr><th>Line to look for</th><th>What to look for</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Length</td><td>The number of years, and the date it starts (the day work is finished, or the day it is paid).</td></tr>
+            <tr><td>What is covered</td><td>Leaks, flashing, penetrations such as vents and chimneys. Ask whether the repair covers labor <em>and</em> materials.</td></tr>
+            <tr><td>Exclusions</td><td>Read every one. The Hawaii brochure asks whether the warranty is cancelled &ldquo;if the roof is penetrated in any way, like adding solar energy devices.&rdquo;</td></tr>
+            <tr><td>Maintenance</td><td>The brochure asks: &ldquo;Does it call for maintenance on your part?&rdquo; Ask what you must do to keep it in force.</td></tr>
+            <tr><td>Transferability</td><td>The brochure asks: &ldquo;Is it transferable to the next owner?&rdquo; Ask whether there is a fee and a deadline.</td></tr>
+            <tr><td>Response time</td><td>How quickly the company will respond to a leak report, in writing. If the document is silent, ask.</td></tr>
+            <tr><td>How to make a claim</td><td>Who to contact, by what method, and what to send. Keep the phone number and email in your records.</td></tr>
+            <tr><td>Who issues it</td><td>The legal name of the company, as above, and who the manufacturer-backed warranty, if any, is registered to.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The contract and warranty should name the same shingle line, the same scope and the same company. Our <a href="/guides/roofing-contract-checklist-before-you-sign.html">contract checklist</a> and <a href="/guides/roof-bid-comparison-worksheet.html">bid comparison worksheet</a> have rows for the warranty length and the written terms.</p>
+    </section>
+
+    <section class="step">
+      <h2>What should I ask each roofing contractor about the workmanship warranty?</h2>
+      <p>Ask every bidder the same questions, in writing, and compare the answers side by side. When every bid prices the same scope, the warranty section is one of the places bids can differ.</p>
+      <ul>
+        <li>Is the workmanship warranty in the contract, and can I read the whole document before I sign?</li>
+        <li>How many years does it run, and when does it start?</li>
+        <li>What exactly does it cover: leaks, flashing, penetrations, labor, materials?</li>
+        <li>What does it exclude, and what would cancel it?</li>
+        <li>Is it transferable if I sell the house, and is there a fee?</li>
+        <li>What is your response time when I report a leak, and who do I call?</li>
+        <li>What is the legal name of the company that issues it, and how long has it operated?</li>
+        <li>Can a manufacturer-backed warranty be registered on this roof, who registers it, and when will I get the confirmation?</li>
+        <li>Are there any ways the warranty could be void that are not on the page?</li>
+      </ul>
+      <p>Keep the signed contract, the warranty, the final invoice and photos of the finished roof together. If the company&rsquo;s name or phone number changes later, you will want proof of whom you hired and when.</p>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>Otter Quotes creates a written scope of work for your project and sends it to multiple contractors. Contractors who receive the scope can submit bids on that same scope and the same measurements. You compare the bids online, next to reviews and licensing information, and sign online without a salesperson in your home. Subcontractors bid too, so you may be able to work directly with the crew that does the work. We do not work with your insurance company. We are not a contractor, we do not sell upgrades, and we do not offer inspections or assessments. Contractors pay Otter Quotes a fee on the accepted bid.</p>
+      <div class="cta-box cta-box-button">
+        <a class='btn btn-primary btn-lg' href="/start">Get my bids today</a>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>What is a roofer's workmanship warranty?</h3>
+        <div class="faq-answer">
+          <p>It is the contractor's own written promise about the installation. It is separate from the manufacturer's warranty on the shingles. A Hawaii state consumer agency's roofing brochure says contractor guarantees &ldquo;usually have to do with workmanship and usually apply only to water tightness and not appearance.&rdquo;</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>How long is a typical workmanship warranty?</h3>
+        <div class="faq-answer">
+          <p>Terms vary, so read yours. CertainTeed's consumer page says &ldquo;Contractor workmanship warranties typically are for one to five years.&rdquo; We found no regulator or trade source that sets a standard length, so the length in your bid is the length you are being offered.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does the shingle manufacturer cover installation mistakes?</h3>
+        <div class="faq-answer">
+          <p>Not under its base warranty. GAF's warranty page lists workmanship as &ldquo;Not covered&rdquo; for its Shingle &amp; Accessory, Roofing System and System Plus warranties. Some manufacturers back workmanship through an enhanced warranty that a credentialed contractor registers. Read the document for the exact terms.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What happens to a workmanship warranty if the roofing company closes?</h3>
+        <div class="faq-answer">
+          <p>The Hawaii brochure says: &ldquo;A guarantee is only as good as the company that issues it. If the company goes out of business, your guarantee becomes ineffective.&rdquo; Ask each bidder who issues the warranty and how you would make a claim.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does Otter Quotes work with my insurance company?</h3>
+        <div class="faq-answer">
+          <p>No. We do not work with your insurance company, we do not offer inspections or assessments, and we are not a contractor. Otter Quotes creates a written scope of work for your project and sends it to multiple contractors, who can submit bids on that same scope. Questions about your policy go to your insurer.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="step">
+      <h2>Sources</h2>
+      <ul>
+        <li><a href="https://web.archive.org/web/20201101100053/https://cca.hawaii.gov/rico/files/2019/08/CLB-190718-Roofing-Tips-for-Owners-1.pdf" target="_blank" rel="noopener">Hawaii Department of Commerce and Consumer Affairs, Regulated Industries Complaints Office, &ldquo;Roofing Tips for Owners&rdquo; (revision code 190718; archived copy; the original link no longer loads)</a>: two guarantees; workmanship and water tightness; &ldquo;only as good as the company&rdquo;; terms to check.</li>
+        <li><a href="https://secure.in.gov/attorneygeneral/consumer-protection-division/files/Storm-Chasers-webversion_4_24.pdf" target="_blank" rel="noopener">Indiana Attorney General, Consumer Protection Division, storm chasers guidance (PDF dated April 2023)</a>: guarantees in writing; local, well-established contractor.</li>
+        <li><a href="https://portal.ct.gov/AG/Consumer-Issues/Other-Consumer-Information/Home-Improvement" target="_blank" rel="noopener">Connecticut Attorney General, Home Improvement consumer page, as read in October 2026</a>: promises only enforceable if in writing.</li>
+        <li><a href="https://ohioattorneygeneral.gov/Media/News-Releases/June-2014/Attorney-General-DeWine-Warns-of-Storm-Chasing-Con" target="_blank" rel="noopener">Ohio Attorney General news release, June 24, 2014</a>: fly-by-night contractors.</li>
+        <li><a href="https://www.gaf.com/en-us/resources/warranties/residential" target="_blank" rel="noopener">GAF, homeowner warranties page, as read in October 2026</a>: workmanship &ldquo;Not covered&rdquo; on base tiers; workmanship coverage on Silver Pledge, Golden Pledge and President&rsquo;s Club; contractors are not GAF employees or agents.</li>
+        <li><a href="https://www.gaf.com/en-us/document-library/documents/warranties/silver-pledge-warranty-comparison-chart-reswt218.pdf" target="_blank" rel="noopener">GAF, warranty comparison chart (RESWT218)</a>: &ldquo;Some limited workmanship coverage may be available through your contractor.&rdquo;</li>
+        <li><a href="https://www.gaf.com/en-us/document-library/documents/warranties/gaf-shingle-and-accessory-limited-warranty-reswt160l.pdf" target="_blank" rel="noopener">GAF, Shingle &amp; Accessory Limited Warranty (RESWT160L-0426), as read in October 2026</a>: improper installation exclusion.</li>
+        <li><a href="https://dcpd6wotaa0mb.cloudfront.net/mdms/dms/Roofing/10020608/10020608-Platinum-Protection-Legalese.pdf" target="_blank" rel="noopener">Owens Corning, Platinum Protection warranty document</a>: Lifetime workmanship period for a single-family detached home with lifetime shingles, prorated after the first 25 years, contractor responsible for the first two years; registration by the contractor within 60 days.</li>
+        <li><a href="https://www.certainteed.com/roofing-101-worry-free-warranties" target="_blank" rel="noopener">CertainTeed, &ldquo;Roofing 101: Worry-Free Warranties,&rdquo; as read in October 2026</a>: contractor warranties typically one to five years; ShingleMaster PRO and PREMIER contractors can offer SureStart PLUS 4-Star or 5-Star.</li>
+      </ul>
+    </section>
+
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/blog/roof-shingle-warranty-tiers-explained.html">Roof Shingle Warranty Tiers Explained</a></li>
+        <li><a href="/guides/roofing-contract-checklist-before-you-sign.html">Roofing Contract Checklist: What to Check Before You Sign</a></li>
+        <li><a href="/guides/roof-bid-comparison-worksheet.html">Roof Bid Comparison Worksheet</a></li>
+        <li><a href="/guides/how-to-choose-contractor.html">How to Choose a Contractor</a></li>
+        <li><a href="/blog/storm-chaser-roofing-scams.html">Storm Chasers and Roofing Scams</a></li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "The Contractor Workmanship Warranty: What It Covers and Why It Is Only as Good as the Company",
+  "description": "What a roofer's workmanship warranty covers, how it differs from the manufacturer's warranty, what to get in writing, and what to ask each bidder.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-10-19",
+  "dateModified": "2026-10-19",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/contractor-workmanship-warranty.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is a roofer's workmanship warranty?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It is the contractor's own written promise about the installation. It is separate from the manufacturer's warranty on the shingles. A Hawaii state consumer agency's roofing brochure says contractor guarantees “usually have to do with workmanship and usually apply only to water tightness and not appearance.”"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How long is a typical workmanship warranty?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Terms vary, so read yours. CertainTeed's consumer page says “Contractor workmanship warranties typically are for one to five years.” We found no regulator or trade source that sets a standard length, so the length in your bid is the length you are being offered."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does the shingle manufacturer cover installation mistakes?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Not under its base warranty. GAF's warranty page lists workmanship as “Not covered” for its Shingle & Accessory, Roofing System and System Plus warranties. Some manufacturers back workmanship through an enhanced warranty that a credentialed contractor registers. Read the document for the exact terms."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What happens to a workmanship warranty if the roofing company closes?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The Hawaii brochure says: “A guarantee is only as good as the company that issues it. If the company goes out of business, your guarantee becomes ineffective.” Ask each bidder who issues the warranty and how you would make a claim."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Otter Quotes work with my insurance company?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. We do not work with your insurance company, we do not offer inspections or assessments, and we are not a contractor. Otter Quotes creates a written scope of work for your project and sends it to multiple contractors, who can submit bids on that same scope. Questions about your policy go to your insurer."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "The Contractor Workmanship Warranty: What It Covers and Why It Is Only as Good as the Company",
+      "item": "https://otterquote.com/guides/contractor-workmanship-warranty.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>
