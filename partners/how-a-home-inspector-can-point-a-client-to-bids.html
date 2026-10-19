@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Inspector Guide: Pointing a Client to Bids | Otter Quotes</title>
+<meta name="description" content="How a home inspector can point a client to competing bids on one scope of work without recommending or naming any contractor.">
+<link rel="canonical" href="https://otterquote.com/partners/how-a-home-inspector-can-point-a-client-to-bids.html">
+<meta property="og:title" content="Inspector Guide: Pointing a Client to Bids | Otter Quotes">
+<meta property="og:description" content="How a home inspector can point a client to competing bids on one scope of work without recommending or naming any contractor.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/partners/how-a-home-inspector-can-point-a-client-to-bids.html">
+<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Otter Quotes logo">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-10-18">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds (same values as PR #2499; defined here until it merges) */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--amber);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--white);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step blockquote.fee-quote p { color: var(--navy); font-weight: 600; }
+.disclaimer-box { background: rgba(13,27,46,0.05); border-left: 4px solid var(--navy); padding: var(--sp-4) var(--sp-6); margin: var(--sp-6) 0; border-radius: var(--radius-md); }
+.disclaimer-box p { margin-bottom: 0; }
+.faq-section h2 { color: var(--white); }
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>How Can a Home Inspector Point a Client to Bids Without Recommending a Contractor?</h1>
+    <p class="meta">Otter Quotes &middot; For home inspectors &middot; Updated October 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/partner-inspectors.html" class="back-link">&#8592; Home Inspector Partner Program</a>
+
+    <div class="article-intro">
+      <p>A home inspector can point a client to a way to collect written bids from several contractors on one scope of work, without naming any contractor. Otter Quotes creates that scope of work and sends it to multiple contractors, who can submit bids. The client compares the bids and chooses. You share a link, not a recommendation.</p>
+    </div>
+
+    <section class="step">
+      <h2>Why does a client ask the inspector who to call?</h2>
+      <p>Your report just told the client that something is wrong, and you are the person they trust most on the house, so the question is natural. The risk is that a name from you carries your credibility into a contractor's price and workmanship, which you have not seen and cannot control. A path to bids avoids that.</p>
+      <p>Clients ask on site, by phone after the report arrives, and again when a contractor's number seems high. A client may have one bid in hand, or none, and a name from you would settle the question for them. That is the moment your wording matters most. A useful answer gives the client a next step and keeps your findings separate from any contractor's work.</p>
+    </section>
+
+    <section class="step">
+      <h2>What is the difference between recommending a contractor and pointing a client to bids?</h2>
+      <p>Recommending puts a contractor's name next to yours. Pointing to bids gives the client a way to find out for themselves, and no contractor is named. The client sees several written bids on the same scope of work and decides. Your part stays limited to the findings in your report.</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr><th></th><th>Naming a contractor</th><th>Pointing to a way to get bids</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>What you say</td><td>"Call this company."</td><td>"Here is a way to get written bids on the same scope of work."</td></tr>
+            <tr><td>Whose name is attached</td><td>Yours and the contractor's</td><td>Yours, on your findings only</td></tr>
+            <tr><td>What the client can compare</td><td>One company's word</td><td>More than one written bid</td></tr>
+            <tr><td>Who decides</td><td>Often the company you named</td><td>The client</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="step">
+      <h2>How does Otter Quotes work for a client I send?</h2>
+      <p>Otter Quotes creates a written scope of work for the client's project and sends it to multiple contractors. Contractors who bid all work from the same scope and the same professional measurements. The client compares the bids online, next to reviews and licensing information, with no salesperson in the home, and chooses which bid to accept.</p>
+      <p>Here is the path for a client who comes from your link:</p>
+      <ol>
+        <li>You sign up as a home inspector partner and get a personal referral link.</li>
+        <li>You add the link to your report, or send it to your client by text or email.</li>
+        <li>The client opens the link and creates an account.</li>
+        <li>The client purchases professional measurements of the property, or uploads measurements they already have, and selects what needs to be quoted, such as the roof.</li>
+        <li>Otter Quotes sends the scope of work to contractors, who can submit bids.</li>
+        <li>The client compares the bids, chooses one, and signs the contract online.</li>
+      </ol>
+      <p>Contractors do not see the client's name, phone number or street address until the client chooses one. Otter Quotes does not inspect roofs or assess damage, does not recommend a contractor, and does not sell upgrades. It is paid by the contractor whose bid the client accepts. Home-inspector partners do not receive a referral fee or recruit bonus.</p>
+    </section>
+
+    <section class="step">
+      <h2>What can I write in my report or message?</h2>
+      <p>Keep it to a pointer and a plain statement of what you are not doing. Say that the client can get written bids from more than one contractor on the same scope of work through a link, and that you do not recommend or endorse any contractor. If your report format allows, put it in a separate next-steps note rather than inside your findings.</p>
+      <p>Wording for a report:</p>
+      <blockquote>
+        <p>If you want written bids from more than one contractor on the same scope of work, this link goes to a service that sends one scope to multiple contractors. I do not recommend or endorse any contractor, and the link does not change my findings. The decision is yours.</p>
+      </blockquote>
+      <p>Wording for a text or email:</p>
+      <blockquote>
+        <p>Here is the link I mentioned. It lets you get bids from several contractors on one written scope of work. I am not recommending anyone, so use it or not as you see fit, and compare whatever bids you get.</p>
+      </blockquote>
+      <p>Change the words to fit your own voice and your own report. The parts to keep are the two statements: the link is a way to get bids, and you recommend no one.</p>
+      <div class="disclaimer-box">
+        <p>Check your state's standards of practice and your association's rules before you add any next-step language to a report or agreement. Otter Quotes cannot tell you what they require. If you are unsure, ask the body that licenses or governs you.</p>
+      </div>
+    </section>
+
+    <section class="step">
+      <h2>What should I avoid saying?</h2>
+      <p>Avoid anything that sounds like a promise or a pick: that a contractor is the best, what the repair will cost, or when bids will arrive. You do not control any of that, and Otter Quotes cannot promise it either.</p>
+      <ul>
+        <li><strong>A name.</strong> "Call this company" and "my guy" are recommendations, however casual.</li>
+        <li><strong>A promise about bids.</strong> Do not say the client will get the best price, a certain number of bids, or bids by a certain day.</li>
+        <li><strong>A price for the repair.</strong> Your report names what you found. Contractors price the work.</li>
+        <li><strong>A description of Otter Quotes that is not true.</strong> It does not assess damage or recommend a contractor. It sends one scope of work to multiple contractors and puts their bids side by side.</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>What if the client asks me which bid to choose?</h2>
+      <p>You can say the choice is theirs and point them to the way to compare: the same scope, the written bids side by side, and a set of questions for each contractor. You have not seen the contractors' work, so you are not in a position to rank them. Our <a href="/guides/roof-bid-comparison-worksheet.html">side-by-side worksheet for roofing bids</a> gives the client a column for each bid.</p>
+      <h3>Questions your client can ask each contractor</h3>
+      <ul>
+        <li>Does your bid cover the same scope of work as the other bids?</li>
+        <li>Which materials are named, by brand and product line?</li>
+        <li>What does the written warranty cover, and who stands behind it?</li>
+        <li>Will your own crew do the work, or a subcontractor?</li>
+        <li>What is not included in this bid?</li>
+        <li>How will the schedule be confirmed in writing?</li>
+      </ul>
+      <p>To learn how to read the numbers in a bid, send them to <a href="/guides/how-to-read-contractor-estimate.html">how to read a roofing contractor estimate</a>.</p>
+      <h3>Checklist for you, before you add the link</h3>
+      <ul>
+        <li>I have read what my state's standards of practice say about referrals and next-step language.</li>
+        <li>I have read what my association's rules say.</li>
+        <li>I have checked whether my inspection agreement or report template needs a line about links I include.</li>
+        <li>My wording points to a way to get bids and names no contractor.</li>
+        <li>My wording says I do not recommend or endorse any contractor.</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>Where does Otter Quotes fit?</h2>
+      <p>Otter Quotes is the step after your report. It creates a written scope of work for the client's project and sends it to multiple contractors, who compete with bids on that same scope. The client compares the bids online, next to reviews and licensing information, and signs online if they choose a bid. Otter Quotes does not inspect or assess damage, does not recommend a contractor, and is not a contractor. Contractors Compete. Homeowners Win. The partner page explains how the referral link works and has the sign-up form.</p>
+      <div class="cta-box cta-box-button">
+        <h3>Ready to give clients a next step?</h3>
+        <p>Sign up to get your personal referral link, then add it to your report or send it when a client asks.</p>
+        <a href="/partner-inspectors.html#signup" class="btn btn-primary btn-lg">Get my referral link</a>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>Is pointing a client to bids the same as recommending a contractor?</h3>
+        <div class="faq-answer">
+          <p>They differ in what you say. Recommending names one company. Pointing to bids names none: you share a link to a service that sends one scope of work to multiple contractors, and the client decides. Whether a particular rule treats the two differently is a question for your state's standards of practice and your association's rules.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does Otter Quotes recommend or choose a contractor?</h3>
+        <div class="faq-answer">
+          <p>No. Otter Quotes sends the written scope of work to multiple contractors, and contractors who choose to bid compete for the client's business. The client compares the bids online and decides which one to accept. Otter Quotes is not a contractor and does not sell upgrades. It is paid by the contractor whose bid the client accepts.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does Otter Quotes inspect the property or change my findings?</h3>
+        <div class="faq-answer">
+          <p>No. Otter Quotes does not inspect roofs or assess damage, and it does not change your report. Your findings stay as you wrote them. Otter Quotes creates a written scope of work for the project the client wants quoted and sends that scope to contractors, who bid on it.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What does it cost my client?</h3>
+        <div class="faq-answer">
+          <p>A client may pay a small upfront charge for professional measurements that every contractor bids from. If the client completes a job on the platform, that money is refunded to them. A client who already has measurements can upload them instead. Contractors do not see the client's name, phone number or street address until the client chooses one.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>How does my client get the link?</h3>
+        <div class="faq-answer">
+          <p>Sign up as a home inspector partner to get a personal referral link, then add it to your report or send it to your client by text or email. The client opens the link, creates an account and describes the project to be quoted. After you share the link, you do not need to follow up or manage anything.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/partner-inspectors.html">Home Inspector Partner Program</a></li>
+        <li><a href="/guides/roof-bid-comparison-worksheet.html">How to Compare Roofing Bids: A Side-by-Side Worksheet</a></li>
+        <li><a href="/guides/how-to-read-contractor-estimate.html">How to Read a Roofing Contractor Estimate</a></li>
+        <li><a href="/how-it-works.html">How Otter Quotes Works</a></li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "How Can a Home Inspector Point a Client to Bids Without Recommending a Contractor?",
+  "description": "How a home inspector can point a client to competing bids on one scope of work without recommending or naming any contractor.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-10-18",
+  "dateModified": "2026-10-18",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/partners/how-a-home-inspector-can-point-a-client-to-bids.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is pointing a client to bids the same as recommending a contractor?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "They differ in what you say. Recommending names one company. Pointing to bids names none: you share a link to a service that sends one scope of work to multiple contractors, and the client decides. Whether a particular rule treats the two differently is a question for your state's standards of practice and your association's rules."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Otter Quotes recommend or choose a contractor?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Otter Quotes sends the written scope of work to multiple contractors, and contractors who choose to bid compete for the client's business. The client compares the bids online and decides which one to accept. Otter Quotes is not a contractor and does not sell upgrades. It is paid by the contractor whose bid the client accepts."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Otter Quotes inspect the property or change my findings?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Otter Quotes does not inspect roofs or assess damage, and it does not change your report. Your findings stay as you wrote them. Otter Quotes creates a written scope of work for the project the client wants quoted and sends that scope to contractors, who bid on it."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What does it cost my client?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "A client may pay a small upfront charge for professional measurements that every contractor bids from. If the client completes a job on the platform, that money is refunded to them. A client who already has measurements can upload them instead. Contractors do not see the client's name, phone number or street address until the client chooses one."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How does my client get the link?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Sign up as a home inspector partner to get a personal referral link, then add it to your report or send it to your client by text or email. The client opens the link, creates an account and describes the project to be quoted. After you share the link, you do not need to follow up or manage anything."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Home Inspector Partner Program",
+      "item": "https://otterquote.com/partner-inspectors.html"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "How a Home Inspector Can Point a Client to Bids",
+      "item": "https://otterquote.com/partners/how-a-home-inspector-can-point-a-client-to-bids.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+</body>
+</html>

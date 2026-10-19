@@ -136,6 +136,7 @@ def build_fixtures(repo: pathlib.Path, deployed: pathlib.Path):
 PINNED_ALLOWLIST = {
     "supabase/functions/meta-leadgen-webhook/email-footer.ts",
     "supabase/functions/send-partner-onboarding/claim-stage-sql-proof.ts",
+    "supabase/functions/stripe-webhook/test-source-utils.ts",
     "supabase/functions/validate-contract-template/__fixtures__/otterquote-v3-reference-roofing-retail.pdf",
 }
 

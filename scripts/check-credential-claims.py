@@ -471,6 +471,13 @@ ALLOWLIST = [
         "the contractor's own licence/insurance proof; not a claim about contractors "
         "on the platform. CRO RUN 52, gh-2448/gh-2449.",
     ),
+    (
+        "guides/roof-bid-much-lower-than-the-others.html",
+        "Ask for copies of the contractor&rsquo;s liability insurance coverage and workers&rsquo; compensation certificates.",
+        "Consumer advice, attributed to the NRCA (and the FTC in the next sentence) -- it "
+        "tells the homeowner to demand the certificates and to check the license with the "
+        "state or county. Generic guidance, no claim about our roster.",
+    ),
 ]
 
 

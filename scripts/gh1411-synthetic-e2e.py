@@ -21,14 +21,22 @@ email), press the buy panel, touch contractor 986ce2b6, insert a bid, or write a
 other than the two named above. It only talks to PostgREST at SUPABASE_URL.
 It does NOT prove: the admin page's own fulfilment path, a real vendor report, a real payment.
 
-USAGE (service-role key from the environment, never printed):
-  SUPABASE_URL=https://<ref>.supabase.co SUPABASE_SERVICE_ROLE_KEY=... \\
-    python3 scripts/gh1411-synthetic-e2e.py            # plan: GETs only
-  ... python3 scripts/gh1411-synthetic-e2e.py --execute --ruling 6050104990
+USAGE (gh-2582: a secret is never a command-line argument, a URL or printed output):
+  The script accepts ONLY --execute and --ruling <digits>. The service-role key is loaded,
+  in this order, from: (a) env SUPABASE_SERVICE_ROLE_KEY, (b) the file named by env
+  SUPABASE_SERVICE_ROLE_KEY_FILE, (c) the Supabase Management API api-keys call, using env
+  SUPABASE_ACCESS_TOKEN (Doppler otterquote/prd holds that token but no service-role key).
+  Set the variable from a non-echoing source (a Doppler/secret-store read inside a shell
+  variable, or a mode-600 file); never type a value on a command line.
+    SUPABASE_URL=https://<ref>.supabase.co python3 scripts/gh1411-synthetic-e2e.py     # plan: GETs only
+    SUPABASE_URL=... python3 scripts/gh1411-synthetic-e2e.py --execute --ruling 6050104990
 """
 import json
 import os
+import re
 import sys
+import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
@@ -39,6 +47,47 @@ RULING = "6050104990"
 UPGRADE_PRODUCT_CODE = "roof_upgrade_detailed"
 ORDER_COLS = "id,claim_id,product_code,status,report_url,measurements_json,fulfilled_at,requested_by_contractor_id"
 CLAIM_COLS = "id,is_test,measurement_shape,live_charge_authorized_at,hover_measurements"
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Every request here carries apikey/Authorization. urllib would forward those headers
+    to a redirect target on another host, so a redirect is refused: the 3xx surfaces as an
+    HTTPError and nothing is re-sent."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+def open_no_redirect(req, timeout=30):
+    return _NO_REDIRECT_OPENER.open(req, timeout=timeout)
+
+
+_REF_RE = re.compile(r"[a-z0-9]+")
+
+
+def supabase_ref(url):
+    """Return the project ref when url is exactly https://<ref>.supabase.co[/], else None.
+    Parsed with urlsplit so `https://real.evil.example?.supabase.co` and `...#.supabase.co`
+    (hostname real.evil.example) are refused, as are userinfo, a port, a query, a fragment,
+    a path other than '/', http, and any host other than one label under supabase.co."""
+    try:
+        parts = urllib.parse.urlsplit(url or "")
+        host, port = parts.hostname, parts.port
+    except ValueError:
+        return None
+    if parts.scheme != "https" or not host or port is not None:
+        return None
+    if parts.username is not None or parts.password is not None or parts.query or parts.fragment:
+        return None
+    if parts.path not in ("", "/") or "?" in url or "#" in url or "@" in url:
+        return None
+    if not host.endswith(".supabase.co"):
+        return None
+    ref = host[:-len(".supabase.co")]
+    return ref if _REF_RE.fullmatch(ref) else None
 
 
 def synthetic_measurements(existing_squares, now_iso):
@@ -122,7 +171,9 @@ def check_after(order, claim):
 
 
 class Rest:
-    def __init__(self, url, key, opener=urllib.request.urlopen):
+    def __init__(self, url, key, opener=open_no_redirect):
+        if supabase_ref(url) is None:
+            raise ValueError("SUPABASE_URL must be https://<ref>.supabase.co (value not shown)")
         self.url, self.key, self.opener = url.rstrip("/"), key, opener
 
     def _call(self, method, path, body=None):
@@ -143,6 +194,46 @@ class Rest:
         if not isinstance(rows, list) or len(rows) != 1:
             raise RuntimeError("PATCH %s matched %r rows, expected exactly 1" % (table, None if rows is None else len(rows)))
         return rows[0]
+
+
+def bad_argv(argv):
+    """gh-2582: only --execute and --ruling <digits> may appear on the command line.
+    Anything else (a key, a token, KEY=value, a URL) is refused WITHOUT being echoed."""
+    bad = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--execute":
+            i += 1
+        elif a == "--ruling" and i + 1 < len(argv) and re.fullmatch(r"[0-9]+", argv[i + 1]):
+            i += 2
+        else:
+            bad.append("argument #%d" % (i + 1))
+            i += 1
+    return bad
+
+
+def load_service_key(environ, opener=open_no_redirect):
+    """Return the service-role key from env, then a file, then the Management API. Never prints it."""
+    key = (environ.get("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
+    if key:
+        return key
+    path = environ.get("SUPABASE_SERVICE_ROLE_KEY_FILE")
+    if path:
+        with open(path) as f:
+            key = f.read().strip()
+        if key:
+            return key
+    token, url = (environ.get("SUPABASE_ACCESS_TOKEN") or "").strip(), environ.get("SUPABASE_URL") or ""
+    ref = supabase_ref(url)
+    if token and ref:
+        req = urllib.request.Request("https://api.supabase.com/v1/projects/%s/api-keys?reveal=true" % ref,
+                                     headers={"Authorization": "Bearer " + token, "Accept": "application/json"})
+        with opener(req, timeout=30) as r:
+            for k in json.loads(r.read().decode() or "[]"):
+                if k.get("name") == "service_role" and k.get("api_key"):
+                    return k["api_key"]
+    return None
 
 
 def read_state(rest):
@@ -187,11 +278,24 @@ def run(rest, execute, ruling, now_iso, out=print):
 
 
 def main(argv):
+    bad = bad_argv(argv)
+    if bad:
+        print("REFUSED: unexpected command-line " + ", ".join(bad) + " (values not shown). Secrets come from the environment only (gh-2582).")
+        return 1
     execute = "--execute" in argv
     ruling = argv[argv.index("--ruling") + 1] if "--ruling" in argv and argv.index("--ruling") + 1 < len(argv) else None
-    url, key = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    url = os.environ.get("SUPABASE_URL")
+    if url and supabase_ref(url) is None:
+        print("REFUSED: SUPABASE_URL must be https://<ref>.supabase.co with no userinfo, port, path, query or fragment (value not shown)")
+        return 1
+    try:
+        key = load_service_key(os.environ) if url else None
+    except Exception as e:
+        print("could not load the service-role key (%s; no value shown)" % type(e).__name__)
+        return 1
     if not url or not key:
-        print("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required (read from the environment, never printed)")
+        print("SUPABASE_URL and a service-role key source are required: env SUPABASE_SERVICE_ROLE_KEY, "
+              "env SUPABASE_SERVICE_ROLE_KEY_FILE, or env SUPABASE_ACCESS_TOKEN (never printed)")
         return 1
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return run(Rest(url, key), execute, ruling, now_iso)

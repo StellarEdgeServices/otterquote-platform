@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>What Should a Roofing Contract Say? | Otter Quotes</title>
+<meta name="description" content="A line-by-line checklist of what a roofing contract should say, from named materials and payment terms to warranties, cleanup and cancellation.">
+<link rel="canonical" href="https://otterquote.com/guides/roofing-contract-checklist-before-you-sign.html">
+<meta property="og:title" content="What Should a Roofing Contract Say? | Otter Quotes">
+<meta property="og:description" content="A line-by-line checklist of what a roofing contract should say, from named materials and payment terms to warranties, cleanup and cancellation.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/roofing-contract-checklist-before-you-sign.html">
+<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Otter Quotes logo">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-10-18">
+<meta property="article:author" content="Otter Quotes">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+
+/* Cost table: readable body text on the light page, and stacked rows on narrow screens */
+.definition-table td { color: var(--dark-gray); }
+.definition-table td a { color: var(--link-on-light); }
+@media (max-width: 640px) {
+  .table-wrap .definition-table { min-width: 0; }
+  .definition-table.stack thead { display: none; }
+  .definition-table.stack tr { display: block; padding: var(--sp-4) 0; border-bottom: 1px solid rgba(0,0,0,0.12); }
+  .definition-table.stack td { display: block; padding: var(--sp-1) var(--sp-2); border-bottom: none; }
+  .definition-table.stack td[data-label]::before { content: attr(data-label); display: block; font-size: 0.8rem; font-weight: 600; color: var(--link-on-light-deep); }
+}
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>What Should Be in a Roofing Contract Before You Sign?</h1>
+    <p class="meta">Otter Quotes &middot; Updated October 2026</p>
+  </div>
+</section>
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+    <div class="article-intro">
+      <p>A roofing contract should state in writing the work to be done, the named materials, the start and finish terms, the price and payment schedule, who handles the permit, cleanup and warranties, and how changes and cancellation work. If a line is vague or blank, ask for it in writing before you sign.</p>
+      <p>This is general information, not legal advice; have an attorney review any contract you&rsquo;re unsure about. For the terms to refuse outright, see <a href="/guides/how-to-choose-contractor.html#contract">Section 6 of our contractor guide</a>. This page does not repeat that list. It covers what a good contract should say.</p>
+    </div>
+    <section class="step">
+      <h2>What should a roofing contract say, line by line?</h2>
+      <p>Each line of a contract should answer a question you would otherwise ask later. The table runs from the parties to cancellation, with what a clear contract says and a question for every contractor. A blank answer means the contract is silent on that line. These rows are practical checklist items, not legal requirements.</p>
+      <div class="table-wrap">
+        <table class="definition-table stack">
+          <thead>
+            <tr>
+              <th>Contract line</th>
+              <th>What a clear contract says</th>
+              <th>What to ask</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Parties and contact</td>
+              <td data-label="What a clear contract says">Full business name, address, phone, email, license number where one applies, and a named person for problems.</td>
+              <td data-label="What to ask">Who do I call if something goes wrong?</td>
+            </tr>
+            <tr>
+              <td>Scope tied to the bid</td>
+              <td data-label="What a clear contract says">States that the work is the scope in the bid you accepted, attached or copied in, line for line.</td>
+              <td data-label="What to ask">Does the contract match the bid I accepted, and is the bid attached?</td>
+            </tr>
+            <tr>
+              <td>Materials named</td>
+              <td data-label="What a clear contract says">Manufacturer, product line and color of the shingles, and the same for underlayment, ice and water barrier, starter, hip and ridge, and vents.</td>
+              <td data-label="What to ask">Is each item named by manufacturer and product line?</td>
+            </tr>
+            <tr>
+              <td>Tear-off and layers</td>
+              <td data-label="What a clear contract says">Says whether existing roofing is removed, how many layers, and that the work goes down to the deck.</td>
+              <td data-label="What to ask">How are extra layers handled?</td>
+            </tr>
+            <tr>
+              <td>Underlayment and ice and water barrier</td>
+              <td data-label="What a clear contract says">Names the product and the areas where each goes.</td>
+              <td data-label="What to ask">Where does the ice and water barrier go, and which product is it?</td>
+            </tr>
+            <tr>
+              <td>Flashing and ventilation</td>
+              <td data-label="What a clear contract says">Which flashings are replaced or reused, whether drip edge is new, and which vents are installed.</td>
+              <td data-label="What to ask">Which flashings are reused?</td>
+            </tr>
+            <tr>
+              <td>Decking</td>
+              <td data-label="What a clear contract says">A unit price for each sheet of decking replaced (see <a href="/guides/roof-change-orders-hidden-damage.html">roofing change orders</a>).</td>
+              <td data-label="What to ask">What is the price per sheet?</td>
+            </tr>
+            <tr>
+              <td>Permit</td>
+              <td data-label="What a clear contract says">Whether a permit applies, who applies, and whether the fee is in the price (see <a href="/guides/roof-permit-in-your-bid.html">who pulls the roofing permit</a>).</td>
+              <td data-label="What to ask">Whose name goes on the permit application?</td>
+            </tr>
+            <tr>
+              <td>Start and completion</td>
+              <td data-label="What a clear contract says">Estimated start and completion dates, and what would move them.</td>
+              <td data-label="What to ask">What delays change the dates?</td>
+            </tr>
+            <tr>
+              <td>Price and payment schedule</td>
+              <td data-label="What a clear contract says">The total price, the deposit, and later payments tied to completed stages, with the last due after the work is finished.</td>
+              <td data-label="What to ask">What triggers each payment?</td>
+            </tr>
+            <tr>
+              <td>Change orders</td>
+              <td data-label="What a clear contract says">Any change to scope or price is in a writing you sign before extra work starts.</td>
+              <td data-label="What to ask">Will you wait for my signature?</td>
+            </tr>
+            <tr>
+              <td>Cleanup and disposal</td>
+              <td data-label="What a clear contract says">Who hauls away old roofing, protects landscaping, and checks the yard for nails at the end.</td>
+              <td data-label="What to ask">How do you check the ground?</td>
+            </tr>
+            <tr>
+              <td>Warranties</td>
+              <td data-label="What a clear contract says">The exact manufacturer warranty name, the workmanship warranty with its length and coverage, and who registers each.</td>
+              <td data-label="What to ask">Who registers, and by when?</td>
+            </tr>
+            <tr>
+              <td>Final payment and proof of payment</td>
+              <td data-label="What a clear contract says">Written proof that subcontractors and suppliers were paid, or lien waivers, before the last payment.</td>
+              <td data-label="What to ask">What proof will I get?</td>
+            </tr>
+            <tr>
+              <td>Cancellation</td>
+              <td data-label="What a clear contract says">Whether any right to cancel applies and, if so, how and by when to give notice.</td>
+              <td data-label="What to ask">Does one apply, and where is it written?</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section class="step">
+      <h2>What do government sources say a home improvement contract should include?</h2>
+      <p>Federal and state consumer pages agree on the basics: get it in writing, fill in every blank, and put the scope, materials, dates and price on the page. State sources here are examples only, and the rules in your own state can differ, so check with your state or local consumer agency.</p>
+      <ul>
+        <li><strong>The Federal Trade Commission</strong> says: &ldquo;Even if your state doesn&rsquo;t require a written agreement, ask for one.&rdquo; It says to include the contractor&rsquo;s name, address, phone number and license number, an estimated start and completion date, and &ldquo;any promises made during conversations or calls,&rdquo; and to &ldquo;make sure all blank spaces are filled in.&rdquo;</li>
+        <li><strong>Indiana Attorney General (example).</strong> The office lists the price, a payment schedule, &ldquo;A detailed description of the work and materials (including colors, brand names and patterns),&rdquo; start and completion dates, and a contact name and phone number for problems.</li>
+        <li><strong>Ohio Attorney General (example).</strong> The office lists &ldquo;A provision requiring written approval for any changes&rdquo; and &ldquo;A requirement for the contractor to obtain all necessary permits and inspections.&rdquo;</li>
+        <li><strong>Indiana Code 24-5-11 (example of a statute).</strong> The chapter applies only to residential real property in Indiana that &ldquo;contains one (1) to four (4) units&rdquo; and is used at least in part as a consumer&rsquo;s dwelling, and only to contracts whose price &ldquo;exceeds one hundred fifty dollars ($150).&rdquo; For those contracts, it calls for &ldquo;A reasonably detailed description of the proposed real property improvements&rdquo; and &ldquo;A statement of any contingencies that would materially change the approximate completion date.&rdquo; A modification &ldquo;is not enforceable against a consumer unless the modification is stated in a writing that is signed by the consumer.&rdquo;</li>
+      </ul>
+    </section>
+    <section class="step">
+      <h2>How should the contract handle materials and warranties?</h2>
+      <p>Name the manufacturer and product line of every roofing material, and name each warranty. A manufacturer warranty comes from the shingle maker; a workmanship warranty comes from the contractor. The contract should say which is which and who registers the manufacturer&rsquo;s.</p>
+      <ul>
+        <li><strong>Why product lines matter.</strong> Owens Corning&rsquo;s registration asks for the shingle line and color, and whether other Owens Corning components are installed, such as ventilation products, hip and ridge shingles, ice and water barriers, starter shingles and synthetic underlayments. A contract that names them gives you that information.</li>
+        <li><strong>Registration is not the same everywhere.</strong> GAF says: &ldquo;It is not necessary to register your shingles &amp; accessories with GAF in order to access the protection available in our base warranties, but you may elect to do so anyway.&rdquo; It also says its enhanced warranties can be registered only by contractors in GAF&rsquo;s contractor program, using their GAF Partner Portal accounts.</li>
+        <li><strong>Deadlines can apply.</strong> Owens Corning says its standard shingle warranty &ldquo;does not have a deadline for registration,&rdquo; while its extended warranties &ldquo;must be registered within 60 days of installation&rdquo; and are handled by the roofing contractor. Ask the contractor which warranty applies, who registers it and when, and for the confirmation.</li>
+        <li><strong>Workmanship.</strong> The Indiana Attorney General says: &ldquo;If a contractor guarantees labor and/or materials, those warranties should be in writing.&rdquo; Ask for the length, what is covered and what is excluded.</li>
+      </ul>
+    </section>
+    <section class="step">
+      <h2>Does a roofing contract come with a three-day right to cancel?</h2>
+      <p>Not automatically. The FTC Cooling-Off Rule gives a three-business-day cancellation right for certain sales made away from the seller&rsquo;s place of business, such as at your home, at or above a threshold set in the rule, with exclusions. Whether it applies to your sale is a question for an attorney. Ask the contractor to state any cancellation right in writing.</p>
+      <p>The rule, 16 CFR Part 429, defines a door-to-door sale as one in which &ldquo;the seller or his representative personally solicits the sale&rdquo; and the buyer&rsquo;s agreement or offer to purchase &ldquo;is made at a place other than the place of business of the seller,&rdquo; at or above a threshold set in the rule. Exclusions include a transaction &ldquo;Conducted and consummated entirely by mail or telephone&rdquo; with no other contact before the work, one made after prior negotiations during the buyer&rsquo;s visit to the seller&rsquo;s fixed, permanent retail location, and a buyer-initiated emergency with a separate handwritten waiver.</p>
+      <p>When the rule applies, the contract must carry, near the buyer&rsquo;s signature, a statement in substantially this form: &ldquo;You, the buyer, may cancel this transaction at any time prior to midnight of the third business day after the date of this transaction.&rdquo; A notice of cancellation form must come with it, and the contract may not waive the right. The rule also says state laws that regulate door-to-door sales still apply, unless they are directly inconsistent with it.</p>
+    </section>
+    <section class="step">
+      <h2>How should payment and the final sign-off be written?</h2>
+      <p>Tie each payment to a stage of finished work, and make the last payment depend on the work being done and on written proof that others were paid. The contract should show every payment, its amount and what triggers it, so nothing is left to a conversation.</p>
+      <ul>
+        <li><strong>Deposit and stages.</strong> The FTC says: &ldquo;Don&rsquo;t pay the full amount for the project up front.&rdquo; It adds that some states limit the amount a contractor can ask for as a down payment. The Indiana Attorney General&rsquo;s Storm Chaser Scams brochure, an example of one state&rsquo;s guidance, says &ldquo;Do not pay more than 1/3 of the total cost as a down payment&rdquo; and that remaining payments &ldquo;should be tied to completion of specified amounts of work.&rdquo;</li>
+        <li><strong>Final payment.</strong> The FTC says to &ldquo;never make the final payment until the work is done and you&rsquo;re satisfied with it.&rdquo; The Indiana Attorney General says: &ldquo;Get written proof of payment,&rdquo; because unpaid subcontractors and suppliers &ldquo;may file a mechanic&rsquo;s lien against your home.&rdquo; Ask what lien waiver or proof of payment the contract promises, and have an attorney review the form.</li>
+      </ul>
+    </section>
+    <section class="step">
+      <h2>What should I ask every roofing contractor?</h2>
+      <p>Send the same questions to every bidder and ask for written answers:</p>
+      <ul>
+        <li>Is the bid I accepted attached, and does every line match?</li>
+        <li>Which manufacturer and product line is each material?</li>
+        <li>Is old roofing removed to the deck, and what is the price per sheet of decking replaced?</li>
+        <li>Who applies for the permit, and is the fee in the price?</li>
+        <li>What dates apply, and what moves them?</li>
+        <li>What triggers each payment, and what proof of payment will I get at the end?</li>
+        <li>Which manufacturer warranty applies, who registers it, and what does the workmanship warranty cover?</li>
+        <li>Does a cancellation right apply, and where is it written?</li>
+      </ul>
+    </section>
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>Otter Quotes creates a written scope of work for your project and sends it to multiple contractors. Every bid is on the same scope and the same measurements, so the contract you sign can point to one scope that matches the bid you chose. You compare the bids online, next to reviews and licensing information, without a salesperson visiting your home.</p>
+      <p>Because contractors know they are competing, they are more likely to include better materials and warranties. Otter Quotes is not a contractor, does not sell upgrades and does not work with your insurance company. Contractors pay Otter Quotes a fee on the accepted bid.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+    </section>
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>What should be in a roofing contract?</h3>
+        <div class="faq-answer">
+          <p>A roofing contract should include the contractor’s name, address and license number, a detailed scope tied to the bid, named materials with manufacturer and product line, tear-off terms, start and completion dates, the price and payment schedule, the permit, cleanup, warranties, change-order terms, and any cancellation right. Fill in every blank before you sign.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Should the contract name the shingle brand and product line?</h3>
+        <div class="faq-answer">
+          <p>Yes, ask for it in writing. The Indiana Attorney General lists colors, brand names and patterns among the items a contract should detail. Owens Corning’s registration asks for the shingle line and any other Owens Corning components installed, such as ice and water barrier, starter shingles and underlayment, so naming them in the contract gives you that record.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Who registers the roof warranty?</h3>
+        <div class="faq-answer">
+          <p>It depends on the warranty. GAF says its base warranties do not require registration, while enhanced warranties can be registered only by contractors in GAF’s contractor program through their Partner Portal accounts. Owens Corning says extended warranties must be registered by a participating contractor within 60 days of installation. Ask who registers yours and request the confirmation.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does a roofing contract have a three-day cancellation right?</h3>
+        <div class="faq-answer">
+          <p>Not always. The FTC Cooling-Off Rule covers certain sales made away from the seller’s place of business, such as at your home, at or above a threshold set in the rule, and lists exclusions. Whether it applies to a particular sale is a question for an attorney. Ask the contractor to write down any cancellation right that applies.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What should I get before the final payment?</h3>
+        <div class="faq-answer">
+          <p>The FTC says never to make the final payment until the work is done and you are satisfied. Ask for copies of the warranties and written proof that subcontractors and suppliers were paid, because the Indiana Attorney General warns that unpaid ones may file a mechanic’s lien against your home. This is general information, not legal advice.</p>
+        </div>
+      </div>
+
+    </section>
+    <section class="step">
+      <h2>Sources</h2>
+      <ul>
+        <li>Federal Trade Commission, Consumer Advice, <a href="https://consumer.ftc.gov/articles/how-avoid-home-improvement-scam" target="_blank" rel="noopener nofollow">How To Avoid a Home Improvement Scam</a> (July 2022).</li>
+        <li>Electronic Code of Federal Regulations, <a href="https://www.ecfr.gov/current/title-16/chapter-I/subchapter-D/part-429" target="_blank" rel="noopener nofollow">16 CFR Part 429, Rule Concerning Cooling-Off Period for Sales Made at Homes or at Certain Other Locations</a>.</li>
+        <li>Office of the Indiana Attorney General, Consumer Protection Division, <a href="https://www.in.gov/attorneygeneral/consumer-protection-division/files/Storm-Chasers-webversion_4_24.pdf" target="_blank" rel="noopener nofollow">Protect yourself from Storm Chaser Scams</a> (an example of one state&rsquo;s guidance).</li>
+        <li>Indiana General Assembly, <a href="https://iga.in.gov/ic/2025/Title_24.html" target="_blank" rel="noopener nofollow">Indiana Code 2025, Title 24, Article 5, Chapter 11, Home Improvement Contracts</a> (an example of one state&rsquo;s statute).</li>
+        <li>Ohio Attorney General, <a href="https://www.ohioattorneygeneral.gov/Individuals-and-Families/Consumers/Consumer-Tips/Consumer-Tips-Home-Improvement" target="_blank" rel="noopener nofollow">Consumer Tips: Home Improvement</a> (an example of one state&rsquo;s guidance).</li>
+        <li>GAF, <a href="https://www.gaf.com/en-us/resources/warranties/register" target="_blank" rel="noopener nofollow">Register your GAF Roofing Warranty</a>.</li>
+        <li>Owens Corning Roofing, <a href="https://www.owenscorning.com/en-us/roofing/blog/how-to-register-roof-warranty" target="_blank" rel="noopener nofollow">How Do I Register My Owens Corning Roof Warranty?</a> (published 2026-05-08).</li>
+      </ul>
+    </section>
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/guides/how-to-choose-contractor.html">How to Choose a Contractor</a></li>
+        <li><a href="/guides/roof-change-orders-hidden-damage.html">What Is a Roofing Change Order, and What if the Roofer Finds Hidden Damage?</a></li>
+        <li><a href="/guides/roof-permit-in-your-bid.html">Who Pulls the Roofing Permit, and What Should the Bid Say?</a></li>
+        <li><a href="/guides/roof-bid-comparison-worksheet.html">How to Compare Roofing Bids: A Side-by-Side Worksheet</a></li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "What Should Be in a Roofing Contract Before You Sign?",
+  "description": "A line-by-line checklist of what a roofing contract should say, from named materials and payment terms to warranties, cleanup and cancellation.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-10-18",
+  "dateModified": "2026-10-18",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/roofing-contract-checklist-before-you-sign.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What should be in a roofing contract?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "A roofing contract should include the contractor’s name, address and license number, a detailed scope tied to the bid, named materials with manufacturer and product line, tear-off terms, start and completion dates, the price and payment schedule, the permit, cleanup, warranties, change-order terms, and any cancellation right. Fill in every blank before you sign."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Should the contract name the shingle brand and product line?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, ask for it in writing. The Indiana Attorney General lists colors, brand names and patterns among the items a contract should detail. Owens Corning’s registration asks for the shingle line and any other Owens Corning components installed, such as ice and water barrier, starter shingles and underlayment, so naming them in the contract gives you that record."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Who registers the roof warranty?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It depends on the warranty. GAF says its base warranties do not require registration, while enhanced warranties can be registered only by contractors in GAF’s contractor program through their Partner Portal accounts. Owens Corning says extended warranties must be registered by a participating contractor within 60 days of installation. Ask who registers yours and request the confirmation."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does a roofing contract have a three-day cancellation right?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Not always. The FTC Cooling-Off Rule covers certain sales made away from the seller’s place of business, such as at your home, at or above a threshold set in the rule, and lists exclusions. Whether it applies to a particular sale is a question for an attorney. Ask the contractor to write down any cancellation right that applies."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What should I get before the final payment?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The FTC says never to make the final payment until the work is done and you are satisfied. Ask for copies of the warranties and written proof that subcontractors and suppliers were paid, because the Indiana Attorney General warns that unpaid ones may file a mechanic’s lien against your home. This is general information, not legal advice."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "What Should Be in a Roofing Contract Before You Sign?",
+      "item": "https://otterquote.com/guides/roofing-contract-checklist-before-you-sign.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>

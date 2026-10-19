@@ -25,7 +25,8 @@ estimate file name, and the adjuster's name, email and phone, before being selec
    column list. It is the only thing a bidder can read of a claim before selection once step 3 is applied.
 2. **The bidder call sites read the view** (this PR's page change: 3 static pages and the React app).
 3. **`gh2559_claims_policy_narrow.sql`** (Tier 3B): the two contractor SELECT policies on `public.claims` are replaced by one, "Contractors can view claims
-   they are selected on". A contractor reads the base row only when `claims.selected_contractor_id` is its own.
+   they are selected on". A contractor reads the base row only when `claims.selected_contractor_id` is its own **and** the contractor has a quote on the claim
+   (`id IN (SELECT public.get_contractor_quote_claim_ids((SELECT auth.uid())))`, the exact predicate of the dropped "for their quotes" policy), so the new rule is a strict subset of the two it replaces by construction, not only by today's data (CTO RUN 70, narrow2; proof `supabase/tests/gh2559_claims_narrow_strict_subset_proof.sql`).
 
 ## APPLY ORDER (the page change must be live before the policy narrows)
 

@@ -23,3 +23,4 @@
 supabase/functions/meta-leadgen-webhook/email-footer.ts :: imported only by email-footer.test.ts; no production file imports it (invite-email.ts carries its own copy of the address)
 supabase/functions/send-partner-onboarding/claim-stage-sql-proof.ts :: a quoted SQL copy that exists only for claim-stage-sql-proof.test.ts; no production file imports it
 supabase/functions/validate-contract-template/__fixtures__/otterquote-v3-reference-roofing-retail.pdf :: PDF fixture read only by v3-fixture.test.ts; no production file reads it
+supabase/functions/stripe-webhook/test-source-utils.ts :: imported only by 3 test files (dispute-evidence-fields, dispute-final-submit-gate, fee-charge-writer .test.ts); no production file imports it, so it is never bundled
