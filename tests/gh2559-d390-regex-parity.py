@@ -29,6 +29,14 @@ ok = fold_ok
 print("regex literals in d390_redact_contact: %d patterns; found verbatim in the applied view: %d" % (len(pats), len(pats) - len(bad)))
 if bad or len(pats) != 7: ok = False; print("FAIL (1): missing or wrong count", len(pats), [b[:40] for b in bad])
 a, f = stmt(applied), stmt(fwd)
+# #2931 fee gate: the two file-path CASEs of the view are gated on platform_fee_charged IS TRUE in the forward AND the rollback (the applied
+# 20261008231303 text is the pre-gate view). Apply exactly those two clause additions to the applied statement, require each to occur once, then
+# compare the forward and rollback statements against that gated baseline, so any OTHER drift is still detected.
+GATE = " AND c.platform_fee_charged IS TRUE"
+for col in ("estimate_filename", "measurements_filename"):
+    o = "CASE WHEN c.selected_contractor_id = ct.id THEN c." + col + " END"
+    if a.count(o) != 1: print("FAIL (0): applied view lacks the single ungated " + col + " CASE"); sys.exit(1)
+    a = a.replace(o, "CASE WHEN c.selected_contractor_id = ct.id" + GATE + " THEN c." + col + " END")
 import difflib
 d = [l for l in difflib.unified_diff(a.splitlines(), f.splitlines(), lineterm="", n=0) if not l.startswith(("---", "+++", "@@"))]
 minus = [l for l in d if l.startswith("-")]; plus = [l for l in d if l.startswith("+")]
