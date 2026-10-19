@@ -663,12 +663,16 @@ ok(!/select\('\*/.test(fs.readFileSync(path.join(root, 'react-app/app/contractor
   await w.tick();
   ok(stripe.succeeded() === 1 && w.t.payment_failures.every((r) => r.retry_unknown_at), 'N-p setup: charged at Stripe, response lost, marker stored');
   w.t.quotes[0].payment_status = 'refunded'; adv(clock, 30);
+  const posts0 = stripe.posts.length;
   const out = await w.tick();
-  ok(w.t.quotes[0].payment_status === 'refunded', 'N-p (I5): the replay does NOT write succeeded over refunded');
-  ok(out[0].reason === 'charged_on_refunded_quote' && stripe.succeeded() === 1, 'N-p: outcome says charged_on_refunded_quote; still one intent (replay is idempotent)');
-  ok(w.t.platform_alerts_log.some((a) => a.alert_type === 'dunning_retry_charged_refunded_quote' && /URGENT/.test(a.message)), 'N-p: loud alert');
-  ok(w.t.payment_failures.every((r) => !r.retry_unknown_at && r.dunning_status === 'resolved'), 'N-p: marker cleared and dunning closed (no replay loop)');
-  const before = stripe.posts.length; adv(clock, 30); await w.tick(); ok(stripe.posts.length === before, 'N-p: nothing further on later ticks'); }
+  ok(stripe.posts.length === posts0 && stripe.succeeded() === 1, 'refunded + in-doubt marker: 0 Stripe POSTs (no replay)');
+  ok(w.t.quotes[0].payment_status === 'refunded', 'N-p (I5): status stays refunded');
+  ok(w.t.payment_failures.every((r) => r.retry_unknown_at), 'marker KEPT (never auto-cleared)');
+  const al = w.t.platform_alerts_log.filter((a) => a.alert_type === 'dunning_retry_unknown_on_refunded_quote');
+  ok(al.length === 1 && /URGENT/.test(al[0].message) && /idempotency key dunning-retry-/.test(al[0].message) && /metadata quote_id=/.test(al[0].message) && /refund if a charge exists/.test(al[0].message), 'exactly one URGENT manual-reconciliation alert with the idempotency key and metadata');
+  ok(out[0].reason === 'unknown_on_refunded_quote_manual_reconcile', 'outcome is the manual-reconcile skip');
+  for (let i = 0; i < 3; i++) { adv(clock, 30); await w.tick(); }
+  ok(stripe.posts.length === posts0 && w.t.platform_alerts_log.filter((a) => a.alert_type === 'dunning_retry_unknown_on_refunded_quote').length === 1 && w.t.payment_failures.every((r) => r.retry_unknown_at), 'later ticks: still 0 POSTs, still ONE alert, marker still kept'); }
 { // the supabase write itself is a CAS
   const t = { quotes: [{ id: Q, payment_status: 'refunded' }, { id: 'q2', payment_status: null }] };
   const d = S.buildRetryPassDeps(fakeSb(t), 'sk_test_x', guardApi, undefined, () => NOW);

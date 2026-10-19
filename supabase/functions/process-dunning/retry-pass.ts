@@ -320,6 +320,17 @@ async function reconcile(deps: RetryPassDeps, g: Group, quoteId: string): Promis
     }
     return { quoteKey: g.key, outcome: "skipped", reason: "unknown_replay_window_closed" };
   }
+  // Refunded quote (Marty, Tier A): do NOT replay. A replay can create a brand-new charge if the original never reached Stripe.
+  // Stop, keep the marker, never auto-clear; one URGENT manual-reconciliation alert (the stuck flag is the once-only CAS).
+  if ((await deps.getQuotePaymentStatus(quoteId)) === "refunded") {
+    if (!att.stuckAlertedAt) {
+      const flagged = await deps.markStuckAlerted(ids, att, deps.now().toISOString());
+      if (flagged > 0) {
+        await deps.alert("dunning_retry_unknown_on_refunded_quote", `URGENT: quote ${quoteId} is REFUNDED and has an in-doubt retry attempt (idempotency key ${req.idempotencyKey}, metadata quote_id=${req.quoteId} retry_requested_ms=${req.requestedAtMs}, ${req.method.payment_type} ****${req.method.stripe_pm_id.slice(-4)}, ${req.chargeAmountCents} cents). It was NOT replayed (a replay could create a new charge). Verify in Stripe by idempotency key/metadata; refund if a charge exists; then clear retry_unknown_at by hand. It is never cleared automatically.`);
+      }
+    }
+    return { quoteKey: g.key, outcome: "skipped", reason: "unknown_on_refunded_quote_manual_reconcile" };
+  }
   const guard = await deps.chargeGuard(req.claimId);
   if (!guard.allow) {
     await deps.alert(guardAlertType(guard), `${guard.message} Replay of in-doubt attempt refused for quote ${quoteId}; marker kept.`);
