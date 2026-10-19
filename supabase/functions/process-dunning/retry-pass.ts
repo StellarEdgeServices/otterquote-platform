@@ -144,7 +144,7 @@ export interface RetryPassDeps {
   countOpenRows: (rowIds: string[]) => Promise<number>;
   getQuotePaymentStatus: (quoteId: string) => Promise<string | null>;
   /** Live-charge guard (#1467): fails closed. */
-  chargeGuard: (claimId: string | null) => Promise<{ allow: boolean; message: string }>;
+  chargeGuard: (claimId: string | null) => Promise<{ allow: boolean; message: string; reason?: string }>;
   getChargeMethods: (contractorId: string) => Promise<{ customerId: string; methods: ChargeMethod[] } | null>;
   charge: (req: ChargeRequest) => Promise<ChargeResult>;
   recordQuoteResult: (
@@ -282,7 +282,17 @@ async function closeGroup(deps: RetryPassDeps, g: Group, quoteId: string): Promi
   }
 }
 
-async function recordResult(deps: RetryPassDeps, quoteId: string, update: Record<string, unknown>, how: string): Promise<boolean> {
+/** N-r: an unreadable claim is an infrastructure fault with its own alert type, not an unauthorised test claim. */
+function guardAlertType(g: { reason?: string }): string {
+  return g.reason === "claim_unreadable" ? "platform_fee_refused_claim_unreadable" : "platform_fee_refused_unauthorized_test";
+}
+
+async function recordResult(deps: RetryPassDeps, quoteId: string, update: Record<string, unknown>, how: string): Promise<boolean | "refunded"> {
+  // N-p (REVIEW 6278287285): a success is NEVER written over a refunded quote. Money moved on a refunded quote needs a human.
+  if ((await deps.getQuotePaymentStatus(quoteId)) === "refunded") {
+    await deps.alert("dunning_retry_charged_refunded_quote", `URGENT: ${how} for quote ${quoteId}, but the quote is REFUNDED. quotes.payment_status was NOT changed. Refund or void the charge in Stripe (payment_intent ${String(update.payment_intent_id ?? "unknown")}); the dunning rows were closed and the in-doubt marker cleared.`);
+    return "refunded";
+  }
   const recorded = await deps.recordQuoteResult(quoteId, update);
   if (!recorded) await deps.alert("gh2105_zero_row_update", `Retry pass for quote ${quoteId}: ${how} but the quotes write matched zero rows; the in-doubt marker is kept so the next pass records it.`);
   return recorded;
@@ -312,7 +322,7 @@ async function reconcile(deps: RetryPassDeps, g: Group, quoteId: string): Promis
   }
   const guard = await deps.chargeGuard(req.claimId);
   if (!guard.allow) {
-    await deps.alert("platform_fee_refused_unauthorized_test", `${guard.message} Replay of in-doubt attempt refused for quote ${quoteId}; marker kept.`);
+    await deps.alert(guardAlertType(guard), `${guard.message} Replay of in-doubt attempt refused for quote ${quoteId}; marker kept.`);
     return { quoteKey: g.key, outcome: "skipped", reason: "unknown_replay_guard_refused" };
   }
   let res = await deps.charge(req); // IDENTICAL request, SAME idempotency key: Stripe returns the original result
@@ -345,6 +355,11 @@ async function reconcile(deps: RetryPassDeps, g: Group, quoteId: string): Promis
   if (req.method.cpm_id) update.payment_method_id = req.method.cpm_id;
   if (isCard) update.card_fee_cents = req.chargeAmountCents - req.feeCents;
   const recorded = await recordResult(deps, quoteId, update, `replayed in-doubt attempt: Stripe ${res.status} (payment_intent ${res.paymentIntentId})`);
+  if (recorded === "refunded") {
+    await closeGroup(deps, g, quoteId);
+    if ((await deps.clearUnknown(ids, req.idempotencyKey)) < 1) return { quoteKey: g.key, outcome: "skipped", reason: "marker_moved_on" };
+    return { quoteKey: g.key, outcome: "skipped", reason: "charged_on_refunded_quote" };
+  }
   if (res.status === "succeeded") await closeGroup(deps, g, quoteId);
   if (!recorded) return { quoteKey: g.key, outcome: "skipped", reason: "replay_result_not_recorded" };
   if ((await deps.clearUnknown(ids, req.idempotencyKey)) < 1) return { quoteKey: g.key, outcome: "skipped", reason: "marker_moved_on" };
@@ -409,7 +424,7 @@ async function runRetryPassLocked(deps: RetryPassDeps): Promise<GroupOutcome[]> 
 
     const guard = await deps.chargeGuard(claimId);
     if (!guard.allow) {
-      await refuse("live_charge_guard", "platform_fee_refused_unauthorized_test", `${guard.message} Retry-pass charge refused for quote ${quoteId}.`);
+      await refuse("live_charge_guard", guardAlertType(guard), `${guard.message} Retry-pass charge refused for quote ${quoteId}.`);
       continue;
     }
 
@@ -481,6 +496,13 @@ async function runRetryPassLocked(deps: RetryPassDeps): Promise<GroupOutcome[]> 
       if (method.cpm_id) update.payment_method_id = method.cpm_id;
       if (isCard) update.card_fee_cents = chargeAmountCents - fee;
       const recorded = await recordResult(deps, quoteId, update, `Stripe ${res.status} (payment_intent ${res.paymentIntentId})`);
+      if (recorded === "refunded") {
+        await closeGroup(deps, g, quoteId);
+        await deps.clearUnknown(ids, chargeReq.idempotencyKey);
+        outcomes.push({ quoteKey: g.key, outcome: "skipped", reason: "charged_on_refunded_quote" });
+        done = true;
+        break;
+      }
       if (res.status === "succeeded") await closeGroup(deps, g, quoteId);
       if (recorded) await deps.clearUnknown(ids, chargeReq.idempotencyKey); // settled; otherwise the marker stays and the next pass replays and records
       outcomes.push({

@@ -15,11 +15,11 @@ type World = {
   lease: "free" | "held" | "unreadable"; marker: "none" | "set" | "error"; leaseHolder: string | null;
   isTest: boolean; quoteStatus: Record<string, string>;
   stripe: number; inflight: number; maxInflight: number; leaseTaken: number; leaseReleased: number;
-  claimReadable: boolean; notified: number; inserts: Array<Record<string, unknown>>; alerts: string[]; quotePatches: string[];
+  quoteReadable: boolean; claimReadable: boolean; notified: number; inserts: Array<Record<string, unknown>>; alerts: string[]; quotePatches: string[];
 };
 const world = (o: Partial<World> = {}): World => ({
   lease: "free", marker: "none", leaseHolder: null, isTest: false, quoteStatus: {},
-  claimReadable: true, notified: 0, stripe: 0, inflight: 0, maxInflight: 0, leaseTaken: 0, leaseReleased: 0, inserts: [], alerts: [], quotePatches: [], ...o,
+  quoteReadable: true, claimReadable: true, notified: 0, stripe: 0, inflight: 0, maxInflight: 0, leaseTaken: 0, leaseReleased: 0, inserts: [], alerts: [], quotePatches: [], ...o,
 });
 
 async function post(w: World, quotes: string[]) {
@@ -61,6 +61,7 @@ async function post(w: World, quotes: string[]) {
       if (guarded && cur && ["succeeded", "pending", "processing", "refunded"].includes(cur)) return json([]);
       w.quoteStatus[id] = body.payment_status; return json([{ id }]);
     }
+    if (tb === "quotes" && m === "GET" && !w.quoteReadable) return json({ message: "boom" }, 500);
     if (tb === "quotes" && m === "GET") { const id = (u.searchParams.get("id") ?? "").replace("eq.", ""); return json(single ? { payment_status: w.quoteStatus[id] ?? null } : [{ id, payment_status: w.quoteStatus[id] ?? null }]); }
     if (tb === "claims" && m === "GET" && !w.claimReadable) return json({ message: "boom" }, 500);
     if (tb === "notifications" && m === "POST") { w.notified++; return json([]); }
@@ -149,4 +150,19 @@ Deno.test("N-n: an unreadable claim has its own alert type and creates nothing",
   assertEquals(w.inserts.length, 0); assertEquals(w.stripe, 0);
   assert(w.alerts.some((a) => a.includes("platform_fee_refused_claim_unreadable")));
   assert(!w.alerts.some((a) => a.includes("platform_fee_refused_unauthorized_test")));
+});
+
+Deno.test("I-1 (probe I7): quote status unreadable -> no Stripe call, quote status unchanged (refunded stays refunded), dunning set up with a system retry request", async () => {
+  for (const lease of ["free", "held"] as const) {
+    const w = world({ lease, quoteReadable: false, quoteStatus: { qx: "refunded" } }); await post(w, ["qx"]);
+    assertEquals(w.stripe, 0); assertEquals(w.quoteStatus.qx, "refunded"); assertEquals(ids(w), ["qx"]);
+    assert(typeof w.inserts[0].retry_requested_at === "string"); assertEquals("retry_request_count" in w.inserts[0], false);
+    assert(w.alerts.some((a) => a.includes("quote_status_unreadable"))); assertEquals(w.leaseHolder, null);
+  }
+});
+Deno.test("N-q: a quote already succeeded / pending / processing is never charged by TRIGGER; row still created, no notices, no system request", async () => {
+  for (const st of ["succeeded", "pending", "processing"]) {
+    const w = world({ quoteStatus: { qs: st } }); await post(w, ["qs"]);
+    assertEquals(w.stripe, 0, st); assertEquals(ids(w), ["qs"]); assertEquals(w.notified, 0); assertEquals("retry_requested_at" in w.inserts[0], false); assertEquals(w.quoteStatus.qs, st);
+  }
 });

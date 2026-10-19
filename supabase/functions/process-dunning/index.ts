@@ -814,17 +814,32 @@ export async function handler(
         }
       }
 
-      // A refunded quote is terminal (Marty, Tier A): no dunning row, no Stripe call. Unreadable status: proceed (the quote CAS
-      // below and payment-hold still protect it) but say so.
+      // A refunded quote is terminal (Marty, Tier A): no dunning row, no Stripe call. I-1 (REVIEW 6278287285): an UNREADABLE
+      // status is a charge refusal (no Stripe call; dunning still set up; a system retry request is marked so the CRON pass,
+      // which re-reads the status before charging, decides). N-q: a quote already succeeded / pending / processing is never charged.
+      let quoteStatusUnreadable = false;
+      let quoteSettledBeforeCharge = false;
       {
         const { data: qNow, error: qNowErr } = await supabase.from("quotes").select("payment_status").eq("id", quote_id).maybeSingle();
-        if (qNowErr) console.error(`[process-dunning] TRIGGER could not read quote ${quote_id} payment_status:`, qNowErr);
-        else if (qNow?.payment_status === "refunded") {
+        if (qNowErr || !qNow) {
+          quoteStatusUnreadable = true;
+          console.error(`[process-dunning] TRIGGER could not read quote ${quote_id} payment_status; charge skipped, dunning still set up:`, qNowErr);
+          try {
+            await supabase.from("platform_alerts_log").insert({
+              alert_type: "dunning_trigger_skipped", function_name: "process-dunning",
+              message: `TRIGGER charge for quote ${quote_id} skipped (quote_status_unreadable); dunning is still set up and a system retry request is marked so the CRON pass decides.`,
+              sent_at: new Date().toISOString(),
+            });
+          } catch (alertErr) { console.error("platform_alerts_log insert failed:", alertErr); }
+        } else if (qNow.payment_status === "refunded") {
           console.error(`[process-dunning] TRIGGER for quote ${quote_id} ignored: quote is refunded (terminal).`);
           return new Response(
             JSON.stringify({ success: false, skipped: true, reason: "quote_refunded", quote_id }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
           );
+        } else if (qNow.payment_status && PAYMENT_HOLD_STATUSES.includes(qNow.payment_status)) {
+          quoteSettledBeforeCharge = true;
+          console.log(`[process-dunning] TRIGGER for quote ${quote_id}: payment_status=${qNow.payment_status}; no charge attempted.`);
         }
       }
 
@@ -856,7 +871,7 @@ export async function handler(
       const stripeSecretKey = isStaging
         ? (getEnv("STRIPE_SECRET_KEY_TEST") || getEnv("STRIPE_SECRET_KEY"))
         : getEnv("STRIPE_SECRET_KEY");
-      if (stripeSecretKey && triggerGate.proceed) {
+      if (stripeSecretKey && triggerGate.proceed && !quoteStatusUnreadable && !quoteSettledBeforeCharge) {
         const basicAuth = btoa(`${stripeSecretKey}:`);
 
         // Get contractor's Stripe customer ID
@@ -1136,7 +1151,7 @@ export async function handler(
           warning_at:         warningAt.toISOString(),
           homeowner_notify_at: homeownerNotifyAt.toISOString(),
           reminder_count:     0,
-          ...triggerSystemRetryFields(triggerGate, now.toISOString()),
+          ...triggerSystemRetryFields(quoteStatusUnreadable ? { proceed: false, reason: "quote_status_unreadable" } : triggerGate, now.toISOString()),
         })
         .select()
         .single();

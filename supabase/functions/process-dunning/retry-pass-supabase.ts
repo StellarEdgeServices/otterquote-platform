@@ -26,7 +26,7 @@ export const stripeHttp: StripeHttp = (path, init) =>
 
 export interface GuardApi {
   GUARD_SELECT: string;
-  evaluateLiveChargeGuard: (claim: any) => { allow: boolean };
+  evaluateLiveChargeGuard: (claim: any) => { allow: boolean; reason?: string };
   describeGuardVerdict: (verdict: any, claimId: string | null, amountCents: number) => string;
 }
 
@@ -275,7 +275,7 @@ export function buildRetryPassDeps(
     async chargeGuard(claimId: string | null) {
       const { data: claim } = await supabase.from("claims").select(guard.GUARD_SELECT).eq("id", claimId ?? "").maybeSingle();
       const verdict = guard.evaluateLiveChargeGuard(claim);
-      return { allow: verdict.allow, message: verdict.allow ? "" : guard.describeGuardVerdict(verdict, claimId, 0) };
+      return { allow: verdict.allow, reason: verdict.reason, message: verdict.allow ? "" : guard.describeGuardVerdict(verdict, claimId, 0) };
     },
     async getChargeMethods(contractorId: string) {
       const { data: c } = await supabase.from("contractors").select("stripe_customer_id, stripe_payment_method_id").eq("id", contractorId).single();
@@ -299,7 +299,8 @@ export function buildRetryPassDeps(
     },
     charge: buildStripeCharge(stripeSecretKey, httpFn),
     async recordQuoteResult(quoteId: string, update: Record<string, unknown>) {
-      const { data, error } = await supabase.from("quotes").update(update).eq("id", quoteId).select("id");
+      // N-p: compare-and-set; a result is never written over a refunded quote (NULL counts as not refunded).
+      const { data, error } = await supabase.from("quotes").update(update).eq("id", quoteId).or("payment_status.is.null,payment_status.neq.refunded").select("id");
       if (error) { console.error(`[process-dunning] retry pass quotes update failed for ${quoteId}:`, error); return false; }
       return Array.isArray(data) && data.length > 0;
     },

@@ -245,7 +245,7 @@ function fakeSb(tables) {
     if (f[0] === 'lt') return col(r, f[1]) != null && col(r, f[1]) < f[2];
     if (f[0] === 'in') return f[2].includes(col(r, f[1]));
     if (f[0] === 'eq') return col(r, f[1]) === f[2];
-    if (f[0] === 'or') return f[1].split(',').some((c) => { const [col, op, ...v] = c.split('.'); const val = v.join('.'); return op === 'is' ? r[col] == null : op === 'lt' ? (r[col] != null && r[col] < val) : false; });
+    if (f[0] === 'or') return f[1].split(',').some((c) => { const [col, op, ...v] = c.split('.'); const val = v.join('.'); return op === 'is' ? r[col] == null : op === 'lt' ? (r[col] != null && r[col] < val) : op === 'neq' ? r[col] !== val : false; });
     return true;
   };
   return { calls, from(t) {
@@ -613,7 +613,7 @@ ok(!/select\('\*/.test(fs.readFileSync(path.join(root, 'react-app/app/contractor
   ok(await w.mkDeps().acquireLease(), 'N-g: ... and the lease it had taken was released');
   const src = fs.readFileSync(path.join(dir, 'index.ts'), 'utf8');
   const trig = src.slice(src.indexOf('MODE: TRIGGER'), src.indexOf('MODE: CRON'));
-  ok(/if \(stripeSecretKey && triggerGate\.proceed\)/.test(trig) && !/triggerGate\.proceed\)\s*\{\s*return new Response/.test(trig) && trig.indexOf('Create payment_failures record') > trig.indexOf('releaseTriggerGate()'),
+  ok(/if \(stripeSecretKey && triggerGate\.proceed && !quoteStatusUnreadable && !quoteSettledBeforeCharge\)/.test(trig) && !/triggerGate\.proceed\)\s*\{\s*return new Response/.test(trig) && trig.indexOf('Create payment_failures record') > trig.indexOf('releaseTriggerGate()'),
     'wiring: only the charge loop is gated; the gate never returns early, dunning setup always follows and the lease is released before it');
 }
 { // N-h: unreadable lease raises an alert
@@ -653,6 +653,29 @@ ok(!/select\('\*/.test(fs.readFileSync(path.join(root, 'react-app/app/contractor
   const out = await w.tick();
   ok(stripe.posts.length === 0 && out[0].outcome === 'refused' && out[0].reason === 'quote_payment_refunded', 'refunded quote: the retry pass refuses and makes no Stripe call');
   const held = await H.heldQuoteIds(w.sb, [Q]); ok(held.has(Q), 'refunded quote: reminders/notices are held'); }
+
+
+// ═════════════ REVIEW 6278287285: N-p (never write success over refunded), N-r (own alert for unreadable claim) ═════════════
+{ // I5: an in-doubt attempt is resolved by replay as succeeded, but the quote was refunded meanwhile
+  const clock = { now: new Date(NOW) };
+  const stripe = makeStripe(() => 'ok-lost-slow');
+  const w = world([wr(clock), sr(clock)], stripe, clock);
+  await w.tick();
+  ok(stripe.succeeded() === 1 && w.t.payment_failures.every((r) => r.retry_unknown_at), 'N-p setup: charged at Stripe, response lost, marker stored');
+  w.t.quotes[0].payment_status = 'refunded'; adv(clock, 30);
+  const out = await w.tick();
+  ok(w.t.quotes[0].payment_status === 'refunded', 'N-p (I5): the replay does NOT write succeeded over refunded');
+  ok(out[0].reason === 'charged_on_refunded_quote' && stripe.succeeded() === 1, 'N-p: outcome says charged_on_refunded_quote; still one intent (replay is idempotent)');
+  ok(w.t.platform_alerts_log.some((a) => a.alert_type === 'dunning_retry_charged_refunded_quote' && /URGENT/.test(a.message)), 'N-p: loud alert');
+  ok(w.t.payment_failures.every((r) => !r.retry_unknown_at && r.dunning_status === 'resolved'), 'N-p: marker cleared and dunning closed (no replay loop)');
+  const before = stripe.posts.length; adv(clock, 30); await w.tick(); ok(stripe.posts.length === before, 'N-p: nothing further on later ticks'); }
+{ // the supabase write itself is a CAS
+  const t = { quotes: [{ id: Q, payment_status: 'refunded' }, { id: 'q2', payment_status: null }] };
+  const d = S.buildRetryPassDeps(fakeSb(t), 'sk_test_x', guardApi, undefined, () => NOW);
+  ok(!(await d.recordQuoteResult(Q, { payment_status: 'succeeded' })) && t.quotes[0].payment_status === 'refunded', 'N-p: recordQuoteResult refuses to touch a refunded quote');
+  ok(await d.recordQuoteResult('q2', { payment_status: 'succeeded' }) && t.quotes[1].payment_status === 'succeeded', 'N-p: ... and still writes a NULL-status quote'); }
+{ const { deps, log } = makeDeps([row()], {}); deps.chargeGuard = async () => ({ allow: false, message: 'm', reason: 'claim_unreadable' }); await P.runRetryPass(deps);
+  ok(log.alerts.some((a) => a[0] === 'platform_fee_refused_claim_unreadable') && !log.alerts.some((a) => a[0] === 'platform_fee_refused_unauthorized_test'), 'N-r: the retry pass uses the distinct unreadable-claim alert'); }
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
