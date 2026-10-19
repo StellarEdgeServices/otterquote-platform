@@ -603,12 +603,18 @@ ok(!/select\('\*/.test(fs.readFileSync(path.join(root, 'react-app/app/contractor
   const g2 = await P.gateTrigger(gd, Q, true);
   ok(g2.proceed, 'N-g: TRIGGER proceeds when the lease is free and no marker');
   ok(!(await w.mkDeps().acquireLease()), 'N-g: ... and holds the lease while it works (the retry pass cannot start)');
-  await g2.release(); ok(await w.mkDeps().acquireLease(), 'N-g: lease released after the TRIGGER finishes');
+  await g2.release(); { const tk = await w.mkDeps().acquireLease(); ok(tk, 'N-g: lease released after the TRIGGER finishes'); await w.mkDeps().releaseLease(tk); }
   const g3 = await P.gateTrigger(gd, Q, false); ok(g3.proceed, 'N-g: with the retry pass disabled the lease is not required (nothing else can charge)');
   const brokenMarker = { ...gd, quoteHasUnknownMarker: async () => 'error' };
   const g4 = await P.gateTrigger(brokenMarker, Q, false); ok(!g4.proceed && g4.reason === 'unknown_marker_unreadable', 'N-g: an unreadable marker read fails closed');
+  const thrower = { ...gd, quoteHasUnknownMarker: async () => { throw new Error('boom'); } };
+  const g5 = await P.gateTrigger(thrower, Q, true);
+  ok(!g5.proceed && g5.reason === 'gate_error', 'N-g: a thrown marker read is a refusal, not an exception');
+  ok(await w.mkDeps().acquireLease(), 'N-g: ... and the lease it had taken was released');
   const src = fs.readFileSync(path.join(dir, 'index.ts'), 'utf8');
-  ok(/const triggerGate = await gateTrigger\(/.test(src) && src.indexOf('gateTrigger(') < src.indexOf('Get contractor\'s Stripe customer ID') && /finally \{\s*await triggerGate\.release\(\)/.test(src), 'wiring: index.ts gates TRIGGER before any Stripe call and releases in finally');
+  const trig = src.slice(src.indexOf('MODE: TRIGGER'), src.indexOf('MODE: CRON'));
+  ok(/if \(stripeSecretKey && triggerGate\.proceed\)/.test(trig) && !/triggerGate\.proceed\)\s*\{\s*return new Response/.test(trig) && trig.indexOf('Create payment_failures record') > trig.indexOf('releaseTriggerGate()'),
+    'wiring: only the charge loop is gated; the gate never returns early, dunning setup always follows and the lease is released before it');
 }
 { // N-h: unreadable lease raises an alert
   const clock = { now: new Date(NOW) };

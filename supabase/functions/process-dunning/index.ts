@@ -760,17 +760,17 @@ export async function handler(
 
       const { quote_id, contractor_id, claim_id, homeowner_id, amount_cents, stripe_error } = body;
 
-      // gh-2442 N-g (REVIEW 6277377025): no inline charge while an in-doubt retry attempt exists for this quote, and (when the
-      // retry pass is enabled) only while holding the same lease as the CRON pass.
+      // gh-2442 N-g (REVIEW 6277377025, 6277504129): ONLY the Stripe charge loop is gated. Dunning is ALWAYS set up
+      // (schedule row, notices) whatever the gate says. The gate refuses the charge while any row of the quote carries the
+      // in-doubt marker, and (retry pass enabled) takes the CRON pass's lease around the loop. A refused charge is picked up
+      // by the CRON pass because the schedule exists. gateTrigger never throws: any failure is a refusal.
       const triggerGate = await gateTrigger(
         buildTriggerGateDeps(supabase), quote_id, getEnv("DUNNING_RETRY_PASS_ENABLED") === "true",
       );
-      if (!triggerGate.proceed) {
-        return new Response(
-          JSON.stringify({ success: false, skipped: true, reason: triggerGate.reason }),
-          { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
+      let gateReleased = false;
+      const releaseTriggerGate = async () => {
+        if (triggerGate.proceed && !gateReleased) { gateReleased = true; await triggerGate.release(); }
+      };
       try {
       const now = new Date();
 
@@ -787,7 +787,7 @@ export async function handler(
       const stripeSecretKey = isStaging
         ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
         : Deno.env.get("STRIPE_SECRET_KEY");
-      if (stripeSecretKey) {
+      if (stripeSecretKey && triggerGate.proceed) {
         const basicAuth = btoa(`${stripeSecretKey}:`);
 
         // Get contractor's Stripe customer ID
@@ -1048,6 +1048,8 @@ export async function handler(
         }
       }
 
+      await releaseTriggerGate(); // the lease covers the charge loop only
+
       // ── All payment methods exhausted (or no methods on file) — initiate dunning ──
 
       // Look up contractor (including timezone + address_state for derivation)
@@ -1190,7 +1192,7 @@ export async function handler(
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
       } finally {
-        await triggerGate.release();
+        await releaseTriggerGate();
       }
     }
 

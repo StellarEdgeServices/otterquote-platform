@@ -511,22 +511,26 @@ export interface TriggerGateDeps {
 export type TriggerGate = { proceed: true; release: () => Promise<void> } | { proceed: false; reason: string };
 
 export async function gateTrigger(deps: TriggerGateDeps, quoteId: string, leaseRequired: boolean): Promise<TriggerGate> {
+  let token: string | null = null;
+  const release = async () => { if (token) { const t = token; token = null; try { await deps.releaseLease(t); } catch (_) { /* expires on its own */ } } };
   const refuse = async (reason: string, text: string): Promise<TriggerGate> => {
-    console.error(`[process-dunning] TRIGGER for quote ${quoteId} skipped: ${reason}`);
-    await deps.alert("dunning_trigger_skipped", `TRIGGER charge for quote ${quoteId} skipped (${reason}). ${text}`);
+    await release();
+    console.error(`[process-dunning] TRIGGER charge for quote ${quoteId} skipped (dunning is still set up): ${reason}`);
+    try { await deps.alert("dunning_trigger_skipped", `TRIGGER charge for quote ${quoteId} skipped (${reason}); dunning is still set up. ${text}`); } catch (_) { /* alert is best effort */ }
     return { proceed: false, reason };
   };
-  let token: string | null = null;
-  if (leaseRequired) {
-    for (let i = 0; i < 3 && !token; i++) { token = await deps.acquireLease(); if (!token && i < 2) await deps.sleep(1500); }
-    if (!token) return refuse("another_pass_holds_the_lease", "The retry pass holds the lease (or it is unreadable); re-send the failure once it is free.");
-  }
-  const release = async () => { if (token) { try { await deps.releaseLease(token); } catch (_) { /* expires on its own */ } } };
-  const m = await deps.quoteHasUnknownMarker(quoteId);
-  if (m !== false) {
-    await release();
-    return refuse(m === "error" ? "unknown_marker_unreadable" : "unknown_outcome_pending",
-      "A retry attempt for this quote is in doubt (retry_unknown_at) and the quote may already be paid; resolve it first (replay by idempotency key) before any new charge.");
+  try {
+    if (leaseRequired) {
+      for (let i = 0; i < 3 && !token; i++) { token = await deps.acquireLease(); if (!token && i < 2) await deps.sleep(1500); }
+      if (!token) return await refuse("another_pass_holds_the_lease", "The retry pass holds the lease (or it is unreadable); the CRON pass will pick the quote up on its next tick.");
+    }
+    const m = await deps.quoteHasUnknownMarker(quoteId);
+    if (m !== false) {
+      return await refuse(m === "error" ? "unknown_marker_unreadable" : "unknown_outcome_pending",
+        "A retry attempt for this quote is in doubt (retry_unknown_at) and the quote may already be paid; the CRON pass reconciles it by replaying the stored idempotency key.");
+    }
+  } catch (e) {
+    return await refuse("gate_error", `Gate threw: ${e instanceof Error ? e.message : String(e)}`);
   }
   return { proceed: true, release };
 }
