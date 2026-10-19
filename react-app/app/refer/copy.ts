@@ -109,7 +109,7 @@ export const FAQ = [
   },
   {
     q: 'What if the job is under $10,000?',
-    a: "Your referred friend still gets the full Otter Quotes experience — multiple competing bids, easy comparison, and quality assurance. You won't receive a cash commission for jobs under $10K, but you're still helping them get great bids.",
+    a: "Your referred friend still gets the full experience with no fee to use Otter Quotes — multiple competing bids, easy comparison, and quality assurance. You won't receive a cash commission for jobs under $10K, but you're still helping them get great bids.",
   },
 ] as const;
 
