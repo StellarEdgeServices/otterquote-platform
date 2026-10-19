@@ -86,4 +86,10 @@ SELECT pg_temp.try('P20 release suppression with START', $q$UPDATE public.sms_su
 SELECT pg_temp.val('P21 textable(A) after START', $q$SELECT string_agg(phone_e164 || CASE WHEN is_primary THEN '*' ELSE '' END, ',') FROM public.contractor_textable_numbers('a0000000-0000-4000-8000-00000000000a')$q$, 'service_role');
 SELECT pg_temp.try('P22 staff action without reason', $q$INSERT INTO public.contractor_sms_staff_actions (contractor_id, actor_email, action, reason) VALUES ('a0000000-0000-4000-8000-00000000000a','staff@example.test','disable','  ')$q$, 'service_role');
 SELECT pg_temp.val('P23 default preference', $q$WITH i AS (INSERT INTO public.contractor_sms_number_preferences (number_id) VALUES ('a2000000-0000-4000-8000-000000000002') RETURNING categories) SELECT array_to_string(categories, ',') FROM i$q$, 'service_role');
+SELECT pg_temp.try('P24 release suppression with YES (START only)', $q$UPDATE public.sms_suppression_list SET released_at = NULL, released_keyword = NULL WHERE phone_e164 = '+15550000004';
+  INSERT INTO public.sms_suppression_list (phone_e164, keyword, channel, released_at, released_keyword) VALUES ('+15550000006','STOP','sms_keyword', now(), 'YES')$q$, 'service_role');
+-- retention: a contractor hard delete (purge script, e2e deleteUser cascade) must not delete consent records
+SELECT pg_temp.try('P25 hard-delete contractor A', $q$DELETE FROM public.contractors WHERE id = 'a0000000-0000-4000-8000-00000000000a'$q$, 'postgres');
+SELECT pg_temp.val('P26 A''s consent records after the delete', $q$SELECT count(*)::text FROM public.contractor_sms_numbers WHERE contractor_id = 'a0000000-0000-4000-8000-00000000000a'$q$, 'service_role');
+SELECT pg_temp.try('P27 delete A''s last verified number', $q$DELETE FROM public.contractor_sms_numbers WHERE contractor_id = 'a0000000-0000-4000-8000-00000000000a' AND status = 'verified'$q$, 'service_role');
 ROLLBACK;

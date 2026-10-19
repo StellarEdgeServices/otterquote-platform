@@ -6,6 +6,8 @@
 #   AFTER     + forward                                    -> client writes refused, sender read service_role only, invariants hold
 #   MUTANT    + forward, then client INSERT/UPDATE re-granted and the replace-only block removed from the trigger -> P1/P2/P12 flip (negative control)
 #   ROLLBACK  + forward + rollback                         -> same as TODAY (every object gone)
+#   RACE      two-session checks (gh2875_..._race.py, psycopg2) on a fresh forward db -> R1/R2 PASS; and on NOLOCK, the forward
+#             with the pg_advisory_xact_lock line removed -> R1/R2 FAIL (negative control for the lock)
 # Exit 0 only if every expectation holds.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -68,8 +70,22 @@ grep -q '^P20 .*ACCEPTED rows=1' "$A" || fail "AFTER P20 must be ACCEPTED"
 grep -q '^P21 .*VALUE +15550000002\*,+15550000004$' "$A" || fail "AFTER P21 must be +15550000002*,+15550000004"
 grep -q '^P22 .*REJECTED 23514' "$A" || fail "AFTER P22 must be REJECTED 23514"
 grep -q '^P23 .*VALUE all$' "$A" || fail "AFTER P23 must be all"
+grep -q '^P24 .*REJECTED 23514' "$A" || fail "AFTER P24 must be REJECTED 23514 (START only)"
+grep -q '^P25 .*ACCEPTED rows=1' "$A" || fail "AFTER P25 must be ACCEPTED (contractor delete)"
+grep -q '^P26 .*VALUE 4$' "$A" || fail "AFTER P26 must be 4 (consent records survive the contractor delete)"
+grep -q '^P27 .*REJECTED 23514' "$A" || fail "AFTER P27 must be REJECTED 23514 (replace-only on DELETE)"
 M=$OUT/MUTANT.txt
-for k in P1 P2 P12; do grep -q "^$k .*ACCEPTED" "$M" || fail "MUTANT $k must flip to ACCEPTED (negative control)"; done
+for k in P1 P2 P12 P13; do grep -q "^$k .*ACCEPTED" "$M" || fail "MUTANT $k must flip to ACCEPTED (negative control)"; done
 for f in TODAY ROLLBACK; do grep -q '^P1 .*REJECTED 42P01' "$OUT/$f.txt" || fail "$f P1 must be REJECTED 42P01 (table absent)"; done
+race() { local name=$1 fwd=$2; local db="gh2875_${name,,}"
+  P -d postgres -c "CREATE DATABASE $db" >/dev/null; stub "$db"
+  P -d "$db" -v ON_ERROR_STOP=1 -f "$fwd" >/dev/null 2>"$OUT/$name-apply.err" || fail "$name: apply failed"
+  python3 "$T/gh2875_d391_contractor_sms_numbers_race.py" "host=$TMP port=$PORT user=postgres dbname=$db" > "$OUT/$name.txt" 2>"$OUT/$name.err" || fail "$name: race harness error"
+  echo "== $name"; cat "$OUT/$name.txt"; }
+grep -c 'pg_advisory_xact_lock' "$FWD" | grep -qx 1 || fail "forward must contain exactly one pg_advisory_xact_lock"
+grep -v 'PERFORM pg_advisory_xact_lock' "$FWD" > "$OUT/nolock.sql"
+race RACE "$FWD"
+race NOLOCK "$OUT/nolock.sql"
+for k in R1 R2; do grep -q "^$k PASS" "$OUT/RACE.txt" || fail "RACE $k must PASS"; grep -q "^$k FAIL" "$OUT/NOLOCK.txt" || fail "NOLOCK $k must FAIL (negative control)"; done
 diff <(grep -E '^(F|P)[0-9]+ ' "$OUT/TODAY.txt") <(grep -E '^(F|P)[0-9]+ ' "$OUT/ROLLBACK.txt") >/dev/null && echo "ROLLBACK matches TODAY" || fail "ROLLBACK differs from TODAY"
 echo "EXIT=$rc"; exit $rc

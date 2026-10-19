@@ -35,8 +35,10 @@
 --   * Staff actions log: who, when, what changed, reason (reason NOT NULL, non-blank).
 -- Proposed, NOT decided (flagged for the reviewer and the legal read):
 --   P1 the 395-day window (365 + 30) is my reading of "prompted yearly ... unconfirmed for 30 days is treated as unverified".
---   P2 retention: no row is ever deleted here (ON DELETE CASCADE from contractors only; contractors are not hard-deleted today).
---      LEGAL-READ: consent record = life of number + 4 years; suppression entry until START, minimum 5 years. A purge job is out of scope.
+--   P2 retention: nothing in this set deletes a consent or opt-out row, and no foreign key can cascade one away (REVIEW/LEGAL-READ
+--      6279629961 item 2: contractors ARE hard-deleted on main -- sql/2026-07-13-purge-summit-ridge-543.sql and the e2e deleteUser
+--      cleanups -- and contractors.user_id cascades from auth.users). LEGAL-READ 6256074958: consent record = life of number + 4 years;
+--      suppression entry until START, minimum 5 years. A purge job is out of scope.
 --   P3 sms_disclosure_versions gets NO row here. The disclosure wording waits on LEGAL-READ + R-177 SIGNED; until a version row is
 --      inserted by a separate signed change, no number can be verified (the FK refuses it), which is the safe default.
 -- NOT in this file: the legacy-15 wipe (D-391 AMENDMENT 1, #2876) is a data change on contractors.* phone columns and goes in its
@@ -69,7 +71,10 @@ CREATE TABLE IF NOT EXISTS public.sms_disclosure_versions (
 -- 2. The per-number verification record. One row per (contractor, number) verification; history rows stay.
 CREATE TABLE IF NOT EXISTS public.contractor_sms_numbers (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  contractor_id         uuid NOT NULL REFERENCES public.contractors(id) ON DELETE CASCADE,
+  -- NO foreign key to public.contractors, on purpose (#2939 LEGAL-READ 6279629961 item 2): a consent record must survive a contractor
+  -- or auth-user hard delete (purge scripts and e2e deleteUser cleanups exist on main, and contractors.user_id cascades from
+  -- auth.users), because it is the TCPA evidence for the life of the number + 4 years. Same pattern as contractor_sms_staff_actions.
+  contractor_id         uuid NOT NULL,
   user_id               uuid NOT NULL,
   phone_e164            text NOT NULL CHECK (phone_e164 ~ '^\+[1-9][0-9]{7,14}$'),
   status                text NOT NULL DEFAULT 'verified'
@@ -99,6 +104,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS contractor_sms_numbers_one_live_per_number
 CREATE UNIQUE INDEX IF NOT EXISTS contractor_sms_numbers_one_primary
   ON public.contractor_sms_numbers (contractor_id) WHERE is_primary;
 CREATE INDEX IF NOT EXISTS contractor_sms_numbers_user_idx ON public.contractor_sms_numbers (user_id);
+CREATE INDEX IF NOT EXISTS contractor_sms_numbers_contractor_idx ON public.contractor_sms_numbers (contractor_id);
 CREATE INDEX IF NOT EXISTS contractor_sms_numbers_phone_idx ON public.contractor_sms_numbers (phone_e164);
 
 -- 3. Per-number preferences, default 'all' (spec). Filtering later is a settings change, not a migration.
@@ -119,7 +125,9 @@ CREATE TABLE IF NOT EXISTS public.sms_suppression_list (
   released_at      timestamptz,
   released_keyword text,
   created_at       timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT sms_suppression_release_by_start CHECK (released_at IS NULL OR upper(btrim(released_keyword)) IN ('START', 'UNSTOP', 'YES'))
+  -- START only (D-391 rule 5). UNSTOP/YES and a release by re-verification are deliberately NOT accepted until Ben rules
+  -- (#2939 LEGAL-READ 6279629961 item 1).
+  CONSTRAINT sms_suppression_release_by_start CHECK (released_at IS NULL OR upper(btrim(released_keyword)) = 'START')
 );
 CREATE UNIQUE INDEX IF NOT EXISTS sms_suppression_one_open_per_number
   ON public.sms_suppression_list (phone_e164) WHERE released_at IS NULL;
@@ -142,6 +150,19 @@ CREATE TABLE IF NOT EXISTS public.contractor_sms_staff_actions (
 CREATE OR REPLACE FUNCTION public.contractor_sms_numbers_before_write()
 RETURNS trigger LANGUAGE plpgsql SET search_path = public, pg_temp AS $fn$
 BEGIN
+  -- Serialize every write per contractor (#2939 REVIEW 6279629536): without this, two concurrent transactions each see the other's
+  -- number still verified (write skew) and can remove/disable both, or an opt-out racing a primary opt-out can leave no primary.
+  -- The checks below and the promotion trigger run after the lock, so under READ COMMITTED they read the other writer's commit.
+  PERFORM pg_advisory_xact_lock(hashtextextended('gh2875:' || (CASE WHEN TG_OP = 'DELETE' THEN OLD.contractor_id ELSE NEW.contractor_id END)::text, 0));
+  IF TG_OP = 'DELETE' THEN
+    -- replace-only applies to a hard delete too (service_role only; clients cannot DELETE).
+    IF OLD.status = 'verified' AND NOT EXISTS (
+         SELECT 1 FROM public.contractor_sms_numbers o
+          WHERE o.contractor_id = OLD.contractor_id AND o.id <> OLD.id AND o.status = 'verified') THEN
+      RAISE EXCEPTION 'gh2875: the last verified number of contractor % cannot be deleted', OLD.contractor_id USING ERRCODE = '23514';
+    END IF;
+    RETURN OLD;
+  END IF;
   NEW.updated_at := now();
   IF TG_OP = 'UPDATE' AND NEW.status IS DISTINCT FROM OLD.status THEN
     NEW.status_changed_at := now();
@@ -178,7 +199,7 @@ END
 $fn$;
 
 DROP TRIGGER IF EXISTS contractor_sms_numbers_before_write ON public.contractor_sms_numbers;
-CREATE TRIGGER contractor_sms_numbers_before_write BEFORE INSERT OR UPDATE ON public.contractor_sms_numbers
+CREATE TRIGGER contractor_sms_numbers_before_write BEFORE INSERT OR UPDATE OR DELETE ON public.contractor_sms_numbers
   FOR EACH ROW EXECUTE FUNCTION public.contractor_sms_numbers_before_write();
 DROP TRIGGER IF EXISTS contractor_sms_numbers_promote_primary ON public.contractor_sms_numbers;
 CREATE TRIGGER contractor_sms_numbers_promote_primary AFTER UPDATE OF is_primary, status ON public.contractor_sms_numbers
