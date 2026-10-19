@@ -27,6 +27,7 @@ Proof: `supabase/tests/gh2559_d390_redact_proof_run.sh` (throwaway Postgres only
 1. **PR #2777 first** (gh2619 thread scope; adds `claims.contractor_released_at` and the split policies). The gate here raises `P0D01`/`P0D02` if either is missing, so the thread view can never be wider than the thread policy. Production read 2026-10-18: `claims.contractor_released_at` absent, 3 policies on `public.messages` (the pre-#2777 set).
 2. Publish the page change and deploy the two edge functions with the apply. Until the pages are published a selected contractor sees NO homeowner message before the fee (the old pages read the table, which the restrictive policy empties of homeowner rows). After the fee the old pages work again.
 3. The forward file is idempotent (CREATE OR REPLACE, DROP POLICY IF EXISTS); the proof runs it twice.
+4. Against PR #2932 (the #2931 file-path gate): apply #2932 first, then this set, then #2925; see "File-path gate carried from #2931" at the end.
 
 ## 4. Pre-flight SELECTs (counts only; production, read-only, 2026-10-18)
 
@@ -58,7 +59,7 @@ Blast radius today: no real claim or message changes what any contractor sees. T
 
 ## 6. Verification after apply (Marty)
 
-`SELECT policyname, permissive, cmd FROM pg_policies WHERE tablename='messages' ORDER BY 1;` expects `d390_homeowner_text_prefee | RESTRICTIVE | SELECT`; `SELECT pg_get_viewdef('public.bidder_claim_summary'::regclass) LIKE '%d390_redact_contact%';` expects true; then rolled-back role-switched probes on an is_test claim as in the proof file.
+`SELECT policyname, permissive, cmd FROM pg_policies WHERE tablename='messages' ORDER BY 1;` expects `d390_homeowner_text_prefee | RESTRICTIVE | SELECT`; `SELECT pg_get_viewdef('public.bidder_claim_summary'::regclass) LIKE '%d390_redact_contact%';` expects true; then rolled-back role-switched probes on an is_test claim as in the proof file. File-path gate (carried from #2931): `SELECT pg_get_viewdef('public.bidder_claim_summary'::regclass) LIKE '%platform_fee_charged IS TRUE THEN c.estimate_filename%'` and the same for `c.measurements_filename` both expect true (the deparsed text may differ in spacing; check that each CASE condition contains `platform_fee_charged IS TRUE`); and, as the selected contractor on a claim with `platform_fee_charged` false, `estimate_filename` and `measurements_filename` read NULL, while after the fee they read the stored path.
 
 ## SOW redaction (L4, LEGAL-READ 6256737488)
 

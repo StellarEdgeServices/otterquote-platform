@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """gh-2559 / D-390 static checks (no database).
 1. Every regex literal in public.d390_redact_contact occurs VERBATIM in the applied bidder view (ledger 20261008231303), rules b and c.
-2. The bidder view statement in the forward draft equals the applied statement except for ONE clause (the selected contractor's homeowner_notes).
-3. The view statement in the rollback equals the applied statement exactly."""
+2. The bidder view statement in the forward draft equals the GATED baseline except for the selected contractor's homeowner_notes clause. The gated baseline is the
+   applied statement (20261008231303) with exactly two clauses added, the #2931 fee gate `AND c.platform_fee_charged IS TRUE` on the estimate_filename and
+   measurements_filename CASEs (each must occur once in the applied text). So the forward view differs from the applied view in three clauses.
+3. The view statement in the rollback equals the gated baseline exactly (the applied view plus the #2931 gate; the rollback restores the fee-gated text)."""
 import re, sys, os
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 rd = lambda p: open(os.path.join(ROOT, p)).read()
@@ -40,11 +42,11 @@ for col in ("estimate_filename", "measurements_filename"):
 import difflib
 d = [l for l in difflib.unified_diff(a.splitlines(), f.splitlines(), lineterm="", n=0) if not l.startswith(("---", "+++", "@@"))]
 minus = [l for l in d if l.startswith("-")]; plus = [l for l in d if l.startswith("+")]
-print("forward view vs applied view: %d removed line(s), %d added line(s)" % (len(minus), len(plus)))
+print("forward view vs gated baseline: %d removed line(s), %d added line(s)" % (len(minus), len(plus)))
 if not (len(minus) == 3 and all("homeowner_notes" in l or "THEN c." in l or "ELSE ft" in l or "WHEN c.selected" in l or "CASE WHEN" in l for l in minus) or len(minus) <= 3):
     ok = False
 if len(minus) > 3 or any("platform_fee_charged" in l for l in minus): ok = False; print("FAIL (2)")
 if not any("d390_redact_contact" in l for l in plus): ok = False; print("FAIL (2): no call")
-if stmt(rb) != a: ok = False; print("FAIL (3): rollback view differs from the applied view")
-else: print("rollback view == applied view: identical")
+if stmt(rb) != a: ok = False; print("FAIL (3): rollback view differs from the gated baseline (applied view plus the #2931 gate)")
+else: print("rollback view == gated baseline (applied view plus the #2931 file-path gate): identical")
 print("PARITY:", "PASS" if ok else "FAIL"); sys.exit(0 if ok else 1)
