@@ -8,6 +8,9 @@
 -- WARNING: this RE-OPENS what D-368 closed: every active contractor can again read all 130 columns of every
 -- claim open for bids, and every contractor with a bid on a claim reads its whole row. Run it only if the
 -- narrowing refuses a read a contractor needs, and say so on #2559.
+-- (The replacement policy now carries the extra AND id IN get_contractor_quote_claim_ids(...) conjunction; it is dropped by name, so
+-- this file is otherwise unchanged. Restoration of the two originals is proved byte-for-byte in
+-- supabase/tests/gh2559_claims_narrow_strict_subset_proof.sql.)
 -- It restores the two policies exactly as they were live on 2026-10-06 (text read from pg_policy) and drops
 -- the replacement. It does not touch the view (supabase/migrations_rollbacks/20261008231303_gh2559_bidder_claims_view_rollback.sql does that).
 BEGIN;

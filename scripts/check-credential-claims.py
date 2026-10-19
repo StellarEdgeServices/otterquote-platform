@@ -471,6 +471,20 @@ ALLOWLIST = [
         "the contractor's own licence/insurance proof; not a claim about contractors "
         "on the platform. CRO RUN 52, gh-2448/gh-2449.",
     ),
+    (
+        "guides/roof-bid-much-lower-than-the-others.html",
+        "Ask for copies of the contractor&rsquo;s liability insurance coverage and workers&rsquo; compensation certificates.",
+        "Consumer advice, attributed to the NRCA (and the FTC in the next sentence) -- it "
+        "tells the homeowner to demand the certificates and to check the license with the "
+        "state or county. Generic guidance, no claim about our roster.",
+    ),
+    (
+        "guides/manufacturer-backed-roof-warranties.html",
+        "GAF says a contractor enrolled in its program is not a GAF employee or agent, and that contractors in its program must be licensed and insured where required",
+        "Attributed statement of what the MANUFACTURER (GAF) says about its own "
+        "contractor program, cited to GAF's own page -- not a claim about contractors "
+        "on the OtterQuote platform. CRO RUN 65, gh-2904.",
+    ),
 ]
 
 

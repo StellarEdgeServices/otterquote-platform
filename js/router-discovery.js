@@ -215,7 +215,7 @@
     referralButton: 'Send my request',
     referralConfirmation: "Thanks — we've received your request. We'll email the contact information to you.",
     referralEmailError: 'Please enter your email address.',
-    home8Text: 'From our stand point, it seems like you would be a good fit. You are a tech savvy homeowner who wants to save time and money. The next steps are: 1. We will get additional information about your job; 2. We will create a scope of work and submit it to multiple contractors for bids. 3. Their bids will appear here on the site. 4. If one of the bids suits your needs, you select your contractor on the site and schedule your job. There is no obligation to work with us or our contractors. They don\'t get your information unless you select them. Our service is free to homeowners. To get started we need the following information:',
+    home8Text: 'From our stand point, it seems like you would be a good fit. You are a tech savvy homeowner who wants to save time and money. The next steps are: 1. We will get additional information about your job; 2. We will create a scope of work and submit it to multiple contractors for bids. 3. Their bids will appear here on the site. 4. If one of the bids suits your needs, you select your contractor on the site and schedule your job. There is no obligation to work with us or our contractors. They don\'t get your information unless you select them. There is no fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when they complete a job. To get started we need the following information:',
 
     // ── gh-2018: Variant C professional tracks (realtor, insurance,
     // contractor). Industry-picker heading/sub match start.html's own

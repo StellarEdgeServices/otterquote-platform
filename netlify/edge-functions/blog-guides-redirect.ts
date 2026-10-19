@@ -137,9 +137,36 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/hail-damaged-siding-matching-bids.html',
   '/guides/roof-insurance-check-mortgage-contractor-payment':
     '/guides/roof-insurance-check-mortgage-contractor-payment.html',
+  '/guides/roof-replacement-in-cold-weather':
+    '/guides/roof-replacement-in-cold-weather.html',
+  '/guides/how-long-does-roof-replacement-take':
+    '/guides/how-long-does-roof-replacement-take.html',
+  '/guides/roof-change-orders-hidden-damage':
+    '/guides/roof-change-orders-hidden-damage.html',
+  '/guides/roofing-contract-checklist-before-you-sign':
+    '/guides/roofing-contract-checklist-before-you-sign.html',
+  '/guides/roof-bid-much-lower-than-the-others':
+    '/guides/roof-bid-much-lower-than-the-others.html',
+  '/guides/roof-permit-in-your-bid':
+    '/guides/roof-permit-in-your-bid.html',
+  '/guides/roof-tarp-while-you-wait-for-repairs':
+    '/guides/roof-tarp-while-you-wait-for-repairs.html',
+  '/guides/roof-wind-ratings-explained':
+    '/guides/roof-wind-ratings-explained.html',
+  '/guides/class-4-impact-resistant-shingles':
+    '/guides/class-4-impact-resistant-shingles.html',
+  '/guides/algae-resistant-shingle-warranties':
+    '/guides/algae-resistant-shingle-warranties.html',
+  '/guides/contractor-workmanship-warranty':
+    '/guides/contractor-workmanship-warranty.html',
+  '/guides/limited-lifetime-shingle-warranty':
+    '/guides/limited-lifetime-shingle-warranty.html',
+  '/guides/manufacturer-backed-roof-warranties':
+    '/guides/manufacturer-backed-roof-warranties.html',
 
   // CRO RUN 52 / #2423: generated /locations/ pages -- the index.html twin 301s to the
   // trailing-slash URL (same class as /blog/index.html above).
+  '/locations/index.html': '/locations/',
   '/locations/allen-county-in/roofing/index.html':
     '/locations/allen-county-in/roofing/',
   '/locations/butler-county-oh/roofing/index.html':

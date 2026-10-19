@@ -93,8 +93,16 @@ const actionsPath = path.join(ROOT, 'react-app/app/(homeowner)/bids/actions.ts')
 if (fs.existsSync(actionsPath)) {
   const src = fs.readFileSync(actionsPath, 'utf8');
   const updates = [...src.matchAll(/\.from\('quotes'\)\s*\.update\(\{([^}]*)\}\)/g)].map((m) => m[1].replace(/\s+/g, ' ').trim());
-  ok(updates.length === 2 && updates.every((u) => /^status: '(selected|declined)',?$/.test(u)),
-    `homeowner bids/actions.ts writes only status selected/declined to quotes (found: ${JSON.stringify(updates)})`);
+  // gh-2914: the award moved to the accept_bid RPC (SECURITY DEFINER), so zero direct quotes writes is the
+  // expected shape -- but only when awardClaimToContractor really calls the RPC. Any direct write that remains
+  // is still held to the old rule (status selected/declined only, exactly two of them).
+  const fnStart = src.indexOf('export async function awardClaimToContractor');
+  const fnEnd = fnStart === -1 ? -1 : src.indexOf('\nexport ', fnStart + 1);
+  const awardBody = fnStart === -1 ? '' : src.slice(fnStart, fnEnd === -1 ? undefined : fnEnd);
+  const viaRpc = /\.rpc\(\s*'accept_bid'/.test(awardBody);
+  const legacyOk = updates.length === 2 && updates.every((u) => /^status: '(selected|declined)',?$/.test(u));
+  ok(updates.length === 0 ? viaRpc : legacyOk,
+    `homeowner bids/actions.ts writes only status selected/declined to quotes, or none and awards through rpc('accept_bid') (found: ${JSON.stringify(updates)}; rpc in awardClaimToContractor: ${viaRpc})`);
 } else {
   ok(false, 'react-app/app/(homeowner)/bids/actions.ts not found: re-derive the homeowner quote writes before changing the guard');
 }

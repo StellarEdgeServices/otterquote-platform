@@ -1045,7 +1045,7 @@
                 <div class="referral-link-label">Your Referral Link</div>
                 <!-- gh-1482 §2: state the destination in one line, matching the
                      pattern already used on the Partner Profile Page card below. -->
-                <p class="link-hint destination-hint">Opens a page where your client requests a free quote from contractors competing on Otter Quotes.</p>
+                <p class="link-hint destination-hint">Opens a page where your client requests a quote from contractors competing on Otter Quotes.</p>
                 <div class="referral-link-display">
                     <!-- Bridge 2026-08-26: was "https://otterquote.com/r/agent123" — /r/ is a live
                          404 (only /ref/ redirects), so any failure of the populate below
@@ -1151,7 +1151,7 @@
                 <div class="message-preview" id="messagePreview">
                     Hi [Client Name],
 
-I wanted to refer you to Otter Quotes &mdash; a quick and easy way to get free, competing quotes from contractors.
+I wanted to refer you to Otter Quotes &mdash; a quick and easy way to get competing quotes from contractors.
 
 Check it out: [YOUR_REFERRAL_LINK]
 
@@ -1183,7 +1183,7 @@ Let me know if you have any questions!
                 </div>
 
                 <div class="widget-preview" id="widgetPreview">
-                    <button class="widget-button">Get a Free Contractor Quote</button>
+                    <button class="widget-button">Get a Contractor Quote</button>
                 </div>
 
                 <div class="btn-group">
@@ -1342,7 +1342,7 @@ Let me know if you have any questions!
                 <div class="widget-preview" style="min-height: auto; padding: var(--sp-4);">
                     <div style="display: inline-block; padding: var(--sp-3); background: var(--white); border-radius: 6px;">
                         <strong style="color: var(--navy);">I'm an Otter Quotes Partner</strong>
-                        <p style="font-size: 0.75rem; color: #5A6B7B; margin: 4px 0 0;">Get a free contractor quote</p>
+                        <p style="font-size: 0.75rem; color: #5A6B7B; margin: 4px 0 0;">Get a contractor quote</p>
                     </div>
                 </div>
                 <div class="copy-box" id="badgeHtmlCode"></div>
@@ -2587,10 +2587,10 @@ Let me know if you have any questions!
             const nextdoorEl = document.getElementById('nextdoorPost');
             const badgeEl = document.getElementById('badgeHtmlCode');
 
-            const nextdoorMsg = `I partner with Otter Quotes, a free service that gets homeowners competing bids from contractors. If anyone in the neighborhood needs work done, I'd recommend checking them out: ${referralLink}`;
+            const nextdoorMsg = `I partner with Otter Quotes, a service that gets homeowners competing bids from contractors. If anyone in the neighborhood needs work done, I'd recommend checking them out: ${referralLink}`;
             if (nextdoorEl) nextdoorEl.textContent = nextdoorMsg;
 
-            const badgeHtml = `<a href="${referralLink}" target="_blank" style="display: inline-block; padding: 8px 12px; background: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 8px; font-family: 'Rubik', sans-serif; font-size: 12px; font-weight: 600;">I'm an Otter Quotes Partner &mdash; Get a Free Quote</a>`;
+            const badgeHtml = `<a href="${referralLink}" target="_blank" style="display: inline-block; padding: 8px 12px; background: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 8px; font-family: 'Rubik', sans-serif; font-size: 12px; font-weight: 600;">I'm an Otter Quotes Partner &mdash; Get a Quote</a>`;
             if (badgeEl) badgeEl.textContent = badgeHtml;
 
             window.partnerSocialMessages = {
@@ -2601,7 +2601,7 @@ Let me know if you have any questions!
                     ? `Hi! I'm a partner with Otter Quotes. If you know anyone who needs contractor bids, here's my link: ${referralLink}`
                     : `Hi! I'm a partner with Otter Quotes — I earn a referral fee when I connect people with them for home projects. If you know anyone who needs contractor bids, here's my link: ${referralLink}`,
                 emailSubject: 'A referral program worth a look — Otter Quotes',
-                emailBody: `Hi,\n\nI wanted to share something I've been using: Otter Quotes. It's a free service that gets homeowners competing bids from contractors.\n\nIf you or anyone you know needs work done, here's my personal link:\n${referralLink}\n\nHappy to answer any questions.`
+                emailBody: `Hi,\n\nI wanted to share something I've been using: Otter Quotes. It's a service that gets homeowners competing bids from contractors.\n\nIf you or anyone you know needs work done, here's my personal link:\n${referralLink}\n\nHappy to answer any questions.`
             };
 
             drawPartnerShareCard(referralLink, agentName);
@@ -2627,7 +2627,7 @@ Let me know if you have any questions!
             ctx.fillText(`${agentName || 'I'} partner${agentName ? 's' : ''} with Otter Quotes`, 30, 160);
             ctx.font = '18px "Rubik", sans-serif';
             ctx.fillStyle = '#5A6B7B';
-            wrapCanvasText(ctx, 'Free competing bids from contractors for your next project.', 30, 200, width - 60, 26);
+            wrapCanvasText(ctx, 'Competing bids from contractors for your next project.', 30, 200, width - 60, 26);
 
             ctx.fillStyle = '#0D1B2E';
             ctx.fillRect(0, height - 50, width, 50);
@@ -2800,7 +2800,7 @@ Let me know if you have any questions!
             const referralLink = document.getElementById('referralLink').textContent;
             const preview = `Hi ${clientName},
 
-I wanted to refer you to Otter Quotes — a quick and easy way to get free, competing quotes from contractors.
+I wanted to refer you to Otter Quotes — a quick and easy way to get competing quotes from contractors.
 
 Check it out:
 ${referralLink}
@@ -2813,11 +2813,11 @@ Let me know if you have any questions!`;
         function updateWidgetPreview() {
             const previewDiv = document.getElementById('widgetPreview');
             if (widgetStyle === 'button') {
-                previewDiv.innerHTML = '<button class="widget-button" disabled>Get a Free Contractor Quote</button>';
+                previewDiv.innerHTML = '<button class="widget-button" disabled>Get a Contractor Quote</button>';
             } else {
                 previewDiv.innerHTML = `
                     <div class="widget-card">
-                        <div class="widget-card-title">Get a Free Quote</div>
+                        <div class="widget-card-title">Get a Quote</div>
                         <div class="widget-card-text">Describe your project once and compare competing contractor bids</div>
                         <button class="widget-card-button" disabled>Get Started</button>
                     </div>
@@ -2829,9 +2829,9 @@ Let me know if you have any questions!`;
             const referralLink = document.getElementById('referralLink').textContent;
 
             if (widgetStyle === 'button') {
-                return `<a href="${referralLink}" style="display: inline-block; padding: 12px 24px; background-color: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 6px; font-weight: 600; font-family: Rubik, sans-serif; font-size: 0.9rem;">Get a Free Contractor Quote</a>`;
+                return `<a href="${referralLink}" style="display: inline-block; padding: 12px 24px; background-color: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 6px; font-weight: 600; font-family: Rubik, sans-serif; font-size: 0.9rem;">Get a Contractor Quote</a>`;
             } else {
-                return `<div style="padding: 20px; background: #0D1B2E; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; max-width: 320px;"><div style="font-size: 1rem; font-weight: 700; color: #FFFFFF; margin-bottom: 8px;">Get a Free Quote</div><div style="font-size: 0.875rem; color: #94A3B8; margin-bottom: 16px;">Describe your project once and compare competing contractor bids</div><a href="${referralLink}" style="display: inline-block; padding: 10px 20px; background-color: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 6px; font-weight: 600;">Get Started</a></div>`;
+                return `<div style="padding: 20px; background: #0D1B2E; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; max-width: 320px;"><div style="font-size: 1rem; font-weight: 700; color: #FFFFFF; margin-bottom: 8px;">Get a Quote</div><div style="font-size: 0.875rem; color: #94A3B8; margin-bottom: 16px;">Describe your project once and compare competing contractor bids</div><a href="${referralLink}" style="display: inline-block; padding: 10px 20px; background-color: #E07B00; color: #0D1B2E; text-decoration: none; border-radius: 6px; font-weight: 600;">Get Started</a></div>`;
             }
         }
 
@@ -2950,7 +2950,7 @@ Let me know if you have any questions!`;
 
             var MESSAGES = {
                 referral: function (link) {
-                    return 'Hi! I recommend Otter Quotes — a quick, free way to get competing bids from contractors. Check it out: ' + link;
+                    return 'Hi! I recommend Otter Quotes — a quick way to get competing bids from contractors. Check it out: ' + link;
                 },
                 recruit: function (link) {
                     // D-333 provision 7: home_inspector partners receive no
@@ -2989,10 +2989,10 @@ Let me know if you have any questions!`;
                     body: function (link) {
                         return 'Hi,\r\n\r\n' +
                             'As promised — here’s the service I recommend for getting contractor bids: Otter Quotes.\r\n\r\n' +
-                            'It’s free for you. Tell them about your project once, and local contractors compete for the job with real, comparable bids. They handle measurements, paperwork, and contract signing end to end.\r\n\r\n' +
+                            'There is no fee to use Otter Quotes. Tell them about your project once, and local contractors compete for the job with real, comparable bids. They handle measurements, paperwork, and contract signing end to end.\r\n\r\n' +
                             'Here’s my personal link to get started:\r\n' + link + '\r\n\r\n' +
                             'What to expect:\r\n' +
-                            '1. Create your free account (about 2 minutes)\r\n' +
+                            '1. Create your account (about 2 minutes)\r\n' +
                             '2. Answer a few questions about your project\r\n' +
                             '3. Compare bids and choose your contractor — no obligation\r\n\r\n' +
                             'Questions? Reply to this email and I’m happy to help.\r\n\r\n';
@@ -3009,7 +3009,7 @@ Let me know if you have any questions!`;
                             'I\'ve been referring clients to Otter Quotes, and I thought it was worth passing along.\r\n\r\n' +
                             'When a homeowner needs roofing, siding, gutters or windows, Otter Quotes walks them through getting measurements, building a scope of work and picking materials, then submits the job to multiple contractors for bid. They get competitive bids without sitting through multiple sales calls, and better prices and better materials.\r\n\r\n' +
                             feeParagraph +
-                            'Here\'s my personal link to join — it\'s free and takes about a minute:\r\n' + link + '\r\n\r\n' +
+                            'Here\'s my personal link to join — it takes about a minute:\r\n' + link + '\r\n\r\n' +
                             'Happy to share how it\'s been working for me.\r\n\r\n';
                     }
                 }
