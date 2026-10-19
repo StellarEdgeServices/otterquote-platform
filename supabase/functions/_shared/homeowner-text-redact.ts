@@ -46,7 +46,7 @@ export async function redactContactOrRefuse(
 // function public.d390_redact_contact is left as it is (over-redaction is the safe side on a non-contract view); on a document both parties sign,
 // a deleted date, dollar figure or sentence changes the contract, so this path removes ONLY phone numbers and e-mail addresses:
 //   - phone: North American shapes only. Optional +1 / 1, then area code and exchange (each first digit 2-9) and a 4-digit line, written with
-//     at most one separator character (space, dot, dash, slash, underscore, middle dot, bullet) between groups, or parentheses, or as 10 contiguous
+//     at most one separator character (space, dot, dash) between groups, or parentheses, or as 10 contiguous
 //     digits (11 with a leading 1). KNOWN RESIDUAL: a bare "250-500-1000" or "250 500 1000" or a 10-digit number starting 2-9 is phone-shaped. Digit boundaries: it never bites into a longer
 //     digit run (a 12-digit claim number), never into a dotted or comma figure (12500.00, 1,250.00), and there is no bare 7-digit rule.
 //   - e-mail: local@domain.tld (no spaces around the at-sign), local(at)domain.tld, and the spelled-out forms with an explicit dot token
@@ -71,11 +71,12 @@ export function foldForDetection(text: string): string {
   return out;
 }
 
-// Phone group gap: at most ONE separator character (a run of plain spaces counts as one). A dash, dot or slash with spaces around it ("250 - 500 - 1000")
-// is two characters and is not a phone gap, so a figure list survives. A bullet or middle dot may carry spaces ("317 . 555 . 0142" style layouts).
+// Phone group gap: at most ONE separator character (a run of plain spaces counts as one). A dash, dot or hyphen with spaces around it ("250 - 500 - 1000")
+// is two characters and is not a phone gap, so a figure list survives. "/", "_", the middle dot and the bullet are NOT separators (precision over
+// recall on the signed SOW: "Limits 250/500/1000" is a figure list; "317/555-0142" is an accepted advisory leak).
 // Zero-width and soft-hyphen characters are ignored around a gap.
 const ZW = "[\\u00ad\\u200b-\\u200d\\u2060\\ufeff]*";
-const GAP = `${ZW}(?:[ \\t\\u00a0]+|[.\\-\\u2010-\\u2015/_]|[ \\t\\u00a0]*[\\u00b7\\u2022][ \\t\\u00a0]*)?${ZW}`;
+const GAP = `${ZW}(?:[ \\t\\u00a0]+|[.\\-\\u2010-\\u2015])?${ZW}`;
 const ci = (w: string) => [...w].map((c) => `[${c.toUpperCase()}${c.toLowerCase()}]`).join("");
 const AT_W = ci("at");
 const DOT_W = ci("dot");
@@ -84,9 +85,12 @@ const LABEL = "[A-Za-z0-9](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?";
 const DOT_TOKEN = `(?:[ \\t]*[\\(\\[\\{<][ \\t]*${DOT_W}[ \\t]*[\\)\\]\\}>][ \\t]*|[ \\t]+${DOT_W}[ \\t]+)`;
 const DOT_ANY = `(?:${DOT_TOKEN}|[ \\t]*\\.)`;
 const TLD_END = "(?![A-Za-z0-9\\-])";
-const TLD_LIST = ["com", "net", "org", "edu", "gov", "mil", "io", "co", "us", "biz", "info", "ca", "me", "dev", "app", "ai", "xyz", "online", "email", "uk", "au", "nz", "de", "fr", "es", "it", "nl", "in", "ie"];
-// lower case or all upper case only: a sentence-initial capital ("front.Back", "roof.In") is not a TLD
+// Listed TLDs: NO word of English (no it, in, me, us, to, be, so ...): "Leak at front.in the valley" must print as typed. Lower case, or all
+// upper case for the spelled forms; a capitalised "front.Back" is never a TLD. A multi-part domain (gmail.co.uk) is taken whole.
+const TLD_LIST = ["com", "net", "org", "edu", "gov", "io", "dev", "ca", "uk", "co", "pro"];
 const TLDS = `(?:${[...TLD_LIST, ...TLD_LIST.map((t) => t.toUpperCase())].join("|")})`;
+const TLDS_LOWER = `(?:${TLD_LIST.join("|")})`;
+const SPACED_DOT = `(?:${DOT_TOKEN}|[ \\t]*\\.)`;
 
 const SOW_PATTERNS: RegExp[] = [
   // phone: NANP, group gaps of at most one separator character
@@ -94,14 +98,21 @@ const SOW_PATTERNS: RegExp[] = [
     `(?<!\\d)(?<!\\d[.,\\-])(?:\\+?1${GAP})?(?:\\(\\s*[2-9]\\d{2}\\s*\\)|[2-9]\\d{2})${GAP}[2-9]\\d{2}${GAP}\\d{4}(?!\\d)(?![.,]\\d)`,
     "g",
   ),
-  // e-mail: local, then "@" (spaces allowed) or "(at)" in any case, then a domain whose LAST label is letters only (2+); at least one dot or dot token
+  // e-mail, no space around the at-sign: local@domain whose LAST label is letters only (2+)
+  new RegExp(`${LOCAL}@${LABEL}(?:${DOT_ANY}${LABEL})*${DOT_ANY}[A-Za-z]{2,}${TLD_END}`, "g"),
+  // e-mail, "(at)" in any case: domain whose last label is letters only (2+)
   new RegExp(
-    `${LOCAL}(?:[ \\t]*@[ \\t]*|[ \\t]*[\\(\\[\\{<][ \\t]*${AT_W}[ \\t]*[\\)\\]\\}>][ \\t]*)${LABEL}(?:${DOT_ANY}${LABEL})*${DOT_ANY}[A-Za-z]{2,}${TLD_END}`,
+    `${LOCAL}[ \\t]*[\\(\\[\\{<][ \\t]*${AT_W}[ \\t]*[\\)\\]\\}>][ \\t]*${LABEL}(?:${DOT_ANY}${LABEL})*${DOT_ANY}[A-Za-z]{2,}${TLD_END}`,
     "g",
   ),
-  // e-mail: "local at domain dot tld" (explicit dot token, common TLD)
+  // e-mail, whitespace on either side of "@": only when the domain starts with a letter, has a dot and ends in a LISTED lower-case TLD
+  new RegExp(
+    `${LOCAL}(?:[ \\t]+@[ \\t]*|[ \\t]*@[ \\t]+)[A-Za-z](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?(?:${SPACED_DOT}${LABEL})*${SPACED_DOT}${TLDS_LOWER}${TLD_END}`,
+    "g",
+  ),
+  // e-mail: "local at domain dot tld" (explicit dot token, listed TLD)
   new RegExp(`${LOCAL}[ \\t]+${AT_W}[ \\t]+(?:${LABEL}\\.)*${LABEL}${DOT_TOKEN}(?:${LABEL}${DOT_ANY})*${TLDS}${TLD_END}`, "g"),
-  // e-mail: "local at domain.tld" with a common TLD (multi-label such as gmail.co.uk is taken whole)
+  // e-mail: "local at domain.tld" with a listed TLD (multi-label such as gmail.co.uk is taken whole)
   new RegExp(`${LOCAL}[ \\t]+${AT_W}[ \\t]+(?:${LABEL}\\.)+${TLDS}${TLD_END}`, "g"),
 ];
 

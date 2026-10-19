@@ -54,6 +54,23 @@ const SURVIVE = [
   "Meet at gate dot five",
   "Leak at back dot matrix",
   "Paid at closing.Net amount $5000",
+  // fix2880e B4 (slash/underscore/middle dot/bullet are not phone separators), B5 (spaced @ needs a listed lower-case TLD), residual (ii) (no English-word TLDs)
+  "Limits 250/500/1000",
+  "Bids 850/900/1200",
+  "Coverage 250_500_1000",
+  "Line items 250 \u2022 500 \u2022 1000",
+  "250 \u00b7 500 \u00b7 1000",
+  "Shingles @ 400.Total due",
+  "Gutter guards @ 6.LF",
+  "Labor @ 75.hr",
+  "Arrive @ 8.AM",
+  "Paid @ closing.Net $5000",
+  "meet @ gate.Then call",
+  "Done @ noon.OK?",
+  "Leak at chimney.it leaks",
+  "Leak at front.in the valley",
+  "Work at back.me too",
+  "We met at noon.IT guy came",
 ];
 const REDACT: Array<[string, string]> = [
   ["call (317) 555-0142 today", "call [removed] today"],
@@ -81,14 +98,9 @@ const REDACT: Array<[string, string]> = [
   ["jane at gmail.co.uk", "[removed]"],
   ["jane at gmail dot co dot uk", "[removed]"],
   ["jane at yahoo.ca", "[removed]"],
-  ["jane at proton.me", "[removed]"],
   ["jane at mail.dev", "[removed]"],
   ["jane at mail.io", "[removed]"],
   ["mail jane@example.com.", "mail [removed]."],
-  ["317/555-0142", "[removed]"],
-  ["317\u00b7555\u00b70142", "[removed]"],
-  ["317 \u2022 555 \u2022 0142", "[removed]"],
-  ["317_555_0142", "[removed]"],
   ["317\u2013555\u20130142", "[removed]"],
   ["(317)555-0142", "[removed]"],
   ["317-555-0142 ext 12", "[removed] ext 12"],
@@ -128,10 +140,65 @@ Deno.test("NEGATIVE CONTROL 2 (head 2f6d1753): the previous SOW patterns damage 
   for (const t of ["3 bundles@32.50 each", "Drip edge 10pcs@12.50", "Shingles@400.00/sq", "Paid 250 - 500 - 1000", "Paid 250 . 500 . 1000"]) {
     assertNotEquals(prevModel(t), t, `previous patterns should damage: ${t}`);
   }
-  for (const t of ["jane @ gmail.com", "jane@ gmail.com", "jane @gmail.com", "jane@gmail .com", "jane(AT)gmail.com", "jane (AT) gmail (DOT) com", "317/555-0142", "317\u00b7555\u00b70142", "jane at yahoo.ca", "jane at gmail.co.uk"]) {
+  for (const t of ["jane @ gmail.com", "jane@ gmail.com", "jane @gmail.com", "jane@gmail .com", "jane(AT)gmail.com", "jane (AT) gmail (DOT) com", "jane at yahoo.ca", "jane at gmail.co.uk"]) {
     assert(!/^\[removed\]$/.test(prevModel(t)), `previous patterns should leak (not fully redact): ${t} -> ${prevModel(t)}`);
     assertEquals(redactSowText(t), "[removed]", t);
   }
+});
+
+// ---- the patterns of head 1ac6f859, verbatim (identifiers suffixed _P3), for NEGATIVE CONTROL 3 ----
+// Phone group gap: at most ONE separator character (a run of plain spaces counts as one). A dash, dot or slash with spaces around it ("250 - 500 - 1000")
+// is two characters and is not a phone gap, so a figure list survives. A bullet or middle dot may carry spaces ("317 . 555 . 0142" style layouts).
+// Zero-width and soft-hyphen characters are ignored around a gap.
+const ZW_P3 = "[\\u00ad\\u200b-\\u200d\\u2060\\ufeff]*";
+const GAP_P3 = `${ZW_P3}(?:[ \\t\\u00a0]+|[.\\-\\u2010-\\u2015/_]|[ \\t\\u00a0]*[\\u00b7\\u2022][ \\t\\u00a0]*)?${ZW_P3}`;
+const ci_P3 = (w: string) => [...w].map((c) => `[${c.toUpperCase()}${c.toLowerCase()}]`).join("");
+const AT_W_P3 = ci_P3("at");
+const DOT_W_P3 = ci_P3("dot");
+const LOCAL_P3 = "(?<![A-Za-z0-9._%+\\-])[A-Za-z0-9._%+\\-]+";
+const LABEL_P3 = "[A-Za-z0-9](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?";
+const DOT_TOKEN_P3 = `(?:[ \\t]*[\\(\\[\\{<][ \\t]*${DOT_W_P3}[ \\t]*[\\)\\]\\}>][ \\t]*|[ \\t]+${DOT_W_P3}[ \\t]+)`;
+const DOT_ANY_P3 = `(?:${DOT_TOKEN_P3}|[ \\t]*\\.)`;
+const TLD_END_P3 = "(?![A-Za-z0-9\\-])";
+const TLD_LIST_P3 = ["com", "net", "org", "edu", "gov", "mil", "io", "co", "us", "biz", "info", "ca", "me", "dev", "app", "ai", "xyz", "online", "email", "uk", "au", "nz", "de", "fr", "es", "it", "nl", "in", "ie"];
+// lower case or all upper case only: a sentence-initial capital ("front.Back", "roof.In") is not a TLD
+const TLDS_P3 = `(?:${[...TLD_LIST_P3, ...TLD_LIST_P3.map((t) => t.toUpperCase())].join("|")})`;
+
+const SOW_PATTERNS_P3: RegExp[] = [
+  // phone: NANP, group gaps of at most one separator character
+  new RegExp(
+    `(?<!\\d)(?<!\\d[.,\\-])(?:\\+?1${GAP_P3})?(?:\\(\\s*[2-9]\\d{2}\\s*\\)|[2-9]\\d{2})${GAP_P3}[2-9]\\d{2}${GAP_P3}\\d{4}(?!\\d)(?![.,]\\d)`,
+    "g",
+  ),
+  // e-mail: local, then "@" (spaces allowed) or "(at)" in any case, then a domain whose LAST label is letters only (2+); at least one dot or dot token
+  new RegExp(
+    `${LOCAL_P3}(?:[ \\t]*@[ \\t]*|[ \\t]*[\\(\\[\\{<][ \\t]*${AT_W_P3}[ \\t]*[\\)\\]\\}>][ \\t]*)${LABEL_P3}(?:${DOT_ANY_P3}${LABEL_P3})*${DOT_ANY_P3}[A-Za-z]{2,}${TLD_END_P3}`,
+    "g",
+  ),
+  // e-mail: "local at domain dot tld" (explicit dot token, common TLD)
+  new RegExp(`${LOCAL_P3}[ \\t]+${AT_W_P3}[ \\t]+(?:${LABEL_P3}\\.)*${LABEL_P3}${DOT_TOKEN_P3}(?:${LABEL_P3}${DOT_ANY_P3})*${TLDS_P3}${TLD_END_P3}`, "g"),
+  // e-mail: "local at domain.tld" with a common TLD (multi-label such as gmail.co.uk is taken whole)
+  new RegExp(`${LOCAL_P3}[ \\t]+${AT_W_P3}[ \\t]+(?:${LABEL_P3}\\.)+${TLDS_P3}${TLD_END_P3}`, "g"),
+];
+
+const prevModel3 = (t: string) => SOW_PATTERNS_P3.reduce((o, re) => o.replace(re, "[removed]"), t);
+
+Deno.test("NEGATIVE CONTROL 3 (head 1ac6f859): its patterns damage the fix2880e must-survive rows; the current patterns do not", () => {
+  const rows = [
+    "Limits 250/500/1000", "Bids 850/900/1200", "Coverage 250_500_1000", "Line items 250 \u2022 500 \u2022 1000", "250 \u00b7 500 \u00b7 1000",
+    "Shingles @ 400.Total due", "Gutter guards @ 6.LF", "Labor @ 75.hr", "Arrive @ 8.AM", "Paid @ closing.Net $5000", "meet @ gate.Then call", "Done @ noon.OK?",
+    "Leak at chimney.it leaks", "Leak at front.in the valley", "Work at back.me too", "We met at noon.IT guy came",
+  ];
+  for (const t of rows) {
+    assertNotEquals(prevModel3(t), t, `1ac6f859 patterns should damage: ${t}`);
+    assertEquals(redactSowText(t), t, t);
+  }
+  assertEquals(redactSowText("jane @ gmail.com"), "[removed]");
+});
+
+// advisory leaks (accepted: precision over recall on the signed SOW); asserted so the trade stays visible
+Deno.test("ADVISORY LEAKS: contact shapes the SOW path deliberately does not remove", () => {
+  for (const t of ["317/555-0142", "317_555_0142", "317\u00b7555\u00b70142", "jane at proton.me", "call me 555-0142", "+44 20 7946 0958"]) assertEquals(redactSowText(t), t, t);
 });
 
 Deno.test("SOW redaction: no truncation (a 50000-character note is redacted whole and finishes quickly)", () => {
