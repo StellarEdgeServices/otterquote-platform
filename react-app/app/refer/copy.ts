@@ -80,7 +80,7 @@ export const SHARE_CARDS = {
     title: 'Email Signature Badge',
     description: 'Add a professional Otter Quotes badge to your email signature.',
     badgeTrust: 'I trust Otter Quotes',
-    badgeSub: 'Get your free quote',
+    badgeSub: 'Get your quote',
     copyButton: 'Copy HTML',
     instructionsTitle: 'How to add to your email signature:',
     gmail: 'Gmail: Settings → See all settings → Signature → Paste the HTML',
@@ -109,7 +109,7 @@ export const FAQ = [
   },
   {
     q: 'What if the job is under $10,000?',
-    a: "Your referred friend still gets the full Otter Quotes experience for free — multiple competing bids, easy comparison, and quality assurance. You won't receive a cash commission for jobs under $10K, but you're still helping them get great bids.",
+    a: "Your referred friend still gets the full Otter Quotes experience — multiple competing bids, easy comparison, and quality assurance. You won't receive a cash commission for jobs under $10K, but you're still helping them get great bids.",
   },
 ] as const;
 
