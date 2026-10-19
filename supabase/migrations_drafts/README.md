@@ -67,3 +67,9 @@ Two more sets were applied to production on 2026-10-18 (CTO RUN 70 filing; appli
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2559_d390_redact_contact_until_fee` | forward, rollback, pre-flight | NOT APPLIED | drafted 2026-10-18 (CTO RUN 70 worker cto70-d390); production read-only same day: `claims.contractor_released_at` absent (PR #2777 not applied, this set's gate refuses until it is), counts in the pre-flight; proof on throwaway Postgres 17.11 and 16.15 (`supabase/tests/gh2559_d390_redact_proof_run.sh`, 252 probes each, 0 failures, plus a gate negative control; fix2880 added the Unicode, parity and MAINTAIN probes). Tier 3B, R-097 24-hour notice before apply; apply AFTER PR #2777 and publish the page change with it | none |
+
+## Added 2026-10-19 (gh-2881, D-390 follow-up: hide homeowner-typed text on the base `claims` row): forward, rollback and pre-flight here, the proof in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2881_claims_private_text_column_grants` | forward, rollback, pre-flight | NOT APPLIED | drafted 2026-10-19 (CTO RUN 72 worker cto72-b2881) under #2881; production read-only same day: `authenticated` and `anon` hold table-level `arwdDxtm` on `public.claims`, no column ACLs, not in a publication; throwaway-Postgres proof `bash supabase/tests/gh2881_claims_private_text_proof_run.sh` (23 checks). Tier 3B, refuses to run until the 13 browser callers of `select=*` are moved and published (gate), R-097 notice, R-177 pair. Stacked on PR #2880 | none |

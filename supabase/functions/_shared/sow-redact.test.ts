@@ -4,7 +4,7 @@
 // the must-survive rows, so these rows are a real check and not a tautology.
 import { assert, assertEquals, assertNotEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { assertThrows } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { redactSowText, redactSowTextOrRefuse, RedactionUnavailableError } from "./homeowner-text-redact.ts";
+import { foldForDetection, redactSowText, redactSowTextOrRefuse, RedactionUnavailableError } from "./homeowner-text-redact.ts";
 
 const A = "[\\p{L}\\p{N}]";
 const LEGACY_PATTERNS: Array<[RegExp, string]> = [
@@ -375,4 +375,26 @@ Deno.test("refusal stays meaningful: an engine error, a non-text value or a non-
   for (const flag of [false, null, undefined, "true", 1] as unknown[]) {
     assertEquals(redactSowTextOrRefuse("x@y.com", flag as boolean), "[removed]");
   }
+});
+
+// [gh-2881 / review 6256286136 O1] Arabic-Indic digits (U+0660-0669) and Extended Arabic-Indic digits (U+06F0-06F9) are folded to ASCII for detection.
+// The NEGATIVE CONTROL is the previous fold (NFKC only): it leaves those digits as they are, so no \d pattern can see a phone typed in them.
+const AR = (d: string) => [...d].map((c) => String.fromCharCode(0x0660 + Number(c))).join("");
+const FA = (d: string) => [...d].map((c) => String.fromCharCode(0x06f0 + Number(c))).join("");
+Deno.test("gh-2881: a phone typed in Arabic-Indic or Extended Arabic-Indic digits is removed; the surrounding text prints as typed", () => {
+  const ar = `Call ${AR("3175550142")} after 5`;
+  const arDashed = `Call ${AR("317")}-${AR("555")}-${AR("0142")} after 5`;
+  const fa = `Call ${FA("3175550142")} after 5`;
+  assertEquals(redactSowText(ar), "Call [removed] after 5");
+  assertEquals(redactSowText(arDashed), "Call [removed] after 5");
+  assertEquals(redactSowText(fa), "Call [removed] after 5");
+  assertEquals(redactSowText(`Ref ${AR("2026")} and ${AR("12500")}.${AR("00")} stay`), `Ref ${AR("2026")} and ${AR("12500")}.${AR("00")} stay`); // short runs / figures are not phones
+  assertEquals(foldForDetection(AR("0123456789")).length, 10);
+  assertEquals(foldForDetection(AR("0123456789")), "0123456789");
+});
+Deno.test("NEGATIVE CONTROL (gh-2881): the previous NFKC-only fold leaves Arabic-Indic digits unchanged, so the phone survives", () => {
+  const oldFold = (t: string) => [...t].map((ch) => (ch.length === 1 && ch.normalize("NFKC").length === 1 ? ch.normalize("NFKC") : ch)).join("");
+  const text = `Call ${AR("3175550142")} after 5`;
+  assertEquals(oldFold(text), text);
+  assert(!/\d{10}/.test(oldFold(text)), "old fold exposes no ASCII digit run");
 });

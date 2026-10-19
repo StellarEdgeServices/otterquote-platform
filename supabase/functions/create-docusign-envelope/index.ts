@@ -1899,9 +1899,13 @@ async function autoPopulateFields(supabase, claimId, contractorId, signerName, s
       num_structures: pc.numStructures || "",
       structure_names: pc.structureNames || "",
       bad_decking: pc.badDeckingExpected || "",
-      work_not_done: pc.workNotBeingDone || "",
+      // [gh-2881 / D-390] The project_confirmation document is created after selection, before the Platform Fee clears, like the Scope of Work.
+      // The two free-text notes the homeowner typed go through the same in-process redaction the Scope of Work uses (redactSowTextOrRefuse, phone
+      // and e-mail shapes only; dates, figures and prose print as typed) until claims.platform_fee_charged IS TRUE. If the redaction cannot run,
+      // RedactionUnavailableError escapes and the handler's catch returns 503 d390_redaction_unavailable: no envelope is built.
+      work_not_done: redactSowTextOrRefuse(pc.workNotBeingDone ?? null, claimData.platform_fee_charged === true) || "",
       non_recoverable: pc.nonRecoverableDepreciation != null ? `$${Number(pc.nonRecoverableDepreciation).toLocaleString()}` : "",
-      project_notes: pc.homeownerNotes || ""
+      project_notes: redactSowTextOrRefuse(pc.homeownerNotes ?? null, claimData.platform_fee_charged === true) || ""
     });
   }
   return {
