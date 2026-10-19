@@ -5,7 +5,7 @@ W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 APPLIED=supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql
 grep -v -E '^\s*(BEGIN|COMMIT);\s*$' "$APPLIED" > "$W/applied_view.sql"
 export PGOPTIONS='-c client_min_messages=warning'
-echo "== static parity (regex copy, view diff, rollback restores the applied view) =="
+echo "== static parity (regex copy, view diff, rollback restores the fee-gated view: applied view plus the #2931 file-path gate) =="
 python3 tests/gh2559-d390-regex-parity.py || exit 1
 echo "== A. full proof =="
 psql -d postgres -qc "DROP DATABASE IF EXISTS d390a" -c "CREATE DATABASE d390a" || exit 1

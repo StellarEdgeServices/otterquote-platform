@@ -16,8 +16,9 @@
 --  1. public.d390_redact_contact(text): a pure function that applies the bidder view's Unicode fold (fx.notes) and then the phone and e-mail patterns of the bidder rule (rules b and c of the
 --     "ft" join in 20261008231303_gh2559_bidder_claims_view.sql), both copied byte for byte, so it behaves like the view on the same text (review 6256187448 D1: without the fold, full-width digits and the full-width at-sign got through; the web-address patterns of rule b are NOT included,
 --     D-390 names phone and e-mail only). tests/gh2559-d390-regex-parity.py checks the copy against the applied view file.
---  2. public.bidder_claim_summary is re-created with ONE clause changed: for the SELECTED contractor, homeowner_notes is the typed text only when
---     claims.platform_fee_charged IS TRUE, and is d390_redact_contact(...) otherwise. Every other branch (bidders, repair claims) and every other
+--  2. public.bidder_claim_summary is re-created with THREE clauses changed. (a) For the SELECTED contractor, homeowner_notes is the typed text only when
+--     claims.platform_fee_charged IS TRUE, and is d390_redact_contact(...) otherwise. (b, c) estimate_filename and measurements_filename are returned to the selected contractor only when
+--     claims.platform_fee_charged IS TRUE, NULL otherwise (carried from #2931). Every other branch (bidders, repair claims) and every other
 --     column is identical to the applied view (the proof diffs the two texts). Ownership, security_barrier and ACL are kept (CREATE OR REPLACE).
 --  3. public.contractor_thread_messages: a new read-only security_barrier view, owner-run, that is the ONLY way a selected contractor reads a
 --     homeowner's message before the fee. It carries the same thread scope as the messages policies (selected contractor, has a quote, and the
