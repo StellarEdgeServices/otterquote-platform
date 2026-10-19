@@ -50,9 +50,8 @@ import {
 import { evaluateAcknowledgment, fetchDocumentSignerStatus } from "./ack-verify.ts";
 // [#1314] Signed-price reconciliation. Pure + unit-tested (price-verify.test.ts)
 // for the same reason evaluateAcknowledgment is: it is a money check.
+import { runDeckingGate } from "./decking-gate.ts"; // [#2862]
 import {
-  deckingDispositionFor,
-  deckingVerdictFor,
   dispositionFor,
   type PriceEvaluation,
   priceVerdictFor,
@@ -1095,60 +1094,17 @@ serve(async (req) => {
             // does not halt -- see price-verify.ts. A throw here lands in the
             // fail-closed catch below, like any reconciliation error.
             if (signerStatusResult.kind === "properties") {
-              const deckingExpected = acceptedQuote?.decking_price_per_sheet != null
-                ? Number(acceptedQuote.decking_price_per_sheet)
-                : null;
-              const deckingVerdict = deckingVerdictFor(signerStatusResult.signers, deckingExpected);
-              const deckingDisposition = deckingDispositionFor(deckingVerdict);
-              if (deckingDisposition === "halt") {
-                const detail = deckingVerdict.state === "mismatch"
-                  ? `signed ${deckingVerdict.signed} vs quoted ${deckingExpected} (delta ${deckingVerdict.delta})`
-                  : `unreadable signed decking value ${JSON.stringify(deckingVerdict.state === "unverified" ? deckingVerdict.raw : null)} vs quoted ${deckingExpected}`;
-                console.error(`[#2862] DECKING PRICE MISMATCH on envelope ${envelopeId}: ${detail} -- HALTED before charging`);
-                try {
-                  await supabase.from("platform_alerts_log").insert({
-                    alert_type: "signed_decking_price_mismatch",
-                    function_name: "docusign-webhook",
-                    message:
-                      `#2862: envelope ${envelopeId} (claim ${claim.id}, quote ${acceptedQuote?.id}) decking per sheet: ${detail}. ` +
-                      `Completion HALTED before charging: contract_signed not set, no platform fee charged, ` +
-                      `no invoice. Void/resend the envelope or record a disposition.`,
-                  });
-                } catch (alertErr) {
-                  console.error("platform_alerts_log insert failed:", alertErr);
-                }
-                await reportToSentry(
-                  new Error(`#2862 signed decking-price mismatch: envelope ${envelopeId} ${detail}`),
-                  { fn: "docusign-webhook", op: "decking-price-reconciliation", extra: { envelope_id: envelopeId, claim_id: claim.id, expected: deckingExpected } }
-                );
-                try {
-                  const { data: existingDecking } = await supabase
-                    .from("notifications")
-                    .select("id")
-                    .eq("notification_type", "decking_price_mismatch_pending")
-                    .like("message_preview", `envelope=${envelopeId};%`)
-                    .limit(1)
-                    .maybeSingle();
-                  if (!existingDecking) {
-                    await supabase.from("notifications").insert({
-                      claim_id: claim.id,
-                      channel: "system",
-                      notification_type: "decking_price_mismatch_pending",
-                      recipient: "ops",
-                      message_preview: `envelope=${envelopeId};quoted=${deckingExpected}`,
-                    });
-                  }
-                } catch (recErr) {
-                  console.error("notifications insert failed:", recErr);
-                }
-                // 200 so BoldSign does not retry forever; remediation is manual.
-                return new Response(
-                  JSON.stringify({ received: true, defect: "decking_price_mismatch", claim_id: claim.id, expected: deckingExpected }),
-                  { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-                );
-              } else if (deckingDisposition === "flag") {
-                console.warn(`[#2862] decking reconciliation skipped for envelope ${envelopeId}: ${deckingVerdict.state === "unverified" ? deckingVerdict.reason : "n/a"} (no decking figure to contradict)`);
-              }
+              const deckingHalt = await runDeckingGate({
+                supabase,
+                claimId: claim.id,
+                envelopeId,
+                quoteId: acceptedQuote?.id,
+                quotedDecking: acceptedQuote?.decking_price_per_sheet,
+                signers: signerStatusResult.signers,
+                reportToSentry,
+                corsHeaders,
+              });
+              if (deckingHalt) return deckingHalt;
             }
           }
         } catch (priceErr) {

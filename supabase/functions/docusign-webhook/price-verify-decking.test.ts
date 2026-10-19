@@ -42,12 +42,81 @@ Deno.test("gh-2862: blank/absent tab or NULL quote rate does NOT block signing (
   assertEquals(disp(null, null), "flag");
 });
 
-// Wiring: index.ts must call the decking gate, before the D-127 charge block.
+// ---------------------------------------------------------------------------
+// BEHAVIOURAL: drive runDeckingGate (the extracted halt that index.ts calls
+// immediately before the D-127 charge block) with a stubbed Supabase client, and
+// model the handler's contract with a charge stub: `if (halt) return halt;
+// charge()`. The index.ts half of that contract is pinned by the structural
+// test below.
+// ---------------------------------------------------------------------------
+import { runDeckingGate } from "./decking-gate.ts";
+
+function stubSupabase() {
+  const inserts: { table: string; row: Record<string, unknown> }[] = [];
+  const supabase = {
+    from(table: string) {
+      const q = {
+        insert: (row: Record<string, unknown>) => { inserts.push({ table, row }); return Promise.resolve({ error: null }); },
+        select: () => q, eq: () => q, like: () => q, limit: () => q,
+        maybeSingle: () => Promise.resolve({ data: null }),
+      };
+      return q;
+    },
+  };
+  return { supabase, inserts };
+}
+
+async function completion(signedDecking: string, quoted: number | null) {
+  const { supabase, inserts } = stubSupabase();
+  let chargeCalls = 0;
+  let sentry = 0;
+  const charge = () => { chargeCalls++; return new Response(JSON.stringify({ received: true, charged: true })); };
+  const halt = await runDeckingGate({
+    supabase, claimId: "claim-1", envelopeId: "env-1", quoteId: "quote-1",
+    quotedDecking: quoted, signers: signers(signedDecking),
+    reportToSentry: () => { sentry++; }, corsHeaders: {},
+  });
+  const res = halt ?? charge();
+  return { res, body: await res.json(), chargeCalls, inserts, sentry };
+}
+
+Deno.test("gh-2862 behaviour: mismatched decking halts with defect and the charge stub is NEVER called", async () => {
+  const r = await completion("$95.00", 75);
+  assertEquals(r.body.defect, "decking_price_mismatch");
+  assertEquals(r.res.status, 200);
+  assertEquals(r.chargeCalls, 0);
+  assertEquals(r.sentry, 1);
+  assertEquals(r.inserts.map((x) => [x.table, x.row.alert_type ?? x.row.notification_type]), [
+    ["platform_alerts_log", "signed_decking_price_mismatch"],
+    ["notifications", "decking_price_mismatch_pending"],
+  ]);
+});
+
+Deno.test("gh-2862 behaviour: matching decking does not halt and the charge stub IS called", async () => {
+  const r = await completion("$75.00", 75);
+  assertEquals(r.body.defect, undefined);
+  assertEquals(r.body.charged, true);
+  assertEquals(r.chargeCalls, 1);
+  assertEquals(r.inserts.length, 0);
+});
+
+Deno.test("gh-2862 behaviour: NULL quoted rate flags and still charges", async () => {
+  const r = await completion("$95", null);
+  assertEquals(r.chargeCalls, 1);
+  assertEquals(r.inserts.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// STRUCTURAL: index.ts must return the gate's Response ahead of the charge.
+// ---------------------------------------------------------------------------
 const idx = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
-Deno.test("gh-2862: index.ts wires the decking halt ahead of the D-127 charge", () => {
-  const gate = idx.indexOf("deckingDispositionFor(deckingVerdict)");
-  const charge = idx.indexOf("HANDLE PAYMENT CHARGING (D-127)");
-  assertEquals(gate > -1, true, "decking gate not wired in index.ts");
-  assertEquals(gate < charge, true, "decking gate must run before the charge block");
-  assertEquals(idx.includes('defect: "decking_price_mismatch"'), true);
+const idxCode = idx.split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+Deno.test("gh-2862 wiring: index.ts returns the decking halt before the D-127 charge", () => {
+  const gate = idxCode.indexOf("await runDeckingGate({");
+  const ret = idxCode.indexOf("if (deckingHalt) return deckingHalt;");
+  const charge = idxCode.indexOf("HANDLE PAYMENT CHARGING (D-127)");
+  const chargeCall = idx.indexOf("HANDLE PAYMENT CHARGING (D-127)");
+  assertEquals(gate > -1 && ret > gate, true, "index.ts must call runDeckingGate and return its Response");
+  assertEquals(chargeCall > idx.indexOf("if (deckingHalt) return deckingHalt;"), true, "decking return must precede the charge block");
+  assertEquals(charge === -1 || ret < charge, true);
 });
