@@ -76,6 +76,11 @@ const SURVIVE = [
   "LOOK AT THE DOT COM ERA",
   "Stop at your dot net page",
   "Look at this dot com idea",
+  // fix2880g (B6): the same determiner exclusion on the spaced-@ form
+  "Meet @ the dot com booth",
+  "Meet @ a dot org table",
+  "Look @ this (dot) com idea",
+  "Seen @ that dot com era",
 ];
 const REDACT: Array<[string, string]> = [
   ["call (317) 555-0142 today", "call [removed] today"],
@@ -261,8 +266,71 @@ Deno.test("fix2880f: determiner before dot survives (negative control: 77149bc3 
 });
 
 // NAMED RESIDUAL (iii) for Ben: spelled "at ... dot" with a word domain that is not a determiner is removed (proper-noun-shaped, indistinguishable from a handle)
+// ---- the patterns of head ccfa491e, verbatim (identifiers suffixed _P5), for the fix2880g negative control ----
+// Phone group gap: at most ONE separator character (a run of plain spaces counts as one). A dash, dot or hyphen with spaces around it ("250 - 500 - 1000")
+// is two characters and is not a phone gap, so a figure list survives. "/", "_", the middle dot and the bullet are NOT separators (precision over
+// recall on the signed SOW: "Limits 250/500/1000" is a figure list; "317/555-0142" is an accepted advisory leak).
+// Zero-width and soft-hyphen characters are ignored around a gap.
+const ZW_P5 = "[\\u00ad\\u200b-\\u200d\\u2060\\ufeff]*";
+const GAP_P5 = `${ZW_P5}(?:[ \\t\\u00a0]+|[.\\-\\u2010-\\u2015])?${ZW_P5}`;
+const ci_P5 = (w: string) => [...w].map((c) => `[${c.toUpperCase()}${c.toLowerCase()}]`).join("");
+const AT_W_P5 = ci_P5("at");
+const DOT_W_P5 = ci_P5("dot");
+const LOCAL_P5 = "(?<![A-Za-z0-9._%+\\-])[A-Za-z0-9._%+\\-]+";
+const LABEL_P5 = "[A-Za-z0-9](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?";
+const DOT_TOKEN_P5 = `(?:[ \\t]*[\\(\\[\\{<][ \\t]*${DOT_W_P5}[ \\t]*[\\)\\]\\}>][ \\t]*|[ \\t]+${DOT_W_P5}[ \\t]+)`;
+const DOT_ANY_P5 = `(?:${DOT_TOKEN_P5}|[ \\t]*\\.)`;
+const TLD_END_P5 = "(?![A-Za-z0-9\\-])";
+// Listed TLDs: NO word of English (no it, in, me, us, to, be, so ...): "Leak at front.in the valley" must print as typed. Lower case, or all
+// upper case for the spelled forms; a capitalised "front.Back" is never a TLD. A multi-part domain (gmail.co.uk) is taken whole.
+const TLD_LIST_P5 = ["com", "net", "org", "edu", "gov", "io", "dev", "ca", "uk", "co", "pro"];
+const TLDS_P5 = `(?:${[...TLD_LIST_P5, ...TLD_LIST_P5.map((t) => t.toUpperCase())].join("|")})`;
+const TLDS_LOWER_P5 = `(?:${TLD_LIST_P5.join("|")})`;
+// "Look at the dot com era": the word right before "dot" is an article or determiner, so it is prose, not a domain (any case). A proper-noun-shaped word
+// domain ("CALL AT FRONT DOT COM") is a named residual and is still removed.
+const DETERMINERS_P5 = ["the", "a", "an", "this", "that", "these", "those", "our", "your", "my", "his", "her", "its", "their", "some", "any"].map(ci_P5).join("|");
+const NOT_DETERMINER_P5 = `(?<!(?<![A-Za-z0-9\\-])(?:${DETERMINERS_P5}))`;
+const SPACED_DOT_P5 = `(?:${DOT_TOKEN_P5}|[ \\t]*\\.)`;
+
+const SOW_PATTERNS_P5: RegExp[] = [
+  // phone: NANP, group gaps of at most one separator character
+  new RegExp(
+    `(?<!\\d)(?<!\\d[.,\\-])(?:\\+?1${GAP_P5})?(?:\\(\\s*[2-9]\\d{2}\\s*\\)|[2-9]\\d{2})${GAP_P5}[2-9]\\d{2}${GAP_P5}\\d{4}(?!\\d)(?![.,]\\d)`,
+    "g",
+  ),
+  // e-mail, no space around the at-sign: local@domain whose LAST label is letters only (2+)
+  new RegExp(`${LOCAL_P5}@${LABEL_P5}(?:${DOT_ANY_P5}${LABEL_P5})*${DOT_ANY_P5}[A-Za-z]{2,}${TLD_END_P5}`, "g"),
+  // e-mail, "(at)" in any case: domain whose last label is letters only (2+)
+  new RegExp(
+    `${LOCAL_P5}[ \\t]*[\\(\\[\\{<][ \\t]*${AT_W_P5}[ \\t]*[\\)\\]\\}>][ \\t]*${LABEL_P5}(?:${DOT_ANY_P5}${LABEL_P5})*${DOT_ANY_P5}[A-Za-z]{2,}${TLD_END_P5}`,
+    "g",
+  ),
+  // e-mail, whitespace on either side of "@": only when the domain starts with a letter, has a dot and ends in a LISTED lower-case TLD
+  new RegExp(
+    `${LOCAL_P5}(?:[ \\t]+@[ \\t]*|[ \\t]*@[ \\t]+)[A-Za-z](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?(?:${SPACED_DOT_P5}${LABEL_P5})*${SPACED_DOT_P5}${TLDS_LOWER_P5}${TLD_END_P5}`,
+    "g",
+  ),
+  // e-mail: "local at domain dot tld" (explicit dot token, listed TLD)
+  new RegExp(`${LOCAL_P5}[ \\t]+${AT_W_P5}[ \\t]+(?:${LABEL_P5}\\.)*${LABEL_P5}${NOT_DETERMINER_P5}${DOT_TOKEN_P5}(?:${LABEL_P5}${DOT_ANY_P5})*${TLDS_P5}${TLD_END_P5}`, "g"),
+  // e-mail: "local at domain.tld" with a listed TLD (multi-label such as gmail.co.uk is taken whole)
+  new RegExp(`${LOCAL_P5}[ \\t]+${AT_W_P5}[ \\t]+(?:${LABEL_P5}\\.)+${TLDS_P5}${TLD_END_P5}`, "g"),
+];
+
+const prevModel5 = (t: string) => SOW_PATTERNS_P5.reduce((o, re) => o.replace(re, "[removed]"), t);
+
+Deno.test("fix2880g (B6): determiner before dot survives on the spaced-@ form (negative control: ccfa491e patterns removed it); jane @ gmail.com still redacts", () => {
+  for (const t of ["Meet @ the dot com booth", "Meet @ a dot org table", "Look @ this (dot) com idea", "Seen @ that dot com era"]) {
+    assertNotEquals(prevModel5(t), t, `ccfa491e patterns should damage: ${t}`);
+    assertEquals(redactSowText(t), t, t);
+  }
+  assertEquals(redactSowText("mail jane @ gmail.com now"), "mail [removed] now");
+  assertEquals(redactSowText("mail jane @ gmail dot com now"), "mail [removed] now");
+});
+
 Deno.test("KNOWN RESIDUAL (iii): spelled at...dot with a word domain is removed", () => {
   assertEquals(redactSowText("CALL AT FRONT DOT COM"), "[removed]");
+  assertEquals(redactSowText("Meet @ front dot com"), "[removed]");
+  assertEquals(redactSowText("Starter @ ridge dot net"), "[removed]");
 });
 
 Deno.test("ADVISORY LEAKS: contact shapes the SOW path deliberately does not remove", () => {

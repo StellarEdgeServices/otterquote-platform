@@ -94,7 +94,7 @@ const TLDS_LOWER = `(?:${TLD_LIST.join("|")})`;
 // domain ("CALL AT FRONT DOT COM") is a named residual and is still removed.
 const DETERMINERS = ["the", "a", "an", "this", "that", "these", "those", "our", "your", "my", "his", "her", "its", "their", "some", "any"].map(ci).join("|");
 const NOT_DETERMINER = `(?<!(?<![A-Za-z0-9\\-])(?:${DETERMINERS}))`;
-const SPACED_DOT = `(?:${DOT_TOKEN}|[ \\t]*\\.)`;
+const SPACED_DOT = `(?:${NOT_DETERMINER}${DOT_TOKEN}|[ \\t]*\\.)`; // the determiner exclusion applies to the spaced-@ form too ("Meet @ the dot com booth")
 
 const SOW_PATTERNS: RegExp[] = [
   // phone: NANP, group gaps of at most one separator character
