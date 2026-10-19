@@ -47,7 +47,7 @@ import {
 // shared one; the local copy is deleted.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 // gh-2442: contractor-requested retry pass (CRON mode). Off unless DUNNING_RETRY_PASS_ENABLED=true.
-import { runRetryPass, gateTrigger, selectRetryStripeKey } from "./retry-pass.ts";
+import { runRetryPass, gateTrigger, triggerSystemRetryFields, PAYMENT_HOLD_STATUSES, selectRetryStripeKey } from "./retry-pass.ts";
 import { buildRetryPassDeps, buildTriggerGateDeps } from "./retry-pass-supabase.ts";
 import { dropHeld, heldQuoteIds } from "./payment-hold.ts"; // gh-2442 B4
 // gh-2309: inbound caller gate (service-role bearer on TRIGGER + CRON).
@@ -760,10 +760,62 @@ export async function handler(
 
       const { quote_id, contractor_id, claim_id, homeowner_id, amount_cents, stripe_error } = body;
 
+      // gh-2442 N-i (REVIEW 6277733088): the #1467 live-charge guard runs BEFORE the gate and before any dunning setup, whatever
+      // the gate decides, so an unauthorised test claim never enters dunning. Fails closed (unreadable claim = refused).
+      // ── #1467 GATE 3: live-charge authorization, before ANY retry ────
+      // This function does not call create-payment-intent — it POSTs to
+      // api.stripe.com/v1/payment_intents itself, and it has a CRON mode
+      // that sweeps every dunning-status quote with no human in the loop.
+      // So the #1467 defect on this path needs nobody to fire it, which is
+      // a strictly worse shape than the ceremony path it was found on.
+      // Fails CLOSED: an unreadable claim refuses every retry.
+      {
+        const { data: guardClaim } = await supabase
+          .from("claims")
+          .select(GUARD_SELECT)
+          .eq("id", claim_id ?? "")
+          .maybeSingle();
+        const chargeGuard = evaluateLiveChargeGuard(guardClaim);
+        if (!chargeGuard.allow) {
+          const guardMessage = describeGuardVerdict(
+            chargeGuard,
+            claim_id,
+            amount_cents
+          );
+          console.error(`[process-dunning] ${guardMessage}`);
+          try {
+            await supabase.from("platform_alerts_log").insert({
+              alert_type: "platform_fee_refused_unauthorized_test",
+              function_name: "process-dunning",
+              message: `${guardMessage} No retry attempted; dunning not initiated for quote ${quote_id}.`,
+              sent_at: new Date().toISOString(),
+            });
+          } catch (alertErr) {
+            console.error("platform_alerts_log insert failed:", alertErr);
+          }
+          return new Response(
+            JSON.stringify({
+              success: false,
+              charge_refused: chargeGuard.reason,
+              quote_id,
+              claim_id,
+              message:
+                "Live charge refused by the #1467 guard. No payment method " +
+                "was retried and no dunning sequence was started.",
+            }),
+            {
+              status: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+      }
+
       // gh-2442 N-g (REVIEW 6277377025, 6277504129): ONLY the Stripe charge loop is gated. Dunning is ALWAYS set up
       // (schedule row, notices) whatever the gate says. The gate refuses the charge while any row of the quote carries the
-      // in-doubt marker, and (retry pass enabled) takes the CRON pass's lease around the loop. A refused charge is picked up
-      // by the CRON pass because the schedule exists. gateTrigger never throws: any failure is a refusal.
+      // in-doubt marker, and (retry pass enabled) takes the CRON pass's lease around the loop. A charge refused for the lease or a gate error is
+      // marked as a SYSTEM retry request on the new row (retry_requested_at, count untouched: it does not consume the
+      // contractor's cap of 3), so the next CRON tick charges it; an in-doubt marker needs no mark (CRON reconciles it). gateTrigger never throws: any failure is a refusal.
       const triggerGate = await gateTrigger(
         buildTriggerGateDeps(supabase), quote_id, getEnv("DUNNING_RETRY_PASS_ENABLED") === "true",
       );
@@ -785,8 +837,8 @@ export async function handler(
       const isStaging = _reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
         _reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
       const stripeSecretKey = isStaging
-        ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
-        : Deno.env.get("STRIPE_SECRET_KEY");
+        ? (getEnv("STRIPE_SECRET_KEY_TEST") || getEnv("STRIPE_SECRET_KEY"))
+        : getEnv("STRIPE_SECRET_KEY");
       if (stripeSecretKey && triggerGate.proceed) {
         const basicAuth = btoa(`${stripeSecretKey}:`);
 
@@ -828,54 +880,7 @@ export async function handler(
             retryMethods.push({ stripe_pm_id: cData.stripe_payment_method_id, payment_type: "card", cpm_id: null });
           }
 
-          // ── #1467 GATE 3: live-charge authorization, before ANY retry ────
-          // This function does not call create-payment-intent — it POSTs to
-          // api.stripe.com/v1/payment_intents itself, and it has a CRON mode
-          // that sweeps every dunning-status quote with no human in the loop.
-          // So the #1467 defect on this path needs nobody to fire it, which is
-          // a strictly worse shape than the ceremony path it was found on.
-          // Fails CLOSED: an unreadable claim refuses every retry.
-          {
-            const { data: guardClaim } = await supabase
-              .from("claims")
-              .select(GUARD_SELECT)
-              .eq("id", claim_id ?? "")
-              .maybeSingle();
-            const chargeGuard = evaluateLiveChargeGuard(guardClaim);
-            if (!chargeGuard.allow) {
-              const guardMessage = describeGuardVerdict(
-                chargeGuard,
-                claim_id,
-                amount_cents
-              );
-              console.error(`[process-dunning] ${guardMessage}`);
-              try {
-                await supabase.from("platform_alerts_log").insert({
-                  alert_type: "platform_fee_refused_unauthorized_test",
-                  function_name: "process-dunning",
-                  message: `${guardMessage} No retry attempted; dunning not initiated for quote ${quote_id}.`,
-                  sent_at: new Date().toISOString(),
-                });
-              } catch (alertErr) {
-                console.error("platform_alerts_log insert failed:", alertErr);
-              }
-              return new Response(
-                JSON.stringify({
-                  success: false,
-                  charge_refused: chargeGuard.reason,
-                  quote_id,
-                  claim_id,
-                  message:
-                    "Live charge refused by the #1467 guard. No payment method " +
-                    "was retried and no dunning sequence was started.",
-                }),
-                {
-                  status: 200,
-                  headers: { ...corsHeaders, "Content-Type": "application/json" },
-                }
-              );
-            }
-          }
+          // (#1467 GATE 3 now runs once, before the gate and before any dunning setup: see above)
 
           // Skip the method that already failed (passed in stripe_error context)
           // and try remaining methods
@@ -1114,6 +1119,7 @@ export async function handler(
           warning_at:         warningAt.toISOString(),
           homeowner_notify_at: homeownerNotifyAt.toISOString(),
           reminder_count:     0,
+          ...triggerSystemRetryFields(triggerGate, now.toISOString()),
         })
         .select()
         .single();
@@ -1125,10 +1131,13 @@ export async function handler(
       // never learns dunning is active, invisible to any query filtering on
       // payment_status='dunning' -- the same money-path gap as the identical
       // write in docusign-webhook (batch 3, this PR).
+      // N-j (REVIEW 6277733088): compare-and-set on the current payment state; paid / pending / processing is never flipped
+      // back to dunning (NULL counts as not paid).
       const { data: triggerDunningRows, error: triggerDunningErr } = await supabase
         .from("quotes")
         .update({ payment_status: "dunning" })
         .eq("id", quote_id)
+        .or(`payment_status.is.null,payment_status.not.in.(${PAYMENT_HOLD_STATUSES.join(",")})`)
         .select("id");
       if (triggerDunningErr) {
         console.error(`[process-dunning] quotes payment_status=dunning update failed for quote ${quote_id}:`, triggerDunningErr);

@@ -628,5 +628,20 @@ ok(!/select\('\*/.test(fs.readFileSync(path.join(root, 'react-app/app/contractor
   ok(al.length === 1 && /relation does not exist/.test(al[0].message), 'N-h: the unreadable lease raises a platform_alerts_log alert');
 }
 
+
+// ═════════════ REVIEW 6277733088 B2: a TRIGGER whose charge was refused for the lease leaves a system retry request ═════════════
+{ const clock = { now: new Date(NOW) };
+  const stripe = makeStripe(() => 'ok');
+  const fields = P.triggerSystemRetryFields({ proceed: false, reason: 'another_pass_holds_the_lease' }, clock.now.toISOString());
+  ok(Object.keys(fields).join() === 'retry_requested_at', 'B2: a lease refusal marks ONLY retry_requested_at (the count is untouched: no cap use)');
+  ok(Object.keys(P.triggerSystemRetryFields({ proceed: false, reason: 'unknown_outcome_pending' }, 'x')).length === 0 && Object.keys(P.triggerSystemRetryFields({ proceed: true, release: async () => {} }, 'x')).length === 0, 'B2: no mark for the in-doubt refusal or for a TRIGGER that charged');
+  const trig = { ...row({ id: 'T', quote_id: Q, homeowner_notify_at: new Date(clock.now.getTime() + 20 * 3600000).toISOString(), dunning_status: 'active', retry_requested_at: null, retry_request_count: 0 }), ...fields };
+  const w = world([trig], stripe, clock);
+  adv(clock, 1);
+  const o1 = await w.tick();
+  ok(stripe.succeeded() === 1 && w.t.quotes[0].payment_status === 'succeeded', 'B2: lease held + working card -> the next CRON tick charges it: exactly 1 succeeded intent');
+  adv(clock, 5); await w.tick(); ok(stripe.succeeded() === 1, 'B2: and a further tick charges nothing more');
+  ok(!w.t.payment_failures.some((r) => (r.retry_request_count ?? 0) > 0), 'B2: the contractor cap of 3 was not consumed'); }
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -522,7 +522,7 @@ export async function gateTrigger(deps: TriggerGateDeps, quoteId: string, leaseR
   try {
     if (leaseRequired) {
       for (let i = 0; i < 3 && !token; i++) { token = await deps.acquireLease(); if (!token && i < 2) await deps.sleep(1500); }
-      if (!token) return await refuse("another_pass_holds_the_lease", "The retry pass holds the lease (or it is unreadable); the CRON pass will pick the quote up on its next tick.");
+      if (!token) return await refuse("another_pass_holds_the_lease", "The retry pass holds the lease (or it is unreadable); a system retry request is marked on the new dunning row so the next CRON tick charges it.");
     }
     const m = await deps.quoteHasUnknownMarker(quoteId);
     if (m !== false) {
@@ -533,4 +533,14 @@ export async function gateTrigger(deps: TriggerGateDeps, quoteId: string, leaseR
     return await refuse("gate_error", `Gate threw: ${e instanceof Error ? e.message : String(e)}`);
   }
   return { proceed: true, release };
+}
+
+/**
+ * B2 (REVIEW 6277733088): when a TRIGGER's charge was refused for the lease or a gate error, the new dunning row carries a SYSTEM
+ * retry request (retry_requested_at = now, retry_request_count untouched, so it does not consume the contractor's cap of 3) and
+ * the next CRON tick charges it. An in-doubt marker needs no mark: the CRON pass already reconciles it by replay.
+ */
+export function triggerSystemRetryFields(gate: TriggerGate, nowIso: string): Record<string, string> {
+  if (gate.proceed || gate.reason === "unknown_outcome_pending") return {};
+  return { retry_requested_at: nowIso };
 }
