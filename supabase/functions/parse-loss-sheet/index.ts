@@ -364,8 +364,16 @@ serve(async (req) => {
         .from("claims")
         .update({ loss_sheet_parse_status: "unsupported" })
         .eq("id", claim_id)
+        .eq("estimate_filename", storage_path) // stale guard, as for the parse write below
         .select("id");
-      if (unsErr || !checkRowsWritten(unsRows).wroteRows) {
+      if (!unsErr && !checkRowsWritten(unsRows).wroteRows) {
+        console.warn(`[${FUNCTION_NAME}] unsupported mark skipped for claim ${claim_id}: estimate_filename no longer ${storage_path}`);
+        return new Response(
+          JSON.stringify({ success: false, stale: true, claim_id }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (unsErr) {
         console.error(`[${FUNCTION_NAME}] could not record unsupported estimate type for claim ${claim_id}:`, unsErr);
         return new Response(
           JSON.stringify({ error: "Failed to record unsupported estimate type" }),
@@ -509,11 +517,21 @@ serve(async (req) => {
         carrier_name: carrierName,
       })
       .eq("id", claim_id)
+      .eq("estimate_filename", storage_path) // gh-2559: never write the parse of a file the claim no longer points at (stale parse after a replacement)
       .select("id");
 
     // gh-2105 (batch 2, decision a): the RCV/ACV/deductible columns feed the contract; a
     // zero-row match must be the same 500 as a DB error, not a "parsed OK" 200.
     if (!updateError && !checkRowsWritten(storedRows).wroteRows) {
+      // gh-2559: zero rows because the estimate was replaced while this parse ran is not an error; the new file's own parse writes.
+      const { data: cur } = await supabase.from("claims").select("estimate_filename").eq("id", claim_id).maybeSingle();
+      if (cur && cur.estimate_filename !== storage_path) {
+        console.warn(`[${FUNCTION_NAME}] stale parse discarded for claim ${claim_id}: estimate_filename changed while parsing`);
+        return new Response(
+          JSON.stringify({ success: false, stale: true, claim_id }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       console.error(zeroRowWriteMessage(FUNCTION_NAME, `claims parsed loss sheet for claim ${claim_id}`));
       return new Response(
         JSON.stringify({ error: "Failed to store parsed data", detail: "no claim row matched (gh-2105)" }),

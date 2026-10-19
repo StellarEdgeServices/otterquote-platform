@@ -77,6 +77,7 @@ ok(/loss_sheet_parse_status: "unsupported"/.test(PL) && /platform_alerts_log/.te
 ok(/image\/jpeg/.test(EK) && /image\/png/.test(EK) && /application\/pdf/.test(EK), 'estimate-kind.ts knows PDF, JPEG and PNG');
 ok(!/updErr\.message \}/.test(A.split('if (refused)')[0].split('const refused')[1] || '') && /if \(refused\) return \{ ok: false, error: BID_OPEN_REFUSAL_TEXT_PLACEHOLDER \?\? undefined \}/.test(A), 'React maps a guard refusal to undefined (Checklist falls back to its generic line), never the database text');
 ok(/loss_sheet_parse_status === 'unsupported'/.test(D) && /loss_sheet_parse_status === 'unsupported'/.test(A), 'both clients stop waiting for a file marked unsupported');
+ok(/\.eq\("estimate_filename", storage_path\)/.test(PL) && (PL.match(/\.eq\("estimate_filename", storage_path\)/g) || []).length === 2 && /stale: true/.test(PL), 'parse-loss-sheet writes (parse and unsupported mark) only while the claim still points at the file it parsed; a stale result is a 200, not an error');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
