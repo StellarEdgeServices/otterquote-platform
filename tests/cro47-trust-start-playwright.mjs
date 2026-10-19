@@ -41,7 +41,7 @@ const VIEWPORT = { width: 390, height: 744 };
 const START_HTML = fs.readFileSync(path.join(repoRoot, 'start.html'), 'utf8');
 const WHO_WE_ARE = (function () {
   const profile = fs.readFileSync(path.join(repoRoot, 'partner-profile.html'), 'utf8');
-  const m = /Otter Quotes connects homeowners with multiple competing\s+contractor bids for their project &mdash; free, with no obligation\./.exec(profile);
+  const m = /Otter Quotes connects homeowners with multiple competing\s+contractor bids for their project &mdash; no fee to use Otter Quotes, with no obligation\./.exec(profile);
   if (!m) throw new Error('partner-profile.html who-we-are sentence not found');
   return m[0].replace(/\s+/g, ' ').replace('&mdash;', '—');
 })();
