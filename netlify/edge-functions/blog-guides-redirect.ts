@@ -146,14 +146,20 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/blount-county-tn/roofing/',
   '/locations/butler-county-oh/roofing/index.html':
     '/locations/butler-county-oh/roofing/',
+  '/locations/clermont-county-oh/roofing/index.html':
+    '/locations/clermont-county-oh/roofing/',
   '/locations/cuyahoga-county-oh/roofing/index.html':
     '/locations/cuyahoga-county-oh/roofing/',
   '/locations/davidson-county-tn/roofing/index.html':
     '/locations/davidson-county-tn/roofing/',
   '/locations/delaware-county-oh/roofing/index.html':
     '/locations/delaware-county-oh/roofing/',
+  '/locations/fairfield-county-oh/roofing/index.html':
+    '/locations/fairfield-county-oh/roofing/',
   '/locations/franklin-county-oh/roofing/index.html':
     '/locations/franklin-county-oh/roofing/',
+  '/locations/greene-county-oh/roofing/index.html':
+    '/locations/greene-county-oh/roofing/',
   '/locations/hamilton-county-oh/roofing/index.html':
     '/locations/hamilton-county-oh/roofing/',
   '/locations/hamilton-county-tn/roofing/index.html':
@@ -166,10 +172,14 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/lake-county-in/roofing/',
   '/locations/lake-county-oh/roofing/index.html':
     '/locations/lake-county-oh/roofing/',
+  '/locations/licking-county-oh/roofing/index.html':
+    '/locations/licking-county-oh/roofing/',
   '/locations/lorain-county-oh/roofing/index.html':
     '/locations/lorain-county-oh/roofing/',
   '/locations/lucas-county-oh/roofing/index.html':
     '/locations/lucas-county-oh/roofing/',
+  '/locations/mahoning-county-oh/roofing/index.html':
+    '/locations/mahoning-county-oh/roofing/',
   '/locations/marion-county-in/roofing/index.html':
     '/locations/marion-county-in/roofing/',
   '/locations/montgomery-county-oh/roofing/index.html':
@@ -190,6 +200,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/summit-county-oh/roofing/',
   '/locations/sumner-county-tn/roofing/index.html':
     '/locations/sumner-county-tn/roofing/',
+  '/locations/trumbull-county-oh/roofing/index.html':
+    '/locations/trumbull-county-oh/roofing/',
   '/locations/warren-county-oh/roofing/index.html':
     '/locations/warren-county-oh/roofing/',
   '/locations/washington-county-tn/roofing/index.html':
