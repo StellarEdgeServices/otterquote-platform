@@ -1,8 +1,10 @@
-// [gh-2881 / D-390] The project_confirmation document is created at selection, before the Platform Fee clears. The two free-text notes the
-// homeowner typed (work_not_done, project_notes) must go through the same in-process redaction the Scope of Work uses until
-// claims.platform_fee_charged IS TRUE. Like no-homeowner-phone.test.ts, this extracts the real autoPopulateFields from index.ts (a single-file EF
-// whose top level calls serve()) and runs it against a fake client. NEGATIVE CONTROL: the unpatched source (the two pc lines restored) is
-// built from the same slice and must FAIL the same assertions, so the test is a real check and not a tautology.
+// [gh-2881 / D-390] Order of events (D-058): contract signing, then the Platform Fee is charged, then project confirmation. On that path
+// claims.platform_fee_charged is already true when the project_confirmation document is built and the notes print as typed (test 2). This guards the
+// other case, a document built while platform_fee_charged is not true: the two free-text notes the homeowner typed (work_not_done, project_notes)
+// go through the same in-process redaction the Scope of Work uses, so phone-shaped numbers and e-mail addresses are removed (Ben 6256934420) while
+// dates, dollar figures and ordinary prose are left as typed. Like no-homeowner-phone.test.ts, this extracts the real autoPopulateFields from
+// index.ts (a single-file EF whose top level calls serve()) and runs it against a fake client. NEGATIVE CONTROL: the unpatched source (the two pc
+// lines restored) is built from the same slice and must FAIL the same assertions, so the test is a real check and not a tautology.
 import { assert, assertEquals, assertRejects } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { redactSowTextOrRefuse, RedactionUnavailableError } from "../_shared/homeowner-text-redact.ts";
 

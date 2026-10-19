@@ -18,10 +18,18 @@ BEGIN;
 SET LOCAL lock_timeout = '5s';
 
 DO $gate$
+DECLARE
+  v_src text;
 BEGIN
   IF to_regprocedure('public.d390_redact_contact(text)') IS NULL
      OR pg_get_viewdef('public.bidder_claim_summary'::regclass) NOT LIKE '%d390_redact_contact%' THEN
     RAISE EXCEPTION 'gh2881 digit fold: PR #2880 (gh2559_d390_redact_contact_until_fee) is not applied; apply it first' USING ERRCODE = 'P0A91';
+  END IF;
+  -- The live function body must be exactly PR #2880's text (or this file's already-applied text): prosrc is the stored body, so its md5 does not
+  -- depend on the Postgres version. (The view is checked structurally above: pg_get_viewdef is a deparsed text that differs by version, so no md5 of it is pinned.)
+  SELECT md5(prosrc) INTO v_src FROM pg_proc WHERE oid = 'public.d390_redact_contact(text)'::regprocedure;
+  IF v_src NOT IN ('14b7b97e3d5bb33435fbeb0ae5ba5579', 'a84ba3b389a691b41564df5ca79b538b') THEN
+    RAISE EXCEPTION 'gh2881 digit fold: public.d390_redact_contact is not the text PR #2880 applied (md5 %); refusing to replace it', v_src USING ERRCODE = 'P0A95';
   END IF;
 END
 $gate$;

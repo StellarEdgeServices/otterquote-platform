@@ -489,6 +489,9 @@ jobs:
       - name: no client file selects * from claims or names a private note column (gh-2881, D-390)
         run: node tests/gh2881-claims-no-star-select.mjs
 
+      - name: no Edge Function uses a caller-JWT client for anything but .auth (gh-2881, D-390)
+        run: python3 tests/gh2881-ef-no-caller-jwt-claims.py
+
       - name: the digit-fold draft is #2880's statements with one clause extended (gh-2881, D-390)
         run: python3 tests/gh2881-d390-digit-fold-parity.py
 

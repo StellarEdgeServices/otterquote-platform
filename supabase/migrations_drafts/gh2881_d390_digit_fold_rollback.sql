@@ -11,9 +11,15 @@ BEGIN;
 SET LOCAL lock_timeout = '5s';
 
 DO $gate$
+DECLARE
+  v_src text;
 BEGIN
   IF to_regprocedure('public.d390_redact_contact(text)') IS NULL THEN
     RAISE EXCEPTION 'gh2881 digit fold rollback: public.d390_redact_contact does not exist' USING ERRCODE = 'P0A94';
+  END IF;
+  SELECT md5(prosrc) INTO v_src FROM pg_proc WHERE oid = 'public.d390_redact_contact(text)'::regprocedure;
+  IF v_src NOT IN ('14b7b97e3d5bb33435fbeb0ae5ba5579', 'a84ba3b389a691b41564df5ca79b538b') THEN
+    RAISE EXCEPTION 'gh2881 digit fold rollback: public.d390_redact_contact is neither the #2880 text nor this set''s text (md5 %); refusing to overwrite it', v_src USING ERRCODE = 'P0A96';
   END IF;
 END
 $gate$;
