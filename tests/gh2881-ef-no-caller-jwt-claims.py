@@ -16,6 +16,44 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "supabase"
 SERVICE = re.compile(r"SERVICE_ROLE|service_?role|getServiceRoleKey|serviceKey", re.I)
 
 
+def strip_comments(t):
+    """blank out // and /* */ comments (keeping newlines so line numbers hold); strings, template literals and regex literals are copied verbatim"""
+    out = []; i = 0; n = len(t); prev = ""
+    while i < n:
+        c = t[i]; d = t[i + 1] if i + 1 < n else ""
+        if c == "/" and d == "/":
+            while i < n and t[i] != "\n": out.append(" "); i += 1
+            continue
+        if c == "/" and d == "*":
+            j = t.find("*/", i + 2); j = n if j == -1 else j + 2
+            out.append("".join("\n" if x == "\n" else " " for x in t[i:j])); i = j; continue
+        if c in "'\"":
+            j = i + 1
+            while j < n and t[j] != c and t[j] != "\n": j += 2 if t[j] == "\\" else 1
+            out.append(t[i:j + 1]); prev = c; i = j + 1; continue
+        if c == "`":
+            j = i + 1; buf = "`"
+            while j < n and t[j] != "`":
+                if t[j] == "\\": buf += t[j:j + 2]; j += 2; continue
+                if t[j] == "$" and j + 1 < n and t[j + 1] == "{":
+                    k = match_close(t, j + 1); buf += "${" + strip_comments(t[j + 2:k]) + "}"; j = k + 1; continue
+                buf += t[j]; j += 1
+            out.append(buf + "`"); prev = "`"; i = j + 1; continue
+        if c == "/" and prev in ("", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";", "return"):
+            j = i + 1; cls = False
+            while j < n and t[j] != "\n" and (cls or t[j] != "/"):
+                if t[j] == "\\": j += 1
+                elif t[j] == "[": cls = True
+                elif t[j] == "]": cls = False
+                j += 1
+            if j < n and t[j] == "/":
+                out.append(t[i:j + 1]); prev = "/"; i = j + 1; continue
+        out.append(c)
+        if not c.isspace(): prev = c
+        i += 1
+    return "".join(out)
+
+
 def match_close(t, i):
     """index of the bracket closing t[i] (one of ( { [), skipping strings and template literals"""
     pairs = {"(": ")", "{": "}", "[": "]"}
@@ -91,12 +129,14 @@ def func_defs(text):
 
 
 def check_uses(var, scope, defs, depth, where):
-    """problems for a caller client held in `var`, looking at `scope` text"""
+    """problems for a caller client held in `var` (a plain name, or `a.b` meaning any `.b` property), looking at `scope` text"""
     probs = []
-    names = {var}
-    for a in re.finditer(r"([A-Za-z_$][\w$]*)\s*=\s*" + re.escape(var) + r"\b(?!\s*[.(\w])", scope): names.add(a.group(1))
+    prop = "." in var
+    names = {var.split(".")[-1]}
+    for a in re.finditer(r"([A-Za-z_$][\w$]*)\s*=\s*" + re.escape(var.split(".")[-1]) + r"\b(?!\s*[.(\w])", scope): names.add(a.group(1))
+    lead = r"(?<=\.)" if prop else r"(?<![\w$.])"
     for n in names:
-        for m in re.finditer(r"(?<![\w$.])" + re.escape(n) + r"\b(\s*\.\s*(\w+)|)", scope):
+        for m in re.finditer(lead + re.escape(n) + r"\b(\s*\.\s*(\w+)|)", scope):
             if m.group(2):
                 if m.group(2) != "auth": probs.append("%s: %s.%s" % (where, n, m.group(2)))
                 continue
@@ -104,14 +144,11 @@ def check_uses(var, scope, defs, depth, where):
             after = scope[m.end():m.end() + 3]
             if re.search(r"(?:const|let|var)\s*$", before) or re.match(r"\s*=[^=]", after):  # its own declaration / assignment
                 continue
-            # passed as an argument?
             call = re.search(r"([A-Za-z_$][\w$]*)\s*\(([^()]*)$", scope[max(0, m.start() - 200):m.end()])
             if call and call.group(1) in defs and depth < 3:
                 params, body = defs[call.group(1)]
-                args = split_args(call.group(2) + scope[m.end():m.end()])
-                idx = next((k for k, x in enumerate(args) if re.fullmatch(re.escape(n) + r"\s*", x.strip()) or x.strip() == n), None)
-                if idx is None: idx = len(args) - 1
-                if idx < len(params):
+                idx = len(split_args(call.group(2))) - 1
+                if 0 <= idx < len(params):
                     p = re.match(r"[A-Za-z_$][\w$]*", params[idx].lstrip("{ ") or "")
                     if p:
                         probs += check_uses(p.group(0), body, defs, depth + 1, where + " -> " + call.group(1) + "()")
@@ -120,11 +157,46 @@ def check_uses(var, scope, defs, depth, where):
     return probs
 
 
+def bind(text, start):
+    """what the createClient( at text[start] is bound to, looking only at the code immediately before it:
+    ('var', name) | ('prop', 'a.b') | ('factory', name) | None. Works backwards to the nearest plain `=` at bracket depth 0, so an enclosing
+    `Deno.serve(async (req: Request) => { ... })` or a `cond ? createClient(..) : createClient(..)` ternary cannot capture or hide the binding."""
+    tail = text[:start]
+    a = re.search(r"([A-Za-z_$][\w$]*)\s*[:=]\s*(?:async\s*)?(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*(?::[^=>]+)?=>\s*$", tail)
+    if a: return ("factory", a.group(1))
+    if re.search(r"=>\s*$", tail): return None
+    if re.search(r"\breturn\s*$", tail):
+        fn = None
+        for m in re.finditer(r"function\s+([A-Za-z_$][\w$]*)\s*\(", tail):
+            i = m.end() - 1; j = match_close(text, i); b = text.find("{", j)
+            if b != -1 and b < start < match_close(text, b): fn = m.group(1)
+        return ("factory", fn) if fn else None
+    k = start - 1; depth = 0
+    while k >= 0:
+        c = text[k]
+        if c in ")]}": depth += 1
+        elif c in "([{":
+            if depth == 0: return None
+            depth -= 1
+        elif c == ";" and depth == 0: return None
+        elif c == "=" and depth == 0 and text[k + 1:k + 2] not in ("=", ">") and text[k - 1:k] not in ("=", "!", "<", ">"):
+            lhs = text[:k].rstrip()
+            v = re.search(r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]*)?$", lhs)
+            if v: return ("var", v.group(1))
+            pr = re.search(r"([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)+)$", lhs)
+            if pr: return ("prop", re.sub(r"\s", "", pr.group(1)))
+            v = re.search(r"([A-Za-z_$][\w$]*)$", lhs)
+            return ("var", v.group(1)) if v else None
+        k -= 1
+    return None
+
+
 def scan_text(text, label, extra_defs=None):
-    """returns (caller client count, problems)"""
+    """returns (caller client count, bound-and-scanned count, problems)"""
+    text = strip_comments(text)
     defs = func_defs(text)
     if extra_defs: defs = {**extra_defs, **defs}
-    n = 0; probs = []
+    n = 0; scanned = 0; probs = []; factories = set()
     for m in re.finditer(r"createClient\(", text):
         pre = text[max(0, m.start() - 12):m.start()]
         if re.search(r"(import|function|typeof)\s*$", pre) or text[max(0, m.start() - 1):m.start()] in ("{", ","):
@@ -133,14 +205,18 @@ def scan_text(text, label, extra_defs=None):
         if classify(text[i + 1:j], text) != "caller": continue
         n += 1
         line = text.count("\n", 0, m.start()) + 1
-        stmt = text[:m.start()]; stmt = stmt[stmt.rfind(";") + 1:]
-        v = re.search(r"(?:(?:const|let|var)\s+)?([A-Za-z_$][\w$]*)\s*(?::[^=;]+)?=(?!=)[^;]*$", stmt)
-        if not v:
-            tail = text[j + 1:j + 12]
-            if re.match(r"\s*\.\s*auth\b", tail): continue
-            probs.append("%s:%d: caller client with no variable (returned or chained): cannot be shown to be auth-only" % (label, line)); continue
-        probs += check_uses(v.group(1), text[j + 1:], defs, 0, "%s:%d %s" % (label, line, v.group(1)))
-    return n, probs
+        b = bind(text, m.start())
+        if b and b[0] == "factory": factories.add(b[1]); scanned += 1; continue
+        if not b:
+            if re.match(r"\s*\.\s*auth\b", text[j + 1:j + 12]): scanned += 1; continue
+            probs.append("%s:%d: caller client not bound to a variable, property or factory (chained or passed inline): cannot be shown to be auth-only" % (label, line)); continue
+        scanned += 1
+        probs += check_uses(b[1], text if b[0] == "prop" else text[j + 1:], defs, 0, "%s:%d %s" % (label, line, b[1]))
+    for f in factories:  # a function/arrow/injected property that returns a caller client: every client it hands out is checked the same way
+        for m in re.finditer(r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:await\s+)?(?:[\w$.]*\.)?" + re.escape(f) + r"\s*\(", text):
+            j = match_close(text, m.end() - 1)
+            probs += check_uses(m.group(1), text[j + 1:], defs, 0, "%s: client from %s() -> %s" % (label, f, m.group(1)))
+    return n, scanned, probs
 
 
 # ---- mutation fixtures: each of these MUST be reported as a problem, and the clean ones must not ----
@@ -153,23 +229,36 @@ MUT = {
     "client passed to an arrow helper that reads claims": 'const c = createClient(URL, tok);\nawait go(1, c);\nconst go = async (n, db) => { return db.from("claims").select("*"); };',
     "client passed through a second helper": 'const c = createClient(URL, tok);\nawait a(c);\nasync function a(x) { return b(x); }\nasync function b(y) { return y.from("claims").select("*"); }',
     "client aliased then read": 'const c = createClient(URL, tok);\nconst d = c;\nawait d.from("claims").select("*");',
-    "client returned from a factory": 'function mk(tok) { return createClient(URL, tok); }',
     "client passed to an unknown function": 'const c = createClient(URL, tok);\nawait somethingElse(c);',
     "anon key with service fallback is still a caller client when a header is set": 'const u = createClient(URL, anon || serviceRoleKey, { global: { headers: { Authorization: authHeader } } });\nawait u.from("claims").select("*");',
+    "typed Deno.serve handler (the enclosing arrow must not capture the binding)": 'Deno.serve(async (req: Request) => {\n  const sb = createClient(URL, tok);\n  await sb.from("claims").select("*");\n});',
+    "typed handler passed to serve(), caller header": 'serve(async (req: Request): Promise<Response> => {\n  const u = createClient(URL, anon, { global: { headers: { Authorization: req.headers.get("Authorization")! } } });\n  return json(await u.from("claims").select("id"));\n});',
+    "helper with typed params": 'const c = createClient(URL, tok);\nawait h(c, "id");\nasync function h(db: SupabaseClient, id: string): Promise<void> { await db.from("claims").select("*"); }',
+    "auth-uniform style: comment with quotes/backticks above a ternary": '// `secretKey || anonKey` rather than a non-null assertion: it\'s "plain JS" (no TS-only cast)\nconst sb = canForwardIp\n  ? createClient(U, secretKey || anonKey, {\n    global: { headers: { "Sb-Forwarded-For": clientIp } },\n  })\n  : createClient(U, anonKey);\nawait sb.from("claims").select("*");',
+    "string containing // before the client (a naive comment strip would eat the code)": 'const U = "https://x.co/a"; const sb = createClient(U, tok);\nawait sb.from("claims").select("*");',
+    "property binding ctx.db": 'ctx.db = createClient(URL, tok);\nawait ctx.db.from("claims").select("*");',
+    "property binding read from another object": 'const ctx = {}; ctx.db = createClient(URL, tok);\nasync function f(c) { return c.db.from("claims").select("*"); }',
+    "factory function returning a caller client": 'function mk(tok) { return createClient(URL, tok); }\nconst c = mk(tok);\nawait c.from("claims").select("*");',
+    "injected makeClient factory": 'const deps = { makeClient: (t: string) => createClient(URL, t) };\nconst c = deps.makeClient(tok);\nawait c.from("claims").select("*");',
+    "arrow factory": 'const mk = (t) => createClient(URL, t);\nconst c = await mk(tok);\nawait c.rpc("x");',
 }
 CLEAN = {
     "service client reads claims": 'const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");\nconst sb = createClient(URL, supabaseKey);\nawait sb.from("claims").select("*");',
     "caller client used for auth only": 'const sbCaller = createClient(URL, callerToken);\nconst { data } = await sbCaller.auth.getUser();',
+    "typed handler, auth only": 'Deno.serve(async (req: Request) => {\n  const sb = createClient(URL, tok);\n  await sb.auth.getUser();\n});',
     "caller client passed to an auth-only helper": 'const c = createClient(URL, tok, { global: { headers: { authorization: h } } });\nawait who(c);\nasync function who(db) { return db.auth.getUser(); }',
     "service key via getServiceRoleKey()": 'const k = getServiceRoleKey();\nconst sb = createClient(URL, k);\nawait sb.from("claims").select("*");',
+    "a commented-out client is not code": '// const sb = createClient(URL, tok); sb.from("claims")\n/* const x = createClient(URL, tok); x.from("claims") */\nconst real = createClient(URL, serviceRoleKey);\nawait real.from("claims").select("*");',
+    "factory used for auth only": 'const deps = { makeClient: (t) => createClient(URL, t) };\nconst c = deps.makeClient(tok);\nawait c.auth.getUser();',
+    "service client in a typed handler with empty-string fallbacks": 'Deno.serve(async (req: Request) => {\n  const sb = createClient(Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "");\n  await sb.from("claims").select("*");\n});',
 }
 fails = 0
 for name, src in MUT.items():
-    n, p = scan_text(src, "fixture")
+    n, sc, p = scan_text(src, "fixture")
     ok = bool(p)
     print(("PASS: " if ok else "FAIL: ") + "mutation must be flagged: " + name); fails += (not ok)
 for name, src in CLEAN.items():
-    n, p = scan_text(src, "fixture")
+    n, sc, p = scan_text(src, "fixture")
     ok = not p
     print(("PASS: " if ok else "FAIL: ") + "must not be flagged: " + name + ("" if ok else "  " + str(p))); fails += (not ok)
 
@@ -181,15 +270,14 @@ for dp, dn, fn in os.walk(ROOT):
 files.sort()
 texts = {f: open(f, errors="ignore").read() for f in files}
 all_defs = {}
-for f, t in texts.items(): all_defs.update(func_defs(t))
-total = 0; problems = []
+for f, t in texts.items(): all_defs.update(func_defs(strip_comments(t)))
+total = 0; scanned_total = 0; problems = []
 for f in files:
-    n, p = scan_text(texts[f], os.path.relpath(f, ROOT), all_defs)
-    if n:
-        names = sorted(set(re.findall(r"([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?createClient\(", texts[f])))
-        print("  caller client(s) in %-45s x%d" % (os.path.relpath(f, ROOT), n))
-    total += n; problems += p
-print("scanned %d non-test .ts files; caller-JWT clients: %d" % (len(files), total))
+    n, sc, p = scan_text(texts[f], os.path.relpath(f, ROOT), all_defs)
+    if n: print("  caller client(s) in %-45s x%d" % (os.path.relpath(f, ROOT), n))
+    total += n; scanned_total += sc; problems += p
+print("scanned %d non-test .ts files; caller-JWT clients: %d; bound to a variable/property/factory and scanned: %d" % (len(files), total, scanned_total))
+if scanned_total != total: problems.append("%d caller client(s) were not bound to anything that was scanned" % (total - scanned_total))
 for p in problems: print("PROBLEM:", p)
 ok = fails == 0 and not problems
 print("EF_CALLER_JWT_CLAIMS:", "PASS (every caller-JWT client is used for .auth only)" if ok else "FAIL")
