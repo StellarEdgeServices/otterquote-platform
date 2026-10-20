@@ -70,7 +70,7 @@ const STATIC = {
   submit: 'Send Login Link',
   google: 'Sign in with Google',
   divider: 'or continue with email',
-  noAccountLink: 'Create one free',
+  noAccountLink: 'Create one',
   contractorLink: 'Sign in to your contractor account',
   adminStrong: 'Admin access required.',
   // D-244 verbatim-locked

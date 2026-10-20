@@ -50,6 +50,7 @@ import {
 import { evaluateAcknowledgment, fetchDocumentSignerStatus } from "./ack-verify.ts";
 // [#1314] Signed-price reconciliation. Pure + unit-tested (price-verify.test.ts)
 // for the same reason evaluateAcknowledgment is: it is a money check.
+import { runDeckingGate } from "./decking-gate.ts"; // [#2862]
 import {
   dispositionFor,
   type PriceEvaluation,
@@ -925,7 +926,7 @@ serve(async (req) => {
           {
             const { data: envQuote } = await supabase
               .from("quotes")
-              .select("id, total_price")
+              .select("id, total_price, decking_price_per_sheet")
               .eq("claim_id", claim.id)
               .eq("docusign_envelope_id", envelopeId)
               .maybeSingle();
@@ -933,7 +934,7 @@ serve(async (req) => {
             if (!acceptedQuote) {
               const { data: selQuote } = await supabase
                 .from("quotes")
-                .select("id, total_price")
+                .select("id, total_price, decking_price_per_sheet")
                 .eq("claim_id", claim.id)
                 .eq("status", "selected")
                 .maybeSingle();
@@ -1084,6 +1085,26 @@ serve(async (req) => {
               throw new Error(
                 `#1314 unclassified price disposition=${disposition} state=${verdict.state} -- refusing to charge`
               );
+            }
+
+            // [#2862] DECKING-PRICE RECONCILIATION. Mirrors the contract-price
+            // mismatch halt above (alert, Sentry, deduped ops notification, 200).
+            // Reached only when the contract-price gate did not halt, so the
+            // properties read succeeded. A blank tab or NULL quote rate FLAGS, it
+            // does not halt -- see price-verify.ts. A throw here lands in the
+            // fail-closed catch below, like any reconciliation error.
+            if (signerStatusResult.kind === "properties") {
+              const deckingHalt = await runDeckingGate({
+                supabase,
+                claimId: claim.id,
+                envelopeId,
+                quoteId: acceptedQuote?.id,
+                quotedDecking: acceptedQuote?.decking_price_per_sheet,
+                signers: signerStatusResult.signers,
+                reportToSentry,
+                corsHeaders,
+              });
+              if (deckingHalt) return deckingHalt;
             }
           }
         } catch (priceErr) {
