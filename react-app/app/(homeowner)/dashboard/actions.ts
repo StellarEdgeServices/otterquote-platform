@@ -38,10 +38,11 @@ export async function resendHoverLink(claimId: string): Promise<ActionResult> {
  * gh-2559 (Ben, #2569 6029315131 A/B.4): the database refuses to open a claim for bids while its uploaded estimate has not
  * been read into a summary (parse-loss-sheet, routinely 15-60s, fire-and-forget at upload). So the submit waits, silently,
  * for that read before it writes. If the read never lands inside the wait the update goes ahead and the database decides.
- * PLACEHOLDER, null on purpose: the sentence a homeowner sees on a refused submit is Ben's wording; while it is null the
- * existing error string is passed through unchanged.
+ * BID_OPEN_REFUSAL_TEXT is the sentence a homeowner sees when the claim cannot open because the estimate has not been read yet:
+ * Ben's wording, verbatim, #2559 comment 6281179334 (Q4). It is returned only for the unread_estimate refusal.
  */
-export const BID_OPEN_REFUSAL_TEXT_PLACEHOLDER: string | null = null;
+export const BID_OPEN_REFUSAL_TEXT =
+  "We're still processing your insurance estimate, so your project can't open for bids yet. Please try again in a few minutes. If this keeps happening, contact us and we'll help.";
 export const ESTIMATE_READ_WAIT_MS = 90_000;
 export const ESTIMATE_READ_POLL_MS = 3_000;
 
@@ -108,10 +109,11 @@ export async function submitForBids(claimId: string): Promise<ActionResult> {
     .eq('id', claimId)
     .select('id');
   if (updErr) {
-    const refused = typeof updErr.message === 'string' && updErr.message.includes('[gh2559-bid-open');
-    // A guard refusal never shows its database text: with the placeholder null, `error` stays undefined and Checklist.tsx falls back
-    // to its existing generic line ('Could not submit for bids. Please try again.'), the same as dashboard.html's generic line.
-    if (refused) return { ok: false, error: BID_OPEN_REFUSAL_TEXT_PLACEHOLDER ?? undefined };
+    const refused = typeof updErr.message === 'string' && updErr.message.includes('[gh2559-bid-open:unread_estimate]');
+    // The unread-estimate refusal returns Ben's sentence (Q4), never its database text. Any other guard refusal (the identity
+    // check) keeps `error` undefined so Checklist.tsx falls back to its existing generic line.
+    if (refused) return { ok: false, error: BID_OPEN_REFUSAL_TEXT };
+    if (typeof updErr.message === 'string' && updErr.message.includes('[gh2559-bid-open')) return { ok: false, error: undefined };
     return { ok: false, error: updErr.message };
   }
   if (!Array.isArray(updRows) || updRows.length === 0) {

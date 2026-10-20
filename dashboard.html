@@ -3214,10 +3214,11 @@
       // estimate has not been read into a summary (parse-loss-sheet, routinely 15-60s, fire-and-forget at upload).
       // So the submit waits, silently, for that read before it writes: the button already says "Submitting…" and no
       // new sentence is shown. If the read never lands inside the wait the update goes ahead and the database
-      // decides; the failure then shows the EXISTING generic line below.
-      // PLACEHOLDER, null on purpose: the sentence a homeowner sees on a refused submit is Ben's wording
-      // (#2559 / #2569 6029315131 A). While it is null the existing 'Failed to submit your project' line is used.
-      const BID_OPEN_REFUSAL_TEXT_PLACEHOLDER = null;
+      // decides; the refusal then shows the sentence below.
+      // The sentence a homeowner sees when the claim cannot open because the estimate has not been read yet: Ben's wording,
+      // verbatim, #2559 comment 6281179334 (Q4). Shown only for the unread_estimate refusal; any other failure keeps the
+      // existing generic line.
+      const BID_OPEN_REFUSAL_TEXT = "We're still processing your insurance estimate, so your project can't open for bids yet. Please try again in a few minutes. If this keeps happening, contact us and we'll help.";
       const ESTIMATE_READ_WAIT_MS = 90000;
       const ESTIMATE_READ_POLL_MS = 3000;
       async function waitForEstimateRead(claimId) {
@@ -3247,7 +3248,7 @@
         }
       }
       function isBidOpenRefusal(err) {
-        return !!(err && typeof err.message === 'string' && err.message.indexOf('[gh2559-bid-open') !== -1);
+        return !!(err && typeof err.message === 'string' && err.message.indexOf('[gh2559-bid-open:unread_estimate]') !== -1);
       }
 
       async function submitForBids() {
@@ -3318,7 +3319,7 @@
           console.error('[submitForBids] Error:', err);
           if (btn) { btn.disabled = false; btn.textContent = 'Submit for Bids'; }
           if (readyBtn) { readyBtn.disabled = false; readyBtn.textContent = 'Submit for Bids'; }
-          if (isBidOpenRefusal(err) && BID_OPEN_REFUSAL_TEXT_PLACEHOLDER) showError(BID_OPEN_REFUSAL_TEXT_PLACEHOLDER);
+          if (isBidOpenRefusal(err)) showError(BID_OPEN_REFUSAL_TEXT);
           else showError('Failed to submit your project. Please try again.');
         } finally {
           // Always clears, success or failure — a failed submit must be

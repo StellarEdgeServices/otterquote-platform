@@ -10,7 +10,7 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 import { supabase } from '@/lib/supabase';
-import { submitForBids, waitForEstimateRead, BID_OPEN_REFUSAL_TEXT_PLACEHOLDER } from '../actions';
+import { submitForBids, waitForEstimateRead, BID_OPEN_REFUSAL_TEXT } from '../actions';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
@@ -69,10 +69,17 @@ describe('waitForEstimateRead (gh-2559)', () => {
 });
 
 describe('submitForBids (gh-2559)', () => {
-  it('never shows the guard database text: error is undefined so Checklist uses its generic line (review 6276857463 blocker 2)', async () => {
-    expect(BID_OPEN_REFUSAL_TEXT_PLACEHOLDER).toBeNull();
+  it("shows Ben's Q4 sentence verbatim for the unread-estimate refusal, never the database text (#2559 6281179334)", async () => {
+    expect(BID_OPEN_REFUSAL_TEXT).toBe("We're still processing your insurance estimate, so your project can't open for bids yet. Please try again in a few minutes. If this keeps happening, contact us and we'll help.");
     wire([{ estimate_filename: null }], () =>
       Promise.resolve({ data: null, error: { message: '[gh2559-bid-open:unread_estimate] PLACEHOLDER-PENDING-BEN: x' } }));
+    const res = await submitForBids('c1');
+    expect(res.ok).toBe(false);
+    expect(res.error).toBe(BID_OPEN_REFUSAL_TEXT);
+  });
+  it('the identity refusal does not show the Q4 sentence: error is undefined so Checklist uses its generic line', async () => {
+    wire([{ estimate_filename: null }], () =>
+      Promise.resolve({ data: null, error: { message: '[gh2559-bid-open:identity_in_summary] PLACEHOLDER-PENDING-BEN: x' } }));
     const res = await submitForBids('c1');
     expect(res.ok).toBe(false);
     expect(res.error).toBeUndefined();
