@@ -431,6 +431,9 @@ jobs:
       - name: storage-surface ledger — every storage key has a status + a cited test (gh-2060 closes-on c)
         run: node tests/gh2060-storage-surface-ledger.mjs
 
+      - name: roofing bid comparison tool — malformed saved state never throws (gh-2905, ledger key oq-bidtool-v1)
+        run: node tests/gh2905-bidtool-stale-state.mjs
+
       - name: partner pages — ?recruit= case/whitespace-normalised + URL-miss falls back to stored code (gh-2471)
         run: node tests/gh2471-recruit-case.mjs
 
@@ -489,6 +492,11 @@ jobs:
 
       - name: a bidding contractor is offered no raw homeowner upload, only the selected contractor (gh-2559, D-368)
         run: node tests/gh2559-bidder-no-raw-files.mjs
+
+      - name: the bidder view releases estimate_filename only after the fee -- draft migration, rollback, other view redefinitions (gh-2931)
+        run: |
+          node tests/gh2931-bidder-summary-no-filename.mjs
+          python3 supabase/tests/gh2931_bidder_summary_no_filename_proof_run.py
 
       - name: contractor pages state the D-386 release timing for the estimate, phone and email (gh-2559, D-386)
         run: node tests/gh2559-contractor-access-window-copy.mjs
