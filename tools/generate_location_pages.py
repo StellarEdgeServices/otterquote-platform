@@ -1622,7 +1622,7 @@ footer a:hover {{ color: var(--link-on-light-deep, #7A4200) !important; }}
       <a href="/">Home</a> &rsaquo; {county_esc} County, {state} {t_label.lower()}
     </div>
     <div style="padding: var(--sp-8) var(--sp-6) 0;">
-      <h1>Comparing {noun_title} Bids in {county_esc} County, {state_name}</h1>
+      <h1>{html.escape(page_h1_text(county, trade, state_name), quote=True)}</h1>
       <p style="color:#3D4F60; max-width:640px; margin:0 auto;">We create a scope of work and send it to local contractors.</p>
       <p style="color:#3D4F60; max-width:640px; margin:0 auto;">You compare any written bids you receive for your {noun} project, and the decision stays yours.</p>
     </div>
@@ -1710,8 +1710,16 @@ def _entry_sort_key(entry: dict) -> tuple:
     return (entry["county"].casefold(), entry["county"], entry["trade"])
 
 
-def page_anchor_text(entry: dict) -> str:
-    return f'{entry["county"]} County {TRADE_LABELS[entry["trade"]].lower()} page'
+def page_h1_text(county: str, trade: str, state_name: str) -> str:
+    """The county page's H1 text, unescaped. build_page renders its <h1> from this and every internal
+    anchor to a county page uses it, so an anchor always equals its target's H1 (state included)."""
+    return f"Comparing {TRADE_NOUN[trade].capitalize()} Bids in {county} County, {state_name}"
+
+
+def page_anchor_text(entry: dict, state_names: dict) -> str:
+    """Anchor text for a link to a county page: the target page's H1, naming the TARGET's own state, so
+    no anchor can read as another state's county (D-169 / D-345 geographic accuracy). Not HTML-escaped."""
+    return page_h1_text(entry["county"], entry["trade"], state_names[entry["state"]])
 
 
 def page_href(entry: dict) -> str:
@@ -1745,14 +1753,15 @@ def fill_entries(entry: dict, entries: list, state_names: dict, linked: list) ->
 
 
 def build_link_block(entry: dict, entries: list, state_names: dict = None) -> str:
+    state_names = state_names or {}
     sibs = sibling_entries(entry, entries)
     items = "".join(
-        f'\n      <li><a href="{page_href(s)}">{html.escape(page_anchor_text(s))}</a></li>' for s in sibs)
+        f'\n      <li><a href="{page_href(s)}">{html.escape(page_anchor_text(s, state_names))}</a></li>' for s in sibs)
     sib_html = f'\n    <ul style="margin:0.5rem 0 0 1.2rem;">{items}\n    </ul>' if sibs else ""
-    fill = fill_entries(entry, entries, state_names or {}, sibs)
+    fill = fill_entries(entry, entries, state_names, sibs)
     if fill:
         fitems = "".join(
-            f'\n      <li><a href="{page_href(s)}">{html.escape(page_anchor_text(s))}</a></li>' for s in fill)
+            f'\n      <li><a href="{page_href(s)}">{html.escape(page_anchor_text(s, state_names))}</a></li>' for s in fill)
         sib_html += (f'\n    <h2 class="loc-more-fill" style="margin:1rem 0 0;font-size:1.05rem;">{FILL_HEADING}</h2>'
                      f'\n    <ul style="margin:0.5rem 0 0 1.2rem;">{fitems}\n    </ul>')
     return (
@@ -1785,7 +1794,7 @@ def build_hub_page(entries: list, state_names: dict) -> str:
     sections = []
     for st in sorted(by_state, key=lambda c: (state_names[c].casefold(), c)):
         items = "\n".join(
-            f'      <li><a href="{page_href(e)}">{html.escape(page_anchor_text(e))}</a></li>'
+            f'      <li><a href="{page_href(e)}">{html.escape(page_anchor_text(e, state_names))}</a></li>'
             for e in sorted(by_state[st], key=_entry_sort_key))
         sections.append(f"    <h2>{html.escape(state_names[st])}</h2>\n    <ul>\n{items}\n    </ul>")
     sections_html = "\n\n".join(sections)

@@ -157,7 +157,7 @@ const HO6_EXPECTED_BODY = [
   "",
   "From there we help you create a scope of work and send it to multiple contractors, so you can compare their bids.",
   "",
-  "Contractors compete. Homeowners win.",
+  "Contractors Compete. Homeowners Win.",
   "",
   "The Otter Quotes team",
 ].join("\n");
