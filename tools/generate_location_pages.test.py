@@ -1225,11 +1225,13 @@ class HubAndSiblingLinkTests(unittest.TestCase):
         # every generated page, alphabetical within its state, with the specified anchor text
         main = hub.split("<main>")[1].split("</main>")[0]
         anchors = re.findall(r'<li><a href="([^"]+)">([^<]+)</a></li>', main)
-        expected = [(f"/locations/{glp.county_slug(c, 'ZZ')}/{t}/", f"{c} County {t} page")
+        # gh-2893 fix-forward: anchor text is the target page's H1, state included
+        noun = {"roofing": "Roofing", "siding": "Siding", "gutters": "Gutter", "windows": "Window"}
+        expected = [(f"/locations/{glp.county_slug(c, 'ZZ')}/{t}/", f"Comparing {noun[t]} Bids in {c} County, Zedland")
                     for c in sorted(self.counties) for t in ("roofing", "siding", "gutters", "windows")]
         self.assertEqual(sorted(anchors), sorted(expected))
-        self.assertEqual([a for a in anchors if a[1].endswith("roofing page")],
-                         [e for e in expected if e[1].endswith("roofing page")])
+        self.assertEqual([a for a in anchors if " Roofing Bids in " in a[1]],
+                         [e for e in expected if " Roofing Bids in " in e[1]])
         self.assertEqual(len(anchors), summary["written"])
         # BreadcrumbList: Home, Locations
         ld = [json.loads(x) for x in re.findall(r'<script type="application/ld\+json">(.*?)</script>', hub, re.S)]
@@ -1343,6 +1345,68 @@ class HubAndSiblingLinkTests(unittest.TestCase):
                 plain = glp.build_page(c, "roofing", "2026-01-01", st, profile=profile)
                 self.assertEqual(glp.main_words(linked, mask), glp.main_words(plain, mask))
         self.assertIn(glp.FILL_HEADING, self.page_in("Aville", "ZZ"))
+
+    def anchor_pairs(self, page_html):
+        return [(h, html.unescape(t)) for h, t in re.findall(r'<li><a href="(/locations/[^"]+)">([^<]+)</a></li>', page_html)]
+
+    def h1_of(self, page_html):
+        h1s = re.findall(r"<h1\b[^>]*>(.*?)</h1>", page_html, re.S)
+        self.assertEqual(len(h1s), 1)
+        return html.unescape(re.sub(r"<[^>]+>", "", h1s[0]))
+
+    def test_every_county_anchor_equals_its_target_h1_across_states(self):
+        # gh-2893 fix-forward (LEGAL-READ FAIL 6278821361): sibling, fill-block and hub anchors are the
+        # target page's H1, naming the TARGET's state, so a Zedland page can never link "Cton County" as if
+        # it were a Zedland county.
+        zz, yy = self.write_two_states()
+        self.run_fx(states=("ZZ", "YY"))
+        state_of = {"ZZ": "Zedland", "YY": "Yedland"}
+        h1_by_href = {}
+        for st, cs in (("ZZ", zz), ("YY", yy)):
+            for c in cs:
+                for t in glp.ELIGIBLE_TRADES:
+                    h1_by_href[f"/locations/{glp.county_slug(c, st)}/{t}/"] = self.h1_of(self.page_in(c, st, t))
+        self.assertEqual(len(h1_by_href), 8 * 4)
+        checked = 0
+        pages = [(self.page_in(c, st, t)) for st, cs in (("ZZ", zz), ("YY", yy)) for c in cs for t in glp.ELIGIBLE_TRADES]
+        pages.append((self.out / "index.html").read_text(encoding="utf-8"))
+        for page in pages:
+            for href, text in self.anchor_pairs(page):
+                self.assertEqual(text, h1_by_href[href], href)
+                self.assertRegex(text, r", (Zedland|Yedland)$")
+                checked += 1
+        self.assertGreater(checked, 8 * 4)
+        # the fill block on a Zedland page names Yedland for every Yedland target
+        fill = self.link_block(self.page_in("Aville", "ZZ")).split(glp.FILL_HEADING)[1]
+        texts = [t for _h, t in re.findall(r'<a href="([^"]+)">([^<]+)</a>', fill)]
+        self.assertEqual(len(texts), 4)
+        self.assertTrue(all(t.endswith(", Yedland") for t in texts), texts)
+
+    def test_same_county_name_in_two_states_gets_two_distinct_state_anchors(self):
+        names = {"IN": "Indiana", "MO": "Missouri"}
+        mo = {"county": "Marion", "trade": "roofing", "state": "MO", "slug": "marion-county-mo"}
+        ind = {"county": "Marion", "trade": "roofing", "state": "IN", "slug": "marion-county-in"}
+        self.assertEqual(glp.page_anchor_text(ind, names), "Comparing Roofing Bids in Marion County, Indiana")
+        self.assertEqual(glp.page_anchor_text(mo, names), "Comparing Roofing Bids in Marion County, Missouri")
+        self.assertNotEqual(glp.page_anchor_text(ind, names), glp.page_anchor_text(mo, names))
+
+    def test_committed_pages_and_hub_anchors_equal_their_target_h1(self):
+        loc = REPO_ROOT / "locations"
+        pages = sorted(loc.glob("*/*/index.html"))
+        self.assertGreaterEqual(len(pages), 23)
+        h1_by_href = {"/" + f.relative_to(REPO_ROOT).as_posix()[: -len("index.html")]: self.h1_of(f.read_text(encoding="utf-8"))
+                      for f in pages}
+        sources = pages + [loc / "index.html"]
+        total = 0
+        for f in sources:
+            for href, text in self.anchor_pairs(f.read_text(encoding="utf-8")):
+                with self.subTest(f"{f.relative_to(REPO_ROOT).as_posix()} -> {href}"):
+                    self.assertIn(href, h1_by_href)
+                    self.assertEqual(text, h1_by_href[href])
+                total += 1
+        self.assertGreater(total, 23 * 5)
+        hub_hrefs = [h for h, _t in self.anchor_pairs((loc / "index.html").read_text(encoding="utf-8"))]
+        self.assertEqual(sorted(hub_hrefs), sorted(h1_by_href))
 
     def page_in(self, county, state, trade="roofing"):
         return (self.out / glp.county_slug(county, state) / trade / "index.html").read_text(encoding="utf-8")
