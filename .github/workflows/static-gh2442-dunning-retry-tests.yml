@@ -1,0 +1,50 @@
+name: Static gh-2442 Dunning Retry Tests
+
+# gh-2442: the contractor "Retry Payment Now" button asks the server (request_dunning_retry), the retry banner
+# carries the approved card-fee sentence byte for byte, and the process-dunning retry pass makes at most one
+# charge attempt per request. `pull_request` (never `pull_request_target`), no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'contractor-dashboard.html'
+      - 'contractor-settings.html'
+      - 'supabase/functions/process-dunning/**'
+      - 'tests/gh2442-dunning-retry-*.mjs'
+      - '.github/workflows/static-gh2442-dunning-retry-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'contractor-dashboard.html'
+      - 'contractor-settings.html'
+      - 'supabase/functions/process-dunning/**'
+      - 'tests/gh2442-dunning-retry-*.mjs'
+      - '.github/workflows/static-gh2442-dunning-retry-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh2442-dunning-retry-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-gh2442-dunning-retry-tests:
+    name: Retry button, card-fee sentence, retry pass (gh2442)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Retry button and card-fee sentence (gh2442)
+        run: node tests/gh2442-dunning-retry-button.mjs
+      - name: Retry pass (gh2442)
+        run: node --experimental-strip-types tests/gh2442-dunning-retry-pass.mjs
