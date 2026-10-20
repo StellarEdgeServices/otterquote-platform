@@ -178,6 +178,73 @@ export function dispositionFor(verdict: PriceEvaluation): PriceDisposition {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * [#2862, 2026-10-19] DECKING-PRICE RECONCILIATION (halt on mismatch).
+ *
+ * WHY. The Scope of Work prints the decking rate from
+ * `quotes.decking_price_per_sheet`, while the contract page's `decking_per_sheet`
+ * is a contractor-signer text tag that holds whatever the contractor typed at
+ * signing. Nothing compared the two (the #1314 ceremony package showed $95.00 on
+ * the contract and $75.00 in the Scope of Work). CTO decision (#2862, comment
+ * 6256733233): option (b) -- the signing webhook compares and HALTS, exactly like
+ * the contract-price halt. Option (a), prefill-and-lock, is rejected (D-274: the
+ * tag is deliberately not prefilled).
+ *
+ * It reuses `parseMoney`, `PRICE_TOLERANCE` and the `PriceEvaluation` shape, so
+ * currency strings, commas and whitespace parse identically to contract_price.
+ *
+ * MISSING VALUES. The contract-price path has no precedent for an OPTIONAL line,
+ * so the safe choice is documented here (and raised as a QUESTION on the PR):
+ *   - quotes.decking_price_per_sheet NULL/non-finite -> `no_expected` -> FLAG.
+ *     The Scope of Work prints no decking rate, so there is no number to
+ *     contradict; halting would block a legitimate signing with no decking line.
+ *     (Same treatment as contract_price's own `no_expected`.)
+ *   - signed decking tab blank/absent -> `field_absent` -> FLAG. The contract
+ *     states no decking number, so two different numbers were not accepted;
+ *     unlike contract_price this field is optional, so absence is not a halt.
+ *   - signed decking tab present but unparseable -> HALT (a typed value we
+ *     cannot read cannot be shown to agree with the quote).
+ *   - signed number differs by more than PRICE_TOLERANCE -> HALT.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+export const DECKING_FIELD_ID = "decking_per_sheet";
+
+/** Raw `decking_per_sheet` value from whichever signer carries it, else null. */
+export function extractSignedDeckingPrice(signers: unknown[]): string | null {
+  for (const s of (signers as SignerLike[]) ?? []) {
+    const fields = s?.formFields;
+    if (!Array.isArray(fields)) continue;
+    for (const f of fields) {
+      if (f?.id !== DECKING_FIELD_ID) continue;
+      if (f?.value === null || f?.value === undefined) continue;
+      const v = String(f.value).trim();
+      if (v !== "") return v;
+    }
+  }
+  return null;
+}
+
+/** Same comparison as `evaluatePrice`, applied to the decking rate. */
+export function evaluateDeckingPrice(rawSigned: string | null, expected: number | null): PriceEvaluation {
+  return evaluatePrice(rawSigned, expected);
+}
+
+/**
+ * Disposition for the decking verdict. Differs from `dispositionFor` only in
+ * that a blank/absent optional tab is a FLAG, not a HALT (see header).
+ */
+export function deckingDispositionFor(verdict: PriceEvaluation): PriceDisposition {
+  if (verdict.state === "reconciled") return "proceed";
+  if (verdict.state === "mismatch") return "halt";
+  if (verdict.reason === "no_expected" || verdict.reason === "field_absent") return "flag";
+  return "halt";
+}
+
+/** Verdict for a completed envelope's signer list against the quoted decking rate. */
+export function deckingVerdictFor(signers: unknown[], expected: number | null): PriceEvaluation {
+  return evaluateDeckingPrice(extractSignedDeckingPrice(signers), expected);
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
  * [#1314 FIX, 2026-09-08] FAIL-CLOSED RESOLUTION OF THE PROPERTIES READ.
  *
  * LEGAL-READ (R-177) refuted the first version of this halt: the halt was

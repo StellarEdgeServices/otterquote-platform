@@ -475,6 +475,13 @@ jobs:
       - name: a bidding contractor reads the claim summary view, never the base claims row (gh-2559, D-368)
         run: node tests/gh2559-bidder-claims-view.mjs
 
+      # pgserver 0.1.4 ships wheels only for cp39-cp312; the ubuntu-26.04 image's default python3 has none
+      # (pip: "from versions: none"), so pin the interpreter for this step (CTO RUN 71).
+      - name: Set up Python 3.12 (pgserver 0.1.4 has no wheel for the runner's default python)
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
       - name: the bidder view hands out no street, unit, box, lot, phone or email -- view file run on a throwaway Postgres (gh-2559, D-371)
         run: |
           python3 -m pip install --quiet pgserver==0.1.4 psycopg2-binary==2.9.13
@@ -482,6 +489,11 @@ jobs:
 
       - name: a bidding contractor is offered no raw homeowner upload, only the selected contractor (gh-2559, D-368)
         run: node tests/gh2559-bidder-no-raw-files.mjs
+
+      - name: the bidder view releases estimate_filename only after the fee -- draft migration, rollback, other view redefinitions (gh-2931)
+        run: |
+          node tests/gh2931-bidder-summary-no-filename.mjs
+          python3 supabase/tests/gh2931_bidder_summary_no_filename_proof_run.py
 
       - name: contractor pages state the D-386 release timing for the estimate, phone and email (gh-2559, D-386)
         run: node tests/gh2559-contractor-access-window-copy.mjs
