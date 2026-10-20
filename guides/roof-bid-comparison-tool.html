@@ -85,12 +85,13 @@
 #bt .flag{overflow-wrap:anywhere;background:var(--bt-card);border:1px solid var(--bt-line);border-radius:10px;padding:12px 14px;font-size:15px;color:var(--bt-body)}
 #bt .flag b{color:var(--bt-ink)}
 #bt .flag.top{border-color:var(--bt-amber);border-left-width:4px}
+#bt .copyt{display:block;width:100%;margin-top:12px;font:inherit;font-size:14px;padding:10px;border:1px solid var(--bt-line);border-radius:10px;color:var(--bt-ink);background:var(--bt-card)}
 #bt .sr{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 #bt .empty{padding:24px;text-align:center;color:var(--bt-muted);border:1px dashed var(--bt-muted);border-radius:16px}
 #bt .notes{margin:32px 0 0;padding:20px 0 40px;border-top:1px solid var(--bt-line);color:var(--bt-muted);font-size:14px}
 #bt .notes p{margin:0 0 8px;color:var(--bt-muted)}
 @media print{
- body{background:#fff}#site-header,#site-footer,#bt .bar,#bt .rm,#bt .addrow{display:none!important}
+ body{background:#fff}#site-header,#site-footer,#bt .bar,#bt .rm,#bt .addrow,#bt .copyt{display:none!important}
  #bt .cards{grid-template-columns:1fr 1fr}#bt .card{break-inside:avoid}
  #bt input{border:0!important;padding:0!important;min-height:0!important}
 }
@@ -103,15 +104,16 @@
 <div class="wrap">
 <section class="hero">
  <h1>Roofing Bid Comparison</h1>
- <p class="sub">Add a card for each contractor you are considering. Flip a switch on for every item that is in their bid, then compare them side by side. Nothing leaves this page.</p>
+ <p class="sub">Add a card for each contractor you are considering. Flip a switch on for every item that is in their bid, then compare them side by side. Contractor names and prices you type stay in this browser.</p>
  <div class="bar">
   <button class="btn" id="addC" type="button">+ Add a contractor</button>
   <button class="btn ghost" id="printB" type="button">Print / save as PDF</button>
+  <button class="btn ghost" id="copyB" type="button">Copy summary as text</button>
  </div>
 </section>
 
 <section class="target" aria-labelledby="tgt">
- <b id="tgt">The target package (6 items)</b>
+ <b id="tgt">Your checklist (6 items)</b>
  <span> Wind rating, Class 4 hail-rated shingles, algae warranty, contractor labor warranty, manufacturer's defect warranty and manufacturer-backed labor warranty. The summary counts how many of these each bid includes. Other lines are shown but not counted.</span>
 </section>
 
@@ -123,6 +125,7 @@
  <p class="sub">A count of what each bid says it includes. It is not a ranking or a recommendation, and price is shown but not scored.</p>
  <div class="tablewrap" tabindex="0" role="region" aria-label="Comparison table"><table id="tbl"></table></div>
  <div class="flags" id="flags" aria-live="polite"></div>
+ <textarea id="copyT" class="copyt" readonly rows="10" hidden aria-label="Copy summary as text"></textarea>
 </section>
 <div class="notes">
 <p>Otter Quotes does not endorse any contractor.</p>
@@ -154,7 +157,7 @@
 var KEY='oq-bidtool-v1';
 var TARGET=[
  {k:'wind',label:'Wind rating',help:'How much wind the shingle is rated to resist, shown in mph. The rating is listed for the product.',d:{t:'num',ph:'mph (optional)',u:'mph'}},
- {k:'class4',label:'Class 4 hail-rated shingles',help:'Class 4 is the highest impact-resistance rating a shingle can have.'},
+ {k:'class4',label:'Class 4 hail-rated shingles',help:'Class 4 is the highest rating under the UL 2218 impact test.'},
  {k:'algae',label:'Algae warranty',help:'A warranty against the dark algae streaks that can show up on shingles.',d:{t:'num',ph:'Years (e.g. 25)',u:'yr'}},
  {k:'labor',label:'Contractor labor warranty',help:"The contractor's own promise to fix workmanship problems for a set time.",d:{t:'num',ph:'Years',u:'yr'}},
  {k:'mfgdef',label:"Manufacturer's defect warranty",help:"The shingle maker's promise covering defects in the materials."},
@@ -165,7 +168,7 @@ var OTHER=[
  {k:'iws',label:'Ice & water shield',help:'A sticky waterproof underlayment, often used at eaves and valleys.'},
  {k:'drip',label:'Drip edge',help:'Metal edging along the roof edge that directs water away from the fascia.'},
  {k:'ridge',label:'Ridge vent',help:'A vent along the peak that lets attic air escape.'},
- {k:'permit',label:'Permit',help:'The permit your town requires for roof work, pulled by the contractor.'},
+ {k:'permit',label:'Permit',help:'The permit for roof work, if your town requires one, and who pulls it.'},
  {k:'disposal',label:'Disposal',help:'Hauling away old materials and job debris.'}
 ];
 var DEFS=TARGET.concat(OTHER);
@@ -263,13 +266,40 @@ function summary(){
   else f+='<div class="flag"><b>'+esc(c.name)+' gaps:</b> <span class="gap">'+gaps.map(esc).join(', ')+'</span>. Ask whether these are available, and whether they change the price.</div>';
  });
  $('flags').innerHTML=f;
+ var ta=$('copyT');if(ta&&!ta.hidden)ta.value=summaryText();
 }
 
+function summaryText(){
+ var L=['Roofing Bid Comparison',''];
+ st.c.forEach(function(c){
+  var m=money(c.price);
+  L.push((c.name||'Unnamed')+(m?' - '+m:' - not entered'));
+  L.push(count(c)+' of 6 target items included');
+  var inc=[];
+  TARGET.forEach(function(d){var it=c.items[d.k];if(it&&it.on){var t=detailText(d.d,it);inc.push(d.label+(t?' ('+t+')':''))}});
+  OTHER.forEach(function(d){var it=c.items[d.k];if(it&&it.on)inc.push(d.label)});
+  c.custom.forEach(function(it){if(it.on){var t=detailText(null,it);inc.push(it.label+(t?' ('+t+')':''))}});
+  inc.forEach(function(x){L.push('  - '+x)});
+  L.push('');
+ });
+ L.push('A count of what each bid says it includes. It is not a ranking or a recommendation, and price is shown but not scored.');
+ L.push('Otter Quotes does not endorse any contractor.');
+ return L.join('\n');
+}
+function copySummary(){
+ if(st.c.length===0)return;
+ var s=summaryText(),ta=$('copyT');if(!ta)return;
+ ta.value=s;ta.hidden=false;
+ try{ta.focus();ta.select();ta.setSelectionRange(0,s.length)}catch(e){}
+ try{if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(s).catch(function(){})}catch(e){}
+ try{document.execCommand('copy')}catch(e){}
+}
 function find(id){return st.c.filter(function(c){return c.id===id})[0]}
 
 document.addEventListener('click',function(e){
  var t=e.target.closest('button');if(!t)return;
  if(t.id==='addC'){st.c.push(newC());render();track('bidtool_contractor_added',{count:st.c.length});var cs=document.querySelectorAll('.card');var last=cs[cs.length-1];if(last)last.scrollIntoView({behavior:'smooth',block:'start'});return}
+ if(t.id==='copyB'){copySummary();return}
  if(t.id==='printB'){track('bidtool_print');window.print();return}
  var c=find(t.dataset.c);if(!c)return;
  if(t.classList.contains('sw')){

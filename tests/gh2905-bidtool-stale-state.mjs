@@ -65,5 +65,9 @@ ok(valid(fresh.state) && fresh.state.c.length === 2, 'no saved state starts with
 const thr = run(undefined, { throwStorage: true });
 ok(!thr.err && valid(thr.state), 'localStorage that throws leaves a working fresh state');
 ok(!/window\.confirm/.test(script) && !/dataLayer/.test(script) && /gtag\('event'/.test(script), 'no window.confirm; analytics via gtag(event)');
+// gh-2905 wording rulings (CEO 6277314161): the subhead is true of the build, and the copy-as-text fallback exists
+ok(html.includes('Contractor names and prices you type stay in this browser.') && !html.includes('Nothing leaves this page'), 'subhead reads "Contractor names and prices you type stay in this browser." (old sentence gone)');
+ok(html.includes('id="copyB"') && html.includes('Copy summary as text') && !/dataLayer/.test(html), 'a "Copy summary as text" button exists');
+ok(html.includes('highest rating under the UL 2218 impact test') && html.includes('if your town requires one') && html.includes('Your checklist (6 items)') && !html.includes('The target package'), 'reader should-fixes S1-S3 applied');
 console.log(fails ? `\n✗ ${fails} failure(s)` : '\nall assertions passed');
 process.exit(fails ? 1 : 0);
