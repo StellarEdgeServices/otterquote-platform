@@ -39,16 +39,16 @@ catch {
 let pass = 0, fail = 0;
 const ok = (c, l) => { console.log((c ? 'PASS: ' : 'FAIL: ') + l); c ? pass++ : fail++; };
 
+/* gh-2598 slice 5: index.html is now the approved homepage, which has its own header (no #site-header, no shared nav) and is covered by tests/gh2598-index-swap.mjs; it is no longer a sample of the shared header here (how-it-works and dashboard stand in, same budgets). */
 const OUT_BUDGET = 889;                   // signed out: production's widest wrap band (index, how-it-works, login)
 const FULL_FROM = 1200;                   // the full number returns at this width
 const STATES = [
-  { name: 'signed-out', pages: ['index', 'how-it-works', 'login', 'partner-re', 'contractor-join', 'contractor-login'].map((pg) => ({ pg, role: null, budget: OUT_BUDGET })) },
+  { name: 'signed-out', pages: ['how-it-works', 'login', 'partner-re', 'contractor-join', 'contractor-login'].map((pg) => ({ pg, role: null, budget: OUT_BUDGET })) },
   { name: 'signed-in', pages: [
     { pg: 'contractor-dashboard', role: 'contractor', budget: 979 },
     { pg: 'contractor-opportunities', role: 'contractor', budget: 999 },
     { pg: 'contractor-profile', role: 'contractor', budget: 999 },
     { pg: 'dashboard', role: 'homeowner', budget: 959 },
-    { pg: 'index', role: 'homeowner', budget: 959 },
     { pg: 'admin-contractors', role: 'admin', budget: 0 },
   ] },
 ];
@@ -181,7 +181,7 @@ ok(good.info.rendered === good.info.expected, 'every signed-out and signed-in pa
 console.log('widest wrapped/hung width per page and state: ' + JSON.stringify(good.info.widest));
 for (const id of Object.keys(good.info.hh)) console.log('  header heights ' + id + ' -> ' + good.info.hh[id]);
 ok(good.bad.length === 0, 'W1-W3,W5 the real header, signed out and signed in, 769..1300 px: no wrap beyond the page budget (main), no extra row, tel link compact below ' + FULL_FROM + (good.bad.length ? ' | ' + good.bad.slice(0, 8).join(' | ') : ''));
-const ctl = await sweep(browser, NAV_CSS.replace(BAND, ''), ['signed-out index', 'signed-in contractor-dashboard', 'signed-in index']);
+const ctl = await sweep(browser, NAV_CSS.replace(BAND, ''), ['signed-out how-it-works', 'signed-in contractor-dashboard', 'signed-in dashboard']);
 ok(ctl.bad.some((m) => /^W1 /.test(m)) && ctl.bad.some((m) => /^W2 /.test(m)) && ctl.bad.some((m) => /^W3 /.test(m)), 'NEGATIVE CONTROL (a) without the compact-band rule goes red on W1, W2 and W3 (' + ctl.bad.length + ' findings)');
 const NARROW = NAV_CSS.replace('(min-width: 769px) and (max-width: 1199px)', '(min-width: 769px) and (max-width: 1099px)');
 ok(NARROW !== NAV_CSS, 'negative control (b) setup: the compact band is declared as max-width 1199');
