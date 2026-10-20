@@ -143,7 +143,7 @@ test.describe('Flow A — Contractor Journey', () => {
     await page.locator('#contractorForm').waitFor({ state: 'visible', timeout: 15_000 });
 
     // D-242: cross-role sibling link — contractor signup → homeowner signup.
-    const homeownerLink = page.getByRole('link', { name: /get free quotes as a homeowner/i });
+    const homeownerLink = page.getByRole('link', { name: /get quotes as a homeowner/i });
     await expect(homeownerLink).toBeVisible();
     await expect(homeownerLink).toHaveAttribute('href', 'https://app.otterquote.com/get-started');
 

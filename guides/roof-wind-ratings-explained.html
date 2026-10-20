@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Roof Wind Ratings: 110, 130 or No Limit? | Otter Quotes</title>
+<meta name="description" content="What a roof wind warranty really promises, how it differs from ASTM D3161 and D7158 test classes, and what each top level requires.">
+<link rel="canonical" href="https://otterquote.com/guides/roof-wind-ratings-explained.html">
+<meta property="og:title" content="Roof Wind Ratings: 110, 130 or No Limit? | Otter Quotes">
+<meta property="og:description" content="What a roof wind warranty really promises, how it differs from ASTM D3161 and D7158 test classes, and what each top level requires.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/roof-wind-ratings-explained.html">
+<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Otter Quotes logo">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-10-19">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds (same values as PR #2499; defined here until it merges) */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol, .step ul { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+.definition-table td { color: var(--dark-gray); border-bottom: 1px solid #D9DEE7; }
+.definition-table td:first-child { color: var(--navy); }
+.definition-table tr:last-child td { border-bottom: none; }
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>Roof Wind Ratings Explained: What &ldquo;110,&rdquo; &ldquo;130&rdquo; and &ldquo;No Limit&rdquo; Really Promise</h1>
+    <p class="meta">Otter Quotes &middot; Updated October 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+        <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>A shingle&rsquo;s wind rating is two different things. A test class such as ASTM D3161 Class F is a lab result. The warranted wind speed is the manufacturer&rsquo;s promise to cover shingles that blow off, and the top level of that promise depends on how the roof is installed. Ask each contractor which level they will register, in writing.</p>
+      <p>This guide covers GAF, Owens Corning, CertainTeed and Atlas. It does not say what your homeowners policy pays. That is a question for your policy and your insurer.</p>
+    </div>
+
+    <section class="step">
+      <h2>What is the difference between a wind test class and a wind warranty?</h2>
+      <p>A test class is a lab label on the shingle. A wind warranty is a written promise, with a speed, a term and conditions. Only the warranty tells you what the manufacturer will stand behind if shingles blow off your roof, so it is the number to compare between bids.</p>
+      <p>Two ASTM tests show up on product pages. Professional Roofing magazine describes ASTM D3161 as a fan-induced test, with Class F tied to 110 mph, and ASTM D7158 as a test that compares uplift force with resistance, with Class H rated for design wind speeds up to about 190 mph (<a href="https://professionalroofing.net/articles/article/4302" target="_blank" rel="noopener">Professional Roofing</a>). The same article says D3161 results do not directly correlate to wind speeds experienced in service. The Asphalt Roofing Manufacturers Association also expresses D7158 classes as ultimate design wind speeds (<a href="https://www.asphaltroofing.org/using-astm-d7158-where-standard-conditions-do-not-apply/" target="_blank" rel="noopener">ARMA</a>).</p>
+      <p>GAF lists both Class F and Class H for Timberline HDZ, and Owens Corning&rsquo;s data sheets list both for its Duration line (<a href="https://www.owenscorning.com/dms/10024195" target="_blank" rel="noopener">Owens Corning data sheet 10024195</a>). Those are test results. A Class H label does not tell you the speed in a warranty.</p>
+    </section>
+
+    <section class="step">
+      <h2>What are the standard and top wind warranty levels for each brand?</h2>
+      <p>Each brand sells wind coverage in levels. The standard level comes with the shingle. The top level needs the maker&rsquo;s required installation and accessories. Figures below come from each manufacturer&rsquo;s current pages and warranties, read in October 2026.</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr><th>Brand and line</th><th>Standard level</th><th>Top level</th><th>What the top level requires</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>GAF Timberline HDZ</td><td>110 mph without Special Installation</td><td>130 mph with Special Installation; no maximum under WindProven</td><td>130: four nails per shingle and GAF starter strips at the eaves and rakes. WindProven: LayerLock shingles plus at least four qualifying GAF accessories.</td></tr>
+            <tr><td>Owens Corning Duration Series</td><td>130 mph</td><td>160 mph</td><td>Owens Corning&rsquo;s Enhanced Wind Application Instructions, Owens Corning starter at the eaves and rakes, qualifying Owens Corning hip and ridge, and qualifying underlayment, plus an Owens Corning ice and water barrier or VentSure ventilation.</td></tr>
+            <tr><td>CertainTeed Landmark family</td><td>110 mph</td><td>160 mph</td><td>No roof-over, CertainTeed hip and ridge caps, and CertainTeed starter at the eaves and rakes.</td></tr>
+            <tr><td>Atlas Pinnacle Impact, Sun and Pristine</td><td>130 mph</td><td>Up to 160 mph from October 1, 2026</td><td>A qualifying Atlas Signature Select system, with Atlas Pro-Cut starter on the eave and the rake.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Editions matter. The Owens Corning figures come from its August 2026 warranty and apply to shingles bought after August 1, 2026. The CertainTeed figures come from its 2026 warranty for shingles installed between January 1 and December 31, 2026. Some older CertainTeed brochures still say 130 mph, so read the current warranty, not a brochure.</p>
+    </section>
+
+    <section class="step">
+      <h2>Why do the required accessories matter?</h2>
+      <p>The top wind level is a system promise, not a shingle promise. If one required piece is missing, the manufacturer&rsquo;s own wording says the lower level applies. The shingle can carry a 130 or 160 label and the warranty on your roof can still be the standard level.</p>
+      <p>Owens Corning&rsquo;s warranty says that if all requirements for the enhanced level are not met, including strictly following its Enhanced Wind Application Instructions, then the standard wind warranty applies. GAF&rsquo;s chart says Timberline HDZ is covered up to its 130 mph maximum only if it is installed with four nails per shingle and GAF starter strip products at the eaves and rakes. For installs that do not qualify, GAF&rsquo;s maximum is 110 mph.</p>
+      <div class="highlight-box">
+        <p><strong>The insider point.</strong> On GAF Timberline HDZ, a roof installed without GAF starter strips at the eaves and rakes has a 110 mph wind warranty, not 130. On the other brands in the table, missing a required piece drops the roof from the top level to the standard level. The number on the bundle is the ceiling. The level on your roof is the one the installation qualifies for.</p>
+      </div>
+      <p>Starter shingles are the piece people skip. They sit along the eaves and rakes, the edges where wind gets under a roof first, and every brand in the table above names them. A bid that leaves them out is worth a question. We do not state prices here because they vary by job.</p>
+    </section>
+
+    <section class="step">
+      <h2>What does GAF&rsquo;s &ldquo;no limit&rdquo; wind warranty require?</h2>
+      <p>GAF&rsquo;s WindProven Limited Wind Warranty has no maximum wind speed limit, a 15-year term, and no registration step. It requires LayerLock-labeled shingles with four nails per shingle, plus at least four qualifying GAF accessories: starter strips at the eaves and rakes, ridge cap shingles, roof deck protection, and either attic ventilation or a leak barrier.</p>
+      <p>On GAF&rsquo;s comparison chart, WindProven is listed with its system warranties, not with the base Shingle &amp; Accessory warranty, whose maximum is 130 mph with Special Installation. So &ldquo;no limit&rdquo; is not automatic. It depends on the shingle, the accessories and the warranty the contractor sets up. Our <a href="/blog/roof-shingle-warranty-tiers-explained.html">warranty tiers article</a> explains how the tiers fit together.</p>
+    </section>
+
+    <section class="step">
+      <h2>How long does a shingle wind warranty last?</h2>
+      <p>In the current documents we read, GAF, Owens Corning and CertainTeed each give a 15-year wind period. Atlas publishes its wind term in its warranty, which we did not read for this guide, so ask for it. A 15-year wind period is shorter than the &ldquo;lifetime&rdquo; wording used for the shingle itself.</p>
+      <p>That is another reason to get the wind level in writing. A promise that lasts 15 years should be named on the contract, with the product names behind it, so the paperwork is there if you need it.</p>
+    </section>
+
+    <section class="step">
+      <h2>What does a wind warranty not cover?</h2>
+      <p>A wind warranty is a product promise about shingles that blow off. It is separate from your homeowners policy. This guide does not say whether your policy pays for wind or hail damage, and a wind warranty does not answer that question either. Read your policy or ask your insurer.</p>
+      <p>Each warranty has its own exclusions and registration rules, so read them before you sign. If you are not sure whether damage on your roof came from wind or hail, our article on <a href="/blog/hail-vs-wind-roof-damage.html">hail versus wind roof damage</a> explains the difference in plain terms.</p>
+    </section>
+
+    <section class="step">
+      <h2>What should I ask a roofing contractor about wind ratings?</h2>
+      <p>Ask one question first: which wind warranty level will you register, in writing, and which accessories are in the bid? Then ask every contractor the same follow-ups so the answers line up side by side.</p>
+      <p>Questions to copy:</p>
+      <ul>
+        <li>Which shingle line is in the bid, and which wind warranty level will you register for it? Please write the speed and the warranty name.</li>
+        <li>Which starter shingle is on the eaves, and is it on the rakes too?</li>
+        <li>Which hip and ridge product is in the bid, and is it the manufacturer&rsquo;s own?</li>
+        <li>Which underlayment, ice and water barrier or ventilation product is in the bid?</li>
+        <li>How many nails per shingle will you use, and does that match the manufacturer&rsquo;s requirement for the level you named?</li>
+        <li>Who files the warranty, by when, and will I get a copy of the confirmation?</li>
+        <li>Does the manufacturer&rsquo;s current warranty for my install date say the same thing?</li>
+      </ul>
+      <p>Put the answers on one page. Our <a href="/guides/roof-bid-comparison-worksheet.html">roof bid comparison worksheet</a> has room for the warranty line, and our <a href="/guides/roofing-contract-checklist-before-you-sign.html">contract checklist</a> covers what to have in writing before you sign.</p>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>Otter Quotes creates a written scope of work for your project and sends it to multiple contractors. Contractors who receive the scope can submit bids on that same scope and the same measurements. You compare the bids online, next to reviews and licensing information, and sign online without a salesperson in your home. Subcontractors bid too, so you may be able to work directly with the crew that does the work. We do not work with your insurance company. We are not a contractor, we do not sell upgrades, and we do not offer inspections or assessments. Contractors pay Otter Quotes a fee on the accepted bid.</p>
+      <div class="cta-box cta-box-button">
+        <a class='btn btn-primary btn-lg' href="/start">Get my bids today</a>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>What is the difference between a wind rating and a wind warranty?</h3>
+        <div class="faq-answer">
+          <p>A wind rating such as ASTM D3161 Class F or D7158 Class H is a lab test result. A wind warranty is the manufacturer's written promise to cover shingles that blow off, up to a stated speed, for a stated term. The warranted speed on your roof depends on the product and on how it was installed.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does a 130 mph shingle always carry a 130 mph warranty?</h3>
+        <div class="faq-answer">
+          <p>No. On GAF Timberline HDZ, the 130 mph level applies only with four nails per shingle and GAF starter strips at the eaves and rakes. Without that special installation, the wind warranty is 110 mph. Other brands set their own conditions, so ask which level the bid will register.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>How long does a shingle wind warranty last?</h3>
+        <div class="faq-answer">
+          <p>In the current warranties we read, GAF, Owens Corning and CertainTeed each give a 15-year wind period. Atlas sets its own term in its warranty. Terms change by edition and by install date, so read the manufacturer's current warranty on the day you sign.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What should I ask a roofing contractor about wind warranties?</h3>
+        <div class="faq-answer">
+          <p>Ask which wind warranty level the contractor will register, in writing, and which accessories are in the bid. Those usually include starter shingles at the eaves and rakes, matching hip and ridge caps, and underlayment. Ask for the product names, not just the word accessories.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does Otter Quotes work with my insurance company?</h3>
+        <div class="faq-answer">
+          <p>No. We do not work with your insurance company, we do not offer inspections or assessments, and we are not a contractor. Otter Quotes creates a written scope of work for your project and sends it to multiple contractors, who can submit bids on that same scope. Questions about your policy go to your insurer.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="step">
+      <h2>Sources</h2>
+      <p>Wind warranty terms change by edition and install date. Figures here were read in October 2026.</p>
+      <ul>
+        <li><a href="https://www.gaf.com/en-us/resources/warranties/residential" target="_blank" rel="noopener">GAF, residential warranty comparison chart</a>: wind terms by warranty, 110 mph without Special Installation, 130 mph with it, WindProven, 15-year wind term, the Special Installation footnote.</li>
+        <li><a href="https://www.gaf.com/for-homeowners/warranties/windproven" target="_blank" rel="noopener">GAF, WindProven Limited Wind Warranty page</a>: no maximum wind speed limit, 15-year term, no registration, required accessories.</li>
+        <li><a href="https://www.gaf.com/en-us/roofing-materials/residential-roofing-materials/shingles/timberline-hdz" target="_blank" rel="noopener">GAF, Timberline HDZ product page</a>: ASTM D3161 Class F and ASTM D7158 Class H listings.</li>
+        <li><a href="https://www.owenscorning.com/dms/10023873" target="_blank" rel="noopener">Owens Corning, Standard Product Limited Warranty, Pub. No. 10023873-I, August 2026</a>: Duration Series 130 mph standard, 160 mph enhanced, 15-year wind period, what happens if enhanced requirements are not met. Applies to shingles bought after August 1, 2026.</li>
+        <li><a href="https://www.owenscorning.com/en-us/roofing/shingles/trudefinition-duration" target="_blank" rel="noopener">Owens Corning, TruDefinition Duration product page</a>: 160 mph applies when Owens Corning component requirements are met and starter shingles are on both eaves and rakes.</li>
+        <li><a href="https://certainteed.widen.net/s/dk5xrnjddz/asphalt-low-slope-shingle-warranty-effective-5-1-26-00-02-5540-2605" target="_blank" rel="noopener">CertainTeed, 2026 Limited Warranty, code 00-02-5540-NA-EN, for shingles installed January 1 to December 31, 2026</a>: Landmark family 110 mph and 160 mph, 15-year wind period, no roof-over, CertainTeed hip and ridge, CertainTeed starter at eaves and rakes.</li>
+        <li><a href="https://www.certainteed.com/products/residential-roofing-products/landmark-pro" target="_blank" rel="noopener">CertainTeed, Landmark PRO product page</a>: 15-year 110 mph wind warranty and the 160 mph upgrade with CertainTeed starter and hip and ridge.</li>
+        <li><a href="https://www.atlasroofing.com/asphalt-life/atlas-updates-wind-warranty-coverage" target="_blank" rel="noopener">Atlas Roofing, wind warranty update, October 1, 2026</a>: 130 mph standard for Pinnacle Impact, Sun and Pristine; up to 160 mph for qualifying Signature Select systems; Pro-Cut starter on eave and rake.</li>
+        <li><a href="https://professionalroofing.net/articles/article/4302" target="_blank" rel="noopener">Professional Roofing magazine, article on wind testing of asphalt shingles</a>: ASTM D3161 Class F as a 110 mph fan test; ASTM D7158 Class H in design wind speed terms; D3161 results do not directly correlate to wind speeds in service.</li>
+        <li><a href="https://www.asphaltroofing.org/using-astm-d7158-where-standard-conditions-do-not-apply/" target="_blank" rel="noopener">Asphalt Roofing Manufacturers Association, ASTM D7158 page</a>: D7158 classes expressed as ultimate design wind speed.</li>
+      </ul>
+    </section>
+
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/blog/roof-shingle-warranty-tiers-explained.html">Roof Shingle Warranty Tiers Explained</a></li>
+        <li><a href="/guides/how-to-read-contractor-estimate.html">How to Read a Contractor Estimate</a></li>
+        <li><a href="/guides/roof-bid-comparison-worksheet.html">Roof Bid Comparison Worksheet</a></li>
+        <li><a href="/guides/roofing-contract-checklist-before-you-sign.html">Roofing Contract Checklist Before You Sign</a></li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Roof Wind Ratings Explained: What \"110,\" \"130\" and \"No Limit\" Really Promise",
+  "description": "What a roof wind warranty really promises, how it differs from ASTM D3161 and D7158 test classes, and what each top level requires.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-10-19",
+  "dateModified": "2026-10-19",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/roof-wind-ratings-explained.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is the difference between a wind rating and a wind warranty?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "A wind rating such as ASTM D3161 Class F or D7158 Class H is a lab test result. A wind warranty is the manufacturer's written promise to cover shingles that blow off, up to a stated speed, for a stated term. The warranted speed on your roof depends on the product and on how it was installed."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does a 130 mph shingle always carry a 130 mph warranty?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. On GAF Timberline HDZ, the 130 mph level applies only with four nails per shingle and GAF starter strips at the eaves and rakes. Without that special installation, the wind warranty is 110 mph. Other brands set their own conditions, so ask which level the bid will register."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How long does a shingle wind warranty last?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "In the current warranties we read, GAF, Owens Corning and CertainTeed each give a 15-year wind period. Atlas sets its own term in its warranty. Terms change by edition and by install date, so read the manufacturer's current warranty on the day you sign."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What should I ask a roofing contractor about wind warranties?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Ask which wind warranty level the contractor will register, in writing, and which accessories are in the bid. Those usually include starter shingles at the eaves and rakes, matching hip and ridge caps, and underlayment. Ask for the product names, not just the word accessories."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Otter Quotes work with my insurance company?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. We do not work with your insurance company, we do not offer inspections or assessments, and we are not a contractor. Otter Quotes creates a written scope of work for your project and sends it to multiple contractors, who can submit bids on that same scope. Questions about your policy go to your insurer."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "Roof Wind Ratings Explained: What \"110,\" \"130\" and \"No Limit\" Really Promise",
+      "item": "https://otterquote.com/guides/roof-wind-ratings-explained.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>
