@@ -135,10 +135,22 @@ describe('contractor-dashboard.html (gh-2105 batch 12)', () => {
     expect(b).toContain("alert('Error saving agreement acceptance. Please try again.');");
   });
 
-  it('dunning retry throws on zero rows into the existing catch', () => {
-    const b = block(src, 'const { data: dunningRows, error } = await sb', 'const banner = document.getElementById(\'dunningAlertBanner\');');
-    expect(b).toContain(".select('id')");
-    expect(b).toContain("throw new Error('zero_rows_updated: payment_failures.dunning_status')");
+  // gh-2442 (#2927) removed the browser-side payment_failures .update(): the retry is now the
+  // request_dunning_retry RPC, so there is no client .update() left in this block to chain
+  // .select('id') onto. The zero-row guarantee is asserted against what replaced it: the call
+  // must not be a direct client write, an RPC error must throw, and any status other than
+  // requested/already_requested (e.g. a zero-row / not-owned / capped result) must throw into
+  // the existing catch rather than fall through to a success path.
+  it('dunning retry has no client .update() and fails closed on an RPC error or non-accepted status', () => {
+    const b = block(src, 'async function retryDunningPayment()', '// F-007d:');
+    expect(b).not.toContain('.update(');
+    expect(b).toContain("sb.rpc('request_dunning_retry'");
+    expect(b).toContain('if (error) throw error;');
+    expect(b).toContain("if (status === 'requested' || status === 'already_requested') {");
+    expect(b).toContain("throw new Error('retry_not_accepted: '");
+    expect(b).toContain("alert('An error occurred. Please try again.');");
+    // the throw for a non-accepted status comes after the success-status return
+    expect(b.indexOf("throw new Error('retry_not_accepted: '")).toBeGreaterThan(b.indexOf("status === 'requested'"));
   });
 
   it('notification dismiss is annotated decision (b) directly above the .update(', () => {
