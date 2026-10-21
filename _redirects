@@ -134,6 +134,7 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 # above. The edge function (netlify/edge-functions/blog-guides-redirect.ts) is what actually fires;
 # these lines are the documented source of truth. scripts/check-sitemap.py fails if a generated
 # page lacks its rule here and its entry in the edge function map.
+/locations/index.html /locations/ 301
 /locations/allen-county-in/roofing/index.html /locations/allen-county-in/roofing/ 301
 /locations/butler-county-oh/roofing/index.html /locations/butler-county-oh/roofing/ 301
 /locations/cuyahoga-county-oh/roofing/index.html /locations/cuyahoga-county-oh/roofing/ 301
@@ -158,6 +159,7 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 /locations/williamson-county-tn/roofing/index.html /locations/williamson-county-tn/roofing/ 301
 /locations/wilson-county-tn/roofing/index.html /locations/wilson-county-tn/roofing/ 301
 /guides/roof-bid-comparison-worksheet /guides/roof-bid-comparison-worksheet.html 301
+/guides/roof-bid-comparison-tool /guides/roof-bid-comparison-tool.html 301
 /guides/siding-bid-comparison /guides/siding-bid-comparison.html 301
 /guides/gutter-bid-comparison /guides/gutter-bid-comparison.html 301
 /guides/roof-replacement-cost-breakdown /guides/roof-replacement-cost-breakdown.html 301
@@ -176,6 +178,20 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 /guides/second-storm-open-claim /guides/second-storm-open-claim.html 301
 /guides/hail-damaged-siding-matching-bids /guides/hail-damaged-siding-matching-bids.html 301
 /guides/roof-insurance-check-mortgage-contractor-payment /guides/roof-insurance-check-mortgage-contractor-payment.html 301
+/guides/roof-replacement-in-cold-weather /guides/roof-replacement-in-cold-weather.html 301
+/guides/how-long-does-roof-replacement-take /guides/how-long-does-roof-replacement-take.html 301
+/guides/roof-change-orders-hidden-damage /guides/roof-change-orders-hidden-damage.html 301
+/guides/roofing-contract-checklist-before-you-sign /guides/roofing-contract-checklist-before-you-sign.html 301
+/guides/roof-bid-much-lower-than-the-others /guides/roof-bid-much-lower-than-the-others.html 301
+/guides/roof-permit-in-your-bid /guides/roof-permit-in-your-bid.html 301
+/guides/roof-tarp-while-you-wait-for-repairs /guides/roof-tarp-while-you-wait-for-repairs.html 301
+/guides/roof-wind-ratings-explained /guides/roof-wind-ratings-explained.html 301
+/guides/class-4-impact-resistant-shingles /guides/class-4-impact-resistant-shingles.html 301
+/guides/algae-resistant-shingle-warranties /guides/algae-resistant-shingle-warranties.html 301
+/guides/contractor-workmanship-warranty /guides/contractor-workmanship-warranty.html 301
+/guides/limited-lifetime-shingle-warranty /guides/limited-lifetime-shingle-warranty.html 301
+/guides/manufacturer-backed-roof-warranties /guides/manufacturer-backed-roof-warranties.html 301
+/guides/contractor-offers-to-waive-deductible /guides/contractor-offers-to-waive-deductible.html 301
 
 # gh-1795: twelve blog articles promoted from otterquote-deploy/blog/ (a committed
 # May-2026 working-directory mirror, unstyled, canonicalising to a 404) to the real
