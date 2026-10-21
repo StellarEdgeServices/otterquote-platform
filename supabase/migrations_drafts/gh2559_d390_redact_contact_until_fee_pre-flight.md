@@ -1,0 +1,76 @@
+# Pre-flight: gh2559_d390_redact_contact_until_fee (D-390)
+
+Status: NOT APPLIED. Tier 3B. Decision: D-390 (Dustin, #2841 comment 6255785270, "Redact until fee (Recommended)"; both surfaces, scope note 6254337125).
+Drafted by CTO RUN 70 worker `cto70-d390`. Forward: `gh2559_d390_redact_contact_until_fee.sql`. Rollback: `gh2559_d390_redact_contact_until_fee_rollback.sql`.
+Proof: `supabase/tests/gh2559_d390_redact_proof_run.sh` (throwaway Postgres only).
+
+## 1. Where a homeowner-typed phone or e-mail reaches the selected contractor before the fee (found by reading the code on main 2c063a8)
+
+| # | surface | path | before this PR | after this PR |
+|---|---|---|---|---|
+| 1 | notes box on the contractor's pages | `claims.homeowner_notes` through `public.bidder_claim_summary`; its selected-contractor branch returned the raw column (comment in the view: "the selected contractor reads it as typed") | as typed | redacted until `platform_fee_charged IS TRUE` (view re-created, three clauses: the selected contractor's `homeowner_notes` branch now calls `d390_redact_contact` until the fee; the `estimate_filename` and `measurements_filename` CASEs gain `AND c.platform_fee_charged IS TRUE`, carried from #2931) |
+| 2 | Scope of Work PDF | `create-docusign-envelope` printed `claims.homeowner_notes` (and `project_confirmation.homeownerNotes`) under NOTES. The envelope is created at selection, before the fee | as typed | redacted in-process by `redactSowText` (`supabase/functions/_shared/homeowner-text-redact.ts`; no rpc, narrower than the bidder view, see "SOW redaction (L4)" below) until the fee; if the redaction cannot run the function refuses to build the envelope (creates and sends nothing; no marker text is printed). The four free-text keys of `project_confirmation` (`homeownerNotes`, `workNotBeingDone`, `projectNotes`, `exclusions`) are all wrapped |
+| 3 | message thread, pages | `contractor-dashboard.html` and `react-app/.../Messaging.tsx` read `public.messages` | as typed | read `public.contractor_thread_messages` (redacted body) |
+| 4 | message thread, PostgREST | a selected contractor can call `/messages` directly | as typed | restrictive policy `d390_homeowner_text_prefee`: no homeowner-sent row through the table before the fee |
+| 5 | new-message e-mail to the contractor | `send-message-notification` put the first 200 characters of the homeowner's message in the e-mail, at status "selected" (before the fee) | as typed | preview built from the redacted body; if the call fails the preview is `[removed]`, the success-path token |
+
+## 2. Design
+
+* One function, `public.d390_redact_contact(text)`: the phone and e-mail patterns of the bidder rule (rules b and c of the `ft` join in `20261008231303_gh2559_bidder_claims_view.sql`), copied verbatim; `tests/gh2559-d390-regex-parity.py` asserts each of the 7 patterns occurs verbatim in the applied view file. The web-address patterns of rule b are NOT copied (D-390 names phone and e-mail only).
+* The fee signal is `claims.platform_fee_charged IS TRUE` (D-386's signal; client sessions cannot write it, trigger `claims_guard_platform_fee_charged`). NULL and false both redact.
+* The browser never receives the unredacted text pre-fee on the surfaces above: the views and edge functions redact in the database or the edge function; the restrictive policy removes the table path.
+* Execution: Postgres checks EXECUTE on a function called inside a view as the CALLER. The first proof run failed with `permission denied for function d390_redact_contact` for `authenticated` after a REVOKE; the file therefore leaves the default EXECUTE for `authenticated` (pure function, no table access), revokes `anon` and PUBLIC, writes no GRANT, and asserts the ACL.
+* Homeowner: unchanged (owner reads her own rows and notes). Bidders: the bidder branch of the view is untouched; the proof compares an md5 of a bidder's notes before and after (identical). Service role: bypasses RLS, unchanged.
+
+## 3. Apply order and dependency
+
+1. **PR #2777 first** (gh2619 thread scope; adds `claims.contractor_released_at` and the split policies). The gate here raises `P0D01`/`P0D02` if either is missing, so the thread view can never be wider than the thread policy. Production read 2026-10-18: `claims.contractor_released_at` absent, 3 policies on `public.messages` (the pre-#2777 set).
+2. Publish the page change and deploy the two edge functions with the apply. Until the pages are published a selected contractor sees NO homeowner message before the fee (the old pages read the table, which the restrictive policy empties of homeowner rows). After the fee the old pages work again.
+3. The forward file is idempotent (CREATE OR REPLACE, DROP POLICY IF EXISTS); the proof runs it twice.
+4. Against PR #2932 (the #2931 file-path gate): apply #2932 first, then this set, then #2925; see "File-path gate carried from #2931" at the end.
+
+## 4. Pre-flight SELECTs (counts only; production, read-only, 2026-10-18)
+
+```
+claims total                                           31
+claims with notes                                       6
+claims, notes with phone/e-mail shape, all              0
+claims, same, real (is_test not true)                   0
+claims, same, real, selected, fee not charged           0
+claims, urgency_reason with the shape, real             0
+claims, project_confirmation notes with the shape       0
+claims selected and fee not charged (any)               2
+claims selected, real                                   0
+messages total / homeowner-sent                         4 / 3
+homeowner-sent with the shape, all / real               1 / 0
+homeowner-sent with the shape, real, selected, no fee   0
+policies on public.messages                             3
+claims.contractor_released_at present                   0
+```
+Blast radius today: no real claim or message changes what any contractor sees. The one matching message is on a test claim.
+
+## 5. RESIDUALS (not closed here; each named)
+
+1. **Base claims row.** The selected contractor can still read `claims.homeowner_notes`, `claims.urgency_reason` and `claims.project_confirmation` (its `homeownerNotes`, `workNotBeingDone`, `projectNotes` and `exclusions` keys) through PostgREST `/claims` (one login role serves homeowner and contractor; RLS cannot hide a column; the storage and message policies read `claims` under the caller's RLS so the selected-contractor SELECT policy cannot simply be dropped). No page reads them from the base row. Follow-up #2881. The proof row P14 records this as "still as typed". Closing it needs a split of the notes into a table the contractor policy does not reach, or definer helpers in those policies: a separate decision.
+2. Web addresses and other contact channels ("find me on Facebook") are not redacted; D-390 names phone and e-mail. Same posture as D-371: best-effort pattern matching.
+3. The Scope of Work goes to the homeowner too; she sees the redacted notes on her own copy before the fee (her own typed notes are unchanged on every other screen).
+4. `project_notes` in `autoPopulateFields` (project-confirmation DocuSign fields) is not changed; that document is created after the contract. Unverified against production timing.
+5. A contractor-typed message that repeats the homeowner's number is shown as typed (the rule is about homeowner-typed text).
+
+## 6. Verification after apply (Marty)
+
+`SELECT policyname, permissive, cmd FROM pg_policies WHERE tablename='messages' ORDER BY 1;` expects `d390_homeowner_text_prefee | RESTRICTIVE | SELECT`; `SELECT pg_get_viewdef('public.bidder_claim_summary'::regclass) LIKE '%d390_redact_contact%';` expects true; then rolled-back role-switched probes on an is_test claim as in the proof file. File-path gate (carried from #2931): `SELECT pg_get_viewdef('public.bidder_claim_summary'::regclass) LIKE '%platform_fee_charged IS TRUE THEN c.estimate_filename%'` and the same for `c.measurements_filename` both expect true (the deparsed text may differ in spacing; check that each CASE condition contains `platform_fee_charged IS TRUE`); and, as the selected contractor on a claim with `platform_fee_charged` false, `estimate_filename` and `measurements_filename` read NULL, while after the fee they read the stored path.
+
+## SOW redaction (L4, LEGAL-READ 6256737488)
+
+* The signed Scope of Work path no longer calls `public.d390_redact_contact`. `create-docusign-envelope` uses `redactSowTextOrRefuse` / `redactSowText` (in-process, no rpc). The bidder view (`bidder_claim_summary`), the thread view and the new-message e-mail preview still use `d390_redact_contact` (over-redaction is the safe side there); that function and `tests/gh2559-d390-regex-parity.py` are unchanged by this section (the parity test itself changed in 8341ea2a, see "File-path gate" below).
+* `redactSowText` removes NANP phone shapes and anchored e-mail shapes only, matches on a length-preserving folded copy and splices the matches out of the original text, and never truncates. Dates, dollar figures and ordinary prose print as typed, except the named residuals below. Proof: `supabase/functions/_shared/sow-redact.test.ts` (with a negative control against the eec5544c patterns).
+* Refusal is kept: an engine error, a non-text value or a non-string result throws `RedactionUnavailableError` (503 `d390_redaction_unavailable`). An rpc outage no longer affects the SOW.
+* Named residuals on the SOW path (removed although not a contact detail; accepted by Ben, CEO RUN 110, in 6256934420 and 6257044042, each pinned by a test): (i) bare 3-3-4 groups whose area-code and exchange groups start 2-9, separated by a run of spaces, tabs or NBSP, or one dash (U+2010 to U+2015, en-dash included) or dot (for example `250 500 1000`, `250-500-1000`, `Ordered 300<TAB>400<TAB>2500`, `Totals 250.500.1000`), plus 10-digit numbers starting 2-9 (for example a 10-digit claim number); an optional leading `1` or `+1` (11 digits, for example `12345678901`, `1 250 500 1000`, `+1 250 500 1000`) is part of the shape and is removed too (accepted consequence, pending Ben's written acceptance under 6256934420); a number starting 0, a number starting 1 that is not followed by a NANP-valid 10 digits (for example `11234567890`), or a number of 12 or more digits survives. (iii) a spelled `at` or `@`, then a word that is not a determiner, then `dot`, then a listed TLD (for example `Leak at roof dot com`, `CALL AT FRONT DOT COM`). Accepted precision-over-recall consequences of the e-mail rules: `Total @ site.com`, `Price@3.EA`, `Price at 3.CA` and `Looked at roof.com` are removed.
+* SOW advisory leaks (deliberate, precision over recall; the bidder view, thread view and e-mail preview still catch these via `d390_redact_contact`): phone numbers with a spaced or one-side-spaced dash or dot gap (`317 - 555 - 0142`, `317 -555-0142`, `317- 555-0142`); phone groups separated by `/`, `_`, the middle dot or the bullet; 7-digit and international numbers; non-ASCII digits; title-case spelled e-mail forms (`Jane At Gmail Dot Com`, `jane at gmail.Com`); a spaced `@` with an upper-case or unlisted TLD; a spelled `at` with an unlisted TLD (`.us`, `.me`, `.info`, `.biz`); and `jane @ gmail . com`.
+
+## File-path gate carried from #2931 (8341ea2a)
+
+* `bidder_claim_summary.estimate_filename` and `.measurements_filename` are returned only `WHEN c.selected_contractor_id = ct.id AND c.platform_fee_charged IS TRUE` (PR #2932 / issue #2931; matches the live storage policy on `claim-documents`). The forward and the rollback of this set both carry the gate, so neither can put the pre-fee paths back. The rollback therefore restores the fee-gated text: the 20261008231303 view plus the #2931 gate, not the bare 20261008231303 text.
+* `tests/gh2559-d390-regex-parity.py` changed in 8341ea2a: it now builds its baseline as the applied 20261008231303 statement with exactly those two clauses added (each must occur once), then compares the forward and rollback statements to that baseline, so the old checks (forward differs only in the notes clause; rollback equals baseline) still catch any other drift.
+* Apply order: PR #2932 first, then #2880, then #2925. The #2932 forward pins the live view md5 (c8ad94c4...) and refuses with P0A31 if #2880 has already replaced the view; #2880 carries the same clause, so either order cannot silently revert the gate, but only the intended order applies without a refusal and regeneration.
