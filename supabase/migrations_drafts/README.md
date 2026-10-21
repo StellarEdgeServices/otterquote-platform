@@ -83,3 +83,9 @@ Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630)
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2785_profiles_freeze_is_test_role_email` | forward (rollback and pre-flight in `supabase/migrations_rollbacks/`, the proof and runner in `supabase/tests/`) | NOT APPLIED | drafted 2026-10-14 under #2785 (triage comments 6171651955 and 6172413408); production read-only 2026-10-14 (CTO RUN 67): `authenticated` holds table-level UPDATE on `public.profiles`, policy `profiles_user_update` has no column limit, the only trigger is BEFORE INSERT. New trigger `profiles_freeze_privileged_columns` (BEFORE INSERT OR UPDATE OF is_test, role, email; a client INSERT is forced to role homeowner, is_test false, JWT email) and DROP POLICY "Users can delete own profile" (closes the delete + re-insert bypass, REVIEW 6172743018): a client UPDATE change of `is_test` or `email` is refused 42501, a client change of `role` is silently pinned (three client paths write `role`); `service_role`, owner and SECURITY DEFINER sessions untouched. Tier 3B, applies only after an R-097 24-hour notice | none |
+
+## Added 2026-10-21 (gh-2543, PR #2959, send-once marker for the contract-halt notices): 2 files here, not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2543_halt_notice_marker_unique` | forward, rollback | NOT APPLIED | drafted 2026-10-21 under #2543 (REVIEW 6301123534 point 2, Ben RETURNED 6301145200). One partial unique index on `notifications (message_preview) WHERE notification_type = 'contract_halt_notice_sent'`; additive, Tier 3A, applied only under the Tier 3B path with an R-097 notice. The halt notices are not deployed, so no row of that type exists. No database was read or written | none |
