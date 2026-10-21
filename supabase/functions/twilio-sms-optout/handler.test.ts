@@ -92,3 +92,37 @@ Deno.test("HELP, ordinary replies, and a missing/odd From change nothing", async
     assertEquals(log, [], JSON.stringify(p));
   }
 });
+
+// REVIEW 6323770893 (BLOCKING): STOP must be honoured from the signed Body alone, with or without OptOutType.
+// Keyword set: SMS terms in the CEO110 legal read s1b (STOP, END, CANCEL, QUIT, UNSUBSCRIBE, REVOKE, OPT OUT) plus the
+// s3 note that Twilio also covers OPTOUT, and Twilio's standard STOPALL.
+Deno.test("STOP body with NO OptOutType still opts the number out (fail-open fix)", async () => {
+  const { deps, log } = make();
+  assertEquals((await handle(await inbound({ From: PHONE, Body: "STOP" }), deps)).status, 200);
+  assertEquals(log, [`suppress ${PHONE} STOP`, `optedout ${PHONE} STOP`]);
+});
+
+Deno.test("keyword match ignores case and whitespace, with or without OptOutType; every standard synonym opts out", async () => {
+  for (const [body, want] of [[" stop ", "STOP"], ["Stop\n", "STOP"], ["\tQuit", "QUIT"], ["opt   out", "OPT OUT"], ["OptOut", "OPTOUT"],
+                              ["stopall", "STOPALL"], ["UNSUBSCRIBE", "UNSUBSCRIBE"], ["cancel", "CANCEL"], ["end", "END"], ["revoke", "REVOKE"]]) {
+    for (const extra of [{}, { OptOutType: "STOP" }] as Record<string, string>[]) {
+      const { deps, log } = make();
+      assertEquals((await handle(await inbound({ From: PHONE, Body: body, ...extra }), deps)).status, 200);
+      assertEquals(log, [`suppress ${PHONE} ${want}`, `optedout ${PHONE} ${want}`], `${JSON.stringify(body)} ${JSON.stringify(extra)}`);
+    }
+  }
+});
+
+Deno.test("NEGATIVE CONTROL: non-keyword bodies without OptOutType do NOT opt out", async () => {
+  for (const body of ["thanks", "stop by tomorrow", "please call me", "STOPPING", "endpoint", "yes", "HELP", "START", ""]) {
+    const { deps, log } = make();
+    assertEquals((await handle(await inbound({ From: PHONE, Body: body }), deps)).status, 200);
+    assertEquals(log, [], JSON.stringify(body));
+  }
+});
+
+Deno.test("an unsigned STOP body is still refused and writes nothing", async () => {
+  const { deps, log } = make();
+  assertEquals((await handle(await inbound({ From: PHONE, Body: "STOP" }, { sign: false }), deps)).status, 403);
+  assertEquals(log, []);
+});

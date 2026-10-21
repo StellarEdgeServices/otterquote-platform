@@ -138,8 +138,9 @@ const fail = (cors: Record<string, string>, status: number, error_code: string) 
   reply(cors, status, { success: false, error_code });
 
 function clientIp(req: Request): string | null {
+  // The first x-forwarded-for hop can be client-supplied; prefer the CDN header, else the LAST (proxy-appended) hop.
   const xff = req.headers.get("x-forwarded-for");
-  const ip = (xff ? xff.split(",")[0] : req.headers.get("cf-connecting-ip") ?? "").trim();
+  const ip = (req.headers.get("cf-connecting-ip") ?? (xff ? xff.split(",").pop() : "") ?? "").trim();
   return /^[0-9a-fA-F:.]{3,45}$/.test(ip) ? ip : null;
 }
 

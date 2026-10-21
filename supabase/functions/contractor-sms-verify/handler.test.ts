@@ -189,7 +189,7 @@ Deno.test("check approved: writes the record from DB-held disclosure text, never
   assertEquals(row.contractor_id, CID);
   assertEquals([row.is_primary, row.verification_method, row.source, row.verify_sid], [true, "sms_otp", "signup", "VEfixture"]);
   assertEquals([row.verified_at, row.last_confirmed_at], ["2026-10-21T12:00:00.000Z", "2026-10-21T12:00:00.000Z"]);
-  assertEquals([row.consent_ip, row.consent_user_agent], ["203.0.113.9", "test-ua"]);
+  assertEquals([row.consent_ip, row.consent_user_agent], ["10.0.0.1", "test-ua"]);
   assertEquals(spy.prefs, ["n1"]);
   assertEquals(new URLSearchParams(spy.twilio[0].body).get("Code"), "123456");
   assertEquals(spy.twilio[0].url, "https://verify.twilio.com/v2/Services/VAfixture/VerificationCheck");
@@ -231,4 +231,22 @@ Deno.test("CORS preflight and non-POST", async () => {
   const { deps } = make();
   assertEquals((await handle(new Request("https://x.test/f", { method: "OPTIONS", headers: { Origin: "https://app.otterquote.com" } }), deps)).status, 200);
   assertEquals((await handle(new Request("https://x.test/f", { method: "GET" }), deps)).status, 405);
+});
+
+// REVIEW 6323770893 non-blocking items.
+Deno.test("contractor with user_id null -> 403 (no one owns it), nothing happens", async () => {
+  const { deps, spy } = make({ getContractor: () => Promise.resolve({ id: CID, user_id: null }) });
+  assertEquals((await handle(post(start), deps)).status, 403);
+  nothingHappened(spy);
+});
+
+Deno.test("consent_ip: cf-connecting-ip wins; else the LAST x-forwarded-for hop, never the client-supplied first one", async () => {
+  let m = make({}, { twilioStatus: "approved" });
+  await handle(post(check), m.deps);
+  assertEquals(m.spy.inserts[0].consent_ip, "10.0.0.1");
+  m = make({}, { twilioStatus: "approved" });
+  const r = post(check);
+  r.headers.set("cf-connecting-ip", "198.51.100.7");
+  await handle(r, m.deps);
+  assertEquals(m.spy.inserts[0].consent_ip, "198.51.100.7");
 });

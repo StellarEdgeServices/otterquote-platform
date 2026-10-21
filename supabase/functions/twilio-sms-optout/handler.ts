@@ -54,6 +54,17 @@ export function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+/**
+ * Standard opt-out keywords, matched on the whole signed Body after trim, whitespace-collapse and upper-casing.
+ * Sources: SMS terms in the CEO110 legal read s1b (STOP, END, CANCEL, QUIT, UNSUBSCRIBE, REVOKE, OPT OUT); s3 of that
+ * read ("reasonable per se" list; Twilio also covers OPTOUT); STOPALL is Twilio's standard keyword. Exact match only:
+ * free-text such as "stop by tomorrow" is NOT an opt-out here (free-text flagging is a later layer).
+ */
+export const OPT_OUT_KEYWORDS: ReadonlySet<string> = new Set([
+  "STOP", "STOPALL", "END", "CANCEL", "QUIT", "UNSUBSCRIBE", "REVOKE", "OPTOUT", "OPT OUT",
+]);
+export const normalizeBody = (b: string) => b.trim().replace(/\s+/g, " ").toUpperCase();
+
 export async function handle(req: Request, d: Deps): Promise<Response> {
   if (req.method !== "POST") return refuse(405);
   const token = d.env("TWILIO_AUTH_TOKEN");
@@ -72,10 +83,11 @@ export async function handle(req: Request, d: Deps): Promise<Response> {
   const phone = (params.From || "").trim();
   if (!/^\+[1-9][0-9]{7,14}$/.test(phone)) return twiml(); // not a number we can key on; nothing to do
   const type = (params.OptOutType || "").trim().toUpperCase();
-  const body = (params.Body || "").trim().toUpperCase();
+  const body = normalizeBody(params.Body || "");
   const at = d.now().toISOString();
 
-  if (type === "STOP") {
+  // Honour STOP from the signed Body itself, whether or not Twilio tagged it (REVIEW 6323770893: no fail-open).
+  if (type === "STOP" || OPT_OUT_KEYWORDS.has(body)) {
     const keyword = body.slice(0, 32);
     // Order matters: the suppression row is the write that stops texts; the status flip is bookkeeping.
     if (!(await d.suppress(phone, keyword, at))) return refuse(500);
