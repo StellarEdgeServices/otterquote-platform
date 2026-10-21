@@ -11,6 +11,8 @@ spec = importlib.util.spec_from_file_location("syn", HERE / "gh1411-synthetic-e2
 syn = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(syn)
 
+PITCHES = [{"pitch": "%d/12" % p, "area_sf": 100.0 * p, "squares": float(p), "pct": None}
+           for p in (1, 4, 6, 8, 12, 18, 24)]  # the hand-entered 7-row table (manual_entry)
 OID = "3b4622fb-65bd-4b04-b056-1eab4b59a187"
 NOW = "2026-10-14T08:00:00Z"
 
@@ -21,7 +23,9 @@ def fixtures():
                           "status": "awaiting_fulfillment", "report_url": None, "measurements_json": None,
                           "fulfilled_at": None, "requested_by_contractor_id": syn.BUYER_CONTRACTOR_ID}],
         "claims": [{"id": syn.CLAIM_ID, "is_test": True, "measurement_shape": None,
-                    "live_charge_authorized_at": "2026-09-05 19:26:43+00", "hover_measurements": {"squares": 63.05}}],
+                    "live_charge_authorized_at": "2026-09-05 19:26:43+00",
+                    "hover_measurements": {"source": "manual_entry", "squares": 63.05, "predominant_pitch": "8/12",
+                                           "areas_by_pitch": copy.deepcopy(PITCHES)}}],
         "contractors": [{"id": syn.BUYER_CONTRACTOR_ID, "is_test": True}],
     }
 
@@ -67,6 +71,7 @@ class T(unittest.TestCase):
         self.assertIsNone(db["claims"][0]["live_charge_authorized_at"])
         self.assertEqual(db["hover_orders"][0]["status"], "completed")
         self.assertEqual(db["claims"][0]["hover_measurements"]["squares"], 63.05)  # tier does not move
+        self.assertEqual(db["claims"][0]["hover_measurements"]["areas_by_pitch"], PITCHES)  # gh-1411 must-fix (b)
 
     def test_non_test_claim_refused_before_any_write(self):  # NEGATIVE CONTROL
         db = fixtures(); db["claims"][0]["is_test"] = False
@@ -86,6 +91,13 @@ class T(unittest.TestCase):
             rc, f, _ = go(db, True, syn.RULING)
             self.assertEqual((rc, f.writes), (2, []))
 
+    def test_missing_or_empty_pitch_table_refused(self):
+        for bad in (None, [], "6/12"):
+            db = fixtures(); db["claims"][0]["hover_measurements"]["areas_by_pitch"] = bad
+            rc, f, lines = go(db, True, syn.RULING)
+            self.assertEqual((rc, f.writes), (2, []), bad)
+            self.assertTrue(any("areas_by_pitch" in l for l in lines))
+
     def test_missing_squares_refused(self):
         db = fixtures(); db["claims"][0]["hover_measurements"] = None
         self.assertEqual(go(db, True, syn.RULING)[0], 2)
@@ -98,7 +110,53 @@ class T(unittest.TestCase):
         self.assertNotIn("986ce2b6", repr(f.writes))
 
     def test_after_check_catches_a_silent_miss(self):
-        self.assertTrue(syn.check_after({"status": "awaiting_fulfillment"}, {"measurement_shape": None}))
+        self.assertTrue(syn.check_after({"status": "awaiting_fulfillment"}, {"measurement_shape": None},
+                                        fixtures()["claims"][0]))
+
+
+class MustFixB(unittest.TestCase):
+    """gh-1411 must-fix (b): the run must not overwrite the claim's hand-entered pitch table.
+    Each test fails against main d66ede2f (synthetic_measurements hard-coded one 6/12 row)."""
+
+    def test_plan_2_and_3_objects_carry_the_same_seven_rows(self):  # NEGATIVE CONTROL
+        db = fixtures()
+        steps = syn.build_steps(db["hover_orders"][0], db["claims"][0], NOW)
+        order_obj = steps[1][3]["measurements_json"]
+        claim_obj = steps[2][3]["hover_measurements"]
+        self.assertEqual(len(PITCHES), 7)
+        self.assertEqual(order_obj["areas_by_pitch"], PITCHES)
+        self.assertEqual(claim_obj["areas_by_pitch"], PITCHES)
+        self.assertEqual(claim_obj["predominant_pitch"], "8/12")
+        self.assertEqual((claim_obj["source"], claim_obj["prior_source"]), ("synthetic_e2e_gh1411", "manual_entry"))
+        self.assertEqual(claim_obj["squares"], 63.05)
+
+    def test_copy_is_deep(self):
+        db = fixtures()
+        m = syn.synthetic_measurements(db["claims"][0]["hover_measurements"], NOW)
+        m["areas_by_pitch"][0]["pitch"] = "mutated"
+        self.assertEqual(db["claims"][0]["hover_measurements"]["areas_by_pitch"], PITCHES)
+
+    def test_after_check_fails_when_pitch_table_replaced(self):  # NEGATIVE CONTROL
+        db = fixtures()
+        before = copy.deepcopy(db["claims"][0])
+        steps = syn.build_steps(db["hover_orders"][0], db["claims"][0], NOW)
+        order = dict(db["hover_orders"][0], status="completed", fulfilled_at=NOW, measurements_json=steps[1][3]["measurements_json"])
+        claim = dict(before, live_charge_authorized_at=None, measurement_shape="full",
+                     hover_measurements=steps[2][3]["hover_measurements"])
+        self.assertEqual(syn.check_after(order, claim, before), [])
+        clobbered = copy.deepcopy(claim)
+        clobbered["hover_measurements"]["areas_by_pitch"] = [{"pitch": "6/12", "area_sf": 6305.0, "squares": 63.05, "pct": None}]
+        self.assertTrue(any("areas_by_pitch changed" in b for b in syn.check_after(order, clobbered, before)))
+
+    def test_run_returns_4_if_a_write_clobbers_the_table(self):
+        class Clobber(FakeRest):
+            def patch(self, table, flt, patch):
+                if table == "claims" and "hover_measurements" in patch:
+                    patch = dict(patch, hover_measurements=dict(patch["hover_measurements"], areas_by_pitch=[{"pitch": "6/12"}]))
+                return super().patch(table, flt, patch)
+        f, lines = Clobber(fixtures()), []
+        self.assertEqual(syn.run(f, True, syn.RULING, NOW, out=lines.append), 4)
+        self.assertTrue(any("areas_by_pitch changed" in l for l in lines))
 
 
 def _b64(d):
@@ -186,15 +244,135 @@ class SecretHygiene(unittest.TestCase):
             seen.append(req.full_url)
             return R(('[{"name":"anon","api_key":"x"},{"name":"service_role","api_key":"%s"}]' % SECRETISH).encode())
         env = {"SUPABASE_ACCESS_TOKEN": "sbp_TESTONLYtoken0123456789", "SUPABASE_URL": "https://abcdefgh.supabase.co"}
-        self.assertEqual(syn.load_service_key(env, opener), SECRETISH)
+        self.assertEqual(syn.load_service_key(env, opener), SECRETISH)  # legacy-only list: the fallback
         self.assertTrue(all("sbp_TESTONLY" not in u and SECRETISH not in u for u in seen))
         self.assertIsNone(syn.load_service_key({"SUPABASE_URL": "https://abcdefgh.supabase.co"}, opener))
+
+    def test_management_api_prefers_secret_type_key_over_legacy_service_role(self):  # NEGATIVE CONTROL
+        """gh-1411 must-fix (a). Fails against main d66ede2f, which returns the legacy value."""
+        legacy = "LEGACY" + "JWTISH" + "TESTONLY"
+        secret = "sb_" + "secret_" + "TESTONLY" + "rotated0123456789"
+        listing = [{"name": "anon", "type": "legacy", "api_key": "anon-" + "TESTONLY"},
+                   {"name": "service_role", "type": "legacy", "api_key": legacy},
+                   {"name": "default", "type": "publishable", "api_key": "sb_" + "publishable_" + "TESTONLY"},
+                   {"name": "rotated_x", "type": "secret", "api_key": secret}]
+        import json
+        body = json.dumps(listing).encode()
+
+        class R:
+            def __enter__(s): return s
+            def __exit__(s, *a): return False
+            def read(s): return body
+        seen, noted = [], []
+        env = {"SUPABASE_ACCESS_TOKEN": "sbp_" + "TESTONLY" + "token0123456789", "SUPABASE_URL": "https://abcdefgh.supabase.co"}
+
+        def opener(req, timeout=0):
+            seen.append(req.full_url)
+            return R()
+        self.assertEqual(syn.load_service_key(env, opener, note=noted.append), secret)
+        self.assertEqual(noted, ["rotated_x"])  # the NAME only
+        self.assertNotIn(secret, repr(noted))
+        self.assertTrue(all(secret not in u and legacy not in u for u in seen))
+
+    def test_secret_key_pick_is_first_in_api_order_and_skips_empty(self):
+        keys = [{"name": "service_role", "type": "legacy", "api_key": "L"},
+                {"name": "empty", "type": "secret", "api_key": ""},
+                {"name": "first_secret", "type": "secret", "api_key": "S1"},
+                {"name": "second_secret", "type": "secret", "api_key": "S2"}]
+        self.assertEqual(syn.pick_api_key(keys), ("first_secret", "S1"))
+        self.assertEqual(syn.pick_api_key(list(reversed(keys))), ("second_secret", "S2"))
+
+    def test_legacy_service_role_is_only_a_fallback(self):
+        keys = [{"name": "anon", "type": "legacy", "api_key": "A"},
+                {"name": "service_role", "type": "legacy", "api_key": "L"}]
+        self.assertEqual(syn.pick_api_key(keys), ("service_role", "L"))
+        self.assertIsNone(syn.pick_api_key([{"name": "anon", "type": "legacy", "api_key": "A"}]))
+        self.assertIsNone(syn.pick_api_key([]))
+
+    def test_main_prints_key_name_never_value(self):
+        import contextlib
+        import io
+        import os
+        from unittest import mock
+        buf = io.StringIO()
+        keys = [{"name": "rotated_x", "type": "secret", "api_key": SECRETISH}]
+        with mock.patch.dict(os.environ, {"SUPABASE_URL": "https://abcdefgh.supabase.co",
+                                          "SUPABASE_ACCESS_TOKEN": "sbp_" + "TESTONLY" + "token0123456789"}, clear=True), \
+             mock.patch.object(syn, "open_no_redirect", side_effect=AssertionError("unused")), \
+             mock.patch.object(syn, "pick_api_key", wraps=syn.pick_api_key), \
+             mock.patch.object(syn.urllib.request, "Request", wraps=syn.urllib.request.Request), \
+             mock.patch.object(syn, "run", return_value=0), \
+             contextlib.redirect_stdout(buf):
+            def fake_opener(req, timeout=0):
+                import json as _j
+
+                class R:
+                    def __enter__(s): return s
+                    def __exit__(s, *a): return False
+                    def read(s): return _j.dumps(keys).encode()
+                return R()
+            orig = syn.load_service_key
+            with mock.patch.object(syn, "load_service_key", lambda e, note=None: orig(e, fake_opener, note)):
+                self.assertEqual(syn.main([]), 0)
+        self.assertIn("rotated_x", buf.getvalue())
+        self.assertNotIn(SECRETISH, buf.getvalue())
 
     def test_source_has_no_secret_on_cli_patterns(self):
         import re
         src = (HERE / "gh1411-synthetic-e2e.py").read_text()
         self.assertIsNone(re.search(r"(eyJ[A-Za-z0-9_-]{10,}\.|sb_secret_|sbp_[A-Za-z0-9]{10,})", src))
         self.assertNotIn("sys.argv[", src.replace("main(sys.argv[1:])", ""))
+
+
+class StripeLiveGuard(unittest.TestCase):
+    """Synthetic only: Stripe TEST mode, never live. Fails against main d66ede2f (no guard)."""
+    LIVE = ("sk_" + "live_" + "TESTONLY" + "abcdef0123456789", "rk_" + "live_" + "TESTONLY" + "abcdef0123456789",
+            "pk_" + "live_" + "TESTONLY" + "abcdef0123456789", "Bearer sk_" + "live_" + "TESTONLY" + "abcdef")
+    TEST = ("sk_" + "test_" + "TESTONLY" + "abcdef0123456789", "pk_" + "test_" + "TESTONLY" + "abcdef0123456789")
+
+    def test_live_vars_detected_by_name_only(self):  # NEGATIVE CONTROL
+        for i, v in enumerate(self.LIVE):
+            self.assertEqual(syn.live_stripe_vars({"STRIPE_SECRET_KEY": v, "OTHER": "x"}), ["STRIPE_SECRET_KEY"], i)
+        for v in self.TEST + ("", "ask_live_nope", "task_live_x"):
+            self.assertEqual(syn.live_stripe_vars({"STRIPE_SECRET_KEY": v}), [], v)
+
+    def test_main_refuses_before_reading_any_key_or_touching_network(self):
+        import contextlib
+        import io
+        import os
+        from unittest import mock
+        for v in self.LIVE:
+            buf = io.StringIO()
+            env = {"SUPABASE_URL": "https://abcdefgh.supabase.co", "SUPABASE_SERVICE_ROLE_KEY": SECRETISH,
+                   "STRIPE_SECRET_KEY": v}
+            with mock.patch.dict(os.environ, env, clear=True), \
+                 mock.patch.object(syn, "load_service_key", side_effect=AssertionError("key read with live Stripe key")), \
+                 mock.patch.object(syn, "Rest", side_effect=AssertionError("client built with live Stripe key")), \
+                 contextlib.redirect_stdout(buf):
+                rc = syn.main(["--execute", "--ruling", syn.RULING])
+            out = buf.getvalue()
+            self.assertEqual(rc, 1)
+            self.assertIn("REFUSED: a live-mode Stripe key", out)
+            self.assertIn("STRIPE_SECRET_KEY", out)
+            self.assertNotIn(v, out)
+            self.assertNotIn(SECRETISH, out)
+
+    def test_test_mode_stripe_key_does_not_block(self):
+        import contextlib
+        import io
+        import os
+        from unittest import mock
+        buf = io.StringIO()
+        env = {"SUPABASE_URL": "https://abcdefgh.supabase.co", "SUPABASE_SERVICE_ROLE_KEY": SECRETISH,
+               "STRIPE_SECRET_KEY": self.TEST[0]}
+        with mock.patch.dict(os.environ, env, clear=True), \
+             mock.patch.object(syn, "run", return_value=0), contextlib.redirect_stdout(buf):
+            self.assertEqual(syn.main([]), 0)
+
+    def test_script_never_references_stripe_api(self):
+        src = (HERE / "gh1411-synthetic-e2e.py").read_text()
+        self.assertNotIn("api.stripe.com", src)
+        self.assertNotIn("import stripe", src)
 
 
 class FakeHTTP:

@@ -2,11 +2,8 @@
  * gh-2105 batch 11 -- static-page zero-row-update guards on two legal/money
  * client sites that have no other test coverage:
  *
- *  1. contract-signing.html: the two role-aware signature-stamp writes
- *     (quotes.<role>_signed_at) after the BoldSign embed finishes. The
- *     docusign-webhook is the source of truth for these stamps, so a zero-row
- *     match is log-only (console.warn) -- it must not throw or alert the
- *     signer, and no new user-facing text is added.
+ *  1. contract-signing.html: (gh-2864) the signature-stamp writes were REMOVED; the
+ *     test now asserts the page makes none. The docusign-webhook is the only writer.
  *  2. contractor-bid-form.html: the change/renew-bid quotes update (total_price,
  *     fees, warranty, renewal window). A silent miss shows the contractor a
  *     "Bid updated" success screen while the price the homeowner sees never
@@ -28,31 +25,33 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..', '..', '..');
 const read = (f: string) => readFileSync(resolve(repoRoot, f), 'utf8');
 
-describe('contract-signing.html signature-stamp writes (gh-2105 batch 11)', () => {
+describe('contract-signing.html makes no signature-stamp write (gh-2864, supersedes gh-2105 batch 11 site 1)', () => {
+  // gh-2864: quotes.contractor_signed_at / homeowner_signed_at are platform-only
+  // (trigger quotes_refuse_client_signature_change). The page used to write them
+  // after the embed finished; the docusign-webhook (service_role) is the only writer.
   const src = read('contract-signing.html');
-  const start = src.indexOf("const _signedField = state.signRole === 'contractor'");
-  const end = src.indexOf("// fix4 (CEO ruling, PR #1979 comment 5698878146)", start);
+  const start = src.indexOf('async function onSigningComplete()');
+  const end = src.indexOf('// \u2500\u2500 Navigate to Step', start);
   const block = src.slice(start, end);
 
-  it('locates the stamp block', () => {
+  it('locates onSigningComplete', () => {
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
   });
 
-  it('both quotes updates chain .select(\'id\')', () => {
-    const updates = block.split(".update({ [_signedField]").length - 1;
-    expect(updates).toBe(2);
-    expect(block.split(".select('id')").length - 1).toBe(2);
+  it('onSigningComplete issues no quotes update and names no signature column in a write', () => {
+    expect(block).not.toContain('_signedField');
+    expect(block).not.toMatch(/\.update\(/);
+    expect(block).not.toMatch(/\.from\(['"]quotes['"]\)/);
   });
 
-  it('a zero-row match is logged via console.warn and never thrown', () => {
-    expect(block.split('console.warn').length - 1).toBeGreaterThanOrEqual(2);
-    expect(block).toContain('gh-2105');
-    expect(block).not.toMatch(/throw\s/);
+  it('no .update() anywhere in the page writes a signature stamp', () => {
+    expect(src).not.toMatch(/\.update\(\s*\{[^}]*(homeowner|contractor)_signed_at/);
+    expect(src).not.toContain('[_signedField]');
   });
 
-  it('existing error logging is unchanged', () => {
-    expect(block).toContain("console.error('Error updating ' + _signedField + ':', quoteErr);");
+  it('still reads the stamps (recheckSigningState and the init gate)', () => {
+    expect(src).toContain("contractor_signed_at, homeowner_signed_at, docusign_envelope_id");
   });
 });
 

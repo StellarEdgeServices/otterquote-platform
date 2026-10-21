@@ -952,8 +952,8 @@
             <div class="callout callout-info" id="noCostCallout" style="margin-bottom: var(--sp-6);">
               <div class="callout-icon">&#x1F4B3;</div>
               <div class="callout-text">
-                <div class="callout-title">No Cost to You</div>
-                <div class="callout-description">Otter Quotes is 100% free for Homeowners. The price shown in this contract is the price you pay your contractor &mdash; there are no separate fees from Otter Quotes.</div>
+                <div class="callout-title">No fee to use Otter Quotes</div>
+                <div class="callout-description">There is no fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when they complete a job. The price shown in this contract is the price you pay your contractor &mdash; other than the report fee above, there are no separate fees from Otter Quotes.</div>
               </div>
             </div>
 
@@ -1695,7 +1695,7 @@
         problems.push('homeowner attestation checkbox is visible to a contractor');
       }
       if (noCost && noCost.style.display !== 'none') {
-        problems.push('homeowner-only "No Cost to You" fee callout is visible to a contractor');
+        problems.push('homeowner-only "No fee to use Otter Quotes" fee callout is visible to a contractor');
       }
       // gh-1395 reopen: the guard must cover all four elements the issue
       // enumerated, not just the two the first patch touched. A null entry in
@@ -2018,37 +2018,14 @@
       document.getElementById('docusignSigned').style.display = 'block';
       document.getElementById('signContractBtn').disabled = false;
 
-      // Role-aware signature timestamp (E2E walk fix 2026-07-08). The
-      // docusign-webhook is the source of truth, but writing the client-side
-      // stamp keeps the UI/gates responsive before the webhook lands.
-      const _signedField = state.signRole === 'contractor' ? 'contractor_signed_at' : 'homeowner_signed_at';
-      if (sb && state.claimId) {
-        try {
-          if (state.quoteId) {
-            const { data: quoteRows, error: quoteErr } = await sb
-              .from('quotes')
-              .update({ [_signedField]: new Date().toISOString() })
-              .eq('id', state.quoteId)
-              .select('id');
-            if (quoteErr) console.error('Error updating ' + _signedField + ':', quoteErr);
-            // gh-2105: log-only. The docusign-webhook is the source of truth for
-            // this stamp, so a zero-row match must not interrupt the signer.
-            else if (!Array.isArray(quoteRows) || quoteRows.length === 0) console.warn('gh-2105: zero-row update -- quotes.' + _signedField + ' matched no rows for quote ' + state.quoteId);
-          } else if (state.contractorId) {
-            const { data: quoteRows, error: quoteErr } = await sb
-              .from('quotes')
-              .update({ [_signedField]: new Date().toISOString() })
-              .eq('claim_id', state.claimId)
-              .eq('contractor_id', state.contractorId)
-              .select('id');
-            if (quoteErr) console.error('Error updating ' + _signedField + ':', quoteErr);
-            // gh-2105: log-only (see above).
-            else if (!Array.isArray(quoteRows) || quoteRows.length === 0) console.warn('gh-2105: zero-row update -- quotes.' + _signedField + ' matched no rows for claim ' + state.claimId + ' / contractor ' + state.contractorId);
-          }
-        } catch (err) {
-          console.error('Error updating claim:', err);
-        }
-      }
+      // gh-2864: this page no longer writes quotes.contractor_signed_at /
+      // homeowner_signed_at. The signature stamps are platform-only (the
+      // quotes_refuse_client_signature_change trigger refuses a browser write);
+      // the docusign-webhook (service_role) is the only writer. Nothing below
+      // depends on the stamp: the page redirects, and the next page reads the
+      // stamp the webhook has written. A homeowner who arrives before the
+      // contractor's stamp has landed uses "Check Again" (recheckSigningState,
+      // which re-reads the quote row).
 
       // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id and
       // envelope_id removed — this is the LIVE contract_signed emission

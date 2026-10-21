@@ -219,6 +219,7 @@ const EXCLUSION_PAGES = {
  * gh-2155 HI-05c) -- traversal-blocking, not merely text-exempt, since an
  * inspector-context page must not link there AT ALL, per Ben's ruling.
  */
+const homepageMeasurementCharge = [];   // gh-2598 slice 5: $15 hits on index.html that were let through (see the crawl loop)
 const TEXT_EXEMPT_PAGES = {
   'terms.html': 'sitewide Terms of Service, linked from every footer regardless of partner type; its only dollar mentions are the unrelated $15 homeowner measurement-fee clause and a $100 liability-cap clause -- no referral fee or recruit bonus of any kind, to any partner type',
   'privacy.html': 'sitewide Privacy Policy, same footer link as terms.html; its only dollar mention is the same unrelated $15 homeowner measurement-fee clause -- no referral fee or recruit bonus of any kind',
@@ -402,7 +403,14 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspector
     if (textExemptReason(file) === null) {
       const forText = respectInspectorHiding ? stripInspectorHiddenElements(html) : html;
       const text = staticRenderedText(forText);
-      for (const h of findFeeHits(text)) hits.push({ file, term: h.term, context: h.context });
+      for (const h of findFeeHits(text)) {
+        // gh-2598 slice 5: the new homepage states the $15 homeowner measurement charge in #paid (legal-read copy). That is the same unrelated homeowner
+        // charge terms.html / privacy.html are exempt for, never a referral fee or recruit bonus. Narrow on purpose: ONLY the "$15" term, ONLY on index.html;
+        // any other dollar amount, "referral fee" or "recruit bonus" on the homepage still fails. Needs Ben's ruling (QUESTION on the slice-5 PR): the alternative is
+        // data-hide-when-inspector on that paragraph, which would make the homepage differ from the page the legal read covered.
+        if (file === 'index.html' && h.term === '$15') { homepageMeasurementCharge.push(h); continue; }
+        hits.push({ file, term: h.term, context: h.context });
+      }
     }
 
     // Outgoing edges -- gh-2155 HI-05b REVIEW FAIL (5840063832) must-fix
@@ -506,6 +514,9 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspector
     }
   }
 
+  // gh-2598 slice 5: the exemption above is exercised and is exactly the $15 homeowner charge, nothing else.
+  ok(visited.includes('index.html') && homepageMeasurementCharge.length >= 1 && homepageMeasurementCharge.every((h) => h.term === '$15' && /\$15 up front for professional measurements/.test(h.context)),
+    'JS-ON crawler: index.html is reached and its only let-through fee-pattern hit is the "$15" homeowner measurement charge (' + homepageMeasurementCharge.length + ' hit(s)); nothing else on the homepage matches');
   // The three leaks named in #2152 comment 5839667108, confirmed FIXED
   // (also exercised in isolation by tests/gh2155-hi0c-inspector-sweep.mjs,
   // but pinned here directly against the crawl's own findings).
@@ -613,6 +624,18 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspector
     'nav.js: the real-estate guide under /partners/ is NOT an inspector-context page');
   ok(!/\$|referral fee|recruit bonus/i.test(staticRenderedText(readPage('partners/how-a-home-inspector-can-point-a-client-to-bids.html'))),
     'the home-inspector guide renders no dollar sign, referral fee or recruit bonus text');
+}
+
+// cro64 (P04): the listing-agent guide under /partners/ is a real-estate partner page, not an inspector-context page.
+{
+  ok(pageRole('partners/what-a-listing-agent-can-do-about-storm-damage-before-listing.html') === 'partner',
+    'nav.js: the listing-agent storm-damage guide is a partner page (_roleFromUrl() === partner)');
+  const ctx = { window: { location: { pathname: '/partners/what-a-listing-agent-can-do-about-storm-damage-before-listing.html', search: '' }, URLSearchParams }, URLSearchParams };
+  ctx.window.window = ctx.window;
+  vm.createContext(ctx);
+  vm.runInContext(navBody, ctx);
+  ok(ctx.Nav._isInspectorTrackImmediate() === false,
+    'nav.js: the listing-agent storm-damage guide is NOT an inspector-context page');
 }
 
 console.log(`\n${pass} passed, ${fail} failed.`);

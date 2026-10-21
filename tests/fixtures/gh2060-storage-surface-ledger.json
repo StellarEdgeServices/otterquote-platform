@@ -686,6 +686,17 @@
       ]
     },
     {
+      "key": "oq-bidtool-v1",
+      "stack": "static (guides/roof-bid-comparison-tool.html)",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "tests/gh2905-bidtool-stale-state.mjs",
+          "contains": "malformed saved state never throws and falls back to a fresh state"
+        }
+      ]
+    },
+    {
       "key": "oq_nav_role",
       "also": [
         "oq_nav_role_at"

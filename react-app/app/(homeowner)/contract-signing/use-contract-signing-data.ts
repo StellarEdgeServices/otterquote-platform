@@ -16,8 +16,8 @@
  *   • createHomeownerEnvelope — buildHomeownerEnvelopeRequest → create-docusign-
  *     envelope invoke. The ONLY delta from the static call is the return_url
  *     (utils.buildHomeownerReturnUrl → the React route). EF contract UNCHANGED.
- *   • recordHomeownerSigned — the quotes.homeowner_signed_at write + the static's
- *     .eq(claim_id,contractor_id) fallback (contract-signing.html:1645-1667).
+ *   • (gh-2864) no signature-stamp write: quotes.homeowner_signed_at is written only by
+ *     the docusign-webhook (service_role); this layer never writes it.
  *   • sendContractorNudge / requestBidRenewal — the Step-3 nudge and the
  *     expired-bid send-support-email renewal. gh-1916 RETURNED 5856782745
  *     (Marty, CTO RUN 44) / D-328: sendContractorNudge now delegates the SMS
@@ -298,89 +298,9 @@ export async function createHomeownerEnvelope(args: {
   return { signingUrl: result.signing_url as string };
 }
 
-/**
- * Write quotes.homeowner_signed_at (IC 24-5-11 tracking). Mirrors the static
- * onSigningComplete update + its claim_id+contractor_id fallback
- * (contract-signing.html:1645-1667): prefer the quote id, else key on the claim +
- * contractor. Errors are logged, not thrown — the redirect proceeds regardless,
- * exactly as the static did (the webhook is the source of truth).
- *
- * gh-1940 fix2 (cto32-review-pr1979-20260915.md, finding N4): now returns
- * whether the write actually succeeded, so the caller (page.tsx) can skip
- * firing the `contract_signed` funnel event on a failed write instead of
- * counting a signature that was never durably recorded. Still never
- * throws/rejects — a `false` return is the failure signal, not an
- * exception — and the redirect still proceeds regardless, unchanged.
- *
- * gh-2105 batch 4 (decision a, LEGAL path — flag for R-177): both branches
- * below used to check only `error`, which is the exact #2103 gap — a
- * `.update()` with no `.select()` resolves `{ error: null }` even when RLS
- * or the `.eq()` filter matches ZERO rows. That is precisely the failure
- * mode fix2 above says it wants to catch ("the write actually succeeded"),
- * so a zero-row match was silently treated as success and `true` was
- * returned even though `quotes.homeowner_signed_at` — the durable record of
- * a signed contract — was never written. BEHAVIOR CHANGE: a signed contract
- * that hits a zero-row match now returns `false` (funnel event suppressed)
- * where it previously returned `true`; the redirect still proceeds
- * regardless (webhook remains the source of truth), unchanged.
- */
-export async function recordHomeownerSigned(args: {
-  claimId: string;
-  quoteId: string | null;
-  contractorId: string | null;
-  signedAt: string;
-}): Promise<boolean> {
-  try {
-    if (args.quoteId) {
-      const { data: rows, error } = await supabase
-        .from('quotes')
-        .update({ homeowner_signed_at: args.signedAt })
-        .eq('id', args.quoteId)
-        .select('id');
-      if (error) {
-        console.error('Error updating homeowner_signed_at:', error);
-        return false;
-      }
-      if (!Array.isArray(rows) || rows.length === 0) {
-        console.error(
-          'homeowner_signed_at_zero_rows: no matching quote row was updated (quoteId=' +
-            args.quoteId +
-            ')',
-        );
-        return false;
-      }
-      return true;
-    } else if (args.contractorId) {
-      const { data: rows, error } = await supabase
-        .from('quotes')
-        .update({ homeowner_signed_at: args.signedAt })
-        .eq('claim_id', args.claimId)
-        .eq('contractor_id', args.contractorId)
-        .select('id');
-      if (error) {
-        console.error('Error updating homeowner_signed_at:', error);
-        return false;
-      }
-      if (!Array.isArray(rows) || rows.length === 0) {
-        console.error(
-          'homeowner_signed_at_zero_rows: no matching quote row was updated (claimId=' +
-            args.claimId +
-            ', contractorId=' +
-            args.contractorId +
-            ')',
-        );
-        return false;
-      }
-      return true;
-    }
-    // Neither id present — nothing to write, but that is not itself a
-    // write FAILURE (matches the pre-fix2 behavior of resolving cleanly).
-    return true;
-  } catch (err) {
-    console.error('Error updating claim:', err);
-    return false;
-  }
-}
+// gh-2864: recordHomeownerSigned was removed. quotes.homeowner_signed_at is platform-only (the
+// quotes_refuse_client_signature_change trigger refuses a browser write); the docusign-webhook
+// (service_role) is its only writer. The page redirects on completion and reads the stamp later.
 
 /**
  * The post-sign redirect target. Coexistence: the React /project-confirmation route

@@ -1235,15 +1235,7 @@ const Nav = {
             <h4 class="footer-heading">Legal</h4>
             <a href="/terms.html">Terms of Service</a>
             <a href="/privacy.html">Privacy Policy</a>
-            <!-- gh-1925 item 2 (Dustin ruling 5881048326): link text is the ruled string, verbatim. Shared footer = every nav.js page. -->
             <a id="footer-do-not-sell-link" href="/privacy.html#do-not-sell-or-share">Do Not Sell or Share My Personal Information</a>
-            <!-- Moved out of the partner header nav 2026-08-25 (Dustin: "Does the
-                 agreement need its own button on our header or can it be in the
-                 disclaimers at the bottom?"). It is a reference document, not a
-                 destination — it was spending a header slot that the partner's
-                 actual account surfaces needed. Reachable from every page here,
-                 and linked again inline at the point of acceptance on the
-                 partner signup form, which is where it legally matters. -->
             <a id="footer-partner-agreement-link" href="${partnerAgreementHref}">Partner Agreement</a>
           </div>
         </div>
