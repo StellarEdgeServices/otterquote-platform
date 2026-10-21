@@ -1,0 +1,378 @@
+// gh-2559 / D-390, LEGAL-READ 6256737488 L4: the signed Scope of Work path has its own narrow redaction (redactSowText). Dates, dollar figures
+// and ordinary prose must print exactly as typed; phone numbers and e-mail addresses must be removed. LEGACY_MODEL is a JS port of the seven
+// patterns of public.d390_redact_contact at eec5544c (the function the SOW used before this change); the NEGATIVE CONTROL test shows it fails
+// the must-survive rows, so these rows are a real check and not a tautology.
+import { assert, assertEquals, assertNotEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { assertThrows } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { redactSowText, redactSowTextOrRefuse, RedactionUnavailableError } from "./homeowner-text-redact.ts";
+
+const A = "[\\p{L}\\p{N}]";
+const LEGACY_PATTERNS: Array<[RegExp, string]> = [
+  [new RegExp(`${A.replace("]", "._%+-]")}+\\s*@\\s*[\\p{L}\\p{N}-]+(\\s*\\.\\s*[\\p{L}\\p{N}-]+)*`, "gu"), "[removed]"],
+  [new RegExp(`${A.replace("]", "._%+-]")}+\\s*(?:[\\(\\[\\{<]\\s*at\\s*[\\)\\]\\}>]|\\s+at\\s+)\\s*\\p{L}[\\p{L}\\p{N}-]*(?:\\s*(?:\\.|[\\(\\[\\{<]\\s*dot\\s*[\\)\\]\\}>]|\\s+dot\\s+)\\s*\\p{L}[\\p{L}\\p{N}-]*)+`, "giu"), "[removed]"],
+  [/\S+\s+at\s+\S+\s+dot\s+\S+/gi, "[removed]"],
+  [/\S*@\S*/g, "[removed]"],
+  [/\b\d{3}[/\\]\d{4}\b/g, "[removed]"],
+  [/\(?\d{3}\)?[^\p{L}\p{N},\n]{1,3}\d{3}[^\p{L}\p{N},\n]{1,3}\d{4}(?!\d)/gu, "[removed]"],
+  [/(\+?\d[\s().-]*){7,}/g, "[removed] "],
+];
+function legacyModel(t: string): string {
+  let o = t.normalize("NFKD").replace(/([A-Za-z])[̀-ͯ]+/g, "$1").normalize("NFC");
+  for (const [re, rep] of LEGACY_PATTERNS) o = o.replace(re, rep);
+  return o;
+}
+
+const SURVIVE = [
+  "Install by 11-15-2026 please",
+  "Install by 11.15.2026",
+  "Deadline 2026-11-15",
+  "Adjuster approved $12500.00 for the roof",
+  "Total 18450.75 approved",
+  "Paid 1500 - 2000 - 3000",
+  "Claim number 0012345678",
+  "Claim number 123456789012",
+  "Leak at chimney. Please replace flashing",
+  "Work at front. Back slope is fine",
+  "Work at front.Back slope is fine",
+  "Shingles @ 400 per square",
+  "Install by 11/15/2026, $1,250.00, 8/12 pitch, 2400 sq ft",
+  "café — 40 ft² and ½ inch gap",
+  "Call after 5 pm; ask for the 555-0142 line",
+  // fix2880d B1 (item@price) and B2 (figure lists with spaced separators)
+  "3 bundles@32.50 each",
+  "Drip edge 10pcs@12.50",
+  "Shingles@400.00/sq",
+  "Shingles @400 per square",
+  "Shingles@ 400 per sq",
+  "2 rolls@85",
+  "ice & water 2 rolls @ 85.00",
+  "Paid 250 - 500 - 1000",
+  "Paid 250 . 500 . 1000",
+  "Bids 850, 900, 1200",
+  "Policy 123456789012",
+  "Window 10:30-12:00 on 11/15",
+  "Meet at gate dot five",
+  "Leak at back dot matrix",
+  "Paid at closing.Net amount $5000",
+  // fix2880e B4 (slash/underscore/middle dot/bullet are not phone separators), B5 (spaced @ needs a listed lower-case TLD), residual (ii) (no English-word TLDs)
+  "Limits 250/500/1000",
+  "Bids 850/900/1200",
+  "Coverage 250_500_1000",
+  "Line items 250 \u2022 500 \u2022 1000",
+  "250 \u00b7 500 \u00b7 1000",
+  "Shingles @ 400.Total due",
+  "Gutter guards @ 6.LF",
+  "Labor @ 75.hr",
+  "Arrive @ 8.AM",
+  "Paid @ closing.Net $5000",
+  "meet @ gate.Then call",
+  "Done @ noon.OK?",
+  "Leak at chimney.it leaks",
+  "Leak at front.in the valley",
+  "Work at back.me too",
+  "We met at noon.IT guy came",
+  // fix2880f: spelled at...dot with a determiner or article right before dot is prose
+  "Look at the dot com era",
+  "LOOK AT THE DOT COM ERA",
+  "Stop at your dot net page",
+  "Look at this dot com idea",
+  // fix2880g (B6): the same determiner exclusion on the spaced-@ form
+  "Meet @ the dot com booth",
+  "Meet @ a dot org table",
+  "Look @ this (dot) com idea",
+  "Seen @ that dot com era",
+];
+const REDACT: Array<[string, string]> = [
+  ["call (317) 555-0142 today", "call [removed] today"],
+  ["call 317-555-0142 today", "call [removed] today"],
+  ["call 317.555.0142 today", "call [removed] today"],
+  ["call +1 317 555 0142 today", "call [removed] today"],
+  ["call 3175550142 today", "call [removed] today"],
+  ["call 13175550142 today", "call [removed] today"],
+  ["call ３１７－５５５－０１４２ today", "call [removed] today"],
+  ["mail jane.doe@example.com now", "mail [removed] now"],
+  ["mail jane.doe@example.com. Thanks", "mail [removed]. Thanks"],
+  ["mail jane at example dot com now", "mail [removed] now"],
+  ["mail jane (at) example (dot) com now", "mail [removed] now"],
+  ["mail jane at example.com now", "mail [removed] now"],
+  ["mail jane＠example.com now", "mail [removed] now"],
+  // fix2880d B3 (regression: spaces around the at-sign, case-insensitive (at)/(dot), space before the dot) and advisories
+  ["jane @ gmail.com", "[removed]"],
+  ["jane@ gmail.com", "[removed]"],
+  ["jane @gmail.com", "[removed]"],
+  ["jane@gmail .com", "[removed]"],
+  ["jane(AT)gmail.com", "[removed]"],
+  ["jane (AT) gmail (DOT) com", "[removed]"],
+  ["jane AT gmail DOT com", "[removed]"],
+  ["JANE@GMAIL.COM", "[removed]"],
+  ["jane at gmail.co.uk", "[removed]"],
+  ["jane at gmail dot co dot uk", "[removed]"],
+  ["jane at yahoo.ca", "[removed]"],
+  ["jane at mail.dev", "[removed]"],
+  ["jane at mail.io", "[removed]"],
+  ["mail jane@example.com.", "mail [removed]."],
+  ["317\u2013555\u20130142", "[removed]"],
+  ["(317)555-0142", "[removed]"],
+  ["317-555-0142 ext 12", "[removed] ext 12"],
+  ["Install by 11-15-2026, call 317-555-0142 or jane@example.com", "Install by 11-15-2026, call [removed] or [removed]"],
+];
+
+Deno.test("SOW redaction: every must-survive row prints verbatim", () => {
+  for (const t of SURVIVE) assertEquals(redactSowText(t), t, t);
+});
+
+Deno.test("SOW redaction: every must-redact row has the contact detail cut out and nothing else changed", () => {
+  for (const [t, want] of REDACT) assertEquals(redactSowText(t), want, t);
+});
+
+// KNOWN RESIDUAL (carve-out question for Ben, not solved here): these are phone-shaped and ARE removed. Asserting the current behaviour keeps it visible.
+Deno.test("KNOWN RESIDUAL: bare 3-3-4 figures with groups starting 2-9, and 10-digit numbers starting 2-9, are removed as phone-shaped", () => {
+  assertEquals(redactSowText("Paid 250-500-1000"), "Paid [removed]");
+  assertEquals(redactSowText("Paid 250 500 1000"), "Paid [removed]");
+  assertEquals(redactSowText("Policy 9876543210"), "Policy [removed]");
+  assertEquals(redactSowText("Looked at roof.com was not involved"), "[removed] was not involved"); // spelled-at plus common TLD cannot tell a word from a handle
+});
+
+// the patterns of head 2f6d1753 (one-separator rule, letters-only TLD and the B3 forms were absent); a second negative control
+const PREV_SEP = "[ \\t\\u00a0\\u00ad\\u200b-\\u200d\\u2060\\ufeff.\\-\\u2010-\\u2015]";
+const PREV_LOCAL = "(?<![A-Za-z0-9._%+\\-])[A-Za-z0-9._%+\\-]+";
+const PREV_LABEL = "[A-Za-z0-9](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?";
+const PREV_DOT = "(?:[ \\t]*[\\(\\[\\{<][ \\t]*dot[ \\t]*[\\)\\]\\}>][ \\t]*|[ \\t]+dot[ \\t]+)";
+const PREV_PATTERNS: RegExp[] = [
+  new RegExp(`(?<!\\d)(?<!\\d[.,\\-])(?:\\+?1${PREV_SEP}*)?(?:\\(\\s*[2-9]\\d{2}\\s*\\)|[2-9]\\d{2})${PREV_SEP}*[2-9]\\d{2}${PREV_SEP}*\\d{4}(?!\\d)(?![.,]\\d)`, "g"),
+  new RegExp(`${PREV_LOCAL}(?:@|[ \\t]*[\\(\\[\\{<][ \\t]*at[ \\t]*[\\)\\]\\}>][ \\t]*)${PREV_LABEL}(?:(?:${PREV_DOT}|\\.)${PREV_LABEL})+(?![A-Za-z0-9\\-])`, "g"),
+  new RegExp(`${PREV_LOCAL}[ \\t]+at[ \\t]+${PREV_LABEL}(?:\\.${PREV_LABEL})*${PREV_DOT}${PREV_LABEL}(?:(?:${PREV_DOT}|\\.)${PREV_LABEL})*(?![A-Za-z0-9\\-])`, "gi"),
+  new RegExp(`${PREV_LOCAL}[ \\t]+at[ \\t]+${PREV_LABEL}(?:\\.${PREV_LABEL})*\\.(?:com|net|org|edu|gov|io|co|us|biz|info)(?![A-Za-z0-9\\-])`, "gi"),
+];
+const prevModel = (t: string) => PREV_PATTERNS.reduce((o, re) => o.replace(re, "[removed]"), t);
+
+Deno.test("NEGATIVE CONTROL 2 (head 2f6d1753): the previous SOW patterns damage the fix2880d must-survive rows and leak the B3 / advisory forms", () => {
+  for (const t of ["3 bundles@32.50 each", "Drip edge 10pcs@12.50", "Shingles@400.00/sq", "Paid 250 - 500 - 1000", "Paid 250 . 500 . 1000"]) {
+    assertNotEquals(prevModel(t), t, `previous patterns should damage: ${t}`);
+  }
+  for (const t of ["jane @ gmail.com", "jane@ gmail.com", "jane @gmail.com", "jane@gmail .com", "jane(AT)gmail.com", "jane (AT) gmail (DOT) com", "jane at yahoo.ca", "jane at gmail.co.uk"]) {
+    assert(!/^\[removed\]$/.test(prevModel(t)), `previous patterns should leak (not fully redact): ${t} -> ${prevModel(t)}`);
+    assertEquals(redactSowText(t), "[removed]", t);
+  }
+});
+
+// ---- the patterns of head 1ac6f859, verbatim (identifiers suffixed _P3), for NEGATIVE CONTROL 3 ----
+// Phone group gap: at most ONE separator character (a run of plain spaces counts as one). A dash, dot or slash with spaces around it ("250 - 500 - 1000")
+// is two characters and is not a phone gap, so a figure list survives. A bullet or middle dot may carry spaces ("317 . 555 . 0142" style layouts).
+// Zero-width and soft-hyphen characters are ignored around a gap.
+const ZW_P3 = "[\\u00ad\\u200b-\\u200d\\u2060\\ufeff]*";
+const GAP_P3 = `${ZW_P3}(?:[ \\t\\u00a0]+|[.\\-\\u2010-\\u2015/_]|[ \\t\\u00a0]*[\\u00b7\\u2022][ \\t\\u00a0]*)?${ZW_P3}`;
+const ci_P3 = (w: string) => [...w].map((c) => `[${c.toUpperCase()}${c.toLowerCase()}]`).join("");
+const AT_W_P3 = ci_P3("at");
+const DOT_W_P3 = ci_P3("dot");
+const LOCAL_P3 = "(?<![A-Za-z0-9._%+\\-])[A-Za-z0-9._%+\\-]+";
+const LABEL_P3 = "[A-Za-z0-9](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?";
+const DOT_TOKEN_P3 = `(?:[ \\t]*[\\(\\[\\{<][ \\t]*${DOT_W_P3}[ \\t]*[\\)\\]\\}>][ \\t]*|[ \\t]+${DOT_W_P3}[ \\t]+)`;
+const DOT_ANY_P3 = `(?:${DOT_TOKEN_P3}|[ \\t]*\\.)`;
+const TLD_END_P3 = "(?![A-Za-z0-9\\-])";
+const TLD_LIST_P3 = ["com", "net", "org", "edu", "gov", "mil", "io", "co", "us", "biz", "info", "ca", "me", "dev", "app", "ai", "xyz", "online", "email", "uk", "au", "nz", "de", "fr", "es", "it", "nl", "in", "ie"];
+// lower case or all upper case only: a sentence-initial capital ("front.Back", "roof.In") is not a TLD
+const TLDS_P3 = `(?:${[...TLD_LIST_P3, ...TLD_LIST_P3.map((t) => t.toUpperCase())].join("|")})`;
+
+const SOW_PATTERNS_P3: RegExp[] = [
+  // phone: NANP, group gaps of at most one separator character
+  new RegExp(
+    `(?<!\\d)(?<!\\d[.,\\-])(?:\\+?1${GAP_P3})?(?:\\(\\s*[2-9]\\d{2}\\s*\\)|[2-9]\\d{2})${GAP_P3}[2-9]\\d{2}${GAP_P3}\\d{4}(?!\\d)(?![.,]\\d)`,
+    "g",
+  ),
+  // e-mail: local, then "@" (spaces allowed) or "(at)" in any case, then a domain whose LAST label is letters only (2+); at least one dot or dot token
+  new RegExp(
+    `${LOCAL_P3}(?:[ \\t]*@[ \\t]*|[ \\t]*[\\(\\[\\{<][ \\t]*${AT_W_P3}[ \\t]*[\\)\\]\\}>][ \\t]*)${LABEL_P3}(?:${DOT_ANY_P3}${LABEL_P3})*${DOT_ANY_P3}[A-Za-z]{2,}${TLD_END_P3}`,
+    "g",
+  ),
+  // e-mail: "local at domain dot tld" (explicit dot token, common TLD)
+  new RegExp(`${LOCAL_P3}[ \\t]+${AT_W_P3}[ \\t]+(?:${LABEL_P3}\\.)*${LABEL_P3}${DOT_TOKEN_P3}(?:${LABEL_P3}${DOT_ANY_P3})*${TLDS_P3}${TLD_END_P3}`, "g"),
+  // e-mail: "local at domain.tld" with a common TLD (multi-label such as gmail.co.uk is taken whole)
+  new RegExp(`${LOCAL_P3}[ \\t]+${AT_W_P3}[ \\t]+(?:${LABEL_P3}\\.)+${TLDS_P3}${TLD_END_P3}`, "g"),
+];
+
+const prevModel3 = (t: string) => SOW_PATTERNS_P3.reduce((o, re) => o.replace(re, "[removed]"), t);
+
+Deno.test("NEGATIVE CONTROL 3 (head 1ac6f859): its patterns damage the fix2880e must-survive rows; the current patterns do not", () => {
+  const rows = [
+    "Limits 250/500/1000", "Bids 850/900/1200", "Coverage 250_500_1000", "Line items 250 \u2022 500 \u2022 1000", "250 \u00b7 500 \u00b7 1000",
+    "Shingles @ 400.Total due", "Gutter guards @ 6.LF", "Labor @ 75.hr", "Arrive @ 8.AM", "Paid @ closing.Net $5000", "meet @ gate.Then call", "Done @ noon.OK?",
+    "Leak at chimney.it leaks", "Leak at front.in the valley", "Work at back.me too", "We met at noon.IT guy came",
+  ];
+  for (const t of rows) {
+    assertNotEquals(prevModel3(t), t, `1ac6f859 patterns should damage: ${t}`);
+    assertEquals(redactSowText(t), t, t);
+  }
+  assertEquals(redactSowText("jane @ gmail.com"), "[removed]");
+});
+
+// advisory leaks (accepted: precision over recall on the signed SOW); asserted so the trade stays visible
+// ---- the patterns of head 77149bc3, verbatim (identifiers suffixed _P4), for the fix2880f negative control ----
+// Phone group gap: at most ONE separator character (a run of plain spaces counts as one). A dash, dot or hyphen with spaces around it ("250 - 500 - 1000")
+// is two characters and is not a phone gap, so a figure list survives. "/", "_", the middle dot and the bullet are NOT separators (precision over
+// recall on the signed SOW: "Limits 250/500/1000" is a figure list; "317/555-0142" is an accepted advisory leak).
+// Zero-width and soft-hyphen characters are ignored around a gap.
+const ZW_P4 = "[\\u00ad\\u200b-\\u200d\\u2060\\ufeff]*";
+const GAP_P4 = `${ZW_P4}(?:[ \\t\\u00a0]+|[.\\-\\u2010-\\u2015])?${ZW_P4}`;
+const ci_P4 = (w: string) => [...w].map((c) => `[${c.toUpperCase()}${c.toLowerCase()}]`).join("");
+const AT_W_P4 = ci_P4("at");
+const DOT_W_P4 = ci_P4("dot");
+const LOCAL_P4 = "(?<![A-Za-z0-9._%+\\-])[A-Za-z0-9._%+\\-]+";
+const LABEL_P4 = "[A-Za-z0-9](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?";
+const DOT_TOKEN_P4 = `(?:[ \\t]*[\\(\\[\\{<][ \\t]*${DOT_W_P4}[ \\t]*[\\)\\]\\}>][ \\t]*|[ \\t]+${DOT_W_P4}[ \\t]+)`;
+const DOT_ANY_P4 = `(?:${DOT_TOKEN_P4}|[ \\t]*\\.)`;
+const TLD_END_P4 = "(?![A-Za-z0-9\\-])";
+// Listed TLDs: NO word of English (no it, in, me, us, to, be, so ...): "Leak at front.in the valley" must print as typed. Lower case, or all
+// upper case for the spelled forms; a capitalised "front.Back" is never a TLD. A multi-part domain (gmail.co.uk) is taken whole.
+const TLD_LIST_P4 = ["com", "net", "org", "edu", "gov", "io", "dev", "ca", "uk", "co", "pro"];
+const TLDS_P4 = `(?:${[...TLD_LIST_P4, ...TLD_LIST_P4.map((t) => t.toUpperCase())].join("|")})`;
+const TLDS_LOWER_P4 = `(?:${TLD_LIST_P4.join("|")})`;
+const SPACED_DOT_P4 = `(?:${DOT_TOKEN_P4}|[ \\t]*\\.)`;
+
+const SOW_PATTERNS_P4: RegExp[] = [
+  // phone: NANP, group gaps of at most one separator character
+  new RegExp(
+    `(?<!\\d)(?<!\\d[.,\\-])(?:\\+?1${GAP_P4})?(?:\\(\\s*[2-9]\\d{2}\\s*\\)|[2-9]\\d{2})${GAP_P4}[2-9]\\d{2}${GAP_P4}\\d{4}(?!\\d)(?![.,]\\d)`,
+    "g",
+  ),
+  // e-mail, no space around the at-sign: local@domain whose LAST label is letters only (2+)
+  new RegExp(`${LOCAL_P4}@${LABEL_P4}(?:${DOT_ANY_P4}${LABEL_P4})*${DOT_ANY_P4}[A-Za-z]{2,}${TLD_END_P4}`, "g"),
+  // e-mail, "(at)" in any case: domain whose last label is letters only (2+)
+  new RegExp(
+    `${LOCAL_P4}[ \\t]*[\\(\\[\\{<][ \\t]*${AT_W_P4}[ \\t]*[\\)\\]\\}>][ \\t]*${LABEL_P4}(?:${DOT_ANY_P4}${LABEL_P4})*${DOT_ANY_P4}[A-Za-z]{2,}${TLD_END_P4}`,
+    "g",
+  ),
+  // e-mail, whitespace on either side of "@": only when the domain starts with a letter, has a dot and ends in a LISTED lower-case TLD
+  new RegExp(
+    `${LOCAL_P4}(?:[ \\t]+@[ \\t]*|[ \\t]*@[ \\t]+)[A-Za-z](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?(?:${SPACED_DOT_P4}${LABEL_P4})*${SPACED_DOT_P4}${TLDS_LOWER_P4}${TLD_END_P4}`,
+    "g",
+  ),
+  // e-mail: "local at domain dot tld" (explicit dot token, listed TLD)
+  new RegExp(`${LOCAL_P4}[ \\t]+${AT_W_P4}[ \\t]+(?:${LABEL_P4}\\.)*${LABEL_P4}${DOT_TOKEN_P4}(?:${LABEL_P4}${DOT_ANY_P4})*${TLDS_P4}${TLD_END_P4}`, "g"),
+  // e-mail: "local at domain.tld" with a listed TLD (multi-label such as gmail.co.uk is taken whole)
+  new RegExp(`${LOCAL_P4}[ \\t]+${AT_W_P4}[ \\t]+(?:${LABEL_P4}\\.)+${TLDS_P4}${TLD_END_P4}`, "g"),
+];
+
+const prevModel4 = (t: string) => SOW_PATTERNS_P4.reduce((o, re) => o.replace(re, "[removed]"), t);
+
+Deno.test("fix2880f: determiner before dot survives (negative control: 77149bc3 patterns removed it); a real spelled address still redacts", () => {
+  const rows = ["Look at the dot com era", "LOOK AT THE DOT COM ERA", "Stop at your dot net page", "Look at this dot com idea"];
+  for (const t of rows) {
+    assertNotEquals(prevModel4(t), t, `77149bc3 patterns should damage: ${t}`);
+    assertEquals(redactSowText(t), t, t);
+  }
+  assertEquals(redactSowText("mail jane at gmail dot com now"), "mail [removed] now");
+  assertEquals(redactSowText("mail jane at a.gmail dot com now"), "mail [removed] now");
+});
+
+// NAMED RESIDUAL (iii) for Ben: spelled "at ... dot" with a word domain that is not a determiner is removed (proper-noun-shaped, indistinguishable from a handle)
+// ---- the patterns of head ccfa491e, verbatim (identifiers suffixed _P5), for the fix2880g negative control ----
+// Phone group gap: at most ONE separator character (a run of plain spaces counts as one). A dash, dot or hyphen with spaces around it ("250 - 500 - 1000")
+// is two characters and is not a phone gap, so a figure list survives. "/", "_", the middle dot and the bullet are NOT separators (precision over
+// recall on the signed SOW: "Limits 250/500/1000" is a figure list; "317/555-0142" is an accepted advisory leak).
+// Zero-width and soft-hyphen characters are ignored around a gap.
+const ZW_P5 = "[\\u00ad\\u200b-\\u200d\\u2060\\ufeff]*";
+const GAP_P5 = `${ZW_P5}(?:[ \\t\\u00a0]+|[.\\-\\u2010-\\u2015])?${ZW_P5}`;
+const ci_P5 = (w: string) => [...w].map((c) => `[${c.toUpperCase()}${c.toLowerCase()}]`).join("");
+const AT_W_P5 = ci_P5("at");
+const DOT_W_P5 = ci_P5("dot");
+const LOCAL_P5 = "(?<![A-Za-z0-9._%+\\-])[A-Za-z0-9._%+\\-]+";
+const LABEL_P5 = "[A-Za-z0-9](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?";
+const DOT_TOKEN_P5 = `(?:[ \\t]*[\\(\\[\\{<][ \\t]*${DOT_W_P5}[ \\t]*[\\)\\]\\}>][ \\t]*|[ \\t]+${DOT_W_P5}[ \\t]+)`;
+const DOT_ANY_P5 = `(?:${DOT_TOKEN_P5}|[ \\t]*\\.)`;
+const TLD_END_P5 = "(?![A-Za-z0-9\\-])";
+// Listed TLDs: NO word of English (no it, in, me, us, to, be, so ...): "Leak at front.in the valley" must print as typed. Lower case, or all
+// upper case for the spelled forms; a capitalised "front.Back" is never a TLD. A multi-part domain (gmail.co.uk) is taken whole.
+const TLD_LIST_P5 = ["com", "net", "org", "edu", "gov", "io", "dev", "ca", "uk", "co", "pro"];
+const TLDS_P5 = `(?:${[...TLD_LIST_P5, ...TLD_LIST_P5.map((t) => t.toUpperCase())].join("|")})`;
+const TLDS_LOWER_P5 = `(?:${TLD_LIST_P5.join("|")})`;
+// "Look at the dot com era": the word right before "dot" is an article or determiner, so it is prose, not a domain (any case). A proper-noun-shaped word
+// domain ("CALL AT FRONT DOT COM") is a named residual and is still removed.
+const DETERMINERS_P5 = ["the", "a", "an", "this", "that", "these", "those", "our", "your", "my", "his", "her", "its", "their", "some", "any"].map(ci_P5).join("|");
+const NOT_DETERMINER_P5 = `(?<!(?<![A-Za-z0-9\\-])(?:${DETERMINERS_P5}))`;
+const SPACED_DOT_P5 = `(?:${DOT_TOKEN_P5}|[ \\t]*\\.)`;
+
+const SOW_PATTERNS_P5: RegExp[] = [
+  // phone: NANP, group gaps of at most one separator character
+  new RegExp(
+    `(?<!\\d)(?<!\\d[.,\\-])(?:\\+?1${GAP_P5})?(?:\\(\\s*[2-9]\\d{2}\\s*\\)|[2-9]\\d{2})${GAP_P5}[2-9]\\d{2}${GAP_P5}\\d{4}(?!\\d)(?![.,]\\d)`,
+    "g",
+  ),
+  // e-mail, no space around the at-sign: local@domain whose LAST label is letters only (2+)
+  new RegExp(`${LOCAL_P5}@${LABEL_P5}(?:${DOT_ANY_P5}${LABEL_P5})*${DOT_ANY_P5}[A-Za-z]{2,}${TLD_END_P5}`, "g"),
+  // e-mail, "(at)" in any case: domain whose last label is letters only (2+)
+  new RegExp(
+    `${LOCAL_P5}[ \\t]*[\\(\\[\\{<][ \\t]*${AT_W_P5}[ \\t]*[\\)\\]\\}>][ \\t]*${LABEL_P5}(?:${DOT_ANY_P5}${LABEL_P5})*${DOT_ANY_P5}[A-Za-z]{2,}${TLD_END_P5}`,
+    "g",
+  ),
+  // e-mail, whitespace on either side of "@": only when the domain starts with a letter, has a dot and ends in a LISTED lower-case TLD
+  new RegExp(
+    `${LOCAL_P5}(?:[ \\t]+@[ \\t]*|[ \\t]*@[ \\t]+)[A-Za-z](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?(?:${SPACED_DOT_P5}${LABEL_P5})*${SPACED_DOT_P5}${TLDS_LOWER_P5}${TLD_END_P5}`,
+    "g",
+  ),
+  // e-mail: "local at domain dot tld" (explicit dot token, listed TLD)
+  new RegExp(`${LOCAL_P5}[ \\t]+${AT_W_P5}[ \\t]+(?:${LABEL_P5}\\.)*${LABEL_P5}${NOT_DETERMINER_P5}${DOT_TOKEN_P5}(?:${LABEL_P5}${DOT_ANY_P5})*${TLDS_P5}${TLD_END_P5}`, "g"),
+  // e-mail: "local at domain.tld" with a listed TLD (multi-label such as gmail.co.uk is taken whole)
+  new RegExp(`${LOCAL_P5}[ \\t]+${AT_W_P5}[ \\t]+(?:${LABEL_P5}\\.)+${TLDS_P5}${TLD_END_P5}`, "g"),
+];
+
+const prevModel5 = (t: string) => SOW_PATTERNS_P5.reduce((o, re) => o.replace(re, "[removed]"), t);
+
+Deno.test("fix2880g (B6): determiner before dot survives on the spaced-@ form (negative control: ccfa491e patterns removed it); jane @ gmail.com still redacts", () => {
+  for (const t of ["Meet @ the dot com booth", "Meet @ a dot org table", "Look @ this (dot) com idea", "Seen @ that dot com era"]) {
+    assertNotEquals(prevModel5(t), t, `ccfa491e patterns should damage: ${t}`);
+    assertEquals(redactSowText(t), t, t);
+  }
+  assertEquals(redactSowText("mail jane @ gmail.com now"), "mail [removed] now");
+  assertEquals(redactSowText("mail jane @ gmail dot com now"), "mail [removed] now");
+});
+
+Deno.test("KNOWN RESIDUAL (iii): spelled at...dot with a word domain is removed", () => {
+  assertEquals(redactSowText("CALL AT FRONT DOT COM"), "[removed]");
+  assertEquals(redactSowText("Meet @ front dot com"), "[removed]");
+  assertEquals(redactSowText("Starter @ ridge dot net"), "[removed]");
+});
+
+Deno.test("ADVISORY LEAKS: contact shapes the SOW path deliberately does not remove", () => {
+  for (const t of ["317/555-0142", "317_555_0142", "317\u00b7555\u00b70142", "jane at proton.me", "call me 555-0142", "+44 20 7946 0958"]) assertEquals(redactSowText(t), t, t);
+});
+
+Deno.test("SOW redaction: no truncation (a 50000-character note is redacted whole and finishes quickly)", () => {
+  const body = "Replace flashing at the chimney. ".repeat(1500) + "call 317-555-0142";
+  const t0 = performance.now();
+  const out = redactSowText(body);
+  assertEquals(out, "Replace flashing at the chimney. ".repeat(1500) + "call [removed]");
+  assert(out.length > 2000);
+  const long = "a".repeat(60000);
+  assertEquals(redactSowText(long), long);
+  assert(performance.now() - t0 < 3000, "linear time");
+});
+
+Deno.test("NEGATIVE CONTROL: the eec5544c patterns (legacy model) FAIL the must-survive rows the new path passes", () => {
+  const broken = SURVIVE.filter((t) => legacyModel(t) !== t);
+  // the rows named in LEGAL-READ 6256737488 must each be damaged by the old rule
+  for (const t of [
+    "Install by 11-15-2026 please", "Install by 11.15.2026", "Deadline 2026-11-15", "Adjuster approved $12500.00 for the roof",
+    "Total 18450.75 approved", "Paid 1500 - 2000 - 3000", "Claim number 0012345678", "Leak at chimney. Please replace flashing",
+    "Work at front. Back slope is fine", "Shingles @ 400 per square",
+  ]) assert(broken.includes(t), `legacy model should damage: ${t} -> ${legacyModel(t)}`);
+  assertNotEquals(legacyModel("café"), "café"); // fold side effect on printed text
+  for (const t of SURVIVE) assertEquals(redactSowText(t), t);
+});
+
+Deno.test("refusal stays meaningful: an engine error, a non-text value or a non-string result refuses; fee collected and empty text do not run the engine", () => {
+  const boom = () => { throw new Error("regex engine failed"); };
+  const e = assertThrows(() => redactSowTextOrRefuse("call 317-555-0142", false, boom), RedactionUnavailableError);
+  assertEquals((e as RedactionUnavailableError).code, "d390_redaction_unavailable");
+  assert(!String((e as Error).message).includes("317"));
+  assertThrows(() => redactSowTextOrRefuse("x", false, (() => 42) as unknown as (t: string) => string), RedactionUnavailableError);
+  assertThrows(() => redactSowTextOrRefuse({ a: 1 } as unknown as string, false), RedactionUnavailableError);
+  assertEquals(redactSowTextOrRefuse("call 317-555-0142", true, boom), "call 317-555-0142");
+  assertEquals(redactSowTextOrRefuse("", false, boom), "");
+  assertEquals(redactSowTextOrRefuse(null, false, boom), null);
+  assertEquals(redactSowTextOrRefuse(undefined, false, boom), null);
+  assertEquals(redactSowTextOrRefuse("call 317-555-0142", false), "call [removed]");
+  for (const flag of [false, null, undefined, "true", 1] as unknown[]) {
+    assertEquals(redactSowTextOrRefuse("x@y.com", flag as boolean), "[removed]");
+  }
+});
