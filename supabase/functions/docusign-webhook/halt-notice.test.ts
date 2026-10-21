@@ -9,6 +9,9 @@ import {
   contractorHaltText,
   formatUsd,
   HALT_MAIL_TIMEOUT_MS,
+  HALT_NOTICE_INDEX,
+  maskEmail,
+  maskEmails,
   HALT_NOTICE_REPLY_TO,
   HALT_NOTICE_TYPE,
   HOMEOWNER_HALT_SUBJECT,
@@ -51,7 +54,7 @@ Deno.test("gh-2543 wording: subjects and position (A) sentence", () => {
 });
 
 // ---- in-memory stub of the supabase calls sendHaltNotices makes ----
-function makeDb(opts: { homeownerEmail?: string | null; contractorEmails?: string[]; uniqueMarker?: boolean; blindCheck?: boolean } = {}) {
+function makeDb(opts: { homeownerEmail?: string | null; contractorEmails?: string[]; uniqueMarker?: boolean; blindCheck?: boolean; otherUnique?: boolean; deleteError?: { code: string; message: string }; deleteNoop?: boolean } = {}) {
   const tables: Record<string, Record<string, unknown>[]> = { notifications: [], platform_alerts_log: [] };
   const hEmail = "homeownerEmail" in opts ? opts.homeownerEmail : "ho@example.test";
   const cEmails = opts.contractorEmails ?? ["ct@example.test"];
@@ -69,7 +72,7 @@ function makeDb(opts: { homeownerEmail?: string | null; contractorEmails?: strin
       // deno-lint-ignore no-explicit-any
       const q: any = {
         select() { return q; },
-        eq(c: string, v: unknown) { filters.push([c, v]); if (mode === "delete") { tables[t] = tables[t].filter((r) => !filters.every(([k, x]) => r[k] === x)); } return q; },
+        eq(c: string, v: unknown) { filters.push([c, v]); return q; },
         limit() { return q; },
         delete() { mode = "delete"; return q; },
         // blindCheck: the pre-insert SELECT always sees "no marker" -- two simultaneous deliveries that both passed the check.
@@ -79,12 +82,25 @@ function makeDb(opts: { homeownerEmail?: string | null; contractorEmails?: strin
           // uniqueMarker: the partial unique index in migrations_drafts/gh2543_halt_notice_marker_unique.sql
           if (opts.uniqueMarker && t === "notifications" && row.notification_type === HALT_NOTICE_TYPE &&
               (tables[t] ?? []).some((r) => r.notification_type === HALT_NOTICE_TYPE && r.message_preview === row.message_preview)) {
-            return Promise.resolve({ error: { code: "23505", message: "duplicate key value violates unique constraint" } });
+            return Promise.resolve({ error: { code: "23505", message: `duplicate key value violates unique constraint "${HALT_NOTICE_INDEX}"`, details: "Key (message_preview)=(envelope=env-test-1;role=homeowner) already exists." } });
+          }
+          // otherUnique: a 23505 from some OTHER constraint (not the halt-notice index)
+          if (opts.otherUnique && t === "notifications" && row.notification_type === HALT_NOTICE_TYPE) {
+            return Promise.resolve({ error: { code: "23505", message: 'duplicate key value violates unique constraint "notifications_pkey"', details: "Key (id)=(1) already exists." } });
           }
           (tables[t] ??= []).push(row);
           return Promise.resolve({ error: null });
         },
-        then(res: (v: unknown) => unknown) { return Promise.resolve({ error: null }).then(res); },
+        then(res: (v: unknown) => unknown) {
+          if (mode !== "delete") return Promise.resolve({ error: null }).then(res);
+          // delete(): an error, a silent no-op (0 rows), or the real removal returning the removed rows
+          if (opts.deleteError) return Promise.resolve({ data: null, error: opts.deleteError }).then(res);
+          if (opts.deleteNoop) return Promise.resolve({ data: [], error: null }).then(res);
+          const match = (r: Record<string, unknown>) => filters.every(([k, x]) => r[k] === x);
+          const gone = (tables[t] ?? []).filter(match);
+          tables[t] = (tables[t] ?? []).filter((r) => !match(r));
+          return Promise.resolve({ data: gone, error: null }).then(res);
+        },
       };
       return q;
     },
@@ -233,6 +249,135 @@ Deno.test("gh-2543 several addresses: a thrown send to one address does not stop
   const r = await sendHaltNotices({ ...base(db, sent), send });
   assertEquals(r.contractor, "sent");
   assertEquals(sent.filter((m) => m.to === "b@example.test").length, 1);
+});
+
+// ---- gh-2543 PR #2959 RETURNED (Ben, CEO RUN 116): PII out of Sentry, checked delete, 23505 index match ----
+function spyBase(db: unknown, sent: HaltMail[], seen: { errs: unknown[]; ctx: unknown[] }, send?: (m: HaltMail) => Promise<number>) {
+  return {
+    ...base(db, sent),
+    reportToSentry: (e: unknown, c: unknown) => { seen.errs.push(e); seen.ctx.push(c); return Promise.resolve(); },
+    ...(send ? { send } : {}),
+  };
+}
+// every sink a halt-notice failure can reach: the Error handed to Sentry (message, name, stack), its context, console, the alerts rows
+async function sinks(run: () => Promise<unknown>, db: { tables: Record<string, unknown[]> }, seen: { errs: unknown[]; ctx: unknown[] }) {
+  const logged: string[] = [];
+  const oe = console.error, ol = console.log, ow = console.warn;
+  const grab = (...a: unknown[]) => { logged.push(a.map((x) => (x instanceof Error ? `${x.name}: ${x.message}\n${x.stack}` : typeof x === "string" ? x : JSON.stringify(x))).join(" ")); };
+  console.error = grab; console.log = grab; console.warn = grab;
+  try { await run(); } finally { console.error = oe; console.log = ol; console.warn = ow; }
+  const errs = seen.errs.map((e) => (e instanceof Error ? `${e.name}: ${e.message}\n${e.stack}` : String(e)));
+  return JSON.stringify({ logged, errs, ctx: seen.ctx, alerts: db.tables.platform_alerts_log });
+}
+const PII = ["ho@example.test", "ct@example.test", "a@example.test", "b@example.test", "12 Test Lane", "Acme Roofing", "13,561", "13,560", "13561", "13560", "Zionsville"];
+
+Deno.test("gh-2543 PII: a refused send puts no address, name, street or price into Sentry, console or the alert row", async () => {
+  const db = makeDb({ contractorEmails: ["a@example.test", "b@example.test"] });
+  const seen = { errs: [] as unknown[], ctx: [] as unknown[] };
+  const out = await sinks(() => sendHaltNotices(spyBase(db, [], seen, () => Promise.resolve(500))), db, seen);
+  assert(seen.errs.length >= 2, "Sentry was reached");
+  for (const p of PII) assertEquals(out.includes(p), false, `leaked: ${p}`);
+  assertEquals(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(out), false, "no full e-mail address anywhere");
+  assert(out.includes("status 500"), "the failure is still diagnosable");
+});
+
+Deno.test("gh-2543 PII: a thrown send error that echoes the address is masked before Sentry, console and the alert row", async () => {
+  const db = makeDb();
+  const seen = { errs: [] as unknown[], ctx: [] as unknown[] };
+  const out = await sinks(() => sendHaltNotices(spyBase(db, [], seen, (m) => Promise.reject(new Error(`connect failed for ${m.to}`)))), db, seen);
+  for (const p of PII) assertEquals(out.includes(p), false, `leaked: ${p}`);
+  assert(out.includes("h***@example.test") || out.includes("c***@example.test"), "masked form kept for follow-up");
+});
+
+Deno.test("gh-2543 PII: a partial send alerts with positions and masked addresses only", async () => {
+  const db = makeDb({ contractorEmails: ["a@example.test", "b@example.test"] });
+  const seen = { errs: [] as unknown[], ctx: [] as unknown[] };
+  const send = (m: HaltMail) => Promise.resolve(m.to === "b@example.test" ? 500 : 200);
+  const out = await sinks(() => sendHaltNotices(spyBase(db, [], seen, send)), db, seen);
+  assert(db.tables.platform_alerts_log.some((a: Record<string, unknown>) => a.alert_type === "contract_halt_notice_partial"));
+  for (const p of PII) assertEquals(out.includes(p), false, `leaked: ${p}`);
+  assert(out.includes("address 2 of 2"));
+});
+
+Deno.test("gh-2543 PII: the Sentry context carries ids only", async () => {
+  const db = makeDb();
+  const seen = { errs: [] as unknown[], ctx: [] as unknown[] };
+  await sendHaltNotices(spyBase(db, [], seen, () => Promise.resolve(500)));
+  for (const c of seen.ctx as { extra?: Record<string, unknown> }[]) {
+    assertEquals(Object.keys(c.extra ?? {}).sort(), ["claim_id", "envelope_id", "role"]);
+  }
+});
+
+Deno.test("gh-2543 PII: maskEmail / maskEmails", () => {
+  assertEquals(maskEmail("alice@example.test"), "a***@example.test");
+  assertEquals(maskEmail("nonsense"), "***");
+  assertEquals(maskEmails("x alice@example.test and bob.k@mail.example.org y"), "x a***@example.test and b***@mail.example.org y");
+});
+
+Deno.test("gh-2543 delete check: a failed marker delete is reported as 'Marker NOT removed; a repeated event will not retry'", async () => {
+  const db = makeDb({ deleteError: { code: "42501", message: "permission denied for table notifications" } });
+  const r = await sendHaltNotices(base(db, [], 500));
+  assertEquals(r, { homeowner: "failed", contractor: "failed" });
+  const alerts = db.tables.platform_alerts_log.filter((a: Record<string, unknown>) => a.alert_type === "contract_halt_notice_failed");
+  assertEquals(alerts.length, 2);
+  for (const a of alerts) {
+    assert(String(a.message).includes("Marker NOT removed; a repeated event will not retry."));
+    assertEquals(String(a.message).includes("Marker removed"), false);
+  }
+});
+
+Deno.test("gh-2543 delete check: a delete that removes no row (silent no-op) is not reported as removed", async () => {
+  const db = makeDb({ deleteNoop: true });
+  await sendHaltNotices(base(db, [], 500));
+  for (const a of db.tables.platform_alerts_log) assert(String((a as Record<string, unknown>).message).includes("Marker NOT removed; a repeated event will not retry."));
+});
+
+Deno.test("gh-2543 delete check: a delete that removes the inserted row says 'Marker removed' and a retry sends", async () => {
+  const db = makeDb();
+  await sendHaltNotices(base(db, [], 500));
+  for (const a of db.tables.platform_alerts_log) assert(String((a as Record<string, unknown>).message).includes("Marker removed; a repeated event may retry."));
+  assertEquals(db.tables.notifications.length, 0);
+  assertEquals(await sendHaltNotices(base(db, [], 200)), { homeowner: "sent", contractor: "sent" });
+});
+
+Deno.test("gh-2543 delete check: a delete that throws is not reported as removed", async () => {
+  const db = makeDb();
+  const real = db.from.bind(db);
+  db.from = (t: string) => { const q = real(t); if (t === "notifications") { const d = q.delete.bind(q); q.delete = () => { d(); q.then = (_ok: unknown, bad: (e: unknown) => unknown) => bad(new Error("socket hang up")); return q; }; } return q; };
+  await sendHaltNotices(base(db, [], 500));
+  for (const a of db.tables.platform_alerts_log) assert(String((a as Record<string, unknown>).message).includes("Marker NOT removed; a repeated event will not retry."));
+});
+
+Deno.test("gh-2543 23505: a unique violation from a DIFFERENT constraint is not 'already sent' (no send, failure alerted)", async () => {
+  const db = makeDb({ otherUnique: true });
+  const sent: HaltMail[] = [];
+  const r = await sendHaltNotices(base(db, sent));
+  assertEquals(r, { homeowner: "failed", contractor: "failed" });
+  assertEquals(sent.length, 0, "no marker, no send");
+  assertEquals(db.tables.platform_alerts_log.length, 2);
+});
+
+Deno.test("gh-2543 23505: the halt-notice index named in message or details IS 'already sent'", async () => {
+  for (const err of [
+    { code: "23505", message: `duplicate key value violates unique constraint "${HALT_NOTICE_INDEX}"` },
+    { code: "23505", message: "duplicate key", details: `index ${HALT_NOTICE_INDEX}` },
+  ]) {
+    const db = makeDb();
+    const real = db.from.bind(db);
+    db.from = (t: string) => { const q = real(t); if (t === "notifications") q.insert = () => Promise.resolve({ error: err }); return q; };
+    const sent: HaltMail[] = [];
+    assertEquals(await sendHaltNotices(base(db, sent)), { homeowner: "already_sent", contractor: "already_sent" });
+    assertEquals(sent.length, 0);
+  }
+});
+
+Deno.test("gh-2543 23505: the index name in code equals the one in the migration draft and its rollback", async () => {
+  assertEquals(HALT_NOTICE_INDEX, "notifications_contract_halt_notice_once_idx");
+  const dir = new URL("../../migrations_drafts/", import.meta.url);
+  const fwd = await Deno.readTextFile(new URL("gh2543_halt_notice_marker_unique.sql", dir));
+  const rb = await Deno.readTextFile(new URL("gh2543_halt_notice_marker_unique_rollback.sql", dir));
+  assert(fwd.includes(`CREATE UNIQUE INDEX IF NOT EXISTS ${HALT_NOTICE_INDEX}`));
+  assert(rb.includes(HALT_NOTICE_INDEX));
 });
 
 // ---- wiring: index.ts sends only from the mismatch halt branch (negative control for "no halt") ----

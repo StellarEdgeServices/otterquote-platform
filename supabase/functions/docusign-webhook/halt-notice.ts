@@ -96,6 +96,31 @@ export type HaltMailSender = (mail: HaltMail) => Promise<number>;
 
 export const HALT_NOTICE_TYPE = "contract_halt_notice_sent";
 
+/**
+ * The partial unique index that makes the send-once marker race-proof. MUST equal the index name in
+ * supabase/migrations_drafts/gh2543_halt_notice_marker_unique.sql (a test pins the two together).
+ * A 23505 counts as "already sent" only when it names this index (PR #2959 RETURNED, Ben, point 3).
+ */
+export const HALT_NOTICE_INDEX = "notifications_contract_halt_notice_once_idx";
+
+/** a***@domain. Recipient addresses are personal data: they never go into an Error, a log line or a Sentry event in full. */
+export function maskEmail(email: string): string {
+  const at = email.lastIndexOf("@");
+  if (at < 1) return "***";
+  return `${email.slice(0, 1)}***${email.slice(at)}`;
+}
+
+/** Masks every e-mail address found inside a string (provider and database error text can echo a recipient). */
+export function maskEmails(text: string): string {
+  return text.replace(/[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, (m) => maskEmail(m));
+}
+
+function isOnceIndexViolation(err: unknown): boolean {
+  const e = err as { code?: string; message?: string; details?: string; hint?: string } | null;
+  if (!e || e.code !== "23505") return false;
+  return [e.message, e.details, e.hint].some((t) => typeof t === "string" && t.includes(HALT_NOTICE_INDEX));
+}
+
 export interface HaltNoticeInput {
   supabase: AnySupabase;
   claimId: string;
@@ -150,23 +175,30 @@ export async function sendHaltNotices(i: HaltNoticeInput): Promise<HaltNoticeRes
       });
       // Two simultaneous deliveries: the partial unique index (migrations_drafts/gh2543_halt_notice_marker_unique.sql,
       // not applied until Tier 3B) rejects the second insert with 23505. The loser sends nothing. Until the
-      // index is applied the check above is the only guard, as before.
-      if (markerErr && (markerErr as { code?: string }).code === "23505") return "already_sent";
-      if (markerErr) throw markerErr; // no marker, no send: cannot guarantee once
+      // index is applied the check above is the only guard, as before. Only a 23505 that names THAT index counts as
+      // "already sent"; any other unique violation is a real failure (no marker, no send).
+      if (markerErr && isOnceIndexViolation(markerErr)) return "already_sent";
+      if (markerErr) {
+        const m = markerErr as { code?: string; message?: string };
+        throw new Error(`could not write the send-once marker (code ${m.code ?? "unknown"}): ${maskEmails(String(m.message ?? ""))}`);
+      }
       markerWritten = true;
       // Try every address even if one fails (review 6301123534 point 3). If at least one address got the
       // notice, the marker stays (a retry would re-send to the ones that already have it) and the failures
       // are alerted; only when nobody got it is the marker removed so a later event can retry.
       const failed: string[] = [];
       let delivered = 0;
-      for (const to of recipients) {
+      // Personal data stays out of Error text, console and Sentry (PR #2959 RETURNED, Ben, point 1): an address is
+      // named by its position and a masked form only.
+      for (const [idx, to] of recipients.entries()) {
+        const who = `address ${idx + 1} of ${recipients.length} (${maskEmail(to)})`;
         try {
           const status = await i.send(mail(to));
           console.log(`[#2543] contract-halt notice (${role}) Mailgun status=${status} envelope=${envelopeId}`);
-          if (status < 200 || status >= 300) failed.push(`${to} (status ${status})`);
+          if (status < 200 || status >= 300) failed.push(`${who} status ${status}`);
           else delivered++;
         } catch (sendErr) {
-          failed.push(`${to} (${sendErr instanceof Error ? sendErr.message : String(sendErr)})`);
+          failed.push(`${who} ${maskEmails(sendErr instanceof Error ? sendErr.message : String(sendErr))}`);
         }
       }
       if (delivered === 0) throw new Error(`mail provider refused the ${role} halt notice: ${failed.join("; ")}`);
@@ -179,22 +211,37 @@ export async function sendHaltNotices(i: HaltNoticeInput): Promise<HaltNoticeRes
       }
       return "sent";
     } catch (err) {
-      console.error(`[#2543] ${role} halt notice failed (non-fatal):`, err);
+      // Only a masked message leaves this function: the Error object itself is never logged or sent on (point 1).
+      const safeMsg = maskEmails(err instanceof Error ? err.message : String(err));
+      const safeErr = new Error(safeMsg);
+      safeErr.name = err instanceof Error ? err.name : "HaltNoticeError";
+      console.error(`[#2543] ${role} halt notice failed (non-fatal): ${safeMsg}`);
+      // The delete is checked (point 2): it must report no error AND remove the row this call inserted. If it does
+      // not, the marker is still there and a repeated event will NOT retry; the alert says so.
+      let markerRemoved = false;
       try {
         if (markerWritten) {
-          await supabase.from("notifications").delete()
-            .eq("notification_type", HALT_NOTICE_TYPE).eq("message_preview", preview);
+          const { data: gone, error: delErr } = await supabase.from("notifications").delete()
+            .eq("notification_type", HALT_NOTICE_TYPE).eq("message_preview", preview).eq("claim_id", claimId)
+            .select("id");
+          markerRemoved = !delErr && Array.isArray(gone) && gone.length > 0;
+          if (!markerRemoved) console.error(`[#2543] ${role} halt notice marker NOT removed (code ${(delErr as { code?: string } | null)?.code ?? "none"}, rows ${Array.isArray(gone) ? gone.length : "unknown"})`);
         }
+      } catch (delEx) {
+        markerRemoved = false;
+        console.error(`[#2543] ${role} halt notice marker delete threw: ${maskEmails(delEx instanceof Error ? delEx.message : String(delEx))}`);
+      }
+      try {
         await supabase.from("platform_alerts_log").insert({
           alert_type: "contract_halt_notice_failed",
           function_name: "docusign-webhook",
-          message: `#2543: the ${role} halt notice for envelope ${envelopeId} (claim ${claimId}) was not sent: ` +
-            `${err instanceof Error ? err.message : String(err)}.${markerWritten ? " Marker removed; a repeated event may retry." : ""}`,
+          message: `#2543: the ${role} halt notice for envelope ${envelopeId} (claim ${claimId}) was not sent: ${safeMsg}.` +
+            (markerWritten ? (markerRemoved ? " Marker removed; a repeated event may retry." : " Marker NOT removed; a repeated event will not retry.") : ""),
         });
       } catch (e) {
-        console.error("halt notice cleanup failed:", e);
+        console.error("halt notice alert insert failed:", maskEmails(e instanceof Error ? e.message : String(e)));
       }
-      await i.reportToSentry(err, { fn: "docusign-webhook", op: "contract-halt-notice", extra: { role, envelope_id: envelopeId, claim_id: claimId } });
+      await i.reportToSentry(safeErr, { fn: "docusign-webhook", op: "contract-halt-notice", extra: { role, envelope_id: envelopeId, claim_id: claimId } });
       return "failed";
     }
   }
@@ -224,8 +271,9 @@ export async function sendHaltNotices(i: HaltNoticeInput): Promise<HaltNoticeRes
       }
     }
   } catch (lookupErr) {
-    console.error("[#2543] halt notice recipient lookup failed (non-fatal):", lookupErr);
-    await i.reportToSentry(lookupErr, { fn: "docusign-webhook", op: "contract-halt-notice-lookup", extra: { envelope_id: envelopeId, claim_id: claimId } });
+    const safeLookup = new Error(maskEmails(lookupErr instanceof Error ? lookupErr.message : String(lookupErr)));
+    console.error(`[#2543] halt notice recipient lookup failed (non-fatal): ${safeLookup.message}`);
+    await i.reportToSentry(safeLookup, { fn: "docusign-webhook", op: "contract-halt-notice-lookup", extra: { envelope_id: envelopeId, claim_id: claimId } });
   }
 
   result.homeowner = await once("homeowner", homeownerEmail ? [homeownerEmail] : [], (to) => ({
