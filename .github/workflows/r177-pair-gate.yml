@@ -26,7 +26,17 @@ name: R-177 pair gate
 # After posting the pair, re-run this check (Actions > Re-run) so the PR-side
 # status refreshes; the merge_group run re-evaluates from scratch regardless.
 
+# STRICT HEAD (#2912 comment 6323562999): the pair must name the exact head sha; the
+# main-merge ancestor walk is off (STRICT_HEAD in scripts/r177/gate.mjs).
+#
+# issue_comment (created, edited): the pair is posted AFTER the PR check ran, so a comment
+# on a PR re-evaluates it and posts a check run named "R-177 pair gate" on the PR head sha
+# (checks: write). The newest check run of that name supersedes the earlier one. Only
+# GITHUB_TOKEN is used; the job runs the default-branch gate code and never PR code.
+
 on:
+  issue_comment:
+    types: [created, edited]
   merge_group:
     types: [checks_requested]
   pull_request:
@@ -36,9 +46,10 @@ permissions:
   contents: read
   pull-requests: read
   issues: read
+  checks: write
 
 concurrency:
-  group: r177-pair-gate-${{ github.event.pull_request.number || github.ref }}
+  group: r177-pair-gate-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -46,6 +57,7 @@ jobs:
     name: R-177 pair gate
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
     steps:
       - name: Check out gate code from the default branch only
         uses: actions/checkout@v4
@@ -78,6 +90,8 @@ jobs:
                 core.setFailed(`cannot derive a PR number from merge_group head_ref "${context.payload.merge_group.head_ref}"; failing closed.`);
                 return;
               }
+            } else if (context.eventName === 'issue_comment') {
+              prNumber = context.payload.issue.number;
             } else {
               prNumber = context.payload.pull_request.number;
             }
@@ -104,4 +118,14 @@ jobs:
               .addHeading('R-177 pair gate')
               .addRaw(`\n${res.message}\n\nflagged: ${res.flagged} | LEGAL-READ: ${res.readOk} | SIGNED: ${res.signOk} | chain: ${res.chain.join(', ')}\n`)
               .write();
+            if (context.eventName === 'issue_comment') {
+              // The job runs on the default branch, so report on the PR head instead.
+              await github.rest.checks.create({
+                owner, repo, name: 'R-177 pair gate', head_sha: res.headSha, status: 'completed',
+                conclusion: res.ok ? 'success' : 'failure',
+                output: { title: res.ok ? 'R-177 pair present' : 'R-177 pair missing', summary: res.message.slice(0, 60000) },
+              });
+              core.info(res.message);
+              return;
+            }
             if (res.ok) core.info(res.message); else core.setFailed(res.message);

@@ -5,21 +5,23 @@
 //
 // Rule (constitution entry 6 / R-177): a PR flagged `r177:legal-read` (or whose
 // title carries [R-120]/[R-177]) passes only if BOTH of these were posted by a
-// HUMAN (never a bot) and name the PR's current head sha, or a sha reachable
-// from the head through main-merge-only commits:
+// HUMAN (never a bot) and name the PR's EXACT current head sha (STRICT_HEAD; no main-merge
+// ancestor walk):
 //   - a comment starting `LEGAL-READ: PASS` containing the sha, and
 //   - a comment starting `R-177 SIGNED: pr=<n> sha=<sha>`, or the CEO template:
 //     first line starts `R-177 SIGNED:` and a `Head: <40-hex sha>` line within
 //     the next five lines.
-// This mirrors r177_ok() in In Flight/bin/pr-merge-serial-device.py, with one
-// deliberate tightening (note: the local tool sets STRICT_HEAD=True, cto76, #2912,
-// which disables the main-merge walk entirely; this CI gate is looser than that tool
-// and the two should be reconciled -- REVIEW 6323696495 item 4): a "main-merge" is verified structurally, not by its
-// commit message (see mainMergeChain).
+// This mirrors r177_ok() in In Flight/bin/pr-merge-serial-device.py, including
+// STRICT_HEAD=True (reconciled in gh-2965 strict-head: REVIEW 6323696495 item 4).
 
 export const LABEL = 'r177:legal-read';
 export const TITLE_RE = /\[R-1(20|77)\]/;
 export const MAX_CHAIN = 10;
+// DECIDED 2026-10-21 (#2912 comment 6323562999, Tier A): the pair must name the EXACT head sha
+// being merged. A "Merge branch 'main'" commit can carry conflict-resolution edits to the PR's own
+// files, so the main-merge ancestor walk is disabled. Matches STRICT_HEAD=True in
+// In Flight/bin/pr-merge-serial-device.py. mainMergeChain is kept (tested) but unused while true.
+export const STRICT_HEAD = true;
 // The commit endpoint returns at most 100 files per page and the workflow asks
 // for one page, so a list of 100+ entries may be TRUNCATED and cannot be audited.
 // Treat >= 100 (or a missing list) as unauditable and stop the walk: fail closed.
@@ -101,7 +103,7 @@ export async function evaluate(api, prNumber) {
       message: `PR #${prNumber} is not flagged ${LABEL}; gate not applicable.` };
   }
   const comments = await api.listComments(prNumber);
-  const chain = await mainMergeChain(api, headSha);
+  const chain = STRICT_HEAD ? [headSha] : await mainMergeChain(api, headSha);
   const { readOk, signOk } = pairFor(comments, prNumber, chain);
   const ok = readOk && signOk;
   const missing = [!readOk && 'LEGAL-READ: PASS', !signOk && 'R-177 SIGNED'].filter(Boolean);
@@ -109,7 +111,7 @@ export async function evaluate(api, prNumber) {
     message: ok
       ? `PR #${prNumber}: LEGAL-READ: PASS and R-177 SIGNED both name head ${headSha} (chain length ${chain.length}).`
       : `PR #${prNumber} is flagged ${LABEL} and is missing a human ${missing.join(' and ')} naming head ${headSha} ` +
-        `(or a main-merge-only ancestor). Post the pair over this exact sha, then re-run this check.` };
+        `(exact head match required). Post the pair over this exact sha, then re-run this check.` };
 }
 
 // merge_group head_ref looks like refs/heads/gh-readonly-queue/main/pr-2964-<sha>

@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { evaluate, isFlagged, prNumberFromMergeGroupRef, LABEL } from './gate.mjs';
+import { evaluate, isFlagged, prNumberFromMergeGroupRef, mainMergeChain, STRICT_HEAD, LABEL } from './gate.mjs';
 
 const H = 'a'.repeat(40); // PR head
 const SIGNED = 'b'.repeat(40); // an earlier head the pair was signed over
@@ -102,16 +102,31 @@ describe('R-177 pair gate: must PASS', () => {
     const r = await evaluate(fakeApi({ comments: [pair(7, H)[0], human(`R-177 SIGNED: Ben, CEO\nPR: 7\nHead: ${H}\n`)] }), 7);
     assert.equal(r.ok, true);
   });
-  it('head is a pure main-merge (blobs equal main) over a signed ancestor', async () => {
+  it('mainMergeChain (unused while STRICT_HEAD) still walks a pure main-merge', async () => {
     const api = fakeApi({
       comments: pair(7, SIGNED),
       commits: { [H]: { parents: [SIGNED, MAINTIP], files: [{ filename: 'other.js', status: 'modified', sha: 'm1' }, { filename: 'gone.js', status: 'removed', sha: 'x' }] } },
       mainBlobs: { [MAINTIP]: { 'other.js': 'm1' } },
       mainShas: [MAINTIP],
     });
+    assert.deepEqual(await mainMergeChain(api, H), [H, SIGNED]);
+  });
+  it('STRICT_HEAD: a pure main-merge head with a pair over the OLD sha is REFUSED (#2912 decision)', async () => {
+    const api = fakeApi({
+      comments: pair(7, SIGNED),
+      commits: { [H]: { parents: [SIGNED, MAINTIP], files: [{ filename: 'other.js', status: 'modified', sha: 'm1' }] } },
+      mainBlobs: { [MAINTIP]: { 'other.js': 'm1' } },
+      mainShas: [MAINTIP],
+    });
+    assert.equal(STRICT_HEAD, true);
     const r = await evaluate(api, 7);
-    assert.equal(r.ok, true);
-    assert.deepEqual(r.chain, [H, SIGNED]);
+    assert.equal(r.ok, false);
+    assert.deepEqual(r.chain, [H]);
+  });
+  it('bot-authored signature over the exact head plus a human LEGAL-READ is refused', async () => {
+    const r = await evaluate(fakeApi({ comments: [pair(7, H)[0], bot(pair(7, H)[1].body)] }), 7);
+    assert.equal(r.signOk, false);
+    assert.equal(r.ok, false);
   });
   it('unflagged PR is not gated (gate reports success so the required context never blocks)', async () => {
     const r = await evaluate(fakeApi({ labels: [], title: 'fix typo' }), 7);
@@ -143,6 +158,11 @@ describe('r177-pair-gate.yml wiring', () => {
   it('declares merge_group checks_requested (queue-safe as a required context)', () => {
     assert.match(on, /merge_group:\s*\n\s*types:\s*\[\s*checks_requested\s*\]/);
   });
+  it('re-evaluates on issue_comment created/edited and posts a check run to the PR head', () => {
+    assert.match(on, /issue_comment:\s*\n\s*types:\s*\[\s*created,\s*edited\s*\]/);
+    assert.match(text, /checks\.create/);
+    assert.match(text, /checks:\s*write/);
+  });
   it('has an unconditional pull_request trigger (no paths filter) and never pull_request_target', () => {
     assert.match(on, /pull_request:/);
     assert.doesNotMatch(on, /paths:/);
@@ -170,8 +190,8 @@ describe('truncated merge file list (REVIEW 6323696495 defect 1)', () => {
     const r = await evaluate(mk(undefined), 7);
     assert.equal(r.ok, false);
   });
-  it('MUST PASS: a 99-file pure main-merge is still accepted', async () => {
-    const r = await evaluate(mk(hundred.slice(0, 99)), 7);
-    assert.equal(r.ok, true);
+  it('a 99-file pure main-merge is still walked by mainMergeChain (strict mode ignores it)', async () => {
+    const api = mk(hundred.slice(0, 99));
+    assert.deepEqual(await mainMergeChain(api, H), [H, SIGNED]);
   });
 });
