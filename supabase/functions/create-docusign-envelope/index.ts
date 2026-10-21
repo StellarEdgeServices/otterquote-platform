@@ -2492,9 +2492,119 @@ async function handleHomeownerSign(supabase, requestBody, corsHeaders) {
     }
   });
 }
+// ========== gh-2105 (checklist D/E): ONE colour envelope per claim ==========
+// color_confirmation used to mint a new BoldSign document on every call, so
+// every repeat submit cost another envelope. claims.color_confirmation_envelope_id
+// already exists (text), so no migration is needed: a real id there means
+// RESUME (getEmbeddedSignLink is free), and minting first claims the slot with
+// a conditional update (... where color_confirmation_envelope_id is null) so two
+// simultaneous clicks cannot both mint. The slot holds "pending:<epoch ms>:<uuid>"
+// while a mint is in flight; the real documentId replaces it as soon as BoldSign
+// returns, and a failed send releases it. A placeholder older than
+// COLOR_SLOT_STALE_MS (a crashed request) can be taken over.
+const COLOR_SLOT_PREFIX = "pending:";
+const COLOR_SLOT_STALE_MS = 5 * 60 * 1000;
+function isColorSlotPlaceholder(value: any) {
+  return typeof value === "string" && value.startsWith(COLOR_SLOT_PREFIX);
+}
+function colorSlotIsStale(value: any, nowMs: any) {
+  if (!isColorSlotPlaceholder(value)) return false;
+  const startedMs = Number(String(value).split(":")[1]);
+  if (!Number.isFinite(startedMs)) return true;
+  return nowMs - startedMs > COLOR_SLOT_STALE_MS;
+}
+// Outcome is one of: claimed (token set, caller may mint), exists (a real
+// envelope id is already recorded, caller must resume it), in_flight (another
+// request is minting right now), not_found (no such claim row), error.
+async function claimColorEnvelopeSlot(supabase: any, claimId: any, nowMs: any, uuid: any) {
+  const token = `${COLOR_SLOT_PREFIX}${nowMs}:${uuid}`;
+  const first = await supabase.from("claims").update({
+    color_confirmation_envelope_id: token
+  }).eq("id", claimId).is("color_confirmation_envelope_id", null).select("id");
+  if (first.error) return { outcome: "error", detail: first.error.message };
+  if (checkRowsWritten(first.data).wroteRows) return { outcome: "claimed", token };
+  const { data: current, error: readError } = await supabase.from("claims").select("color_confirmation_envelope_id").eq("id", claimId).maybeSingle();
+  if (readError) return { outcome: "error", detail: readError.message };
+  if (!current) return { outcome: "not_found" };
+  const existing = current.color_confirmation_envelope_id;
+  if (existing && !isColorSlotPlaceholder(existing)) return { outcome: "exists", envelopeId: existing };
+  if (existing && colorSlotIsStale(existing, nowMs)) {
+    const takeover = await supabase.from("claims").update({
+      color_confirmation_envelope_id: token
+    }).eq("id", claimId).eq("color_confirmation_envelope_id", existing).select("id");
+    if (takeover.error) return { outcome: "error", detail: takeover.error.message };
+    if (checkRowsWritten(takeover.data).wroteRows) return { outcome: "claimed", token };
+  }
+  return { outcome: "in_flight" };
+}
+// Give the slot back after a failed send. Conditional on our own token, so it
+// can never clear a real id or another request's slot. No token, no-op.
+async function releaseColorEnvelopeSlot(supabase: any, claimId: any, token: any) {
+  if (!token) return;
+  try {
+    await supabase.from("claims").update({
+      color_confirmation_envelope_id: null
+    }).eq("id", claimId).eq("color_confirmation_envelope_id", token).select("id");
+  } catch (releaseErr) {
+    console.error(`[${FN_NAME}] color slot release failed:`, releaseErr);
+  }
+}
+// Resume an already-minted colour envelope: free, never POSTs /v1/document/send.
+async function resumeColorConfirmation(envelopeId: any, requestBody: any, corsHeaders: any) {
+  const { claim_id, signer, return_url } = requestBody;
+  console.log(`Resuming colour confirmation document ${envelopeId}`);
+  await waitForBoldSignDocumentReady(envelopeId);
+  const signLinkResponse = await fetch(
+    `${BOLDSIGN_API_BASE}/v1/document/getEmbeddedSignLink?` + new URLSearchParams({
+      documentId: envelopeId,
+      signerEmail: signer.email,
+      redirectUrl: return_url || "https://otterquote.com/contract-signing.html?signed=true"
+    }),
+    {
+      headers: boldSignHeaders()
+    }
+  );
+  if (!signLinkResponse.ok) {
+    const errorData = await signLinkResponse.text();
+    throw new Error(`Failed to generate signing URL: ${signLinkResponse.status} ${errorData}`);
+  }
+  const signLinkData = await signLinkResponse.json();
+  if (!signLinkData.signLink) throw new Error("No signLink returned from BoldSign getEmbeddedSignLink");
+  return new Response(JSON.stringify({
+    success: true,
+    envelope_id: envelopeId,
+    signing_url: signLinkData.signLink,
+    status: "sent",
+    document_type: "color_confirmation",
+    signer_email: signer.email,
+    resumed: true
+  }), {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json"
+    }
+  });
+}
+// Machine-code-only refusals (no customer wording), raised before any BoldSign call.
+function colorRefusal(status: any, code: any, corsHeaders: any) {
+  return new Response(JSON.stringify({
+    error: code
+  }), {
+    status,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json"
+    }
+  });
+}
 // ========== HANDLER: LEGACY CONTRACT / COLOR / PROJECT CONFIRMATION ==========
 async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   const { claim_id, document_type, contractor_id, signer, fields: providedFields, return_url } = requestBody;
+  // gh-2105 (D): a colour envelope already on the claim is resumed, never re-minted.
+  if (document_type === "color_confirmation" && requestBody.resolved_envelope_id) {
+    return await resumeColorConfirmation(requestBody.resolved_envelope_id, requestBody, corsHeaders);
+  }
   let autoFields = stripHomeownerPhone(providedFields);
   let claimData = null;
   let contractorData = null;
@@ -2519,6 +2629,12 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
       contractorData = fetchedContractor;
     }
   }
+  // gh-2105 (E): the colour addendum never goes out with an invented counter-signer.
+  // No contractor email or name on file means no BoldSign call and no charge.
+  if (document_type === "color_confirmation" && (!autoFields?.contractor_email || !autoFields?.contractor_name)) {
+    console.error(`[${FN_NAME}] color_confirmation refused: contractor ${contractor_id} has no email or company name on file`);
+    return colorRefusal(422, "color_contractor_identity_missing", corsHeaders);
+  }
   let templateBase64;
   if (document_type === "project_confirmation") {
     const templateContractor = contractorData || await (async ()=>{
@@ -2539,10 +2655,25 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   } else {
     templateBase64 = await getTemplateFromStorage(supabase, contractor_id, document_type);
   }
+  // gh-2105 (E): color_confirmation was refused above if either is missing, so the
+  // placeholders below can only ever reach the other legacy document types.
   let contractorEmail = autoFields.contractor_email || "contractor@example.com";
   let contractorName = autoFields.contractor_name || "Contractor";
   // gh-1314: same pre-send guard as handleContractorSign.
   await preflightTemplateTags(templateBase64, `${document_type} template for contractor ${contractor_id}`);
+  // gh-2105 (D): claim the single colour slot immediately before the paid send.
+  let colorSlotToken = null;
+  if (document_type === "color_confirmation") {
+    const slot = await claimColorEnvelopeSlot(supabase, claim_id, Date.now(), crypto.randomUUID());
+    if (slot.outcome === "exists") return await resumeColorConfirmation(slot.envelopeId, requestBody, corsHeaders);
+    if (slot.outcome === "in_flight") return colorRefusal(409, "color_envelope_in_flight", corsHeaders);
+    if (slot.outcome === "not_found") return colorRefusal(404, "color_claim_not_found", corsHeaders);
+    if (slot.outcome !== "claimed") {
+      console.error(`[${FN_NAME}] color slot claim failed for claim ${claim_id}: ${slot.detail}`);
+      return colorRefusal(503, "color_envelope_slot_unavailable", corsHeaders);
+    }
+    colorSlotToken = slot.token;
+  }
   const docLabel = getDocumentLabel(document_type);
   const files = [
     `data:application/pdf;base64,${templateBase64}`
@@ -2594,22 +2725,42 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
     }
   };
   console.log(`Creating BoldSign document (legacy: ${document_type})`);
-  const sendResponse = await fetch(`${BOLDSIGN_API_BASE}/v1/document/send`, {
-    method: "POST",
-    headers: boldSignHeaders({
-      "Content-Type": "application/json"
-    }),
-    body: JSON.stringify(sendBody)
-  });
+  let sendResponse;
+  try {
+    sendResponse = await fetch(`${BOLDSIGN_API_BASE}/v1/document/send`, {
+      method: "POST",
+      headers: boldSignHeaders({
+        "Content-Type": "application/json"
+      }),
+      body: JSON.stringify(sendBody)
+    });
+  } catch (sendErr) {
+    await releaseColorEnvelopeSlot(supabase, claim_id, colorSlotToken);
+    throw sendErr;
+  }
   if (!sendResponse.ok) {
+    await releaseColorEnvelopeSlot(supabase, claim_id, colorSlotToken);
     const errorData = await sendResponse.text();
     console.error("BoldSign document send failed:", errorData);
     throw new Error(`Failed to create document: ${sendResponse.status} ${errorData}`);
   }
   const sendData = await sendResponse.json();
   const envelopeId = sendData.documentId;
-  if (!envelopeId) throw new Error("No documentId returned from BoldSign");
+  if (!envelopeId) {
+    await releaseColorEnvelopeSlot(supabase, claim_id, colorSlotToken);
+    throw new Error("No documentId returned from BoldSign");
+  }
   console.log(`Document created (${document_type}): ${envelopeId}`);
+  // gh-2105 (D): record the real id at once (before the sign-link calls that can
+  // fail), so a retry after a late failure resumes this document instead of minting.
+  if (colorSlotToken) {
+    const { data: pointerRows, error: pointerError } = await supabase.from("claims").update({
+      color_confirmation_envelope_id: envelopeId
+    }).eq("id", claim_id).eq("color_confirmation_envelope_id", colorSlotToken).select("id");
+    if (pointerError || !checkRowsWritten(pointerRows).wroteRows) {
+      console.error(zeroRowWriteMessage(FN_NAME, `claims.color_confirmation_envelope_id for claim ${claim_id}`));
+    }
+  }
   let ga4ClaimIsTest = null;
   try {
     const { data: ga4Claim } = await supabase.from("claims").select("is_test").eq("id", claim_id).maybeSingle();
@@ -2707,13 +2858,14 @@ const RATE_KEY_RESUME = `${FUNCTION_NAME}:sign-link`;
 function rateLimitKeyFor(operation: any) {
   return operation === "resume" ? RATE_KEY_RESUME : RATE_KEY_MINT;
 }
-// The whole defect in one function. Only the two signing document types can
-// resume; the legacy one-shot documents (contract / color_confirmation /
-// project_confirmation) have no resume semantics and always mint. A signing
-// type with an envelope id already on its quote is ALWAYS a resume -- there is
-// no condition under which we mint a second document for the same quote.
+// The whole defect in one function. The two signing document types and (gh-2105)
+// the colour addendum can resume; the other legacy one-shot documents (contract /
+// project_confirmation) have no resume semantics and always mint. A resumable
+// type with an envelope id already recorded is ALWAYS a resume -- there is no
+// condition under which we mint a second document for the same quote (or, for
+// the colour addendum, the same claim).
 function resolveOperation(documentType: any, existingEnvelopeId: any) {
-  if (documentType !== "contractor_sign" && documentType !== "homeowner_sign") return "mint";
+  if (documentType !== "contractor_sign" && documentType !== "homeowner_sign" && documentType !== "color_confirmation") return "mint";
   return existingEnvelopeId ? "resume" : "mint";
 }
 // check_rate_limit() denies by default when no rate_limit_config row exists.
@@ -3018,6 +3170,17 @@ serve(async (req)=>{
         claim_id,
         contractor_id
       });
+    }
+    if (document_type === "color_confirmation") {
+      // gh-2105 (D): one colour envelope per claim. A lookup failure fails CLOSED
+      // (no read, no mint), and an in-flight placeholder is not an envelope id.
+      const { data: colorRow, error: colorLookupError } = await supabase.from("claims").select("color_confirmation_envelope_id").eq("id", claim_id).maybeSingle();
+      if (colorLookupError) {
+        console.error("color envelope lookup failed:", colorLookupError);
+        return colorRefusal(503, "color_envelope_lookup_failed", corsHeaders);
+      }
+      const recordedColorId = colorRow?.color_confirmation_envelope_id ?? null;
+      resolvedEnvelopeId = recordedColorId && !isColorSlotPlaceholder(recordedColorId) ? recordedColorId : null;
     }
     const operation = resolveOperation(document_type, resolvedEnvelopeId);
     // Server-derived, overwritten unconditionally -- never caller-supplied.

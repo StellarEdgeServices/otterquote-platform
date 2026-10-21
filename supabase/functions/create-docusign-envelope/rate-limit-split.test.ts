@@ -126,14 +126,21 @@ Deno.test("operation: homeowner_sign resumes, and cannot mint even with no envel
   assertEquals(resolveOperation("homeowner_sign", null), "mint");
 });
 
-Deno.test("operation: legacy one-shot document types always mint, envelope or not", () => {
-  // contract / color_confirmation / project_confirmation have no resume
-  // semantics -- each is its own document. Passing an envelope id must NOT
-  // divert them onto the contractor sign-link path.
-  for (const t of ["contract", "color_confirmation", "project_confirmation"]) {
+Deno.test("operation: contract / project_confirmation always mint, envelope or not", () => {
+  // contract / project_confirmation have no resume semantics -- each is its
+  // own document. Passing an envelope id must NOT divert them onto the
+  // contractor sign-link path.
+  for (const t of ["contract", "project_confirmation"]) {
     assertEquals(resolveOperation(t, null), "mint");
     assertEquals(resolveOperation(t, "f1026cd0"), "mint");
   }
+});
+
+Deno.test("operation: gh-2105 color_confirmation resumes when the claim already has an envelope, mints only when it has none", () => {
+  // One colour envelope per claim: a recorded id is ALWAYS a resume (free).
+  assertEquals(resolveOperation("color_confirmation", "f1026cd0-d2ae-430a-9a0e-e54d0d7829e3"), "resume");
+  assertEquals(resolveOperation("color_confirmation", null), "mint");
+  assertEquals(resolveOperation("color_confirmation", ""), "mint");
 });
 
 // ---------- the split rate key ----------
