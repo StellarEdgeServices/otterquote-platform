@@ -26,7 +26,7 @@ function fakeApi({ n = 7, labels = [LABEL], title = 'x', head = H, comments = []
   return {
     getPull: async () => ({ head: { sha: head }, labels: labels.map((name) => ({ name })), title }),
     listComments: async () => comments,
-    getCommit: async (sha) => ({ parents: (commits[sha]?.parents || []).map((s) => ({ sha: s })), files: commits[sha]?.files || [] }),
+    getCommit: async (sha) => ({ parents: (commits[sha]?.parents || []).map((s) => ({ sha: s })), files: commits[sha]?.files }),
     compareStatus: async (_b, sha) => (mainShas.includes(sha) ? 'behind' : 'diverged'),
     getBlobSha: async (ref, p) => mainBlobs[ref]?.[p] ?? null,
   };
@@ -147,5 +147,31 @@ describe('r177-pair-gate.yml wiring', () => {
     assert.match(on, /pull_request:/);
     assert.doesNotMatch(on, /paths:/);
     assert.doesNotMatch(text.replace(/^\s*#.*$/gm, ''), /pull_request_target/);
+  });
+});
+
+describe('truncated merge file list (REVIEW 6323696495 defect 1)', () => {
+  // The commit endpoint returns only the first 100 files. The PR-side change hides at file 101+,
+  // which the fake (like the real API) does not return. The old guard (>= 200) never tripped.
+  const hundred = Array.from({ length: 100 }, (_, i) => ({ filename: `f${i}.js`, status: 'modified', sha: `s${i}` }));
+  const blobs = Object.fromEntries(hundred.map((f) => [f.filename, f.sha]));
+  const mk = (files) => fakeApi({
+    comments: pair(7, SIGNED),
+    commits: { [H]: { parents: [SIGNED, MAINTIP], files } },
+    mainBlobs: { [MAINTIP]: blobs },
+    mainShas: [MAINTIP],
+  });
+  it('MUST FAIL: 100-entry (truncated) file list hides a PR-side change', async () => {
+    const r = await evaluate(mk(hundred), 7);
+    assert.equal(r.ok, false);
+    assert.deepEqual(r.chain, [H]);
+  });
+  it('MUST FAIL: missing file list is unauditable', async () => {
+    const r = await evaluate(mk(undefined), 7);
+    assert.equal(r.ok, false);
+  });
+  it('MUST PASS: a 99-file pure main-merge is still accepted', async () => {
+    const r = await evaluate(mk(hundred.slice(0, 99)), 7);
+    assert.equal(r.ok, true);
   });
 });

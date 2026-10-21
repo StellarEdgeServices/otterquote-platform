@@ -12,13 +12,21 @@
 //     first line starts `R-177 SIGNED:` and a `Head: <40-hex sha>` line within
 //     the next five lines.
 // This mirrors r177_ok() in In Flight/bin/pr-merge-serial-device.py, with one
-// deliberate tightening: a "main-merge" is verified structurally, not by its
+// deliberate tightening (note: the local tool sets STRICT_HEAD=True, cto76, #2912,
+// which disables the main-merge walk entirely; this CI gate is looser than that tool
+// and the two should be reconciled -- REVIEW 6323696495 item 4): a "main-merge" is verified structurally, not by its
 // commit message (see mainMergeChain).
 
 export const LABEL = 'r177:legal-read';
 export const TITLE_RE = /\[R-1(20|77)\]/;
 export const MAX_CHAIN = 10;
-export const MAX_MERGE_FILES = 200;
+// The commit endpoint returns at most 100 files per page and the workflow asks
+// for one page, so a list of 100+ entries may be TRUNCATED and cannot be audited.
+// Treat >= 100 (or a missing list) as unauditable and stop the walk: fail closed.
+// (REVIEW 6323696495 defect 1.) Chosen over paginating because it needs no extra
+// API calls and cannot be defeated by a page-size change; the cost is that a very
+// large main-merge needs a fresh pair, which is the safe direction.
+export const MAX_MERGE_FILES = 100;
 
 export function isFlagged({ labels = [], title = '' }) {
   const names = labels.map((l) => (typeof l === 'string' ? l : l.name));
@@ -68,8 +76,8 @@ export async function mainMergeChain(api, headSha) {
     if (parents.length !== 2) break;
     const [p1, p2] = parents;
     if (!['behind', 'identical'].includes(await api.compareStatus('main', p2))) break;
-    const files = commit.files || [];
-    if (files.length >= MAX_MERGE_FILES) break;
+    if (!Array.isArray(commit.files) || commit.files.length >= MAX_MERGE_FILES) break;
+    const files = commit.files;
     let clean = true;
     for (const f of files) {
       const mine = f.status === 'removed' ? null : f.sha;
