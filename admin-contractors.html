@@ -28,8 +28,18 @@
     <meta charset="UTF-8">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="robots" content="noindex,nofollow">
     <title>Admin - Contractors | Otter Quotes</title>
+
+    <!-- PWA (Admin App v1, gh-1479) -->
+    <link rel="manifest" href="/admin-app.webmanifest">
+    <meta name="theme-color" content="#E07B00">
+    <link rel="apple-touch-icon" href="/img/app/apple-touch-icon-admin.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="OQ Admin">
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="css/design-system.css">
     <link rel="stylesheet" href="css/nav.css">
@@ -55,6 +65,12 @@
             margin: 0 auto;
             padding: 2rem 1.5rem;
         }
+
+        /* gh-1772: Business Lines admin shell nav, same rules as admin-homeowners.html */
+        .admin-nav { display: flex; gap: 0.5rem; margin-bottom: 1.25rem; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 0.25rem; }
+        .admin-nav a { color: var(--slate); text-decoration: none; font-weight: 500; font-size: 0.9rem; padding: 0.5rem 0.9rem; border-radius: 0.5rem; white-space: nowrap; }
+        .admin-nav a:hover  { background: rgba(255,255,255,0.08); color: var(--white); }
+        .admin-nav a.active { background: rgba(255,255,255,0.12); color: var(--white); }
 
         .admin-header {
             display: flex;
@@ -637,8 +653,6 @@
 <script>gtag('config', 'G-D1Y1TLGEFY');</script>
 </head>
 <body>
-    <header id="site-header" data-active="admin" data-auth="false"></header>
-
     <main>
         <!-- Authorization Check -->
         <div id="unauthorizedContainer" class="unauthorized-container" style="display: none;">
@@ -657,6 +671,19 @@
                 </div>
                 <button class="logout-btn" onclick="logout()">Log Out</button>
             </div>
+
+            <nav class="admin-nav">
+                <a href="admin-dashboard.html">Business Lines</a>
+                <a href="admin-homeowners.html">Homeowners</a>
+                <a href="admin-contractors.html" class="active">Contractors</a>
+                <a href="admin-incomplete-profiles.html">Incomplete Profiles</a>
+                <a href="admin-template-review.html">Template Review</a>
+                <a href="admin-cert-verifications.html">Cert Verifications</a>
+                <a href="admin-payouts.html">Payouts</a>
+                <a href="admin-warranty-drift.html">Warranty Drift</a>
+                <a href="admin-measurements.html">Measurements</a>
+                <a href="admin-halted-contracts.html">Halted Contracts</a>
+            </nav>
 
             <!-- Admin nav links (D-180) -->
             <div style="display:flex;gap:0.75rem;margin-bottom:1.5rem;flex-wrap:wrap;">
@@ -823,7 +850,6 @@
     <script src="js/config.js"></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
-    <script src="js/nav.js"></script>
     <script>
         let currentFilter = 'pending_approval';
         let contractors = [];
@@ -1864,6 +1890,24 @@
         }
 
         document.addEventListener('DOMContentLoaded', init);
+    </script>
+    <script>
+// Service worker (admin surface only, gh-1479) -- same
+// register-once-and-reload-on-controllerchange pattern as admin-dashboard.html.
+(function () {
+  if (!('serviceWorker' in navigator)) return;
+  var swRefreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (swRefreshing) return;
+    swRefreshing = true;
+    window.location.reload();
+  });
+  window.addEventListener('load', function () {
+    // Explicit narrow scope, not "/": partner-sw.js owns the site root. See
+    // the matching comment in admin-dashboard.html.
+    navigator.serviceWorker.register('/admin-sw.js', { scope: '/admin-' }).catch(function () { /* non-fatal */ });
+  });
+})();
     </script>
 </body>
 </html>
