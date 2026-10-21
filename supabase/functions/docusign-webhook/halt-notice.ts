@@ -51,7 +51,7 @@ function homeownerParas(contractor: string, address: string, signed: number, acc
   ];
 }
 
-/** The approved contractor body, as paragraphs. */
+/** The contractor notice body, as approved (#2543), as paragraphs. */
 function contractorParas(jobRef: string, signed: number, accepted: number): string[] {
   return [
     `The contract you and the homeowner signed for ${jobRef} shows ${formatUsd(signed)}. The bid the homeowner accepted on Otter Quotes was ${formatUsd(accepted)}. Because the two differ, the platform has halted this contract. ${LEGAL_POSITION_A} No platform fee has been charged. Please do not schedule or start work. A corrected contract at ${formatUsd(accepted)} will be sent to both parties to sign. The earlier signed copy stays on file, marked as replaced.`,
@@ -78,7 +78,19 @@ export function contractorHaltHtml(jobRef: string, signed: number, accepted: num
     `${footerPostalAddressHtml()}</body></html>`;
 }
 
-export type HaltMail = { to: string; subject: string; text: string; html: string };
+/**
+ * Reply-To for both notices (gh-2543, Ben's RETURNED 6301145200 item 2). The approved text ends
+ * "Questions: reply to this email." and the mail is sent from the noreply sender, so the reply has to
+ * land somewhere read. marty@otterquote.com is one of the #1511 persona addresses: Cloudflare Email
+ * Routing delivers mail for ben@/marty@/sloane@otterquote.com to the one inbox (#1511 comment
+ * 5547727048: the routing test to all three landed in INBOX; comment 5541537811: Cloudflare accepts
+ * and forwards all three), and that inbox is swept by inbox-radar (#1511 comment 5583482870). The
+ * subdomain mail.otterquote.com is transactional-only (no human reads), which is why the Reply-To
+ * is on the apex. This is plumbing: no word of the approved text changes.
+ */
+export const HALT_NOTICE_REPLY_TO = "marty@otterquote.com";
+
+export type HaltMail = { to: string; subject: string; text: string; html: string; replyTo: string };
 /** Returns the mail provider's HTTP status. */
 export type HaltMailSender = (mail: HaltMail) => Promise<number>;
 
@@ -119,6 +131,7 @@ export async function sendHaltNotices(i: HaltNoticeInput): Promise<HaltNoticeRes
   async function once(role: "homeowner" | "contractor", recipients: string[], mail: (to: string) => HaltMail): Promise<HaltNoticeResult["homeowner"]> {
     if (recipients.length === 0) return "no_recipient";
     const preview = `envelope=${envelopeId};role=${role}`;
+    let markerWritten = false;
     try {
       const { data: existing } = await supabase
         .from("notifications")
@@ -135,25 +148,48 @@ export async function sendHaltNotices(i: HaltNoticeInput): Promise<HaltNoticeRes
         recipient: recipients[0],
         message_preview: preview,
       });
+      // Two simultaneous deliveries: the partial unique index (migrations_drafts/gh2543_halt_notice_marker_unique.sql,
+      // not applied until Tier 3B) rejects the second insert with 23505. The loser sends nothing. Until the
+      // index is applied the check above is the only guard, as before.
+      if (markerErr && (markerErr as { code?: string }).code === "23505") return "already_sent";
       if (markerErr) throw markerErr; // no marker, no send: cannot guarantee once
-      let allOk = true;
+      markerWritten = true;
+      // Try every address even if one fails (review 6301123534 point 3). If at least one address got the
+      // notice, the marker stays (a retry would re-send to the ones that already have it) and the failures
+      // are alerted; only when nobody got it is the marker removed so a later event can retry.
+      const failed: string[] = [];
+      let delivered = 0;
       for (const to of recipients) {
-        const status = await i.send(mail(to));
-        console.log(`[#2543] contract-halt notice (${role}) Mailgun status=${status} envelope=${envelopeId}`);
-        if (status < 200 || status >= 300) allOk = false;
+        try {
+          const status = await i.send(mail(to));
+          console.log(`[#2543] contract-halt notice (${role}) Mailgun status=${status} envelope=${envelopeId}`);
+          if (status < 200 || status >= 300) failed.push(`${to} (status ${status})`);
+          else delivered++;
+        } catch (sendErr) {
+          failed.push(`${to} (${sendErr instanceof Error ? sendErr.message : String(sendErr)})`);
+        }
       }
-      if (!allOk) throw new Error(`mail provider refused the ${role} halt notice`);
+      if (delivered === 0) throw new Error(`mail provider refused the ${role} halt notice: ${failed.join("; ")}`);
+      if (failed.length > 0) {
+        await supabase.from("platform_alerts_log").insert({
+          alert_type: "contract_halt_notice_partial",
+          function_name: "docusign-webhook",
+          message: `#2543: the ${role} halt notice for envelope ${envelopeId} (claim ${claimId}) reached ${delivered} of ${recipients.length} address(es); not sent to: ${failed.join("; ")}. Marker kept so the others are not re-sent.`,
+        });
+      }
       return "sent";
     } catch (err) {
       console.error(`[#2543] ${role} halt notice failed (non-fatal):`, err);
       try {
-        await supabase.from("notifications").delete()
-          .eq("notification_type", HALT_NOTICE_TYPE).eq("message_preview", preview);
+        if (markerWritten) {
+          await supabase.from("notifications").delete()
+            .eq("notification_type", HALT_NOTICE_TYPE).eq("message_preview", preview);
+        }
         await supabase.from("platform_alerts_log").insert({
           alert_type: "contract_halt_notice_failed",
           function_name: "docusign-webhook",
           message: `#2543: the ${role} halt notice for envelope ${envelopeId} (claim ${claimId}) was not sent: ` +
-            `${err instanceof Error ? err.message : String(err)}. Marker removed; a repeated event may retry.`,
+            `${err instanceof Error ? err.message : String(err)}.${markerWritten ? " Marker removed; a repeated event may retry." : ""}`,
         });
       } catch (e) {
         console.error("halt notice cleanup failed:", e);
@@ -195,17 +231,21 @@ export async function sendHaltNotices(i: HaltNoticeInput): Promise<HaltNoticeRes
   result.homeowner = await once("homeowner", homeownerEmail ? [homeownerEmail] : [], (to) => ({
     to,
     subject: HOMEOWNER_HALT_SUBJECT,
+    replyTo: HALT_NOTICE_REPLY_TO,
     text: homeownerHaltText(contractorCompany, address, i.signed, i.accepted),
     html: homeownerHaltHtml(contractorCompany, address, i.signed, i.accepted),
   }));
   result.contractor = await once("contractor", contractorEmails, (to) => ({
     to,
     subject: contractorHaltSubject(jobRef),
+    replyTo: HALT_NOTICE_REPLY_TO,
     text: contractorHaltText(jobRef, i.signed, i.accepted),
     html: contractorHaltHtml(jobRef, i.signed, i.accepted),
   }));
   return result;
 }
+
+export const HALT_MAIL_TIMEOUT_MS = 8000;
 
 /** The production Mailgun sender (same endpoint/sender as the homeowner contract-signed email). */
 export function mailgunSender(apiKey: string): HaltMailSender {
@@ -214,12 +254,16 @@ export function mailgunSender(apiKey: string): HaltMailSender {
     fd.append("from", "Otter Quotes <noreply@mail.otterquote.com>");
     fd.append("to", mail.to);
     fd.append("subject", mail.subject);
+    fd.append("h:Reply-To", mail.replyTo);
     fd.append("text", mail.text);
     fd.append("html", mail.html);
     const resp = await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", {
       method: "POST",
       headers: { Authorization: `Basic ${btoa(`api:${apiKey}`)}` },
       body: fd,
+      // A slow provider must not hold the BoldSign ack for long (review 6301123534 point 5). A timeout
+      // throws, which sendHaltNotices treats as a failed send: marker removed, alert row, a later event retries.
+      signal: AbortSignal.timeout(HALT_MAIL_TIMEOUT_MS),
     });
     return resp.status;
   };

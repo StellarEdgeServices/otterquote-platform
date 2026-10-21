@@ -8,11 +8,14 @@ import {
   contractorHaltSubject,
   contractorHaltText,
   formatUsd,
+  HALT_MAIL_TIMEOUT_MS,
+  HALT_NOTICE_REPLY_TO,
   HALT_NOTICE_TYPE,
   HOMEOWNER_HALT_SUBJECT,
   homeownerHaltHtml,
   homeownerHaltText,
   type HaltMail,
+  mailgunSender,
   sendHaltNotices,
 } from "./halt-notice.ts";
 import { POSTAL_ADDRESS } from "./email-footer.ts";
@@ -48,7 +51,7 @@ Deno.test("gh-2543 wording: subjects and position (A) sentence", () => {
 });
 
 // ---- in-memory stub of the supabase calls sendHaltNotices makes ----
-function makeDb(opts: { homeownerEmail?: string | null; contractorEmails?: string[] } = {}) {
+function makeDb(opts: { homeownerEmail?: string | null; contractorEmails?: string[]; uniqueMarker?: boolean; blindCheck?: boolean } = {}) {
   const tables: Record<string, Record<string, unknown>[]> = { notifications: [], platform_alerts_log: [] };
   const hEmail = "homeownerEmail" in opts ? opts.homeownerEmail : "ho@example.test";
   const cEmails = opts.contractorEmails ?? ["ct@example.test"];
@@ -69,9 +72,18 @@ function makeDb(opts: { homeownerEmail?: string | null; contractorEmails?: strin
         eq(c: string, v: unknown) { filters.push([c, v]); if (mode === "delete") { tables[t] = tables[t].filter((r) => !filters.every(([k, x]) => r[k] === x)); } return q; },
         limit() { return q; },
         delete() { mode = "delete"; return q; },
-        maybeSingle() { const r = (tables[t] ?? []).find((row) => filters.every(([k, v]) => row[k] === v)); return Promise.resolve({ data: r ?? null }); },
+        // blindCheck: the pre-insert SELECT always sees "no marker" -- two simultaneous deliveries that both passed the check.
+        maybeSingle() { const r = opts.blindCheck ? undefined : (tables[t] ?? []).find((row) => filters.every(([k, v]) => row[k] === v)); return Promise.resolve({ data: r ?? null }); },
         single() { return Promise.resolve({ data: fixtures[t] ?? null }); },
-        insert(row: Record<string, unknown>) { (tables[t] ??= []).push(row); return Promise.resolve({ error: null }); },
+        insert(row: Record<string, unknown>) {
+          // uniqueMarker: the partial unique index in migrations_drafts/gh2543_halt_notice_marker_unique.sql
+          if (opts.uniqueMarker && t === "notifications" && row.notification_type === HALT_NOTICE_TYPE &&
+              (tables[t] ?? []).some((r) => r.notification_type === HALT_NOTICE_TYPE && r.message_preview === row.message_preview)) {
+            return Promise.resolve({ error: { code: "23505", message: "duplicate key value violates unique constraint" } });
+          }
+          (tables[t] ??= []).push(row);
+          return Promise.resolve({ error: null });
+        },
         then(res: (v: unknown) => unknown) { return Promise.resolve({ error: null }).then(res); },
       };
       return q;
@@ -144,6 +156,83 @@ Deno.test("gh-2543 recipients: contractor notification_emails also receive it", 
   const sent: HaltMail[] = [];
   await sendHaltNotices(base(db, sent));
   assertEquals(sent.filter((m) => m.subject.startsWith("Contract for")).map((m) => m.to), ["a@example.test", "b@example.test"]);
+});
+
+// ---- gh-2543 REVIEW 6301123534 / Ben RETURNED 6301145200 fixes ----
+Deno.test("gh-2543 reply-to: both notices carry the Reply-To, a read inbox on the apex (not the noreply sender)", async () => {
+  const db = makeDb();
+  const sent: HaltMail[] = [];
+  await sendHaltNotices(base(db, sent));
+  assertEquals(sent.length, 2);
+  for (const m of sent) assertEquals(m.replyTo, HALT_NOTICE_REPLY_TO);
+  assertEquals(HALT_NOTICE_REPLY_TO, "marty@otterquote.com");
+  assert(!/noreply|no-reply|@mail\./i.test(HALT_NOTICE_REPLY_TO));
+});
+
+Deno.test("gh-2543 reply-to: the production sender puts h:Reply-To on the Mailgun request and a timeout signal", async () => {
+  const realFetch = globalThis.fetch;
+  let seen: { fd: FormData; signal: AbortSignal | null | undefined } | null = null;
+  globalThis.fetch = ((_u: unknown, init: RequestInit) => {
+    seen = { fd: init.body as FormData, signal: init.signal };
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  }) as typeof fetch;
+  try {
+    const status = await mailgunSender("key-test")({ to: "ho@example.test", subject: "s", text: "t", html: "<p>t</p>", replyTo: HALT_NOTICE_REPLY_TO });
+    assertEquals(status, 200);
+    assert(seen !== null);
+    const s2 = seen as { fd: FormData; signal: AbortSignal | null | undefined };
+    assertEquals(s2.fd.get("h:Reply-To"), HALT_NOTICE_REPLY_TO);
+    assertEquals(s2.fd.get("from"), "Otter Quotes <noreply@mail.otterquote.com>");
+    assert(s2.signal instanceof AbortSignal, "the Mailgun call must carry an abort signal (review point 5)");
+    assert(HALT_MAIL_TIMEOUT_MS > 0 && HALT_MAIL_TIMEOUT_MS <= 10000);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+Deno.test("gh-2543 send-once race: two simultaneous deliveries of one halt send each notice once (the second insert loses)", async () => {
+  const db = makeDb({ uniqueMarker: true, blindCheck: true });
+  const sent: HaltMail[] = [];
+  const [a, b] = await Promise.all([sendHaltNotices(base(db, sent)), sendHaltNotices(base(db, sent))]);
+  assertEquals(sent.length, 2, "exactly one homeowner and one contractor mail across both deliveries");
+  const results = [a, b];
+  assertEquals(results.filter((r) => r.homeowner === "sent").length, 1);
+  assertEquals(results.filter((r) => r.homeowner === "already_sent").length, 1);
+  assertEquals(results.filter((r) => r.contractor === "sent").length, 1);
+  assertEquals(results.filter((r) => r.contractor === "already_sent").length, 1);
+  assertEquals(db.tables.notifications.filter((n: Record<string, unknown>) => n.notification_type === HALT_NOTICE_TYPE).length, 2, "both markers survive; the loser does not delete the winner's marker");
+  assertEquals(db.tables.platform_alerts_log.length, 0, "losing the race is not an alert");
+});
+
+Deno.test("gh-2543 send-once race: sequential duplicate with the index and a blind check still sends once", async () => {
+  const db = makeDb({ uniqueMarker: true, blindCheck: true });
+  const sent: HaltMail[] = [];
+  await sendHaltNotices(base(db, sent));
+  const again = await sendHaltNotices(base(db, sent));
+  assertEquals(again, { homeowner: "already_sent", contractor: "already_sent" });
+  assertEquals(sent.length, 2);
+});
+
+Deno.test("gh-2543 several addresses: one refused address does not re-send to the others on retry (marker kept, partial alert)", async () => {
+  const db = makeDb({ contractorEmails: ["a@example.test", "b@example.test"] });
+  const sent: HaltMail[] = [];
+  const send = (m: HaltMail) => { sent.push(m); return Promise.resolve(m.to === "b@example.test" ? 500 : 200); };
+  const r = await sendHaltNotices({ ...base(db, sent), send });
+  assertEquals(r.contractor, "sent");
+  assertEquals(db.tables.platform_alerts_log.filter((a: Record<string, unknown>) => a.alert_type === "contract_halt_notice_partial").length, 1);
+  const before = sent.length;
+  const again = await sendHaltNotices({ ...base(db, sent), send });
+  assertEquals(again.contractor, "already_sent");
+  assertEquals(sent.length, before, "a repeated event sends nothing to a or b");
+});
+
+Deno.test("gh-2543 several addresses: a thrown send to one address does not stop the others", async () => {
+  const db = makeDb({ contractorEmails: ["a@example.test", "b@example.test"] });
+  const sent: HaltMail[] = [];
+  const send = (m: HaltMail) => { if (m.to === "a@example.test") return Promise.reject(new Error("timeout")); sent.push(m); return Promise.resolve(200); };
+  const r = await sendHaltNotices({ ...base(db, sent), send });
+  assertEquals(r.contractor, "sent");
+  assertEquals(sent.filter((m) => m.to === "b@example.test").length, 1);
 });
 
 // ---- wiring: index.ts sends only from the mismatch halt branch (negative control for "no halt") ----

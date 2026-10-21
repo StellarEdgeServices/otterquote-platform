@@ -67,3 +67,9 @@ Two more sets were applied to production on 2026-10-18 (CTO RUN 70 filing; appli
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2931_bidder_summary_no_filename` | forward, rollback (proof and its runner in `supabase/tests/`) | NOT APPLIED | drafted 2026-10-19 under #2931; production read-only 2026-10-19T21:2xZ: `pg_get_viewdef` md5 `c8ad94c4…` (40 columns), owner `postgres`, `security_barrier=true`, no dependents; the view returns the path to the selected contractor from selection (a bidder reads NULL); 0 of 4 stored paths are on a selected claim. The forward file gates those two CASEs on `claims.platform_fee_charged IS TRUE` (CREATE OR REPLACE VIEW, same columns). PR #2880 and PR #2925 carry the old CASE on one line each | none |
+
+## Added 2026-10-21 (gh-2543, PR #2959, send-once marker for the contract-halt notices): 2 files here, not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2543_halt_notice_marker_unique` | forward, rollback | NOT APPLIED | drafted 2026-10-21 under #2543 (REVIEW 6301123534 point 2, Ben RETURNED 6301145200). One partial unique index on `notifications (message_preview) WHERE notification_type = 'contract_halt_notice_sent'`; additive, Tier 3A, applied only under the Tier 3B path with an R-097 notice. The halt notices are not deployed, so no row of that type exists. No database was read or written | none |
