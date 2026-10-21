@@ -13,7 +13,9 @@ WHAT IT DOES (on --execute only; the default is a read-only plan):
      status completed, fulfilled_at. Nothing else.
   4. claims 73208937: hover_measurements (same object) and measurement_shape 'full'
      (the same two writes admin-measurements.html makes; service_role passes
-     claims_guard_measurement_shape).
+     claims_guard_measurement_shape). The claim's EXISTING areas_by_pitch table (and
+     predominant_pitch) is carried over unchanged, never replaced by a synthetic pitch; the
+     after-state check asserts it equals the BEFORE value.
   5. Prints every touched row BEFORE and AFTER and asserts the after-state.
 
 WHAT IT NEVER DOES: call Stripe, call any Edge Function (so no send-measurement-ready
@@ -26,11 +28,19 @@ USAGE (gh-2582: a secret is never a command-line argument, a URL or printed outp
   in this order, from: (a) env SUPABASE_SERVICE_ROLE_KEY, (b) the file named by env
   SUPABASE_SERVICE_ROLE_KEY_FILE, (c) the Supabase Management API api-keys call, using env
   SUPABASE_ACCESS_TOKEN (Doppler otterquote/prd holds that token but no service-role key).
+  In (c) the key is the SECRET-TYPE key (type == "secret"), taken first in the
+  API's order; the legacy name == "service_role" JWT key is used only when no secret-type key
+  exists, because on this project PostgREST answers the legacy key with 401. Only the key's
+  NAME is ever printed, never its value.
+  SYNTHETIC ONLY: test rows only, Stripe TEST mode only. The script never calls Stripe, and it
+  REFUSES to run when any environment variable holds a live Stripe key (sk_live_, rk_live_,
+  pk_live_); the variable NAME is printed, never the value.
   Set the variable from a non-echoing source (a Doppler/secret-store read inside a shell
   variable, or a mode-600 file); never type a value on a command line.
     SUPABASE_URL=https://<ref>.supabase.co python3 scripts/gh1411-synthetic-e2e.py     # plan: GETs only
     SUPABASE_URL=... python3 scripts/gh1411-synthetic-e2e.py --execute --ruling 6050104990
 """
+import copy
 import json
 import os
 import re
@@ -66,6 +76,14 @@ def open_no_redirect(req, timeout=30):
 
 
 _REF_RE = re.compile(r"[a-z0-9]+")
+_LIVE_STRIPE_RE = re.compile(r"(?:^|[^A-Za-z0-9])(?:sk|rk|pk)_live_")
+
+
+def live_stripe_vars(environ):
+    """Names (never values) of environment variables that hold a live-mode Stripe key.
+    This script is synthetic: Stripe TEST mode only, and it never calls Stripe, so the
+    presence of a live key in its environment is refused outright."""
+    return sorted(k for k, v in environ.items() if isinstance(v, str) and _LIVE_STRIPE_RE.search(v))
 
 
 def supabase_ref(url):
@@ -90,12 +108,15 @@ def supabase_ref(url):
     return ref if _REF_RE.fullmatch(ref) else None
 
 
-def synthetic_measurements(existing_squares, now_iso):
-    """Squares is KEPT at the claim's existing figure so the D-317 tier does not move;
-    every other number is synthetic and the object says so."""
-    sq = float(existing_squares)
+def synthetic_measurements(existing_hover, now_iso):
+    """Squares is KEPT at the claim's existing figure so the D-317 tier does not move, and
+    the claim's existing areas_by_pitch (and predominant_pitch, if present) is COPIED, not
+    replaced: the hand-entered pitch table on the fixture claim must survive the run. Every
+    other number is synthetic and the object says so."""
+    existing_hover = existing_hover or {}
+    sq = float(existing_hover["squares"])
     area_sf = round(sq * 100, 2)
-    return {
+    m = {
         "source": "synthetic_e2e_gh1411",
         "entered_at": now_iso,
         "entered_by": "cto-run-synthetic-e2e",
@@ -103,9 +124,14 @@ def synthetic_measurements(existing_squares, now_iso):
         "squares": sq,
         "ridge_hip_lf": 80.0, "valley_lf": 40.0, "rake_lf": 60.0, "eave_lf": 110.0,
         "drip_edge_perimeter_lf": 170.0, "step_flashing_lf": 25.0, "flashing_lf": 30.0,
-        "predominant_pitch": "6/12", "high_roof_sq": 0,
-        "areas_by_pitch": [{"pitch": "6/12", "area_sf": area_sf, "squares": sq, "pct": None}],
+        "high_roof_sq": 0,
+        "areas_by_pitch": copy.deepcopy(existing_hover["areas_by_pitch"]),
     }
+    if existing_hover.get("predominant_pitch") is not None:
+        m["predominant_pitch"] = existing_hover["predominant_pitch"]
+    if existing_hover.get("source") is not None:
+        m["prior_source"] = existing_hover["source"]
+    return m
 
 
 def check_preconditions(order, claim, buyer):
@@ -135,17 +161,21 @@ def check_preconditions(order, claim, buyer):
         bad.append("order already carries a report / measurements / fulfilled_at")
     if claim.get("measurement_shape") is not None:
         bad.append("claim.measurement_shape already set (%r)" % claim.get("measurement_shape"))
-    sq = (claim.get("hover_measurements") or {}).get("squares")
+    hover = claim.get("hover_measurements") or {}
+    sq = hover.get("squares")
     try:
         float(sq)
     except (TypeError, ValueError):
         bad.append("claim.hover_measurements.squares missing (%r)" % (sq,))
+    pitches = hover.get("areas_by_pitch")
+    if not isinstance(pitches, list) or not pitches:
+        bad.append("claim.hover_measurements.areas_by_pitch is not a non-empty list (nothing to preserve)")
     return bad
 
 
 def build_steps(order, claim, now_iso):
     """Ordered writes: (label, table, filter, patch). The marker clear is first, by ruling."""
-    m = synthetic_measurements((claim["hover_measurements"] or {})["squares"], now_iso)
+    m = synthetic_measurements(claim["hover_measurements"], now_iso)
     return [
         ("1 clear live_charge_authorized_at", "claims", {"id": CLAIM_ID}, {"live_charge_authorized_at": None}),
         ("2 deliver upgrade order", "hover_orders", {"id": order["id"]},
@@ -155,7 +185,8 @@ def build_steps(order, claim, now_iso):
     ]
 
 
-def check_after(order, claim):
+def check_after(order, claim, before_claim):
+    """before_claim is the claim row as read BEFORE any write; its areas_by_pitch must be unchanged."""
     bad = []
     if claim.get("live_charge_authorized_at") is not None:
         bad.append("live_charge_authorized_at not NULL")
@@ -167,6 +198,11 @@ def check_after(order, claim):
         bad.append("order measurements_json not the synthetic object")
     if (claim.get("hover_measurements") or {}).get("source") != "synthetic_e2e_gh1411":
         bad.append("claim.hover_measurements not the synthetic object")
+    before = (before_claim.get("hover_measurements") or {}).get("areas_by_pitch")
+    if (claim.get("hover_measurements") or {}).get("areas_by_pitch") != before:
+        bad.append("claim areas_by_pitch changed (the hand-entered pitch table was not preserved)")
+    if (order.get("measurements_json") or {}).get("areas_by_pitch") != before:
+        bad.append("order areas_by_pitch differs from the claim's BEFORE pitch table")
     return bad
 
 
@@ -213,8 +249,24 @@ def bad_argv(argv):
     return bad
 
 
-def load_service_key(environ, opener=open_no_redirect):
-    """Return the service-role key from env, then a file, then the Management API. Never prints it."""
+def pick_api_key(keys):
+    """From a Management API api-keys list return (name, value) or None. Prefers the first
+    entry (API order) with type == "secret" and a non-empty api_key: that is the secret-type
+    key PostgREST accepts. The legacy name == "service_role" JWT key gets a 401 on this
+    project, so it is only a fallback when no secret-type key exists."""
+    keys = [k for k in keys if isinstance(k, dict) and k.get("api_key")]
+    for k in keys:
+        if k.get("type") == "secret":
+            return k.get("name"), k["api_key"]
+    for k in keys:
+        if k.get("name") == "service_role":
+            return k.get("name"), k["api_key"]
+    return None
+
+
+def load_service_key(environ, opener=open_no_redirect, note=None):
+    """Return the service-role key from env, then a file, then the Management API. Never prints it.
+    note(name) is called with the NAME of the Management API key chosen (never its value)."""
     key = (environ.get("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
     if key:
         return key
@@ -230,9 +282,11 @@ def load_service_key(environ, opener=open_no_redirect):
         req = urllib.request.Request("https://api.supabase.com/v1/projects/%s/api-keys?reveal=true" % ref,
                                      headers={"Authorization": "Bearer " + token, "Accept": "application/json"})
         with opener(req, timeout=30) as r:
-            for k in json.loads(r.read().decode() or "[]"):
-                if k.get("name") == "service_role" and k.get("api_key"):
-                    return k["api_key"]
+            picked = pick_api_key(json.loads(r.read().decode() or "[]"))
+        if picked:
+            if note:
+                note(picked[0])
+            return picked[1]
     return None
 
 
@@ -269,11 +323,11 @@ def run(rest, execute, ruling, now_iso, out=print):
     order2, claim2, _ = read_state(rest)
     out("AFTER order  : " + json.dumps(order2, sort_keys=True))
     out("AFTER claim  : " + json.dumps(claim2, sort_keys=True))
-    bad = check_after(order2, claim2)
+    bad = check_after(order2, claim2, claim)
     if bad:
         out("AFTER-STATE CHECK FAILED: " + "; ".join(bad))
         return 4
-    out("AFTER-STATE CHECK OK: marker NULL, shape full, order completed, synthetic objects in place")
+    out("AFTER-STATE CHECK OK: marker NULL, shape full, order completed, synthetic objects in place, pitch table unchanged")
     return 0
 
 
@@ -282,6 +336,11 @@ def main(argv):
     if bad:
         print("REFUSED: unexpected command-line " + ", ".join(bad) + " (values not shown). Secrets come from the environment only (gh-2582).")
         return 1
+    live = live_stripe_vars(os.environ)
+    if live:
+        print("REFUSED: a live-mode Stripe key is present in the environment (variable %s; value not shown). "
+              "This script is synthetic: test rows and Stripe TEST mode only. Unset it and re-run." % ", ".join(live))
+        return 1
     execute = "--execute" in argv
     ruling = argv[argv.index("--ruling") + 1] if "--ruling" in argv and argv.index("--ruling") + 1 < len(argv) else None
     url = os.environ.get("SUPABASE_URL")
@@ -289,7 +348,7 @@ def main(argv):
         print("REFUSED: SUPABASE_URL must be https://<ref>.supabase.co with no userinfo, port, path, query or fragment (value not shown)")
         return 1
     try:
-        key = load_service_key(os.environ) if url else None
+        key = load_service_key(os.environ, note=lambda n: print("service-role key source: Management API key named %r (value not shown)" % n)) if url else None
     except Exception as e:
         print("could not load the service-role key (%s; no value shown)" % type(e).__name__)
         return 1
