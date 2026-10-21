@@ -707,7 +707,7 @@ const PUBLIC_PATHS: Array<{ url: string; jobName: string; expectedBody: string }
   {
     url:          "https://otterquote.com/",
     jobName:      "public-path-home",
-    expectedBody: "Otter Quotes",
+    expectedBody: "Otter Quotes | Contractors Compete",
   },
   {
     // otterquote.com/get-started.html 301s to the React app shell at
