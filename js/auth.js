@@ -480,7 +480,7 @@ window.Auth = {
    */
   async signInWithGoogle(redirectPage = '/dashboard.html') {
     if (!sb) throw new Error('Supabase not initialized');
-    // gh-1980 PR 3/3 (Dustin: "PKCE for Google only"): Google is the ONLY PKCE
+    // gh-1980 PR 3/3 (owner decision: "PKCE for Google only"): Google is the ONLY PKCE
     // flow. It initiates through a dedicated pkce client on a verifier-only
     // storage adapter (js/cookie-storage.js) -- flowType is client-wide in
     // supabase-js, and the shared `sb` stays implicit so emailed links keep
@@ -688,7 +688,7 @@ window.Auth = {
     // where the session was just written to storage but the new page has
     // not finished initialization. Without this guard the page bounces to
     // login.html, which then bounces back if its own getUser succeeds —
-    // producing the dashboard ↔ login flip Dustin reported May 4, 2026.
+    // producing the dashboard ↔ login flip reported May 4, 2026.
     // Poll up to 4 times at 500ms intervals (max 2s) before giving up.
     if (!user) {
       try {
@@ -917,7 +917,7 @@ window.Auth = {
     const onPartnerPage = _isPartnerSurfaceFile(window.location.pathname);
 
     // gh-817: cs_redirect is saved by requireAuth() on ANY earlier unauthenticated
-    // page hit in this tab's session (e.g. a contractor page Dustin visited before
+    // page hit in this tab's session (e.g. a contractor page visited before
     // the partner magic-link login) and this shortcut used to run BEFORE the #783
     // partner-stay-put guard below — so a stale value could silently bounce a
     // just-completed partner login to an unrelated page. Reproduces the reported
@@ -931,7 +931,7 @@ window.Auth = {
     // gh-1412 / #1476: the gh-817 guard below only discards a stale cs_redirect
     // when we are ALREADY on a partner surface. The identical failure for a
     // homeowner was left unguarded, and it is the reported symptom:
-    // dustin@otterquote.com has no contractors row and resolved_user_role returns
+    // the secondary admin account has no contractors row and resolved_user_role returns
     // 'homeowner' cleanly, yet he lands on the contractor surface after a password
     // login on login.html. That path never touches auth-callback.html -- it calls
     // this function directly -- so this shortcut runs BEFORE any role check and a
@@ -944,7 +944,7 @@ window.Auth = {
     // breaking tests/auth-partner-surface-single-source.mjs: getRole() resolves a
     // single scalar and is contractor-first by design (see the comment at the
     // contractors lookup below), so a DUAL-ROLE account (contractor record +
-    // referral_agents record, e.g. dustinstohler1@gmail.com) resolves to
+    // referral_agents record, e.g. the admin account) resolves to
     // 'contractor' and `!PARTNER_ROLES.includes(role)` reads as "the role
     // disagrees" when the truth is "this API cannot represent partner agreement
     // for this user." That discarded a legitimate partner deep link and then hit
@@ -1007,7 +1007,7 @@ window.Auth = {
     // function used to discard that signal and re-derive a destination from
     // getRole() alone. getRole() is contractor-table-first, so any dual-role
     // account (contractor record + referral_agents record — e.g.
-    // dustinstohler1@gmail.com) was bounced straight to
+    // the admin account) was bounced straight to
     // contractor-dashboard.html on first sign-in, and a partner-ONLY account
     // (no contractor record) was bounced to trade-selector.html/dashboard.html
     // instead — both wrong, because partner-dashboard.html was never a
@@ -1731,8 +1731,14 @@ Log in to the admin panel to review and approve this contractor.`;
    */
   async _getIsAdmin(user) {
     if (!user) return false;
-    // Hardcode primary admin
-    if (user.email === 'dustinstohler1@gmail.com') return true;
+    // gh-2987: no admin identity literal in client code. Ask the server:
+    // public.is_admin_email() evaluates the caller's signed JWT email against
+    // the DB-side admin allowlist (the same primitive the RLS policies use),
+    // so the client holds no allowlist and cannot spoof the answer.
+    try {
+      const { data: isAdminEmail, error: rpcErr } = await sb.rpc('is_admin_email');
+      if (!rpcErr && isAdminEmail === true) return true;
+    } catch (_) { /* fall through to the contractors role check */ }
     // Check contractors.template_review_role
     try {
       const { data } = await sb
