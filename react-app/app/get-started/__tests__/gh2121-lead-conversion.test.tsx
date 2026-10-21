@@ -88,7 +88,7 @@ function fillAccountFormAndSubmit() {
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'jane@example.com' } });
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct-horse-1' } });
   fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'correct-horse-1' } });
-  fireEvent.click(screen.getByRole('button', { name: /Create My Free Account/i }));
+  fireEvent.click(screen.getByRole('button', { name: /Create My Account/i }));
 }
 
 describe('gh-2121: get-started password sign-up writes lead conversion back', () => {

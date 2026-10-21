@@ -32,7 +32,6 @@ import { resolveClaimId } from './utils';
 import {
   buildProjectConfirmationUrl,
   createHomeownerEnvelope,
-  recordHomeownerSigned,
   requestBidRenewal,
   sendContractorNudge,
   useContractSigningData,
@@ -120,7 +119,7 @@ function SignContent() {
     '';
   const signerEmail = user?.email ?? '';
 
-  // ── onComplete: write homeowner_signed_at, then redirect to the static
+  // ── onComplete: fire the funnel event, then redirect to the static
   //    project-confirmation (coexistence — React route lands Phase 26). Held in a
   //    ref so the DocuSignEmbed listener always calls the latest closure. ──
   //
@@ -142,27 +141,15 @@ function SignContent() {
     setPhase('done');
     setSigningUrl(null);
     const cid = data.claim?.id ?? params?.claimId ?? '';
-    void recordHomeownerSigned({
-      claimId: cid,
-      quoteId,
-      contractorId,
-      signedAt: new Date().toISOString(),
-    }).then((wroteOk) => {
-      // gh-1940: "contract signed" funnel step — fired after the sign
-      // completion write settles. fix2 (finding N4): only when the write
-      // actually succeeded — recordHomeownerSigned never rejects, so a
-      // failed write must be read from its return value, not a catch.
-      // fix3 (CEO ruling, PR #1979 comment 5698022815): no claim_id — a
-      // per-homeowner database identifier must not reach a GA4 property
-      // linked for remarketing. The event NAME is the funnel step; no
-      // replacement param is added.
-      if (wroteOk) {
-        track('contract_signed', {});
-      }
-      if (cid) {
-        window.location.href = buildProjectConfirmationUrl(cid);
-      }
-    });
+    // gh-2864: no quotes.homeowner_signed_at write from the browser -- the stamp is
+    // platform-only and the docusign-webhook (service_role) records it. The funnel
+    // event fires on the DocuSign completion callback (guarded once by completedRef);
+    // fix3 (CEO ruling, PR #1979 comment 5698022815): no claim_id, the event NAME is
+    // the funnel step.
+    track('contract_signed', {});
+    if (cid) {
+      window.location.href = buildProjectConfirmationUrl(cid);
+    }
   };
   const handleComplete = useCallback(() => onCompleteRef.current(), []);
 

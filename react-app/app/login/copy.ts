@@ -32,7 +32,7 @@ export const LOGIN_COPY = {
   emailHint: "We'll send a one-click login link to this address.",
   submitButton: 'Send Login Link',
   noAccountPrefix: "Don't have an account yet?",
-  noAccountLink: 'Create one free',
+  noAccountLink: 'Create one',
   contractorPrefix: 'Are you a contractor?',
   contractorLink: 'Sign in to your contractor account',
 

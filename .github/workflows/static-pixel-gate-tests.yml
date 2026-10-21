@@ -110,6 +110,11 @@ on:
       - 'tests/gh2598-nav-header-width.mjs'
       - 'css/nav.css'
       - 'tests/gh2598-start-home-zip.mjs'
+      - 'tests/gh2598-tagline-name.mjs'
+      - 'landing.html'
+      - 'contractor-profile.html'
+      - 'hc*.html'
+      - 'supabase/functions/send-lead-next-step-reminder/email-content.ts'
       - 'js/router-variant-d.js'
       - 'js/router-variant-e.js'
       - 'js/router-discovery.js'
@@ -218,6 +223,11 @@ on:
       - 'tests/gh2598-nav-header-width.mjs'
       - 'css/nav.css'
       - 'tests/gh2598-start-home-zip.mjs'
+      - 'tests/gh2598-tagline-name.mjs'
+      - 'landing.html'
+      - 'contractor-profile.html'
+      - 'hc*.html'
+      - 'supabase/functions/send-lead-next-step-reminder/email-content.ts'
       - 'js/router-variant-d.js'
       - 'js/router-variant-e.js'
       - 'js/router-discovery.js'
@@ -317,6 +327,8 @@ jobs:
         run: node tests/gh2598-nav-header-footer.mjs
       - name: /start reads and clears sessionStorage['oq_home_zip'] (slice 6) -- entry=home skips the role screen on arms D and E, the ZIP rides only on the homeowner's leads insert, stale key never used, negative controls (gh2598-start-home-zip)
         run: node tests/gh2598-start-home-zip.mjs
+      - name: Tagline Title Case everywhere (D-377) and no hard-coded personal defaults on contractor-profile (D-378) -- landing.html h1, five hc meta descriptions, ho6 email body, negative controls (gh2598-tagline-name)
+        run: node tests/gh2598-tagline-name.mjs
       - name: Install Playwright + Chromium from the tests/e2e lockfile (gh-2361 real-browser proof)
         working-directory: tests/e2e
         run: |
