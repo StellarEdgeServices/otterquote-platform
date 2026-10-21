@@ -36,9 +36,9 @@ const STATIC = {
   rightToCancelTitle: 'Your Right to Cancel (Indiana Law IC 24-5-11)',
   rightToCancelBody:
     'You may cancel this contract at any time before midnight on the third business day after signing, or the third business day after your insurance company\'s written final decision on your claim if that is later. Both you and the contractor will sign this agreement.',
-  noCostTitle: 'No Cost to You',
+  noCostTitle: 'No fee to use Otter Quotes',
   noCostBody:
-    'Otter Quotes is 100% free for Homeowners. The price shown in this contract is the price you pay your contractor — there are no separate fees from Otter Quotes.',
+    'There is no fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when they complete a job. The price shown in this contract is the price you pay your contractor — other than the report fee above, there are no separate fees from Otter Quotes.',
   // (a) reconstituted (lead + name fallback + tail).
   ackLabelFull:
     'I understand I am signing a contract directly with the contractor. Otter Quotes is not a party to this agreement.',
