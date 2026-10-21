@@ -1302,6 +1302,16 @@
       <div id="selectedBidLockMessage" style="font-size:0.9rem; color:#374151;"></div>
     </div>
 
+    <!-- gh-2803 / D-381: notes stay editable on a selected bid; own Save, calls update_selected_bid_notes (notes only) -->
+    <div id="selectedBidNotesCard" style="display:none; background:#FFFFFF; border:1px solid #CBD5E1; border-radius:0.75rem; padding:1rem 1.5rem; margin-bottom:1.5rem;">
+      <label for="selectedBidNotes" style="display:block; font-weight:700; color:#374151; margin-bottom:0.25rem;">Message to Homeowner</label>
+      <div style="font-size:0.85rem; color:#4B5563; margin-bottom:0.5rem;">You can still edit this note. Your price and terms stay as submitted.</div>
+      <textarea id="selectedBidNotes" maxlength="500" style="width:100%; min-height:100px; padding:0.75rem; border:1px solid #CBD5E1; border-radius:0.5rem; font-family:inherit; font-size:0.875rem; resize:vertical;"></textarea>
+      <div style="font-size:0.8rem; color:#6B7280; margin-top:0.25rem;"><span id="selectedBidNotesCount">0</span>/500 characters</div>
+      <div id="selectedBidNotesStatus" role="alert" style="display:none; margin-top:0.5rem; font-size:0.875rem;"></div>
+      <button type="button" id="selectedBidNotesSaveBtn" class="submit-button" style="margin-top:0.75rem;" onclick="saveSelectedBidNotes()">Save Notes</button>
+    </div>
+
     <!-- RESCIND MODE: shown when contractor arrives via ?action=rescind in email link -->
     <div id="rescindConfirmCard" style="display:none;">
       <div class="rescind-title">⚠️ Rescind Your Bid</div>
@@ -3440,6 +3450,58 @@
       const submitBtnEl = document.getElementById('submitBtn');
       if (submitBtnEl) { submitBtnEl.disabled = true; submitBtnEl.style.display = 'none'; }
       window._bidLockedSelected = true;
+      // gh-2803 / D-381: the notes box, with its own Save, under the lock card
+      const notesCard = document.getElementById('selectedBidNotesCard');
+      const notesBox = document.getElementById('selectedBidNotes');
+      // only for a bid the RPC accepts: status selected/awarded and bid_status active
+      const notesEligible = !!(existingQuote && existingQuote.id
+        && ['selected', 'awarded'].includes(existingQuote.status)
+        && (existingQuote.bid_status || 'active') === 'active'
+        // LEGAL-READ fix + Dustin's ruling on #2846 (option (b), "At contractor signature"): notes print in the contract, so no edit once EITHER party has signed (same bound as the RPC)
+        && !existingQuote.homeowner_signed_at && !existingQuote.contractor_signed_at);
+      if (notesCard && notesBox && notesEligible) {
+        notesBox.value = existingQuote.notes || '';
+        const cnt = document.getElementById('selectedBidNotesCount');
+        const sync = () => { if (cnt) cnt.textContent = notesBox.value.length; };
+        notesBox.addEventListener('input', sync);
+        sync();
+        notesCard.style.display = 'block';
+      }
+    }
+
+    function _setSelectedBidNotesStatus(message, ok) {
+      const el = document.getElementById('selectedBidNotesStatus');
+      if (!el) return;
+      el.textContent = message;
+      el.style.color = ok ? '#15803D' : '#B91C1C';
+      el.style.display = 'block';
+    }
+
+    async function saveSelectedBidNotes() {
+      const btn = document.getElementById('selectedBidNotesSaveBtn');
+      const box = document.getElementById('selectedBidNotes');
+      if (!box || !existingQuote || !existingQuote.id) {
+        _setSelectedBidNotesStatus('We could not save your notes because this bid did not load. Reload the page and try again.', false);
+        return;
+      }
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+      try {
+        const { data, error } = await sb.rpc('update_selected_bid_notes', { p_quote_id: existingQuote.id, p_notes: box.value });
+        if (error) throw error;
+        existingQuote.notes = data || null;
+        box.value = data || '';
+        _setSelectedBidNotesStatus('Notes saved.', true);
+      } catch (err) {
+        console.error('[gh-2803] notes save failed:', err);
+        const code = err && err.code;
+        const friendly = code === '22023' ? 'Notes can only be edited on a selected bid before the contract is signed.'
+          : code === '22001' ? 'Notes are limited to 500 characters.'
+          : code === '42501' ? 'We could not confirm this bid is yours. Sign in again and retry.'
+          : 'We could not save your notes. Try again, or contact support.';
+        _setSelectedBidNotesStatus(friendly, false);
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Save Notes'; }
+      }
     }
 
     // ── Change Bid Mode ──

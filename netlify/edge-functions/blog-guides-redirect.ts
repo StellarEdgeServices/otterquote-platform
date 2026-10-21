@@ -180,6 +180,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/cuyahoga-county-oh/roofing/',
   '/locations/davidson-county-tn/roofing/index.html':
     '/locations/davidson-county-tn/roofing/',
+  '/locations/delaware-county-oh/roofing/index.html':
+    '/locations/delaware-county-oh/roofing/',
   '/locations/franklin-county-oh/roofing/index.html':
     '/locations/franklin-county-oh/roofing/',
   '/locations/hamilton-county-oh/roofing/index.html':
@@ -192,6 +194,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/knox-county-tn/roofing/',
   '/locations/lake-county-in/roofing/index.html':
     '/locations/lake-county-in/roofing/',
+  '/locations/lake-county-oh/roofing/index.html':
+    '/locations/lake-county-oh/roofing/',
   '/locations/lorain-county-oh/roofing/index.html':
     '/locations/lorain-county-oh/roofing/',
   '/locations/lucas-county-oh/roofing/index.html':
@@ -214,6 +218,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/summit-county-oh/roofing/',
   '/locations/sumner-county-tn/roofing/index.html':
     '/locations/sumner-county-tn/roofing/',
+  '/locations/warren-county-oh/roofing/index.html':
+    '/locations/warren-county-oh/roofing/',
   '/locations/williamson-county-tn/roofing/index.html':
     '/locations/williamson-county-tn/roofing/',
   '/locations/wilson-county-tn/roofing/index.html':
