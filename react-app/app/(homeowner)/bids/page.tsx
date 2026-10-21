@@ -23,7 +23,7 @@ import { useBidUpdates } from '@/hooks/use-bid-updates';
 import { HomeownerShell } from '../_shell/HomeownerShell';
 import { useBidContractors, useBidsClaim, useBidUpdatedNotifications, useContractorLicenses } from './use-bids-data';
 import { acknowledgeBidUpdatedNotifications, requestBidRenewal } from './actions';
-import { isAllExpired, showCompareToggle, shouldFireBidsViewed } from './utils';
+import { isAllExpired, isSupersededBid, showCompareToggle, shouldFireBidsViewed, visibleBids } from './utils';
 import { BIDS_STYLES } from './styles';
 import { track } from '@/lib/track';
 import { BidCard } from './components/BidCard';
@@ -55,7 +55,8 @@ function BidsContent() {
 
   const { claim, claimId, loading: claimLoading, error: claimError } = useBidsClaim(userId, claimIdParam);
   const { bids: rawBids, loading: bidsLoading, error: bidsError } = useBidUpdates(claimId || '');
-  const bids = rawBids as unknown as BidRow[];
+  // gh-2564: retired ('superseded') bids are hidden from the list, like the static bids.html.
+  const bids = useMemo(() => visibleBids(rawBids as unknown as BidRow[]), [rawBids]);
   const { contractors } = useBidContractors(bids);
   const { licenses } = useContractorLicenses(bids);
   const notifs = useBidUpdatedNotifications(userId, claimId);
@@ -86,7 +87,7 @@ function BidsContent() {
   }, [claimLoading, bidsLoading, claimId, bids.length]);
 
   // gh-2564: a withdrawn ('cancelled') bid can never be selected, whichever control fired.
-  const onSelect = useCallback((bid: BidRow) => { if (bid.bid_status !== 'cancelled') setPending(bid); }, []);
+  const onSelect = useCallback((bid: BidRow) => { if (bid.bid_status !== 'cancelled' && !isSupersededBid(bid)) setPending(bid); }, []);
   const onCredentials = useCallback((contractorId: string) => setEduContractorId(contractorId), []);
 
   const onRenew = useCallback(

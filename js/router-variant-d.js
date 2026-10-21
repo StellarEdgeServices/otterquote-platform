@@ -383,7 +383,10 @@
       submitBtn.disabled = true;
       submitBtn.textContent = 'Please wait…';
 
-      bridge.insertFreshLead(null, value, null).then(function (newId) {
+      // gh-2598 slice 6: the homepage ZIP (validated five digits, read-and-cleared by start.html) rides on a HOMEOWNER's row only, in the
+      // existing allow-listed `zip` column. Anyone else (role changed via Back) gets exactly the insert they always did.
+      var homeZipExtra = (role === 'homeowner' && bridge.homeEntry && bridge.homeEntry.zip) ? { zip: bridge.homeEntry.zip } : undefined;
+      bridge.insertFreshLead(null, value, null, undefined, undefined, homeZipExtra).then(function (newId) {
         email = value;
         leadId = newId;
 
@@ -845,6 +848,15 @@
     root = mountEl || document.getElementById('routerDRoot');
     if (!root) { return; }
     root.setAttribute('data-rd-root', '1');
+    // gh-2598 slice 6: a visitor sent here by a homeowner button on the new homepage (?entry=home) has already said who they are, so the
+    // "I am a..." screen is skipped. 'd-role' goes on the back stack, so Back from d-email still reaches it. No role-selected event is
+    // emitted: nobody tapped d-role. start.html reads and clears the stored ZIP; bridge.homeEntry carries the result.
+    if (bridge.homeEntry && bridge.homeEntry.skipRole) {
+      role = 'homeowner';
+      stack.push('d-role');
+      show('d-email');
+      return;
+    }
     show('d-role');
   }
 

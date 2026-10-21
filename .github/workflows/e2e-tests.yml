@@ -318,7 +318,11 @@ jobs:
       # function the CI-test project lacks") -- it must actually be able to
       # fail a PR, unlike the `test` job below.
       - name: Edge Function parity check against the CI-test project
-        if: ${{ !cancelled() }}
+        # gh-2698: Dependabot-triggered runs get no Actions repository secrets (only
+        # Dependabot secrets), so this secret-dependent step reads UNMEASURED and fails
+        # exit 3 on every Dependabot PR. Skipped for that actor only; every other actor
+        # (humans, merge_group, push to main) still runs and can still fail it.
+        if: ${{ !cancelled() && github.actor != 'dependabot[bot]' }}
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: python3 scripts/ci-test-function-parity.py
@@ -340,7 +344,11 @@ jobs:
       # self-test-marked rows, and always cleans up (incl. rows >1 h old). The step
       # name is unchanged on purpose: it is a check-run context.
       - name: RED/GREEN self-test against the CI-test project
-        if: ${{ !cancelled() }}
+        # gh-2698: Dependabot-triggered runs get no Actions repository secrets (only
+        # Dependabot secrets), so this secret-dependent step reads UNMEASURED and fails
+        # exit 3 on every Dependabot PR. Skipped for that actor only; every other actor
+        # (humans, merge_group, push to main) still runs and can still fail it.
+        if: ${{ !cancelled() && github.actor != 'dependabot[bot]' }}
         env:
           SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
@@ -423,6 +431,9 @@ jobs:
       - name: storage-surface ledger — every storage key has a status + a cited test (gh-2060 closes-on c)
         run: node tests/gh2060-storage-surface-ledger.mjs
 
+      - name: roofing bid comparison tool — malformed saved state never throws (gh-2905, ledger key oq-bidtool-v1)
+        run: node tests/gh2905-bidtool-stale-state.mjs
+
       - name: partner pages — ?recruit= case/whitespace-normalised + URL-miss falls back to stored code (gh-2471)
         run: node tests/gh2471-recruit-case.mjs
 
@@ -432,8 +443,14 @@ jobs:
       - name: measurement-shape admin-fulfilment flip unit test (gh-1411 D-317 cl. 4-6; REVIEW finding A, PR #2236)
         run: node tests/measurement-shape-flip-on-deliver.mjs
 
+      - name: "admin halted-contracts Re-issue button: dry run first, confirm only after acceptance (gh-2543 slice 2b)"
+        run: node tests/gh2543-halted-contracts-reissue-button.mjs
+
       - name: partner signup duplicate-email error routing unit test (gh-2274 regression)
         run: node tests/gh2274-partner-dup-email-error.mjs
+
+      - name: contractor SMS consent box on pre-approval matches contractor-join D-328 label and evidence columns (gh-1916, PR #2722)
+        run: node tests/gh1916-pre-approval-sms-consent.mjs
 
       # gh-1925 / D-336: the "Do Not Sell or Share" opt-out control guard. It
       # pins the ruled link text + href in every static page's own <footer>
@@ -461,6 +478,13 @@ jobs:
       - name: a bidding contractor reads the claim summary view, never the base claims row (gh-2559, D-368)
         run: node tests/gh2559-bidder-claims-view.mjs
 
+      # pgserver 0.1.4 ships wheels only for cp39-cp312; the ubuntu-26.04 image's default python3 has none
+      # (pip: "from versions: none"), so pin the interpreter for this step (CTO RUN 71).
+      - name: Set up Python 3.12 (pgserver 0.1.4 has no wheel for the runner's default python)
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
       - name: the bidder view hands out no street, unit, box, lot, phone or email -- view file run on a throwaway Postgres (gh-2559, D-371)
         run: |
           python3 -m pip install --quiet pgserver==0.1.4 psycopg2-binary==2.9.13
@@ -468,6 +492,17 @@ jobs:
 
       - name: a bidding contractor is offered no raw homeowner upload, only the selected contractor (gh-2559, D-368)
         run: node tests/gh2559-bidder-no-raw-files.mjs
+
+      - name: the bidder view releases estimate_filename only after the fee -- draft migration, rollback, other view redefinitions (gh-2931)
+        run: |
+          node tests/gh2931-bidder-summary-no-filename.mjs
+          python3 supabase/tests/gh2931_bidder_summary_no_filename_proof_run.py
+
+      - name: contractor pages state the D-386 release timing for the estimate, phone and email (gh-2559, D-386)
+        run: node tests/gh2559-contractor-access-window-copy.mjs
+
+      - name: the fee-gate draft migration, rollback and proof are consistent (gh-2559 fee leg, D-386)
+        run: node tests/gh2559-claim-docs-fee-gate.mjs
 
       - name: partner-re one leads row per signup, variant carried (gh-2084 arm E)
         run: node tests/gh2084-partner-re-one-lead-row.mjs

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Roofing Bid Comparison Tool | Otter Quotes</title>
+<meta name="description" content="Line up the roofing bids you are considering side by side. Toggle what each contractor includes and see the gaps.">
+<link rel="canonical" href="https://otterquote.com/guides/roof-bid-comparison-tool.html">
+<meta property="og:title" content="Roofing Bid Comparison Tool | Otter Quotes">
+<meta property="og:description" content="Line up the roofing bids you are considering side by side. Toggle what each contractor includes and see the gaps.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://otterquote.com/guides/roof-bid-comparison-tool.html">
+<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Otter Quotes logo">
+<meta property="og:site_name" content="Otter Quotes">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+<style>
+/* gh-2905 bid comparison tool. Scoped under #bt so the shared design-system rules cannot leak in. */
+#bt{--bt-ink:#0D1B2E;--bt-body:#3D4F60;--bt-muted:#64748B;--bt-line:#CBD5E1;--bt-card:#FFFFFF;--bt-soft:#F1F5F9;--bt-amber:#E07B00;--bt-amber-deep:#7A4200;--bt-green:#047857;--bt-green-bg:#0b5e43;
+  color:var(--bt-body);font-size:16px;line-height:1.5}
+#bt *{box-sizing:border-box}
+#bt .wrap{max-width:960px;margin:0 auto;padding:0 16px}
+#bt .hero{padding:28px 0 8px}
+#bt h1{font-size:26px;line-height:1.2;margin:0 0 8px;color:var(--bt-ink)}
+#bt h2{font-size:20px;line-height:1.3;margin:0 0 8px;color:var(--bt-ink)}
+#bt p{color:var(--bt-body);line-height:1.5}
+#bt .sub{color:var(--bt-body);margin:0 0 16px}
+#bt .btn{display:inline-flex;align-items:center;justify-content:center;font:inherit;font-weight:600;min-height:48px;padding:12px 18px;border-radius:10px;border:0;cursor:pointer;background:var(--bt-amber);color:#1a0f00;text-decoration:none}
+#bt .btn.ghost{background:transparent;color:var(--bt-ink);border:1px solid var(--bt-muted)}
+#bt .btn.small{min-height:44px;padding:8px 14px;font-size:15px}
+#bt .btn:focus-visible,#bt input:focus-visible,#bt .sw:focus-visible,#bt .rm:focus-visible,#bt .tablewrap:focus-visible{outline:3px solid var(--bt-amber-deep);outline-offset:2px}
+#bt .bar{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0 20px}
+#bt .bar .btn{flex:1 1 140px}
+#bt .target{background:var(--bt-card);border:1px solid var(--bt-line);border-left:4px solid var(--bt-amber);border-radius:16px;padding:14px 16px;margin-bottom:20px;font-size:15px}
+#bt .target b{color:var(--bt-amber-deep)}
+#bt .cards{display:grid;gap:16px;grid-template-columns:1fr}
+@media(min-width:760px){#bt .cards{grid-template-columns:1fr 1fr}}
+#bt .card{background:var(--bt-card);border:1px solid var(--bt-line);border-radius:16px;padding:16px;min-width:0}
+#bt .card-head{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+#bt .card-head input{flex:1;min-width:0}
+#bt label.f{display:block;font-size:13px;color:var(--bt-muted);margin:8px 0 4px}
+#bt input[type=text],#bt input[type=number]{width:100%;min-height:48px;font:inherit;font-size:16px;color:var(--bt-ink);background:#fff;border:1px solid var(--bt-muted);border-radius:10px;padding:8px 12px}
+#bt .name{font-weight:600;font-size:18px}
+#bt .score{display:inline-block;margin:10px 0 2px;font-size:14px;color:var(--bt-amber-deep);font-weight:600}
+#bt .row{border-top:1px solid var(--bt-line);padding:12px 0}
+#bt .row-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#bt .row-label{font-weight:500;color:var(--bt-ink);min-width:0;flex:1}
+#bt .row-label small{display:block;font-weight:400;color:var(--bt-muted);font-size:13px;line-height:1.35;margin-top:2px}
+#bt .sw{flex:none;width:60px;height:44px;border-radius:22px;border:2px solid var(--bt-muted);background:#E2E8F0;position:relative;cursor:pointer;padding:0}
+#bt .sw::after{content:"";position:absolute;top:4px;left:4px;width:32px;height:32px;border-radius:50%;background:var(--bt-muted);transition:transform .2s,background .2s}
+#bt .sw[aria-checked=true]{background:var(--bt-green-bg);border-color:var(--bt-green)}
+#bt .sw[aria-checked=true]::after{transform:translateX(16px);background:#fff}
+#bt .state{flex:none;font-size:12px;font-weight:600;min-width:28px;text-align:right;color:var(--bt-muted)}
+#bt .on .state{color:var(--bt-green)}
+#bt .detail{margin-top:8px}
+#bt .rm{background:none;border:0;color:var(--bt-amber-deep);font:inherit;font-size:14px;min-height:44px;min-width:44px;cursor:pointer;text-decoration:underline}
+#bt .addrow{display:flex;gap:8px;margin-top:12px}
+#bt .addrow input{flex:1;min-width:0}
+#bt .bt-oh{font-size:15px;margin:14px 0 0;color:var(--bt-muted)}
+#bt .summary{margin:28px 0}
+#bt .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--bt-line);border-radius:16px;background:var(--bt-card)}
+#bt table{border-collapse:collapse;width:100%;font-size:14px}
+#bt th,#bt td{padding:10px 8px;text-align:center;border-bottom:1px solid var(--bt-line);vertical-align:middle;color:var(--bt-body)}
+#bt th:first-child,#bt td:first-child{text-align:left;width:38%;position:sticky;left:0;background:var(--bt-card)}
+#bt thead th{color:var(--bt-ink);font-weight:600;vertical-align:bottom;overflow-wrap:anywhere}
+#bt th[scope=row]{font-weight:500;color:var(--bt-ink)}
+#bt tr.best th.cn,#bt td.best,#bt th.best{background:#FBEBD3}
+#bt .y{color:var(--bt-green);font-weight:700}#bt .n{color:var(--bt-muted)}
+#bt .gap{color:var(--bt-amber-deep)}
+#bt td small{display:block;color:var(--bt-muted);font-size:12px}
+#bt .flags{margin:14px 0 0;display:grid;gap:10px}
+#bt .flag{overflow-wrap:anywhere;background:var(--bt-card);border:1px solid var(--bt-line);border-radius:10px;padding:12px 14px;font-size:15px;color:var(--bt-body)}
+#bt .flag b{color:var(--bt-ink)}
+#bt .flag.top{border-color:var(--bt-amber);border-left-width:4px}
+#bt .copyt{display:block;width:100%;margin-top:12px;font:inherit;font-size:14px;padding:10px;border:1px solid var(--bt-line);border-radius:10px;color:var(--bt-ink);background:var(--bt-card)}
+#bt .sr{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+#bt .empty{padding:24px;text-align:center;color:var(--bt-muted);border:1px dashed var(--bt-muted);border-radius:16px}
+#bt .notes{margin:32px 0 0;padding:20px 0 40px;border-top:1px solid var(--bt-line);color:var(--bt-muted);font-size:14px}
+#bt .notes p{margin:0 0 8px;color:var(--bt-muted)}
+@media print{
+ body{background:#fff}#site-header,#site-footer,#bt .bar,#bt .rm,#bt .addrow,#bt .copyt{display:none!important}
+ #bt .cards{grid-template-columns:1fr 1fr}#bt .card{break-inside:avoid}
+ #bt input{border:0!important;padding:0!important;min-height:0!important}
+}
+</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+<main id="bt">
+<div class="wrap">
+<section class="hero">
+ <h1>Roofing Bid Comparison</h1>
+ <p class="sub">Add a card for each contractor you are considering. Flip a switch on for every item that is in their bid, then compare them side by side. Contractor names and prices you type stay in this browser.</p>
+ <div class="bar">
+  <button class="btn" id="addC" type="button">+ Add a contractor</button>
+  <button class="btn ghost" id="printB" type="button">Print / save as PDF</button>
+  <button class="btn ghost" id="copyB" type="button">Copy summary as text</button>
+ </div>
+</section>
+
+<section class="target" aria-labelledby="tgt">
+ <b id="tgt">Your checklist (6 items)</b>
+ <span> Wind rating, Class 4 hail-rated shingles, algae warranty, contractor labor warranty, manufacturer's defect warranty and manufacturer-backed labor warranty. The summary counts how many of these each bid includes. Other lines are shown but not counted.</span>
+</section>
+
+<section id="cards" class="cards" aria-label="Contractor bids"></section>
+<div id="empty" class="empty">No contractors yet. Tap "Add a contractor" to start.</div>
+
+<section class="summary" id="summary" hidden aria-labelledby="sumh">
+ <h2 id="sumh">Side by side</h2>
+ <p class="sub">A count of what each bid says it includes. It is not a ranking or a recommendation, and price is shown but not scored.</p>
+ <div class="tablewrap" tabindex="0" role="region" aria-label="Comparison table"><table id="tbl"></table></div>
+ <div class="flags" id="flags" aria-live="polite"></div>
+ <textarea id="copyT" class="copyt" readonly rows="10" hidden aria-label="Copy summary as text"></textarea>
+</section>
+<div class="notes">
+<p>Otter Quotes does not endorse any contractor.</p>
+ <p>This tool only shows what you enter. Confirm every item, number and warranty term in writing with the contractor.</p>
+</div>
+</div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://otterquote.com"},
+    {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://otterquote.com/guides/"},
+    {"@type": "ListItem", "position": 3, "name": "Roofing Bid Comparison", "item": "https://otterquote.com/guides/roof-bid-comparison-tool.html"}
+  ]
+}
+</script>
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+<script>
+(function(){
+'use strict';
+var KEY='oq-bidtool-v1';
+var TARGET=[
+ {k:'wind',label:'Wind rating',help:'How much wind the shingle is rated to resist, shown in mph. The rating is listed for the product.',d:{t:'num',ph:'mph (optional)',u:'mph'}},
+ {k:'class4',label:'Class 4 hail-rated shingles',help:'Class 4 is the highest rating under the UL 2218 impact test.'},
+ {k:'algae',label:'Algae warranty',help:'A warranty against the dark algae streaks that can show up on shingles.',d:{t:'num',ph:'Years (e.g. 25)',u:'yr'}},
+ {k:'labor',label:'Contractor labor warranty',help:"The contractor's own promise to fix workmanship problems for a set time.",d:{t:'num',ph:'Years',u:'yr'}},
+ {k:'mfgdef',label:"Manufacturer's defect warranty",help:"The shingle maker's promise covering defects in the materials."},
+ {k:'mfglabor',label:'Manufacturer-backed labor warranty',help:'A labor warranty issued or backed by the shingle maker, not only the contractor. Ask for the tier name.',d:{t:'text',ph:'Tier name (optional)'}}
+];
+var OTHER=[
+ {k:'tearoff',label:'Tear-off of all layers',help:'Old roofing is removed down to the deck before the new roof goes on.'},
+ {k:'iws',label:'Ice & water shield',help:'A sticky waterproof underlayment, often used at eaves and valleys.'},
+ {k:'drip',label:'Drip edge',help:'Metal edging along the roof edge that directs water away from the fascia.'},
+ {k:'ridge',label:'Ridge vent',help:'A vent along the peak that lets attic air escape.'},
+ {k:'permit',label:'Permit',help:'The permit for roof work, if your town requires one, and who pulls it.'},
+ {k:'disposal',label:'Disposal',help:'Hauling away old materials and job debris.'}
+];
+var DEFS=TARGET.concat(OTHER);
+var st={n:0,c:[]},armT=null;
+var $=function(i){return document.getElementById(i)};
+
+function normC(c,i){
+ if(!c||typeof c!=='object'||Array.isArray(c))return null;
+ var items={};
+ DEFS.forEach(function(d){var it=(c.items&&typeof c.items==='object')?c.items[d.k]:null;
+  items[d.k]={on:!!(it&&typeof it==='object'&&it.on===true),v:(it&&typeof it==='object'&&typeof it.v==='string')?it.v:''}});
+ var custom=[];
+ if(Array.isArray(c.custom))c.custom.forEach(function(x){if(x&&typeof x==='object'&&typeof x.k==='string'&&x.k&&typeof x.label==='string')custom.push({k:x.k,label:x.label.slice(0,60),on:x.on===true,v:typeof x.v==='string'?x.v:''})});
+ return {id:(typeof c.id==='string'&&c.id)?c.id:'c'+Date.now()+'-'+i,name:typeof c.name==='string'?c.name:'Contractor '+(i+1),price:typeof c.price==='string'?c.price:'',items:items,custom:custom};
+}
+function load(){try{var s=localStorage.getItem(KEY);if(s){var o=JSON.parse(s);if(o&&typeof o==='object'&&Array.isArray(o.c)){var cs=[],seen={};o.c.forEach(function(c,i){var n=normC(c,i);if(n&&!seen[n.id]){seen[n.id]=1;cs.push(n)}});st={n:(typeof o.n==='number'&&isFinite(o.n)&&o.n>=cs.length)?o.n:cs.length,c:cs}}}}catch(e){}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}}
+function track(n,p){try{if(typeof gtag==='function')gtag('event',n,p||{})}catch(e){}}
+
+function newC(){
+ st.n++;
+ var items={};DEFS.forEach(function(d){items[d.k]={on:false,v:''}});
+ return {id:'c'+Date.now()+st.n,name:'Contractor '+st.n,price:'',items:items,custom:[]};
+}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function count(c){return TARGET.filter(function(d){return c.items[d.k]&&c.items[d.k].on}).length}
+function money(p){var n=parseFloat(String(p).replace(/[^0-9.]/g,''));return isNaN(n)?'':'$'+n.toLocaleString('en-US',{maximumFractionDigits:0})}
+function detailText(d,it){if(!it.on||!it.v)return '';return d&&d.u?(it.v+' '+d.u):it.v}
+
+function rowHtml(c,key,label,help,d,it,custom){
+ var id=c.id+'-'+key, on=!!it.on;
+ var h='<div class="row'+(on?' on':'')+'"><div class="row-top"><div class="row-label"><span id="l-'+id+'">'+esc(label)+'</span>'+(help?'<small id="d-'+id+'">'+esc(help)+'</small>':'')+'</div>'+
+ '<span class="state">'+(on?'Yes':'No')+'</span>'+
+ '<button type="button" class="sw" role="switch" aria-checked="'+on+'" aria-labelledby="l-'+id+'"'+(help?' aria-describedby="d-'+id+'"':'')+' data-c="'+c.id+'" data-k="'+key+'"'+(custom?' data-custom="1"':'')+'></button></div>';
+ if(on&&d){h+='<div class="detail"><input type="'+(d.t==='num'?'number':'text')+'"'+(d.t==='num'?' inputmode="numeric" min="0"':'')+' placeholder="'+esc(d.ph)+'" value="'+esc(it.v||'')+'" aria-label="'+esc(label)+' detail" data-c="'+c.id+'" data-k="'+key+'" data-detail="1"></div>'}
+ if(custom)h+='<button type="button" class="rm" data-c="'+c.id+'" data-k="'+key+'" data-rmitem="1">Remove this item</button>';
+ return h+'</div>';
+}
+
+function render(active){
+ var cont=$('cards'),ae=document.activeElement,keep=ae&&ae.dataset?{c:ae.dataset.c,k:ae.dataset.k,d:ae.dataset.detail,f:ae.dataset.field,s:ae.selectionStart}:null;
+ var html='';
+ st.c.forEach(function(c){
+  var cnt=count(c);
+  html+='<article class="card" data-card="'+c.id+'"><div class="card-head"><input type="text" class="name" value="'+esc(c.name)+'" aria-label="Contractor name" data-c="'+c.id+'" data-field="name"></div>'+
+  '<label class="f" for="p-'+c.id+'">Total price</label><input type="text" inputmode="decimal" id="p-'+c.id+'" placeholder="$ total from the bid" value="'+esc(c.price)+'" data-c="'+c.id+'" data-field="price">'+
+  '<div class="score">'+cnt+' of 6 target items included</div>';
+  TARGET.forEach(function(d){html+=rowHtml(c,d.k,d.label,d.help,d.d,c.items[d.k],false)});
+  html+='<h2 class="bt-oh">Other bid lines</h2>';
+  OTHER.forEach(function(d){html+=rowHtml(c,d.k,d.label,d.help,null,c.items[d.k],false)});
+  c.custom.forEach(function(it){html+=rowHtml(c,it.k,it.label,'',null,it,true)});
+  html+='<div class="addrow"><input type="text" placeholder="Add your own item" aria-label="Add your own item" data-c="'+c.id+'" data-field="newitem"><button type="button" class="btn small" data-c="'+c.id+'" data-addcustom="1">Add</button></div>'+
+  '<button type="button" class="rm" data-c="'+c.id+'" data-rmc="1">Remove this contractor</button></article>';
+ });
+ cont.innerHTML=html;
+ $('empty').hidden=st.c.length>0;
+ summary();
+ save();
+ if(keep){
+  var sel=keep.d?'[data-c="'+keep.c+'"][data-k="'+keep.k+'"][data-detail]':keep.f?'[data-c="'+keep.c+'"][data-field="'+keep.f+'"]':keep.k?'[data-c="'+keep.c+'"][data-k="'+keep.k+'"].sw':null;
+  var el=sel&&cont.querySelector(sel);if(el){el.focus();if(keep.d||keep.f){try{el.setSelectionRange(keep.s,keep.s)}catch(e){}}}
+ }
+}
+
+function summary(){
+ var s=$('summary');
+ if(st.c.length===0){s.hidden=true;return}
+ s.hidden=false;
+ var max=Math.max.apply(null,st.c.map(count));
+ var tops=st.c.filter(function(c){return count(c)===max});
+ var h='<thead><tr><th scope="col">Item</th>'+st.c.map(function(c){return '<th scope="col" class="cn'+(c.name&&count(c)===max&&max>0?' best':'')+'">'+esc(c.name||'Unnamed')+'</th>'}).join('')+'</tr></thead><tbody>';
+ h+='<tr><th scope="row">Total price</th>'+st.c.map(function(c){return '<td>'+(money(c.price)||'<span class="n">not entered</span>')+'</td>'}).join('')+'</tr>';
+ h+='<tr><th scope="row">Target items included</th>'+st.c.map(function(c){var b=count(c)===max&&max>0;return '<td class="'+(b?'best':'')+'"><b>'+count(c)+' of 6</b></td>'}).join('')+'</tr>';
+ function line(d,tag){
+  h+='<tr><th scope="row">'+esc(d.label)+'</th>'+st.c.map(function(c){
+   var it=tag==='c'?c.custom.filter(function(x){return x.k===d.k})[0]:c.items[d.k];
+   if(!it)return '<td><span class="n">n/a</span></td>';
+   if(it.on){var t=detailText(d.d,it);return '<td><span class="y" aria-hidden="true">&#10003;</span><span class="sr">Included</span>'+(t?'<small>'+esc(t)+'</small>':'')+'</td>'}
+   return '<td><span class="n" aria-hidden="true">&mdash;</span><span class="sr">Not included</span></td>';
+  }).join('')+'</tr>';
+ }
+ TARGET.forEach(function(d){line(d,'t')});
+ OTHER.forEach(function(d){line(d,'o')});
+ var cu={};st.c.forEach(function(c){c.custom.forEach(function(x){cu[x.k]=x.label})});
+ Object.keys(cu).forEach(function(k){line({label:cu[k],k:k,d:null},'c')});
+ $('tbl').innerHTML=h+'</tbody>';
+
+ var f='';
+ if(st.c.length>1&&max>0){
+  f+='<div class="flag top"><b>Includes the most target items:</b> '+tops.map(function(c){return esc(c.name)}).join(', ')+' ('+max+' of 6). That is a count of checked items only. It does not tell you which bid is right for you.</div>';
+ }
+ st.c.forEach(function(c){
+  var gaps=TARGET.filter(function(d){return !c.items[d.k].on}).map(function(d){return d.label});
+  if(gaps.length===0)f+='<div class="flag"><b>'+esc(c.name)+':</b> all 6 target items marked as included.</div>';
+  else f+='<div class="flag"><b>'+esc(c.name)+' gaps:</b> <span class="gap">'+gaps.map(esc).join(', ')+'</span>. Ask whether these are available, and whether they change the price.</div>';
+ });
+ $('flags').innerHTML=f;
+ var ta=$('copyT');if(ta&&!ta.hidden)ta.value=summaryText();
+}
+
+function summaryText(){
+ var L=['Roofing Bid Comparison',''];
+ st.c.forEach(function(c){
+  var m=money(c.price);
+  L.push((c.name||'Unnamed')+(m?' - '+m:' - not entered'));
+  L.push(count(c)+' of 6 target items included');
+  var inc=[];
+  TARGET.forEach(function(d){var it=c.items[d.k];if(it&&it.on){var t=detailText(d.d,it);inc.push(d.label+(t?' ('+t+')':''))}});
+  OTHER.forEach(function(d){var it=c.items[d.k];if(it&&it.on)inc.push(d.label)});
+  c.custom.forEach(function(it){if(it.on){var t=detailText(null,it);inc.push(it.label+(t?' ('+t+')':''))}});
+  inc.forEach(function(x){L.push('  - '+x)});
+  L.push('');
+ });
+ L.push('A count of what each bid says it includes. It is not a ranking or a recommendation, and price is shown but not scored.');
+ L.push('Otter Quotes does not endorse any contractor.');
+ return L.join('\n');
+}
+function copySummary(){
+ if(st.c.length===0)return;
+ var s=summaryText(),ta=$('copyT');if(!ta)return;
+ ta.value=s;ta.hidden=false;
+ try{ta.focus();ta.select();ta.setSelectionRange(0,s.length)}catch(e){}
+ try{if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(s).catch(function(){})}catch(e){}
+ try{document.execCommand('copy')}catch(e){}
+}
+function find(id){return st.c.filter(function(c){return c.id===id})[0]}
+
+document.addEventListener('click',function(e){
+ var t=e.target.closest('button');if(!t)return;
+ if(t.id==='addC'){st.c.push(newC());render();track('bidtool_contractor_added',{count:st.c.length});var cs=document.querySelectorAll('.card');var last=cs[cs.length-1];if(last)last.scrollIntoView({behavior:'smooth',block:'start'});return}
+ if(t.id==='copyB'){copySummary();return}
+ if(t.id==='printB'){track('bidtool_print');window.print();return}
+ var c=find(t.dataset.c);if(!c)return;
+ if(t.classList.contains('sw')){
+  var k=t.dataset.k,it=t.dataset.custom?c.custom.filter(function(x){return x.k===k})[0]:c.items[k];
+  it.on=!it.on;render();track('bidtool_toggle',{item:k,on:it.on});return}
+ if(t.dataset.rmc){
+  if(t.dataset.armed!=='1'){t.dataset.armed='1';t.textContent='Tap again to remove';clearTimeout(armT);armT=setTimeout(function(){t.dataset.armed='';t.textContent='Remove this contractor'},4000);return}
+  clearTimeout(armT);st.c=st.c.filter(function(x){return x!==c});render();track('bidtool_contractor_removed');return}
+ if(t.dataset.rmitem){c.custom=c.custom.filter(function(x){return x.k!==t.dataset.k});render();return}
+ if(t.dataset.addcustom){addCustom(c)}
+});
+function addCustom(c){
+ var inp=document.querySelector('[data-c="'+c.id+'"][data-field="newitem"]');var v=inp&&inp.value.trim();
+ if(!v)return;c.custom.push({k:'x'+Date.now(),label:v.slice(0,60),on:true,v:''});render();track('bidtool_custom_item_added');
+}
+document.addEventListener('keydown',function(e){
+ if(e.key==='Enter'&&e.target.dataset&&e.target.dataset.field==='newitem'){e.preventDefault();var c=find(e.target.dataset.c);if(c)addCustom(c)}
+});
+document.addEventListener('input',function(e){
+ var t=e.target,c=find(t.dataset&&t.dataset.c);if(!c)return;
+ if(t.dataset.field==='name'){c.name=t.value;summary();save()}
+ else if(t.dataset.field==='price'){c.price=t.value;summary();save()}
+ else if(t.dataset.detail){var k=t.dataset.k,it=c.items[k]||c.custom.filter(function(x){return x.k===k})[0];if(it){it.v=t.value;summary();save()}}
+});
+
+load();
+if(!st.c.length){st.c.push(newC(),newC())}
+try{render()}catch(e){st={n:0,c:[]};try{localStorage.removeItem(KEY)}catch(e2){}st.c.push(newC(),newC());render()}
+window.__oqBid={state:function(){return st}};
+})();
+</script>
+</body>
+</html>

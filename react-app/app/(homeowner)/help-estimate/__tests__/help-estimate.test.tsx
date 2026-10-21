@@ -28,7 +28,13 @@ vi.mock('@/lib/supabase', () => ({
         })),
       })),
       update: vi.fn(() => ({
-        eq: vi.fn(() => Promise.resolve({ error: null })),
+        // gh-2105 batch 4: sendEstimateRequest chains .select('id') after .eq(); keep the bare
+        // awaited .eq() shape working too (thenable) and return one row for the select path.
+        eq: vi.fn(() =>
+          Object.assign(Promise.resolve({ error: null }), {
+            select: vi.fn(() => Promise.resolve({ data: [{ id: 'claim1' }], error: null })),
+          }),
+        ),
       })),
       insert: vi.fn(() => ({
         select: vi.fn(() => ({

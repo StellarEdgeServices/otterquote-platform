@@ -31,7 +31,7 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
 const dash = read('dashboard.html');
 const ctr = read('contractor-dashboard.html');
-const mig = read('supabase/migrations_drafts/gh2491_message_counterpart.sql');
+const mig = read('supabase/migrations/20261015205726_gh2491_message_counterpart.sql');
 const rb = read('supabase/migrations_rollbacks/gh2491_message_counterpart_rollback.sql');
 
 // ---------- 1. static ----------

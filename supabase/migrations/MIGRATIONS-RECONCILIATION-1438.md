@@ -1191,3 +1191,47 @@ change), or (b) leave them as unapplied-history files in the Remainder. Recommen
 bodies. Direction-2 count is unchanged by this decision either way for these two files until it is made.
 
 **Counts after part 5 (rebuilt 2026-10-07 on main 76bd1751, which already carries PR #2575's reconciliation of `20261005200000_gh2479_born_state_guard` -> `20261005203540` and PR #2605's two applied versions `20261007194749` and `20261007201941` with their filed copies; the baseline manifest is main's, minus the four renamed versions; applied ledger 215 rows, sorted-version md5 digest `b5da3e77`, read from production on 2026-10-07):** Direction 1 (applied, no repo file) 48 -> 46; Direction 2 (repo file, no ledger row) 27 -> 25. (The original part 5 on the earlier base counted 58 -> 56 and 36 -> 35; those numbers predate #2575 and are superseded.)
+
+## Part 6 (2026-10-14, CTO RUN 66, claim cto-2026-10-14T11:31:40Z): gh974 / gh972 bodies replaced with the ledger statements; three corrective rows filed
+
+Implements the ruling at issuecomment-6048861809 (replace the two repo bodies with the exact ledger statements under their ledger versions, on two
+conditions met in this PR). Production was read SELECT-only (project `yeszghaspzwwstvsrioa`, `supabase_migrations.schema_migrations.statements`,
+joined with a newline); nothing was applied.
+
+```
+file (this PR)                                                          ledger version   ledger md5 == file md5   chars
+20260818214025_gh972_get_contractor_quote_claim_ids_auth_scope.sql      20260818214025   45c2d1b3a4d8562790e53b967930ec5c   690   (renamed from 20260818214620; body replaced)
+20260818214054_gh972_fix_public_grant_gap.sql                           20260818214054   ce3d8c9fa2b24a8155bd6b8b28073ecc   466   (new)
+20260818214332_gh974_upsert_adjuster_from_claim_ownership_check.sql     20260818214332   5812dbf04522e858f4002086b012ed49  2165   (renamed from 20260818214531; body replaced)
+20260818214437_gh974_fix_adjusters_schema_mismatch.sql                  20260818214437   b5ecd99c319d0f7c458f3fd78f4b092c  2549   (new)
+20260818214513_gh974_fix_on_conflict_target.sql                         20260818214513   157a2c5a310edd543f2e60e5e18af0a6  2487   (new)
+```
+
+Each file is the ledger text byte-for-byte plus one trailing newline (the md5 is of the file minus that newline). The first-draft bodies this
+replaces had md5 `7fb9bc590808a0a46e52fa9493bcf75b` (gh974) and `bc3c489d49e2e1f6c86b8f396a6dee51` (gh972); they remain in git history at the parent commit.
+Condition 1 (the three corrective rows each have a repo file): met by the three new files. Condition 2 (nothing reads the old bodies): the only references
+to the old filenames were the first line of the two `migrations_rollbacks/` scripts (a comment) and the baseline manifest; both are updated here.
+The `20261005200000_gh2479_born_state_guard` item queued from Part 5 needed nothing: main already carries it as `20261005203540` (PR #2575), and its ledger
+`statements` is NULL, so there is no ledger text to copy.
+
+Counts after part 6 (manifest only; it is the static baseline): Direction 1 (applied, no repo file) 46 -> 41; Direction 2 (repo file, no ledger row) 25 -> 23.
+
+## Part 7 (2026-10-15, CTO RUN 68, claim cto-2026-10-15T17:34:21Z): five Direction-2 files renamed to their ledger versions
+
+Direction-2 lowering for the closes-on `query` conjunct 2 (a repo file with no ledger row). Production was read SELECT-only
+(`yeszghaspzwwstvsrioa`, `supabase_migrations.schema_migrations`, `statements` joined with a newline); nothing was applied. Each rename was chosen because
+the ledger row's `name` is the repo file's own stem and the file text matches the ledger text:
+
+```
+repo file (old version)                                   ledger version   ledger md5                         match
+20260904234257_gh1509_w9_gate_retired_policy_key          20260909122835   cb38d36637f4    file minus its leading comment header
+20260926221500_gh2121_s16_lead_goal_security_fix          20260927143606   08b2ec0f17a2    byte-for-byte
+20260928215500_gh2300_set_lead_converted_8day_window      20260929014230   2b0b1c95ba8d    byte-for-byte
+20260928211500_gh2313_partner_lead_consents               20260929023234   86a9345da5aa    byte-for-byte
+20260928233000_gh2310_backfill_legacy_internal_test_profiles 20260930015640 0da985ce397a   ledger text = file + one trailing newline
+```
+
+Rollbacks and pre-flights travel with each rename. The migration files' own text is untouched (their header comments still name the old version; editing them would break the
+byte match above). Not renamed, because the file text differs from the ledger row and the difference needs a decision: gh1059 (`20260820004212` vs ledger `20260820004417`, 11273 file
+chars vs 7369), gh1304 (`20260901132754` vs `20260901132827`), gh1529 (`20260904140000` vs `20260909045422`; `20260908111639` vs `20260909044414`), and gh2345 (`20260929180000` vs `20260930190030`,
+ledger `statements` NULL). Counts after part 7: Direction 1 41 -> 36; Direction 2 23 -> 18.

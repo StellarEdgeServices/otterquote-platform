@@ -91,7 +91,7 @@ Thanks for reaching out to Otter Quotes. Your next step is simple: reply to this
 
 From there we help you create a scope of work and send it to multiple contractors, so you can compare their bids.
 
-Contractors compete. Homeowners win.
+Contractors Compete. Homeowners Win.
 
 The Otter Quotes team`;
 /** Reply-To for ho6 sends only (Dustin's choice, #2378 comment 5911291213). */

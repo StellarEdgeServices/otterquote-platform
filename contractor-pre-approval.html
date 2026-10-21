@@ -423,7 +423,7 @@
                     </div>
                     <div class="check-group" style="margin-bottom: var(--sp-8);">
                         <input type="checkbox" id="agreeTcpaSms">
-                        <label for="agreeTcpaSms">I agree to receive transactional SMS from Otter Quotes. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe. (Optional — you can still use the platform without SMS notifications.)</label>
+                        <label for="agreeTcpaSms">I agree to receive SMS from Otter Quotes about my contractor account and new job opportunities. Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help. See our <a href="privacy.html" style="color: var(--amber); text-decoration: underline;">Privacy Policy</a> and <a href="terms.html" style="color: var(--amber); text-decoration: underline;">Terms of Service</a>.</label>
                     </div>
 
                     <button class="btn-primary" onclick="submitStep3()">Continue to Contract Template →</button>
@@ -904,7 +904,7 @@
     // ── Step 2 submit ──────────────────────────────────────────────────────────
     // Performance fix (2026-05-16): prior implementation had zero timeouts on all
     // async operations. Sequential awaits on Supabase storage uploads, DB calls, and
-    // an inline sb.auth.getSession() inside the HubSpot fetch could each hang
+    // an inline sb.auth.getSession() inside the (since removed, PR #2624) HubSpot fetch could each hang
     // indefinitely, causing the "Continue to Agreements" button to appear permanently
     // frozen. Fix: withTimeout() wrapper on every async call.
     function withTimeout(promise, ms, label) {
@@ -936,12 +936,10 @@
         if (licenseState.entries.length === 0 && !licenseState.noLicense) { alert('Please add a contractor license or check "I don\'t have a license for this work".'); return; }
 
         // Pre-fetch auth token BEFORE showPanel('loading') — 10s timeout, non-fatal
-        let accessToken = '';
         let liveSession = null;
         try {
             const sessionResult = await withTimeout(sb.auth.getSession(), 10000, 'Auth token prefetch');
             liveSession = sessionResult?.data?.session || null;
-            accessToken = liveSession?.access_token || '';
         } catch (e) { console.warn('Auth token prefetch failed (non-fatal):', e.message); }
 
         if (advBtn) { advBtn.dataset.submitting = 'true'; advBtn.disabled = true; advBtn.style.opacity = '0.5'; advBtn.textContent = 'Saving…'; }
@@ -1138,25 +1136,9 @@
                 }
             }
 
-            // Sync contractor pre-approval data to HubSpot (D-210, D-218) — 15s limit, non-fatal
-            // Pre-fetched accessToken used here (avoids inline getSession hang)
-            try {
-                await withTimeout(fetch('/functions/v1/create-hubspot-contact', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${accessToken}`
-                    },
-                    body: JSON.stringify({
-                        mode: 'contractor',
-                        email: currentUser.email,
-                        contractor_id: contractor.id
-                    })
-                }), 15000, 'HubSpot sync');
-                console.log('HubSpot contact synced (wc_path, license_path, license_count, license_summary)');
-            } catch (e) {
-                console.warn('HubSpot sync failed (non-fatal):', e);
-            }
+            // gh-2426: the HubSpot contractor sync (D-210, D-218) that ran here is removed --
+            // The paid HubSpot plan ends 2026-10-15/16. (The relative /functions/v1/ URL it used had no
+            // Netlify proxy, so it never reached the function anyway.)
 
             // Send notification — 15s limit, non-fatal
             try {
@@ -1197,6 +1179,21 @@
         }
 
         const now = new Date().toISOString();
+        // gh-1916 / D-328: the SMS box is the SAME sentence as contractor-join.html's #smsConsent and
+        // writes the SAME evidence columns (sms_opt_in true-or-omitted, never a bare false;
+        // sms_opt_in_at; sms_opt_in_source; sms_consent_text_version). Unchecked writes nothing, so
+        // it can never erase an opt-in captured at signup. sms_consent_ts is the legacy field.
+        // Consent text version must match contractor-join.html / js/auth.js (pinned by
+        // tests/gh1916-pre-approval-sms-consent.mjs).
+        const smsChecked = document.getElementById('agreeTcpaSms').checked;
+        const alreadyOptedIn = contractor && contractor.sms_opt_in === true && !!contractor.sms_opt_in_at;
+        const smsConsentFields = (smsChecked && !alreadyOptedIn) ? {
+            sms_consent_ts:           now,
+            sms_opt_in:               true,
+            sms_opt_in_at:            now,
+            sms_opt_in_source:        'contractor-onboarding',
+            sms_consent_text_version: 'contractor-v2-2026-09-15',
+        } : {};
         const attestation = {
             text_version:           'ic-24511-v1-2026-04',
             accepted:               true,
@@ -1216,7 +1213,7 @@
                     attestation_text_version: 'ic-24511-v1-2026-04',
                     attestation_accepted_at:  now,
                     ic_24511_attestation:     attestation,
-                    sms_consent_ts:           document.getElementById('agreeTcpaSms').checked ? now : null,
+                    ...smsConsentFields,
                     agreement_accepted_at:    now,
                     agreement_version:        'v2-2026-10',
                     onboarding_step:          3,

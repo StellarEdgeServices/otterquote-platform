@@ -135,6 +135,7 @@ export function useNotificationCount(userId: string | null): UseNotificationCoun
 
   const markRead = async (notificationId: string) => {
     try {
+      // update-no-select-ok: gh-2105 decision b -- read receipt for the bell; a zero-row match (notification already read, deleted, or not visible to this user) only leaves the unread badge stale until the next load; no money, consent or legal state hangs on read_at.
       await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', notificationId);
       // Optimistic decrement
       setCount((prev) => Math.max(0, prev - 1));

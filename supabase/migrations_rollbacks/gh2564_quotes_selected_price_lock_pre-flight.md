@@ -31,3 +31,11 @@ What a rescind after selection does to the claim (does it reopen for bids?) was 
 
 ## Proof
 Shared with gh2519: `supabase/tests/gh2519_gh2564_fee_lock_proof_run.sh`, lines S0 to S12 and the `GATE` lines (pass 3 applies a copy of the draft whose constant is `'cancelled'`, the value a repaired `rescind-bid` would write). S1 is the closes-on control pair: the same contractor UPDATE succeeds before selection (S0) and is refused after (S1).
+
+## gh-2626 composition check (#2519 comment 6156383757)
+This file's guard and, for gh2519, `accept_bid()` carry the `gh-2626` lines of `gh2626_claims_award_columns_guard.sql`. Apply order verified on a throwaway Postgres: gh2626, then gh2519, then gh2564 (`supabase/tests/gh2519_gh2564_gh2626_compose_proof_run.sh`). After this file is applied, and after ANY later migration that touches either function, both of these must return true:
+```sql
+SELECT prosrc LIKE '%gh-2626%' FROM pg_proc WHERE oid = 'public.accept_bid(uuid,uuid)'::regprocedure;
+SELECT prosrc LIKE '%gh-2626%' FROM pg_proc WHERE oid = 'public.quotes_guard_homeowner_columns()'::regprocedure;
+```
+Never apply `gh2626_claims_award_columns_guard.sql` after gh2519 or gh2564: it would replace both functions and remove the fee rules and the lock. The R-097 notice for this file must state the order used.

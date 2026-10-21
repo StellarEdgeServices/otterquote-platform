@@ -13,7 +13,7 @@ on:
     paths:
       - 'dashboard.html'
       - 'contractor-dashboard.html'
-      - 'supabase/migrations_drafts/gh2491_message_counterpart.sql'
+      - 'supabase/migrations/20261015205726_gh2491_message_counterpart.sql'
       - 'supabase/migrations_rollbacks/gh2491_message_counterpart_rollback.sql'
       - 'tests/gh2491-message-counterpart.mjs'
       - '.github/workflows/static-message-counterpart-tests.yml'
@@ -22,7 +22,7 @@ on:
     paths:
       - 'dashboard.html'
       - 'contractor-dashboard.html'
-      - 'supabase/migrations_drafts/gh2491_message_counterpart.sql'
+      - 'supabase/migrations/20261015205726_gh2491_message_counterpart.sql'
       - 'supabase/migrations_rollbacks/gh2491_message_counterpart_rollback.sql'
       - 'tests/gh2491-message-counterpart.mjs'
       - '.github/workflows/static-message-counterpart-tests.yml'

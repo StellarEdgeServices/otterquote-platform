@@ -1,6 +1,6 @@
 # Pre-flight: gh2491_claims_platform_fee_charged_guard (Tier 3B)
 
-NOT APPLIED. Refs #2491. The write guard on `claims.platform_fee_charged` that Ben set as the condition for applying `supabase/migrations_drafts/gh2491_message_counterpart.sql` (#2491 comments 6023472925, 6029407730). Protective only (R-134): it only removes capability from the browser roles. R-097 notice applies.
+NOT APPLIED. Refs #2491. The write guard on `claims.platform_fee_charged` that Ben set as the condition for applying `supabase/migrations/20261015205726_gh2491_message_counterpart.sql` (#2491 comments 6023472925, 6029407730). Protective only (R-134): it only removes capability from the browser roles. R-097 notice applies.
 
 ## What it does
 Adds `public.claims_guard_platform_fee_charged()` (SECURITY INVOKER, `search_path = public, pg_temp`) and the trigger `claims_guard_platform_fee_charged` (`BEFORE INSERT OR UPDATE OF platform_fee_charged ON public.claims`). For client callers (`current_user` is `anon` or `authenticated`, the JWT role is not `service_role`, the caller is not an admin email) it refuses, with SQLSTATE 42501: an INSERT with `platform_fee_charged = true`, and an UPDATE that changes the column in either direction. A value re-sent unchanged is not a change. `service_role`, admins and owner-level sessions are untouched. No policy, grant, existing trigger or data changes.

@@ -39,7 +39,7 @@
 <meta property="og:image:height" content="512">
 <meta property="og:image:alt" content="Otter Quotes logo">
 <meta name="twitter:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
-<meta name="description" content="Your home inspector found exterior damage. Otter Quotes puts your job in front of local contractors who can compete for it. Free for homeowners.">
+<meta name="description" content="Your home inspector found exterior damage. Otter Quotes puts your job in front of competing contractors who can compete for it.">
 <link rel="canonical" href="https://otterquote.com/ref-inspector.html">
 
 <script src="/js/ga-gate.js"></script>
@@ -572,11 +572,11 @@
 
     <h1>Your Inspector Found Damage.<br>Here's What to Do Next.</h1>
     <p class="hero-subtitle">
-      Otter Quotes puts your project out for competing bids from local contractors &mdash; based on a professional measurement of your property, not a contractor's walk-around estimate. Free for homeowners.
+      Otter Quotes puts your project out for competing bids from competing contractors &mdash; based on a professional measurement of your property, not a contractor's walk-around estimate.
     </p>
 
     <button class="hero-cta" onclick="document.getElementById('signup-form').scrollIntoView({behavior:'smooth'})">
-      Get Competing Bids &mdash; It's Free
+      Get Competing Bids
     </button>
   </section>
 
@@ -629,7 +629,7 @@
         <div class="how-item">
           <div class="how-number">2</div>
           <h3>Contractors Compete for Your Job</h3>
-          <p>Your project goes out to local contractors to bid on. Insurance claim or out-of-pocket repair &mdash; both paths are handled. Contractors are notified immediately.</p>
+          <p>Your project goes out to competing contractors to bid on. Insurance claim or out-of-pocket repair &mdash; both paths are handled. Contractors are notified immediately.</p>
         </div>
         <div class="how-item">
           <div class="how-number">3</div>
@@ -645,7 +645,7 @@
     <div class="trust-container">
       <div class="trust-grid">
         <div class="trust-item">
-          <strong>100% Free for Homeowners</strong>
+          <strong>No fee to use Otter Quotes</strong>
         </div>
         <div class="trust-item">
           <strong>Damage Already Confirmed</strong>
@@ -770,7 +770,7 @@
         <input type="hidden" id="landingPage" name="landingPage" value="ref-inspector">
 
         <button type="submit" class="form-submit" id="submitBtn">
-          Get Started &mdash; It's Free
+          Get Started
         </button>
 
         <p class="form-note">
@@ -791,7 +791,7 @@
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          Otter Quotes is 100% free for Homeowners. You pay nothing to use the platform.
+          There is no fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when they complete a job.
         </div>
       </div>
 
@@ -811,7 +811,7 @@
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          For a full replacement, yes &mdash; contractors need accurate measurements to give you a real bid, not a ballpark. We use a professional measurement service that builds a complete 3D model of the home. Either you take photos with the photo-capture app (takes about 15 minutes) or your inspector or agent can do it. The cost is $15 for a complete property data file, which is rebated in full if you complete a job on the platform. For smaller repairs, we may not need formal measurements.
+          For a full replacement, yes &mdash; contractors need accurate measurements to give you a real bid, not a ballpark. We order an aerial roof measurement report of the home, so there are no photos to take. The cost is $15 for the aerial roof measurement report, which is rebated in full if you complete a job on the platform. For smaller repairs, we may not need formal measurements.
         </div>
       </div>
 
@@ -1041,7 +1041,7 @@ async function handleFormSubmit(e) {
     console.error('Form submission error:', error);
     alert(`Something went wrong: ${error.message}. Please try again.`);
     submitBtn.disabled = false;
-    submitBtn.textContent = 'Get Started — It\'s Free';
+    submitBtn.textContent = 'Get Started';
   }
 }
 
