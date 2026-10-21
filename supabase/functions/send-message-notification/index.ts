@@ -47,6 +47,7 @@ import {
   messageNotificationText,
   MESSAGE_NOTIFICATION_SUBJECT,
 } from "./templates.ts"; // gh-1824: footer moved to templates.ts (testable, no serve() import)
+import { homeownerTextForContractor } from "./homeowner-text-redact.ts"; // gh-2559 / D-390 (local copy of _shared/homeowner-text-redact.ts)
 
 // gh-2462: the service-role client is typed `any`, as process-dunning's and notify-contractors'
 // are (gh-2309). The handler is now imported by caller-gate.test.ts, so this file is type-checked
@@ -214,7 +215,8 @@ export async function handler(
         claims:claim_id (
           id,
           user_id,
-          property_address
+          property_address,
+          platform_fee_charged
         ),
         profiles:sender_id (
           id,
@@ -331,8 +333,11 @@ export async function handler(
       // sender argument) is built from `senderLabel`, not senderProfile.
       const senderLabel = contractorBoundSenderLabel(claim.property_address);
       const subject = MESSAGE_NOTIFICATION_SUBJECT;
-      const messagePreview = message.body.substring(0, 200);
-      const messageTruncated = message.body.length > 200;
+      // [gh-2559 / D-390] The homeowner's words reach the selected contractor by e-mail before the Platform Fee: phone-shaped and
+      // e-mail-shaped text is removed (public.d390_redact_contact) until claims.platform_fee_charged IS TRUE; fails closed.
+      const contractorBoundBody = (await homeownerTextForContractor(supabase, message.body, claim.platform_fee_charged === true)) ?? "";
+      const messagePreview = contractorBoundBody.substring(0, 200);
+      const messageTruncated = contractorBoundBody.length > 200;
       const htmlBody = messageNotificationHtml(
         contractorProfile.full_name || "",
         senderLabel,

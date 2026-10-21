@@ -24,7 +24,7 @@
  *
  * Locked-block source line ranges (contract-signing.html @ 92eb09c):
  *   (b) Step-1 "Right to Cancel" callout ............ 937-938
- *   (c) Step-1 "No Cost to You" (D-206) ............. 946-947
+ *   (c) Step-1 "No fee to use Otter Quotes" (D-206) ..... 955-956
  *   (a) D-123 acknowledgment checkbox + hint ........ 955-956
  *   (d) Step-3 "Your Rights Under Indiana Law" ...... 1046-1047
  *   (e) Step-3 "Otter Quotes Contractor Switch Policy" 1052-1055
@@ -39,10 +39,10 @@ export const SIGN_COPY = {
   rightToCancelBody:
     'You may cancel this contract at any time before midnight on the third business day after signing, or the third business day after your insurance company\'s written final decision on your claim if that is later. Both you and the contractor will sign this agreement.',
 
-  // ── (c) TIER-3 LEGAL — Step 1 "No Cost to You" (D-206) (contract-signing.html:946-947) ──
-  noCostTitle: 'No Cost to You',
+  // ── (c) TIER-3 LEGAL — Step 1 "No fee to use Otter Quotes" (D-206) (contract-signing.html:955-956; gh-2934 mirror of PR #2920) ──
+  noCostTitle: 'No fee to use Otter Quotes',
   noCostBody:
-    'Otter Quotes is 100% free for Homeowners. The price shown in this contract is the price you pay your contractor — there are no separate fees from Otter Quotes.',
+    'There is no fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when they complete a job. The price shown in this contract is the price you pay your contractor — other than the report fee above, there are no separate fees from Otter Quotes.',
 
   // ── (a) TIER-3 LEGAL — D-123 acknowledgment checkbox (contract-signing.html:955-956) ──
   // Split around the #ackContractorName placeholder span (default text "the contractor");

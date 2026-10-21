@@ -93,7 +93,12 @@ for (const f of ['dashboard.html', 'contractor-dashboard.html']) {
 // null; an unguarded msg.profiles.full_name throws inside .map and blanks the whole thread.
 for (const f of ['dashboard.html', 'contractor-dashboard.html']) {
   const src = read(f);
-  ok(!/escapeHtml\(msg\.profiles\.full_name\)/.test(src) && /msg\.profiles && msg\.profiles\.full_name/.test(src), `${f}: message render tolerates an RLS-hidden sender profile`);
+  // gh-2559 / D-390: contractor-dashboard.html reads the thread through public.contractor_thread_messages, which returns the
+  // sender's name pre-flattened as sender_full_name (null-tolerant, no profiles embed). That form is equally safe; the unguarded
+  // msg.profiles.full_name stays forbidden on both pages.
+  const guarded = /msg\.profiles && msg\.profiles\.full_name/.test(src)
+    || (f === 'contractor-dashboard.html' && /contractor_thread_messages/.test(src) && /msg\.sender_full_name \?/.test(src) && !/msg\.profiles\b/.test(src));
+  ok(!/escapeHtml\(msg\.profiles\.full_name\)/.test(src) && guarded, `${f}: message render tolerates an RLS-hidden sender profile`);
 }
 
 // gh-2478 refuter: a select string with unbalanced parentheses is a PostgREST parse error

@@ -62,11 +62,23 @@ Two more sets were applied to production on 2026-10-18 (CTO RUN 70 filing; appli
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 
+## Added 2026-10-18 (gh-2559 / gh-2619, D-390): forward, rollback and pre-flight here, the proof in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2559_d390_redact_contact_until_fee` | forward, rollback, pre-flight | NOT APPLIED | drafted 2026-10-18 (CTO RUN 70 worker cto70-d390); production read-only same day: `claims.contractor_released_at` absent (PR #2777 not applied, this set's gate refuses until it is), counts in the pre-flight; proof on throwaway Postgres 17.11 and 16.15 (`supabase/tests/gh2559_d390_redact_proof_run.sh`, 252 probes each, 0 failures, plus a gate negative control; fix2880 added the Unicode, parity and MAINTAIN probes). Tier 3B, R-097 24-hour notice before apply; apply AFTER PR #2777 and publish the page change with it | none |
+
 ## Added 2026-10-19 (gh-2931, `bidder_claim_summary` returns `estimate_filename` and `measurements_filename` only after the fee): 2 files here, the proof in `supabase/tests/`; not counted in the tables above
 
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2931_bidder_summary_no_filename` | forward, rollback (proof and its runner in `supabase/tests/`) | NOT APPLIED | drafted 2026-10-19 under #2931; production read-only 2026-10-19T21:2xZ: `pg_get_viewdef` md5 `c8ad94c4…` (40 columns), owner `postgres`, `security_barrier=true`, no dependents; the view returns the path to the selected contractor from selection (a bidder reads NULL); 0 of 4 stored paths are on a selected claim. The forward file gates those two CASEs on `claims.platform_fee_charged IS TRUE` (CREATE OR REPLACE VIEW, same columns). PR #2880 and PR #2925 carry the old CASE on one line each | none |
+
+## Added 2026-10-19 (gh-2875, D-391 layer 1: per-number SMS verification record and suppression list): 3 files here, the proof and runner in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2875_d391_contractor_sms_numbers` | forward, rollback, pre-flight (all three here) | NOT APPLIED | drafted 2026-10-19 under #2875 (D-391 + AMENDMENT 1); production read-only 2026-10-19: the tables do not exist. Throwaway-Postgres proof `supabase/tests/gh2875_d391_contractor_sms_numbers_proof_run.sh` (TODAY / AFTER / MUTANT / ROLLBACK). Tier 3B, R-097 notice #2875 6256733805; no disclosure row is inserted (wording waits on LEGAL-READ + R-177) | none |
 
 ## Added 2026-10-14 (gh-2619, second piece: messages thread scope and no cross-party UPDATE/DELETE, PR #2777): 1 file here (rollback and pre-flight in `supabase/migrations_rollbacks/`, the throwaway-Postgres proof in `supabase/tests/`), not counted in the tables above
 
