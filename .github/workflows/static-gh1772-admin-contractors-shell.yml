@@ -1,0 +1,39 @@
+name: Static Admin Contractors Shell Test
+
+# gh-1772 / gh-1340 -- admin-contractors.html carries the Business Lines admin shell (.admin-nav, same entries as admin-homeowners.html),
+# not the public site header, and keeps its admin auth guard and Contractors / Referrals / Payouts tabs.
+# `pull_request` only, no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'admin-contractors.html'
+      - 'admin-homeowners.html'
+      - 'tests/gh1772-admin-contractors-shell.mjs'
+      - '.github/workflows/static-gh1772-admin-contractors-shell.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh1772-admin-contractors-shell-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  shell:
+    name: Admin contractors shell static assertions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Admin contractors shell assertions (gh1772-admin-contractors-shell)
+        run: node tests/gh1772-admin-contractors-shell.mjs
