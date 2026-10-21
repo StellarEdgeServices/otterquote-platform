@@ -127,15 +127,15 @@ USING (selected_contractor_id IN (SELECT ct.id FROM public.contractors ct WHERE 
 SELECT take_snap('2_unamended');
 COMMIT;
 -- back to live text through the rollback file, so the AMENDED phase starts from production's policies
-\ir ../migrations_drafts/gh2559_claims_policy_narrow_rollback.sql
+\ir ../migrations_rollbacks/gh2559_claims_policy_narrow_rollback.sql
 SELECT take_snap('2b_restored');
 
 -- ---------------------------------------------------------------- phase AMENDED (the file in this repo)
-\ir ../migrations_drafts/gh2559_claims_policy_narrow.sql
+\ir ../migrations/20261018220426_gh2559_claims_policy_narrow.sql
 SELECT take_snap('3_amended');
 
 -- ---------------------------------------------------------------- phase ROLLBACK (the file in this repo)
-\ir ../migrations_drafts/gh2559_claims_policy_narrow_rollback.sql
+\ir ../migrations_rollbacks/gh2559_claims_policy_narrow_rollback.sql
 SELECT take_snap('4_rollback'); SELECT take_pol('4_rollback');
 
 -- ---------------------------------------------------------------- report
