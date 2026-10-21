@@ -21,7 +21,7 @@ C1=c0000001-0000-4000-8000-000000000001; Q1=e0000011-0000-4000-8000-000000000011
 psql -q -d postgres -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB"
 P() { psql -q -d "$DB" -X "$@"; }
 P -v ON_ERROR_STOP=1 -f supabase/tests/gh2519_gh2564_throwaway_schema.sql >/dev/null
-P -v ON_ERROR_STOP=1 -f supabase/migrations_drafts/gh2519_quotes_server_set_fee.sql >/dev/null
+P -v ON_ERROR_STOP=1 -f supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql >/dev/null
 P -v ON_ERROR_STOP=1 >/dev/null <<SQL
 INSERT INTO public.platform_fee_config (id, state, trade, fee_pct, fee_basis, effective_date) VALUES ('fcd50269-f689-42d4-bbc3-8f01e5390c44', NULL, NULL, 5.00, 'bid_amount', DATE '2026-05-06');
 INSERT INTO public.contractors (id, user_id, company_name, contact_name, email, status, address_state, coi_file_url, coi_expires_at, attestation_accepted_at, has_payment_method, stripe_payment_method_id, stripe_payment_method_last4, is_test)

@@ -717,6 +717,8 @@
                         <button id="dunningRetryBtn" onclick="retryDunningPayment()" style="background: #EF4444; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-weight: 600; font-size: 0.875rem; cursor: pointer;">Retry Payment Now</button>
                         <a href="contractor-settings.html" style="background: #0D1B2E; color: #E07B00; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-weight: 600; font-size: 0.875rem; cursor: pointer; text-decoration: none; display: inline-block;">Update Card</a>
                     </div>
+                    <!-- gh-2442 (Ben, 6258735566): the sentence below is contractor-settings.html:1311, byte for byte. Do not reword. -->
+                    <p id="dunningCardFeeNote" style="font-size: 0.8rem; color: #7F1D1D; line-height: 1.5; margin-top: 0.75rem;">Credit and debit card payments include a small processing fee (2.9% + $0.30). Bank account transfers are always free.</p>
                 </div>
             </div>
         </div>
@@ -1102,6 +1104,10 @@
                     event_type: 'cpa_accepted',
                     title:      title,
                     created_at: now,
+                    // gh-2444 (CEO RUN 104 finding 8): activity_log.is_test defaults to false and has
+                    // no trigger, so stamp it from the contractor row (contractors.is_test is the
+                    // source of truth; the email-suffix heuristic misses 10 of 14 test profiles).
+                    is_test:    currentContractor.is_test === true,
                 });
                 if (logErr) {
                     console.error('Activity log failed:', logErr);
@@ -1721,7 +1727,7 @@
             try {
                 const { data: failures, error } = await sb
                     .from('payment_failures')
-                    .select('*, claims:claim_id (property_address)')
+                    .select('id, amount_cents, claims:claim_id (property_address)') // gh-2442: explicit columns; never '*' (retry_unknown_attempt holds Stripe ids)
                     .eq('contractor_id', currentContractor.id)
                     .eq('dunning_status', 'active')
                     .order('created_at', { ascending: false })
@@ -1807,25 +1813,27 @@
             }
         };
 
+        // gh-2442 (D-379): the browser has no write access to payment_failures. The click asks the server to
+        // record a retry request (request_dunning_retry, ownership-checked, max 3 per failed payment, SECURITY
+        // DEFINER); the process-dunning retry pass makes the one charge attempt. No new customer-facing text here:
+        // the in-flight label and the generic error are strings this page already shows.
         async function retryDunningPayment() {
             if (!activeDunningRecord || !sb) return;
             const btn = document.getElementById('dunningRetryBtn');
             if (btn) { btn.disabled = true; btn.textContent = 'Retrying…'; }
             try {
-                const { data: dunningRows, error } = await sb
-                    .from('payment_failures')
-                    .update({ dunning_status: 'retried' })
-                    .eq('id', activeDunningRecord.id)
-                    .select('id');
+                const { data: result, error } = await sb.rpc('request_dunning_retry', { p_failure_id: activeDunningRecord.id });
                 if (error) throw error;
-                // gh-2105 decision (a, money): a zero-row match keeps the banner and re-enables the button via the existing catch.
-                if (!Array.isArray(dunningRows) || dunningRows.length === 0) throw new Error('zero_rows_updated: payment_failures.dunning_status');
-                const banner = document.getElementById('dunningAlertBanner');
-                if (banner) banner.style.display = 'none';
-                activeDunningRecord = null;
+                const status = result && result.status;
+                if (status === 'requested' || status === 'already_requested') {
+                    // Request is on file. The banner stays: only a successful charge (server side) clears it.
+                    return;
+                }
+                throw new Error('retry_not_accepted: ' + status + ' / ' + (result && result.reason));
             } catch (err) {
                 console.warn('[Dashboard] retryDunningPayment error:', err);
                 if (btn) { btn.disabled = false; btn.textContent = 'Retry Payment Now'; }
+                alert('An error occurred. Please try again.');
             }
         }
 

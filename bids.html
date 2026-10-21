@@ -610,7 +610,10 @@
         .order('created_at', { ascending: true });
 
       if (!error && data) {
-        bids = data;
+        // gh-2564: a bid the homeowner switched away from is retired as bid_status 'superseded'. It is not
+        // selectable and has no customer wording, so it never enters the list the cards, compare grid and
+        // select handlers read from.
+        bids = data.filter(b => b.bid_status !== 'superseded');
 
         const contractorIds = [...new Set(data.map(b => b.contractor_id).filter(Boolean))];
         if (contractorIds.length) {
@@ -714,6 +717,7 @@
       try {
         await sb
           .from('notifications')
+          // update-no-select-ok: gh-2105 decision b -- read receipt for the bid-updated banner; a zero-row match (notification already read, deleted, or not visible to this user) only leaves the unread badge stale until the next load; read_at is only a display flag for this banner.
           .update({ read_at: new Date().toISOString() })
           .in('id', _bidUpdatedNotifIds);
         _bidUpdatedNotifIds = [];
@@ -2009,7 +2013,7 @@
         document.getElementById('modalBody').textContent = 'Awarding the project...';
 
         // 1-4. Atomic bid acceptance via SECURITY DEFINER RPC (gh-1293 criterion 5) --
-        // replaces three unbatched .update() calls that could leave a durable half-state
+        // replaces three unbatched row updates (no row-count check) that could leave a durable half-state
         // between steps (see supabase/migrations/20260830192051_v116_accept_bid_rpc.sql).
         const { error: acceptErr } = await sb
           .rpc('accept_bid', { p_claim_id: currentClaim.id, p_quote_id: bidId });

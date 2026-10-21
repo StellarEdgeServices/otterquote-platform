@@ -289,8 +289,11 @@ main.pi-main {
         updated_at: new Date().toISOString(),
       };
 
-      const { error } = await sb.from('claims').update(updates).eq('id', claimId);
+      // gh-2105 batch 4 (a): money path (funding_type / job_type / policy_type / amounts).
+      // .select('id') so a zero-row RLS or id match is loud, not a silent "saved".
+      const { data: savedRows, error } = await sb.from('claims').update(updates).eq('id', claimId).select('id');
       if (error) throw error;
+      if (!Array.isArray(savedRows) || savedRows.length === 0) throw new Error('update_zero_rows: claims (project info acv)');
 
       // Adjuster Knowledge Base upsert (D-046) — same non-critical,
       // fire-and-forget pattern dashboard.html uses; a failure here must
@@ -304,6 +307,7 @@ main.pi-main {
             p_adjuster_phone: updates.adjuster_phone,
             p_carrier_id: updates.carrier_id,
           });
+          // update-no-select-ok: gh-2105 decision b -- adjuster link-back inside the existing non-critical try/catch; the claim row was just written and row-checked by the update above in this same submit, and a zero-row match only leaves claims.adjuster_id unset (the page navigates on regardless, by design).
           if (adjData) await sb.from('claims').update({ adjuster_id: adjData }).eq('id', claimId);
         } catch (adjErr) {
           console.warn('[project-info-acv] adjuster upsert failed (non-critical):', adjErr);
@@ -314,7 +318,8 @@ main.pi-main {
       window.location.href = '/dashboard.html';
     } catch (err) {
       console.error('[project-info-acv] submit failed:', err);
-      errEl.textContent = err.message || 'Something went wrong. Please try again.';
+      // gh-2105: the internal update_zero_rows token is logged above, never shown.
+      errEl.textContent = (err.message && String(err.message).indexOf('update_zero_rows') !== 0) ? err.message : 'Something went wrong. Please try again.';
       errEl.style.display = 'block';
       btn.disabled = false;
       btn.textContent = 'Save & Continue';

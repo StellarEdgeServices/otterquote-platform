@@ -15,7 +15,7 @@
  * These EFs are deployed and CALLED here unchanged (changing one is Tier-3).
  *
  * The select→award→contract handoff (bids.html:1960-1997) is ported faithfully:
- * the authorized homeowner writes (claims/quotes status) happen here; the
+ * the award (one accept_bid RPC, gh-2914) happens here; the
  * downstream contract-signing surface is a SEPARATE static page we redirect to.
  * No payment is charged here — D-127 charges post-signing via docusign-webhook.
  */
@@ -95,9 +95,9 @@ export interface AwardResult extends ActionResult {
 }
 
 /**
- * Award the claim to the winning contractor (bids.html:1964-1997). Authorized
- * homeowner writes: claim → 'awarded' with the winner + amount; winning quote →
- * 'selected'; all other quotes → 'declined'. On success returns the
+ * Award the claim to the winning contractor (bids.html:2019). One atomic
+ * accept_bid() RPC (gh-2914): claim → 'awarded' with the winner + amount;
+ * winning quote → 'selected'; other live quotes → 'declined'. On success returns the
  * contract-signing handoff URL — the page redirects there (it does NOT build the
  * Tier-3 contract/payment flow). No charge here (D-127, post-signing).
  */
@@ -107,68 +107,27 @@ export async function awardClaimToContractor(params: {
 }): Promise<AwardResult> {
   const { claim, bid } = params;
 
-  const { data: claimRows, error: claimErr } = await supabase
-    .from('claims')
-    .update({
-      selected_contractor_id: bid.contractor_id,
-      selected_bid_amount: bid.total_price,
-      status: 'awarded',
-    })
-    .eq('id', claim.id)
-    .select('id');
-  // gh-1532: the accept-award payment-method guard raises
-  // 'contractor_no_payment_method: ...'. Map it to homeowner-facing wording --
-  // the internal identifier is never shown to a customer.
-  if (claimErr) return { ok: false, error: mapAwardError(claimErr.message) };
-  // gh-2105 (#2103 pattern, decision a): `.update()` without `.select()`
-  // resolves `{ error: null }` even when RLS or the `.eq()` filter matches
-  // ZERO rows -- PostgREST/Supabase do not treat a zero-row match as an
-  // error. Without this check a homeowner could see "awarded" while
-  // claims.status never actually changed -- the highest-value write on this
-  // page. "Awarded" now means a row was actually written, not merely that
-  // the call did not complain.
-  if (!Array.isArray(claimRows) || claimRows.length === 0) {
-    return { ok: false, error: mapAwardError('claim_award_zero_rows: no matching claim row was updated') };
-  }
+  // gh-2914 (Refs #2819): the award is ONE atomic SECURITY DEFINER RPC, exactly
+  // as bids.html does (bids.html ~2019). accept_bid() verifies the caller owns
+  // the claim, refuses a not-awardable bid or claim, enforces the contractor
+  // payment-method guard (gh-1532), flips the claim to 'awarded' with the winner
+  // + amount, marks the winning quote 'selected' and declines the other live
+  // bids -- all in one transaction. The direct claims/quotes writes this
+  // function used to make are refused for a homeowner session after #2819, and
+  // the RPC raises on any failure (never a silent zero-row success), so the
+  // gh-2105 zero-row checks are no longer needed here.
+  // gh-1532: the payment-method guard raises 'contractor_no_payment_method: ...'
+  // (P0001). mapAwardError turns it (and the gh-2626 bid/claim not-awardable
+  // sentinels) into homeowner-facing wording -- the internal identifier is
+  // never shown to a customer.
+  const { error: acceptErr } = await supabase.rpc('accept_bid', {
+    p_claim_id: claim.id,
+    p_quote_id: bid.id,
+  });
+  if (acceptErr) return { ok: false, error: mapAwardError(acceptErr.message) };
 
-  const { data: winRows, error: winErr } = await supabase
-    .from('quotes')
-    .update({ status: 'selected' })
-    .eq('id', bid.id)
-    .select('id');
-  if (winErr) return { ok: false, error: mapAwardError(winErr.message) };
-  // gh-2105 (decision a): same zero-row-silent-success gap as the claim
-  // write above -- the winning bid must actually flip to 'selected'.
-  if (!Array.isArray(winRows) || winRows.length === 0) {
-    // gh-2105 REVIEW FAIL nit: route through mapAwardError for the same
-    // reason :122/:131 do, even though today's only mapped sentinel
-    // (NO_PAYMENT_METHOD) can't appear here -- mapAwardError is a no-op
-    // passthrough for any other string, so this costs nothing and keeps
-    // every error this function returns on one consistent path.
-    return { ok: false, error: mapAwardError('winning_bid_zero_rows: no matching quote row was updated') };
-  }
-
-  const { data: rejectRows, error: rejectErr } = await supabase
-    .from('quotes')
-    .update({ status: 'declined' })
-    .eq('claim_id', claim.id)
-    .neq('id', bid.id)
-    // gh-2626 (B4, DECIDED by Ben 6156405895): only submitted siblings are
-    // declined. The claims/quotes award guard refuses the whole statement if
-    // it touches a draft or expired sibling bid (42501), which would fail the
-    // award. Draft/expired siblings are not live bids, so leave them as they are.
-    .eq('status', 'submitted')
-    .select('id');
-  if (rejectErr) return { ok: false, error: mapAwardError(rejectErr.message) };
-  // gh-2105 (decision b, NOT an error): a claim can legitimately have only
-  // one bid (the winner), so there may be nothing left to decline -- zero
-  // rows here is an expected outcome, not a silent-failure signal. `.select()`
-  // is still added so this site is provably audited/considered, not merely
-  // untouched (rejectRows intentionally unused beyond that intent).
-  void rejectRows;
-
-  // gh-1940: "bid accepted" funnel step — fired here, after every write
-  // above has succeeded, not on the modal's confirm click. fix3 (CEO ruling,
+  // gh-1940: "bid accepted" funnel step — fired here, after the
+  // accept_bid RPC has succeeded, not on the modal's confirm click. fix3 (CEO ruling,
   // PR #1979 comment 5698022815): no claim_id (a per-homeowner database
   // identifier must not reach GA4 remarketing); params now match #1988's
   // `bids.html` bid_accepted (bid_id/contractor_id/bid_amount/source/
@@ -267,6 +226,7 @@ export async function acknowledgeBidUpdatedNotifications(ids: string[]): Promise
   if (ids.length === 0) return { ok: true };
   const { error } = await supabase
     .from('notifications')
+    // update-no-select-ok: gh-2105 decision b -- read receipt for the bid-updated banner; a zero-row match (notification already read, deleted, or not visible to this user) only leaves the unread badge stale until the next load; no money, consent or legal state hangs on read_at.
     .update({ read_at: new Date().toISOString() })
     .in('id', ids);
   return error ? { ok: false, error: error.message } : { ok: true };

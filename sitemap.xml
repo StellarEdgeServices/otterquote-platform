@@ -212,6 +212,12 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://otterquote.com/guides/roof-bid-comparison-tool.html</loc>
+    <lastmod>2026-10-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://otterquote.com/guides/siding-bid-comparison.html</loc>
     <lastmod>2026-10-03</lastmod>
     <changefreq>monthly</changefreq>
@@ -237,7 +243,7 @@
   </url>
   <url>
     <loc>https://otterquote.com/guides/contractor-bid-higher-than-insurance-estimate.html</loc>
-    <lastmod>2026-10-06</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -316,6 +322,90 @@
   <url>
     <loc>https://otterquote.com/guides/roof-insurance-check-mortgage-contractor-payment.html</loc>
     <lastmod>2026-10-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/roof-replacement-in-cold-weather.html</loc>
+    <lastmod>2026-10-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/how-long-does-roof-replacement-take.html</loc>
+    <lastmod>2026-10-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/roof-change-orders-hidden-damage.html</loc>
+    <lastmod>2026-10-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/roofing-contract-checklist-before-you-sign.html</loc>
+    <lastmod>2026-10-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/roof-bid-much-lower-than-the-others.html</loc>
+    <lastmod>2026-10-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/roof-permit-in-your-bid.html</loc>
+    <lastmod>2026-10-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/roof-tarp-while-you-wait-for-repairs.html</loc>
+    <lastmod>2026-10-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/roof-wind-ratings-explained.html</loc>
+    <lastmod>2026-10-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/class-4-impact-resistant-shingles.html</loc>
+    <lastmod>2026-10-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/algae-resistant-shingle-warranties.html</loc>
+    <lastmod>2026-10-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/contractor-workmanship-warranty.html</loc>
+    <lastmod>2026-10-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/limited-lifetime-shingle-warranty.html</loc>
+    <lastmod>2026-10-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/manufacturer-backed-roof-warranties.html</loc>
+    <lastmod>2026-10-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/contractor-offers-to-waive-deductible.html</loc>
+    <lastmod>2026-10-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -439,10 +529,34 @@
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
+  <url>
+    <loc>https://otterquote.com/partners/what-to-hand-a-policyholder-after-a-storm.html</loc>
+    <lastmod>2026-10-07</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/partners/how-a-home-inspector-can-point-a-client-to-bids.html</loc>
+    <lastmod>2026-10-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/partners/what-a-listing-agent-can-do-about-storm-damage-before-listing.html</loc>
+    <lastmod>2026-10-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
 
   <url>
+    <loc>https://otterquote.com/locations/</loc>
+    <lastmod>2026-10-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://otterquote.com/locations/allen-county-in/roofing/</loc>
-    <lastmod>2026-10-06</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -454,19 +568,19 @@
   </url>
   <url>
     <loc>https://otterquote.com/locations/butler-county-oh/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/cuyahoga-county-oh/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/davidson-county-tn/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -478,37 +592,37 @@
   </url>
   <url>
     <loc>https://otterquote.com/locations/franklin-county-oh/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/hamilton-county-oh/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/hamilton-county-tn/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/jackson-county-mo/roofing/</loc>
-    <lastmod>2026-10-06</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/knox-county-tn/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/lake-county-in/roofing/</loc>
-    <lastmod>2026-10-06</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -520,55 +634,55 @@
   </url>
   <url>
     <loc>https://otterquote.com/locations/lorain-county-oh/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/lucas-county-oh/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/marion-county-in/roofing/</loc>
-    <lastmod>2026-10-06</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/montgomery-county-oh/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/montgomery-county-tn/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/rutherford-county-tn/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/shelby-county-tn/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/st-louis-county-mo/roofing/</loc>
-    <lastmod>2026-10-07</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/stark-county-oh/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -580,13 +694,13 @@
   </url>
   <url>
     <loc>https://otterquote.com/locations/summit-county-oh/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/sumner-county-tn/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -604,19 +718,13 @@
   </url>
   <url>
     <loc>https://otterquote.com/locations/williamson-county-tn/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://otterquote.com/locations/wilson-county-tn/roofing/</loc>
-    <lastmod>2026-10-13</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
-    <loc>https://otterquote.com/partners/what-to-hand-a-policyholder-after-a-storm.html</loc>
-    <lastmod>2026-10-07</lastmod>
+    <lastmod>2026-10-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>

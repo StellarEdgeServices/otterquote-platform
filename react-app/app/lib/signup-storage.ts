@@ -2,10 +2,10 @@
  * gh-2060 item 2 -- freshness guard for the `cs_signup` blob (localStorage).
  *
  * get-started writes the homeowner's name / phone / address here before the
- * magic link or Google round trip, and later steps (auth-callback HubSpot sync,
+ * magic link or Google round trip, and later steps (auth-callback; its HubSpot send was removed in PR #2624;
  * trade-selector prefill + claim/profile writes, dashboard profile bootstrap)
  * read it back. It had no owner key and no timestamp, so an abandoned signup
- * left on a shared browser seeded the NEXT person's profile and HubSpot contact.
+ * left on a shared browser seeded the NEXT person's profile (and, before PR #2624, their HubSpot contact).
  *
  * Same rule as `cs_auth_role`: `cs_signup_at` must be present, not future-dated
  * and at most 24h old, otherwise the blob is ignored AND cleared. Sign-out clears

@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Roof Bid Far Below the Others? What to Check | Otter Quotes</title>
+<meta name="description" content="One roof bid far below the rest? See what a low bid can leave out, how to check it line by line, and what to ask the low bidder in writing.">
+<link rel="canonical" href="https://otterquote.com/guides/roof-bid-much-lower-than-the-others.html">
+<meta property="og:title" content="Roof Bid Far Below the Others? What to Check | Otter Quotes">
+<meta property="og:description" content="One roof bid far below the rest? See what a low bid can leave out, how to check it line by line, and what to ask the low bidder in writing.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/roof-bid-much-lower-than-the-others.html">
+<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Otter Quotes logo">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-10-18">
+<meta property="article:author" content="Otter Quotes">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+
+/* Cost table: readable body text on the light page, and stacked rows on narrow screens */
+.definition-table td { color: var(--dark-gray); }
+.definition-table td a { color: var(--link-on-light); }
+@media (max-width: 640px) {
+  .table-wrap .definition-table { min-width: 0; }
+  .definition-table.stack thead { display: none; }
+  .definition-table.stack tr { display: block; padding: var(--sp-4) 0; border-bottom: 1px solid rgba(0,0,0,0.12); }
+  .definition-table.stack td { display: block; padding: var(--sp-1) var(--sp-2); border-bottom: none; }
+  .definition-table.stack td[data-label]::before { content: attr(data-label); display: block; font-size: 0.8rem; font-weight: 600; color: var(--link-on-light-deep); }
+}
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+
+<section class="page-hero">
+  <div class="container">
+    <h1>Why Is One Roof Bid Much Lower Than the Others?</h1>
+    <p class="meta">Otter Quotes &middot; Updated October 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>A roof bid far below the others usually prices a different job: fewer lines, a lower material tier, a thinner warranty or missing credentials. Sometimes it reflects a real difference in how the contractor works. The total cannot tell you which, so set the bid beside the others line by line, ask the bidder to answer in writing, then decide.</p>
+    </div>
+
+    <section class="step">
+      <h2>Why can one roof bid be so much lower than the others?</h2>
+      <p>A much lower roof bid usually prices a different job. It may leave out lines the other bids include, such as tear-off, decking, underlayment, flashing or ventilation. It may quote a lower material tier, a thinner warranty, or a crew without the same credentials. Less often, it reflects a real difference in how the contractor works.</p>
+      <p>Our post on <a href="/blog/why-roofers-quote-different-prices.html">why roofers quote different prices</a> covers the ordinary reasons honest bids differ. This page covers one situation: a single bid sits well below the rest. The first step is to put all the bids on the <a href="/guides/roof-bid-comparison-worksheet.html">roof bid comparison worksheet</a>, the low one included, and write &ldquo;not stated&rdquo; wherever a bid is silent.</p>
+    </section>
+
+    <section class="step">
+      <h2>Which missing lines can explain a low roof bid?</h2>
+      <p>Any line a bid leaves out is a cost it does not carry. The table pairs common lines with what manufacturer and government sources say, and what to look for in the low bid.</p>
+      <div class="table-wrap">
+        <table class="definition-table stack">
+          <thead>
+            <tr>
+              <th>Line</th>
+              <th>What a source says</th>
+              <th>What to look for in the low bid</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Tear-off of old roofing</td>
+              <td data-label="What a source says">The GAF Pro Field Guide says &ldquo;In some situations, roofing over an old roof may be acceptable,&rdquo; and also that tear-off is required on every installation that carries its Golden Pledge or Silver Pledge warranty.</td>
+              <td data-label="What to look for in the low bid">Does it remove the old roofing, or install over it? How many layers does it remove?</td>
+            </tr>
+            <tr>
+              <td>Decking</td>
+              <td data-label="What a source says">GAF&rsquo;s installation instructions say roof decks &ldquo;must be dry prior to installation of shingles,&rdquo; and its field guide says to &ldquo;Repair and replace any damaged or rotted sections&rdquo; before installing roof deck protection.</td>
+              <td data-label="What to look for in the low bid">Is rotted decking priced per sheet, covered by an allowance, or excluded?</td>
+            </tr>
+            <tr>
+              <td>Underlayment</td>
+              <td data-label="What a source says">GAF&rsquo;s installation instructions say underlayment &ldquo;is required by many code bodies and is required to maintain the shingles&rsquo; UL Class A fire rating.&rdquo;</td>
+              <td data-label="What to look for in the low bid">Is an underlayment listed, and is it named by type?</td>
+            </tr>
+            <tr>
+              <td>Leak barrier (ice and water)</td>
+              <td data-label="What a source says">The instructions say &ldquo;At eaves and where ice dams can be expected,&rdquo; use a leak barrier.</td>
+              <td data-label="What to look for in the low bid">Which areas does it cover: eaves, valleys, around penetrations?</td>
+            </tr>
+            <tr>
+              <td>Drip edge and starter</td>
+              <td data-label="What a source says">The field guide says GAF &ldquo;strongly recommends that drip edge be installed at the rakes and eaves on all GAF shingle roofs,&rdquo; and the instructions call for starter strip shingles &ldquo;along the eaves and rake.&rdquo;</td>
+              <td data-label="What to look for in the low bid">Are both listed, and is the starter from the shingle maker&rsquo;s own line?</td>
+            </tr>
+            <tr>
+              <td>Flashing</td>
+              <td data-label="What a source says">Owens Corning&rsquo;s installation instructions say step flashing &ldquo;should be a corrosion resistant metal&rdquo; where the roof meets sidewalls or chimneys, and GAF&rsquo;s instructions give separate steps for wall and chimney flashing.</td>
+              <td data-label="What to look for in the low bid">Does it list flashing at walls and chimneys, and does it say new flashing or reuse of what is there?</td>
+            </tr>
+            <tr>
+              <td>Ventilation</td>
+              <td data-label="What a source says">GAF&rsquo;s instructions say &ldquo;Proper underdeck ventilation is essential to reduce moisture build up and prevent mold.&rdquo;</td>
+              <td data-label="What to look for in the low bid">What ventilation does the bid install or add?</td>
+            </tr>
+            <tr>
+              <td>Permit and disposal</td>
+              <td data-label="What a source says">The Ohio Attorney General says a contract should include &ldquo;A requirement for the contractor to obtain all necessary permits and inspections.&rdquo; The FTC lists a request that you get required permits as a sign of a scam.</td>
+              <td data-label="What to look for in the low bid">Who pulls the permit, who is named on it, and who hauls away the old roofing?</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Requirements differ by manufacturer. Ask the low bidder which manufacturer&rsquo;s instructions the bid follows.</p>
+    </section>
+
+    <section class="step">
+      <h2>Can a lower material tier or warranty explain a low bid?</h2>
+      <p>Yes. Two bids can both say &ldquo;architectural shingles&rdquo; and name different product lines, and the warranty can change with the product and the installer. A cheaper line, a plain warranty or a thinner workmanship promise can each lower a total without any line being missing.</p>
+      <p>GAF&rsquo;s warranty comparison chart shows how this works for one manufacturer. Its base and system coverage can be installed by &ldquo;Anyone,&rdquo; while its enhanced coverage is installed only by contractors in GAF&rsquo;s own contractor program. A footnote on the chart says &ldquo;Some limited workmanship coverage may be available through your contractor.&rdquo; So the manufacturer&rsquo;s warranty and the contractor&rsquo;s workmanship warranty are two different promises. Ask which of each the low bid includes, and get the workmanship terms in writing.</p>
+    </section>
+
+    <section class="step">
+      <h2>Can missing licensing or coverage explain a low bid?</h2>
+      <p>It can. Licensing, liability coverage and workers&rsquo; compensation coverage are costs of running a roofing business, so a bid from a company without them can look lower for that reason alone. Ask each bidder for proof, and check it yourself with the office or company that issued it.</p>
+      <p>The National Roofing Contractors Association (NRCA) says to &ldquo;Ask for copies of the contractor&rsquo;s liability insurance coverage and workers&rsquo; compensation certificates.&rdquo; The FTC says to work with contractors who are licensed and insured and to check the license with your state or county. Licensing rules can differ by state, county and city, so ask your local building office what applies.</p>
+    </section>
+
+    <section class="step">
+      <h2>How do I find out which explanation is true?</h2>
+      <p>Compare the low bid to the others line by line, put the same written questions to the low bidder, and judge the answers. The FTC advises getting several estimates and asking about large price differences. The explanation you want is specific, in writing, and matches the lines on the other bids.</p>
+      <ol>
+        <li>Fill in the <a href="/guides/roof-bid-comparison-worksheet.html">worksheet</a> for every bid. Mark every blank &ldquo;not stated.&rdquo;</li>
+        <li>Send the low bidder the checklist below, in writing. Send the same list to the other bidders so every answer lands on the same lines.</li>
+        <li>Ask for proof of license and coverage, and check it with the issuer.</li>
+        <li>If the low bid left lines out, ask the bidder to re-quote with them included. If the other bids carry extras you did not ask for, ask them to price those separately.</li>
+        <li>Compare totals only after the lines match.</li>
+      </ol>
+    </section>
+
+    <section class="step">
+      <h2>What should I ask the low bidder in writing?</h2>
+      <p>Ask for written answers, and for the answers to go into the contract. Copy this list:</p>
+      <ul>
+        <li>Does the price include tear-off of all existing roofing, and disposal of it?</li>
+        <li>How is rotted decking handled: per sheet, an allowance, or excluded?</li>
+        <li>Which underlayment, which leak barrier and where, and which drip edge, starter and ridge cap products?</li>
+        <li>Do you replace or reuse flashing, and what ventilation do you install?</li>
+        <li>Which shingle manufacturer and product line, and what manufacturer warranty does the bid assume?</li>
+        <li>What workmanship warranty do you give, for how long, and who stands behind it?</li>
+        <li>Who pulls the permit, who is named on it, and who pays for it?</li>
+        <li>Does your own crew do the work, or a subcontractor?</li>
+        <li>What are your license number and proof of liability and workers&rsquo; compensation coverage?</li>
+        <li>What is the payment schedule, and what is each payment tied to?</li>
+        <li>How are changes priced, and do you need my written approval first?</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>What are the red flags in a low roof bid?</h2>
+      <p>The strongest red flags are about money and paperwork, not the price itself: pressure to pay up front or in cash, a large deposit, a request that you pull the permit, or a refusal to put the scope in writing. Any of them is a reason to stop and ask more questions before you sign.</p>
+      <ul>
+        <li><strong>Pay everything up front, or cash only.</strong> The FTC lists these among the signs of a scam and says not to pay the full amount for the project up front.</li>
+        <li><strong>A large deposit.</strong> The Ohio Attorney General says the contract should not require a large down payment or payment in full until the project is complete and inspected.</li>
+        <li><strong>You are asked to get the permit.</strong> The FTC lists this as a scam sign, and the Ohio Attorney General says the contract should require the contractor to obtain the permits and inspections.</li>
+        <li><strong>Pressure to decide now.</strong> The FTC lists pressure for an immediate decision as a scam sign. A price good only today leaves no time to compare.</li>
+        <li><strong>No full written proposal.</strong> The NRCA says to &ldquo;Insist on a written proposal and look for complete descriptions of the work and specifications.&rdquo;</li>
+        <li><strong>No proof of license or coverage when you ask.</strong> Ask for it, then check it with the office or company that issued it.</li>
+        <li><strong>A low price that may not hold.</strong> The Indiana Attorney General warns that a contractor with a low price &ldquo;may be inexperienced and unable to finish the work for the bid amount.&rdquo;</li>
+      </ul>
+      <p>Our post on <a href="/blog/roofing-estimate-red-flags.html">red flags in a roofing estimate</a> covers the wider list. None of these proves a contractor is bad. They tell you where to ask.</p>
+    </section>
+
+    <section class="step">
+      <h2>When is a much lower roof bid fine?</h2>
+      <p>A lower bid can be fine when, after you match the lines, it covers the same work, the same products, a written workmanship warranty and proof of license and coverage, and the contractor explains the gap without pressure. The NRCA says price is only one criterion, and the FTC says not to automatically choose the lowest bidder.</p>
+      <p>Neither source says the lowest bid is wrong; the NRCA&rsquo;s healthy skepticism means checking, not rejecting. A contractor can also have a different cost structure from the others, for example by spending less on sales and marketing, and a bid with matching lines can reflect that. If the lines match and the answers hold up, the lower total is the one worth considering.</p>
+    </section>
+
+    <section class="step">
+      <h2>How does getting bids on one written scope help me compare?</h2>
+      <p>When every contractor prices the same written scope and the same measurements, the lines match from the start, so a low total has fewer places to hide a missing line. You can see where one bid differs and ask about it, instead of guessing.</p>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>Otter Quotes creates a written scope of work for your project and sends it to multiple contractors. Every bid is on the same scope and the same measurements, so you are comparing the same job. You compare the bids online, next to reviews and licensing information, without a salesperson visiting your home.</p>
+      <p>Because contractors know they are competing, they are more likely to include better materials and warranties. Otter Quotes is not a contractor and does not sell upgrades. Contractors pay Otter Quotes a fee on the accepted bid.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>Is a roof bid that is much lower than the others a bad sign?</h3>
+        <div class="faq-answer">
+          <p>Not by itself, but it is a reason to ask questions. A much lower bid often prices a different job, with fewer lines, a lower material tier, a thinner warranty or missing credentials. The NRCA advises a healthy skepticism about the lowest bid. Line it up against the others and ask the bidder to explain each gap in writing.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>How much lower than the other bids is too low?</h3>
+        <div class="faq-answer">
+          <p>We found no primary source that sets a percentage, so this page does not give one. The FTC says not to automatically choose the lowest bidder and to ask about large price differences. The size of the gap matters less than whether the bidder can explain it, line by line, in writing.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What should I ask a roofer whose bid is far below the others?</h3>
+        <div class="faq-answer">
+          <p>Ask what the price includes: tear-off, decking, underlayment, leak barrier, drip edge, flashing, ventilation, permit and disposal. Ask which shingle line and warranty it assumes, who stands behind the workmanship warranty, and for proof of license and insurance. Ask for every answer in writing, and for the answers to go into the contract.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Can a low roof bid grow after work starts?</h3>
+        <div class="faq-answer">
+          <p>It can. The Indiana Attorney General warns that a contractor with a low price may be unable to finish the work for the bid amount. Ask how rotted decking is priced, how change orders are authorized, and whether any change needs your written sign-off before work begins. Get those terms in the contract.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Is a large deposit a warning sign on a low bid?</h3>
+        <div class="faq-answer">
+          <p>It can be. The FTC lists asking you to pay for everything up front, or accepting only cash, as signs of a scam, and the Ohio Attorney General says a contract should not require a large down payment or payment in full until the project is complete and inspected. Ask for a payment schedule tied to finished work.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="step">
+      <h2>Sources</h2>
+      <ul>
+        <li>GAF, <a href="https://www.gaf.com/en-us/document-library/documents/installation-instructions-&-guides/pro-field-guide-for-steep-slope-roofs-resgn103.pdf" target="_blank" rel="noopener nofollow">Pro Field Guide for Steep-Slope Roofs</a>.</li>
+        <li>GAF, <a href="https://www.gaf.com/en-us/document-library/documents/installation-instructions-&-guides/timberline-layerlock-installation-instructions-trilingual-restl622.pdf" target="_blank" rel="noopener nofollow">Timberline Installation Instructions</a>.</li>
+        <li>GAF, <a href="https://www.gaf.com/en-us/document-library/documents/warranties/gaf-warranty-comparison-chart-reswt211.pdf" target="_blank" rel="noopener nofollow">Warranty Comparison Guide</a>.</li>
+        <li>Owens Corning, <a href="https://www.owenscorning.com/dms/10014283" target="_blank" rel="noopener nofollow">TruDefinition Duration Shingles Installation Instructions</a>.</li>
+        <li>Federal Trade Commission, <a href="https://consumer.ftc.gov/articles/how-avoid-home-improvement-scam" target="_blank" rel="noopener nofollow">How To Avoid a Home Improvement Scam</a>.</li>
+        <li>National Roofing Contractors Association, <a href="https://www.nrca.net/roofing-guidelines/selecting-a-contractor" target="_blank" rel="noopener nofollow">Selecting a Contractor</a>.</li>
+        <li>Ohio Attorney General, <a href="https://www.ohioattorneygeneral.gov/Individuals-and-Families/Consumers/Consumer-Tips/Consumer-Tips-Home-Improvement" target="_blank" rel="noopener nofollow">Consumer Tips: Home Improvement</a>.</li>
+        <li>Indiana Attorney General, Consumer Protection Division, <a href="https://secure.in.gov/attorneygeneral/consumer-protection-division/files/CPD_Fact_Sheet-Home_improv_Scams.pdf" target="_blank" rel="noopener nofollow">Home Improvement Scams: Don&rsquo;t fall for them</a>.</li>
+      </ul>
+    </section>
+
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/guides/roof-bid-comparison-worksheet.html">Compare Roofing Bids: Side-by-Side Worksheet</a></li>
+        <li><a href="/blog/why-roofers-quote-different-prices.html">Why Roofers Quote Different Prices</a></li>
+        <li><a href="/blog/roofing-estimate-red-flags.html">7 Red Flags in a Roofing Contractor Estimate</a></li>
+        <li><a href="/guides/roof-replacement-cost-breakdown.html">What Goes Into Roof Replacement Cost?</a></li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Why Is One Roof Bid Much Lower Than the Others?",
+  "description": "One roof bid far below the rest? See what a low bid can leave out, how to check it line by line, and what to ask the low bidder in writing.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-10-18",
+  "dateModified": "2026-10-18",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/roof-bid-much-lower-than-the-others.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is a roof bid that is much lower than the others a bad sign?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Not by itself, but it is a reason to ask questions. A much lower bid often prices a different job, with fewer lines, a lower material tier, a thinner warranty or missing credentials. The NRCA advises a healthy skepticism about the lowest bid. Line it up against the others and ask the bidder to explain each gap in writing."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How much lower than the other bids is too low?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "We found no primary source that sets a percentage, so this page does not give one. The FTC says not to automatically choose the lowest bidder and to ask about large price differences. The size of the gap matters less than whether the bidder can explain it, line by line, in writing."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What should I ask a roofer whose bid is far below the others?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Ask what the price includes: tear-off, decking, underlayment, leak barrier, drip edge, flashing, ventilation, permit and disposal. Ask which shingle line and warranty it assumes, who stands behind the workmanship warranty, and for proof of license and insurance. Ask for every answer in writing, and for the answers to go into the contract."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can a low roof bid grow after work starts?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It can. The Indiana Attorney General warns that a contractor with a low price may be unable to finish the work for the bid amount. Ask how rotted decking is priced, how change orders are authorized, and whether any change needs your written sign-off before work begins. Get those terms in the contract."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is a large deposit a warning sign on a low bid?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It can be. The FTC lists asking you to pay for everything up front, or accepting only cash, as signs of a scam, and the Ohio Attorney General says a contract should not require a large down payment or payment in full until the project is complete and inspected. Ask for a payment schedule tied to finished work."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "Why Is One Roof Bid Much Lower Than the Others?",
+      "item": "https://otterquote.com/guides/roof-bid-much-lower-than-the-others.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -338,14 +338,6 @@ export function buildStep2FallbackCreate(
 // Step 2 — Edge Function request bodies (called UNCHANGED)
 // ================================================================
 
-/** create-hubspot-contact (contractor mode) body. Port of :985-989 — contract UNCHANGED. */
-export function buildHubspotContactBody(
-  email: string,
-  contractorId: string,
-): { mode: 'contractor'; email: string; contractor_id: string } {
-  return { mode: 'contractor', email, contractor_id: contractorId };
-}
-
 /**
  * send-support-email body. Port of :998-1004 — admin-routed (NO to_email, so the EF's
  * recipient-override / open-relay path is never exercised). Contract UNCHANGED.

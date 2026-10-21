@@ -3,7 +3,7 @@
 # Usage: PGHOST=... PGPORT=... PGUSER=postgres bash supabase/tests/gh2626_claims_award_columns_guard_proof_run.sh [outdir]
 # Six passes of supabase/tests/gh2626_claims_award_columns_guard_proof.sql in one database:
 #   1 TODAY              production's schema as read 2026-10-08 (the failing controls)
-#   2 GUARD-ONLY         + supabase/migrations_drafts/gh2626_claims_award_columns_guard.sql (without #2623; it also re-creates accept_bid() and quotes_guard_homeowner_columns())
+#   2 GUARD-ONLY         + supabase/migrations/20261015205851_gh2626_claims_award_columns_guard.sql (without #2623; it also re-creates accept_bid() and quotes_guard_homeowner_columns())
 #   3 ROLLBACK-GUARD     + its rollback           (must equal pass 1)
 #   4 WITH-2623          + supabase/migrations_drafts/gh2620_claims_payment_guard_security_definer.sql (PR #2623)
 #   5 WITH-2623-AND-GUARD+ the gh2626 forward file
@@ -14,7 +14,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 OUT="${1:-$(mktemp -d)}"; DB=gh2626_award_guard_proof; mkdir -p "$OUT"
 D=supabase/migrations_drafts; RB=supabase/migrations_rollbacks; T=supabase/tests
-G="$D/gh2626_claims_award_columns_guard.sql"; GR="$RB/gh2626_claims_award_columns_guard_rollback.sql"; P="$D/gh2620_claims_payment_guard_security_definer.sql"
+G="supabase/migrations/20261015205851_gh2626_claims_award_columns_guard.sql"; GR="$RB/gh2626_claims_award_columns_guard_rollback.sql"; P="$D/gh2620_claims_payment_guard_security_definer.sql"
 psql -q -d postgres -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB"
 psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "$T/gh2519_gh2564_throwaway_schema.sql" >/dev/null
 pass() { psql -q -At -d "$DB" -v ON_ERROR_STOP=1 -f "$T/gh2626_claims_award_columns_guard_proof.sql" | sed '/^$/d' > "$OUT/$1.txt"; echo "== $1"; cat "$OUT/$1.txt"; }

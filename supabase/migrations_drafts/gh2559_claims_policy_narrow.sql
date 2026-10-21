@@ -19,13 +19,20 @@
 --   DROP   "Contractors can view claims for their quotes"  (every contractor who had put in a bid kept reading
 --                                                           the whole row, selected or not, open or closed)
 --   CREATE "Contractors can view claims they are selected on": a contractor reads the base row of a claim only
---                                                           when claims.selected_contractor_id is the contractor's own.
+--                                                           when claims.selected_contractor_id is the contractor's own
+--                                                           AND the contractor has a quote on that claim.
 -- What does not change: the owner's policy ("Users can view own claims"), the admin policy (claims_admin_select),
 --   service_role (bypasses), the write policies, every other table. The selected contractor reads the base row
 --   exactly as today (the storage policy for the selected contractor joins claims under the caller's row
 --   security and keeps working because that row stays visible to the selected contractor).
--- The new policy is a plain subquery on contractors, the same shape the dropped biddable policy used; it adds
--- no function and no grant.
+-- STRICT SUBSET BY CONSTRUCTION (CTO RUN 70, narrow2): the new USING is the conjunction of "selected on" and the
+--   exact predicate of the dropped "Contractors can view claims for their quotes" policy
+--   (id IN (SELECT get_contractor_quote_claim_ids((SELECT auth.uid())))). A row the new policy shows is therefore
+--   always a row the old quotes policy already showed, so this migration can only REMOVE contractor read access.
+--   Without the conjunction, a contractor selected on a claim it has no quote on (only service_role or an admin
+--   can create that state; production has 0 such rows) would GAIN a read. Proof:
+--   supabase/tests/gh2559_claims_narrow_strict_subset_proof.sql (negative control: the unamended draft gives 1).
+-- The new policy adds no grant; it calls get_contractor_quote_claim_ids, which the dropped policy already called.
 BEGIN;
 
 SET LOCAL lock_timeout = '5s';
@@ -41,6 +48,7 @@ USING (
   selected_contractor_id IN (
     SELECT ct.id FROM public.contractors ct WHERE ct.user_id = (SELECT auth.uid())
   )
+  AND id IN (SELECT public.get_contractor_quote_claim_ids((SELECT auth.uid())))
 );
 
 -- Refuse to finish if the view this narrowing depends on is not there.
