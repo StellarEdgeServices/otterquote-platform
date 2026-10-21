@@ -101,6 +101,9 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/multiple-bids-roof-insurance-claim.html',
   '/guides/roof-bid-comparison-worksheet':
     '/guides/roof-bid-comparison-worksheet.html',
+  // gh-2905: the roofing bid comparison tool page, same extensionless -> .html 301.
+  '/guides/roof-bid-comparison-tool':
+    '/guides/roof-bid-comparison-tool.html',
   '/guides/siding-bid-comparison':
     '/guides/siding-bid-comparison.html',
   '/guides/gutter-bid-comparison':
@@ -163,6 +166,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/limited-lifetime-shingle-warranty.html',
   '/guides/manufacturer-backed-roof-warranties':
     '/guides/manufacturer-backed-roof-warranties.html',
+  '/guides/contractor-offers-to-waive-deductible':
+    '/guides/contractor-offers-to-waive-deductible.html',
 
   // CRO RUN 52 / #2423: generated /locations/ pages -- the index.html twin 301s to the
   // trailing-slash URL (same class as /blog/index.html above).

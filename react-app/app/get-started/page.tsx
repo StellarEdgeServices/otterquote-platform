@@ -831,6 +831,16 @@ export default function GetStartedPage() {
         if (typeof row.phone === 'string' && row.phone.trim()) {
           setPhone(formatPhoneValue(row.phone));
         }
+        // gh-2849 (D-389, Dustin 2026-10-18 on #2801: "Store it, purpose:
+        // prefill + service area"): the homepage ZIP that /start stored on the
+        // lead row seeds the property step, so the visitor is not asked for it
+        // twice. Needs the gh2849 migration (get_lead_prefill returns `zip`);
+        // until it is applied the RPC has no `zip` key and this is a no-op.
+        // Only a valid 5-digit ZIP is used, and never over one already typed.
+        const leadZip = typeof row.zip === 'string' ? row.zip.trim() : '';
+        if (/^\d{5}$/.test(leadZip)) {
+          setZip(prev => (prev ? prev : leadZip));
+        }
       });
   }, []);
 
