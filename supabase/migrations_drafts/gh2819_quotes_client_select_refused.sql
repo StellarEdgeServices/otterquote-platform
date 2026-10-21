@@ -17,7 +17,7 @@
 --
 -- The fix, and why it is a SEPARATE trigger and not an edit of quotes_guard_homeowner_columns(). That function is the shared
 -- surface of gh2564 (applied, ledger 20261018195342, supabase/migrations/20261018195342_gh2564_quotes_selected_price_lock.sql,
--- sha256 7db30c3176790be602007124e2f7b7020b9ef6e7b6a51037a5b827b707020dc2) and of open PR #2863 (gh-2803, notes freeze). This file
+-- sha256 7db30c31) and of open PR #2863 (gh-2803, notes freeze). This file
 -- does NOT re-create it, so it does not need to be composed with either: the guard body on production stays byte-for-byte what it
 -- is, and #2863 can apply before or after this file unchanged. Trigger order does not matter: this trigger only ever raises.
 --
