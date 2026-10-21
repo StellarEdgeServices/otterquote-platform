@@ -566,6 +566,15 @@ serve(async (req) => {
     }
     if (updateError) {
       console.error("Failed to update claims table:", updateError);
+      // gh-2559 (R-177 N2): the bid-open guard refused a parse that repeats the homeowner identity on an open claim; page an operator so it is not silent.
+      if (typeof updateError.message === "string" && updateError.message.includes("[gh2559-bid-open:identity_in_summary]")) {
+        const { error: identAlertErr } = await supabase.from("platform_alerts_log").insert({
+          alert_type: "loss_sheet_identity_refused",
+          function_name: FUNCTION_NAME,
+          message: `claim ${claim_id}: the bid-open guard refused the parsed summary because it repeats the homeowner name, street address or claim number (storage_path ${storage_path}). The old summary stays; check the parser output.`,
+        });
+        if (identAlertErr) console.error(`[${FUNCTION_NAME}] platform_alerts_log insert failed:`, identAlertErr);
+      }
       return new Response(
         JSON.stringify({ error: "Failed to store parsed data", detail: updateError.message }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

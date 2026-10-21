@@ -89,5 +89,7 @@ ok(/'parsed' \/ 'unsupported' \/ 'failed'/.test(R), "rollback comment names 'fai
 ok(/Math\.floor\(\(5 \* 1024 \* 1024\) \/ 4\) \* 3/.test(EK), 'image cap is computed on the base64 size (3,932,160 raw)');
 { const pend = read('sql/schema-pending.json'); ok(/"loss_sheet_parse_status":\s*\{\s*"migration": "supabase\/migrations_drafts\/gh2559_claims_bid_open_guard\.sql"/.test(pend), 'loss_sheet_parse_status is declared in sql/schema-pending.json against the draft'); }
 
+ok(/alert_type: "loss_sheet_identity_refused"/.test(PL) && /\[gh2559-bid-open:identity_in_summary\]/.test(PL), 'parse-loss-sheet writes a loss_sheet_identity_refused operator alert when the identity refusal fires (R-177 N2)');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
