@@ -142,5 +142,93 @@ ok(read('css/home-reskin.css').length > 1000 && /<link rel="stylesheet" href="\/
 control('H4 (one word changed in <main>)', mainOf(INDEX.replace('Questions first?', 'Questions second?')) !== mainOf(STAGING));
 control('H4 (sticky bar changed)', stickyOf(INDEX.replace('aria-label="Call Otter Quotes"', 'aria-label="Call us"')) !== stickyOf(STAGING));
 
+/* ---------- L1: the homeowner "Log In" link is in the header (REVIEW: FAIL 6301143650 B1, RETURNED 6301207916; DECIDED 6200277211 item 4: the Log in target stays as today) ----------
+   Text is the already-live "Log In", target /login.html, no new wording. Static part: the link is in <header class="hr-header"> and no rule hides it. Browser part (needs Playwright + Chromium; skipped with a message if absent):
+   the link is rendered, visible, inside the viewport, and the page does not scroll sideways at 1280 and 390 px. */
+const headerOf = (h) => section(h, '<header class="hr-header">', '</header>');
+function loginStatic(html, css) {
+  const header = headerOf(html);
+  const links = [...header.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].filter((m) => /\bhref="\/login\.html"/.test(m[1]));
+  const hidden = (html.match(/<style>[\s\S]*?<\/style>/g) || []).join('\n') + '\n' + css;
+  const hides = [...hidden.matchAll(/([^{}]*\bhr-login\b[^{}]*)\{([^}]*)\}/g)].some((m) => /display\s*:\s*none|visibility\s*:\s*hidden/.test(m[2]));
+  return [
+    ['L1 the header has exactly one link to /login.html', links.length === 1],
+    ['L1 its text is exactly "Log In" (already-live wording)', links.length === 1 && links[0][2].replace(/<[^>]*>/g, '').trim() === 'Log In'],
+    ['L1 no CSS rule hides it (display:none / visibility:hidden on .hr-login, at any width)', links.length === 1 && /\bhr-login\b/.test(links[0][1]) && !hides],
+  ];
+}
+const CSS_RESKIN = read('css/home-reskin.css');
+loginStatic(INDEX, CSS_RESKIN).forEach(([l, v]) => ok(v, l));
+control('L1 (link removed)', loginStatic(INDEX.replace(/<a [^>]*href="\/login\.html"[^>]*>[\s\S]*?<\/a>/, ''), CSS_RESKIN).some(([, v]) => !v));
+control('L1 (wrong target)', loginStatic(INDEX.replace('href="/login.html"', 'href="/contractor-login.html"'), CSS_RESKIN).some(([, v]) => !v));
+control('L1 (wrong text)', loginStatic(INDEX.replace(/(href="\/login\.html"[^>]*>)\s*Log In/, '$1Sign in'), CSS_RESKIN).some(([, v]) => !v));
+control('L1 (hidden on phones)', loginStatic(INDEX.replace('</style>', '@media (max-width: 767px) { .hr-login { display: none; } }\n</style>'), CSS_RESKIN).some(([, v]) => !v));
+
+async function loginInBrowser() {
+  let chromium;
+  try { ({ chromium } = await import('playwright')); } catch (e) {
+    try { const { createRequire } = await import('node:module'); ({ chromium } = createRequire(import.meta.url)('playwright')); } catch (e2) { chromium = null; }
+  }
+  if (!chromium) { console.log('SKIP: L1 browser check (playwright is not installed here; run where Chromium is available)'); return; }
+  const http = await import('node:http');
+  const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json' };
+  const server = http.createServer((req, res) => {
+    let u = decodeURIComponent(req.url.split('?')[0]); if (u === '/') u = '/index.html';
+    const f = path.join(ROOT, u);
+    if (!f.startsWith(ROOT) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); res.end(); return; }
+    res.writeHead(200, { 'content-type': types[path.extname(f)] || 'application/octet-stream' }); res.end(fs.readFileSync(f));
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = 'http://127.0.0.1:' + server.address().port;
+  let browser;
+  try {
+    browser = await chromium.launch();
+    for (const [w, h] of [[1280, 800], [390, 844]]) {
+      const page = await browser.newPage({ viewport: { width: w, height: h } });
+      await page.route(/^https?:\/\/(?!127\.0\.0\.1)/, (r) => r.abort());
+      await page.goto(base + '/index.html', { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(600);
+      const r = await page.evaluate(() => {
+        const as = [...document.querySelectorAll('header.hr-header a[href="/login.html"]')];
+        const a = as[0]; const b = a ? a.getBoundingClientRect() : null; const cs = a ? getComputedStyle(a) : null;
+        return { n: as.length, text: a ? a.textContent.trim() : null, vis: !!(a && cs.display !== 'none' && cs.visibility !== 'hidden' && b.width > 0 && b.height > 0),
+          inView: !!(b && b.left >= 0 && b.right <= window.innerWidth), sideways: document.documentElement.scrollWidth > window.innerWidth };
+      });
+      ok(r.n === 1 && r.text === 'Log In' && r.vis && r.inView && !r.sideways, 'L1 browser ' + w + 'px: Log In -> /login.html is rendered, visible, inside the viewport, no sideways scroll ' + JSON.stringify(r));
+      await page.close();
+    }
+  } finally { if (browser) await browser.close(); server.close(); }
+}
+await loginInBrowser();
+
+/* ---------- Q7: no author comments in the footer js/nav.js renders (the rendered DOM, not only the served HTML) ---------- */
+function footerComments(navSrc) {
+  const f = renderFooter(navSrc, '/index.html');
+  return { err: f.err, names: [...f.html.matchAll(/<!--([\s\S]*?)-->/g)].filter((m) => /Dustin|Stohler/i.test(m[1])).length };
+}
+const FC = footerComments(NAV);
+ok(!FC.err && FC.names === 0, 'Q7 the footer js/nav.js renders carries no HTML comment naming Dustin or Stohler (' + FC.names + ' found)');
+control('Q7', footerComments(NAV.replace('<a id="footer-do-not-sell-link"', '<!-- Dustin ruling --><a id="footer-do-not-sell-link"')).names >= 1);
+
+/* ---------- Q4: the legacy CTA events cta_click and homeowner_cta_form_start fire from the [data-hr-go] buttons (Ben, DECIDED on #2912 6301210978) ---------- */
+function ctaEvents(html) {
+  const blocks = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  const src = blocks.find((b) => b.indexOf('CTA Click Tracking') >= 0);
+  if (!src) return { err: 'analytics block not found', fired: [] };
+  const mk = (go, href, text, sec) => { const h = []; return { handlers: h, getAttribute: (k) => (k === 'href' ? href : k === 'data-hr-go' ? go : null), textContent: text, closest: () => (sec ? { className: sec } : null), addEventListener: (ev, fn) => { if (ev === 'click') h.push(fn); } }; };
+  const els = [mk('header', '/start.html', 'Get my bids', null), mk('hero', '/start.html?entry=home', 'Get my bids', 'hr-hero'), mk('closing', '/start.html', 'Get my bids', 'hr-sec'), mk('sticky', '/start', 'Get my bids', null)];
+  const fired = [];
+  const doc = { querySelectorAll: (sel) => (/data-hr-go/.test(sel) ? els : []), documentElement: { scrollHeight: 2000 } };
+  const win = { location: { href: 'https://otterquote.com/' }, scrollY: 0, innerHeight: 800, addEventListener() {} };
+  const ctx = vm.createContext({ window: win, document: doc, gtag: (...a) => fired.push(a), setTimeout: () => 0, URL, console });
+  let err = null;
+  try { vm.runInContext(src, ctx, { filename: 'index-analytics.js' }); els.forEach((e) => e.handlers.forEach((fn) => fn.call(e, {}))); } catch (e) { err = String((e && e.stack) || e).split('\n')[0]; }
+  return { err, fired: fired.filter((a) => a[0] === 'event').map((a) => a[1]) };
+}
+const CE = ctaEvents(INDEX);
+ok(!CE.err && CE.fired.filter((n) => n === 'cta_click').length === 4 && CE.fired.filter((n) => n === 'homeowner_cta_form_start').length === 4, 'Q4 clicking each of the 4 [data-hr-go] buttons fires cta_click and homeowner_cta_form_start (got ' + CE.fired.join(',') + (CE.err ? ' | ' + CE.err : '') + ')');
+control('Q4 (selector back to a.btn only)', (() => { const r = ctaEvents(INDEX.replace(/querySelectorAll\('a\.btn[^']*'\)/, "querySelectorAll('a.btn')")); return r.fired.length === 0; })());
+ok(/hero_cta_click/.test(read('js/home-reskin.js')), 'Q4 hero_cta_click is still sent by js/home-reskin.js (kept alongside the legacy events)');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
