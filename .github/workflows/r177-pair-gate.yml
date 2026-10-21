@@ -2,7 +2,7 @@ name: R-177 pair gate
 
 # gh-2965. A REQUIRED-STATUS candidate: fails a PR flagged `r177:legal-read`
 # (or titled [R-120]/[R-177]) unless a human-authored `LEGAL-READ: PASS` and
-# `R-177 SIGNED` both name its head sha or a main-merge-only ancestor. Decision
+# `R-177 SIGNED` both name its exact head sha. Decision
 # logic: scripts/r177/gate.mjs (offline tests: scripts/r177/gate.test.mjs).
 #
 # Why it exists: PR #2964 (flagged) merged through the merge queue with REVIEW
@@ -13,119 +13,113 @@ name: R-177 pair gate
 # whose workflow does not report on the queue ref freezes the whole merge queue.
 # `labeled`/`unlabeled` are included so the label the labeller adds is seen.
 # `pull_request`, never `pull_request_target` (workflow-safety-ratchet, gh-1651):
-# this job needs only read tokens.
+# the pull_request job needs only read tokens.
 #
 # The gate code is checked out from the DEFAULT BRANCH, never from the PR, so a PR
-# cannot weaken the gate that polices it. Bootstrap: while gate.mjs is not yet on
+# cannot weaken the gate that polices it. Bootstrap: while run.cjs is not yet on
 # the default branch (the PR that introduces it) the job reports a notice and passes.
 #
 # THIS FILE DOES NOT MAKE THE CHECK REQUIRED. Adding "R-177 pair gate" to the
 # merge-queue ruleset's required status checks is a repository-settings change
 # owned by Dustin/exec:cto and is deliberately not done here.
 #
-# After posting the pair, re-run this check (Actions > Re-run) so the PR-side
-# status refreshes; the merge_group run re-evaluates from scratch regardless.
-
+# After posting the pair, post any comment (or edit/delete one) on the PR: the issue_comment job
+# re-evaluates and posts a fresh "R-177 pair gate" check run on the head sha. The merge_group run
+# re-evaluates from scratch regardless.
+#
 # STRICT HEAD (#2912 comment 6323562999): the pair must name the exact head sha; the
 # main-merge ancestor walk is off (STRICT_HEAD in scripts/r177/gate.mjs).
 #
-# issue_comment (created, edited): the pair is posted AFTER the PR check ran, so a comment
-# on a PR re-evaluates it and posts a check run named "R-177 pair gate" on the PR head sha
-# (checks: write). The newest check run of that name supersedes the earlier one. Only
-# GITHUB_TOKEN is used; the job runs the default-branch gate code and never PR code.
+# TRUST (R-134, REVIEW 6324652357): the repo is public. Only comments whose author_association is
+# OWNER/MEMBER/COLLABORATOR (or the company login) count, never bots.
+#
+# SAFETY: two jobs. `r177-pair-gate` (pull_request, merge_group) holds READ-ONLY permissions.
+# `r177-pair-gate-comment` (issue_comment) is the only job with `checks: write`. Neither checks
+# out nor executes PR code: scripts/r177/gate.mjs and run.cjs are read from the DEFAULT branch,
+# actions are pinned by full commit sha, credentials are not persisted, only GITHUB_TOKEN is used.
+# issue_comment (created, edited, deleted): deleting a pair comment re-evaluates and turns red.
 
 on:
   issue_comment:
-    types: [created, edited]
+    types: [created, edited, deleted]
   merge_group:
     types: [checks_requested]
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
 
-permissions:
-  contents: read
-  pull-requests: read
-  issues: read
-  checks: write
-
-concurrency:
-  group: r177-pair-gate-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
-  cancel-in-progress: false
+# No workflow-level permissions: each job declares its own minimal set.
+permissions: {}
 
 jobs:
   r177-pair-gate:
     name: R-177 pair gate
+    if: github.event_name != 'issue_comment'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    concurrency:
+      group: r177-pair-gate-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: false
     steps:
       - name: Check out gate code from the default branch only
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
           sparse-checkout: |
             scripts/r177/gate.mjs
+            scripts/r177/run.cjs
           sparse-checkout-cone-mode: false
 
       - name: Evaluate the R-177 pair
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const fs = require('fs');
             const path = require('path');
-            const { pathToFileURL } = require('url');
-            const gatePath = path.join(process.env.GITHUB_WORKSPACE, 'scripts/r177/gate.mjs');
-            if (!fs.existsSync(gatePath)) {
-              core.notice('scripts/r177/gate.mjs is not on the default branch yet (bootstrap); gate not applicable.');
+            const runPath = path.join(process.env.GITHUB_WORKSPACE, 'scripts/r177/run.cjs');
+            if (!fs.existsSync(runPath)) {
+              core.notice('scripts/r177/run.cjs is not on the default branch yet (bootstrap); gate not applicable.');
               return;
             }
-            const gate = await import(pathToFileURL(gatePath).href);
-            const { owner, repo } = context.repo;
+            await require(runPath)({ github, context, core, postCheck: false });
 
-            let prNumber;
-            if (context.eventName === 'merge_group') {
-              prNumber = gate.prNumberFromMergeGroupRef(context.payload.merge_group.head_ref);
-              if (!prNumber) {
-                core.setFailed(`cannot derive a PR number from merge_group head_ref "${context.payload.merge_group.head_ref}"; failing closed.`);
-                return;
-              }
-            } else if (context.eventName === 'issue_comment') {
-              prNumber = context.payload.issue.number;
-            } else {
-              prNumber = context.payload.pull_request.number;
-            }
+  r177-pair-gate-comment:
+    name: R-177 pair gate (comment re-evaluation)
+    if: github.event_name == 'issue_comment' && github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      checks: write
+    concurrency:
+      group: r177-pair-gate-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out gate code from the default branch only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/r177/gate.mjs
+            scripts/r177/run.cjs
+          sparse-checkout-cone-mode: false
 
-            const api = {
-              getPull: async (n) => (await github.rest.pulls.get({ owner, repo, pull_number: n })).data,
-              listComments: (n) => github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: n, per_page: 100 }),
-              getCommit: async (sha) => (await github.rest.repos.getCommit({ owner, repo, ref: sha, per_page: 100 })).data,
-              compareStatus: async (base, head) =>
-                (await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${base}...${head}`, per_page: 1 })).data.status,
-              getBlobSha: async (ref, p) => {
-                try {
-                  const r = await github.rest.repos.getContent({ owner, repo, path: p, ref });
-                  return Array.isArray(r.data) ? null : r.data.sha;
-                } catch (e) {
-                  if (e.status === 404) return null;
-                  throw e;
-                }
-              },
-            };
-
-            const res = await gate.evaluate(api, prNumber);
-            await core.summary
-              .addHeading('R-177 pair gate')
-              .addRaw(`\n${res.message}\n\nflagged: ${res.flagged} | LEGAL-READ: ${res.readOk} | SIGNED: ${res.signOk} | chain: ${res.chain.join(', ')}\n`)
-              .write();
-            if (context.eventName === 'issue_comment') {
-              // The job runs on the default branch, so report on the PR head instead.
-              await github.rest.checks.create({
-                owner, repo, name: 'R-177 pair gate', head_sha: res.headSha, status: 'completed',
-                conclusion: res.ok ? 'success' : 'failure',
-                output: { title: res.ok ? 'R-177 pair present' : 'R-177 pair missing', summary: res.message.slice(0, 60000) },
-              });
-              core.info(res.message);
+      - name: Evaluate the R-177 pair and post the check run on the PR head
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const runPath = path.join(process.env.GITHUB_WORKSPACE, 'scripts/r177/run.cjs');
+            if (!fs.existsSync(runPath)) {
+              core.notice('scripts/r177/run.cjs is not on the default branch yet (bootstrap); gate not applicable.');
               return;
             }
-            if (res.ok) core.info(res.message); else core.setFailed(res.message);
+            await require(runPath)({ github, context, core, postCheck: true });

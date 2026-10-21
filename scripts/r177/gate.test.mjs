@@ -8,12 +8,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { evaluate, isFlagged, prNumberFromMergeGroupRef, mainMergeChain, STRICT_HEAD, LABEL } from './gate.mjs';
+import { evaluate, isFlagged, isHumanComment, hasShaToken, prNumberFromMergeGroupRef, mainMergeChain, STRICT_HEAD, LABEL } from './gate.mjs';
 
 const H = 'a'.repeat(40); // PR head
 const SIGNED = 'b'.repeat(40); // an earlier head the pair was signed over
 const MAINTIP = 'c'.repeat(40);
 const human = (body) => ({ body, user: { login: 'dustinstohler1-dotcom', type: 'User' } });
+const outsider = (body, assoc = 'NONE') => ({ body, author_association: assoc, user: { login: 'random-stranger', type: 'User' } });
+const member = (body, login = 'some-member') => ({ body, author_association: 'MEMBER', user: { login, type: 'User' } });
 const bot = (body) => ({ body, user: { login: 'github-actions[bot]', type: 'Bot' } });
 const pair = (n, sha) => [
   human(`LEGAL-READ: PASS - implements D-1; new claims: none. Head ${sha}`),
@@ -91,6 +93,43 @@ describe('R-177 pair gate: must FAIL', () => {
     const r = await evaluate(fakeApi({ labels: [], title: '[R-177] pricing copy' }), 7);
     assert.equal(r.ok, false);
   });
+  it('R-134: outsider (NONE) posting a valid pair over the head is refused', async () => {
+    const r = await evaluate(fakeApi({ comments: pair(7, H).map((c) => outsider(c.body)) }), 7);
+    assert.deepEqual([r.readOk, r.signOk, r.ok], [false, false, false]);
+  });
+  it('R-134: CONTRIBUTOR / FIRST_TIME_CONTRIBUTOR authors are refused too', async () => {
+    for (const a of ['CONTRIBUTOR', 'FIRST_TIME_CONTRIBUTOR', 'FIRST_TIMER', 'MANNEQUIN']) {
+      const r = await evaluate(fakeApi({ comments: pair(7, H).map((c) => outsider(c.body, a)) }), 7);
+      assert.equal(r.ok, false, a);
+    }
+  });
+  it('R-134: one trusted comment plus one outsider comment is not a pair', async () => {
+    const r = await evaluate(fakeApi({ comments: [pair(7, H)[0], outsider(pair(7, H)[1].body)] }), 7);
+    assert.deepEqual([r.readOk, r.signOk], [true, false]);
+  });
+  it('R-134: negation "LEGAL-READ: PASSING is NOT given for <sha>" is refused', async () => {
+    const r = await evaluate(fakeApi({ comments: [human(`LEGAL-READ: PASSING is NOT given for ${H}`), pair(7, H)[1]] }), 7);
+    assert.deepEqual([r.readOk, r.signOk, r.ok], [false, true, false]);
+  });
+  it('R-134: "LEGAL-READ: PASS" glued to a letter or digit is refused', async () => {
+    for (const w of ['PASSED', 'PASS2', 'PASS_x']) {
+      const r = await evaluate(fakeApi({ comments: [human(`LEGAL-READ: ${w} ${H}`), pair(7, H)[1]] }), 7);
+      assert.equal(r.readOk, false, w);
+    }
+  });
+  it('R-134: sha that is only a prefix of a longer hex run is refused (LEGAL-READ and SIGNED)', async () => {
+    const longer = H + 'a'.repeat(8);
+    const r1 = await evaluate(fakeApi({ comments: [human(`LEGAL-READ: PASS ${longer}`), pair(7, H)[1]] }), 7);
+    assert.equal(r1.readOk, false);
+    const r2 = await evaluate(fakeApi({ comments: [pair(7, H)[0], human(`R-177 SIGNED: pr=7 sha=${longer}`)] }), 7);
+    assert.equal(r2.signOk, false);
+    const r3 = await evaluate(fakeApi({ comments: [pair(7, H)[0], human(`R-177 SIGNED: Ben, CEO\nHead: ${longer}\n`)] }), 7);
+    assert.equal(r3.signOk, false);
+  });
+  it('R-134: sha that is the tail of a longer hex run is refused', async () => {
+    const r = await evaluate(fakeApi({ comments: [human(`LEGAL-READ: PASS 0${H}`), pair(7, H)[1]] }), 7);
+    assert.equal(r.readOk, false);
+  });
 });
 
 describe('R-177 pair gate: must PASS', () => {
@@ -128,6 +167,21 @@ describe('R-177 pair gate: must PASS', () => {
     assert.equal(r.signOk, false);
     assert.equal(r.ok, false);
   });
+  it('R-134: a MEMBER or COLLABORATOR with another login counts; sha followed by punctuation counts', async () => {
+    const r = await evaluate(fakeApi({ comments: [member(`LEGAL-READ: PASS (${H}).`, 'x1'), { ...member(`R-177 SIGNED: pr=7 sha=${H}.`), author_association: 'COLLABORATOR' }] }), 7);
+    assert.equal(r.ok, true);
+  });
+  it('R-134: OWNER counts', () => {
+    assert.equal(isHumanComment({ author_association: 'OWNER', user: { login: 'o', type: 'User' } }), true);
+    assert.equal(isHumanComment({ author_association: 'NONE', user: { login: 'dustinstohler1-dotcom', type: 'User' } }), true);
+    assert.equal(isHumanComment({ author_association: 'MEMBER', user: { login: 'x[bot]', type: 'User' } }), false);
+    assert.equal(isHumanComment({ author_association: 'MEMBER', user: { login: 'x', type: 'Bot' } }), false);
+  });
+  it('hasShaToken is a whole-token match', () => {
+    assert.equal(hasShaToken(`x ${H}`, H), true);
+    assert.equal(hasShaToken(`${H}f`, H), false);
+    assert.equal(hasShaToken(`f${H}`, H), false);
+  });
   it('unflagged PR is not gated (gate reports success so the required context never blocks)', async () => {
     const r = await evaluate(fakeApi({ labels: [], title: 'fix typo' }), 7);
     assert.equal(r.ok, true);
@@ -159,9 +213,31 @@ describe('r177-pair-gate.yml wiring', () => {
     assert.match(on, /merge_group:\s*\n\s*types:\s*\[\s*checks_requested\s*\]/);
   });
   it('re-evaluates on issue_comment created/edited and posts a check run to the PR head', () => {
-    assert.match(on, /issue_comment:\s*\n\s*types:\s*\[\s*created,\s*edited\s*\]/);
-    assert.match(text, /checks\.create/);
+    assert.match(on, /issue_comment:\s*\n\s*types:\s*\[\s*created,\s*edited,\s*deleted\s*\]/);
+    const run = fs.readFileSync(path.join(__dirname, 'run.cjs'), 'utf8');
+    assert.match(run, /checks\.create/);
     assert.match(text, /checks:\s*write/);
+  });
+  const code = text.replace(/^\s*#.*$/gm, '');
+  it('R-134: no workflow-level permissions; checks: write only on the issue_comment job', () => {
+    assert.match(code, /^permissions:\s*\{\}\s*$/m);
+    assert.equal((code.match(/checks:\s*write/g) || []).length, 1);
+    const [pullJob, commentJob] = code.split(/^  r177-pair-gate-comment:/m);
+    assert.doesNotMatch(pullJob, /checks:\s*write/);
+    assert.match(commentJob, /checks:\s*write/);
+    assert.match(pullJob, /permissions:\s*\n\s+contents: read/);
+  });
+  it('R-134: every action is pinned by a full 40-hex commit sha', () => {
+    const uses = [...code.matchAll(/uses:\s*(\S+)/g)].map((m) => m[1]);
+    assert.ok(uses.length >= 4);
+    for (const u of uses) assert.match(u, /@[0-9a-f]{40}$/, u);
+  });
+  it('R-134: gate code is read from the default branch, persist-credentials off, no PR-head checkout', () => {
+    const refs = [...code.matchAll(/^\s*ref:\s*(.+)$/gm)].map((m) => m[1].trim());
+    assert.ok(refs.length >= 2);
+    for (const r of refs) assert.equal(r, '${{ github.event.repository.default_branch }}');
+    assert.equal((code.match(/persist-credentials:\s*false/g) || []).length, refs.length);
+    assert.doesNotMatch(code, /github\.(event\.pull_request\.head|head_ref)|refs\/pull\//);
   });
   it('has an unconditional pull_request trigger (no paths filter) and never pull_request_target', () => {
     assert.match(on, /pull_request:/);

@@ -5,7 +5,7 @@
 //
 // Rule (constitution entry 6 / R-177): a PR flagged `r177:legal-read` (or whose
 // title carries [R-120]/[R-177]) passes only if BOTH of these were posted by a
-// HUMAN (never a bot) and name the PR's EXACT current head sha (STRICT_HEAD; no main-merge
+// TRUSTED HUMAN (OWNER/MEMBER/COLLABORATOR or the company login; never a bot) and name the PR's EXACT current head sha (STRICT_HEAD; no main-merge
 // ancestor walk):
 //   - a comment starting `LEGAL-READ: PASS` containing the sha, and
 //   - a comment starting `R-177 SIGNED: pr=<n> sha=<sha>`, or the CEO template:
@@ -35,27 +35,50 @@ export function isFlagged({ labels = [], title = '' }) {
   return names.includes(LABEL) || TITLE_RE.test(title || '');
 }
 
-// github-actions[bot] interpolates the exact `R-177 SIGNED: pr=<n> sha=<head>`
-// text into its notice comment; bot comments must never count (ceo38, R-077).
+// Who may count toward the pair (R-134, REVIEW 6324652357 finding 1; Ben FYI 6324747555).
+// The repo is PUBLIC, so any GitHub account can comment. A comment counts only when GitHub says
+// the author is OWNER, MEMBER or COLLABORATOR, or the login is the company identity. Bots never
+// count: github-actions[bot] interpolates the exact `R-177 SIGNED: pr=<n> sha=<head>` text into
+// its notice comment (ceo38, R-077). Accepted limit: every agent role posts as the same identity,
+// so this proves the strings exist and who may post them, not which role read or signed.
+export const TRUSTED_ASSOCIATIONS = ['OWNER', 'MEMBER', 'COLLABORATOR'];
+export const COMPANY_LOGIN = 'dustinstohler1-dotcom';
 export function isHumanComment(c) {
   const u = (c && c.user) || {};
-  return u.type !== 'Bot' && !String(u.login || '').endsWith('[bot]');
+  const login = String(u.login || '');
+  if (u.type === 'Bot' || login.endsWith('[bot]')) return false;
+  return TRUSTED_ASSOCIATIONS.includes(c && c.author_association) || login === COMPANY_LOGIN;
+}
+
+// A sha counts only as a whole token: not a prefix, suffix or middle of a longer hex run.
+const HEX = '0-9a-fA-F';
+export function hasShaToken(text, sha) {
+  const esc = String(sha).replace(/[^0-9a-zA-Z]/g, '');
+  return new RegExp(`(?<![${HEX}])${esc}(?![${HEX}])`).test(text);
 }
 
 export function pairFor(comments, prNumber, chain) {
   const bodies = comments.filter(isHumanComment).map((c) => c.body || '');
+  // `PASS` must end at a word boundary ("PASSING ... NOT" no longer counts).
   const readOk = bodies.some(
-    (x) => x.trimStart().startsWith('LEGAL-READ: PASS') && chain.some((h) => x.includes(h)),
+    (x) => /^LEGAL-READ: PASS(?![A-Za-z0-9_])/.test(x.trimStart()) && chain.some((h) => hasShaToken(x, h)),
   );
   let signOk = bodies.some((x) =>
-    chain.some((h) => x.trimStart().startsWith(`R-177 SIGNED: pr=${prNumber} sha=${h}`)),
+    chain.some((h) => {
+      const t = x.trimStart();
+      const lead = `R-177 SIGNED: pr=${prNumber} sha=${h}`;
+      return t.startsWith(lead) && !new RegExp(`^[${HEX}]`).test(t.slice(lead.length));
+    }),
   );
   if (!signOk) {
     signOk = bodies.some((x) => {
       const ls = x.trimStart().split(/\r?\n/);
       return (
         ls[0].startsWith('R-177 SIGNED:') &&
-        chain.some((h) => h.length === 40 && ls.slice(1, 6).some((l) => l.trim().startsWith('Head: ' + h)))
+        chain.some((h) => h.length === 40 && ls.slice(1, 6).some((l) => {
+          const t = l.trim();
+          return t.startsWith('Head: ' + h) && !new RegExp(`^[${HEX}]`).test(t.slice(6 + h.length));
+        }))
       );
     });
   }
