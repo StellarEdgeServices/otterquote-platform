@@ -87,9 +87,13 @@ export function Messaging({ userId }: { userId: string }) {
 
   const loadMessages = useCallback(async (claimId: string) => {
     if (!claimId) return;
+    // gh-2559 / D-390: a contractor reads the thread through public.contractor_thread_messages, which removes phone- and e-mail-shaped
+    // text from the homeowner's messages until the Platform Fee is collected. The table itself holds no homeowner-sent row for a
+    // contractor before the fee (restrictive policy d390_homeowner_text_prefee), so this must not read public.messages. Writes below
+    // still insert into public.messages.
     const { data, error } = await supabase
-      .from('messages')
-      .select('id, sender_id, sender_role, body, created_at, profiles:sender_id(full_name)')
+      .from('contractor_thread_messages')
+      .select('id, sender_id, sender_role, body, created_at, sender_full_name')
       .eq('claim_id', claimId)
       .order('created_at', { ascending: true });
     if (error) { console.error('Error loading messages:', error); return; }
@@ -100,7 +104,7 @@ export function Messaging({ userId }: { userId: string }) {
         sender_role: String(m.sender_role),
         body: String(m.body ?? ''),
         created_at: String(m.created_at),
-        full_name: String(((m.profiles as Record<string, unknown>) || {}).full_name ?? ''),
+        full_name: String(m.sender_full_name ?? ''),
       })),
     );
   }, []);

@@ -35,6 +35,8 @@ Two more sets were applied to production on 2026-10-18 (CTO RUN 70 filing; appli
 
 Eight more versions were filed on 2026-10-19 (CTO RUN 72, #1438 ruling 6279520050). Three were drafts in this directory, applied to production from the bytes here, and moved out with `git mv` (bytes UNCHANGED, header comments included, so their `Rollback:` / `Pre-flight:` comment lines and any `NOT APPLIED` wording are stale; this paragraph and the ledger are the record): `gh2442_dunning_retry_request` (`supabase/migrations/20261009000257_gh2442_dunning_retry_request.sql`, applied 2026-10-09 from merged head 88305ef8, ledger md5 = file md5 `c0d2b93b…`), `gh2442_payment_failures_revoke_authenticated_writes` (`supabase/migrations/20261016204639_gh2442_payment_failures_revoke_authenticated_writes.sql`, applied 2026-10-16 from main 15daf947, sha256 `d0e99361ad5c2352…`) and `gh2559_claims_policy_narrow` (`supabase/migrations/20261018220426_gh2559_claims_policy_narrow.sql`, applied 2026-10-18 from PR #2865 head 64e9e2b5, sha256 `353fd1ebc412ed63…`); their rows are removed because they are no longer drafts, their rollbacks and pre-flights moved with `git mv` to `supabase/migrations_rollbacks/`, and the readers of the old paths (`supabase/tests/gh2442_concurrency_harness.py`, the gh2442 proof header, `supabase/tests/gh2559_claims_narrow_strict_subset_proof.sql`) were repointed. Five were applied on 2026-10-19 straight from open draft PR heads and never had a file on main; each is filed as an exact byte copy of the draft at the applied head: `gh2803_selected_bid_notes_rpc` (`20261019180412`, PR #2844 @29caa776), `gh2803_quotes_notes_signed_lock` (`20261019191903`, PR #2863 @d7e5b26d), `gh2619_messages_thread_scope_and_no_cross_delete` (`20261019192135`, PR #2777 @b12d18dc), `gh2785_profiles_freeze_is_test_role_email` (`20261019193234`, PR #2797 @365317c1) and `gh2819_quotes_client_select_refused` (`20261019220737`, PR #2913 @a4bfd02c). Those five PRs still add the same bytes under `supabase/migrations_drafts/`; when each rebases it should drop its draft forward file (the filed copy is the record) and keep its rollback, pre-flight and proof.
 
+Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630), each as an exact byte copy under `supabase/migrations/<ledger version>_<ledger name>.sql` whose sha256 equals the sha256 of `statements[1]` in `supabase_migrations.schema_migrations`: `gh2931_bidder_summary_no_filename`, `gh2559_d390_redact_contact_until_fee`, `gh2864_quotes_signature_stamps_platform_only`, `gh2442_dunning_retry_pass_column`, `gh2442_dunning_retry_unknown_guard`, `gh2442_dunning_retry_pass_lease`, `gh2849_get_lead_prefill_zip`, `gh2875_d391_contractor_sms_numbers` (all eight were drafts here and are APPLIED; the draft files in this directory are left in place, unchanged, for a later move) and `gh2154_internal_test_email_add_otterquote_com` (copied from the blob of PR #2937). See the baseline manifest note `cto75`.
+
 ## Added 2026-10-13 (gh-1873, Hover retirement step 2): 1 file, 1 set, not counted in the tables above
 
 | set | files | status | evidence | repo copy |
@@ -52,8 +54,20 @@ Eight more versions were filed on 2026-10-19 (CTO RUN 72, #1438 ruling 627952005
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 
+## Added 2026-10-18 (gh-2559 / gh-2619, D-390): forward, rollback and pre-flight here, the proof in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2559_d390_redact_contact_until_fee` | forward, rollback, pre-flight | NOT APPLIED | drafted 2026-10-18 (CTO RUN 70 worker cto70-d390); production read-only same day: `claims.contractor_released_at` absent (PR #2777 not applied, this set's gate refuses until it is), counts in the pre-flight; proof on throwaway Postgres 17.11 and 16.15 (`supabase/tests/gh2559_d390_redact_proof_run.sh`, 252 probes each, 0 failures, plus a gate negative control; fix2880 added the Unicode, parity and MAINTAIN probes). Tier 3B, R-097 24-hour notice before apply; apply AFTER PR #2777 and publish the page change with it | none |
+
 ## Added 2026-10-19 (gh-2931, `bidder_claim_summary` returns `estimate_filename` and `measurements_filename` only after the fee): 2 files here, the proof in `supabase/tests/`; not counted in the tables above
 
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2931_bidder_summary_no_filename` | forward, rollback (proof and its runner in `supabase/tests/`) | NOT APPLIED | drafted 2026-10-19 under #2931; production read-only 2026-10-19T21:2xZ: `pg_get_viewdef` md5 `c8ad94c4…` (40 columns), owner `postgres`, `security_barrier=true`, no dependents; the view returns the path to the selected contractor from selection (a bidder reads NULL); 0 of 4 stored paths are on a selected claim. The forward file gates those two CASEs on `claims.platform_fee_charged IS TRUE` (CREATE OR REPLACE VIEW, same columns). PR #2880 and PR #2925 carry the old CASE on one line each | none |
+
+## Added 2026-10-19 (gh-2875, D-391 layer 1: per-number SMS verification record and suppression list): 3 files here, the proof and runner in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2875_d391_contractor_sms_numbers` | forward, rollback, pre-flight (all three here) | NOT APPLIED | drafted 2026-10-19 under #2875 (D-391 + AMENDMENT 1); production read-only 2026-10-19: the tables do not exist. Throwaway-Postgres proof `supabase/tests/gh2875_d391_contractor_sms_numbers_proof_run.sh` (TODAY / AFTER / MUTANT / ROLLBACK). Tier 3B, R-097 notice #2875 6256733805; no disclosure row is inserted (wording waits on LEGAL-READ + R-177) | none |
