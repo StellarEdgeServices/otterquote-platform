@@ -46,6 +46,10 @@ import {
 // #2105 5848495644). Switched from this batch's original local copy to the
 // shared one; the local copy is deleted.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+// gh-2442: contractor-requested retry pass (CRON mode). Off unless DUNNING_RETRY_PASS_ENABLED=true.
+import { runRetryPass, gateTrigger, triggerSystemRetryFields, PAYMENT_HOLD_STATUSES, selectRetryStripeKey } from "./retry-pass.ts";
+import { buildRetryPassDeps, buildTriggerGateDeps } from "./retry-pass-supabase.ts";
+import { dropHeld, heldQuoteIds } from "./payment-hold.ts"; // gh-2442 B4
 // gh-2309: inbound caller gate (service-role bearer on TRIGGER + CRON).
 import { acceptedServiceKeys, classifyRequest, gateResponse, validateHomeownerChoice } from "./caller-gate.ts";
 // gh-1824: email bodies live in templates.ts (pinned by templates.test.ts).
@@ -755,6 +759,103 @@ export async function handler(
       console.log("TRIGGER mode: Attempting all payment methods before dunning for quote", body.quote_id);
 
       const { quote_id, contractor_id, claim_id, homeowner_id, amount_cents, stripe_error } = body;
+
+      // gh-2442 N-i (REVIEW 6277733088): the #1467 live-charge guard runs BEFORE the gate and before any dunning setup, whatever
+      // the gate decides, so an unauthorised test claim never enters dunning. Fails closed (unreadable claim = refused).
+      // ── #1467 GATE 3: live-charge authorization, before ANY retry ────
+      // This function does not call create-payment-intent — it POSTs to
+      // api.stripe.com/v1/payment_intents itself, and it has a CRON mode
+      // that sweeps every dunning-status quote with no human in the loop.
+      // So the #1467 defect on this path needs nobody to fire it, which is
+      // a strictly worse shape than the ceremony path it was found on.
+      // Fails CLOSED: an unreadable claim refuses the charge AND the dunning setup (nothing is created for it).
+      {
+        const { data: guardClaim } = await supabase
+          .from("claims")
+          .select(GUARD_SELECT)
+          .eq("id", claim_id ?? "")
+          .maybeSingle();
+        const chargeGuard = evaluateLiveChargeGuard(guardClaim);
+        if (!chargeGuard.allow) {
+          const guardMessage = describeGuardVerdict(
+            chargeGuard,
+            claim_id,
+            amount_cents
+          );
+          console.error(`[process-dunning] ${guardMessage}`);
+          try {
+            await supabase.from("platform_alerts_log").insert({
+              // N-n: an unreadable claim is an infrastructure fault, not an unauthorised test claim: its own alert type.
+              alert_type: chargeGuard.reason === "claim_unreadable"
+                ? "platform_fee_refused_claim_unreadable"
+                : "platform_fee_refused_unauthorized_test",
+              function_name: "process-dunning",
+              message: `${guardMessage} No retry attempted; dunning not initiated for quote ${quote_id}.`,
+              sent_at: new Date().toISOString(),
+            });
+          } catch (alertErr) {
+            console.error("platform_alerts_log insert failed:", alertErr);
+          }
+          return new Response(
+            JSON.stringify({
+              success: false,
+              charge_refused: chargeGuard.reason,
+              quote_id,
+              claim_id,
+              message:
+                "Live charge refused by the #1467 guard. No payment method " +
+                "was retried and no dunning sequence was started.",
+            }),
+            {
+              status: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+      }
+
+      // A refunded quote is terminal (Marty, Tier A): no dunning row, no Stripe call. I-1 (REVIEW 6278287285): an UNREADABLE
+      // status is a charge refusal (no Stripe call; dunning still set up; a system retry request is marked so the CRON pass,
+      // which re-reads the status before charging, decides). N-q: a quote already succeeded / pending / processing is never charged.
+      let quoteStatusUnreadable = false;
+      let quoteSettledBeforeCharge = false;
+      {
+        const { data: qNow, error: qNowErr } = await supabase.from("quotes").select("payment_status").eq("id", quote_id).maybeSingle();
+        if (qNowErr || !qNow) {
+          quoteStatusUnreadable = true;
+          console.error(`[process-dunning] TRIGGER could not read quote ${quote_id} payment_status; charge skipped, dunning still set up:`, qNowErr);
+          try {
+            await supabase.from("platform_alerts_log").insert({
+              alert_type: "dunning_trigger_skipped", function_name: "process-dunning",
+              message: `TRIGGER charge for quote ${quote_id} skipped (quote_status_unreadable); dunning is still set up and a system retry request is marked so the CRON pass decides.`,
+              sent_at: new Date().toISOString(),
+            });
+          } catch (alertErr) { console.error("platform_alerts_log insert failed:", alertErr); }
+        } else if (qNow.payment_status === "refunded") {
+          console.error(`[process-dunning] TRIGGER for quote ${quote_id} ignored: quote is refunded (terminal).`);
+          return new Response(
+            JSON.stringify({ success: false, skipped: true, reason: "quote_refunded", quote_id }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        } else if (qNow.payment_status && PAYMENT_HOLD_STATUSES.includes(qNow.payment_status)) {
+          quoteSettledBeforeCharge = true;
+          console.log(`[process-dunning] TRIGGER for quote ${quote_id}: payment_status=${qNow.payment_status}; no charge attempted.`);
+        }
+      }
+
+      // gh-2442 N-g (REVIEW 6277377025, 6277504129): ONLY the Stripe charge loop is gated. Dunning is ALWAYS set up
+      // (schedule row, notices) whatever the gate says. The gate refuses the charge while any row of the quote carries the
+      // in-doubt marker, and (retry pass enabled) takes the CRON pass's lease around the loop. A charge refused for the lease or a gate error is
+      // marked as a SYSTEM retry request on the new row (retry_requested_at, count untouched: it does not consume the
+      // contractor's cap of 3), so the next CRON tick charges it; an in-doubt marker needs no mark (CRON reconciles it). gateTrigger never throws: any failure is a refusal.
+      const triggerGate = await gateTrigger(
+        buildTriggerGateDeps(supabase), quote_id, getEnv("DUNNING_RETRY_PASS_ENABLED") === "true",
+      );
+      let gateReleased = false;
+      const releaseTriggerGate = async () => {
+        if (triggerGate.proceed && !gateReleased) { gateReleased = true; await triggerGate.release(); }
+      };
+      try {
       const now = new Date();
 
       // ── MULTI-METHOD RETRY: Try ALL payment methods before initiating dunning ──
@@ -768,9 +869,9 @@ export async function handler(
       const isStaging = _reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
         _reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
       const stripeSecretKey = isStaging
-        ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
-        : Deno.env.get("STRIPE_SECRET_KEY");
-      if (stripeSecretKey) {
+        ? (getEnv("STRIPE_SECRET_KEY_TEST") || getEnv("STRIPE_SECRET_KEY"))
+        : getEnv("STRIPE_SECRET_KEY");
+      if (stripeSecretKey && triggerGate.proceed && !quoteStatusUnreadable && !quoteSettledBeforeCharge) {
         const basicAuth = btoa(`${stripeSecretKey}:`);
 
         // Get contractor's Stripe customer ID
@@ -811,54 +912,7 @@ export async function handler(
             retryMethods.push({ stripe_pm_id: cData.stripe_payment_method_id, payment_type: "card", cpm_id: null });
           }
 
-          // ── #1467 GATE 3: live-charge authorization, before ANY retry ────
-          // This function does not call create-payment-intent — it POSTs to
-          // api.stripe.com/v1/payment_intents itself, and it has a CRON mode
-          // that sweeps every dunning-status quote with no human in the loop.
-          // So the #1467 defect on this path needs nobody to fire it, which is
-          // a strictly worse shape than the ceremony path it was found on.
-          // Fails CLOSED: an unreadable claim refuses every retry.
-          {
-            const { data: guardClaim } = await supabase
-              .from("claims")
-              .select(GUARD_SELECT)
-              .eq("id", claim_id ?? "")
-              .maybeSingle();
-            const chargeGuard = evaluateLiveChargeGuard(guardClaim);
-            if (!chargeGuard.allow) {
-              const guardMessage = describeGuardVerdict(
-                chargeGuard,
-                claim_id,
-                amount_cents
-              );
-              console.error(`[process-dunning] ${guardMessage}`);
-              try {
-                await supabase.from("platform_alerts_log").insert({
-                  alert_type: "platform_fee_refused_unauthorized_test",
-                  function_name: "process-dunning",
-                  message: `${guardMessage} No retry attempted; dunning not initiated for quote ${quote_id}.`,
-                  sent_at: new Date().toISOString(),
-                });
-              } catch (alertErr) {
-                console.error("platform_alerts_log insert failed:", alertErr);
-              }
-              return new Response(
-                JSON.stringify({
-                  success: false,
-                  charge_refused: chargeGuard.reason,
-                  quote_id,
-                  claim_id,
-                  message:
-                    "Live charge refused by the #1467 guard. No payment method " +
-                    "was retried and no dunning sequence was started.",
-                }),
-                {
-                  status: 200,
-                  headers: { ...corsHeaders, "Content-Type": "application/json" },
-                }
-              );
-            }
-          }
+          // (#1467 GATE 3 now runs once, before the gate and before any dunning setup: see above)
 
           // Skip the method that already failed (passed in stripe_error context)
           // and try remaining methods
@@ -1031,6 +1085,8 @@ export async function handler(
         }
       }
 
+      await releaseTriggerGate(); // the lease covers the charge loop only
+
       // ── All payment methods exhausted (or no methods on file) — initiate dunning ──
 
       // Look up contractor (including timezone + address_state for derivation)
@@ -1095,6 +1151,8 @@ export async function handler(
           warning_at:         warningAt.toISOString(),
           homeowner_notify_at: homeownerNotifyAt.toISOString(),
           reminder_count:     0,
+          // N-s: never mark a system retry request on a quote that is already settled (succeeded / pending / processing).
+          ...(quoteSettledBeforeCharge ? {} : triggerSystemRetryFields(quoteStatusUnreadable ? { proceed: false, reason: "quote_status_unreadable" } : triggerGate, now.toISOString())),
         })
         .select()
         .single();
@@ -1106,11 +1164,16 @@ export async function handler(
       // never learns dunning is active, invisible to any query filtering on
       // payment_status='dunning' -- the same money-path gap as the identical
       // write in docusign-webhook (batch 3, this PR).
+      // N-j (REVIEW 6277733088): compare-and-set on the current payment state; paid / pending / processing is never flipped
+      // back to dunning (NULL counts as not paid).
       const { data: triggerDunningRows, error: triggerDunningErr } = await supabase
         .from("quotes")
         .update({ payment_status: "dunning" })
         .eq("id", quote_id)
+        .or(`payment_status.is.null,payment_status.not.in.(${PAYMENT_HOLD_STATUSES.join(",")})`)
         .select("id");
+      // N-l: a CAS that wrote 0 rows means the quote is already paid / in progress: no "payment declined" notices.
+      const quoteAlreadySettled = !triggerDunningErr && !checkRowsWritten(triggerDunningRows).wroteRows;
       if (triggerDunningErr) {
         console.error(`[process-dunning] quotes payment_status=dunning update failed for quote ${quote_id}:`, triggerDunningErr);
       } else if (!checkRowsWritten(triggerDunningRows).wroteRows) {
@@ -1121,7 +1184,7 @@ export async function handler(
       const contacts = contractor ? await getContractorContacts(contractor as any, supabase) : { emails: [], phones: [] };
 
       // Send first notification immediately if applicable
-      if (sendImmediately && contacts.emails.length > 0) {
+      if (sendImmediately && !quoteAlreadySettled && contacts.emails.length > 0) {
         const html = hourlyReminderEmail(companyName);
         const sent = await sendEmailToAll(contacts.emails, "Action Required: Payment Declined — Otter Quotes", html);
         await sendSMSToAll(contacts.phones, HOURLY_SMS);
@@ -1149,7 +1212,7 @@ export async function handler(
       }
 
       // In-app notification for contractor
-      if (contractor?.user_id) {
+      if (contractor?.user_id && !quoteAlreadySettled) {
         await supabase.from("notifications").insert({
           user_id:           contractor.user_id,
           claim_id,
@@ -1172,12 +1235,37 @@ export async function handler(
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+      } finally {
+        await releaseTriggerGate();
+      }
     }
 
     // MODE: CRON — Process all active dunning records
     console.log("CRON mode: Scanning active dunning records...");
     const now = new Date();
     let processed = 0;
+
+    // ── gh-2442 RETRY PASS: contractor-requested retries (request_dunning_retry) ──
+    // OFF by default: deploying this code charges nothing until DUNNING_RETRY_PASS_ENABLED=true is set.
+    // TEST MODE IS THE DEFAULT even when enabled (STRIPE_SECRET_KEY_TEST only); live needs the separate explicit
+    // DUNNING_RETRY_PASS_LIVE=true and a non-test key (selectRetryStripeKey). Tier 3B: test-mode proof first.
+    let retryPassOutcomes: unknown[] = [];
+    if (getEnv("DUNNING_RETRY_PASS_ENABLED") === "true") {
+      try {
+        const retryKey = selectRetryStripeKey(getEnv);
+        if (!retryKey.ok) {
+          console.error(`[process-dunning] retry pass enabled but skipped: ${retryKey.reason}`);
+        } else {
+          console.log(`[process-dunning] retry pass running in ${retryKey.mode} mode`);
+          retryPassOutcomes = await runRetryPass(
+            buildRetryPassDeps(supabase, retryKey.key, { GUARD_SELECT, evaluateLiveChargeGuard, describeGuardVerdict }),
+          );
+          console.log(`[process-dunning] retry pass: ${JSON.stringify(retryPassOutcomes)}`);
+        }
+      } catch (retryErr) {
+        console.error("[process-dunning] retry pass failed (reminder passes continue):", retryErr);
+      }
+    }
 
     // ── PASS 1: Active records — hourly reminders and warning transitions ──
     const { data: activeFailures, error: fetchErr } = await supabase
@@ -1196,7 +1284,9 @@ export async function handler(
 
     if (fetchErr) throw new Error(`Failed to fetch active dunning records: ${fetchErr.message}`);
 
-    for (const failure of (activeFailures || [])) {
+    // gh-2442 B4: no reminders / warnings for a quote that is paid or has a payment in flight.
+    const heldActive = await heldQuoteIds(supabase, (activeFailures || []).map((f: any) => f.quote_id));
+    for (const failure of dropHeld(activeFailures || [], heldActive)) {
       const contractor  = failure.contractors as any;
       const claim       = failure.claims as any;
       const companyName = contractor?.company_name || "Contractor";
@@ -1284,7 +1374,8 @@ export async function handler(
 
     if (warnErr) throw new Error(`Failed to fetch warning_sent records: ${warnErr.message}`);
 
-    for (const failure of (warnedFailures || [])) {
+    const heldWarned = await heldQuoteIds(supabase, (warnedFailures || []).map((f: any) => f.quote_id));
+    for (const failure of dropHeld(warnedFailures || [], heldWarned)) {
       const contractor  = failure.contractors as any;
       const companyName = contractor?.company_name || "Contractor";
 
@@ -1358,6 +1449,7 @@ export async function handler(
         processed,
         active_processed: activeFailures?.length || 0,
         homeowner_notified: warnedFailures?.length || 0,
+        retry_pass: retryPassOutcomes.length,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

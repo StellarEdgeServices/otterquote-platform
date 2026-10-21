@@ -831,6 +831,16 @@ export default function GetStartedPage() {
         if (typeof row.phone === 'string' && row.phone.trim()) {
           setPhone(formatPhoneValue(row.phone));
         }
+        // gh-2849 (D-389, Dustin 2026-10-18 on #2801: "Store it, purpose:
+        // prefill + service area"): the homepage ZIP that /start stored on the
+        // lead row seeds the property step, so the visitor is not asked for it
+        // twice. Needs the gh2849 migration (get_lead_prefill returns `zip`);
+        // until it is applied the RPC has no `zip` key and this is a no-op.
+        // Only a valid 5-digit ZIP is used, and never over one already typed.
+        const leadZip = typeof row.zip === 'string' ? row.zip.trim() : '';
+        if (/^\d{5}$/.test(leadZip)) {
+          setZip(prev => (prev ? prev : leadZip));
+        }
       });
   }, []);
 
@@ -1780,7 +1790,7 @@ export default function GetStartedPage() {
               <>
                 <h1>Get Started</h1>
                 <p className="gs-subtitle">
-                  Create your free account and start getting competitive quotes from contractors.
+                  Create your account and start getting competitive quotes from contractors.
                 </p>
                 <div className="gs-confirm-sent">
                   <div className="gs-confirm-icon">✉️</div>
@@ -1817,7 +1827,7 @@ export default function GetStartedPage() {
               >
                 <h1>Tell Us About Your Home</h1>
                 <p className="gs-subtitle">
-                  It&apos;s free, and takes under a minute. Create your account next.
+                  It takes under a minute. Create your account next.
                 </p>
 
                 {/*
@@ -1939,7 +1949,7 @@ export default function GetStartedPage() {
                 </div>
                 <h1>Create Your Account</h1>
                 <p className="gs-subtitle">
-                  Free, and takes under a minute. We&apos;ll match {street ? 'your home' : 'you'} with contractors next.
+                  Takes under a minute. We&apos;ll match {street ? 'your home' : 'you'} with contractors next.
                 </p>
                 {/* ── Email + Password Sign-Up Form ── */}
                 <form className="gs-form" onSubmit={handleSubmit} noValidate>
@@ -2176,7 +2186,7 @@ export default function GetStartedPage() {
                   {submitting ? (
                     <><span className="btn-loading-spinner" />Creating account…</>
                   ) : (
-                    'Create My Free Account'
+                    'Create My Account'
                   )}
                 </button>
 
@@ -2277,8 +2287,8 @@ export default function GetStartedPage() {
             <div className="benefit-item">
               <div className="benefit-icon">💰</div>
               <div className="benefit-text">
-                <h4>Always free for you</h4>
-                <p>Otter Quotes is 100% free for homeowners. Contractors pay to earn your business, not you.</p>
+                <h4>Contractors pay to earn your business</h4>
+                <p>No fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when they complete a job.</p>
               </div>
             </div>
           </div>

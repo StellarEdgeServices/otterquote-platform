@@ -136,3 +136,13 @@ Deno.test("blog-guides-redirect: a generated /locations/ index.html twin 301s to
   await handler(new Request("https://otterquote.com/locations/franklin-county-oh/roofing/"), ctx);
   assertEquals(ctx.nextCalled, true);
 });
+
+Deno.test("blog-guides-redirect: the /locations/ hub index.html twin 301s to /locations/ and the slash URL falls through", async () => {
+  const twin = await handler(new Request("https://otterquote.com/locations/index.html"), fakeContext());
+  assertEquals(twin.status, 301);
+  assertEquals(new URL(twin.headers.get("location")!).pathname, "/locations/");
+
+  const ctx = fakeContext();
+  await handler(new Request("https://otterquote.com/locations/"), ctx);
+  assertEquals(ctx.nextCalled, true);
+});

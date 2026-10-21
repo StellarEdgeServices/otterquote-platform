@@ -61,6 +61,13 @@ Two more sets were applied to production on 2026-10-18 (CTO RUN 70 filing; appli
 
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
+
+## Added 2026-10-19 (gh-2931, `bidder_claim_summary` returns `estimate_filename` and `measurements_filename` only after the fee): 2 files here, the proof in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2931_bidder_summary_no_filename` | forward, rollback (proof and its runner in `supabase/tests/`) | NOT APPLIED | drafted 2026-10-19 under #2931; production read-only 2026-10-19T21:2xZ: `pg_get_viewdef` md5 `c8ad94c4…` (40 columns), owner `postgres`, `security_barrier=true`, no dependents; the view returns the path to the selected contractor from selection (a bidder reads NULL); 0 of 4 stored paths are on a selected claim. The forward file gates those two CASEs on `claims.platform_fee_charged IS TRUE` (CREATE OR REPLACE VIEW, same columns). PR #2880 and PR #2925 carry the old CASE on one line each | none |
+
 ## Added 2026-10-14 (gh-2785, `profiles.is_test` / `role` / `email` self-update freeze): 1 file here (rollback and pre-flight in `supabase/migrations_rollbacks/`, the throwaway-Postgres proof and runner in `supabase/tests/`), not counted in the tables above
 
 | set | files | status | evidence | repo copy |
