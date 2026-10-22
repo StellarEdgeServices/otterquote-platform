@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """gh-3005: fixtures for scripts/check-payout-timing-copy-drift.py.
 
-Run: python3 scripts/test_check_payout_timing_copy_drift.py
+Run: python3 scripts/check-payout-timing-copy-drift.test.py
 Proves (1) the Sullivan County TN permit-expiry sentence is exempt, and
 (2) real payout-timing sentences (and the same sentence on any other file)
 still FAIL. The shared keyword/duration patterns are not touched.
