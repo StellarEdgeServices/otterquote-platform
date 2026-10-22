@@ -2601,6 +2601,22 @@ function colorRefusal(status: any, code: any, corsHeaders: any) {
 // ========== HANDLER: LEGACY CONTRACT / COLOR / PROJECT CONFIRMATION ==========
 async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   const { claim_id, document_type, contractor_id, signer, fields: providedFields, return_url } = requestBody;
+  // gh-2105 (review 6325420063 item 2): the colour addendum is signed by the contractor the
+  // homeowner SELECTED, never one the caller names. With one document per claim a wrong
+  // counter-signer would stay on that claim for good, so the check runs before the resume and
+  // the mint, and a lookup failure fails closed.
+  if (document_type === "color_confirmation") {
+    const { data: selRow, error: selError } = await supabase.from("claims").select("selected_contractor_id").eq("id", claim_id).maybeSingle();
+    if (selError) {
+      console.error(`[${FN_NAME}] color_confirmation selected-contractor lookup failed:`, selError);
+      return colorRefusal(503, "color_contractor_lookup_failed", corsHeaders);
+    }
+    if (!selRow) return colorRefusal(404, "color_claim_not_found", corsHeaders);
+    if (!selRow.selected_contractor_id || selRow.selected_contractor_id !== contractor_id) {
+      console.error(`[${FN_NAME}] color_confirmation refused: contractor ${contractor_id} is not the selected contractor for claim ${claim_id}`);
+      return colorRefusal(403, "color_contractor_not_selected", corsHeaders);
+    }
+  }
   // gh-2105 (D): a colour envelope already on the claim is resumed, never re-minted.
   if (document_type === "color_confirmation" && requestBody.resolved_envelope_id) {
     return await resumeColorConfirmation(requestBody.resolved_envelope_id, requestBody, corsHeaders);
@@ -2608,7 +2624,9 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   let autoFields = stripHomeownerPhone(providedFields);
   let claimData = null;
   let contractorData = null;
-  if (!providedFields || Object.keys(providedFields).length === 0) {
+  // gh-2105 (review item 2): for color_confirmation the caller's `fields` are ignored, so a body
+  // cannot name the contractor's email or name; everything is read server-side.
+  if (document_type === "color_confirmation" || !providedFields || Object.keys(providedFields).length === 0) {
     const result = await autoPopulateFields(supabase, claim_id, contractor_id, signer.name, signer.email, document_type);
     autoFields = result.fields;
     claimData = result.claimData;

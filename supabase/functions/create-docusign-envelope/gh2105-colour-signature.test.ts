@@ -57,7 +57,9 @@ function grabConstFrom(text: string, name: string): string {
 // ---- fakes ----
 
 interface World {
-  row: { id: string; color_confirmation_envelope_id: string | null; is_test?: boolean } | null;
+  row: { id: string; color_confirmation_envelope_id: string | null; selected_contractor_id?: string | null; is_test?: boolean } | null;
+  selectLookupError?: boolean;
+  autoCalls?: number;
   sends: number;
   signLinks: number;
   alerts: number;
@@ -68,7 +70,8 @@ interface World {
 
 function newWorld(over: Partial<World> = {}): World {
   return {
-    row: { id: "claim-1", color_confirmation_envelope_id: null },
+    row: { id: "claim-1", color_confirmation_envelope_id: null, selected_contractor_id: "ctr-1" },
+    autoCalls: 0,
     sends: 0,
     signLinks: 0,
     alerts: 0,
@@ -96,7 +99,7 @@ function fakeSupabase(w: World) {
       update: (p: Record<string, unknown>) => { patch = p; return chain; },
       eq: (c: string, v: unknown) => { filters.push(["eq", c, v]); return chain; },
       is: (c: string, v: unknown) => { filters.push(["is", c, v]); return chain; },
-      maybeSingle: () => Promise.resolve({ data: w.row && filters.every(([, c, v]) => (w.row as Record<string, unknown>)[c] === v || (v === null && ((w.row as Record<string, unknown>)[c] ?? null) === null)) ? { ...w.row } : null, error: null }),
+      maybeSingle: () => w.selectLookupError ? Promise.resolve({ data: null, error: { message: "boom" } }) : Promise.resolve({ data: w.row && filters.every(([, c, v]) => (w.row as Record<string, unknown>)[c] === v || (v === null && ((w.row as Record<string, unknown>)[c] ?? null) === null)) ? { ...w.row } : null, error: null }),
       then: (resolve: (v: unknown) => void) => {
         if (patch && match()) {
           Object.assign(w.row as object, patch);
@@ -138,7 +141,7 @@ async function load(text: string, w: World) {
     grabConstFrom(text, "FN_NAME"),
     `const WORLD_FIELDS = ${JSON.stringify(w.fields)};`,
     `function stripHomeownerPhone(f) { return f; }`,
-    `async function autoPopulateFields() { return { fields: { ...WORLD_FIELDS }, claimData: null, contractorData: null }; }`,
+    `async function autoPopulateFields() { globalThis.__autoCalls = (globalThis.__autoCalls || 0) + 1; return { fields: { ...WORLD_FIELDS }, claimData: null, contractorData: null }; }`,
     `async function getTemplateFromStorage() { return "QkFTRTY0"; }`,
     `async function preflightTemplateTags() {}`,
     `function getDocumentLabel() { return "Color Confirmation"; }`,
@@ -170,13 +173,14 @@ function resolvedId(w: World) {
   return v && !v.startsWith("pending:") ? v : null;
 }
 
-async function submit(m: { handleLegacyFlow: (...a: unknown[]) => Promise<Response> }, w: World) {
+async function submit(m: { handleLegacyFlow: (...a: unknown[]) => Promise<Response> }, w: World, over: Record<string, unknown> = {}) {
   const body = {
     claim_id: "claim-1",
     contractor_id: "ctr-1",
     document_type: "color_confirmation",
     signer: { email: "owner@home.test", name: "H. Owner" },
     resolved_envelope_id: resolvedId(w),
+    ...over,
   };
   return await m.handleLegacyFlow(fakeSupabase(w), body, {});
 }
@@ -349,4 +353,76 @@ Deno.test("wiring: the serve handler looks up the colour envelope before the rat
 
 Deno.test("wiring: the resume path never reaches /v1/document/send", () => {
   assert(!grabFrom(src, "resumeColorConfirmation", true).includes("/v1/document/send"));
+});
+
+// ---- review 6325420063 item 2: the counter-signer is the SELECTED contractor ----
+
+Deno.test("selected contractor: a caller-named contractor_id that is not claims.selected_contractor_id is refused 403 and mints zero", async () => {
+  const w = newWorld();
+  await run(w, src, async (m) => {
+    const res = await submit(m, w, { contractor_id: "ctr-OTHER" });
+    assertEquals(res.status, 403);
+    assertEquals((await res.json()).error, "color_contractor_not_selected");
+  });
+  assertEquals(w.sends, 0);
+  assertEquals(w.row!.color_confirmation_envelope_id, null);
+});
+
+Deno.test("selected contractor: a claim with no selected contractor is refused 403 and mints zero", async () => {
+  const w = newWorld();
+  w.row!.selected_contractor_id = null;
+  await run(w, src, async (m) => {
+    assertEquals((await submit(m, w)).status, 403);
+  });
+  assertEquals(w.sends, 0);
+});
+
+Deno.test("selected contractor: a failed lookup fails closed (503), mints zero", async () => {
+  const w = newWorld({ selectLookupError: true });
+  await run(w, src, async (m) => {
+    const res = await submit(m, w);
+    assertEquals(res.status, 503);
+    assertEquals((await res.json()).error, "color_contractor_lookup_failed");
+  });
+  assertEquals(w.sends, 0);
+});
+
+Deno.test("selected contractor: the matching contractor still mints once (positive control)", async () => {
+  const w = newWorld();
+  await run(w, src, async (m) => {
+    assertEquals((await submit(m, w)).status, 200);
+  });
+  assertEquals(w.sends, 1);
+});
+
+Deno.test("selected contractor negative control: with the check removed a wrong contractor mints", async () => {
+  const mutated = src.replace('selRow.selected_contractor_id !== contractor_id', "false").replace("!selRow.selected_contractor_id ||", "");
+  assertNotEquals(mutated, src, "mutation must apply");
+  const w = newWorld();
+  await run(w, mutated, async (m) => {
+    await submit(m, w, { contractor_id: "ctr-OTHER" });
+  });
+  assertEquals(w.sends, 1, "the control must mint, or the 403 tests above prove nothing");
+});
+
+Deno.test("caller fields: a body naming the contractor email/name is ignored, the server-built fields are used", async () => {
+  const w = newWorld();
+  delete w.fields.contractor_email; // server side has no email on file
+  await run(w, src, async (m) => {
+    const res = await submit(m, w, { fields: { contractor_email: "attacker@evil.test", contractor_name: "Evil Co" } });
+    assertEquals(res.status, 422, "the caller's email must not satisfy the identity guard");
+  });
+  assertEquals(w.sends, 0);
+  assertEquals((globalThis as any).__autoCalls >= 1, true, "fields must be auto-populated server-side");
+});
+
+Deno.test("caller fields negative control: with the always-auto-populate condition removed the attacker email mints", async () => {
+  const mutated = src.replace('document_type === "color_confirmation" || !providedFields', "!providedFields");
+  assertNotEquals(mutated, src, "mutation must apply");
+  const w = newWorld();
+  delete w.fields.contractor_email;
+  await run(w, mutated, async (m) => {
+    await submit(m, w, { fields: { contractor_email: "attacker@evil.test", contractor_name: "Evil Co" } });
+  });
+  assertEquals(w.sends, 1, "the control must mint, or the ignore-fields test above proves nothing");
 });
