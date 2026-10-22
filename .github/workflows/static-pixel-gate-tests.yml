@@ -106,6 +106,7 @@ on:
       - 'js/home-reskin.js'
       - 'tests/gh2598-home-next-staging.mjs'
       - 'tests/gh2598-home-next-sections.mjs'
+      - 'tests/gh2598-index-swap.mjs'
       - 'tests/gh2598-nav-header-footer.mjs'
       - 'tests/gh2598-nav-header-width.mjs'
       - 'css/nav.css'
@@ -219,6 +220,7 @@ on:
       - 'js/home-reskin.js'
       - 'tests/gh2598-home-next-staging.mjs'
       - 'tests/gh2598-home-next-sections.mjs'
+      - 'tests/gh2598-index-swap.mjs'
       - 'tests/gh2598-nav-header-footer.mjs'
       - 'tests/gh2598-nav-header-width.mjs'
       - 'css/nav.css'
@@ -323,6 +325,8 @@ jobs:
         run: node tests/gh2598-home-next-staging.mjs
       - name: /home-next staging page -- every visible string of the built sections equals the two approved design files (desktop and phone views), section order, fee, charge, refund and switch wording only inside #paid and #promise (attribute text included), negative controls (gh2598-home-next-sections)
         run: node tests/gh2598-home-next-sections.mjs
+      - name: Production homepage (index.html) is the approved reskin -- the closes-on markers of #2598 (H1, labelled hero ZIP input, header tel link, footer tagline, three motion words, no old tagline or personal name), indexable, head essentials kept, body byte-identical to the legal-read home-next page, negative controls (gh2598-index-swap)
+        run: node tests/gh2598-index-swap.mjs
       - name: Shared header and footer (js/nav.js) -- tel link in the header of every page type, tagline in the footer slot, contractor footer unchanged, negative controls (gh2598-nav-header-footer)
         run: node tests/gh2598-nav-header-footer.mjs
       - name: /start reads and clears sessionStorage['oq_home_zip'] (slice 6) -- entry=home skips the role screen on arms D and E, the ZIP rides only on the homeowner's leads insert, stale key never used, negative controls (gh2598-start-home-zip)

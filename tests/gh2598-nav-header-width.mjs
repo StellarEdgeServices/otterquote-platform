@@ -4,15 +4,15 @@
  * loaded (fonts.googleapis.com / fonts.gstatic.com, plus cdn.jsdelivr.net for the Supabase library the pages need to boot, are the only third-party hosts allowed), and sweeps 769..1300 px in two states:
  *
  *   SIGNED OUT  the guest auth buttons rendered by Nav's own _guestAuthHTML (same markup the live auth slot gets), on index, how-it-works, login, partner-re, contractor-join,
- *               and contractor-login. (contractor-dashboard and admin-contractors are signed-in pages: signed out they redirect or render a header that never wraps, so they are
+ *               and contractor-login. (contractor-dashboard is a signed-in page: signed out they redirect or render a header that never wraps, so they are
  *               measured signed in only; the old signed-out contractor-dashboard row measured exactly such a header and reported widest 0.)
  *   SIGNED IN   js/auth.js is served with a one-line stub appended (getUser / getSession / getRole / requireAuth / getProfile) so the site's own nav code renders the signed-in
  *               header (_renderAuthSlot / _updateNavLinksForRole). No markup is injected. Pages: contractor-dashboard, contractor-opportunities, contractor-profile (contractor),
- *               dashboard, index (homeowner), admin-contractors (admin). A signed-in header is wider than a signed-out one (Log Out / Sign Out plus the role links).
+ *               dashboard, index (homeowner). (admin-contractors left this sweep in gh-1772: it now carries the admin shell, not the shared header.) A signed-in header is wider than a signed-out one (Log Out / Sign Out plus the role links).
  *
  *   W1  no header text wraps at a width above the page's budget. Budgets are what main (a127acf4) wraps up to on the same page and state, measured with real Rubik:
  *       signed out 889 everywhere (production's widest, index/how-it-works/login); signed in contractor-dashboard 979, contractor-opportunities 999, contractor-profile 999,
- *       dashboard 959, index 959, admin-contractors 0. A signed-in page that wraps wider than main's budget FAILS.
+ *       dashboard 959, index 959. A signed-in page that wraps wider than main's budget FAILS.
  *   W2  at 900, 1024, 1059, 1100, 1159, 1199, 1200 and 1280 (those above the page's budget) no header control (link or button) hangs below the 64 px bar and the header is no taller than at 1280
  *   W3  the tel link: full number from 1200 px up, icon alone (aria-label carries the number) at 769-1199, "Call" at <= 768; always one tel:+18448753412 link
  *   W4  the Rubik font really loaded (a fallback-font measurement is meaningless); ALLOW_NO_FONTS=1 downgrades this to a warning for offline runs
@@ -39,17 +39,16 @@ catch {
 let pass = 0, fail = 0;
 const ok = (c, l) => { console.log((c ? 'PASS: ' : 'FAIL: ') + l); c ? pass++ : fail++; };
 
+/* gh-2598 slice 5: index.html is now the approved homepage, which has its own header (no #site-header, no shared nav) and is covered by tests/gh2598-index-swap.mjs; it is no longer a sample of the shared header here (how-it-works and dashboard stand in, same budgets). */
 const OUT_BUDGET = 889;                   // signed out: production's widest wrap band (index, how-it-works, login)
 const FULL_FROM = 1200;                   // the full number returns at this width
 const STATES = [
-  { name: 'signed-out', pages: ['index', 'how-it-works', 'login', 'partner-re', 'contractor-join', 'contractor-login'].map((pg) => ({ pg, role: null, budget: OUT_BUDGET })) },
+  { name: 'signed-out', pages: ['how-it-works', 'login', 'partner-re', 'contractor-join', 'contractor-login'].map((pg) => ({ pg, role: null, budget: OUT_BUDGET })) },
   { name: 'signed-in', pages: [
     { pg: 'contractor-dashboard', role: 'contractor', budget: 979 },
     { pg: 'contractor-opportunities', role: 'contractor', budget: 999 },
     { pg: 'contractor-profile', role: 'contractor', budget: 999 },
     { pg: 'dashboard', role: 'homeowner', budget: 959 },
-    { pg: 'index', role: 'homeowner', budget: 959 },
-    { pg: 'admin-contractors', role: 'admin', budget: 0 },
   ] },
 ];
 const SWEEP = []; for (let w = 769; w <= 1300; w += 10) SWEEP.push(w);
@@ -181,7 +180,7 @@ ok(good.info.rendered === good.info.expected, 'every signed-out and signed-in pa
 console.log('widest wrapped/hung width per page and state: ' + JSON.stringify(good.info.widest));
 for (const id of Object.keys(good.info.hh)) console.log('  header heights ' + id + ' -> ' + good.info.hh[id]);
 ok(good.bad.length === 0, 'W1-W3,W5 the real header, signed out and signed in, 769..1300 px: no wrap beyond the page budget (main), no extra row, tel link compact below ' + FULL_FROM + (good.bad.length ? ' | ' + good.bad.slice(0, 8).join(' | ') : ''));
-const ctl = await sweep(browser, NAV_CSS.replace(BAND, ''), ['signed-out index', 'signed-in contractor-dashboard', 'signed-in index']);
+const ctl = await sweep(browser, NAV_CSS.replace(BAND, ''), ['signed-out how-it-works', 'signed-in contractor-dashboard', 'signed-in dashboard']);
 ok(ctl.bad.some((m) => /^W1 /.test(m)) && ctl.bad.some((m) => /^W2 /.test(m)) && ctl.bad.some((m) => /^W3 /.test(m)), 'NEGATIVE CONTROL (a) without the compact-band rule goes red on W1, W2 and W3 (' + ctl.bad.length + ' findings)');
 const NARROW = NAV_CSS.replace('(min-width: 769px) and (max-width: 1199px)', '(min-width: 769px) and (max-width: 1099px)');
 ok(NARROW !== NAV_CSS, 'negative control (b) setup: the compact band is declared as max-width 1199');

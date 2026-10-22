@@ -1,0 +1,107 @@
+name: R-177 pair gate
+
+# gh-2965. A REQUIRED-STATUS candidate: fails a PR flagged `r177:legal-read`
+# (or titled [R-120]/[R-177]) unless a human-authored `LEGAL-READ: PASS` and
+# `R-177 SIGNED` both name its head sha or a main-merge-only ancestor. Decision
+# logic: scripts/r177/gate.mjs (offline tests: scripts/r177/gate.test.mjs).
+#
+# Why it exists: PR #2964 (flagged) merged through the merge queue with REVIEW
+# only, because the pair was enforced only by a local tool. See Docs/r177-legal-read.md.
+#
+# Triggers are UNCONDITIONAL (no path filter) and include `merge_group`, for the
+# reason spelled out in r177-predicate-tests.yml (gh-1855): a required context
+# whose workflow does not report on the queue ref freezes the whole merge queue.
+# `labeled`/`unlabeled` are included so the label the labeller adds is seen.
+# `pull_request`, never `pull_request_target` (workflow-safety-ratchet, gh-1651):
+# this job needs only read tokens.
+#
+# The gate code is checked out from the DEFAULT BRANCH, never from the PR, so a PR
+# cannot weaken the gate that polices it. Bootstrap: while gate.mjs is not yet on
+# the default branch (the PR that introduces it) the job reports a notice and passes.
+#
+# THIS FILE DOES NOT MAKE THE CHECK REQUIRED. Adding "R-177 pair gate" to the
+# merge-queue ruleset's required status checks is a repository-settings change
+# owned by Dustin/exec:cto and is deliberately not done here.
+#
+# After posting the pair, re-run this check (Actions > Re-run) so the PR-side
+# status refreshes; the merge_group run re-evaluates from scratch regardless.
+
+on:
+  merge_group:
+    types: [checks_requested]
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: r177-pair-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  r177-pair-gate:
+    name: R-177 pair gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out gate code from the default branch only
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/r177/gate.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Evaluate the R-177 pair
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const { pathToFileURL } = require('url');
+            const gatePath = path.join(process.env.GITHUB_WORKSPACE, 'scripts/r177/gate.mjs');
+            if (!fs.existsSync(gatePath)) {
+              core.notice('scripts/r177/gate.mjs is not on the default branch yet (bootstrap); gate not applicable.');
+              return;
+            }
+            const gate = await import(pathToFileURL(gatePath).href);
+            const { owner, repo } = context.repo;
+
+            let prNumber;
+            if (context.eventName === 'merge_group') {
+              prNumber = gate.prNumberFromMergeGroupRef(context.payload.merge_group.head_ref);
+              if (!prNumber) {
+                core.setFailed(`cannot derive a PR number from merge_group head_ref "${context.payload.merge_group.head_ref}"; failing closed.`);
+                return;
+              }
+            } else {
+              prNumber = context.payload.pull_request.number;
+            }
+
+            const api = {
+              getPull: async (n) => (await github.rest.pulls.get({ owner, repo, pull_number: n })).data,
+              listComments: (n) => github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: n, per_page: 100 }),
+              getCommit: async (sha) => (await github.rest.repos.getCommit({ owner, repo, ref: sha, per_page: 100 })).data,
+              compareStatus: async (base, head) =>
+                (await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${base}...${head}`, per_page: 1 })).data.status,
+              getBlobSha: async (ref, p) => {
+                try {
+                  const r = await github.rest.repos.getContent({ owner, repo, path: p, ref });
+                  return Array.isArray(r.data) ? null : r.data.sha;
+                } catch (e) {
+                  if (e.status === 404) return null;
+                  throw e;
+                }
+              },
+            };
+
+            const res = await gate.evaluate(api, prNumber);
+            await core.summary
+              .addHeading('R-177 pair gate')
+              .addRaw(`\n${res.message}\n\nflagged: ${res.flagged} | LEGAL-READ: ${res.readOk} | SIGNED: ${res.signOk} | chain: ${res.chain.join(', ')}\n`)
+              .write();
+            if (res.ok) core.info(res.message); else core.setFailed(res.message);
