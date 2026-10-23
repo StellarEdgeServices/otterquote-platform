@@ -51,6 +51,7 @@ import { evaluateAcknowledgment, fetchDocumentSignerStatus } from "./ack-verify.
 // [#1314] Signed-price reconciliation. Pure + unit-tested (price-verify.test.ts)
 // for the same reason evaluateAcknowledgment is: it is a money check.
 import { runDeckingGate } from "./decking-gate.ts"; // [#2862]
+import { mailgunSender, sendHaltNotices } from "./halt-notice.ts"; // [#2543] approved halt notices
 import {
   dispositionFor,
   type PriceEvaluation,
@@ -926,7 +927,7 @@ serve(async (req) => {
           {
             const { data: envQuote } = await supabase
               .from("quotes")
-              .select("id, total_price, decking_price_per_sheet")
+              .select("id, contractor_id, total_price, decking_price_per_sheet")
               .eq("claim_id", claim.id)
               .eq("docusign_envelope_id", envelopeId)
               .maybeSingle();
@@ -934,7 +935,7 @@ serve(async (req) => {
             if (!acceptedQuote) {
               const { data: selQuote } = await supabase
                 .from("quotes")
-                .select("id, total_price, decking_price_per_sheet")
+                .select("id, contractor_id, total_price, decking_price_per_sheet")
                 .eq("claim_id", claim.id)
                 .eq("status", "selected")
                 .maybeSingle();
@@ -1069,6 +1070,25 @@ serve(async (req) => {
                 }
               } catch (recErr) {
                 console.error("notifications insert failed:", recErr);
+              }
+              // [#2543] Tell both parties (Dustin-approved wording, halt-notice.ts).
+              // Once per envelope; never throws; skipped when Mailgun is not configured.
+              {
+                const haltMailKey = Deno.env.get("MAILGUN_API_KEY") || "";
+                if (haltMailKey && expected != null) {
+                  await sendHaltNotices({
+                    supabase,
+                    claimId: claim.id,
+                    envelopeId,
+                    contractorId: (acceptedQuote as { contractor_id?: string } | null)?.contractor_id ?? null,
+                    signed,
+                    accepted: expected,
+                    send: mailgunSender(haltMailKey),
+                    reportToSentry,
+                  });
+                } else {
+                  console.warn("[#2543] contract-halt notices skipped (MAILGUN_API_KEY not configured)");
+                }
               }
               // 200 so BoldSign does not retry forever. Remediation is manual by
               // design -- same convention as the D-269 acknowledgment defect.

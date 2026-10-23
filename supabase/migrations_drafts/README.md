@@ -54,6 +54,12 @@ Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630)
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 
+## Added 2026-10-19 (gh-2559 bid-open guard, Ben #2569 6029315131 A/B.4): forward, rollback and pre-flight here, the proof in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2559_claims_bid_open_guard` | forward, rollback, pre-flight | NOT APPLIED | drafted 2026-10-19 by CTO RUN 72 (tid cto72-b2559), read-only production reads the same day: `public.claims` has 14 triggers and none gates a claim opening for bids; `pg_proc` has 0 functions matching `%bid_release%` / `%bid_open%`. Separate trigger `claims_guard_bid_open` plus two pure helper functions; refuses (23514, internal PLACEHOLDER message; the homeowner-visible Q4 sentence landed client-side, ruling 6281179334, b173ddf2; reviews at 8db3cd98) a claim opening on an unread estimate and a summary that repeats the owner name, street or claim number. Tier 3B, R-097 notice, REVIEW + LEGAL-READ (consent) + Ben's signature over the final head before apply | none |
+
 ## Added 2026-10-18 (gh-2559 / gh-2619, D-390): forward, rollback and pre-flight here, the proof in `supabase/tests/`; not counted in the tables above
 
 | set | files | status | evidence | repo copy |
@@ -89,3 +95,9 @@ Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630)
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2105_color_contractor_rpc` | forward, rollback, pre-flight (all three here) | NOT APPLIED | drafted 2026-10-21 under #2105 (checklist C, comment 6305573044; Dustin's answer on #2974, comment 6323378714); no database was read or written to produce it. Adds `get_claim_color_contractor(uuid)`, a SECURITY DEFINER function returning only `company_name` and `preferred_brands` of the contractor selected on a claim the caller owns (`claims.user_id = auth.uid()`); execute revoked from PUBLIC and anon, granted to authenticated. No policy is added to `contractors`. Tier 3B, applies only after an R-097 24-hour notice and Dustin's approval; the pre-flight lists the read-only checks and the post-apply proof | none |
+
+## Added 2026-10-21 (gh-2543, PR #2959, send-once marker for the contract-halt notices): 2 files here, not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2543_halt_notice_marker_unique` | forward, rollback | NOT APPLIED | drafted 2026-10-21 under #2543 (REVIEW 6301123534 point 2, Ben RETURNED 6301145200). One partial unique index on `notifications (message_preview) WHERE notification_type = 'contract_halt_notice_sent'`; additive, Tier 3A, applied only under the Tier 3B path with an R-097 notice. The halt notices are not deployed, so no row of that type exists. No database was read or written | none |
