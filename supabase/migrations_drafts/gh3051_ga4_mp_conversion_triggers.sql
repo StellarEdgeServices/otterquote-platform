@@ -2,8 +2,22 @@
 -- promote to supabase/migrations/ under a 14-digit UTC version only after it is actually applied (supabase/migrations_drafts/README.md).
 -- Rollback: supabase/migrations_rollbacks/gh3051_ga4_mp_conversion_triggers_rollback.sql
 --
--- gh-3051: server-side GA4 Measurement Protocol for the three homeowner conversions.
+-- gh-3051: server-side GA4 Measurement Protocol for two homeowner conversions.
 -- Ruling: #1940 DECIDED 6369440672 (CTO RUN 77). Evidence: 6369429483 (1 of 4 real non-test claims reached GA4 from the browser).
+--
+-- SCOPE (CTO ruling on PR #3054 review 6369750036): two events, not three.
+--   leads  AFTER INSERT (source='router') -> router_contact_submitted
+--   claims AFTER INSERT                   -> claim_started
+-- sign_up is deliberately NOT sent server-side. A profiles INSERT fires for every new auth user, contractors included, and profiles.role is
+-- not known at insert (see 20260914204825_gh1932_drop_unreliable_homeowner_signup_trigger.sql). A claim already marks a real homeowner
+-- conversion, so no profiles trigger exists in this file. The browser's sign_up event is unchanged.
+--
+-- GO-LIVE WARNING: deploying the ga4-mp-conversion Edge Function AND applying this file starts PRODUCTION sends to GA4 immediately. The
+-- function reads GA4_MP_API_SECRET, else falls back to GA4_API_SECRET, which is ALREADY in the Edge Function secret store (create-invoice,
+-- create-docusign-envelope and docusign-webhook use it). Setting a secret is therefore NOT a gate. The gate is applying this migration:
+-- until it is applied nothing calls the function. To stop sends: run the rollback (drops the triggers). To validate before go-live:
+-- deploy the function, then POST {event_type, id, debug:true} with the service-role bearer for an is_test row -- that goes to
+-- /debug/mp/collect only and records nothing.
 --
 -- Mechanism: copies the repo's existing trigger -> pg_net -> Edge Function wiring (gh-1932 trg_notify_admin_new_claim, gh-1994
 -- trg_notify_admin_new_router_lead): SECURITY DEFINER plpgsql, service-role key from vault.decrypted_secrets('cron_service_role_key'),
@@ -11,24 +25,18 @@
 -- Difference from those: the body is {event_type, id} ONLY. No row content (no email / phone / name / address) crosses pg_net; the
 -- ga4-mp-conversion Edge Function reads the row itself and builds a payload with no personal data.
 --
---   leads    AFTER INSERT (source='router')  -> router_contact_submitted
---   profiles AFTER INSERT                    -> sign_up        (fires for every new auth user; profiles.role is not known at insert,
---                                               see 20260914204825's header -- the Edge Function sends no role)
---   claims   AFTER INSERT                    -> claim_started
---
 -- is_test / is_synthetic rows are skipped here (cheap short-circuit) AND again in the Edge Function (authoritative: also covers synthetic
--- utm values and internal addresses). pg_net does not retry; the ga4_mp_sent marker table makes a manual or future retry a no-op.
+-- utm values and internal addresses). The Edge Function also skips rows whose created_at is older than 72 h, so a bulk insert, restore or
+-- backfill cannot replay historic conversions. pg_net does not retry; the ga4_mp_sent marker table makes a manual or future retry a no-op.
 --
--- Additive only: one new table, one new trigger function, three new AFTER INSERT triggers. Nothing existing is altered or dropped.
--- Deploy order: (1) deploy the ga4-mp-conversion Edge Function, (2) set the GA4_MP_API_SECRET secret, (3) apply this file. With (3)
--- before (1) the pg_net calls 404 and are ignored; with (1) before (2) the function logs "not set" and sends nothing.
+-- Additive only: one new table, one new trigger function, two new AFTER INSERT triggers. Nothing existing is altered or dropped.
 
 BEGIN;
 
 DO $gate$
 BEGIN
-  IF to_regclass('public.leads') IS NULL OR to_regclass('public.profiles') IS NULL OR to_regclass('public.claims') IS NULL THEN
-    RAISE EXCEPTION 'gh3051 gate: leads / profiles / claims missing';
+  IF to_regclass('public.leads') IS NULL OR to_regclass('public.claims') IS NULL THEN
+    RAISE EXCEPTION 'gh3051 gate: leads / claims missing';
   END IF;
   IF to_regclass('vault.decrypted_secrets') IS NULL THEN
     RAISE EXCEPTION 'gh3051 gate: vault.decrypted_secrets missing';
@@ -38,7 +46,7 @@ $gate$;
 
 -- 1. Idempotency marker: one row per (event, source row). The Edge Function INSERTs before sending; a unique violation = already sent.
 CREATE TABLE IF NOT EXISTS public.ga4_mp_sent (
-  event_name text        NOT NULL CHECK (event_name IN ('router_contact_submitted', 'sign_up', 'claim_started')),
+  event_name text        NOT NULL CHECK (event_name IN ('router_contact_submitted', 'claim_started')),
   row_id     uuid        NOT NULL,
   sent_at    timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (event_name, row_id)
@@ -63,7 +71,7 @@ DECLARE
 BEGIN
   IF TG_TABLE_NAME = 'leads' THEN
     v_skip := (NEW.is_synthetic IS TRUE) OR NEW.source IS DISTINCT FROM 'router';
-  ELSIF TG_TABLE_NAME = 'profiles' OR TG_TABLE_NAME = 'claims' THEN
+  ELSIF TG_TABLE_NAME = 'claims' THEN
     v_skip := (NEW.is_test IS TRUE);
   END IF;
   IF v_skip THEN
@@ -96,22 +104,30 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.notify_ga4_mp_conversion() IS
-  'gh-3051: AFTER INSERT on leads / profiles / claims. POSTs {event_type, id} (no row content) to the ga4-mp-conversion Edge Function via pg_net. SECURITY DEFINER. Non-fatal: errors are logged, never raised, so the insert always succeeds.';
+  'gh-3051: AFTER INSERT on leads / claims. POSTs {event_type, id} (no row content) to the ga4-mp-conversion Edge Function via pg_net. SECURITY DEFINER. Non-fatal: errors are logged, never raised, so the insert always succeeds.';
 
--- 3. Triggers.
+-- 3. Lock the function down (gh-1529 default-privilege drift): a new SECURITY DEFINER function otherwise inherits EXECUTE for PUBLIC / anon /
+-- authenticated. Triggers do not need EXECUTE granted to the inserting role, so nothing breaks. Asserted again below.
+REVOKE EXECUTE ON FUNCTION public.notify_ga4_mp_conversion() FROM PUBLIC, anon, authenticated;
+
+-- 4. Triggers.
 DROP TRIGGER IF EXISTS trg_ga4_mp_lead ON public.leads;
 CREATE TRIGGER trg_ga4_mp_lead AFTER INSERT ON public.leads
   FOR EACH ROW WHEN (NEW.source = 'router')
   EXECUTE FUNCTION public.notify_ga4_mp_conversion('router_contact_submitted');
 
-DROP TRIGGER IF EXISTS trg_ga4_mp_signup ON public.profiles;
-CREATE TRIGGER trg_ga4_mp_signup AFTER INSERT ON public.profiles
-  FOR EACH ROW
-  EXECUTE FUNCTION public.notify_ga4_mp_conversion('sign_up');
-
 DROP TRIGGER IF EXISTS trg_ga4_mp_claim ON public.claims;
 CREATE TRIGGER trg_ga4_mp_claim AFTER INSERT ON public.claims
   FOR EACH ROW
   EXECUTE FUNCTION public.notify_ga4_mp_conversion('claim_started');
+
+DO $assert$
+BEGIN
+  IF has_function_privilege('anon', 'public.notify_ga4_mp_conversion()', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.notify_ga4_mp_conversion()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'gh3051 assert: anon/authenticated can still EXECUTE notify_ga4_mp_conversion()';
+  END IF;
+END
+$assert$;
 
 COMMIT;

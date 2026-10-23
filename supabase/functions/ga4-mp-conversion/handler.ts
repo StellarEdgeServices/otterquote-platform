@@ -1,6 +1,6 @@
 // gh-3051 -- request handling for ga4-mp-conversion, with every side effect injected so handler.test.ts runs with no network.
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
-import { type ConversionKind, type ConversionRow, EVENT_FOR_KIND, sendGa4, type SendResult } from "./ga4-mp.ts";
+import { type ConversionKind, type ConversionRow, EVENT_FOR_KIND, isTooOld, sendGa4, type SendResult } from "./ga4-mp.ts";
 
 export const FUNCTION_NAME = "ga4-mp-conversion";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -35,7 +35,7 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     if (!deps.serviceRoleKey || bearer !== deps.serviceRoleKey) return respond({ error: "Unauthorized" }, 401);
 
     const body = await req.json().catch(() => ({}));
-    const kind = ({ router_contact_submitted: "lead", sign_up: "profile", claim_started: "claim" } as Record<string, ConversionKind>)[String(body?.event_type)];
+    const kind = ({ router_contact_submitted: "lead", claim_started: "claim" } as Record<string, ConversionKind>)[String(body?.event_type)];
     const id = String(body?.id ?? "");
     if (!kind || !UUID_RE.test(id)) return respond({ error: "bad_request" }, 400);
     const eventName = EVENT_FOR_KIND[kind];
@@ -58,6 +58,9 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
       }, log) ||
       (isInternalEmail(row.email) && (log(`[gh-3051] ga4_mp ${eventName} suppressed: internal address`), true));
     if (suppressed) return respond({ sent: false, reason: "suppressed" });
+
+    // Age guard (production path only): a bulk insert / restore / backfill must not replay historic conversions. Fails closed on a missing created_at.
+    if (isTooOld(row.createdAt)) { log(`[gh-3051] ga4_mp ${eventName} not sent: row older than 72 h`); return respond({ sent: false, reason: "too_old" }); }
 
     if (!deps.apiSecret) { log(`[gh-3051] ga4_mp ${eventName} not sent: GA4_MP_API_SECRET is not set`); return respond({ sent: false, reason: "no_secret" }); }
 

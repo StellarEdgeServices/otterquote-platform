@@ -2,7 +2,7 @@
 // marker are all injected. NEGATIVE CONTROLS are labelled; each asserts the failure the rail exists to prevent would be caught.
 import { assert, assertEquals, assertStringIncludes } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { handleRequest, isInternalEmail } from "./handler.ts";
-import { assertNoPii, buildPayload, clientIdFor, cleanParam, type ConversionRow, MP_COLLECT_URL, MP_DEBUG_URL, sendGa4 } from "./ga4-mp.ts";
+import { assertNoPii, buildPayload, clientIdFor, cleanParam, type ConversionRow, isTooOld, MAX_ROW_AGE_MS, MP_COLLECT_URL, MP_DEBUG_URL, sendGa4 } from "./ga4-mp.ts";
 
 const KEY = "service-role-key-for-test";
 const SECRET = "ga4-secret-for-test";
@@ -10,9 +10,8 @@ const ID = "147641e5-1111-4222-8333-444455556666";
 const USER = "d04a29db-aaaa-4bbb-8ccc-ddddeeeeffff";
 
 const LEAD: ConversionRow = { kind: "lead", id: ID, email: "jane.doe@gmail.com", variant: "e", utmSource: "chatgpt.com", utmMedium: "referral", isSynthetic: false, createdAt: new Date().toISOString() };
-const PROFILE: ConversionRow = { kind: "profile", id: USER, userId: USER, email: "jane.doe@gmail.com", isTest: false, method: "email", createdAt: new Date().toISOString() };
 const CLAIM: ConversionRow = { kind: "claim", id: ID, userId: USER, email: "jane.doe@gmail.com", isTest: false, utmSource: "google", utmMedium: "cpc", createdAt: new Date().toISOString() };
-const BODY_OF = { lead: { event_type: "router_contact_submitted", id: ID }, profile: { event_type: "sign_up", id: USER }, claim: { event_type: "claim_started", id: ID } };
+const BODY_OF = { lead: { event_type: "router_contact_submitted", id: ID }, claim: { event_type: "claim_started", id: ID } };
 
 interface Calls { urls: string[]; bodies: string[]; logs: string[]; marks: Set<string>; released: string[] }
 function harness(row: ConversionRow | null, over: { fetchImpl?: typeof fetch; secret?: string | undefined; marker?: "claimed" | "duplicate" | "error"; stateful?: boolean } = {}) {
@@ -45,9 +44,9 @@ function harness(row: ConversionRow | null, over: { fetchImpl?: typeof fetch; se
 }
 
 // ---- happy path: all three conversions go to the PRODUCTION endpoint with the right event name ----
-for (const kind of ["lead", "profile", "claim"] as const) {
-  const row = { lead: LEAD, profile: PROFILE, claim: CLAIM }[kind];
-  const name = { lead: "router_contact_submitted", profile: "sign_up", claim: "claim_started" }[kind];
+for (const kind of ["lead", "claim"] as const) {
+  const row = { lead: LEAD, claim: CLAIM }[kind];
+  const name = { lead: "router_contact_submitted", claim: "claim_started" }[kind];
   Deno.test(`real ${kind} row sends exactly one ${name} to /mp/collect`, async () => {
     const h = harness(row);
     const res = await (await h.call(BODY_OF[kind])).json();
@@ -63,17 +62,15 @@ for (const kind of ["lead", "profile", "claim"] as const) {
   });
 }
 
-Deno.test("arm / utm params ride along on a lead; method on a sign_up", async () => {
+Deno.test("arm / utm params ride along on a lead", async () => {
   const lead = JSON.parse((await (async () => { const h = harness(LEAD); await h.call(BODY_OF.lead); return h.c.bodies[0]; })()));
   assertEquals(lead.events[0].params.arm, "e");
   assertEquals(lead.events[0].params.source, "chatgpt.com");
   assertEquals(lead.events[0].params.medium, "referral");
-  const su = JSON.parse((await (async () => { const h = harness(PROFILE); await h.call(BODY_OF.profile); return h.c.bodies[0]; })()));
-  assertEquals(su.events[0].params.method, "email");
 });
 
-Deno.test("sign_up and claim_started for one user share one client_id; a different user does not", async () => {
-  const a = await buildPayload(PROFILE), b = await buildPayload(CLAIM);
+Deno.test("two claims of one user share one client_id; a different user does not", async () => {
+  const a = await buildPayload(CLAIM), b = await buildPayload({ ...CLAIM, id: "99999999-1111-4222-8333-444455556666" });
   assertEquals(a.client_id, b.client_id);
   assert(a.client_id !== (await clientIdFor("some-other-user")));
   assertEquals(await clientIdFor(USER), await clientIdFor(USER)); // stable
@@ -81,12 +78,11 @@ Deno.test("sign_up and claim_started for one user share one client_id; a differe
 
 // ---- RAIL: is_test / synthetic rows send nothing to production ----
 for (const [label, row, body] of [
-  ["is_test profile", { ...PROFILE, isTest: true }, BODY_OF.profile],
   ["is_test claim", { ...CLAIM, isTest: true }, BODY_OF.claim],
   ["is_synthetic lead", { ...LEAD, isSynthetic: true }, BODY_OF.lead],
   ["synthetic utm value (ceo75walk...)", { ...LEAD, utmSource: "ceo75walk1790609196" }, BODY_OF.lead],
   ["internal address (@otterquote-internal.test)", { ...LEAD, email: "walk@otterquote-internal.test" }, BODY_OF.lead],
-  ["internal address (@stellaredgeservices.com)", { ...PROFILE, email: "x@stellaredgeservices.com" }, BODY_OF.profile],
+  ["internal address on a claim owner (@stellaredgeservices.com)", { ...CLAIM, email: "x@stellaredgeservices.com" }, BODY_OF.claim],
 ] as Array<[string, ConversionRow, unknown]>) {
   Deno.test(`is_test/synthetic: ${label} sends NOTHING (fetch never called, no marker consumed)`, async () => {
     const h = harness(row, { stateful: true });
@@ -98,7 +94,7 @@ for (const [label, row, body] of [
 }
 
 Deno.test("NEGATIVE CONTROL: the same rows with the flag cleared DO send (the suppression tests are not vacuous)", async () => {
-  for (const [row, body] of [[{ ...PROFILE, isTest: false }, BODY_OF.profile], [{ ...CLAIM, isTest: false }, BODY_OF.claim], [{ ...LEAD, isSynthetic: false, email: "walk@gmail.com" }, BODY_OF.lead]] as Array<[ConversionRow, unknown]>) {
+  for (const [row, body] of [[{ ...CLAIM, isTest: false }, BODY_OF.claim], [{ ...LEAD, isSynthetic: false, email: "walk@gmail.com" }, BODY_OF.lead]] as Array<[ConversionRow, unknown]>) {
     const h = harness(row);
     assertEquals((await (await h.call(body)).json()).sent, true);
     assertEquals(h.c.urls.length, 1);
@@ -119,7 +115,7 @@ Deno.test("debug mode sends an is_test row ONLY to /debug/mp/collect, returns va
 // ---- RAIL: no personal data in the payload ----
 Deno.test("payload contains no PII: no email, phone, name, address, raw uuid; hashed client_id only", async () => {
   const rich: ConversionRow = { ...CLAIM, email: "Jane.Doe@gmail.com", utmSource: "google", utmMedium: "cpc" };
-  for (const row of [LEAD, PROFILE, rich]) {
+  for (const row of [LEAD, rich]) {
     const s = JSON.stringify(await buildPayload(row));
     assert(!/@/.test(s), "no @ anywhere");
     assert(!s.includes(row.id), "raw row id absent");
@@ -213,6 +209,7 @@ Deno.test("rejects a wrong bearer (401), a non-uuid id and an unknown event_type
   assertEquals((await h.call(BODY_OF.claim, "not-the-key")).status, 401);
   assertEquals((await h.call({ event_type: "claim_started", id: "1; drop table claims" })).status, 400);
   assertEquals((await h.call({ event_type: "purchase", id: ID })).status, 400);
+  assertEquals((await h.call({ event_type: "sign_up", id: USER })).status, 400); // sign_up is not a server-side event (CTO ruling, PR #3054 review)
   assertEquals(h.c.urls.length, 0);
 });
 
@@ -220,4 +217,41 @@ Deno.test("internal-address matcher: internal yes, ordinary consumer no", () => 
   assert(isInternalEmail("a@otterquote.com")); assert(isInternalEmail("b@example.com")); assert(isInternalEmail("x@otterquote-internal.test"));
   assert(!isInternalEmail("jane@live.com")); assert(!isInternalEmail("protest@gmail.com")); assert(!isInternalEmail(null));
   assertStringIncludes(MP_COLLECT_URL, "google-analytics.com/mp/collect");
+});
+
+// ---- RAIL (CTO ruling, PR #3054 review): rows older than 72 h are never sent (bulk insert / restore / backfill replay guard) ----
+const HOURS = 3600 * 1000;
+for (const [label, row, body] of [
+  ["claim created 73 h ago", { ...CLAIM, createdAt: new Date(Date.now() - 73 * HOURS).toISOString() }, BODY_OF.claim],
+  ["lead created 30 days ago (a restore)", { ...LEAD, createdAt: new Date(Date.now() - 30 * 24 * HOURS).toISOString() }, BODY_OF.lead],
+  ["claim with no created_at (fails closed)", { ...CLAIM, createdAt: null }, BODY_OF.claim],
+  ["claim with unparseable created_at (fails closed)", { ...CLAIM, createdAt: "not a date" }, BODY_OF.claim],
+] as Array<[string, ConversionRow, unknown]>) {
+  Deno.test(`age guard: ${label} sends NOTHING and consumes no marker`, async () => {
+    const h = harness(row, { stateful: true });
+    assertEquals(await (await h.call(body)).json(), { sent: false, reason: "too_old" });
+    assertEquals(h.c.urls.length, 0);
+    assertEquals(h.c.marks.size, 0);
+  });
+}
+
+Deno.test("NEGATIVE CONTROL: a row 71 h old and a row created just now DO send (the age guard is not vacuous)", async () => {
+  for (const age of [0, 71 * HOURS]) {
+    const h = harness({ ...CLAIM, createdAt: new Date(Date.now() - age).toISOString() });
+    assertEquals((await (await h.call(BODY_OF.claim)).json()).sent, true);
+    assertEquals(h.c.urls.length, 1);
+  }
+});
+
+Deno.test("isTooOld boundary: exactly MAX_ROW_AGE_MS is allowed, one ms more is not", () => {
+  const now = Date.parse("2026-10-23T12:00:00Z");
+  assertEquals(isTooOld(new Date(now - MAX_ROW_AGE_MS).toISOString(), now), false);
+  assertEquals(isTooOld(new Date(now - MAX_ROW_AGE_MS - 1).toISOString(), now), true);
+});
+
+Deno.test("debug mode is not subject to the age guard (it records nothing)", async () => {
+  const h = harness({ ...CLAIM, createdAt: new Date(Date.now() - 30 * 24 * HOURS).toISOString() });
+  const r = await (await h.call({ ...BODY_OF.claim, debug: true })).json();
+  assertEquals(r.sent, true);
+  assert(h.c.urls[0].startsWith(MP_DEBUG_URL));
 });

@@ -6,6 +6,8 @@
 // header), and this file is unit-tested under plain `deno test` with no --allow-net.
 //
 // Rails (each has a test in handler.test.ts):
+//   * sign_up is deliberately NOT sent server-side (CTO ruling on PR #3054 review): a profiles insert fires for contractors too and
+//     profiles.role is not known at insert (20260914204825). A claim already marks a real homeowner conversion.
 //   * no personal data: the payload carries a one-way hash as client_id and a short closed set of params -- never email, phone,
 //     name, address, or a raw lead / user / claim id. assertNoPii() re-scans the serialised body and refuses to send on a hit.
 //   * never throws: every failure (no secret, timeout, network error, non-2xx, bad JSON) comes back as a result object.
@@ -16,13 +18,20 @@ export const GA4_MEASUREMENT_ID = "G-D1Y1TLGEFY"; // property 541423859 web stre
 export const MP_COLLECT_URL = "https://www.google-analytics.com/mp/collect";
 export const MP_DEBUG_URL = "https://www.google-analytics.com/debug/mp/collect";
 export const SEND_TIMEOUT_MS = 3000;
+/** Rows older than this are never sent: a bulk insert / restore / backfill must not replay historic conversions stamped "now". */
+export const MAX_ROW_AGE_MS = 72 * 3600 * 1000;
 
-export type ConversionKind = "lead" | "profile" | "claim";
+/** True when created_at is missing/unparseable (fail closed) or older than MAX_ROW_AGE_MS. */
+export function isTooOld(createdAt: string | null | undefined, now: number = Date.now()): boolean {
+  const t = createdAt ? Date.parse(createdAt) : NaN;
+  return !Number.isFinite(t) || now - t > MAX_ROW_AGE_MS;
+}
 
-/** The three conversions, keyed by the DB table whose INSERT is the moment of record. */
+export type ConversionKind = "lead" | "claim";
+
+/** The conversions, keyed by the DB table whose INSERT is the moment of record. */
 export const EVENT_FOR_KIND: Record<ConversionKind, string> = {
   lead: "router_contact_submitted",
-  profile: "sign_up",
   claim: "claim_started",
 };
 
@@ -30,7 +39,7 @@ export interface ConversionRow {
   kind: ConversionKind;
   /** The row's own id. Used ONLY to derive the hashed client_id and the idempotency marker; never sent. */
   id: string;
-  /** Owning auth user id for a claim / profile (so a user's sign_up and claim_started share one client_id). Never sent. */
+  /** Owning auth user id for a claim (so one user's claims share one client_id). Never sent. */
   userId?: string | null;
   isTest?: boolean | null;
   isSynthetic?: boolean | null;
@@ -40,8 +49,6 @@ export interface ConversionRow {
   utmMedium?: string | null;
   /** Router arm for a lead (leads.variant). */
   variant?: string | null;
-  /** 'email' | 'google' | ... for a sign_up. */
-  method?: string | null;
   /** Row created_at, ISO. Used for timestamp_micros so a late send keeps the true event time. */
   createdAt?: string | null;
 }
@@ -53,8 +60,11 @@ export async function sha256Hex(s: string): Promise<string> {
 }
 
 /**
- * Stable, one-way GA4 client_id in GA's own "<digits>.<digits>" shape. Same id in -> same client_id out, so a user's sign_up and
- * claim_started land on one GA4 user. The salt makes it useless as a lookup key outside GA4.
+ * Stable, one-way GA4 client_id in GA's own "<digits>.<digits>" shape. Same id in -> same client_id out, so a user's claims land on one
+ * GA4 user. The fixed "oq-ga4-mp-v1:" prefix is a NAMESPACE, not a secret (this repo is public): anyone holding a lead or user UUID can
+ * recompute the client_id. That is acceptable because the inputs are random v4 UUIDs, which are not guessable and not personal data on
+ * their own. Changing the prefix later re-keys every GA4 user, so decide before go-live. If it ever becomes a secret, a missing value
+ * must fail closed (no send), never fall back to this literal.
  */
 export async function clientIdFor(id: string): Promise<string> {
   const h = await sha256Hex("oq-ga4-mp-v1:" + id);
@@ -97,7 +107,7 @@ export function assertNoPii(payload: unknown, row: ConversionRow): void {
 
 export async function buildPayload(row: ConversionRow): Promise<Ga4Payload> {
   const name = EVENT_FOR_KIND[row.kind];
-  // A lead keys on its own id; a profile or claim keys on the auth user, so sign_up and claim_started stitch to one user.
+  // A lead keys on its own id; a claim keys on the auth user.
   const keyId = row.kind === "lead" ? row.id : (row.userId || row.id);
   const params: Record<string, string | number> = {
     event_source: "server", // lets GA4 reports split / de-duplicate against the unchanged browser events
@@ -109,11 +119,9 @@ export async function buildPayload(row: ConversionRow): Promise<Ga4Payload> {
   if (src) params.source = src;
   const med = cleanParam(row.utmMedium);
   if (med) params.medium = med;
-  const method = cleanParam(row.method);
-  if (method && row.kind === "profile") params.method = method;
   const payload: Ga4Payload = { client_id: await clientIdFor(keyId), events: [{ name, params }] };
   const t = row.createdAt ? Date.parse(row.createdAt) : NaN;
-  // GA4 accepts backdating up to 72 h; outside that window leave it off and GA4 stamps receipt time.
+  // GA4 accepts backdating up to 72 h (the handler also refuses to send rows older than MAX_ROW_AGE_MS); outside that window leave it off and GA4 stamps receipt time.
   if (Number.isFinite(t) && Date.now() - t >= 0 && Date.now() - t < 71 * 3600 * 1000) payload.timestamp_micros = t * 1000;
   assertNoPii(payload, row);
   return payload;
