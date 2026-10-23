@@ -54,6 +54,12 @@ Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630)
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 
+## Added 2026-10-19 (gh-2559 bid-open guard, Ben #2569 6029315131 A/B.4): forward, rollback and pre-flight here, the proof in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2559_claims_bid_open_guard` | forward, rollback, pre-flight | NOT APPLIED | drafted 2026-10-19 by CTO RUN 72 (tid cto72-b2559), read-only production reads the same day: `public.claims` has 14 triggers and none gates a claim opening for bids; `pg_proc` has 0 functions matching `%bid_release%` / `%bid_open%`. Separate trigger `claims_guard_bid_open` plus two pure helper functions; refuses (23514, internal PLACEHOLDER message; the homeowner-visible Q4 sentence landed client-side, ruling 6281179334, b173ddf2; reviews at 8db3cd98) a claim opening on an unread estimate and a summary that repeats the owner name, street or claim number. Tier 3B, R-097 notice, REVIEW + LEGAL-READ (consent) + Ben's signature over the final head before apply | none |
+
 ## Added 2026-10-18 (gh-2559 / gh-2619, D-390): forward, rollback and pre-flight here, the proof in `supabase/tests/`; not counted in the tables above
 
 | set | files | status | evidence | repo copy |
