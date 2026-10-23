@@ -1,7 +1,11 @@
+-- STATUS (gh-1438, as of 2026-10-23): NOT APPLIED
+-- EVIDENCE: new draft for gh-3002 (PR #3044); prod record_first_touch_attribution still has the no_tagged_touch gate (SELECT on pg_proc, 2026-10-23). Awaiting CEO ruling on the policy Q and the CTO apply.
+-- REPO COPY: none. After the CTO applies it, file it in supabase/migrations/ under its ledger version.
+-- DO NOT RUN FROM THIS DIRECTORY outside the Tier 3B apply path.
 -- gh-3002: record the first touch of UNTAGGED visits too (landing path +
 -- referrer host), so organic signups trace to the page they entered on.
 -- Requested-by exec:cro (Sloane). Rollback:
--- supabase/migrations_rollbacks/20261023150000_gh3002_first_touch_untagged_rollback.sql
+-- supabase/migrations_rollbacks/gh3002_first_touch_untagged_rollback.sql
 --
 -- Root cause (measured 2026-10-23, prod): #1983 recorded a touch only when the
 -- landing URL carried utm_*/fbclid/gclid ("first TAGGED touch"), in three
@@ -156,6 +160,6 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.record_first_touch_attribution(jsonb) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.record_first_touch_attribution(jsonb) FROM anon;
-GRANT EXECUTE ON FUNCTION public.record_first_touch_attribution(jsonb) TO authenticated;
+-- No GRANT/REVOKE is restated for record_first_touch_attribution: CREATE OR REPLACE keeps
+-- its existing privileges (prod 2026-10-23: proacl postgres, authenticated, service_role;
+-- anon has no EXECUTE), and permissions-ratchet gh-1767 forbids a new grant to authenticated.

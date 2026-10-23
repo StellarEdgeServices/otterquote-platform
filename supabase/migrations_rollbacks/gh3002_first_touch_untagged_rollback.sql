@@ -1,4 +1,4 @@
--- Rollback for 20261023150000_gh3002_first_touch_untagged.sql (gh-3002).
+-- Rollback for supabase/migrations_drafts/gh3002_first_touch_untagged.sql (gh-3002).
 -- Restores the gh-1983 tagged-only record_first_touch_attribution() body and
 -- drops the two helpers. No data is lost: rows already written keep their
 -- (now untagged) first_touch_* values, which are valid columns either way.
@@ -110,9 +110,7 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.record_first_touch_attribution(jsonb) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.record_first_touch_attribution(jsonb) FROM anon;
-GRANT EXECUTE ON FUNCTION public.record_first_touch_attribution(jsonb) TO authenticated;
+-- Privileges on record_first_touch_attribution are untouched (CREATE OR REPLACE keeps them).
 
 DROP FUNCTION IF EXISTS public.gh3002_attr_is_tagged(jsonb);
 DROP FUNCTION IF EXISTS public.gh3002_attr_has_path(jsonb);
