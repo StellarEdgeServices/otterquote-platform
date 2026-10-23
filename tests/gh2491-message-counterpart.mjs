@@ -72,7 +72,7 @@ async function run(page, src, { rpc, messages, claimId = 'claim-1' }) {
       if (table === 'contractors') return q({ id: 'ctr-me' });
       if (table === 'bidder_claim_summary') return q([]); // gh-2559: the messaging picker reads city and zip from the view
       if (table === 'quotes') return q([{ claim_id: claimId, claims: { id: claimId, user_id: 'u-ho', property_address: '1 Main St' } }]);
-      if (table === 'messages') return q(messages);
+      if (table === 'messages' || table === 'contractor_thread_messages') return q(messages); // gh-2559 / D-390: the contractor page reads the thread view
       if (table === 'profiles') throw new Error('messaging must not read profiles directly');
       throw new Error('unexpected table ' + table);
     },

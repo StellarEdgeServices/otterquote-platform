@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { extractDepreciation, isStatusAllowed } from './signing-utils';
 import { buildProjectConfirmationEnvelopeRequest } from './signing-utils';
+import { CLAIM_PUBLIC_COLUMNS, fetchClaimPrivateText } from '@/lib/claim-columns';
 
 // ── Row shapes ─────────────────────────────────────────────────────────────────
 
@@ -115,7 +116,7 @@ export function useProjectConfirmationData(
         // 1. Load claim (static 2158-2165)
         const { data: claimData, error: claimError } = await supabase
           .from('claims')
-          .select('*')
+          .select(CLAIM_PUBLIC_COLUMNS)
           .eq('id', claimId)
           .single();
 
@@ -183,7 +184,9 @@ export function useProjectConfirmationData(
         const depreciation = extractDepreciation(claim.parsed_line_items);
 
         // 9. Existing confirmation (static 2261)
-        const existingConfirmation = claim.project_confirmation ?? null;
+        // gh-2881 / D-390: project_confirmation is not selectable on the claims row; the owner reads it through claim_private_text().
+        const privateText = await fetchClaimPrivateText(supabase, claimId);
+        const existingConfirmation = privateText?.project_confirmation ?? null;
 
         if (!active) return;
         setData({

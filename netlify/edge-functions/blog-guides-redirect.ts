@@ -101,6 +101,9 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/multiple-bids-roof-insurance-claim.html',
   '/guides/roof-bid-comparison-worksheet':
     '/guides/roof-bid-comparison-worksheet.html',
+  // gh-2905: the roofing bid comparison tool page, same extensionless -> .html 301.
+  '/guides/roof-bid-comparison-tool':
+    '/guides/roof-bid-comparison-tool.html',
   '/guides/siding-bid-comparison':
     '/guides/siding-bid-comparison.html',
   '/guides/gutter-bid-comparison':
@@ -163,6 +166,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/limited-lifetime-shingle-warranty.html',
   '/guides/manufacturer-backed-roof-warranties':
     '/guides/manufacturer-backed-roof-warranties.html',
+  '/guides/contractor-offers-to-waive-deductible':
+    '/guides/contractor-offers-to-waive-deductible.html',
 
   // CRO RUN 52 / #2423: generated /locations/ pages -- the index.html twin 301s to the
   // trailing-slash URL (same class as /blog/index.html above).
@@ -175,6 +180,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/cuyahoga-county-oh/roofing/',
   '/locations/davidson-county-tn/roofing/index.html':
     '/locations/davidson-county-tn/roofing/',
+  '/locations/delaware-county-oh/roofing/index.html':
+    '/locations/delaware-county-oh/roofing/',
   '/locations/franklin-county-oh/roofing/index.html':
     '/locations/franklin-county-oh/roofing/',
   '/locations/hamilton-county-oh/roofing/index.html':
@@ -187,6 +194,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/knox-county-tn/roofing/',
   '/locations/lake-county-in/roofing/index.html':
     '/locations/lake-county-in/roofing/',
+  '/locations/lake-county-oh/roofing/index.html':
+    '/locations/lake-county-oh/roofing/',
   '/locations/lorain-county-oh/roofing/index.html':
     '/locations/lorain-county-oh/roofing/',
   '/locations/lucas-county-oh/roofing/index.html':
@@ -209,6 +218,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/summit-county-oh/roofing/',
   '/locations/sumner-county-tn/roofing/index.html':
     '/locations/sumner-county-tn/roofing/',
+  '/locations/warren-county-oh/roofing/index.html':
+    '/locations/warren-county-oh/roofing/',
   '/locations/williamson-county-tn/roofing/index.html':
     '/locations/williamson-county-tn/roofing/',
   '/locations/wilson-county-tn/roofing/index.html':

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { CLAIM_PUBLIC_COLUMNS } from '@/lib/claim-columns';
 
 export interface ClaimData {
   id: string;
@@ -49,7 +50,7 @@ export function useClaimStatus(claimId: string): UseClaimStatusResult {
         // Initial fetch
         const { data, error: fetchError } = await supabase
           .from('claims')
-          .select('*')
+          .select(CLAIM_PUBLIC_COLUMNS)
           .eq('id', claimId)
           .single();
 
