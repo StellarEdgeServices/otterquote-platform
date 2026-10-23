@@ -64,6 +64,24 @@ $fn$;
 REVOKE ALL ON FUNCTION public.sms_number_paused(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.sms_number_paused(text) TO service_role;
 
+-- 2b. A pending row cannot be resolved as 'confirmed_opt_out' unless the number is ALREADY on the open suppression list. Without this, confirming
+-- an opt-out would remove the pause and resume texting a person who revoked. The review step must open the suppression row first (service_role),
+-- then confirm. 'cleared' (a person decided it was not an opt-out) needs no such row.
+CREATE OR REPLACE FUNCTION public.sms_optout_review_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path = public, pg_temp AS $fn$
+BEGIN
+  IF NEW.status = 'confirmed_opt_out' AND NOT EXISTS (
+       SELECT 1 FROM public.sms_suppression_list s WHERE s.phone_e164 = NEW.phone_e164 AND s.released_at IS NULL) THEN
+    RAISE EXCEPTION 'gh2875: cannot confirm an opt-out for % without an open suppression row', NEW.phone_e164 USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.sms_optout_review_guard() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS sms_optout_review_guard ON public.sms_optout_review;
+CREATE TRIGGER sms_optout_review_guard BEFORE INSERT OR UPDATE OF status ON public.sms_optout_review
+  FOR EACH ROW EXECUTE FUNCTION public.sms_optout_review_guard();
+
 -- 3. Privileges and RLS: service_role writes (the webhook, and the review screen when it is built); admins read.
 REVOKE ALL ON public.sms_optout_review FROM anon, authenticated;
 GRANT SELECT ON public.sms_optout_review TO authenticated;

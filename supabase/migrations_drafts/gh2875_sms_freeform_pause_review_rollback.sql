@@ -45,4 +45,5 @@ $fn$;
 REVOKE ALL ON FUNCTION public.contractor_sms_numbers_promote_primary() FROM PUBLIC, anon, authenticated;
 DROP FUNCTION IF EXISTS public.sms_number_paused(text);
 DROP TABLE IF EXISTS public.sms_optout_review;
+DROP FUNCTION IF EXISTS public.sms_optout_review_guard();
 COMMIT;

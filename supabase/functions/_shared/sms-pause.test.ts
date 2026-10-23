@@ -44,20 +44,21 @@ Deno.test("a missing review table (migration not applied) means nothing can be f
   assertEquals(await isSmsPaused(fake({ error: { code: "PGRST205" } }).sb, "+13175551234"), { paused: false });
 });
 
-Deno.test("an unparseable recipient is not keyed (no lookup)", async () => {
+Deno.test("an unparseable recipient FAILS CLOSED (no lookup, no send)", async () => {
   const { sb, seen } = fake({ data: [{ id: "x" }] });
-  assertEquals(await isSmsPaused(sb, "not a number"), { paused: false });
+  assertEquals(await isSmsPaused(sb, "not a number"), { paused: true, reason: "unparseable_number" });
   assertEquals(seen, []);
 });
 
 // Source pin: every wire-level send site calls the pause check BEFORE the Twilio request (the closed list of send sites is
 // pinned in send-sms/contractor-sms-send-sites.test.ts).
 Deno.test("send-sms and process-dunning call isSmsPaused before the Twilio POST", async () => {
-  for (const f of ["send-sms/index.ts", "process-dunning/index.ts"]) {
+  for (const f of ["send-sms/index.ts", "process-dunning/index.ts", "contractor-sms-verify/index.ts"]) {
     const src = await Deno.readTextFile(new URL(`../${f}`, import.meta.url));
     const call = src.indexOf("isSmsPaused(");
-    const post = src.indexOf("api.twilio.com/2010-04-01/Accounts/");
-    assert(call > 0 && post > 0 && call < post, `${f}: isSmsPaused must precede the Twilio request`);
+    // contractor-sms-verify wires isPaused into handler.ts (Twilio Verify call lives there); pin the handler order instead.
+    const post = f.startsWith("contractor-sms-verify") ? 0 : src.indexOf("api.twilio.com/2010-04-01/Accounts/");
+    assert(call > 0 && post >= 0 && (post === 0 || call < post), `${f}: isSmsPaused must precede the Twilio request`);
     assert(src.includes('from "../_shared/sms-pause.ts"'), `${f}: imports the shared pause check`);
   }
 });

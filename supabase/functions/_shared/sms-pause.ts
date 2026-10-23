@@ -25,13 +25,14 @@ export function toE164(raw: string | null | undefined): string | null {
 // deno-lint-ignore no-explicit-any
 export interface PauseClient { from(table: string): any }
 
-export type PauseVerdict = { paused: false } | { paused: true; reason: "pending_review" | "lookup_failed" };
+export type PauseVerdict = { paused: false } | { paused: true; reason: "pending_review" | "lookup_failed" | "unparseable_number" };
 
 const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"]);
 
 export async function isSmsPaused(sb: PauseClient, rawTo: string | null | undefined): Promise<PauseVerdict> {
   const phone = toE164(rawTo);
-  if (!phone) return { paused: false }; // not a number we can key on; it cannot match a flagged E.164 row
+  // Cannot key the number -> cannot prove it is not paused -> fail closed (no send).
+  if (!phone) return { paused: true, reason: "unparseable_number" };
   try {
     const { data, error } = await sb.from("sms_optout_review").select("id").eq("phone_e164", phone).eq("status", "pending").limit(1) as
       { data: unknown[] | null; error: { code?: string } | null };
