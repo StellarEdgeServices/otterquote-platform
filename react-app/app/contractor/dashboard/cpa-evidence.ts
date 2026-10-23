@@ -82,3 +82,36 @@ export async function writeCpaAcceptance(
     return e;
   }
 }
+
+/** Minimal client surface for the server-side acceptance call (unit-testable). */
+export interface CpaAcceptClient {
+  rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }>;
+}
+
+/**
+ * gh-2995 (part b of #2444): ONE server-side call replaces the contractors PATCH, record_cpa_ip and the
+ * activity_log POST. accept_cpa(p_version) appends an acceptance record (server timestamp, IP, user agent,
+ * the agreement version id), updates the caller's contractors row and writes the activity_log row in a
+ * single transaction. supabase-js RETURNS `{ error }`; a response without an acceptance_id is also a
+ * failure (nothing durable was confirmed). Returns null on success or the error; a throw is returned, not
+ * rethrown. Callers keep their existing error copy.
+ */
+export async function acceptCpa(client: CpaAcceptClient, version: string): Promise<unknown | null> {
+  try {
+    const { data, error } = await client.rpc('accept_cpa', { p_version: version });
+    if (error) {
+      console.error('accept_cpa failed:', error);
+      return error;
+    }
+    const id = (data as { acceptance_id?: unknown } | null)?.acceptance_id;
+    if (typeof id !== 'string' || id.length === 0) {
+      const e = new Error('accept_cpa_no_record: no acceptance_id returned');
+      console.error('accept_cpa failed:', e);
+      return e;
+    }
+    return null;
+  } catch (e) {
+    console.error('accept_cpa failed:', e);
+    return e;
+  }
+}
