@@ -12,7 +12,7 @@ import {
   CREDENTIAL_EDUCATION_TITLE,
   LICENSE_NOT_PROVIDED_LINE,
 } from '../copy';
-import { licenseDocState } from '../utils';
+import { hasLicenseOnFile } from '../utils';
 import type { ContractorProfile, PublicLicense } from '../types';
 
 function formatLicDate(d: string): string {
@@ -33,7 +33,7 @@ export function CredentialEducationModal({
   licenses,
   onClose,
 }: CredentialEducationModalProps) {
-  const hasDoc = licenses.length > 0 || licenseDocState(contractor.license_path) === 'uploaded';
+  const hasDoc = hasLicenseOnFile(contractor, licenses);
 
   return (
     <div

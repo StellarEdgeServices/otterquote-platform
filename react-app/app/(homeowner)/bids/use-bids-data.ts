@@ -86,11 +86,33 @@ export function useBidsClaim(
 
 // ── Contractor profiles + signed photos (bids.html:575-589, 1100-1106) ───────
 
+// gh-3042 (mirrors bids.html #511): a homeowner cannot SELECT the `contractors`
+// base table (RLS scopes it to own-record + admin), so a direct read resolved to
+// zero rows with no error and every card/modal rendered a blank company name.
+// Read the public-safe get_contractors_public() RPC instead (active/approved only;
+// user_id and license_path are intentionally absent -- license_doc_state stands in).
 const CONTRACTOR_COLUMNS =
-  'id, user_id, company_name, contact_name, owner_photo_url, about_us, years_in_business, ' +
-  'service_area_description, service_counties, license_number, verified, google_reviews_url, ' +
-  'rating, review_count, bbb_url, angi_url, yelp_url, specialties, why_choose_us, num_employees, ' +
-  'trades, website_url, status, license_path';
+  'id, company_name, contact_name, owner_photo_url, about_us, years_in_business, ' +
+  'service_area_description, service_counties, license_number, verified, ' +
+  'status, license_doc_state, google_reviews_url, rating, review_count, bbb_url, angi_url, ' +
+  'yelp_url, specialties, why_choose_us, num_employees, trades, website_url';
+
+/** Fetch the homeowner-safe contractor profiles for the given ids, keyed by id. */
+export async function fetchBidContractors(
+  ids: string[],
+): Promise<Record<string, ContractorProfile> | null> {
+  const { data, error } = await supabase
+    .rpc('get_contractors_public')
+    .select(CONTRACTOR_COLUMNS)
+    .in('id', ids);
+  if (error || !data) {
+    if (error) console.error('[bids] contractors_public lookup failed:', error.message);
+    return null;
+  }
+  const map: Record<string, ContractorProfile> = {};
+  for (const row of data as unknown as ContractorProfile[]) map[row.id] = row;
+  return map;
+}
 
 export interface ContractorsResult {
   contractors: Record<string, ContractorProfile>;
@@ -125,15 +147,12 @@ export function useBidContractors(bids: BidRow[]): ContractorsResult {
 
     (async () => {
       const ids = idKey.split(',');
-      const { data, error } = await supabase.from('contractors').select(CONTRACTOR_COLUMNS).in('id', ids);
+      const map = await fetchBidContractors(ids);
       if (!mounted) return;
-      if (error || !data) {
+      if (!map) {
         setLoading(false);
         return;
       }
-
-      const map: Record<string, ContractorProfile> = {};
-      for (const row of data as unknown as ContractorProfile[]) map[row.id] = row;
 
       // Resolve signed owner-photo URLs in parallel (non-fatal per contractor).
       await Promise.all(
