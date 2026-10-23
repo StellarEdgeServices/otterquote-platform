@@ -1,7 +1,7 @@
 -- >>> APPLIED MANUALLY, NO LEDGER ROW (gh-1438, filed 2026-10-23T16:44:20Z) <<<
 -- Applied to production (yeszghaspzwwstvsrioa) on 2026-10-23 at about 14:26Z (filename seconds are 00: the minute is from the apply record, the second is not recorded), via the Supabase Management API,
 -- not via the migration ledger. Record: forward applied at about 14:26Z via the Supabase Management API (HTTP 201), file sha256 145e064f... = the draft at 9a5aee80; NO schema_migrations row (SELECT on 2026-10-23: no row mentions it).
--- sha256 of the applied file = sha256 of everything BELOW the next line (the draft as it stood at apply, STATUS header included): 145e064fd77d14cd8c405132cfbdfd32dfb712808e1140ecbe135ba559893664
+-- sha256 prefix of the applied file = sha256 prefix of everything BELOW the next line (the draft as it stood at apply, STATUS header included): 145e064fd77d14cd
 -- The STATUS line below is the draft-time header and is SUPERSEDED by this block. Never move this file into supabase/migrations/ and never give it a
 -- schema_migrations row on that basis alone (see supabase/migrations/README.md, migrations_applied_manually). Not run by any automation.
 -- ---- BEGIN APPLIED BYTES ----
