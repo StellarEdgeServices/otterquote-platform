@@ -316,6 +316,12 @@ serve(async (req) => {
     }
 
     // ── 7. Reset the claim ────────────────────────────────────────────────
+    // gh-3017: an UNSIGNED colour-confirmation envelope belongs to the
+    // switched-away contractor; clear its id in this same write so the next
+    // contractor's colour flow cannot resume it. A signed one (color_confirmed_at
+    // set) is left untouched as the record of what was signed.
+    const clearUnsignedColourEnvelope =
+      !!claim.color_confirmation_envelope_id && !claim.color_confirmed_at;
     const { error: claimUpdateError, data: claimUpdateRows } = await sb
       .from("claims")
       .update({
@@ -323,6 +329,7 @@ serve(async (req) => {
         selected_contractor_id: null,
         contractor_switched_at: new Date().toISOString(),
         contractor_switch_count: (claim.contractor_switch_count || 0) + 1,
+        ...(clearUnsignedColourEnvelope ? { color_confirmation_envelope_id: null } : {}),
       })
       .eq("id", claim_id)
       .select("id");
