@@ -28,6 +28,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { authorizeServiceOnly, resolveTwilioSender } from "./sender-selection.ts";
+import { isSmsPaused } from "../_shared/sms-pause.ts";
 
 const FUNCTION_NAME = "send-sms";
 
@@ -106,6 +107,17 @@ serve(async (req) => {
     const safeMessage = String(message)
       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")
       .slice(0, 1600);
+
+    // ========== PAUSE CHECK (D-391 / #2875 free-text opt-out flagger) ==========
+    // A number with a pending opt-out review is paused for EVERY send until a person decides. Fails closed.
+    const pause = await isSmsPaused(supabase, to);
+    if (pause.paused) {
+      console.warn(`[${FUNCTION_NAME}] SMS refused: number paused (${pause.reason}). No Twilio call attempted.`);
+      return new Response(
+        JSON.stringify({ error: "number_paused_pending_review", reason: pause.reason }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // ========== RATE LIMIT CHECK ==========
     const { data: rateLimitResult, error: rlError } = await supabase.rpc(
