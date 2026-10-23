@@ -308,7 +308,7 @@ jobs:
       # production (no SUPABASE_SERVICE_ROLE_KEY for prod exists anywhere).
       - name: Set up Python (for the is-test Cross-Table Guard steps below)
         if: ${{ !cancelled() }}
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -481,7 +481,7 @@ jobs:
       # pgserver 0.1.4 ships wheels only for cp39-cp312; the ubuntu-26.04 image's default python3 has none
       # (pip: "from versions: none"), so pin the interpreter for this step (CTO RUN 71).
       - name: Set up Python 3.12 (pgserver 0.1.4 has no wheel for the runner's default python)
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
