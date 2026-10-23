@@ -13,9 +13,12 @@
  * gclid); an organic visit therefore still traces to the page it entered on.
  * Until gh-3002 an untagged visit recorded nothing, which left 24 of 25
  * post-#1983 signups with no landing path at all. A record is never replaced
- * by a later touch (callers check first) with ONE exception: an UNTAGGED record
- * is upgraded by a later TAGGED landing, so an ad click that follows an
- * organic visit is still credited to the ad (the #1983 behaviour).
+ * by a later touch (callers check first), tagged or not: the stored landing
+ * path and time are the true first page. Consequence: a visitor whose first
+ * page was organic and who later clicks an ad is NOT re-credited to the ad.
+ * UNTAGGED capture (only) is skipped for a visitor who has opted out of ad
+ * sharing (Sec-GPC: 1 or the oq_ad_optout=1 cookie, privacy policy s12, D-336
+ * and D-354); tagged capture is unchanged from #1983.
  *
  * Privacy: only the landing PATH is kept (never the query string or fragment —
  * implicit-flow OAuth puts tokens in the fragment, see gh-1969) and only the
@@ -115,15 +118,6 @@ export function parseFirstTouch(
   return ft;
 }
 
-/**
- * True when `next` should replace the stored `existing` record: only an
- * untagged record yields, and only to a tagged landing.
- */
-export function shouldUpgradeFirstTouch(existing: FirstTouch | null, next: FirstTouch | null): boolean {
-  if (!next || !hasTrackedKey(next)) return false;
-  return !existing || !hasTrackedKey(existing);
-}
-
 /** Validate an untrusted stored value (cookie / localStorage). */
 export function deserializeFirstTouch(raw: string | null | undefined): FirstTouch | null {
   if (!raw) return null;
@@ -189,25 +183,47 @@ export function readCookieValue(cookieHeader: string | null | undefined, name: s
   return null;
 }
 
+/** Request headers the untagged-capture decision reads (all optional). */
+export interface FirstTouchRequestHints {
+  /** Accept header: an untagged touch needs a page navigation (text/html). */
+  accept?: string | null;
+  /** Sec-GPC header: "1" is a Global Privacy Control opt-out. */
+  gpc?: string | null;
+  /** Sec-Purpose / Purpose header: any prefetch/prerender is not a visit. */
+  purpose?: string | null;
+  /** User-Agent: crawlers and link-preview fetchers never mint a touch. */
+  userAgent?: string | null;
+}
+
+const BOT_UA = /bot|crawl|spider|slurp|preview|facebookexternalhit|headless|lighthouse|monitor|uptime|curl|wget|python-requests/i;
+
+/** True when the request headers say the visitor opted out of ad sharing. */
+export function adOptedOutFromHeaders(
+  cookieHeader: string | null | undefined,
+  gpc: string | null | undefined,
+): boolean {
+  return (gpc || '').trim() === '1' || readCookieValue(cookieHeader, 'oq_ad_optout') === '1';
+}
+
 /**
  * The server-side decision both edge runtimes make: given a request URL,
  * its Cookie and Referer headers, return the Set-Cookie string to add, or
- * null (a valid first touch already stored and not upgradable, an untagged
- * request that is not a page navigation, or oversized).
+ * null (a first touch is already stored, an untagged request that is not an
+ * eligible page navigation, or oversized). A stored touch is never replaced.
  *
- * `accept` is the request Accept header. An UNTAGGED touch is only recorded for
- * a page navigation (Accept names text/html), so API/XHR/prefetch/asset GETs
- * never mint a first touch; a missing Accept header counts as not-a-page.
- * Tagged touches are unaffected (same as gh-1983).
+ * An UNTAGGED touch (gh-3002) is recorded only for a real page navigation
+ * (Accept names text/html, not a prefetch, not a crawler) by a visitor with no
+ * Sec-GPC: 1 and no oq_ad_optout=1 cookie. Tagged touches are unaffected
+ * (same as gh-1983).
  */
 export function firstTouchSetCookie(
   requestUrl: string,
   cookieHeader: string | null | undefined,
   referer: string | null | undefined,
   now: Date = new Date(),
-  accept?: string | null,
+  hints: FirstTouchRequestHints = {},
 ): string | null {
-  const existing = deserializeFirstTouch(readCookieValue(cookieHeader, FT_COOKIE));
+  if (deserializeFirstTouch(readCookieValue(cookieHeader, FT_COOKIE))) return null;
   let u: URL;
   try {
     u = new URL(requestUrl);
@@ -216,8 +232,12 @@ export function firstTouchSetCookie(
   }
   const ft = parseFirstTouch(u, referer, now);
   if (!ft) return null;
-  if (!hasTrackedKey(ft) && !/text\/html/i.test(accept || '')) return null;
-  if (existing && !shouldUpgradeFirstTouch(existing, ft)) return null;
+  if (!hasTrackedKey(ft)) {
+    if (!/text\/html/i.test(hints.accept || '')) return null;
+    if (/prefetch|prerender/i.test(hints.purpose || '')) return null;
+    if (BOT_UA.test(hints.userAgent || '')) return null;
+    if (adOptedOutFromHeaders(cookieHeader, hints.gpc)) return null;
+  }
   return buildFirstTouchCookie(ft, u.hostname, u.protocol === 'https:');
 }
 

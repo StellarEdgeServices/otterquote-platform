@@ -15,11 +15,10 @@
 --   * A payload is usable if it is TAGGED (any tracked key) or carries a
 --     landing_path. Tagged payloads are preferred (client, then user_metadata),
 --     then untagged ones.
---   * Profile is written once (first_touch_at IS NULL), with ONE upgrade: a
---     profile holding an UNTAGGED touch is overwritten by a later TAGGED
---     payload, so an ad click after an organic visit is still credited to the
---     ad (the #1983 behaviour is not regressed).
---   * Claims backfill the same way (NULL, or untagged claim + tagged profile).
+--   * Profile is written once (first_touch_at IS NULL) and NEVER overwritten,
+--     tagged or not (same as #1983). Consequence: a visitor whose first page
+--     was organic and who later clicks an ad is not re-credited to the ad.
+--   * Claims backfill only where first_touch_at IS NULL (unchanged).
 --   * The "touch must precede the account (+1 h)" rule is unchanged.
 -- Additive: CREATE OR REPLACE of one function, two new helpers. No column,
 -- policy or trigger is touched. claims_copy_first_touch already copies any row
@@ -124,15 +123,11 @@ BEGIN
          first_touch_referrer     = public.gh1983_attr_clean(v_attr->>'referrer'),
          first_touch_at           = v_ts
    WHERE p.id = v_uid
-     AND ( p.first_touch_at IS NULL
-           OR ( v_tagged
-                AND p.utm_source IS NULL AND p.utm_medium IS NULL AND p.utm_campaign IS NULL
-                AND p.utm_content IS NULL AND p.utm_term IS NULL
-                AND p.fbclid IS NULL AND p.gclid IS NULL ) );
+     AND p.first_touch_at IS NULL;
   GET DIAGNOSTICS v_profile_n = ROW_COUNT;
 
-  -- Backfill the caller's claims that have no attribution yet (or only an
-  -- untagged one that the profile has since outgrown).
+  -- Backfill the caller's claims that have no attribution yet, from whatever
+  -- the profile now holds (this run's write or an earlier one).
   UPDATE public.claims c
      SET utm_source               = p.utm_source,
          utm_medium               = p.utm_medium,
@@ -148,13 +143,7 @@ BEGIN
    WHERE p.id = v_uid
      AND p.first_touch_at IS NOT NULL
      AND c.user_id = v_uid
-     AND ( c.first_touch_at IS NULL
-           OR ( ( p.utm_source IS NOT NULL OR p.utm_medium IS NOT NULL OR p.utm_campaign IS NOT NULL
-                  OR p.utm_content IS NOT NULL OR p.utm_term IS NOT NULL
-                  OR p.fbclid IS NOT NULL OR p.gclid IS NOT NULL )
-                AND c.utm_source IS NULL AND c.utm_medium IS NULL AND c.utm_campaign IS NULL
-                AND c.utm_content IS NULL AND c.utm_term IS NULL
-                AND c.fbclid IS NULL AND c.gclid IS NULL ) );
+     AND c.first_touch_at IS NULL;
   GET DIAGNOSTICS v_claims_n = ROW_COUNT;
 
   RETURN jsonb_build_object(

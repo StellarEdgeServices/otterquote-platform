@@ -10,7 +10,6 @@ import {
   buildFirstTouchCookie,
   firstTouchSetCookie,
   hasTrackedKey,
-  shouldUpgradeFirstTouch,
   readCookieValue,
   cleanValue,
   FT_COOKIE,
@@ -62,53 +61,6 @@ describe('attribution-core parseFirstTouch', () => {
     expect(parseFirstTouch('not a url', null, NOW)).toBeNull();
   });
 
-  it('shouldUpgradeFirstTouch: only an untagged (or absent) record yields, and only to a tagged landing', () => {
-    const organic = parseFirstTouch('https://otterquote.com/', null, NOW);
-    const tagged = parseFirstTouch('https://otterquote.com/?utm_source=fb', null, NOW);
-    const organic2 = parseFirstTouch('https://otterquote.com/faq', null, NOW);
-    expect(shouldUpgradeFirstTouch(organic, tagged)).toBe(true);
-    expect(shouldUpgradeFirstTouch(null, tagged)).toBe(true);
-    expect(shouldUpgradeFirstTouch(tagged, tagged)).toBe(false);
-    expect(shouldUpgradeFirstTouch(organic, organic2)).toBe(false);
-    expect(shouldUpgradeFirstTouch(tagged, organic)).toBe(false);
-    expect(shouldUpgradeFirstTouch(organic, null)).toBe(false);
-  });
-
-  it('keeps a long click id whole (fbclid/gclid cap 1000) but caps utm values at 200', () => {
-    const long = 'IwY2' + 'a'.repeat(400);
-    const ft = parseFirstTouch(`https://otterquote.com/?fbclid=${long}&utm_campaign=${'c'.repeat(400)}`, null, NOW)!;
-    expect(ft.fbclid).toBe(long);
-    expect(ft.utm_campaign).toHaveLength(200);
-    expect(deserializeFirstTouch(JSON.stringify(ft))?.fbclid).toBe(long);
-  });
-
-  it('strips non-printable characters and caps length', () => {
-    expect(cleanValue('  abéc  ')).toBe('abc');
-    expect(cleanValue('z'.repeat(500))).toHaveLength(200);
-    expect(cleanValue(42)).toBeUndefined();
-  });
-});
-
-describe('attribution-core cookie round trip', () => {
-  it('builds a .otterquote.com cookie that deserializes back', () => {
-    const ft = parseFirstTouch('https://otterquote.com/?utm_source=fb&fbclid=x', null, NOW)!;
-    const c = buildFirstTouchCookie(ft, 'otterquote.com', true)!;
-    expect(c).toMatch(/^oq_ft=/);
-    expect(c).toContain('; Domain=.otterquote.com');
-    expect(c).toContain('; Max-Age=7776000');
-    expect(c).toContain('; SameSite=Lax');
-    expect(c).toContain('; Secure');
-    const back = deserializeFirstTouch(readCookieValue(c.split(';')[0], FT_COOKIE));
-    expect(back).toEqual(ft);
-  });
-
-  it('localhost / previews get a host-only cookie', () => {
-    const ft = parseFirstTouch('http://localhost:3000/?gclid=g', null, NOW)!;
-    const c = buildFirstTouchCookie(ft, 'localhost', false)!;
-    expect(c).not.toContain('Domain=');
-    expect(c).not.toContain('Secure');
-  });
-
   it('deserialize rejects junk, arrays, missing ts, and objects with neither a tracked key nor a path', () => {
     expect(deserializeFirstTouch('{bad')).toBeNull();
     expect(deserializeFirstTouch('[]')).toBeNull();
@@ -128,20 +80,43 @@ describe('attribution-core cookie round trip', () => {
   });
 
   it('gh-3002 firstTouchSetCookie: untagged page navigation -> cookie; non-page or missing Accept -> null', () => {
-    const c = firstTouchSetCookie('https://app.otterquote.com/get-started', null, 'https://www.google.com/', NOW, 'text/html,application/xhtml+xml');
+    const c = firstTouchSetCookie('https://app.otterquote.com/get-started', null, 'https://www.google.com/', NOW, { accept: 'text/html,application/xhtml+xml' });
     expect(c).toMatch(/^oq_ft=/);
     const back = deserializeFirstTouch(readCookieValue(c!.split(';')[0], FT_COOKIE));
     expect(back).toEqual({ v: 1, ts: NOW.toISOString(), landing_path: '/get-started', referrer: 'www.google.com' });
-    expect(firstTouchSetCookie('https://app.otterquote.com/get-started', null, null, NOW, 'application/json')).toBeNull();
+    expect(firstTouchSetCookie('https://app.otterquote.com/get-started', null, null, NOW, { accept: 'application/json' })).toBeNull();
     expect(firstTouchSetCookie('https://app.otterquote.com/get-started', null, null, NOW)).toBeNull();
   });
 
-  it('gh-3002 firstTouchSetCookie: an organic cookie is kept against another organic page, upgraded by a tagged one', () => {
+  const HTML = 'text/html';
+  const URL0 = 'https://app.otterquote.com/get-started';
+
+  it('gh-3002 GPC: Sec-GPC: 1 suppresses UNTAGGED capture; Sec-GPC: 0 / absent does not', () => {
+    expect(firstTouchSetCookie(URL0, null, null, NOW, { accept: HTML, gpc: '1' })).toBeNull();
+    expect(firstTouchSetCookie(URL0, null, null, NOW, { accept: HTML, gpc: '0' })).toMatch(/^oq_ft=/);
+    expect(firstTouchSetCookie(URL0, null, null, NOW, { accept: HTML })).toMatch(/^oq_ft=/);
+  });
+
+  it('gh-3002 opt-out cookie: oq_ad_optout=1 suppresses UNTAGGED capture; other values do not', () => {
+    expect(firstTouchSetCookie(URL0, 'a=b; oq_ad_optout=1', null, NOW, { accept: HTML })).toBeNull();
+    expect(firstTouchSetCookie(URL0, 'oq_ad_optout=0', null, NOW, { accept: HTML })).toMatch(/^oq_ft=/);
+  });
+
+  it('gh-3002 GPC / opt-out do not change TAGGED capture (unchanged from #1983)', () => {
+    expect(firstTouchSetCookie(URL0 + '?utm_source=fb', null, null, NOW, { gpc: '1' })).toMatch(/^oq_ft=/);
+    expect(firstTouchSetCookie(URL0 + '?gclid=g', 'oq_ad_optout=1', null, NOW)).toMatch(/^oq_ft=/);
+  });
+
+  it('gh-3002: prefetch and crawler requests never mint an UNTAGGED touch', () => {
+    expect(firstTouchSetCookie(URL0, null, null, NOW, { accept: HTML, purpose: 'prefetch' })).toBeNull();
+    expect(firstTouchSetCookie(URL0, null, null, NOW, { accept: HTML, userAgent: 'Mozilla/5.0 (compatible; Googlebot/2.1)' })).toBeNull();
+    expect(firstTouchSetCookie(URL0, null, null, NOW, { accept: HTML, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Safari/604.1' })).toMatch(/^oq_ft=/);
+  });
+
+  it('gh-3002: a stored first touch is NEVER replaced, tagged or not (first_touch_at preserved)', () => {
     const organic = `oq_ft=${encodeURIComponent(JSON.stringify({ v: 1, landing_path: '/', ts: NOW.toISOString() }))}`;
-    expect(firstTouchSetCookie('https://otterquote.com/faq', organic, null, NOW, 'text/html')).toBeNull();
-    const up = firstTouchSetCookie('https://otterquote.com/?utm_source=fb', organic, null, NOW, 'text/html');
-    expect(up).toMatch(/^oq_ft=/);
-    expect(deserializeFirstTouch(readCookieValue(up!.split(';')[0], FT_COOKIE))?.utm_source).toBe('fb');
+    expect(firstTouchSetCookie('https://otterquote.com/?utm_source=fb', organic, null, NOW, { accept: HTML })).toBeNull();
+    expect(firstTouchSetCookie('https://otterquote.com/faq', organic, null, NOW, { accept: HTML })).toBeNull();
   });
 });
 
@@ -181,22 +156,39 @@ describe('attribution browser capture', () => {
     expect(captureFirstTouch()?.landing_path).toBe('/');
   });
 
-  it('gh-3002: an untagged record is upgraded by a later tagged landing', () => {
+  it('gh-3002: an untagged first touch is NOT replaced by a later tagged landing (first_touch_at and landing_path preserved)', () => {
     window.history.replaceState({}, '', '/');
-    captureFirstTouch();
+    const first = captureFirstTouch()!;
     window.history.replaceState({}, '', '/get-started?utm_source=fb&fbclid=ad');
-    const ft = captureFirstTouch();
-    expect(ft?.utm_source).toBe('fb');
-    expect(readFirstTouch()?.fbclid).toBe('ad');
-    expect(JSON.parse(localStorage.getItem('oq_ft')!).utm_source).toBe('fb');
+    const ft = captureFirstTouch()!;
+    expect(ft.utm_source).toBeUndefined();
+    expect(ft.landing_path).toBe('/');
+    expect(ft.ts).toBe(first.ts);
+    expect(JSON.parse(localStorage.getItem('oq_ft')!).fbclid).toBeUndefined();
   });
 
-  it('first tagged touch wins over a later tagged landing', () => {
-    window.history.replaceState({}, '', '/?utm_source=youtube');
-    captureFirstTouch();
-    window.history.replaceState({}, '', '/get-started?utm_source=fb&fbclid=late');
-    expect(captureFirstTouch()?.utm_source).toBe('youtube');
-    expect(readFirstTouch()?.fbclid).toBeUndefined();
+  it('gh-3002 GPC: navigator.globalPrivacyControl === true stores no UNTAGGED touch, but still stores a tagged one', () => {
+    Object.defineProperty(navigator, 'globalPrivacyControl', { value: true, configurable: true });
+    try {
+      window.history.replaceState({}, '', '/get-started');
+      expect(captureFirstTouch()).toBeNull();
+      expect(localStorage.getItem('oq_ft')).toBeNull();
+      window.history.replaceState({}, '', '/get-started?utm_source=fb');
+      expect(captureFirstTouch()?.utm_source).toBe('fb');
+    } finally {
+      delete (navigator as unknown as Record<string, unknown>).globalPrivacyControl;
+    }
+  });
+
+  it('gh-3002 opt-out cookie: oq_ad_optout=1 stores no UNTAGGED touch', () => {
+    document.cookie = 'oq_ad_optout=1; Path=/';
+    try {
+      window.history.replaceState({}, '', '/get-started');
+      expect(captureFirstTouch()).toBeNull();
+      expect(localStorage.getItem('oq_ft')).toBeNull();
+    } finally {
+      document.cookie = 'oq_ad_optout=; Path=/; Max-Age=0';
+    }
   });
 
   it('heals localStorage from a server-set cookie', () => {

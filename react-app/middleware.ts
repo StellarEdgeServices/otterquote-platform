@@ -36,7 +36,12 @@ export function middleware(request: NextRequest) {
         request.headers.get('cookie'),
         request.headers.get('referer'),
         new Date(),
-        request.headers.get('accept'),
+        {
+          accept: request.headers.get('accept'),
+          gpc: request.headers.get('sec-gpc'),
+          purpose: request.headers.get('sec-purpose') || request.headers.get('purpose'),
+          userAgent: request.headers.get('user-agent'),
+        },
       );
       if (setCookie) res.headers.append('Set-Cookie', setCookie);
     } catch {

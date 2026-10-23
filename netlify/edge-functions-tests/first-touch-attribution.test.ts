@@ -89,19 +89,50 @@ Deno.test("gh-3002: an untagged non-navigation GET (no text/html Accept) passes 
   assertEquals(ctx.nextCalled, false);
 });
 
-Deno.test("gh-3002: an organic cookie is upgraded by a tagged landing, kept against another organic page", async () => {
+Deno.test("gh-3002 GPC: Sec-GPC 1 and oq_ad_optout=1 suppress an UNTAGGED touch; tagged is unchanged", async () => {
+  const html = { accept: "text/html" };
+  for (const headers of [{ ...html, "sec-gpc": "1" }, { ...html, cookie: "oq_ad_optout=1" }]) {
+    const ctx = fakeContext();
+    assertEquals(await handler(new Request("https://otterquote.com/faq.html", { headers }), ctx), undefined);
+    assertEquals(ctx.nextCalled, false);
+  }
+  const tagged = await handler(
+    new Request("https://otterquote.com/?utm_source=fb", { headers: { ...html, "sec-gpc": "1" } }),
+    fakeContext(),
+  );
+  assert(tagged instanceof Response && cookieFrom(tagged).startsWith("oq_ft="), "tagged capture unchanged");
+});
+
+Deno.test("gh-3002: crawlers, prefetches and error pages never mint an UNTAGGED touch", async () => {
+  const ctx = fakeContext();
+  assertEquals(
+    await handler(new Request("https://otterquote.com/", { headers: { accept: "text/html", "user-agent": "Googlebot/2.1" } }), ctx),
+    undefined,
+  );
+  assertEquals(
+    await handler(new Request("https://otterquote.com/", { headers: { accept: "text/html", "sec-purpose": "prefetch" } }), ctx),
+    undefined,
+  );
+  assertEquals(ctx.nextCalled, false);
+  const res = await handler(
+    new Request("https://otterquote.com/nope", { headers: { accept: "text/html" } }),
+    fakeContext(new Response("nf", { status: 404 })),
+  );
+  assert(res instanceof Response);
+  assertEquals(res.status, 404);
+  assertEquals(cookieFrom(res), "");
+});
+
+Deno.test("gh-3002: an existing organic first touch is never replaced, even by a tagged landing", async () => {
   const organic = encodeURIComponent(JSON.stringify({ v: 1, landing_path: "/", ts: "2026-09-01T00:00:00.000Z" }));
-  const keep = await handler(
-    new Request("https://otterquote.com/faq.html", { headers: { accept: "text/html", cookie: `oq_ft=${organic}` } }),
-    fakeContext(),
-  );
-  assertEquals(keep, undefined);
-  const up = await handler(
-    new Request("https://otterquote.com/?utm_source=fb", { headers: { accept: "text/html", cookie: `oq_ft=${organic}` } }),
-    fakeContext(),
-  );
-  assert(up instanceof Response, "a response is returned");
-  assertEquals(deserializeFirstTouch(readCookieValue(cookieFrom(up).split(";")[0], "oq_ft"))?.utm_source, "fb");
+  for (const url of ["https://otterquote.com/faq.html", "https://otterquote.com/?utm_source=fb"]) {
+    const ctx = fakeContext();
+    assertEquals(
+      await handler(new Request(url, { headers: { accept: "text/html", cookie: `oq_ft=${organic}` } }), ctx),
+      undefined,
+    );
+    assertEquals(ctx.nextCalled, false);
+  }
 });
 
 Deno.test("an existing valid first touch is never overwritten", async () => {

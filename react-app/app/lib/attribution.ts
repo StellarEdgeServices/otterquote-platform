@@ -24,11 +24,12 @@ import {
   buildFirstTouchCookie,
   deserializeFirstTouch,
   parseFirstTouch,
-  shouldUpgradeFirstTouch,
+  hasTrackedKey,
   readCookieValue,
   serializeFirstTouch,
   type FirstTouch,
 } from './attribution-core';
+import { gpcOptOut, hasAdOptOutCookie } from './ad-optout';
 
 export type { FirstTouch } from './attribution-core';
 
@@ -103,19 +104,17 @@ export function captureFirstTouch(): FirstTouch | null {
   try {
     const { cookie, local } = readStored();
     const existing = cookie || local;
-    const ft = parseFirstTouch(window.location.href, document.referrer);
-    // gh-3002: an untagged record yields to a later tagged landing.
-    if (ft && shouldUpgradeFirstTouch(existing, ft)) {
-      writeLocal(ft);
-      writeCookie(ft);
-      return ft;
-    }
+    // A stored first touch is never replaced (gh-3002): heal a half-missing store only.
     if (existing) {
       if (!local) writeLocal(existing);
       if (!cookie) writeCookie(existing);
       return existing;
     }
+    const ft = parseFirstTouch(window.location.href, document.referrer);
     if (!ft) return null;
+    // Untagged capture honours the ad-sharing opt-out (GPC or oq_ad_optout=1);
+    // tagged capture is unchanged from gh-1983.
+    if (!hasTrackedKey(ft) && (gpcOptOut() || hasAdOptOutCookie())) return null;
     writeLocal(ft);
     writeCookie(ft);
     return ft;
