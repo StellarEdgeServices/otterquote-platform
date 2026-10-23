@@ -1,7 +1,7 @@
--- STATUS (gh-1438, as of 2026-10-21): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-10-23T16:44:20Z): APPLIED
 -- FILE ROLE: forward file of set gh2543_halt_notice_marker_unique (rollback is a sibling in this directory)
--- EVIDENCE: drafted 2026-10-21 under #2543 / PR #2959 (Ben's RETURNED 6301145200 and REVIEW 6301123534, point 2). No database was read or written to produce this file. The index is on a notification_type that no code writes in production yet (the halt notices are not deployed), so no existing row can violate it; the live notifications table has no CHECK on notification_type (migration 20260925180241_gh2154_p3_partner_new_alert_trigger.sql).
--- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback to supabase/migrations_rollbacks/.
+-- EVIDENCE: APPLIED -- #2543 / Marty apply 2026-10-23T13:09Z; ledger row 20261023130943 (SELECT, project yeszghaspzwwstvsrioa); ledger statements[1] is a comment-trimmed variant of the draft, sha256 33a5716a...2e42, filed byte for byte in supabase/migrations/20261023130943_gh2543_halt_notice_marker_unique.sql. Earlier draft-time evidence, kept: drafted 2026-10-21 under #2543 / PR #2959 (Ben's RETURNED 6301145200 and REVIEW 6301123534, point 2). No database was read or written to produce this file. The index is on a notification_type that no code writes in production yet (the halt notices are not deployed), so no existing row can violate it; the live notifications table has no CHECK on notification_type (migration 20260925180241_gh2154_p3_partner_new_alert_trigger.sql).
+-- REPO COPY: supabase/migrations/20261023130943_gh2543_halt_notice_marker_unique.sql (forward, the ledger statement), supabase/migrations_rollbacks/20261023130943_gh2543_halt_notice_marker_unique_rollback.sql (rollback)
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- Migration: gh2543_halt_notice_marker_unique
