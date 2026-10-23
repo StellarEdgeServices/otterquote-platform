@@ -90,6 +90,9 @@ export function adoptFirstTouchFromParam(raw: string | null | undefined): FirstT
     if (existing) return existing;
     const ft = decodeFirstTouchParam(raw);
     if (!ft) return null;
+    // gh-3002: an untagged touch carried over the hand-off honours the ad-sharing opt-out
+    // of THIS browser too (GPC or oq_ad_optout=1); a tagged touch is unchanged from gh-1983.
+    if (!hasTrackedKey(ft) && (gpcOptOut() || hasAdOptOutCookie())) return null;
     writeLocal(ft);
     writeCookie(ft);
     return ft;

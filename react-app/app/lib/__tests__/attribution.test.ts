@@ -61,6 +61,41 @@ describe('attribution-core parseFirstTouch', () => {
     expect(parseFirstTouch('not a url', null, NOW)).toBeNull();
   });
 
+  it('keeps a long click id whole (fbclid/gclid cap 1000) but caps utm values at 200', () => {
+    const long = 'IwY2' + 'a'.repeat(400);
+    const ft = parseFirstTouch(`https://otterquote.com/?fbclid=${long}&utm_campaign=${'c'.repeat(400)}`, null, NOW)!;
+    expect(ft.fbclid).toBe(long);
+    expect(ft.utm_campaign).toHaveLength(200);
+    expect(deserializeFirstTouch(JSON.stringify(ft))?.fbclid).toBe(long);
+  });
+
+  it('strips non-printable characters and caps length', () => {
+    expect(cleanValue('  abéc  ')).toBe('abc');
+    expect(cleanValue('z'.repeat(500))).toHaveLength(200);
+    expect(cleanValue(42)).toBeUndefined();
+  });
+});
+
+describe('attribution-core cookie round trip', () => {
+  it('builds a .otterquote.com cookie that deserializes back', () => {
+    const ft = parseFirstTouch('https://otterquote.com/?utm_source=fb&fbclid=x', null, NOW)!;
+    const c = buildFirstTouchCookie(ft, 'otterquote.com', true)!;
+    expect(c).toMatch(/^oq_ft=/);
+    expect(c).toContain('; Domain=.otterquote.com');
+    expect(c).toContain('; Max-Age=7776000');
+    expect(c).toContain('; SameSite=Lax');
+    expect(c).toContain('; Secure');
+    const back = deserializeFirstTouch(readCookieValue(c.split(';')[0], FT_COOKIE));
+    expect(back).toEqual(ft);
+  });
+
+  it('localhost / previews get a host-only cookie', () => {
+    const ft = parseFirstTouch('http://localhost:3000/?gclid=g', null, NOW)!;
+    const c = buildFirstTouchCookie(ft, 'localhost', false)!;
+    expect(c).not.toContain('Domain=');
+    expect(c).not.toContain('Secure');
+  });
+
   it('deserialize rejects junk, arrays, missing ts, and objects with neither a tracked key nor a path', () => {
     expect(deserializeFirstTouch('{bad')).toBeNull();
     expect(deserializeFirstTouch('[]')).toBeNull();
@@ -147,6 +182,14 @@ describe('attribution browser capture', () => {
     expect(ft?.utm_source).toBeUndefined();
     expect(JSON.parse(localStorage.getItem('oq_ft')!).landing_path).toBe('/get-started');
     expect(readFirstTouch()?.landing_path).toBe('/get-started');
+  });
+
+  it('first tagged touch wins over a later tagged landing', () => {
+    window.history.replaceState({}, '', '/?utm_source=youtube');
+    captureFirstTouch();
+    window.history.replaceState({}, '', '/get-started?utm_source=fb&fbclid=late');
+    expect(captureFirstTouch()?.utm_source).toBe('youtube');
+    expect(readFirstTouch()?.fbclid).toBeUndefined();
   });
 
   it('gh-3002: the first untagged landing wins over a later untagged page', () => {
@@ -272,5 +315,28 @@ describe('OAuth browser-switch carry (?ft= on redirectTo)', () => {
     window.history.replaceState({}, '', '/?utm_source=youtube');
     captureFirstTouch();
     expect(adoptFirstTouchFromParam(encodeFirstTouchParam(ft))?.utm_source).toBe('youtube');
+  });
+
+  it('gh-3002: an UNTAGGED ?ft= is not adopted when this browser has GPC or oq_ad_optout=1; a tagged one still is', () => {
+    const organic = parseFirstTouch('https://otterquote.com/faq', 'https://www.google.com/', NOW)!;
+    const enc = encodeFirstTouchParam(organic);
+    expect(adoptFirstTouchFromParam(enc)?.landing_path).toBe('/faq'); // control: not opted out -> adopted
+    clearFirstTouch();
+    document.cookie = 'oq_ad_optout=1; Path=/';
+    try {
+      expect(adoptFirstTouchFromParam(enc)).toBeNull();
+      expect(localStorage.getItem('oq_ft')).toBeNull();
+      expect(adoptFirstTouchFromParam(encodeFirstTouchParam(ft))?.utm_campaign).toBe('test');
+    } finally {
+      document.cookie = 'oq_ad_optout=; Path=/; Max-Age=0';
+    }
+    clearFirstTouch();
+    Object.defineProperty(navigator, 'globalPrivacyControl', { value: true, configurable: true });
+    try {
+      expect(adoptFirstTouchFromParam(enc)).toBeNull();
+      expect(localStorage.getItem('oq_ft')).toBeNull();
+    } finally {
+      delete (navigator as unknown as Record<string, unknown>).globalPrivacyControl;
+    }
   });
 });
