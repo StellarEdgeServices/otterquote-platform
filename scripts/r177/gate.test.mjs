@@ -271,3 +271,53 @@ describe('truncated merge file list (REVIEW 6323696495 defect 1)', () => {
     assert.deepEqual(await mainMergeChain(api, H), [H, SIGNED]);
   });
 });
+
+// gh-2965 label race: the labeller's GITHUB_TOKEN label starts no workflow, so an unlabeled read must
+// still catch a PR whose diff the labeller's predicate flags (live: PR #3043, gate green 14:40:44Z,
+// label 14:40:41Z). These use the REAL predicate, not a stub.
+import { detectLegalMoneyContent } from './predicate.mjs';
+const mkDiff = (file, added) =>
+  `diff --git a/${file} b/${file}\nindex 1111111..2222222 100644\n--- a/${file}\n+++ b/${file}\n@@ -10,1 +10,${added.length} @@\n${added.map((l) => '+' + l).join('\n')}\n`;
+const legalDiff = mkDiff('partner-adjusters.html', ['<p>OtterQuote is not a public adjuster.</p>']);
+const cleanDiff = mkDiff('docs/notes.md', ['just a note about the build']);
+const withPredicate = (diffText, o) => ({ ...fakeApi(o), predicateHit: async () => detectLegalMoneyContent(diffText).hit });
+
+describe('R-177 pair gate: label race (predicate flags before the label exists)', () => {
+  it('MUST FAIL: unlabeled PR whose diff trips the predicate and has no pair', async () => {
+    const r = await evaluate(withPredicate(legalDiff, { labels: [] }), 7);
+    assert.equal(r.ok, false);
+    assert.equal(r.flagged, true);
+    assert.equal(r.predicateFlagged, true);
+    assert.match(r.message, /by the legal\/money predicate/);
+  });
+  it('MUST FAIL: same with REVIEW-only comments (the #2964 shape, label not applied yet)', async () => {
+    const r = await evaluate(withPredicate(legalDiff, { labels: [], comments: [human('REVIEW: PASS - fine')] }), 7);
+    assert.equal(r.ok, false);
+  });
+  it('MUST PASS: unlabeled predicate-flagged PR WITH the pair over the head', async () => {
+    const r = await evaluate(withPredicate(legalDiff, { labels: [], comments: pair(7, H) }), 7);
+    assert.equal(r.ok, true);
+  });
+  it('MUST PASS: unlabeled PR whose diff the predicate does not flag', async () => {
+    const r = await evaluate(withPredicate(cleanDiff, { labels: [] }), 7);
+    assert.equal(r.ok, true);
+    assert.equal(r.flagged, false);
+  });
+  it('fail closed: a predicate read that throws fails the evaluation (no silent green)', async () => {
+    const api = { ...fakeApi({ labels: [] }), predicateHit: async () => { throw new Error('diff fetch failed'); } };
+    await assert.rejects(() => evaluate(api, 7), /diff fetch failed/);
+  });
+  it('an already-labelled PR does not need the predicate call', async () => {
+    let called = 0;
+    const api = { ...fakeApi({}), predicateHit: async () => { called++; return false; } };
+    await evaluate(api, 7);
+    assert.equal(called, 0);
+  });
+  it('run.cjs wires the predicate from the default-branch checkout and the workflow sparse-checks it out', () => {
+    const run = fs.readFileSync(new URL('./run.cjs', import.meta.url), 'utf8');
+    assert.match(run, /predicate\.mjs/);
+    assert.match(run, /api\.predicateHit/);
+    const yml = fs.readFileSync(new URL('../../.github/workflows/r177-pair-gate.yml', import.meta.url), 'utf8');
+    assert.equal((yml.match(/scripts\/r177\/predicate\.mjs/g) || []).length >= 2, true);
+  });
+});

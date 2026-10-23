@@ -39,6 +39,14 @@ module.exports = async function run({ github, context, core, postCheck }) {
     },
   };
 
+  // Same predicate and diff source as the labeller (r177-legal-read.yml); read from the default branch.
+  const predicate = await import(pathToFileURL(path.join(__dirname, 'predicate.mjs')).href);
+  api.predicateHit = async (n) => {
+    const diffResp = await github.rest.pulls.get({ owner, repo, pull_number: n, mediaType: { format: 'diff' } });
+    const diffText = typeof diffResp.data === 'string' ? diffResp.data : String(diffResp.data);
+    return predicate.detectLegalMoneyContent(diffText).hit;
+  };
+
   const res = await gate.evaluate(api, prNumber);
   await core.summary
     .addHeading('R-177 pair gate')

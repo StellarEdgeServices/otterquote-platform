@@ -120,7 +120,17 @@ export async function mainMergeChain(api, headSha) {
 export async function evaluate(api, prNumber) {
   const pr = await api.getPull(prNumber);
   const headSha = pr.head.sha;
-  const flagged = isFlagged({ labels: pr.labels || [], title: pr.title });
+  let flagged = isFlagged({ labels: pr.labels || [], title: pr.title });
+  // gh-2965 label race: the labeller (pull_request_target, GITHUB_TOKEN) adds the label seconds
+  // after this job reads the PR, and a label added with GITHUB_TOKEN does not trigger a new run, so
+  // an unlabeled read can stay green (observed live: PR #3043, gate success 14:40:44Z, label
+  // 14:40:41Z). When the label/title say "not flagged", ask the same predicate the labeller uses
+  // (api.predicateHit, supplied by run.cjs). A hit flags the PR. Unlabelling cannot unflag it.
+  let predicateFlagged = false;
+  if (!flagged && typeof api.predicateHit === 'function') {
+    predicateFlagged = Boolean(await api.predicateHit(prNumber));
+    flagged = predicateFlagged;
+  }
   if (!flagged) {
     return { ok: true, flagged, headSha, readOk: null, signOk: null, chain: [headSha],
       message: `PR #${prNumber} is not flagged ${LABEL}; gate not applicable.` };
@@ -130,10 +140,10 @@ export async function evaluate(api, prNumber) {
   const { readOk, signOk } = pairFor(comments, prNumber, chain);
   const ok = readOk && signOk;
   const missing = [!readOk && 'LEGAL-READ: PASS', !signOk && 'R-177 SIGNED'].filter(Boolean);
-  return { ok, flagged, headSha, readOk, signOk, chain,
+  return { ok, flagged, predicateFlagged, headSha, readOk, signOk, chain,
     message: ok
       ? `PR #${prNumber}: LEGAL-READ: PASS and R-177 SIGNED both name head ${headSha} (chain length ${chain.length}).`
-      : `PR #${prNumber} is flagged ${LABEL} and is missing a human ${missing.join(' and ')} naming head ${headSha} ` +
+      : `PR #${prNumber} is flagged ${predicateFlagged ? `by the legal/money predicate (label ${LABEL} not applied yet)` : LABEL} and is missing a human ${missing.join(' and ')} naming head ${headSha} ` +
         `(exact head match required). Post the pair over this exact sha, then re-run this check.` };
 }
 

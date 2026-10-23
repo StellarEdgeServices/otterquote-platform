@@ -33,6 +33,11 @@ name: R-177 pair gate
 # TRUST (R-134, REVIEW 6324652357): the repo is public. Only comments whose author_association is
 # OWNER/MEMBER/COLLABORATOR (or the company login) count, never bots.
 #
+# LABEL RACE (gh-2965): the labeller adds `r177:legal-read` with GITHUB_TOKEN seconds after this job
+# reads the PR, and a GITHUB_TOKEN label event starts no workflow, so the label alone can read
+# "unflagged" and stay green. run.cjs therefore also runs the labeller's predicate on the PR diff
+# (scripts/r177/predicate.mjs, default branch): a predicate hit flags the PR even before the label.
+#
 # SAFETY: two jobs. `r177-pair-gate` (pull_request, merge_group) holds READ-ONLY permissions.
 # `r177-pair-gate-comment` (issue_comment) is the only job with `checks: write`. Neither checks
 # out nor executes PR code: scripts/r177/gate.mjs and run.cjs are read from the DEFAULT branch,
@@ -72,6 +77,7 @@ jobs:
           sparse-checkout: |
             scripts/r177/gate.mjs
             scripts/r177/run.cjs
+            scripts/r177/predicate.mjs
           sparse-checkout-cone-mode: false
 
       - name: Evaluate the R-177 pair
@@ -109,6 +115,7 @@ jobs:
           sparse-checkout: |
             scripts/r177/gate.mjs
             scripts/r177/run.cjs
+            scripts/r177/predicate.mjs
           sparse-checkout-cone-mode: false
 
       - name: Evaluate the R-177 pair and post the check run on the PR head
