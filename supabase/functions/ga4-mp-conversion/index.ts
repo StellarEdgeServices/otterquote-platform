@@ -8,7 +8,7 @@
  * router_contact_submitted, profiles -> sign_up, claims -> claim_started) via pg_net, with the service-role key as bearer and a body of
  * {event_type, id} ONLY -- no row content crosses pg_net. This function reads the row itself and sends a payload with no personal data.
  *
- * Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GA4_MP_API_SECRET (name only; value never in the repo or in logs).
+ * Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GA4_MP_API_SECRET or the existing GA4_API_SECRET (names only; value never in the repo or in logs).
  * Optional JSON body field debug:true sends to /debug/mp/collect (records nothing) and returns validationMessages.
  */
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
@@ -44,7 +44,9 @@ async function loadRow(kind: ConversionKind, id: string): Promise<ConversionRow 
 serve((req: Request) =>
   handleRequest(req, {
     serviceRoleKey: serviceKey,
-    apiSecret: Deno.env.get("GA4_MP_API_SECRET") || undefined,
+    // GA4_MP_API_SECRET if set, else GA4_API_SECRET: the property already has one MP secret ("otterquote-ef-server-2") and it is already in
+    // Doppler prd + the EF store under GA4_API_SECRET (create-invoice / create-docusign-envelope / docusign-webhook read it), so no new secret is needed.
+    apiSecret: Deno.env.get("GA4_MP_API_SECRET") || Deno.env.get("GA4_API_SECRET") || undefined,
     loadRow,
     claimMarker: async (eventName, rowId) => {
       const { error } = await sb.from("ga4_mp_sent").insert({ event_name: eventName, row_id: rowId });
