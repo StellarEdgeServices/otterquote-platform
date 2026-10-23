@@ -107,3 +107,9 @@ Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630)
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2543_halt_notice_marker_unique` | forward, rollback | NOT APPLIED | drafted 2026-10-21 under #2543 (REVIEW 6301123534 point 2, Ben RETURNED 6301145200). One partial unique index on `notifications (message_preview) WHERE notification_type = 'contract_halt_notice_sent'`; additive, Tier 3A, applied only under the Tier 3B path with an R-097 notice. The halt notices are not deployed, so no row of that type exists. No database was read or written | none |
+
+## Added 2026-10-23 (gh-2875, D-391 layer 2: rate_limit_config rows for contractor-sms-verify): 3 files here, the proof, stub and runner in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2875_contractor_sms_verify_rate_limits` | forward, rollback, pre-flight | NOT APPLIED | drafted 2026-10-23 under #2875 (CTO RUN 77 worker cto77-w2875rl); production read-only 2026-10-23: no `contractor-sms-verify-start` / `-check` row in `rate_limit_config`, `check_rate_limit(text,uuid)` md5 `905e1e53...`. Two `INSERT ... ON CONFLICT DO NOTHING` rows (start 5/10/30, cost 0.0292, cap 10.00; check 10/30/100, no cap). Throwaway-Postgres proof `bash supabase/tests/gh2875_contractor_sms_verify_rate_limits_proof_run.sh` (negative control: with no row the limiter refuses everyone). Additive; applied under the #2875 rollout runbook after review | none |
