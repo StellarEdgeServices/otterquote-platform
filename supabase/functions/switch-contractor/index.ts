@@ -9,7 +9,7 @@
  *   2. Verify claim status is 'contract_signed' or 'awarded'
  *   3. Check the 3-day window: reject if estimated_start_date <= today + 3 days
  *   4. Load the winning quote for this claim
- *   5. Cancel the quote (status = 'cancelled', cancelled_at = NOW())
+ *   5. Retire the quote (status = 'declined', bid_status = 'superseded', cancelled_at = NOW())
  *   6. Reset the claim (status = 'bidding', selected_contractor_id = NULL,
  *      increment contractor_switch_count, set contractor_switched_at)
  *   7. If the quote has a succeeded Stripe PaymentIntent, issue a full refund
@@ -297,7 +297,13 @@ serve(async (req) => {
       const { error: cancelError, data: cancelRows } = await sb
         .from("quotes")
         .update({
-          status: "cancelled",
+          // gh-3052: 'cancelled' is refused by quotes_status_check (23514), which left the
+          // switched-away quote 'selected'. Retire it the way accept_bid() retires one:
+          // status 'declined' AND bid_status 'superseded' (admitted by both CHECKs). The
+          // bid_status is load-bearing: accept_bid() admits 'declined' only with bid_status
+          // 'active', so 'superseded' keeps this refunded contractor from being re-awarded.
+          status: "declined",
+          bid_status: "superseded",
           cancelled_at: new Date().toISOString(),
           cancellation_reason: "homeowner_switched_contractor",
         })
@@ -311,7 +317,7 @@ serve(async (req) => {
         // gh-2105 (decision a, non-fatal like cancelError): `winningQuote` was
         // fetched by this id, so zero rows means the cancel silently did not
         // land and the switched-away quote stays live.
-        console.error(zeroRowWriteMessage("switch-contractor", `quotes.status=cancelled for quote ${winningQuote.id}`));
+        console.error(zeroRowWriteMessage("switch-contractor", `quotes.status=declined/bid_status=superseded for quote ${winningQuote.id}`));
       }
     }
 
@@ -494,14 +500,20 @@ serve(async (req) => {
     const surveyDesc = surveyReasons.length > 0
       ? ` Survey reasons: [${surveyReasons.join(", ")}].${surveyNotes ? ` Notes: "${surveyNotes.slice(0, 200)}"` : ""}`
       : "";
-    await sb.from("activity_log").insert({
+    // gh-3052: supabase-js query builders have no `.catch` (it threw a TypeError
+    // here, after the claim reset and emails had committed, so the function
+    // returned 500). Destructure `{ error }` and log; the audit row is non-critical.
+    const { error: activityLogError } = await sb.from("activity_log").insert({
       event_type:  "contractor_switched",
       title:       `Homeowner switched contractors. Original contractor: ${contractorName}. Refund: ${refundResult.success ? "issued" : "pending"}.${surveyDesc}`,
       user_id:     user.id,
       is_test:     claim.is_test ?? false,
       metadata:    { claim_id },
       created_at:  new Date().toISOString(),
-    }).catch(err => console.warn("[switch-contractor] Activity log insert failed (non-critical):", err));
+    });
+    if (activityLogError) {
+      console.warn("[switch-contractor] Activity log insert failed (non-critical):", activityLogError);
+    }
 
     // ── Done ──────────────────────────────────────────────────────────────
     return jsonResponse({
