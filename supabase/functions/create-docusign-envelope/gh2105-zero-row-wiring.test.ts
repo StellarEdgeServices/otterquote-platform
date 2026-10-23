@@ -78,8 +78,11 @@ Deno.test("wiring: the getEmbeddedSignLink resume/finish claims write selects an
 Deno.test("all three sites use the shared checkRowsWritten/zeroRowWriteMessage helpers (count matches)", () => {
   const checkCount = (src.match(/checkRowsWritten\(/g) || []).length;
   const msgCount = (src.match(/zeroRowWriteMessage\(/g) || []).length;
-  assert(checkCount === 3, `expected 3 checkRowsWritten(...) call sites (one per fixed write), found ${checkCount}`);
-  assert(msgCount === 3, `expected 3 zeroRowWriteMessage(...) call sites, found ${msgCount}`);
+  // 3 envelope-pointer writes fixed in batch 5, plus the colour-envelope slot
+  // claim, slot takeover and pointer write added by the colour-signature repair
+  // (gh2105-colour-signature.test.ts covers those behaviourally): 6 checks, 4 messages.
+  assert(checkCount === 6, `expected 6 checkRowsWritten(...) call sites (3 batch-5 writes + 3 colour-slot writes), found ${checkCount}`);
+  assert(msgCount === 4, `expected 4 zeroRowWriteMessage(...) call sites, found ${msgCount}`);
 });
 
 Deno.test("mutation control: removing .select(\"id\") from the quote pointer write is CAUGHT by the ratchet-equivalent shape check", () => {

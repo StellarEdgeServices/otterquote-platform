@@ -649,16 +649,15 @@
             .from('claims')
             .select(`
               id,
-              homeowner_id,
+              user_id,
               selected_contractor_id,
               property_address,
-              contractor:contractors(id, name, preferred_brand, phone, notification_phones, email),
               color_brand,
               color_name,
               color_selected_at
             `)
             .eq('id', this.claimId)
-            .eq('homeowner_id', this.userId)
+            .eq('user_id', this.userId)
             .single();
 
           if (error) throw error;
@@ -669,10 +668,24 @@
           }
 
           this.contractorId = data.selected_contractor_id;
-          this.contractorName = data.contractor?.name || 'Your Contractor';
+
+          // gh-2105 (B, C): homeowners have no SELECT on contractors, so the contractor's
+          // name and brand come from get_claim_color_contractor (company_name and
+          // preferred_brands only, ownership-checked). A failure is not fatal: the page
+          // falls back to the generic name and an unconfirmed brand.
+          let contractor = null;
+          try {
+            const { data: rpcRows, error: rpcError } = await sb.rpc('get_claim_color_contractor', { p_claim_id: this.claimId });
+            if (rpcError) throw rpcError;
+            contractor = Array.isArray(rpcRows) ? (rpcRows[0] || null) : (rpcRows || null);
+          } catch (rpcErr) {
+            console.warn('[ColorSelection] contractor lookup unavailable:', rpcErr);
+          }
+          this.contractorName = contractor?.company_name || 'Your Contractor';
 
           // Normalize brand — treat 'OC' as 'Owens Corning'; leave unknown brands as null
-          let rawBrand = data.contractor?.preferred_brand || null;
+          // (preferred_brands is an array; the first entry is the brand)
+          let rawBrand = (contractor?.preferred_brands && contractor.preferred_brands[0]) || null;
           if (rawBrand) {
             const t = rawBrand.trim();
             if (t.toUpperCase() === 'OC' || /owens\s*corning/i.test(t)) {
@@ -685,10 +698,10 @@
           const zipMatch = data.property_address?.match(/\b(\d{5})\b/);
           this.zipCode = zipMatch ? zipMatch[1] : '46077';
 
-          // Primary contact phone: first notification_phone or fallback to phone
-          const phones = data.contractor?.notification_phones;
-          this.contractorPhone = (phones && phones.length > 0) ? phones[0] : (data.contractor?.phone || null);
-          this.contractorEmail = data.contractor?.email || null;
+          // gh-2105 (C): contractor phone and email are not returned to the homeowner by
+          // get_claim_color_contractor, so the existing no-phone wording is used.
+          this.contractorPhone = null;
+          this.contractorEmail = null;
 
           // Update subtitle
           const subtitle = document.getElementById('color-subtitle');
@@ -1085,7 +1098,9 @@
           button.textContent = 'Saving...';
 
           // Save color to claims table
-          const { error } = await sb
+          // gh-2105 (A, F): claims is keyed on user_id, and a write that matches zero rows
+          // must surface as a failure, not a silent success.
+          const { data: savedRows, error } = await sb
             .from('claims')
             .update({
               color_brand: this.brand,
@@ -1093,9 +1108,11 @@
               color_selected_at: new Date().toISOString()
             })
             .eq('id', this.claimId)
-            .eq('homeowner_id', this.userId);
+            .eq('user_id', this.userId)
+            .select('id');
 
           if (error) throw error;
+          if (!savedRows || savedRows.length === 0) throw new Error('Color selection matched no claim');
 
           // Show success state
           this.showSuccessState();

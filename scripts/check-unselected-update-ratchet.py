@@ -87,7 +87,7 @@ BASELINE: dict[str, int] = {
     "admin-referrals.html": 0,  # gh-2105 batch 12: 3 fixed (a), 1 comment reworded
     "admin-template-review.html": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
     "bids.html": 0,  # gh-2105 batch 16: last hit was a comment mention, reworded
-    "color-selection.html": 1,  # gh-2105: colour selection deliberately NOT touched by PR #2610 (broken three ways, CEO decision pending, see issue #2105)
+    "color-selection.html": 0,  # gh-2105: colour selection deliberately NOT touched by PR #2610 (broken three ways, CEO decision pending, see issue #2105)
     "contract-signing.html": 0,  # gh-2105 batch 11: log-only stamps
     "contractor-auto-bids.html": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "contractor-bid-form.html": 0,  # gh-2105 batch 11: decision a, money
@@ -108,7 +108,7 @@ BASELINE: dict[str, int] = {
     "project-info-cash.html": 0,  # gh-2105 batch 4: fixed (a), money
     "project-info-rcv.html": 0,  # gh-2105 batch 4: claims money write fixed (a); batch 14: adjuster_id link annotated (b)
     "react-app/app/(homeowner)/bids/actions.ts": 0,  # gh-2105 batch 14: read receipt annotated (b)
-    "react-app/app/(homeowner)/color-selection/use-color-selection-data.ts": 1,  # gh-2105: colour selection deliberately NOT touched by PR #2610 (broken three ways, CEO decision pending, see issue #2105)
+    "react-app/app/(homeowner)/color-selection/use-color-selection-data.ts": 0,  # gh-2105: colour selection deliberately NOT touched by PR #2610 (broken three ways, CEO decision pending, see issue #2105)
     # gh-2105 batch 4: fixed both sites (recordHomeownerSigned's two
     # quotes.homeowner_signed_at writes -- decision a, LEGAL path, see the
     # batch-4 PR body). Lowered 2->0, following batches 1-3's precedent of
