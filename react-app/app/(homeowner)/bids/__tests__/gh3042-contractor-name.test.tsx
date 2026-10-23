@@ -80,3 +80,21 @@ describe('company name renders in modal and card from the same profile', () => {
     expect(licenseChip(contractor, []).kind).toBe('on-file');
   });
 });
+
+import { CredentialEducationModal } from '../components/CredentialEducationModal';
+import { hasLicenseOnFile } from '../utils';
+
+describe('credential modal agrees with the chip (license_doc_state)', () => {
+  const c = { id: 'x', license_doc_state: 'uploaded' } as ContractorProfile;
+  it('hasLicenseOnFile honours license_doc_state', () => {
+    expect(hasLicenseOnFile(c, [])).toBe(true);
+    expect(hasLicenseOnFile({ id: 'x', license_doc_state: 'not_provided' } as ContractorProfile, [])).toBe(false);
+  });
+  it('modal does not claim "not provided" when the chip says on file', () => {
+    const { container: onFile } = render(<CredentialEducationModal contractor={c} licenses={[]} onClose={() => {}} />);
+    const { container: none } = render(
+      <CredentialEducationModal contractor={{ id: 'y', license_doc_state: 'not_provided' } as ContractorProfile} licenses={[]} onClose={() => {}} />,
+    );
+    expect(onFile.textContent).not.toEqual(none.textContent);
+  });
+});
