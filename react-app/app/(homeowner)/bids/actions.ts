@@ -174,6 +174,10 @@ export async function requestBidRenewal(params: {
   let notifOk = false;
   let emailOk = false;
 
+  // gh-3042: contractors come from get_contractors_public(), which deliberately omits
+  // user_id (private column), so for a homeowner this dashboard notification is skipped --
+  // same as static bids.html. The ops support email below is the live path; its wording
+  // only claims a dashboard notification when one was actually sent.
   if (contractor.user_id) {
     try {
       const { error } = await supabase.from('notifications').insert({
@@ -204,8 +208,9 @@ export async function requestBidRenewal(params: {
       'Job #' + (claim ? claim.id.slice(-8).toUpperCase() : 'N/A'),
       'Quote ID: ' + bidId,
       '',
-      'The contractor has been notified via their dashboard' +
-        (notifOk ? '.' : ' (notification may have failed — check manually).'),
+      notifOk
+        ? 'The contractor has been notified via their dashboard.'
+        : 'No dashboard notification was sent to the contractor (contractor user id is not available to homeowners) — please follow up with them directly.',
     ].join('\n');
 
     const { error } = await supabase.functions.invoke('send-support-email', {

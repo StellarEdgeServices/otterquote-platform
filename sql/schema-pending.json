@@ -13,6 +13,7 @@
     "which migration a merged writer is waiting on -- instead of leaving `main` red with no owner named."
   ],
   "claims": {
+    "loss_sheet_parse_status": { "migration": "supabase/migrations_drafts/gh2559_claims_bid_open_guard.sql", "issue": "#2559", "note": "parse-loss-sheet records parsed / unsupported / failed; the bid-open guard reads it (Ben 6029315131 A/B.4, Q6)" },
     "signed_contract_price":   { "migration": "supabase/migrations_drafts/gh1314_persist_signed_price.sql", "issue": "#1314", "note": "signed-price verdict persistence (step 4)" },
     "signed_price_raw":        { "migration": "supabase/migrations_drafts/gh1314_persist_signed_price.sql", "issue": "#1314", "note": "pre-parse string; unparseable is a real state" },
     "signed_price_verdict":    { "migration": "supabase/migrations_drafts/gh1314_persist_signed_price.sql", "issue": "#1314", "note": "PriceEvaluation.state" },

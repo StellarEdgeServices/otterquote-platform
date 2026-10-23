@@ -64,6 +64,11 @@ export function foldForDetection(text: string): string {
   let out = "";
   for (const ch of text) {
     if (ch.length === 1) {
+      // [gh-2881 / review 6256286136 O1] NFKC does not map Arabic-Indic (U+0660-0669) or Extended Arabic-Indic (U+06F0-06F9) digits to ASCII,
+      // so a phone number typed in them skipped every \d pattern below. Map them 1:1 (one unit in, one out) for DETECTION only.
+      const cp = ch.charCodeAt(0);
+      if (cp >= 0x0660 && cp <= 0x0669) { out += String.fromCharCode(48 + cp - 0x0660); continue; }
+      if (cp >= 0x06f0 && cp <= 0x06f9) { out += String.fromCharCode(48 + cp - 0x06f0); continue; }
       const f = ch.normalize("NFKC");
       out += f.length === 1 ? f : ch;
     } else {
