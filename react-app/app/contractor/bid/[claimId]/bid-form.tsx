@@ -346,6 +346,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
           await supabase.from('activity_log').insert({
             user_id: userId, event_type: 'bid_updated',
             title: `Bid updated for project ${String(claim.id).slice(0, 8) || '…'}`, created_at: nowIso,
+            metadata: { claim_id: String(claim.id) }, // gh-2997: lets the activity_log trigger inherit is_test from the claim
           });
         } catch (e) { console.warn('Activity log failed (non-fatal):', e); }
         // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id removed —

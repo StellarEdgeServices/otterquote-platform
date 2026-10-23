@@ -5388,6 +5388,8 @@
                 user_id: currentUser.id,
                 event_type: 'bid_updated',
                 title: `Bid updated for project ${currentClaim.id?.slice(0, 8) || '…'}`,
+                // gh-2997: claim_id in metadata lets the activity_log BEFORE INSERT trigger inherit is_test from the claim
+                metadata: { claim_id: currentClaim.id },
                 created_at: new Date().toISOString(),
               });
             } catch (logErr) {
