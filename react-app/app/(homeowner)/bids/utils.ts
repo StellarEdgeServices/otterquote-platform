@@ -659,7 +659,10 @@ export interface CredentialChip {
 
 /** License chip: uploaded license(s) vs the D-217 "not provided" state. */
 export function licenseChip(c: ContractorProfile, licenses: PublicLicense[]): CredentialChip {
-  const hasDoc = licenses.length > 0 || licenseDocState(c.license_path) === 'uploaded';
+  const hasDoc =
+    licenses.length > 0 ||
+    licenseDocState(c.license_path) === 'uploaded' ||
+    c.license_doc_state === 'uploaded';
   if (!hasDoc) return { label: BADGE_LICENSE_NOT_PROVIDED, kind: 'neutral' };
   return {
     label: licenses.length > 1 ? badgeLicensesOnFile(licenses.length) : BADGE_LICENSE_ON_FILE,
