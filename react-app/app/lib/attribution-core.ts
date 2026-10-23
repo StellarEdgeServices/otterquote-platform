@@ -7,10 +7,15 @@
  *   - the Netlify edge function on otterquote.com
  *     (netlify/edge-functions/first-touch-attribution.ts, relative `.ts` import)
  *
- * Semantics: FIRST TAGGED TOUCH. A touch is recorded only when the landing URL
- * carries at least one tracked key (utm_source/medium/campaign/content/term,
- * fbclid, gclid). An untagged visit never creates or overwrites the record, and
- * an existing record is never replaced by a later touch (callers check first).
+ * Semantics (gh-3002): FIRST TOUCH, tagged or not. The first landing creates
+ * the record (landing path + referrer host + time) whether or not the URL
+ * carries a tracked key (utm_source/medium/campaign/content/term, fbclid,
+ * gclid); an organic visit therefore still traces to the page it entered on.
+ * Until gh-3002 an untagged visit recorded nothing, which left 24 of 25
+ * post-#1983 signups with no landing path at all. A record is never replaced
+ * by a later touch (callers check first) with ONE exception: an UNTAGGED record
+ * is upgraded by a later TAGGED landing, so an ad click that follows an
+ * organic visit is still credited to the ad (the #1983 behaviour).
  *
  * Privacy: only the landing PATH is kept (never the query string or fragment —
  * implicit-flow OAuth puts tokens in the fragment, see gh-1969) and only the
@@ -67,7 +72,7 @@ export function cleanValue(raw: unknown, max: number = VALUE_MAX): string | unde
   return v ? v : undefined;
 }
 
-function hasTrackedKey(ft: Partial<FirstTouch> | null | undefined): boolean {
+export function hasTrackedKey(ft: Partial<FirstTouch> | null | undefined): boolean {
   if (!ft) return false;
   return FT_PARAM_KEYS.some((k) => typeof ft[k] === 'string' && (ft[k] as string).length > 0);
 }
@@ -82,8 +87,9 @@ function referrerHost(referrer: string | null | undefined): string | undefined {
 }
 
 /**
- * Build a FirstTouch from a landing URL, or null when the URL carries no
- * tracked key. `now` is injectable for tests.
+ * Build a FirstTouch from a landing URL (null only when the URL is unparseable
+ * or the page yields no landing path). The result may be untagged (no tracked
+ * key): see hasTrackedKey(). `now` is injectable for tests.
  */
 export function parseFirstTouch(
   url: URL | string,
@@ -101,12 +107,21 @@ export function parseFirstTouch(
     const val = cleanValue(u.searchParams.get(key), maxFor(key));
     if (val) ft[key] = val;
   }
-  if (!hasTrackedKey(ft)) return null;
   const path = cleanValue(u.pathname, PATH_MAX);
   if (path) ft.landing_path = path;
+  if (!hasTrackedKey(ft) && !path) return null;
   const ref = referrerHost(referrer);
   if (ref) ft.referrer = ref;
   return ft;
+}
+
+/**
+ * True when `next` should replace the stored `existing` record: only an
+ * untagged record yields, and only to a tagged landing.
+ */
+export function shouldUpgradeFirstTouch(existing: FirstTouch | null, next: FirstTouch | null): boolean {
+  if (!next || !hasTrackedKey(next)) return false;
+  return !existing || !hasTrackedKey(existing);
 }
 
 /** Validate an untrusted stored value (cookie / localStorage). */
@@ -127,9 +142,10 @@ export function deserializeFirstTouch(raw: string | null | undefined): FirstTouc
     const val = cleanValue(src[key], maxFor(key));
     if (val) ft[key] = val;
   }
-  if (!hasTrackedKey(ft)) return null;
   const path = cleanValue(src.landing_path, PATH_MAX);
   if (path) ft.landing_path = path;
+  // A valid record carries a tracked key (tagged) or a landing path (organic).
+  if (!hasTrackedKey(ft) && !path) return null;
   const ref = cleanValue(src.referrer, 120);
   if (ref) ft.referrer = ref;
   return ft;
@@ -176,15 +192,22 @@ export function readCookieValue(cookieHeader: string | null | undefined, name: s
 /**
  * The server-side decision both edge runtimes make: given a request URL,
  * its Cookie and Referer headers, return the Set-Cookie string to add, or
- * null (no tracked key, a valid first touch already stored, or oversized).
+ * null (a valid first touch already stored and not upgradable, an untagged
+ * request that is not a page navigation, or oversized).
+ *
+ * `accept` is the request Accept header. An UNTAGGED touch is only recorded for
+ * a page navigation (Accept names text/html), so API/XHR/prefetch/asset GETs
+ * never mint a first touch; a missing Accept header counts as not-a-page.
+ * Tagged touches are unaffected (same as gh-1983).
  */
 export function firstTouchSetCookie(
   requestUrl: string,
   cookieHeader: string | null | undefined,
   referer: string | null | undefined,
   now: Date = new Date(),
+  accept?: string | null,
 ): string | null {
-  if (deserializeFirstTouch(readCookieValue(cookieHeader, FT_COOKIE))) return null;
+  const existing = deserializeFirstTouch(readCookieValue(cookieHeader, FT_COOKIE));
   let u: URL;
   try {
     u = new URL(requestUrl);
@@ -193,6 +216,8 @@ export function firstTouchSetCookie(
   }
   const ft = parseFirstTouch(u, referer, now);
   if (!ft) return null;
+  if (!hasTrackedKey(ft) && !/text\/html/i.test(accept || '')) return null;
+  if (existing && !shouldUpgradeFirstTouch(existing, ft)) return null;
   return buildFirstTouchCookie(ft, u.hostname, u.protocol === 'https:');
 }
 

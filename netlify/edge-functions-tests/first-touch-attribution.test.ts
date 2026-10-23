@@ -60,11 +60,48 @@ Deno.test("the /get-started 301 keeps its status and Location and gains the cook
   assert(cookieFrom(res).includes("gclid"), cookieFrom(res));
 });
 
-Deno.test("NEGATIVE CONTROL: untagged request passes through untouched", async () => {
+Deno.test("gh-3002 NEGATIVE CONTROL: an untagged page navigation (no query string) records its landing path", async () => {
   const ctx = fakeContext();
-  const res = await handler(new Request("https://otterquote.com/?track=insurance"), ctx);
-  assertEquals(res, undefined);
+  const res = await handler(
+    new Request("https://otterquote.com/faq.html", {
+      headers: { accept: "text/html,application/xhtml+xml", referer: "https://www.google.com/" },
+    }),
+    ctx,
+  );
+  assert(res instanceof Response, "a response is returned");
+  assert(ctx.nextCalled);
+  const c = cookieFrom(res);
+  assert(c.startsWith("oq_ft="), c);
+  assert(c.includes("Domain=.otterquote.com"), c);
+  const ft = deserializeFirstTouch(readCookieValue(c.split(";")[0], "oq_ft"));
+  assertEquals(ft?.landing_path, "/faq.html");
+  assertEquals(ft?.referrer, "www.google.com");
+  assertEquals(ft?.utm_source, undefined);
+});
+
+Deno.test("gh-3002: an untagged non-navigation GET (no text/html Accept) passes through untouched", async () => {
+  const ctx = fakeContext();
+  assertEquals(await handler(new Request("https://otterquote.com/?track=insurance"), ctx), undefined);
+  assertEquals(
+    await handler(new Request("https://otterquote.com/api/x", { headers: { accept: "application/json" } }), ctx),
+    undefined,
+  );
   assertEquals(ctx.nextCalled, false);
+});
+
+Deno.test("gh-3002: an organic cookie is upgraded by a tagged landing, kept against another organic page", async () => {
+  const organic = encodeURIComponent(JSON.stringify({ v: 1, landing_path: "/", ts: "2026-09-01T00:00:00.000Z" }));
+  const keep = await handler(
+    new Request("https://otterquote.com/faq.html", { headers: { accept: "text/html", cookie: `oq_ft=${organic}` } }),
+    fakeContext(),
+  );
+  assertEquals(keep, undefined);
+  const up = await handler(
+    new Request("https://otterquote.com/?utm_source=fb", { headers: { accept: "text/html", cookie: `oq_ft=${organic}` } }),
+    fakeContext(),
+  );
+  assert(up instanceof Response, "a response is returned");
+  assertEquals(deserializeFirstTouch(readCookieValue(cookieFrom(up).split(";")[0], "oq_ft"))?.utm_source, "fb");
 });
 
 Deno.test("an existing valid first touch is never overwritten", async () => {

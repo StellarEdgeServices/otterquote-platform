@@ -24,6 +24,7 @@ import {
   buildFirstTouchCookie,
   deserializeFirstTouch,
   parseFirstTouch,
+  shouldUpgradeFirstTouch,
   readCookieValue,
   serializeFirstTouch,
   type FirstTouch,
@@ -96,18 +97,24 @@ export function adoptFirstTouchFromParam(raw: string | null | undefined): FirstT
   }
 }
 
-/** Store this page's tagged touch if none is stored; heal a half-missing store. */
+/** Store this page's first touch (tagged or not) if none is stored; heal a half-missing store. */
 export function captureFirstTouch(): FirstTouch | null {
   if (!isBrowser()) return null;
   try {
     const { cookie, local } = readStored();
     const existing = cookie || local;
+    const ft = parseFirstTouch(window.location.href, document.referrer);
+    // gh-3002: an untagged record yields to a later tagged landing.
+    if (ft && shouldUpgradeFirstTouch(existing, ft)) {
+      writeLocal(ft);
+      writeCookie(ft);
+      return ft;
+    }
     if (existing) {
       if (!local) writeLocal(existing);
       if (!cookie) writeCookie(existing);
       return existing;
     }
-    const ft = parseFirstTouch(window.location.href, document.referrer);
     if (!ft) return null;
     writeLocal(ft);
     writeCookie(ft);
