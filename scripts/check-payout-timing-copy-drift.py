@@ -173,6 +173,20 @@ ALLOWLIST = [
         "Golden pin of the templates.ts copy above, same threshold, second mention.",
     ),
     (
+        # gh-3005: keyed on path + exact text fragment (not a line number, which drifts).
+        "locations/sullivan-county-tn/roofing/index.html",
+        "IF NOT EXERCISED, EXPIRES 180 DAYS FROM ISSUANCE",
+        "building-permit expiry (keyword-proximity false positive)",
+        "gh-3005: the Sullivan County TN page quotes the county permit "
+        "office's own permit-expiry line. The same paragraph says 'county "
+        "commissioners' adopted the 2018 residential code, so the 'commission' "
+        "keyword substring-matches 'commissioners' next to an unrelated "
+        "'180 DAYS'. It is about when a building permit lapses, not about "
+        "money or payout timing. Category (c): keyword-proximity false "
+        "positive. The shared COMMISSION_KEYWORDS pattern is deliberately "
+        "unchanged.",
+    ),
+    (
         "supabase/functions/process-payout-reminders/index.ts",
         "were automatically approved after 7 days with no action",
         "internal admin behavior",
@@ -200,6 +214,15 @@ def is_allowlisted(rel_path: str, line: str) -> bool:
     return False
 
 
+def is_flagged(rel_path: str, line: str) -> bool:
+    """True if this line is commission/payout-adjacent, carries a duration, and is not allowlisted."""
+    return bool(
+        COMMISSION_KEYWORDS.search(line)
+        and DURATION_RE.search(line)
+        and not is_allowlisted(rel_path, line)
+    )
+
+
 def main() -> int:
     hits: list[str] = []
     for path in iter_candidate_files():
@@ -209,11 +232,7 @@ def main() -> int:
             continue
         rel_path = str(path.relative_to(REPO)).replace("\\", "/")
         for lineno, line in enumerate(text.splitlines(), start=1):
-            if not COMMISSION_KEYWORDS.search(line):
-                continue
-            if not DURATION_RE.search(line):
-                continue
-            if is_allowlisted(rel_path, line):
+            if not is_flagged(rel_path, line):
                 continue
             hits.append(f"{rel_path}:{lineno}: {line.strip()[:160]}")
 
