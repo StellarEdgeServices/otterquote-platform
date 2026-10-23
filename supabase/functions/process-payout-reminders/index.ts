@@ -416,13 +416,15 @@ serve(async (req: Request) => {
     results.errors.push(String(err));
     results.elapsedMs = Date.now() - startTime;
 
-    await supabase.rpc("record_cron_health", {
+    // gh-3052: rpc() returns a query builder, which has no `.catch`; destructure `{ error }`.
+    const { error: healthErrOnFail } = await supabase.rpc("record_cron_health", {
       p_job_name: FUNCTION_NAME,
       p_status: "error",
       p_error: String(err).substring(0, 500),
-    }).catch((e: unknown) => {
-      console.error(`[${FUNCTION_NAME}] Failed to record cron_health on error:`, e);
     });
+    if (healthErrOnFail) {
+      console.error(`[${FUNCTION_NAME}] Failed to record cron_health on error:`, healthErrOnFail);
+    }
 
     return new Response(JSON.stringify({ ok: false, ...results }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },

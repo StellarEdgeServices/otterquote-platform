@@ -494,14 +494,20 @@ serve(async (req) => {
     const surveyDesc = surveyReasons.length > 0
       ? ` Survey reasons: [${surveyReasons.join(", ")}].${surveyNotes ? ` Notes: "${surveyNotes.slice(0, 200)}"` : ""}`
       : "";
-    await sb.from("activity_log").insert({
+    // gh-3052: supabase-js query builders have no `.catch` (it threw a TypeError
+    // here, after the claim reset and emails had committed, so the function
+    // returned 500). Destructure `{ error }` and log; the audit row is non-critical.
+    const { error: activityLogError } = await sb.from("activity_log").insert({
       event_type:  "contractor_switched",
       title:       `Homeowner switched contractors. Original contractor: ${contractorName}. Refund: ${refundResult.success ? "issued" : "pending"}.${surveyDesc}`,
       user_id:     user.id,
       is_test:     claim.is_test ?? false,
       metadata:    { claim_id },
       created_at:  new Date().toISOString(),
-    }).catch(err => console.warn("[switch-contractor] Activity log insert failed (non-critical):", err));
+    });
+    if (activityLogError) {
+      console.warn("[switch-contractor] Activity log insert failed (non-critical):", activityLogError);
+    }
 
     // ── Done ──────────────────────────────────────────────────────────────
     return jsonResponse({
