@@ -121,6 +121,20 @@
       } catch (e) { /* analytics must never break the page */ }
     }
 
+    // gh-3051 / D-323 + D-336: the advertising-sharing opt-out this page sees, sent as X-OQ-Ad-Optout on the leads insert ONLY.
+    // '1' = the oq_ad_optout cookie or Global Privacy Control; '0' = neither. Recorded on the row by a BEFORE INSERT trigger; the
+    // server-side GA4 send sends nothing unless the row says '0' (the same gate js/ga-gate.js applies to GA4). Same as start.html.
+    function adOptOutHeaderValue() {
+      try {
+        var m = document.cookie.match(/(?:^|; )oq_ad_optout=([^;]*)/);
+        if (m && decodeURIComponent(m[1]) === '1') return '1';
+        if (typeof navigator !== 'undefined' && navigator.globalPrivacyControl === true) return '1';
+        return '0';
+      } catch (e) {
+        return '1'; // cannot tell: report an opt-out, never a false "no"
+      }
+    }
+
     // ── The lead row (existing columns only: an unknown column makes PostgREST reject the whole insert) ──
     function insertFreshLead(name, email, phoneDigits) {
       var newId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (
@@ -141,6 +155,7 @@
       var leadInsert = client.from('leads').insert(payload);
       var hdr = internalHeader();
       if (hdr['x-oq-internal']) { leadInsert.setHeader('x-oq-internal', hdr['x-oq-internal']); }
+      if (typeof leadInsert.setHeader === 'function') { leadInsert.setHeader('x-oq-ad-optout', adOptOutHeaderValue()); } // gh-3051 / D-336
       return leadInsert.then(function (res) {
         if (res && res.error) throw res.error;
         leadId = newId;

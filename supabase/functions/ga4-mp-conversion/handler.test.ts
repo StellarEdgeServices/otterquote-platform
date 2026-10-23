@@ -9,8 +9,9 @@ const SECRET = "ga4-secret-for-test";
 const ID = "147641e5-1111-4222-8333-444455556666";
 const USER = "d04a29db-aaaa-4bbb-8ccc-ddddeeeeffff";
 
-const LEAD: ConversionRow = { kind: "lead", id: ID, email: "jane.doe@gmail.com", variant: "e", utmSource: "chatgpt.com", utmMedium: "referral", isSynthetic: false, createdAt: new Date().toISOString() };
-const CLAIM: ConversionRow = { kind: "claim", id: ID, userId: USER, email: "jane.doe@gmail.com", isTest: false, utmSource: "google", utmMedium: "cpc", createdAt: new Date().toISOString() };
+// adOptOut "not_opted_out" = every D-336 signal read as a definite "no" (load-row.ts). The opt-out tests at the end vary it.
+const LEAD: ConversionRow = { kind: "lead", id: ID, email: "jane.doe@gmail.com", variant: "e", utmSource: "chatgpt.com", utmMedium: "referral", isSynthetic: false, createdAt: new Date().toISOString(), adOptOut: "not_opted_out" };
+const CLAIM: ConversionRow = { kind: "claim", id: ID, userId: USER, email: "jane.doe@gmail.com", isTest: false, utmSource: "google", utmMedium: "cpc", createdAt: new Date().toISOString(), adOptOut: "not_opted_out" };
 const BODY_OF = { lead: { event_type: "router_contact_submitted", id: ID }, claim: { event_type: "claim_started", id: ID } };
 
 interface Calls { urls: string[]; bodies: string[]; logs: string[]; marks: Set<string>; released: string[] }
@@ -254,4 +255,52 @@ Deno.test("debug mode is not subject to the age guard (it records nothing)", asy
   const r = await (await h.call({ ...BODY_OF.claim, debug: true })).json();
   assertEquals(r.sent, true);
   assert(h.c.urls[0].startsWith(MP_DEBUG_URL));
+});
+
+// ---- RAIL (D-323 + D-336): the privacy.html Section 12 advertising-sharing opt-out ----
+// LEGAL-READ: FAIL 6371271800 / ruling 6371298079: the send must honour the same gate js/ga-gate.js applies to GA4 in the browser.
+// An opted-out person, or one whose opt-out state is unknown, gets NO Measurement Protocol request at all (production or debug).
+for (const kind of ["lead", "claim"] as const) {
+  const base = { lead: LEAD, claim: CLAIM }[kind];
+  for (const [state, reason] of [
+    ["opted_out", "ad_sharing_opt_out"],
+    ["unknown", "ad_sharing_opt_out_unknown"],
+    [undefined, "ad_sharing_opt_out_unknown"],
+  ] as Array<[ConversionRow["adOptOut"], string]>) {
+    Deno.test(`D-336: opted-out ${kind} (adOptOut=${state}) sends NOTHING -- fetch never called, no marker, not even debug`, async () => {
+      for (const debug of [false, true]) {
+        const h = harness({ ...base, adOptOut: state }, { stateful: true });
+        const res = await (await h.call({ ...BODY_OF[kind], ...(debug ? { debug: true } : {}) })).json();
+        assertEquals(res, { sent: false, reason }, `debug=${debug}`);
+        assertEquals(h.c.urls.length, 0, `debug=${debug}: no request of any kind`);
+        assertEquals(h.c.marks.size, 0);
+        assert(!h.c.logs.join("\n").includes(ID), "no row id in the log");
+      }
+    });
+  }
+}
+
+Deno.test("D-336 NEGATIVE CONTROL: the SAME rows with adOptOut=not_opted_out DO send (the opt-out tests are not vacuous)", async () => {
+  for (const [row, body] of [[CLAIM, BODY_OF.claim], [LEAD, BODY_OF.lead]] as Array<[ConversionRow, unknown]>) {
+    const h = harness({ ...row, adOptOut: "not_opted_out" });
+    assertEquals((await (await h.call(body)).json()).sent, true);
+    assertEquals(h.c.urls.length, 1);
+  }
+});
+
+Deno.test("D-336: sendGa4 itself refuses an opted-out or unknown row (second copy of the gate; no caller can bypass it)", async () => {
+  for (const state of ["opted_out", "unknown", undefined] as Array<ConversionRow["adOptOut"]>) {
+    let calls = 0;
+    const r = await sendGa4({ ...CLAIM, adOptOut: state }, { secret: SECRET, fetchImpl: (async () => { calls++; return new Response("{}"); }) as typeof fetch, log: () => {} });
+    assertEquals(r.sent, false, String(state));
+    assertEquals(calls, 0, String(state));
+  }
+  let calls = 0;
+  const ok = await sendGa4(CLAIM, { secret: SECRET, fetchImpl: (async () => { calls++; return new Response("{}"); }) as typeof fetch, log: () => {} });
+  assertEquals([ok.sent, calls], [true, 1], "negative control: not_opted_out does send");
+});
+
+Deno.test("D-336: the opt-out check runs before the marker and the secret (an opted-out row is never marked as sent)", async () => {
+  const h = harness({ ...LEAD, adOptOut: "opted_out" }, { secret: undefined, marker: "error" });
+  assertEquals((await (await h.call(BODY_OF.lead)).json()).reason, "ad_sharing_opt_out");
 });

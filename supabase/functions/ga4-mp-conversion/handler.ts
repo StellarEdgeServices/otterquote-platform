@@ -1,5 +1,6 @@
 // gh-3051 -- request handling for ga4-mp-conversion, with every side effect injected so handler.test.ts runs with no network.
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
+import { adSharingGate } from "./ad-optout.ts";
 import { type ConversionKind, type ConversionRow, EVENT_FOR_KIND, isTooOld, sendGa4, type SendResult } from "./ga4-mp.ts";
 
 export const FUNCTION_NAME = "ga4-mp-conversion";
@@ -43,6 +44,12 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
 
     const row = await deps.loadRow(kind, id);
     if (!row) { log(`[gh-3051] ga4_mp ${eventName}: row not found`); return respond({ sent: false, reason: "row_not_found" }); }
+
+    // D-323 + D-336: the privacy.html Section 12 advertising-sharing opt-out (cookie, GPC / Sec-GPC, stored flag, suppression list).
+    // FIRST, before debug mode, the marker, or any request: an opted-out or unknown person gets NO Measurement Protocol request at
+    // all, not even to /debug/mp/collect. Ruling: PR #3054 comment 6371298079 (after LEGAL-READ: FAIL 6371271800).
+    const gate = adSharingGate(row.adOptOut);
+    if (gate.skip) { log(`[gh-3051] ga4_mp ${eventName} not sent: ${gate.reason}`); return respond({ sent: false, reason: gate.reason }); }
 
     // Debug mode (the closes-on's /debug/mp/collect check) validates the payload and records NOTHING in GA4, so it may carry an
     // is_test row on purpose. No marker, no suppression, never the production endpoint.

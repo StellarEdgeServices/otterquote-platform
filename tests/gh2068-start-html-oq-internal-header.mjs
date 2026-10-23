@@ -94,7 +94,12 @@ function makeBuilder() {
   return builder;
 }
 
-function runScenario({ search, cookie }) {
+// gh-3051: insertFreshLead now ALSO sets x-oq-ad-optout on every leads insert (D-336). The gh-2068 assertions below count
+// only the x-oq-internal calls; the gh-3051 assertions at the end check the ad-optout header.
+const internalCalls = (b) => b.setHeaderCalls.filter((c) => c[0] === 'x-oq-internal');
+const adOptOutCalls = (b) => b.setHeaderCalls.filter((c) => c[0] === 'x-oq-ad-optout');
+
+function runScenario({ search, cookie, gpc }) {
   const leadsBuilder = makeBuilder();
   const otherBuilder = makeBuilder();
 
@@ -120,6 +125,7 @@ function runScenario({ search, cookie }) {
       OQ_INTERNAL: undefined,
     },
     document: { cookie: cookie || '' },
+    ...(gpc === undefined ? {} : { navigator: { globalPrivacyControl: gpc } }),
     URLSearchParams,
     decodeURIComponent,
     console,
@@ -155,9 +161,9 @@ async function main() {
   {
     const { leadsBuilder, otherBuilder, fromCalls } = await runScenario({ search: '?oq_internal=1' });
     ok(fromCalls.includes('leads'), 'query-param case: insertFreshLead used ensureSb().from(\'leads\')');
-    ok(leadsBuilder.setHeaderCalls.length === 1
-      && leadsBuilder.setHeaderCalls[0][0] === 'x-oq-internal'
-      && leadsBuilder.setHeaderCalls[0][1] === '1',
+    ok(internalCalls(leadsBuilder).length === 1
+      && internalCalls(leadsBuilder)[0][0] === 'x-oq-internal'
+      && internalCalls(leadsBuilder)[0][1] === '1',
       'query-param case: leads insert builder got .setHeader(\'x-oq-internal\', \'1\') exactly once');
     ok(otherBuilder.setHeaderCalls.length === 0,
       'query-param case: unrelated builder never touched');
@@ -166,8 +172,8 @@ async function main() {
   // 2. Internal via persisted cookie, no query param -> same result.
   {
     const { leadsBuilder } = await runScenario({ cookie: 'oq_internal=1; other=x' });
-    ok(leadsBuilder.setHeaderCalls.length === 1
-      && leadsBuilder.setHeaderCalls[0][1] === '1',
+    ok(internalCalls(leadsBuilder).length === 1
+      && internalCalls(leadsBuilder)[0][1] === '1',
       'cookie-only case: leads insert builder got the header from the persisted cookie');
   }
 
@@ -175,15 +181,32 @@ async function main() {
   {
     const { leadsBuilder, fromCalls } = await runScenario({});
     ok(fromCalls.includes('leads'), 'ordinary visit: insert still happens (lead is still written)');
-    ok(leadsBuilder.setHeaderCalls.length === 0,
-      'negative control: ordinary visit never calls .setHeader on the leads insert');
+    ok(internalCalls(leadsBuilder).length === 0,
+      'negative control: ordinary visit never sets x-oq-internal on the leads insert');
   }
 
   // 4. Negative control: wrong cookie value must not trip the header.
   {
     const { leadsBuilder } = await runScenario({ cookie: 'oq_internal=0' });
-    ok(leadsBuilder.setHeaderCalls.length === 0,
+    ok(internalCalls(leadsBuilder).length === 0,
       'negative control: oq_internal=0 cookie does not set the header');
+  }
+
+  // 5. gh-3051 / D-336: the advertising-sharing opt-out rides on THIS insert as x-oq-ad-optout.
+  {
+    const plain = await runScenario({});
+    ok(adOptOutCalls(plain.leadsBuilder).length === 1 && adOptOutCalls(plain.leadsBuilder)[0][1] === '0',
+      'gh-3051: ordinary visit sends x-oq-ad-optout: 0 on the leads insert');
+    ok(adOptOutCalls(plain.otherBuilder).length === 0, 'gh-3051: x-oq-ad-optout never reaches another builder');
+    const cookie = await runScenario({ cookie: 'a=b; oq_ad_optout=1' });
+    ok(adOptOutCalls(cookie.leadsBuilder).length === 1 && adOptOutCalls(cookie.leadsBuilder)[0][1] === '1',
+      'gh-3051: oq_ad_optout=1 cookie sends x-oq-ad-optout: 1');
+    const gpc = await runScenario({ gpc: true });
+    ok(adOptOutCalls(gpc.leadsBuilder).length === 1 && adOptOutCalls(gpc.leadsBuilder)[0][1] === '1',
+      'gh-3051: Global Privacy Control sends x-oq-ad-optout: 1');
+    const notOne = await runScenario({ cookie: 'oq_ad_optout=0', gpc: false });
+    ok(adOptOutCalls(notOne.leadsBuilder)[0][1] === '0',
+      'gh-3051 negative control: oq_ad_optout=0 and GPC false send 0, not 1');
   }
 
   console.log(`\n${pass} passed, ${fail} failed.`);

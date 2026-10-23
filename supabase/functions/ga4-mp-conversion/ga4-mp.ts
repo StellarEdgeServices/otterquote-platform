@@ -1,9 +1,15 @@
 // gh-3051 -- GA4 Measurement Protocol v2 sender for the three homeowner conversions, sent from the server at row insert so a
-// visitor's blocker / GPC / privacy setting cannot drop them (#1940 DECIDED 6369440672; evidence 6369429483: 1 of 4 real claims
+// visitor's ad blocker cannot drop them -- but NEVER for a visitor who opted out (GPC, oq_ad_optout, ad_sharing_opt_out; see below) (#1940 DECIDED 6369440672; evidence 6369429483: 1 of 4 real claims
 // reached GA4 from the browser).
 //
 // Local module, NO imports, on purpose: the Edge Function body-deploy path does not resolve ../_shared imports (see create-invoice's
 // header), and this file is unit-tested under plain `deno test` with no --allow-net.
+//
+// D-NUMBERS IMPLEMENTED: D-323 + D-336. This send is gated on the privacy.html Section 12 advertising-sharing opt-out exactly as
+// the browser gates GA4 (js/ga-gate.js): no Measurement Protocol request is made for a person who opted out by the `oq_ad_optout`
+// cookie, Global Privacy Control / `Sec-GPC: 1`, the stored `ad_sharing_opt_out` flag or the support-email suppression list, or
+// whose opt-out state is unknown (PR #3054 LEGAL-READ: FAIL 6371271800; ruling 6371298079). The gate lives in ad-optout.ts and is
+// applied twice: in handler.ts before anything is sent, and again in sendGa4() below so no caller can bypass it.
 //
 // Rails (each has a test in handler.test.ts):
 //   * sign_up is deliberately NOT sent server-side (CTO ruling on PR #3054 review): a profiles insert fires for contractors too and
@@ -51,6 +57,11 @@ export interface ConversionRow {
   variant?: string | null;
   /** Row created_at, ISO. Used for timestamp_micros so a late send keeps the true event time. */
   createdAt?: string | null;
+  /**
+   * D-336 advertising-sharing opt-out state, combined from every signal by load-row.ts (see ad-optout.ts). ONLY "not_opted_out"
+   * is ever sent; "opted_out", "unknown" and a missing value send nothing. Never sent itself.
+   */
+  adOptOut?: "opted_out" | "not_opted_out" | "unknown";
 }
 
 /** Hex SHA-256. crypto.subtle is a Deno / browser global. */
@@ -147,6 +158,12 @@ export async function sendGa4(row: ConversionRow, opts: SendOptions): Promise<Se
   const log = opts.log ?? ((m: string) => console.log(m));
   const name = EVENT_FOR_KIND[row.kind];
   try {
+    // D-336 gate, second copy (the handler applies it first): fail closed on anything but a definite "not_opted_out".
+    if (row.adOptOut !== "not_opted_out") {
+      const reason = row.adOptOut === "opted_out" ? "ad_sharing_opt_out" : "ad_sharing_opt_out_unknown";
+      log(`[gh-3051] ga4_mp ${name} not sent: ${reason}`);
+      return { sent: false, reason };
+    }
     if (!opts.secret) {
       log(`[gh-3051] ga4_mp ${name} not sent: GA4_MP_API_SECRET is not set`);
       return { sent: false, reason: "no_secret" };
