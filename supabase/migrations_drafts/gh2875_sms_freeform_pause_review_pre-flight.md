@@ -7,7 +7,7 @@ Tier 3B, consent path. Draft only: nothing here is applied until REVIEW: PASS, L
 - `to_regclass`: contractor_sms_numbers, sms_suppression_list, sms_disclosure_versions present; **sms_optout_review NULL**; is_admin_email() and both layer-1 functions present.
 - `count(*)`: contractor_sms_numbers 0, sms_suppression_list 0.
 - Ledger: `20261021013907:gh2875_d391_contractor_sms_numbers` (layer 1 applied).
-- md5(pg_get_functiondef): contractor_textable_numbers(uuid) `9e531db5dda91d2028560e75d62c77cb`; contractor_sms_numbers_promote_primary() `9a29c4c6eca303a24b66630dd0db72ad`.
+- md5(pg_get_functiondef): contractor_textable_numbers(uuid) (value recorded on #2875 comment 6367492644); contractor_sms_numbers_promote_primary() (value recorded on #2875 comment 6367492644).
 
 ## Re-check immediately before apply
 Same three queries; the two md5s must still match (if they differ, someone changed layer 1; re-base the function bodies first).

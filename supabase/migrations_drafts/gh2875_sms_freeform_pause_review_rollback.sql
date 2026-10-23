@@ -2,8 +2,8 @@
 -- FILE ROLE: rollback file of set gh2875_sms_freeform_pause_review (rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-10-23 under #2875. Production read-only (Supabase MCP execute_sql, SELECT only) 2026-10-23: sms_optout_review is absent
 --   (to_regclass NULL); layer 1 (ledger 20261021013907 gh2875_d391_contractor_sms_numbers) is applied, contractor_sms_numbers and
---   sms_suppression_list are empty; md5 of pg_get_functiondef: contractor_textable_numbers(uuid) 9e531db5dda91d2028560e75d62c77cb,
---   contractor_sms_numbers_promote_primary() 9a29c4c6eca303a24b66630dd0db72ad. No database was written to produce this file.
+--   sms_suppression_list are empty; md5 of pg_get_functiondef: contractor_textable_numbers(uuid) (md5 recorded on #2875 comment 6367492644),
+--   contractor_sms_numbers_promote_primary() (md5 likewise). No database was written to produce this file.
 -- REPO COPY: none. When applied, file the forward under its real ledger version in supabase/migrations/.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
