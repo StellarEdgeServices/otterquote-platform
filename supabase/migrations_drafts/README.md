@@ -66,6 +66,18 @@ Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630)
 |---|---|---|---|---|
 | `gh2559_d390_redact_contact_until_fee` | forward, rollback, pre-flight | NOT APPLIED | drafted 2026-10-18 (CTO RUN 70 worker cto70-d390); production read-only same day: `claims.contractor_released_at` absent (PR #2777 not applied, this set's gate refuses until it is), counts in the pre-flight; proof on throwaway Postgres 17.11 and 16.15 (`supabase/tests/gh2559_d390_redact_proof_run.sh`, 252 probes each, 0 failures, plus a gate negative control; fix2880 added the Unicode, parity and MAINTAIN probes). Tier 3B, R-097 24-hour notice before apply; apply AFTER PR #2777 and publish the page change with it | none |
 
+## Added 2026-10-19 (gh-2881, D-390 follow-up: hide homeowner-typed text on the base `claims` row): forward, rollback and pre-flight here, the proof in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2881_claims_private_text_column_grants` (+ step 1 `gh2881_claim_private_text_rpc`) | step-1 forward and rollback, step-3 forward and rollback, pre-flight | NOT APPLIED | drafted 2026-10-19 (CTO RUN 72 worker cto72-b2881) under #2881; production read-only same day: `authenticated` and `anon` hold table-level `arwdDxtm` on `public.claims`, no column ACLs, not in a publication; throwaway-Postgres proof `bash supabase/tests/gh2881_claims_private_text_proof_run.sh` (24 checks). Tier 3B; step 1 (RPC) additive and first, the 13 browser callers of `select=*` moved in the same PR and published, then the gated revoke; R-097 notice, R-177 pair. Stacked on PR #2880 | none |
+
+## Added 2026-10-19 (gh-2881, SQL-side Arabic-Indic digit fold for D-390): forward and rollback here, the proof in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2881_d390_digit_fold` | forward, rollback | NOT APPLIED | drafted 2026-10-19 (CTO RUN 72 worker cto72-b2881) under #2881 (comment 6256295897); #2880's reviewed migration is untouched, this replaces its `d390_redact_contact` and `bidder_claim_summary` with one clause extended; gate refuses unless #2880's migration is applied; throwaway-Postgres proof `bash supabase/tests/gh2881_d390_digit_fold_proof_run.sh` (71 probes, negative control leaks). Tier 3B, R-097 notice, R-177 pair | none |
+
 ## Added 2026-10-19 (gh-2931, `bidder_claim_summary` returns `estimate_filename` and `measurements_filename` only after the fee): 2 files here, the proof in `supabase/tests/`; not counted in the tables above
 
 | set | files | status | evidence | repo copy |
