@@ -25,7 +25,7 @@ export function middleware(request: NextRequest) {
 
   // gh-1983: non-admin routes in the matcher only get the first-touch ad
   // attribution cookie (oq_ft, Domain=.otterquote.com, 90 d), set server-side
-  // on a tagged landing (utm_* / fbclid / gclid) when none is stored yet. A
+  // on the first page navigation (tagged utm_* / fbclid / gclid or not, gh-3002) when none is stored yet. A
   // server-set cookie is not subject to Safari ITP's 7-day cap on script-set
   // cookies, and exists before any JS runs (Facebook in-app browser included).
   if (!pathname.startsWith('/admin')) {
@@ -35,6 +35,13 @@ export function middleware(request: NextRequest) {
         request.url,
         request.headers.get('cookie'),
         request.headers.get('referer'),
+        new Date(),
+        {
+          accept: request.headers.get('accept'),
+          gpc: request.headers.get('sec-gpc'),
+          purpose: request.headers.get('sec-purpose') || request.headers.get('purpose'),
+          userAgent: request.headers.get('user-agent'),
+        },
       );
       if (setCookie) res.headers.append('Set-Cookie', setCookie);
     } catch {
