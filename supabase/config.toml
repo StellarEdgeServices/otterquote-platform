@@ -563,3 +563,8 @@ verify_jwt = true
 # Pinned at creation. NOT DEPLOYED.
 [functions.twilio-sms-optout]
 verify_jwt = false
+
+# gh-3051: ga4-mp-conversion is called only by the notify_ga4_mp_conversion() pg_net triggers (leads / profiles / claims AFTER INSERT) with the
+# service-role key as bearer; the handler authorises that bearer in-code (same model as notify-admin-new-homeowner). No browser caller.
+[functions.ga4-mp-conversion]
+verify_jwt = false
