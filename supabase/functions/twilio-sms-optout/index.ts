@@ -39,6 +39,17 @@ const deps: Deps = {
       .eq("phone_e164", phone).is("released_at", null);
     return !error;
   },
+  flag: async (phone, body, keywords, messageSid, at) => {
+    const { error } = await sb.from("sms_optout_review").insert({
+      phone_e164: phone,
+      inbound_body: body,
+      matched_keywords: keywords,
+      message_sid: messageSid,
+      flagged_at: at,
+    });
+    // 23505 = this MessageSid is already queued (a Twilio retry): that is the state we want.
+    return !error || error.code === "23505";
+  },
 };
 
 serve((req) => handle(req, deps));

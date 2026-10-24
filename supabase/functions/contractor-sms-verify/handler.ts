@@ -23,6 +23,7 @@
  *   - no current disclosure version row          -> 409 disclosure_unavailable (none is seeded by layer 1)
  *   - consent box not ticked                     -> 400 consent_required
  *   - number on the open suppression list        -> 409 number_suppressed (only a STOP->START releases it)
+ *   - number paused for opt-out review (pending) -> 409 number_paused (or lookup failure: fail closed)
  */
 
 export type Json = Record<string, unknown>;
@@ -61,6 +62,8 @@ export interface Deps {
   /** The newest disclosure version that is effective and not retired, or null if none exists. */
   getCurrentDisclosure: () => Promise<DisclosureRow | null>;
   isSuppressed: (phoneE164: string) => Promise<boolean>;
+  /** True when the number has a pending free-text opt-out review (paused for ALL sends) or the lookup failed (fail closed). */
+  isPaused: (phoneE164: string) => Promise<boolean>;
   /** check_rate_limit(); returns allowed, or "error" if the RPC itself failed. */
   rateLimit: (fn: string, bucketUuid: string) => Promise<"allowed" | "denied" | "error">;
   /** Current verified row for (contractor, phone), if any. */
@@ -229,6 +232,8 @@ export async function handle(req: Request, d: Deps): Promise<Response> {
 
   // 5. A number on the open suppression list is never texted, not even a code.
   if (await d.isSuppressed(phone)) return fail(cors, 409, "number_suppressed");
+  // 5b. A number paused for free-text opt-out review (sms_optout_review, status pending) is not texted either, a code included.
+  if (await d.isPaused(phone)) return fail(cors, 409, "number_paused");
 
   // 6. Rate limit per account AND per number (D-391: "rate-limited per number and per account").
   const rlName = action === "start" ? RL_START : RL_CHECK;
