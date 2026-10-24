@@ -596,7 +596,7 @@ export async function handler(
         .select(`
           *,
           contractors:contractor_id (id, company_name, email, notification_emails, notification_phones, user_id, sms_opt_in),
-          claims:claim_id (id, property_address, status)
+          claims:claim_id (id, property_address, status, color_confirmation_envelope_id, color_confirmed_at)
         `)
         .eq("id", failId)
         .single();
@@ -688,9 +688,20 @@ export async function handler(
         if (failure.claim_id) {
           // gh-2105 (batch 3, decision a): a zero-row match here strands the
           // claim mid-dunning-resolution -- not back in bidding, not signed.
+          // gh-3047 (sibling of gh-3017): an UNSIGNED colour-confirmation envelope
+          // belongs to the contractor being dropped; clear its id in this same
+          // write so the next contractor's colour flow cannot resume it. A signed
+          // one (color_confirmed_at set) is left as the record of what was signed.
+          const clearUnsignedColourEnvelope =
+            !!claim?.color_confirmation_envelope_id && !claim?.color_confirmed_at;
           const { data: biddingRows, error: biddingErr } = await supabase
             .from("claims")
-            .update({ status: "bidding", selected_contractor_id: null, selected_bid_amount: null })
+            .update({
+              status: "bidding",
+              selected_contractor_id: null,
+              selected_bid_amount: null,
+              ...(clearUnsignedColourEnvelope ? { color_confirmation_envelope_id: null } : {}),
+            })
             .eq("id", failure.claim_id)
             .select("id");
           if (biddingErr) {
