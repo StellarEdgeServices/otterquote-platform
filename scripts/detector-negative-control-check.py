@@ -272,7 +272,6 @@ LEGACY_EXEMPT = {
     "scripts/check-gtag-single-source.py": "no negative-control test yet (pre-gh-1738)",
     "scripts/check-partner-surface-single-source.py": "no negative-control test yet (pre-gh-1738)",
     "scripts/check-partner-sw-version.py": "no negative-control test yet (pre-gh-1738)",
-    "scripts/check-payout-timing-copy-drift.py": "no negative-control test yet (pre-gh-1738)",
     "scripts/check-sb-auth-guards.py": "no negative-control test yet (pre-gh-1738)",
     "scripts/check-script-load-order.py": "no negative-control test yet (pre-gh-1738)",
     "scripts/check-spec-files-closed.py": "no negative-control test yet (pre-gh-1738)",
