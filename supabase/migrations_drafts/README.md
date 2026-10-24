@@ -54,11 +54,29 @@ Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630)
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 
+## Added 2026-10-19 (gh-2559 bid-open guard, Ben #2569 6029315131 A/B.4): forward, rollback and pre-flight here, the proof in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2559_claims_bid_open_guard` | forward, rollback, pre-flight | APPLIED (2026-10-23, gh-1438 filing; header stamp 2026-10-23T16:44:20Z) | drafted 2026-10-19 by CTO RUN 72 (tid cto72-b2559), read-only production reads the same day: `public.claims` has 14 triggers and none gates a claim opening for bids; `pg_proc` has 0 functions matching `%bid_release%` / `%bid_open%`. Separate trigger `claims_guard_bid_open` plus two pure helper functions; refuses (23514, internal PLACEHOLDER message; the homeowner-visible Q4 sentence landed client-side, ruling 6281179334, b173ddf2; reviews at 8db3cd98) a claim opening on an unread estimate and a summary that repeats the owner name, street or claim number. Tier 3B, R-097 notice, REVIEW + LEGAL-READ (consent) + Ben's signature over the final head before apply | supabase/migrations_applied_manually/20261023142600_gh2559_claims_bid_open_guard.sql (applied about 14:26Z 2026-10-23 via Management API, no ledger row); rollback + pre-flight in supabase/migrations_rollbacks/ |
+
 ## Added 2026-10-18 (gh-2559 / gh-2619, D-390): forward, rollback and pre-flight here, the proof in `supabase/tests/`; not counted in the tables above
 
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2559_d390_redact_contact_until_fee` | forward, rollback, pre-flight | NOT APPLIED | drafted 2026-10-18 (CTO RUN 70 worker cto70-d390); production read-only same day: `claims.contractor_released_at` absent (PR #2777 not applied, this set's gate refuses until it is), counts in the pre-flight; proof on throwaway Postgres 17.11 and 16.15 (`supabase/tests/gh2559_d390_redact_proof_run.sh`, 252 probes each, 0 failures, plus a gate negative control; fix2880 added the Unicode, parity and MAINTAIN probes). Tier 3B, R-097 24-hour notice before apply; apply AFTER PR #2777 and publish the page change with it | none |
+
+## Added 2026-10-19 (gh-2881, D-390 follow-up: hide homeowner-typed text on the base `claims` row): forward, rollback and pre-flight here, the proof in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2881_claims_private_text_column_grants` (+ step 1 `gh2881_claim_private_text_rpc`) | step-1 forward and rollback, step-3 forward and rollback, pre-flight | APPLIED (2026-10-23, gh-1438 filing; header stamp 2026-10-23T16:44:20Z) | drafted 2026-10-19 (CTO RUN 72 worker cto72-b2881) under #2881; production read-only same day: `authenticated` and `anon` hold table-level `arwdDxtm` on `public.claims`, no column ACLs, not in a publication; throwaway-Postgres proof `bash supabase/tests/gh2881_claims_private_text_proof_run.sh` (24 checks). Tier 3B; step 1 (RPC) additive and first, the 13 browser callers of `select=*` moved in the same PR and published, then the gated revoke; R-097 notice, R-177 pair. Stacked on PR #2880 | supabase/migrations_applied_manually/20261023162000_gh2881_claim_private_text_rpc.sql (step 1, about 16:20Z) and 20261023163900_gh2881_claims_private_text_column_grants.sql (step 4, about 16:39Z), both via Management API, no ledger row; rollbacks + pre-flight in supabase/migrations_rollbacks/. Step 3 gh2881_d390_digit_fold is NOT applied |
+
+## Added 2026-10-19 (gh-2881, SQL-side Arabic-Indic digit fold for D-390): forward and rollback here, the proof in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2881_d390_digit_fold` | forward, rollback | NOT APPLIED | drafted 2026-10-19 (CTO RUN 72 worker cto72-b2881) under #2881 (comment 6256295897); #2880's reviewed migration is untouched, this replaces its `d390_redact_contact` and `bidder_claim_summary` with one clause extended; gate refuses unless #2880's migration is applied; throwaway-Postgres proof `bash supabase/tests/gh2881_d390_digit_fold_proof_run.sh` (71 probes, negative control leaks). Tier 3B, R-097 notice, R-177 pair | none |
 
 ## Added 2026-10-19 (gh-2931, `bidder_claim_summary` returns `estimate_filename` and `measurements_filename` only after the fee): 2 files here, the proof in `supabase/tests/`; not counted in the tables above
 
@@ -84,11 +102,17 @@ Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630)
 |---|---|---|---|---|
 | `gh2785_profiles_freeze_is_test_role_email` | forward (rollback and pre-flight in `supabase/migrations_rollbacks/`, the proof and runner in `supabase/tests/`) | NOT APPLIED | drafted 2026-10-14 under #2785 (triage comments 6171651955 and 6172413408); production read-only 2026-10-14 (CTO RUN 67): `authenticated` holds table-level UPDATE on `public.profiles`, policy `profiles_user_update` has no column limit, the only trigger is BEFORE INSERT. New trigger `profiles_freeze_privileged_columns` (BEFORE INSERT OR UPDATE OF is_test, role, email; a client INSERT is forced to role homeowner, is_test false, JWT email) and DROP POLICY "Users can delete own profile" (closes the delete + re-insert bypass, REVIEW 6172743018): a client UPDATE change of `is_test` or `email` is refused 42501, a client change of `role` is silently pinned (three client paths write `role`); `service_role`, owner and SECURITY DEFINER sessions untouched. Tier 3B, applies only after an R-097 24-hour notice | none |
 
+## Added 2026-10-21 (gh-2105 checklist C, the homeowner colour-signature step, #2974): 3 files here, not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2105_color_contractor_rpc` | forward, rollback, pre-flight (all three here) | NOT APPLIED | drafted 2026-10-21 under #2105 (checklist C, comment 6305573044; Dustin's answer on #2974, comment 6323378714); no database was read or written to produce it. Adds `get_claim_color_contractor(uuid)`, a SECURITY DEFINER function returning only `company_name` and `preferred_brands` of the contractor selected on a claim the caller owns (`claims.user_id = auth.uid()`); execute revoked from PUBLIC and anon, granted to authenticated. No policy is added to `contractors`. Tier 3B, applies only after an R-097 24-hour notice and Dustin's approval; the pre-flight lists the read-only checks and the post-apply proof | none |
+
 ## Added 2026-10-21 (gh-2543, PR #2959, send-once marker for the contract-halt notices): 2 files here, not counted in the tables above
 
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
-| `gh2543_halt_notice_marker_unique` | forward, rollback | NOT APPLIED | drafted 2026-10-21 under #2543 (REVIEW 6301123534 point 2, Ben RETURNED 6301145200). One partial unique index on `notifications (message_preview) WHERE notification_type = 'contract_halt_notice_sent'`; additive, Tier 3A, applied only under the Tier 3B path with an R-097 notice. The halt notices are not deployed, so no row of that type exists. No database was read or written | none |
+| `gh2543_halt_notice_marker_unique` | forward, rollback | APPLIED (2026-10-23, gh-1438 filing; header stamp 2026-10-23T16:44:20Z) | drafted 2026-10-21 under #2543 (REVIEW 6301123534 point 2, Ben RETURNED 6301145200). One partial unique index on `notifications (message_preview) WHERE notification_type = 'contract_halt_notice_sent'`; additive, Tier 3A, applied only under the Tier 3B path with an R-097 notice. The halt notices are not deployed, so no row of that type exists. No database was read or written | supabase/migrations/20261023130943_gh2543_halt_notice_marker_unique.sql (ledger row, applied 13:09:43Z 2026-10-23); rollback in supabase/migrations_rollbacks/ |
 
 ## Added 2026-10-24 (gh-2997, PR #3035, quotes and activity_log inherit `is_test` from the claim): 3 files here (forward, rollback, pre-flight), the proof in `supabase/tests/gh2997_inherit_is_test_proof.sql` and the static test `tests/gh2997-static-inherit-is-test.mjs`; not counted in the tables above
 

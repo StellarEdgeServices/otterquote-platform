@@ -32,6 +32,7 @@ function make(over: Partial<Deps> = {}, opts: { twilioStatus?: string; twilioHtt
     getContractor: (id): Promise<ContractorRow | null> => Promise.resolve(id === CID ? { id: CID, user_id: USER } : null),
     getCurrentDisclosure: () => Promise.resolve({ id: "v-current", disclosure_text: DB_TEXT }),
     isSuppressed: () => Promise.resolve(false),
+    isPaused: () => Promise.resolve(false),
     rateLimit: (fn, b) => { spy.rl.push(`${fn}:${b}`); return Promise.resolve("allowed"); },
     findVerified: () => Promise.resolve(null),
     hasPrimary: () => Promise.resolve(false),
@@ -121,6 +122,18 @@ Deno.test("suppressed number is never texted a code, and never recorded", async 
     assertEquals([r.status, await code(r)], [409, "number_suppressed"]);
     nothingHappened(spy);
   }
+});
+
+Deno.test("NEGATIVE CONTROL: a number paused for opt-out review gets NO Verify send and no record (start and check)", async () => {
+  for (const b of [start, check]) {
+    const { deps, spy } = make({ isPaused: () => Promise.resolve(true) }, { twilioStatus: "approved" });
+    const r = await handle(post(b), deps);
+    assertEquals([r.status, await code(r)], [409, "number_paused"]);
+    nothingHappened(spy);
+  }
+  const ok = make();
+  assertEquals((await handle(post(start), ok.deps)).status, 200);
+  assertEquals(ok.spy.twilio.length, 1); // control: unpaused number is texted a code
 });
 
 Deno.test("rate limit: denied -> 429, RPC error -> 503 (fail closed), checked per account AND per number", async () => {

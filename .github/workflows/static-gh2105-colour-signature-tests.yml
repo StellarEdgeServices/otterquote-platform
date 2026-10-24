@@ -1,0 +1,49 @@
+name: Static gh-2105 Colour-Signature Tests
+
+# gh-2105 (colour-signature repair, #2974): color-selection.html must key claims
+# on user_id, take the contractor's name and brand from get_claim_color_contractor
+# (no embedded contractors join) and treat a zero-row colour save as a failure;
+# the draft RPC migration must stay ownership-checked and closed to anon.
+#
+# `pull_request` (never `pull_request_target`), no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'color-selection.html'
+      - 'supabase/migrations_drafts/gh2105_color_contractor_rpc*'
+      - 'tests/gh2105-colour-signature-page.mjs'
+      - '.github/workflows/static-gh2105-colour-signature-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'color-selection.html'
+      - 'supabase/migrations_drafts/gh2105_color_contractor_rpc*'
+      - 'tests/gh2105-colour-signature-page.mjs'
+      - '.github/workflows/static-gh2105-colour-signature-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh2105-colour-signature-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-gh2105-colour-signature-tests:
+    name: Colour-signature page + RPC draft guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Colour-signature page + RPC draft guards (gh2105-colour-signature-page)
+        run: node tests/gh2105-colour-signature-page.mjs

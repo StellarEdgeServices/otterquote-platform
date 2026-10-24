@@ -174,20 +174,15 @@ export async function requestBidRenewal(params: {
   let notifOk = false;
   let emailOk = false;
 
-  if (contractor.user_id) {
-    try {
-      const { error } = await supabase.from('notifications').insert({
-        user_id: contractor.user_id,
-        claim_id: claim ? claim.id : null,
-        notification_type: 'bid_renewal_requested',
-        channel: 'dashboard',
-        recipient: '',
-        message_preview: `A homeowner is requesting an updated bid on ${propertyAddress}.`,
-      });
-      if (!error) notifOk = true;
-    } catch {
-      /* non-fatal — surfaced via button text only */
-    }
+  // gh-3049: the contractor's user_id is private (get_contractors_public omits it) and a homeowner
+  // cannot insert a notification for another user, so the lookup + insert happen server side in
+  // request_bid_renewal(quote_id). The RPC checks the caller owns the claim the bid is on and
+  // returns a boolean only. Any error or false leaves notifOk false, and the ops email says so.
+  try {
+    const { data, error } = await supabase.rpc('request_bid_renewal', { p_quote_id: bidId });
+    if (!error && data === true) notifOk = true;
+  } catch {
+    /* non-fatal — surfaced via button text only */
   }
 
   try {
@@ -204,8 +199,9 @@ export async function requestBidRenewal(params: {
       'Job #' + (claim ? claim.id.slice(-8).toUpperCase() : 'N/A'),
       'Quote ID: ' + bidId,
       '',
-      'The contractor has been notified via their dashboard' +
-        (notifOk ? '.' : ' (notification may have failed — check manually).'),
+      notifOk
+        ? 'The contractor has been notified via their dashboard.'
+        : 'No dashboard notification was sent to the contractor — please follow up with them directly.',
     ].join('\n');
 
     const { error } = await supabase.functions.invoke('send-support-email', {

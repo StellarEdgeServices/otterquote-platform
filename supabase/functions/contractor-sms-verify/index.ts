@@ -8,6 +8,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { type Deps, handle } from "./handler.ts";
+import { isSmsPaused } from "../_shared/sms-pause.ts";
 
 const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 
@@ -39,6 +40,7 @@ const deps: Deps = {
     // Unknown is treated as suppressed: when in doubt, send nothing.
     return error ? true : (data?.length ?? 0) > 0;
   },
+  isPaused: async (phone) => (await isSmsPaused(sb, phone)).paused,
   rateLimit: async (fn, bucket) => {
     const { data, error } = await sb.rpc("check_rate_limit", { p_function_name: fn, p_user_id: bucket });
     if (error) return "error";

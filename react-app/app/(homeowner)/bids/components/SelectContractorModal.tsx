@@ -40,7 +40,7 @@ export function SelectContractorModal({
     claim.status === 'awarded' || claim.status === 'contract_signed' ? 'already_awarded' : 'confirm',
   );
   const [busyText, setBusyText] = useState('Awarding the project...');
-  const companyName = contractor.company_name || 'this contractor';
+  const companyName = (contractor.company_name || '').trim() || 'this contractor';
 
   // Reset to confirm whenever a fresh bid is selected.
   useEffect(() => {

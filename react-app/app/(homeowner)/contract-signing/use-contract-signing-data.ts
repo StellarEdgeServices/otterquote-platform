@@ -38,6 +38,7 @@ import {
   resolveSignGate,
   type SignGateState,
 } from './utils';
+import { CLAIM_PUBLIC_COLUMNS } from '@/lib/claim-columns';
 
 /** Claim row (superset of utils.SigningClaim — adds the fields the page renders). */
 export interface SigningClaimRow {
@@ -171,7 +172,7 @@ export function useContractSigningData(
         // ── Load the claim ──
         const { data: claimData, error: claimErr } = await supabase
           .from('claims')
-          .select('*')
+          .select(CLAIM_PUBLIC_COLUMNS)
           .eq('id', claimId)
           .single();
         if (claimErr || !claimData) throw new Error('Claim not found.');
@@ -360,22 +361,14 @@ export async function requestBidRenewal(args: {
   let notifOk = false;
   let emailOk = false;
 
-  // 1. Dashboard notification for the contractor.
+  // 1. Dashboard notification for the contractor, sent server side (gh-3049): the contractor's
+  // user_id is private and a homeowner cannot insert a notification for another user, so
+  // request_bid_renewal looks it up after checking the caller owns the claim. Any error or false
+  // (including the RPC not yet applied) leaves notifOk false; the support email still goes out.
   try {
-    if (contractor?.user_id) {
-      const { error } = await supabase.from('notifications').insert({
-        user_id: contractor.user_id,
-        claim_id: claimId,
-        notification_type: 'bid_renewal_requested',
-        channel: 'dashboard',
-        recipient: '',
-        message_preview: `A homeowner is requesting an updated bid on ${
-          claim?.property_address || 'their project'
-        }.`,
-      });
-      if (!error) notifOk = true;
-      else console.warn('requestBidRenewal — notification insert error:', error);
-    }
+    const { data, error } = await supabase.rpc('request_bid_renewal', { p_quote_id: bidId });
+    if (!error && data === true) notifOk = true;
+    else if (error) console.warn('requestBidRenewal — notification rpc error:', error);
   } catch (err) {
     console.warn('requestBidRenewal — notification step error:', err);
   }
