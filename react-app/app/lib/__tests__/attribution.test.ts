@@ -184,6 +184,22 @@ describe('attribution browser capture', () => {
     expect(readFirstTouch()?.landing_path).toBe('/get-started');
   });
 
+  it('gh-3002 D-397: a normal untagged visitor (no GPC, no opt-out cookie) stores landing path AND referrer host only', () => {
+    Object.defineProperty(document, 'referrer', { value: 'https://www.google.com/search?q=roof+hail', configurable: true });
+    try {
+      window.history.replaceState({}, '', '/faq?x=secret#frag');
+      const ft = captureFirstTouch();
+      expect(ft?.landing_path).toBe('/faq');
+      expect(ft?.referrer).toBe('www.google.com');
+      const raw = localStorage.getItem('oq_ft')!;
+      expect(raw).not.toContain('secret');
+      expect(raw).not.toContain('frag');
+      expect(raw).not.toContain('roof');
+    } finally {
+      delete (document as unknown as Record<string, unknown>).referrer;
+    }
+  });
+
   it('first tagged touch wins over a later tagged landing', () => {
     window.history.replaceState({}, '', '/?utm_source=youtube');
     captureFirstTouch();
