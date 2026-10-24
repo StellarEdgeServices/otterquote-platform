@@ -1851,19 +1851,11 @@
       let emailOk = false;
 
       try {
-        // 1. Insert dashboard notification for the contractor (they'll see it on next login)
-        if (c.user_id) {
-          const { error: notifErr } = await sb.from('notifications').insert({
-            user_id: c.user_id,
-            claim_id: currentClaim ? currentClaim.id : null,
-            notification_type: 'bid_renewal_requested',
-            channel: 'dashboard',
-            recipient: '',
-            message_preview: `A homeowner is requesting an updated bid on ${currentClaim ? (currentClaim.property_address || 'their project') : 'their project'}.`,
-          });
-          if (!notifErr) notifOk = true;
-          else console.warn('requestBidRenewal — notification insert error:', notifErr);
-        }
+        // 1. Dashboard notification for the contractor, sent server side (gh-3049): the contractor's
+        // user_id is private, so request_bid_renewal looks it up after checking this homeowner owns the claim.
+        const { data: notifData, error: notifErr } = await sb.rpc('request_bid_renewal', { p_quote_id: bidId });
+        if (!notifErr && notifData === true) notifOk = true;
+        else if (notifErr) console.warn('requestBidRenewal — notification rpc error:', notifErr);
       } catch (err) {
         console.warn('requestBidRenewal — notification step error:', err);
       }

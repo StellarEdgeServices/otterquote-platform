@@ -35,6 +35,7 @@ export interface ContractorPublicRow {
   id: string;
   company_name?: string | null;
   years_in_business?: number | null;
+  // gh-3056: get_contractors_public() exposes no logo column; never selected. Avatar falls back to initial.
   logo_url?: string | null;
 }
 
@@ -128,8 +129,8 @@ export function useProjectConfirmationData(
         // 2. Load profile for homeowner name (static 2168-2174)
         const { data: profile } = await supabase
           .from('profiles')
-          .select('user_id, full_name')
-          .eq('user_id', userId)
+          .select('id, full_name')
+          .eq('id', userId)
           .single();
         const homeownerName: string | null = (profile as { full_name?: string | null } | null)?.full_name ?? null;
 
@@ -158,7 +159,7 @@ export function useProjectConfirmationData(
         // 6. Load contractor (static 2195-2201)
         const { data: contractorData, error: contractorError } = await supabase
           .rpc('get_contractors_public')
-          .select('id, company_name, years_in_business, logo_url')
+          .select('id, company_name, years_in_business')
           .eq('id', contractorId)
           .single();
 
