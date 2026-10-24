@@ -275,7 +275,7 @@ serve(async (req) => {
     // Scoped to the selected contractor so we never refund the wrong quote.
     let winningQuote: any = null;
     if (claim.selected_contractor_id) {
-      const { data: quotes } = await sb
+      const { data: quotes, error: winningQuoteError } = await sb
         .from("quotes")
         .select("*, contractors(id, company_name, email, user_id)")
         .eq("claim_id", claim_id)
@@ -285,6 +285,12 @@ serve(async (req) => {
         .or(WINNING_QUOTE_OR_FILTER)
         .order("created_at", { ascending: false })
         .limit(5);
+      // fx3053b (review finding): a failed lookup must NOT read as "no quote found" -- that would
+      // silently skip retiring the quote AND the owed Stripe refund. Stop before any write or refund.
+      if (winningQuoteError) {
+        console.error("[switch-contractor] OPS: step 5 winning-quote lookup failed -- aborting switch with no refund/retire attempted. claim:", claim_id, "contractor:", claim.selected_contractor_id, "error:", winningQuoteError.message ?? winningQuoteError);
+        return jsonResponse({ error: "We could not load your contract details. Nothing was changed. Please try again." }, 500);
+      }
       winningQuote = pickWinningQuote(quotes);
     }
 
