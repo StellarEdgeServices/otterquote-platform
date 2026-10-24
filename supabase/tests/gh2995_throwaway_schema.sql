@@ -22,6 +22,7 @@ CREATE TABLE auth.users (id uuid PRIMARY KEY, email text);
 CREATE TABLE public.contractors (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,  -- production: contractors_user_id_fkey ON DELETE CASCADE
+  company_name text NOT NULL, contact_name text NOT NULL,  -- production: both text NOT NULL, no default (information_schema 2026-10-24)
   email text, is_test boolean NOT NULL DEFAULT false,
   status text DEFAULT 'approved', template_review_role text, verified boolean DEFAULT false, rating numeric, review_count int DEFAULT 0,
   license_verified boolean DEFAULT false, license_verified_at timestamptz, insurance_verified boolean DEFAULT false, insurance_verified_at timestamptz,
