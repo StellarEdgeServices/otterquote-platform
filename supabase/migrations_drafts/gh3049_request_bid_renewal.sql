@@ -51,12 +51,15 @@ BEGIN
     RETURN false;
   END IF;
 
-  -- One notification per quote per 24 hours.
+  -- One dashboard notification per claim + contractor user per 24 hours. Scoped to channel = 'dashboard':
+  -- notify-contractors writes bid_renewal_requested rows on channel 'email' (contractor renewed their bid),
+  -- which must not suppress the homeowner's request.
   IF EXISTS (
     SELECT 1 FROM public.notifications n
      WHERE n.user_id = v_contractor_user
        AND n.claim_id = v_claim_id
        AND n.notification_type = 'bid_renewal_requested'
+       AND n.channel = 'dashboard'
        AND n.created_at > now() - interval '24 hours'
   ) THEN
     RETURN true;

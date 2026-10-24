@@ -2141,20 +2141,14 @@
 
       let notifOk = false, emailOk = false;
 
-      // 1. Insert dashboard notification for the contractor
+      // 1. Dashboard notification for the contractor, sent server side (gh-3049): the contractor's
+      // user_id is private and a homeowner cannot insert a notification for another user, so
+      // request_bid_renewal looks it up after checking this homeowner owns the claim. Any error or
+      // false leaves notifOk false and the support email below still goes out.
       try {
-        if (state.contractor?.user_id) {
-          const { error: notifErr } = await sb.from('notifications').insert({
-            user_id: state.contractor.user_id,
-            claim_id: state.claimId,
-            notification_type: 'bid_renewal_requested',
-            channel: 'dashboard',
-            recipient: '',
-            message_preview: `A homeowner is requesting an updated bid on ${state.claim?.property_address || 'their project'}.`,
-          });
-          if (!notifErr) notifOk = true;
-          else console.warn('requestBidRenewal — notification insert error:', notifErr);
-        }
+        const { data: notifData, error: notifErr } = await sb.rpc('request_bid_renewal', { p_quote_id: bidId });
+        if (!notifErr && notifData === true) notifOk = true;
+        else if (notifErr) console.warn('requestBidRenewal — notification rpc error:', notifErr);
       } catch (err) {
         console.warn('requestBidRenewal — notification step error:', err);
       }

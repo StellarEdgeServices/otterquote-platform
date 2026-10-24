@@ -89,6 +89,19 @@ INSERT INTO results SELECT 'withdrawn bid -> false', public.request_bid_renewal(
 RESET ROLE;
 INSERT INTO results SELECT 'rows after all refusals', count(*)::text, '0' FROM notifications;
 
+-- 10. F1 (review of #3063): an email-channel bid_renewal_requested row (written by notify-contractors when the
+-- contractor renews) for the same claim + contractor user must NOT suppress the homeowner's dashboard request.
+UPDATE quotes SET bid_status='active' WHERE id='f0000000-0000-0000-0000-000000000001';
+DELETE FROM notifications;
+INSERT INTO notifications (user_id, claim_id, notification_type, channel, recipient, message_preview)
+  VALUES ('e0000000-0000-0000-0000-000000000001','c0000000-0000-0000-0000-00000000000a','bid_renewal_requested','email','x@y.z','renewed');
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','a0000000-0000-0000-0000-00000000000a',false);
+INSERT INTO results SELECT 'existing email-channel row, owner request -> true', public.request_bid_renewal('f0000000-0000-0000-0000-000000000001')::text, 'true';
+RESET ROLE;
+INSERT INTO results SELECT 'dashboard row inserted despite email row', count(*)::text, '1' FROM notifications WHERE channel='dashboard' AND notification_type='bid_renewal_requested';
+INSERT INTO results SELECT 'email row untouched', count(*)::text, '1' FROM notifications WHERE channel='email';
+
 SELECT label, got, want, CASE WHEN got = want THEN 'PASS' ELSE 'FAIL' END AS verdict FROM results;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM results WHERE got IS DISTINCT FROM want) THEN RAISE EXCEPTION 'gh3049 proof: FAIL'; END IF;
