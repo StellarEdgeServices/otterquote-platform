@@ -26,9 +26,10 @@ CREATE TABLE public.contractors (
   status text DEFAULT 'approved', template_review_role text, verified boolean DEFAULT false, rating numeric, review_count int DEFAULT 0,
   license_verified boolean DEFAULT false, license_verified_at timestamptz, insurance_verified boolean DEFAULT false, insurance_verified_at timestamptz,
   insurance_verification_sent_at timestamptz, insurance_verification_email text, approved_at timestamptz, rejected_at timestamptz, rejection_reason text,
-  cert_status text, legacy_pre_approval boolean DEFAULT false, needs_cpa_reattestation boolean DEFAULT false, admin_notes text,
+  cert_status text, legacy_pre_approval boolean DEFAULT false, needs_cpa_reattestation boolean NOT NULL DEFAULT false, admin_notes text,
   has_payment_method boolean DEFAULT false, stripe_payment_method_id text, stripe_payment_method_last4 text,
-  agreement_accepted_at timestamptz, agreement_version text, cpa_version text, cpa_accepted_at timestamptz, ic_24511_attestation jsonb
+  agreement_accepted_at timestamptz, agreement_version text, cpa_version text NOT NULL DEFAULT 'v1-2026-04', cpa_accepted_at timestamptz,  -- gh-2995 fix: matches production (cpa_version NOT NULL DEFAULT 'v1-2026-04'; needs_cpa_reattestation NOT NULL DEFAULT false; the other three nullable, no default; verified via information_schema 2026-10-24)
+  ic_24511_attestation jsonb
 );
 ALTER TABLE public.contractors ENABLE ROW LEVEL SECURITY;
 CREATE POLICY own_update ON public.contractors FOR UPDATE TO authenticated USING (user_id = auth.uid());

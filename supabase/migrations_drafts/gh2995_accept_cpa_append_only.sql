@@ -200,7 +200,7 @@ BEGIN
     NEW.stripe_payment_method_last4    := NULL;       -- gh-1425 path 1
     NEW.agreement_accepted_at          := NULL;       -- gh-2995: only accept_cpa() writes acceptance
     NEW.agreement_version              := NULL;       -- gh-2995
-    NEW.cpa_version                    := NULL;       -- gh-2995
+    NEW.cpa_version                    := 'v1-2026-04'; -- gh-2995: the column's live default (contractors.cpa_version is NOT NULL DEFAULT 'v1-2026-04'); NULL would raise 23502 on every client insert. A default is not an acceptance: agreement_accepted_at stays NULL.
     NEW.cpa_accepted_at                := NULL;       -- gh-2995
     RETURN NEW;
   END IF;

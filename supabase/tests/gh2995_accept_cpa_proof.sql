@@ -57,7 +57,7 @@ BEGIN
   SELECT c.a, c.ua, c.b, c.ub INTO a, ua, b, ub FROM proof_ctx c;
   IF a IS NULL OR b IS NULL THEN RAISE EXCEPTION 'proof needs two is_test contractors'; END IF;
   -- Start both from a NEW contractor: no acceptance yet.
-  UPDATE public.contractors SET agreement_accepted_at = NULL, agreement_version = 'v2-2026-10', cpa_version = NULL, cpa_accepted_at = NULL,
+  UPDATE public.contractors SET agreement_accepted_at = NULL, agreement_version = 'v2-2026-10', cpa_version = 'v1-2026-04', cpa_accepted_at = NULL,
          needs_cpa_reattestation = false, ic_24511_attestation = NULL WHERE id IN (a, b);
   DELETE FROM public.activity_log WHERE user_id IN (ua, ub) AND event_type = 'cpa_accepted';
 
@@ -75,7 +75,7 @@ BEGIN
   UPDATE public.contractors SET cpa_version='v1-2026-04' WHERE id = b;
   r := pg_temp.try_as('authenticated', ub, 'b@otterquote-internal.test', h1, format('UPDATE public.contractors SET needs_cpa_reattestation=false, cpa_version=%L WHERE user_id=%L', v, ub));
   PERFORM pg_temp.rec('[expect-differs] D5 direct clear of needs_cpa_reattestation with the current version', pg_temp.q(format('SELECT needs_cpa_reattestation::text FROM public.contractors WHERE id=%L', b)), CASE WHEN fixed THEN 'true' ELSE 'false' END, r);
-  UPDATE public.contractors SET agreement_accepted_at = NULL, agreement_version = 'v2-2026-10', cpa_version = NULL, cpa_accepted_at = NULL, needs_cpa_reattestation = false WHERE id = b;
+  UPDATE public.contractors SET agreement_accepted_at = NULL, agreement_version = 'v2-2026-10', cpa_version = 'v1-2026-04', cpa_accepted_at = NULL, needs_cpa_reattestation = false WHERE id = b;
 
   -- L: legacy path (record_cpa_ip) is unchanged in both phases and shows the defect: first IP kept only under cpa_reaccept, overwritten by the next call.
   r := pg_temp.try_as('authenticated', ua, 'a@otterquote-internal.test', h1, format('SELECT public.record_cpa_ip(%L)', a));
@@ -169,7 +169,13 @@ BEGIN
     r := pg_temp.try_as('authenticated', 'cccccccc-1111-4000-8000-000000000003', 'c@otterquote-internal.test', h1,
       'INSERT INTO public.contractors (id, user_id, email, agreement_accepted_at, cpa_accepted_at, cpa_version, agreement_version) VALUES (''cccccccc-0000-4000-8000-000000000003'', ''cccccccc-1111-4000-8000-000000000003'', ''c@otterquote-internal.test'', now(), now(), ''v9-anything'', ''v9-anything'')');
     PERFORM pg_temp.rec('E0 contractor INSERT by the user succeeds', left(r, 2), 'ok', r);
-    PERFORM pg_temp.rec('E0a INSERT cannot pre-accept: all four acceptance columns NULL', pg_temp.q('SELECT (agreement_accepted_at IS NULL AND cpa_accepted_at IS NULL AND cpa_version IS NULL AND agreement_version IS NULL)::text FROM public.contractors WHERE id=''cccccccc-0000-4000-8000-000000000003'''), 'true', '');
+    PERFORM pg_temp.rec('E0a INSERT cannot pre-accept: agreement_accepted_at, cpa_accepted_at, agreement_version NULL and cpa_version = column default v1-2026-04 (production: NOT NULL DEFAULT)', pg_temp.q('SELECT (agreement_accepted_at IS NULL AND cpa_accepted_at IS NULL AND cpa_version = ''v1-2026-04'' AND agreement_version IS NULL)::text FROM public.contractors WHERE id=''cccccccc-0000-4000-8000-000000000003'''), 'true', '');
+    -- E0b: the exact init shape the pages use (contractor-pre-approval.html init, React pre-approval): no acceptance columns named.
+    INSERT INTO auth.users (id, email) VALUES ('eeeeeeee-1111-4000-8000-000000000005','e@otterquote-internal.test');
+    r := pg_temp.try_as('authenticated', 'eeeeeeee-1111-4000-8000-000000000005', 'e@otterquote-internal.test', h1,
+      'INSERT INTO public.contractors (id, user_id, email) VALUES (''eeeeeeee-0000-4000-8000-000000000005'', ''eeeeeeee-1111-4000-8000-000000000005'', ''e@otterquote-internal.test'')');
+    PERFORM pg_temp.rec('E0b authenticated client INSERT naming no acceptance column succeeds (production cpa_version NOT NULL; was 23502 on 08f66b14)', left(r, 2), 'ok', r);
+    PERFORM pg_temp.rec('E0c that row holds cpa_version v1-2026-04, flag false, no acceptance timestamps', pg_temp.q('SELECT cpa_version || needs_cpa_reattestation::text || (agreement_accepted_at IS NULL AND cpa_accepted_at IS NULL AND agreement_version IS NULL)::text FROM public.contractors WHERE id=''eeeeeeee-0000-4000-8000-000000000005'''), 'v1-2026-04falsetrue', '');
     r := pg_temp.try_as('authenticated', 'cccccccc-1111-4000-8000-000000000003', 'c@otterquote-internal.test', h1, format('SELECT public.accept_cpa(%L)', v));
     PERFORM pg_temp.rec('E2 accept_cpa from the pre-approval sequence succeeds', left(r, 2), 'ok', r);
     PERFORM pg_temp.rec('E3 first acceptance via pre-approval produces ONE table row of kind first', pg_temp.q('SELECT count(*)::text || min(kind) FROM public.contractor_cpa_acceptances WHERE contractor_id=''cccccccc-0000-4000-8000-000000000003'''), '1first', '');
