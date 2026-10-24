@@ -46,7 +46,7 @@ ok(!/id="site-header"/.test(page), 'no public <header id="site-header"> element'
 ok(!/js\/nav\.js/.test(page), 'public nav.js (header/footer renderer) not included');
 
 // existing function survives
-ok(/Auth\.getUser\(\)/.test(page) && /dustinstohler1@gmail\.com/.test(page) && /showUnauthorized\(\)/.test(page), 'admin auth guard retained (Auth.getUser + admin email check + showUnauthorized)');
+ok(/Auth\.getUser\(\)/.test(page) && /rpc\(\s*'is_admin_email'\s*\)/.test(page) && !/dustinstohler1@gmail\.com/.test(page) && /showUnauthorized\(\)/.test(page), 'admin auth guard retained (Auth.getUser + server is_admin_email check, no email literal + showUnauthorized) [gh-3009]');
 ok(/id="unauthorizedContainer"/.test(page) && /id="adminContainer"[^>]*display: none/.test(page), 'admin content stays hidden until the guard passes');
 ok(/js\/supabase-client\.js/.test(page) && /js\/auth\.js/.test(page) && /js\/config\.js/.test(page), 'auth, config and supabase-client scripts still included');
 for (const lbl of ['Contractors', 'Referrals', 'Payouts']) {
