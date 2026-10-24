@@ -321,3 +321,60 @@ describe('R-177 pair gate: label race (predicate flags before the label exists)'
     assert.equal((yml.match(/scripts\/r177\/predicate\.mjs/g) || []).length >= 2, true);
   });
 });
+
+// gh-2965 REVIEW 6388410977 follow-ups (Ben): newest verdict decides; too-large diff is "flagged".
+import { createRequire } from 'node:module';
+const run = createRequire(import.meta.url)('./run.cjs');
+const prData = { head: { sha: H }, labels: [], title: 'x' };
+function runWith({ diffErr, comments }) {
+  let failed = null, ok = null;
+  const github = {
+    rest: {
+      pulls: { get: async (o) => { if (o.mediaType) throw diffErr; return { data: prData }; } },
+      issues: { listComments: 'lc' },
+      repos: {},
+      checks: {},
+    },
+    paginate: async () => comments,
+  };
+  const core = {
+    setFailed: (m) => { failed = m; }, info: (m) => { ok = m; },
+    summary: { addHeading() { return this; }, addRaw() { return this; }, write: async () => {} },
+  };
+  const context = { repo: { owner: 'o', repo: 'r' }, eventName: 'pull_request', payload: { pull_request: { number: 7 } } };
+  return run({ github, context, core, postCheck: false }).then(() => ({ failed, ok }));
+}
+describe('R-177 pair gate: REVIEW 6388410977 follow-ups', () => {
+  it('MUST PASS: diff too large (406) is treated as flagged, comments are read, pair at head turns it green', async () => {
+    const r = await runWith({ diffErr: Object.assign(new Error('diff too large'), { status: 406 }), comments: pair(7, H) });
+    assert.equal(r.failed, null);
+    assert.match(r.ok, /both name head/);
+  });
+  it('MUST FAIL: diff too large with no pair stays red (flagged by default)', async () => {
+    const r = await runWith({ diffErr: Object.assign(new Error('diff too large'), { status: 406 }), comments: [] });
+    assert.match(r.failed, /missing a human/);
+  });
+  it('fail closed: any other diff API error (500) still throws', async () => {
+    await assert.rejects(() => runWith({ diffErr: Object.assign(new Error('boom'), { status: 500 }), comments: pair(7, H) }), /boom/);
+  });
+  it('MUST FAIL: a later LEGAL-READ: FAIL at the same head cancels an earlier PASS', async () => {
+    const [read, sign] = pair(7, H);
+    const r = await evaluate(fakeApi({ comments: [read, sign, human(`LEGAL-READ: FAIL - new claim found. Head ${H}`)] }), 7);
+    assert.equal(r.ok, false);
+    assert.equal(r.readOk, false);
+  });
+  it('MUST FAIL: a later QUESTION FOR DUSTIN at the same head cancels an earlier PASS', async () => {
+    const [read, sign] = pair(7, H);
+    const r = await evaluate(fakeApi({ comments: [read, sign, human(`LEGAL-READ: QUESTION FOR DUSTIN - unclear. Head ${H}`)] }), 7);
+    assert.equal(r.ok, false);
+  });
+  it('MUST PASS: a FAIL followed by a newer PASS at the same head is green; FAIL at another sha is ignored', async () => {
+    const [read, sign] = pair(7, H);
+    const r = await evaluate(fakeApi({ comments: [human(`LEGAL-READ: FAIL - x. Head ${H}`), read, sign, human(`LEGAL-READ: FAIL - old. Head ${SIGNED}`)] }), 7);
+    assert.equal(r.ok, true);
+  });
+  it('failure message says a new comment re-runs the check', async () => {
+    const r = await evaluate(fakeApi({}), 7);
+    assert.match(r.message, /new comment re-runs this check/);
+  });
+});

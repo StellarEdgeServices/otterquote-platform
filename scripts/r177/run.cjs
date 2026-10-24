@@ -42,7 +42,15 @@ module.exports = async function run({ github, context, core, postCheck }) {
   // Same predicate and diff source as the labeller (r177-legal-read.yml); read from the default branch.
   const predicate = await import(pathToFileURL(path.join(__dirname, 'predicate.mjs')).href);
   api.predicateHit = async (n) => {
-    const diffResp = await github.rest.pulls.get({ owner, repo, pull_number: n, mediaType: { format: 'diff' } });
+    let diffResp;
+    try {
+      diffResp = await github.rest.pulls.get({ owner, repo, pull_number: n, mediaType: { format: 'diff' } });
+    } catch (e) {
+      // Diff too large to render: cannot be scanned, so treat as flagged (needs the pair) and go on
+      // to read comments. Any other error rethrows (fail closed).
+      if (gate.isDiffTooLarge(e)) return true;
+      throw e;
+    }
     const diffText = typeof diffResp.data === 'string' ? diffResp.data : String(diffResp.data);
     return predicate.detectLegalMoneyContent(diffText).hit;
   };

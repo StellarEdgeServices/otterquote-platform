@@ -30,6 +30,12 @@ export const STRICT_HEAD = true;
 // large main-merge needs a fresh pair, which is the safe direction.
 export const MAX_MERGE_FILES = 100;
 
+// GitHub refuses to render a very large PR diff (406 diff too large, 413, or 422). Such a PR cannot
+// be scanned, so it is treated as flagged (needs the pair). Any other error still fails closed.
+export function isDiffTooLarge(e) {
+  return Boolean(e) && [406, 413, 422].includes(e.status);
+}
+
 export function isFlagged({ labels = [], title = '' }) {
   const names = labels.map((l) => (typeof l === 'string' ? l : l.name));
   return names.includes(LABEL) || TITLE_RE.test(title || '');
@@ -59,10 +65,15 @@ export function hasShaToken(text, sha) {
 
 export function pairFor(comments, prNumber, chain) {
   const bodies = comments.filter(isHumanComment).map((c) => c.body || '');
-  // `PASS` must end at a word boundary ("PASSING ... NOT" no longer counts).
-  const readOk = bodies.some(
-    (x) => /^LEGAL-READ: PASS(?![A-Za-z0-9_])/.test(x.trimStart()) && chain.some((h) => hasShaToken(x, h)),
-  );
+  // The NEWEST eligible LEGAL-READ verdict (PASS, FAIL or QUESTION FOR DUSTIN) naming the exact
+  // head decides, so a later FAIL/QUESTION at the same head cancels an earlier PASS. `PASS` must
+  // end at a word boundary ("PASSING ... NOT" no longer counts). Comments arrive oldest first.
+  let verdict = null;
+  for (const x of bodies) {
+    const m = /^LEGAL-READ: (PASS(?![A-Za-z0-9_])|FAIL(?![A-Za-z0-9_])|QUESTION FOR DUSTIN)/.exec(x.trimStart());
+    if (m && chain.some((h) => hasShaToken(x, h))) verdict = m[1].startsWith('PASS') ? 'PASS' : 'NOT-PASS';
+  }
+  const readOk = verdict === 'PASS';
   let signOk = bodies.some((x) =>
     chain.some((h) => {
       const t = x.trimStart();
@@ -144,7 +155,7 @@ export async function evaluate(api, prNumber) {
     message: ok
       ? `PR #${prNumber}: LEGAL-READ: PASS and R-177 SIGNED both name head ${headSha} (chain length ${chain.length}).`
       : `PR #${prNumber} is flagged ${predicateFlagged ? `by the legal/money predicate (label ${LABEL} not applied yet)` : LABEL} and is missing a human ${missing.join(' and ')} naming head ${headSha} ` +
-        `(exact head match required). Post the pair over this exact sha, then re-run this check.` };
+        `(exact head match required). Post the pair over this exact sha, then post a new comment: a new comment re-runs this check.` };
 }
 
 // merge_group head_ref looks like refs/heads/gh-readonly-queue/main/pr-2964-<sha>
