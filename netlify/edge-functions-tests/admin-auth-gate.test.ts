@@ -185,3 +185,34 @@ Deno.test("admin-auth-gate: Supabase Auth unreachable -> fail closed", async () 
   assertEquals(res.status, 302);
   assertEquals(ctx.nextCalled, false);
 });
+
+// gh-3009: a Supabase Auth that accepts the connection and never answers must
+// not hang the gate. The stub honours the abort signal like real fetch does and
+// otherwise never settles; the gate must redirect shortly after the 3s timeout.
+Deno.test("admin-auth-gate: hung Supabase Auth -> fail closed within the timeout", async () => {
+  const token = makeToken({ email: "dustinstohler1@gmail.com", exp: futureExp() });
+  const req = new Request("https://otterquote.com/admin-dashboard", {
+    headers: { cookie: `sb-otterquote-at=${token}` },
+  });
+  const ctx = fakeContext();
+  let sawSignal = false;
+  globalThis.fetch = ((_input: any, init?: any) => {
+    const signal: AbortSignal | undefined = init?.signal;
+    sawSignal = signal instanceof AbortSignal;
+    return new Promise((_resolve, reject) => {
+      signal?.addEventListener("abort", () => reject(signal.reason));
+    });
+  }) as typeof fetch;
+  const started = Date.now();
+  const res = await handler(req, ctx).finally(() => { globalThis.fetch = realFetch; });
+  const elapsed = Date.now() - started;
+
+  assertEquals(sawSignal, true);
+  assertEquals(res.status, 302);
+  assertEquals(
+    res.headers.get("location"),
+    "https://otterquote.com/login.html?reason=admin_required",
+  );
+  assertEquals(ctx.nextCalled, false);
+  assertEquals(elapsed < 5000, true, `took ${elapsed}ms`);
+});

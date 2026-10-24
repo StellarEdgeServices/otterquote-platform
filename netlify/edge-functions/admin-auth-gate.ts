@@ -31,6 +31,8 @@
 const SUPABASE_URL = 'https://yeszghaspzwwstvsrioa.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_mKmYIsRMc6dCG8ZrGGbyyw_l_MOTwZP';
 
+const AUTH_TIMEOUT_MS = 3000;
+
 // Asks Supabase Auth to verify the token. Returns the verified email, or null
 // on any failure (bad signature, expired, revoked, network error, bad body).
 async function verifiedEmail(token: string): Promise<string | null> {
@@ -40,6 +42,9 @@ async function verifiedEmail(token: string): Promise<string | null> {
         apikey: SUPABASE_PUBLISHABLE_KEY,
         Authorization: `Bearer ${token}`,
       },
+      // gh-3009: a hung Supabase must not hang /admin. On timeout fetch rejects
+      // (TimeoutError), the catch below returns null, and the gate redirects.
+      signal: AbortSignal.timeout(AUTH_TIMEOUT_MS),
     });
     if (!res.ok) return null;
     const user = await res.json();
