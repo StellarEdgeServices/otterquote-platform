@@ -1899,9 +1899,15 @@ async function autoPopulateFields(supabase, claimId, contractorId, signerName, s
       num_structures: pc.numStructures || "",
       structure_names: pc.structureNames || "",
       bad_decking: pc.badDeckingExpected || "",
-      work_not_done: pc.workNotBeingDone || "",
+      // [gh-2881 / D-390] Order of events (D-058): contract signing first, the Platform Fee is charged then, project confirmation after. On that path
+      // claims.platform_fee_charged is already true when this document is built and the notes print as typed. This redaction covers the other case: a
+      // request that builds the document while platform_fee_charged is not true. Then the two free-text notes the homeowner typed go through the
+      // same in-process redaction the Scope of Work uses (redactSowTextOrRefuse): phone-shaped numbers (including a bare 10-digit run or a 250-500-1000
+      // grouping, Ben's 6256934420) and e-mail addresses are removed; dates, dollar figures and ordinary prose are not touched. If the redaction
+      // cannot run, RedactionUnavailableError escapes and the handler's catch returns 503 d390_redaction_unavailable: no envelope is built.
+      work_not_done: redactSowTextOrRefuse(pc.workNotBeingDone ?? null, claimData.platform_fee_charged === true) || "",
       non_recoverable: pc.nonRecoverableDepreciation != null ? `$${Number(pc.nonRecoverableDepreciation).toLocaleString()}` : "",
-      project_notes: pc.homeownerNotes || ""
+      project_notes: redactSowTextOrRefuse(pc.homeownerNotes ?? null, claimData.platform_fee_charged === true) || ""
     });
   }
   return {
