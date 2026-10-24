@@ -656,7 +656,7 @@
                 // NOT a claim-shape signal (the page still never special-cases measurementShape === 'full');
                 // it reads this contractor's own roof_upgrade_detailed hover_orders rows, the same
                 // (claim, product_code, requested_by_contractor_id) key the server's ALREADY_PURCHASED
-                // dedupe uses (measurement-upgrade-gate.ts buildPriorUpgradeLookupQuery). RLS hover_user_read
+                // dedupe uses (measurement-upgrade-gate.ts buildPriorUpgradeLookupQuery). The table's SELECT RLS policy
                 // (user_id = auth.uid()) returns only this contractor's own rows, whose user_id is the
                 // purchasing contractor. Fail-open to the buy panel on any read error: the server still
                 // refuses a repeat buyer, so the worst case is today's behaviour.
