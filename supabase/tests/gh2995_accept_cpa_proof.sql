@@ -167,13 +167,13 @@ BEGIN
     -- E: first acceptance through the pre-approval sequence (user inserts own contractor row, then accept_cpa)
     INSERT INTO auth.users (id, email) VALUES ('cccccccc-1111-4000-8000-000000000003','c@otterquote-internal.test'), ('dddddddd-1111-4000-8000-000000000004','d@otterquote-internal.test');
     r := pg_temp.try_as('authenticated', 'cccccccc-1111-4000-8000-000000000003', 'c@otterquote-internal.test', h1,
-      'INSERT INTO public.contractors (id, user_id, email, agreement_accepted_at, cpa_accepted_at, cpa_version, agreement_version) VALUES (''cccccccc-0000-4000-8000-000000000003'', ''cccccccc-1111-4000-8000-000000000003'', ''c@otterquote-internal.test'', now(), now(), ''v9-anything'', ''v9-anything'')');
+      'INSERT INTO public.contractors (id, user_id, company_name, contact_name, email, agreement_accepted_at, cpa_accepted_at, cpa_version, agreement_version) VALUES (''cccccccc-0000-4000-8000-000000000003'', ''cccccccc-1111-4000-8000-000000000003'', ''CTO79 Proof Co'', ''CTO79 Proof Contact'', ''c@otterquote-internal.test'', now(), now(), ''v9-anything'', ''v9-anything'')');
     PERFORM pg_temp.rec('E0 contractor INSERT by the user succeeds', left(r, 2), 'ok', r);
     PERFORM pg_temp.rec('E0a INSERT cannot pre-accept: agreement_accepted_at, cpa_accepted_at, agreement_version NULL and cpa_version = column default v1-2026-04 (production: NOT NULL DEFAULT)', pg_temp.q('SELECT (agreement_accepted_at IS NULL AND cpa_accepted_at IS NULL AND cpa_version = ''v1-2026-04'' AND agreement_version IS NULL)::text FROM public.contractors WHERE id=''cccccccc-0000-4000-8000-000000000003'''), 'true', '');
     -- E0b: the exact init shape the pages use (contractor-pre-approval.html init, React pre-approval): no acceptance columns named.
     INSERT INTO auth.users (id, email) VALUES ('eeeeeeee-1111-4000-8000-000000000005','e@otterquote-internal.test');
     r := pg_temp.try_as('authenticated', 'eeeeeeee-1111-4000-8000-000000000005', 'e@otterquote-internal.test', h1,
-      'INSERT INTO public.contractors (id, user_id, email) VALUES (''eeeeeeee-0000-4000-8000-000000000005'', ''eeeeeeee-1111-4000-8000-000000000005'', ''e@otterquote-internal.test'')');
+      'INSERT INTO public.contractors (id, user_id, company_name, contact_name, email) VALUES (''eeeeeeee-0000-4000-8000-000000000005'', ''eeeeeeee-1111-4000-8000-000000000005'', ''CTO79 Proof Co'', ''CTO79 Proof Contact'', ''e@otterquote-internal.test'')');
     PERFORM pg_temp.rec('E0b authenticated client INSERT naming no acceptance column succeeds (production cpa_version NOT NULL; was 23502 on 08f66b14)', left(r, 2), 'ok', r);
     PERFORM pg_temp.rec('E0c that row holds cpa_version v1-2026-04, flag false, no acceptance timestamps', pg_temp.q('SELECT cpa_version || needs_cpa_reattestation::text || (agreement_accepted_at IS NULL AND cpa_accepted_at IS NULL AND agreement_version IS NULL)::text FROM public.contractors WHERE id=''eeeeeeee-0000-4000-8000-000000000005'''), 'v1-2026-04falsetrue', '');
     r := pg_temp.try_as('authenticated', 'cccccccc-1111-4000-8000-000000000003', 'c@otterquote-internal.test', h1, format('SELECT public.accept_cpa(%L)', v));
@@ -182,7 +182,7 @@ BEGIN
     PERFORM pg_temp.rec('E4 contractors row: server-stamped cpa_version and agreement_accepted_at set; agreement_version still NULL (never written)', pg_temp.q('SELECT cpa_version || (agreement_accepted_at IS NOT NULL)::text || (agreement_version IS NULL)::text FROM public.contractors WHERE id=''cccccccc-0000-4000-8000-000000000003'''), v || 'truetrue', '');
 
     -- F: deleting an auth user with an acceptance row succeeds and the evidence stays (no FK on user_id / contractor_id).
-    INSERT INTO public.contractors (id, user_id, email, is_test) VALUES ('dddddddd-0000-4000-8000-000000000004', 'dddddddd-1111-4000-8000-000000000004', 'd@otterquote-internal.test', true);
+    INSERT INTO public.contractors (id, user_id, company_name, contact_name, email, is_test) VALUES ('dddddddd-0000-4000-8000-000000000004', 'dddddddd-1111-4000-8000-000000000004', 'CTO79 Proof Co', 'CTO79 Proof Contact', 'd@otterquote-internal.test', true);
     r := pg_temp.try_as('authenticated', 'dddddddd-1111-4000-8000-000000000004', 'd@otterquote-internal.test', h1, format('SELECT public.accept_cpa(%L)', v));
     -- NEGATIVE CONTROL: the rejected design (contractor_id REFERENCES contractors ON DELETE RESTRICT) blocks the same delete.
     CREATE TABLE public.proof_restrict_ctl (contractor_id uuid NOT NULL REFERENCES public.contractors(id) ON DELETE RESTRICT);
