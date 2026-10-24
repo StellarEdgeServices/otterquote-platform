@@ -31,8 +31,6 @@ const STATUS_ADMITTED = new Set(['draft', 'submitted', 'selected', 'declined', '
 // Known refused writes that are tracked elsewhere and NOT fixed by this change. Each entry must still be present
 // in the scan (the last test fails when one is fixed, so the entry is deleted with the fix).
 const KNOWN_OPEN: { file: string; col: 'status' | 'bid_status'; value: string; issue: string }[] = [
-  // switch-contractor writes quotes.status = 'cancelled' (refused 23514); #2564 finding 2, not in this PR.
-  { file: 'supabase/functions/switch-contractor/index.ts', col: 'status', value: 'cancelled', issue: '#2564 finding 2' },
 ];
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');

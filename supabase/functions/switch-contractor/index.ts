@@ -9,7 +9,7 @@
  *   2. Verify claim status is 'contract_signed' or 'awarded'
  *   3. Check the 3-day window: reject if estimated_start_date <= today + 3 days
  *   4. Load the winning quote for this claim
- *   5. Cancel the quote (status = 'cancelled', cancelled_at = NOW())
+ *   5. Retire the quote (status = 'declined', bid_status = 'superseded', cancelled_at = NOW())
  *   6. Reset the claim (status = 'bidding', selected_contractor_id = NULL,
  *      increment contractor_switch_count, set contractor_switched_at)
  *   7. If the quote has a succeeded Stripe PaymentIntent, issue a full refund
@@ -31,6 +31,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { WINNING_QUOTE_OR_FILTER, pickWinningQuote, shouldIssueRefund } from "./winning-quote.ts";
 import {
   contractorSwitchEmailHtml,
   contractorSwitchEmailText,
@@ -274,16 +275,23 @@ serve(async (req) => {
     // Scoped to the selected contractor so we never refund the wrong quote.
     let winningQuote: any = null;
     if (claim.selected_contractor_id) {
-      const { data: quote } = await sb
+      const { data: quotes, error: winningQuoteError } = await sb
         .from("quotes")
         .select("*, contractors(id, company_name, email, user_id)")
         .eq("claim_id", claim_id)
         .eq("contractor_id", claim.selected_contractor_id)
-        .in("status", ["selected", "awarded"])
+        // gh-3052 (review B1): also match the quote THIS flow already retired, so a retry
+        // after a step 7 failure still finds it and refunds (see ./winning-quote.ts).
+        .or(WINNING_QUOTE_OR_FILTER)
         .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      winningQuote = quote;
+        .limit(5);
+      // fx3053b (review finding): a failed lookup must NOT read as "no quote found" -- that would
+      // silently skip retiring the quote AND the owed Stripe refund. Stop before any write or refund.
+      if (winningQuoteError) {
+        console.error("[switch-contractor] OPS: step 5 winning-quote lookup failed -- aborting switch with no refund/retire attempted. claim:", claim_id, "contractor:", claim.selected_contractor_id, "error:", winningQuoteError.message ?? winningQuoteError);
+        return jsonResponse({ error: "We could not load your contract details. Nothing was changed. Please try again." }, 500);
+      }
+      winningQuote = pickWinningQuote(quotes);
     }
 
     // It's OK if there's no quote record (e.g., older flow) — we continue
@@ -297,7 +305,13 @@ serve(async (req) => {
       const { error: cancelError, data: cancelRows } = await sb
         .from("quotes")
         .update({
-          status: "cancelled",
+          // gh-3052: 'cancelled' is refused by quotes_status_check (23514), which left the
+          // switched-away quote 'selected'. Retire it the way accept_bid() retires one:
+          // status 'declined' AND bid_status 'superseded' (admitted by both CHECKs). The
+          // bid_status is load-bearing: accept_bid() admits 'declined' only with bid_status
+          // 'active', so 'superseded' keeps this refunded contractor from being re-awarded.
+          status: "declined",
+          bid_status: "superseded",
           cancelled_at: new Date().toISOString(),
           cancellation_reason: "homeowner_switched_contractor",
         })
@@ -311,7 +325,7 @@ serve(async (req) => {
         // gh-2105 (decision a, non-fatal like cancelError): `winningQuote` was
         // fetched by this id, so zero rows means the cancel silently did not
         // land and the switched-away quote stays live.
-        console.error(zeroRowWriteMessage("switch-contractor", `quotes.status=cancelled for quote ${winningQuote.id}`));
+        console.error(zeroRowWriteMessage("switch-contractor", `quotes.status=declined/bid_status=superseded for quote ${winningQuote.id}`));
       }
     }
 
@@ -371,7 +385,7 @@ serve(async (req) => {
     // ── 8. Stripe refund ──────────────────────────────────────────────────
     let refundResult = { success: false, refundId: undefined as string | undefined, error: "No payment found" };
 
-    if (winningQuote?.payment_intent_id && winningQuote?.payment_status === "succeeded" && stripeKey) {
+    if (shouldIssueRefund(winningQuote, !!stripeKey)) {
       console.log("[switch-contractor] Issuing Stripe refund for PI:", winningQuote.payment_intent_id);
       refundResult = await stripeRefund(stripeKey, winningQuote.payment_intent_id);
 
@@ -494,20 +508,27 @@ serve(async (req) => {
     const surveyDesc = surveyReasons.length > 0
       ? ` Survey reasons: [${surveyReasons.join(", ")}].${surveyNotes ? ` Notes: "${surveyNotes.slice(0, 200)}"` : ""}`
       : "";
-    await sb.from("activity_log").insert({
+    // gh-3052: supabase-js query builders have no `.catch` (it threw a TypeError
+    // here, after the claim reset and emails had committed, so the function
+    // returned 500). Destructure `{ error }` and log; the audit row is non-critical.
+    const { error: activityLogError } = await sb.from("activity_log").insert({
       event_type:  "contractor_switched",
       title:       `Homeowner switched contractors. Original contractor: ${contractorName}. Refund: ${refundResult.success ? "issued" : "pending"}.${surveyDesc}`,
       user_id:     user.id,
       is_test:     claim.is_test ?? false,
       metadata:    { claim_id },
       created_at:  new Date().toISOString(),
-    }).catch(err => console.warn("[switch-contractor] Activity log insert failed (non-critical):", err));
+    });
+    if (activityLogError) {
+      console.warn("[switch-contractor] Activity log insert failed (non-critical):", activityLogError);
+    }
 
     // ── Done ──────────────────────────────────────────────────────────────
     return jsonResponse({
       success: true,
       message: "Contractor switch initiated. Your project is back in open bidding.",
-      refund_issued: refundResult.success,
+      // gh-3052: true only when a Stripe refund actually happened (not "no fee charged").
+      refund_issued: refundResult.success && !!refundResult.refundId,
       refund_id: refundResult.refundId || null,
       contractor_notified: emailSent,
     });
