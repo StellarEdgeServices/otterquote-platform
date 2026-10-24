@@ -11,8 +11,9 @@
  *   1. Token present and structurally valid
  *   2. Token not expired (exp claim)
  *   3. Supabase Auth accepts the token (signature, expiry, revocation)
- *   4. The VERIFIED email (from Supabase's response, never from the
- *      unverified payload) is in the admin allow-list
+ *   4. The server-side admin check public.is_admin_email() (admin_emails table,
+ *      gh-3009 item 2: no email literals in this file) says the verified
+ *      caller is an admin
  *
  * Security model (gh-3009, supersedes Option A of May 1, 2026):
  *   - Option A skipped signature verification to avoid shipping the JWT secret
@@ -49,6 +50,33 @@ async function verifiedEmail(token: string): Promise<string | null> {
   }
 }
 
+// gh-3009 item 2: the admin allow-list lives in ONE place, the admin_emails table
+// behind public.is_admin_email(). This asks that function, as the caller, whether
+// the (already verified) token's email is an admin. PostgREST re-verifies the token
+// signature and is_admin_email() reads the verified claim. Fail closed: anything
+// other than HTTP 200 with a JSON `true` is "not admin".
+// Trade-off: one extra Supabase round trip per /admin-* request (admin pages only,
+// a handful of users). A Netlify env-var list would avoid it but would be a second
+// copy of the allow-list to keep in sync, which is the bug this removes.
+async function isAdminViaRpc(token: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/is_admin_email`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return false;
+    return (await res.json()) === true;
+  } catch {
+    return false;
+  }
+}
+
 export default async (req: Request, context: any) => {
   const url = new URL(req.url);
 
@@ -82,12 +110,8 @@ export default async (req: Request, context: any) => {
     const email = await verifiedEmail(token);
     if (!email) return redirectToLogin();
 
-    // Admin allow-list
-    const ADMIN_EMAILS: string[] = [
-      'dustinstohler1@gmail.com',
-      'dustin@otterquote.com',
-    ];
-    if (!ADMIN_EMAILS.includes(email)) {
+    // Admin allow-list: single source is public.is_admin_email() (admin_emails table).
+    if (!(await isAdminViaRpc(token))) {
       return redirectToLogin();
     }
 

@@ -1,7 +1,6 @@
 'use client';
 
 import { useAuth } from '@/providers/auth-provider';
-import { isSuperAdminEmail } from '@/lib/admin-allowlist';
 
 type Tier = 'super' | 'reviewer';
 
@@ -18,7 +17,7 @@ interface RequireAdminProps {
  * already redirects non-admins before render; this component handles the
  * in-React layer for two tiers:
  *
- *   super    — user email must be in the ADMIN_EMAILS allow-list.
+ *   super    — the server's is_admin_email() must say yes (provider isSuperAdmin).
  *   reviewer — user must pass the provider's isAdmin check
  *              (allow-list OR contractors.template_review_role==='admin').
  *
@@ -27,7 +26,7 @@ interface RequireAdminProps {
  * gate handles the redirect for true non-admins.
  */
 export function RequireAdmin({ tier, children }: RequireAdminProps) {
-  const { user, isAdmin, settled } = useAuth();
+  const { user, isAdmin, isSuperAdmin, settled } = useAuth();
 
   if (!settled) {
     return null;
@@ -35,7 +34,7 @@ export function RequireAdmin({ tier, children }: RequireAdminProps) {
 
   const authorized =
     tier === 'super'
-      ? !!user && isSuperAdminEmail(user.email)
+      ? !!user && isSuperAdmin === true
       : !!user && isAdmin;
 
   if (!authorized) {

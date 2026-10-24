@@ -1,0 +1,41 @@
+name: Static gh3009 Admin Allowlist
+
+# gh-3009 items 2 and 3 -- the owner email must not ship in browser/edge files and admin
+# determination must come from the server (is_admin_email()). Static check of tracked files;
+# no secrets, read-only token. See tests/gh3009-no-owner-email-in-shipped-files.mjs.
+
+on:
+  pull_request:
+    branches: [main, staging]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3009-admin-allowlist-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-gh3009-admin-allowlist:
+    name: no owner email in shipped files (gh3009)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Shipped-file email and server-gate checks
+        run: node tests/gh3009-no-owner-email-in-shipped-files.mjs
+      - name: Negative control (with the exemption list emptied the still-owed middleware.ts MUST fail)
+        run: |
+          if node tests/gh3009-no-owner-email-in-shipped-files.mjs --no-exemptions; then
+            echo "negative control did not fail"; exit 1
+          fi

@@ -34,12 +34,24 @@ function makeToken(payload: Record<string, unknown>): string {
 // Stubs Supabase Auth. verifiedAs = email it returns for a valid token;
 // null = it rejects the token (401), like a forged signature; "throw" = unreachable.
 const realFetch = globalThis.fetch;
-function stubSupabaseAuth(verifiedAs: string | null) {
+// gh-3009 item 2: the gate no longer carries an allow-list; it asks the server
+// (POST /rest/v1/rpc/is_admin_email). `admins` plays the admin_emails table.
+const TEST_ADMINS = ["dustinstohler1@gmail.com", "dustin@otterquote.com"];
+function stubSupabaseAuth(
+  verifiedAs: string | null,
+  admins: string[] = TEST_ADMINS,
+  rpc: "ok" | "error" | "nonboolean" = "ok",
+) {
   const calls: { url: string; auth: string | null }[] = [];
   globalThis.fetch = (async (input: any, init?: any) => {
     calls.push({ url: String(input), auth: new Headers(init?.headers).get("authorization") });
     if (verifiedAs === "throw") throw new Error("network down");
     if (verifiedAs === null) return new Response('{"msg":"invalid JWT"}', { status: 401 });
+    if (String(input).endsWith("/rest/v1/rpc/is_admin_email")) {
+      if (rpc === "error") return new Response('{"message":"boom"}', { status: 500 });
+      if (rpc === "nonboolean") return new Response('"true"', { status: 200 });
+      return new Response(JSON.stringify(admins.includes(verifiedAs)), { status: 200 });
+    }
     return new Response(JSON.stringify({ email: verifiedAs }), { status: 200 });
   }) as typeof fetch;
   return { calls, restore: () => { globalThis.fetch = realFetch; } };
@@ -113,9 +125,11 @@ Deno.test("admin-auth-gate: valid token + allow-listed email (new sb-otterquote-
   const stub = stubSupabaseAuth("dustin@otterquote.com");
   const res = await handler(req, ctx).finally(stub.restore);
 
-  assertEquals(stub.calls.length, 1);
+  assertEquals(stub.calls.length, 2);
   assertEquals(stub.calls[0].url, "https://yeszghaspzwwstvsrioa.supabase.co/auth/v1/user");
   assertEquals(stub.calls[0].auth, `Bearer ${token}`);
+  assertEquals(stub.calls[1].url, "https://yeszghaspzwwstvsrioa.supabase.co/rest/v1/rpc/is_admin_email");
+  assertEquals(stub.calls[1].auth, `Bearer ${token}`);
 
   assertEquals(ctx.nextCalled, true);
   assertEquals(await res.text(), "admin-page-served");
@@ -180,6 +194,47 @@ Deno.test("admin-auth-gate: Supabase Auth unreachable -> fail closed", async () 
   });
   const ctx = fakeContext();
   const stub = stubSupabaseAuth("throw");
+  const res = await handler(req, ctx).finally(stub.restore);
+
+  assertEquals(res.status, 302);
+  assertEquals(ctx.nextCalled, false);
+});
+
+// gh-3009 item 2: the server-side check is the only authority. The gate has no
+// email literal of its own, so an email the server does not list is refused.
+Deno.test("admin-auth-gate: server says not admin (empty admin_emails) -> redirect even for a once-listed email", async () => {
+  const token = makeToken({ email: "dustinstohler1@gmail.com", exp: futureExp() });
+  const req = new Request("https://otterquote.com/admin-dashboard", {
+    headers: { cookie: `sb-otterquote-at=${token}` },
+  });
+  const ctx = fakeContext();
+  const stub = stubSupabaseAuth("dustinstohler1@gmail.com", []);
+  const res = await handler(req, ctx).finally(stub.restore);
+
+  assertEquals(res.status, 302);
+  assertEquals(ctx.nextCalled, false);
+});
+
+Deno.test("admin-auth-gate: is_admin_email RPC errors -> fail closed", async () => {
+  const token = makeToken({ email: "dustinstohler1@gmail.com", exp: futureExp() });
+  const req = new Request("https://otterquote.com/admin-dashboard", {
+    headers: { cookie: `sb-otterquote-at=${token}` },
+  });
+  const ctx = fakeContext();
+  const stub = stubSupabaseAuth("dustinstohler1@gmail.com", TEST_ADMINS, "error");
+  const res = await handler(req, ctx).finally(stub.restore);
+
+  assertEquals(res.status, 302);
+  assertEquals(ctx.nextCalled, false);
+});
+
+Deno.test("admin-auth-gate: is_admin_email returns a non-boolean-true body -> fail closed", async () => {
+  const token = makeToken({ email: "dustinstohler1@gmail.com", exp: futureExp() });
+  const req = new Request("https://otterquote.com/admin-dashboard", {
+    headers: { cookie: `sb-otterquote-at=${token}` },
+  });
+  const ctx = fakeContext();
+  const stub = stubSupabaseAuth("dustinstohler1@gmail.com", TEST_ADMINS, "nonboolean");
   const res = await handler(req, ctx).finally(stub.restore);
 
   assertEquals(res.status, 302);

@@ -8,7 +8,7 @@
  * - Performs contractor-table-first role check (F-007 getRole())
  * - Checks admin allow-list via email + contractors.template_review_role
  *
- * ADMIN EMAILS: dustinstohler1@gmail.com, dustin@otterquote.com
+ * ADMIN EMAILS: held server-side only (admin_emails table via is_admin_email(), gh-3009)
  * STORAGE KEY: sb_at (D-211 — sq_at is deprecated)
  */
 
@@ -22,12 +22,6 @@ import { otterquoteCookieStorage, OTTERQUOTE_AUTH_STORAGE_KEY, readValidCookieSe
 import { clearSignup } from '../lib/signup-storage';
 import { clearCpaRedirectGuard } from '../contractor/_shell/cpa-guard';
 import type { AuthContextValue, AuthState, AuthUser, OtterRole } from '../types/auth';
-
-// ─── Admin allow-list (mirrors admin-auth-gate.ts) ───────────────────────────
-const ADMIN_EMAILS: string[] = [
-  'dustinstohler1@gmail.com',
-  'dustin@otterquote.com',
-];
 
 // Bound role/admin resolution so a stalled Supabase read can never strand the auth
 // gate on "Loading" (D-212 cookie-only contractor hang, ClickUp 86e1yv72z). On
@@ -87,18 +81,28 @@ async function resolveRole(user: User): Promise<OtterRole> {
   }
 }
 
+type AdminFlags = { isAdmin: boolean; isSuperAdmin: boolean };
+
 // ─── Admin check (F-007 _getIsAdmin) ─────────────────────────────────────────
-async function resolveIsAdmin(user: User): Promise<boolean> {
-  if (ADMIN_EMAILS.includes(user.email ?? '')) return true;
+// gh-3009 item 2: no allow-list in client code. public.is_admin_email() (admin_emails
+// table, SECURITY DEFINER) answers for the caller's signed JWT. isSuperAdmin = that
+// server answer; isAdmin = isSuperAdmin OR contractors.template_review_role='admin'.
+async function resolveIsAdmin(user: User): Promise<AdminFlags> {
+  try {
+    const { data, error } = await supabase.rpc('is_admin_email');
+    if (!error && data === true) return { isAdmin: true, isSuperAdmin: true };
+  } catch {
+    /* fall through to the contractors role check */
+  }
   try {
     const { data } = await supabase
       .from('contractors')
       .select('template_review_role')
       .eq('user_id', user.id)
       .single();
-    return data?.template_review_role === 'admin';
+    return { isAdmin: data?.template_review_role === 'admin', isSuperAdmin: false };
   } catch {
-    return false;
+    return { isAdmin: false, isSuperAdmin: false };
   }
 }
 
@@ -119,6 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user: null,
     role: null,
     isAdmin: false,
+    isSuperAdmin: false,
     loading: true,
     settled: false,
   });
@@ -152,12 +157,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           resolveIsAdmin(sessionUser),
         ]);
         let timedOut = false;
-        const [role, isAdmin] = await Promise.race<[OtterRole, boolean]>([
+        const [role, { isAdmin, isSuperAdmin }] = await Promise.race<[OtterRole, AdminFlags]>([
           roleLookup,
-          new Promise<[OtterRole, boolean]>((resolve) => {
+          new Promise<[OtterRole, AdminFlags]>((resolve) => {
             setTimeout(() => {
               timedOut = true;
-              resolve([null, false]);
+              resolve([null, { isAdmin: false, isSuperAdmin: false }]);
             }, ROLE_RESOLVE_TIMEOUT_MS);
           }),
         ]);
@@ -171,6 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           user: sessionUser as unknown as AuthUser,
           role,
           isAdmin,
+          isSuperAdmin,
           loading: false,
           settled: true,
         });
@@ -188,7 +194,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .then(([healedRole, healedIsAdmin]) => {
               setState((prev) =>
                 prev.user?.id === sessionUser.id
-                  ? { ...prev, role: healedRole, isAdmin: healedIsAdmin }
+                  ? {
+                      ...prev,
+                      role: healedRole,
+                      isAdmin: healedIsAdmin.isAdmin,
+                      isSuperAdmin: healedIsAdmin.isSuperAdmin,
+                    }
                   : prev,
               );
             })
@@ -218,7 +229,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         setSbAtCookie(null);
         Sentry.setUser(null);
-        setState({ user: null, role: null, isAdmin: false, loading: false, settled: true });
+        setState({ user: null, role: null, isAdmin: false, isSuperAdmin: false, loading: false, settled: true });
       }
       resolved.current = true;
     };
@@ -234,7 +245,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (event === 'SIGNED_OUT') {
           setSbAtCookie(null);
           Sentry.setUser(null);
-          setState({ user: null, role: null, isAdmin: false, loading: false, settled: true });
+          setState({ user: null, role: null, isAdmin: false, isSuperAdmin: false, loading: false, settled: true });
           resolved.current = true;
           return;
         }
@@ -273,7 +284,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setState((prev) =>
         prev.settled
           ? prev
-          : { user: null, role: null, isAdmin: false, loading: false, settled: true }
+          : { user: null, role: null, isAdmin: false, isSuperAdmin: false, loading: false, settled: true }
       );
     };
 
@@ -294,7 +305,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const fallbackTimer = setTimeout(() => {
       setState((prev) =>
         prev.loading
-          ? { user: null, role: null, isAdmin: false, loading: false, settled: false }
+          ? { user: null, role: null, isAdmin: false, isSuperAdmin: false, loading: false, settled: false }
           : prev
       );
     }, 1500);

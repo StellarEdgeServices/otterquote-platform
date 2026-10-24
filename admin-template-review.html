@@ -257,7 +257,8 @@
             .eq('user_id', session.user.id)
             .maybeSingle();
 
-        const isHardcodedAdmin = session.user.email === 'dustinstohler1@gmail.com';
+        let isHardcodedAdmin = false;
+        try { const adminRpc = await sb.rpc('is_admin_email'); isHardcodedAdmin = !adminRpc.error && adminRpc.data === true; } catch (e) { isHardcodedAdmin = false; }
         const isFlaggedAdmin = contractor && contractor.template_review_role === 'admin';
 
         if (!isHardcodedAdmin && !isFlaggedAdmin) {

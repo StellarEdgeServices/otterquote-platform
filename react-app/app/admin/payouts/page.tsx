@@ -6,7 +6,7 @@
  *
  * Wrapped by <RequireAdmin tier="super"> + <AdminNav active="payouts">.
  * The static page's CONFIG guard, createClient call, magic-link hash handler,
- * and single-hardcoded-email gate (dustinstohler1@gmail.com) are all replaced
+ * and single-hardcoded-email gate (owner email) are all replaced
  * by the shared auth shell (AuthProvider + RequireAdmin — edge-gate-consistent
  * parity choice; deliberate, do NOT re-check email in this page).
  *

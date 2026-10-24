@@ -283,8 +283,9 @@ sb.auth.onAuthStateChange(async function(event, session) {
 });
 
 async function checkAdminAndInit(user) {
-  // Check admin role: dustinstohler1@gmail.com OR template_review_role='admin'
-  var isAdmin = user.email === 'dustinstohler1@gmail.com';
+  // Check admin role: server-side is_admin_email() OR template_review_role='admin'
+  var isAdmin = false;
+  try { var adminRpc = await sb.rpc('is_admin_email'); isAdmin = !adminRpc.error && adminRpc.data === true; } catch (e) { isAdmin = false; }
   if (!isAdmin) {
     var res = await sb.from('contractors').select('template_review_role').eq('user_id', user.id).maybeSingle();
     isAdmin = res.data && res.data.template_review_role === 'admin';

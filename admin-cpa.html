@@ -343,7 +343,6 @@ const SUPABASE_URL     = 'https://yeszghaspzwwstvsrioa.supabase.co';
 const SUPABASE_ANON_KEY = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON)
   ? CONFIG.SUPABASE_ANON
   : 'sb_publishable_mKmYIsRMc6dCG8ZrGGbyyw_l_MOTwZP';
-const ADMIN_EMAIL      = 'dustinstohler1@gmail.com';
 
 // `sb` is DECLARED by js/config.js (`var sb;`, which also creates a default
 // client). Re-declaring it here with `const` threw
@@ -368,7 +367,10 @@ if (typeof supabase !== 'undefined' && typeof CONFIG !== 'undefined') {
 async function checkAuth() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { window.location.href = '/login.html?reason=admin_required'; return false; }
-    if (session.user.email !== ADMIN_EMAIL) {
+    // gh-3009: admin status comes from the server (is_admin_email()), not a literal here.
+    let adminOk = false;
+    try { const adminRpc = await sb.rpc('is_admin_email'); adminOk = !adminRpc.error && adminRpc.data === true; } catch (e) { adminOk = false; }
+    if (!adminOk) {
         await sb.auth.signOut();
         window.location.href = '/login.html?reason=admin_required';
         return false;
