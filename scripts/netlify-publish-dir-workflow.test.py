@@ -111,7 +111,7 @@ MUST_NOT_RUN = [
     "js/auth.js", "css/main.css", "img/favicon.svg", "blog/some-post.html",
     "supabase/functions/stripe-webhook/index.ts", "supabase/migrations/v1_x.sql",
     "scripts/r177/predicate.mjs", "react-app/app/page.tsx", "tests/gh2378-ho6.mjs",
-    ".github/workflows/e2e-tests.yml", "docs/x.md", "Docs/y.md",
+    ".github/workflows/e2e-tests.yml", "docs/x.md",
 ]
 for p in MUST_RUN:
     check(fires(pats, p), "runs on change to %s" % p)

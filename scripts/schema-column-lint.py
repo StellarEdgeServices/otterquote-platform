@@ -18,7 +18,7 @@ Exit codes:
   1  — one or more violations found
   2  — configuration error (schema file missing, etc.)
 
-ADR: Docs/ADRs/ADR-010-schema-column-lint.md
+ADR: docs/ADRs/ADR-010-schema-column-lint.md
 """
 
 import argparse

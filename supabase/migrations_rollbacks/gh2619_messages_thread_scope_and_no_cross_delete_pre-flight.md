@@ -51,7 +51,7 @@ Paths that change `claims.selected_contractor_id` (all covered by the trigger, w
 - Nobody can edit or delete a sent message through the API (no UI offers it today).
 - `created_at` on messages written by a client is always the database clock; `service_role` and admin writes keep their own value.
 - A restore that re-inserts `claims` rows as `service_role` or an admin session (the `sql/2026-07-13-purge-*-rollback.sql` pattern) keeps `contractor_released_at` as supplied; as a client role it is nulled.
-- The homeowner's messages written before the first award, or while the claim was back in bidding, are shown to the next winner; only messages from before the previous contractor's release are hidden. Follow-up after apply: add `claims.contractor_released_at` to `sql/schema-snapshot.json` and `Docs/code-map.json`.
+- The homeowner's messages written before the first award, or while the claim was back in bidding, are shown to the next winner; only messages from before the previous contractor's release are hidden. Follow-up after apply: add `claims.contractor_released_at` to `sql/schema-snapshot.json` and `docs/code-map.json`.
 
 ## Apply and verify (not done by this PR)
 1. R-097 notice window, PR merged with review. 2. Apply the forward SQL through the Tier 3B path; record the ledger version; file under `supabase/migrations/<version>_gh2619_messages_thread_scope_and_no_cross_delete.sql`. 3. Paste live `pg_policies` for `messages` (expect five policies: four new plus `service_role_messages`), `information_schema.columns` for the new column, and `pg_trigger` for the two triggers. 4. Re-run the proof's probes on is_test rows inside one rolled-back transaction (the throwaway file's `try_as` pattern); expect the NEW column of the PR's table.

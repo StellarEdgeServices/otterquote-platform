@@ -163,7 +163,7 @@ jobs:
                   `2. The CEO posts \`R-177 SIGNED: pr=${prNumber} sha=${headSha} — Ben, CEO\`.\n\n` +
                   `Any later commit voids both and needs a fresh pair. A \`LEGAL-READ: FAIL\`, or any legal position, price, promise or consent text with no D-number behind it, does not merge — it goes to Dustin as Tier C with the CEO's recommendation. **Dustin is never asked to read a diff.**\n\n` +
                   `Lines the predicate flagged:\n${grouped}${more}\n\n` +
-                  `<sub>This check is a labeller, not a gate: it always passes. See \`Docs/r177-legal-read.md\`.</sub>`;
+                  `<sub>This check is a labeller, not a gate: it always passes. See \`docs/r177-legal-read.md\`.</sub>`;
                 try {
                   await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
                   core.info('posted the R-177 notice comment');

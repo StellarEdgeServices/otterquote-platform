@@ -126,7 +126,7 @@ v83r-d235-homeowner-notifications.sql
 1. **One version number per forward migration.** Never two files at the same N.
 2. **Kebab-case only.** No underscores except within D-number references (e.g., `d235` stays lowercase).
 3. **No bare `rollback` files.** Always include the slug so the file is self-describing.
-4. **No `.md` or `.json` files in `sql/`.** Non-SQL reference files go in `Docs/` or at repo root.
+4. **No `.md` or `.json` files in `sql/`.** Non-SQL reference files go in `docs/` or at repo root.
 
 ---
 

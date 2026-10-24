@@ -6,7 +6,7 @@
 1. `Claude's Memories/otterquote-ref-platform.md` — Implementation Index (R-009), the canonical D-number → locator registry (read 2026-08-15).
 2. `Claude's Memories/exec-cto-memory.md` — EF table (55-row inventory; notes column carries some D-linkages) (read 2026-08-15).
 3. `Claude's Memories/otterquote-D-registry.md` — D-number decision registry (read 2026-08-15).
-4. Repo `Docs/` (grep for `D-[0-9]{3}`) and each EF's `supabase/functions/<slug>/index.ts` header (first 30 lines) for self-declared parent decisions.
+4. Repo `docs/` (grep for `D-[0-9]{3}`) and each EF's `supabase/functions/<slug>/index.ts` header (first 30 lines) for self-declared parent decisions.
 
 ## Reconciliation vs the issue's count
 
@@ -29,7 +29,7 @@ Issue #748 (data from 2026-07-12) said "55 deployed / 14 documented / 41 undocum
 | 5 | check-rate-limits | v36 | — | — | undocumented |
 | 6 | check-siding-design-completion | v45 | — | in-code D-164 (D-164 superseded by D-275; EF not named in the D-275 row) | unknown-source |
 | 7 | counter-sig-reminders | v4 | — | in-code D-149; exec-cto EF-table note "per D-149"; D-149 exists in D-registry | unknown-source |
-| 8 | create-docusign-envelope | v61 | D-032 · D-274 | `Docs/create-docusign-envelope-audit-v1.md` | documented |
+| 8 | create-docusign-envelope | v61 | D-032 · D-274 | `docs/create-docusign-envelope-audit-v1.md` | documented |
 | 9 | create-hover-order | v64 | D-018 (superseded by D-275) · D-275 | in-code D-181/D-205 | documented |
 | 10 | create-hubspot-contact | v31 | — | in-code D-189/D-210/D-218 | unknown-source |
 | 11 | create-invoice | v24 | — | — | undocumented |
@@ -39,7 +39,7 @@ Issue #748 (data from 2026-07-12) said "55 deployed / 14 documented / 41 undocum
 | 15 | get-contractor-info | v10 | — | — | undocumented |
 | 16 | get-hover-pdf | v49 | D-018 (superseded) · D-275 | — | documented |
 | 17 | get-hover-siding-data | v46 | D-275 | in-code D-164 | documented |
-| 18 | get-payout-completion-status | v3 | — | in-code D-139/#567; `Docs/get-payout-completion-status-ef.md` (this PR — D-number pending assignment, #747) | unknown-source |
+| 18 | get-payout-completion-status | v3 | — | in-code D-139/#567; `docs/get-payout-completion-status-ef.md` (this PR — D-number pending assignment, #747) | unknown-source |
 | 19 | hover-oauth-callback | v56 | D-275 | — | documented |
 | 20 | hover-webhook | v60 | D-018 (superseded) · D-270 · D-275 | in-code D-211 | documented |
 | 21 | mark-job-complete | v26 | D-228 | in-code D-139/D-228/D-231 | documented |

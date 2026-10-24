@@ -1,5 +1,5 @@
 // gh-1315 — tests for the template-validity invariant. Each case is a real
-// shape production held on 2026-09-04 (see Docs/template-validation-invariant.md):
+// shape production held on 2026-09-04 (see docs/template-validation-invariant.md):
 // a v2 auto_validated row (13/13 found, every completed contract used one), a
 // seeded row with no result (#1584), a v3 result with contract_price missing,
 // and the seed.mjs v3 shape that must pass.

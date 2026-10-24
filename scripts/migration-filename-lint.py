@@ -24,7 +24,7 @@ Exit codes:
   0  — clean (every .sql file in supabase/migrations/ carries the prefix)
   1  — one or more violations found
 
-ADR: Docs/ADRs/ADR-010-schema-column-lint.md (this lint follows the same
+ADR: docs/ADRs/ADR-010-schema-column-lint.md (this lint follows the same
 fail-hard CI convention as schema-column-lint.py / schema-secret-lint.py)
 """
 

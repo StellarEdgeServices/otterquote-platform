@@ -32,7 +32,6 @@ on:
       - '!.claude/**'
       - '!.github/**'
       - '!Archive/**'
-      - '!Docs/**'
       - '!assets/**'
       - '!blog/**'
       - '!contractors/**'
