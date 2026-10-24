@@ -78,7 +78,7 @@ export function scanForBuilderCatch(text: string): Hit[] {
 }
 
 Deno.test("scanner flags the builder .catch shapes (negative controls: it can fail)", () => {
-  const bad1 = `await sb.from("activity_log").insert({ a: 1 }).catch(err => console.warn(err));`;
+  const bad1 = `await sb.from("activity_log").insert({ title: "x" }).catch(err => console.warn(err));`;
   const bad2 = `await supabase.rpc("record_cron_health", { p_job_name: X }).catch(() => {});`;
   const bad3 = `await sb\n  .from("quotes")\n  .update({ s: 1 })\n  .eq("id", 1)\n  .catch(() => {});`;
   assertEquals(scanForBuilderCatch(bad1).length, 1);
