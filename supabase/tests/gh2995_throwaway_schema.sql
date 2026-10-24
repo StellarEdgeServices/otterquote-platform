@@ -147,6 +147,6 @@ CREATE TRIGGER contractors_freeze_privileged_columns BEFORE INSERT OR UPDATE ON 
 
 -- Two is_test contractors for the proof (production proof picks existing is_test rows instead; see the proof header).
 INSERT INTO auth.users (id, email) VALUES ('aaaaaaaa-1111-4000-8000-000000000001','a@otterquote-internal.test'),('bbbbbbbb-1111-4000-8000-000000000002','b@otterquote-internal.test');
-INSERT INTO public.contractors (id, user_id, email, is_test) VALUES
-  ('aaaaaaaa-0000-4000-8000-000000000001', 'aaaaaaaa-1111-4000-8000-000000000001', 'a@otterquote-internal.test', true),
-  ('bbbbbbbb-0000-4000-8000-000000000002', 'bbbbbbbb-1111-4000-8000-000000000002', 'b@otterquote-internal.test', true);
+INSERT INTO public.contractors (id, user_id, company_name, contact_name, email, is_test) VALUES
+  ('aaaaaaaa-0000-4000-8000-000000000001', 'aaaaaaaa-1111-4000-8000-000000000001', 'CTO79 Seed Co A', 'CTO79 Seed Contact A', 'a@otterquote-internal.test', true),
+  ('bbbbbbbb-0000-4000-8000-000000000002', 'bbbbbbbb-1111-4000-8000-000000000002', 'CTO79 Seed Co B', 'CTO79 Seed Contact B', 'b@otterquote-internal.test', true);
