@@ -711,7 +711,7 @@ export async function handler(
             .eq("claim_id", failure.claim_id)
             .eq("status", "declined")
             // gh-3052: a switched-away quote is retired as declined + bid_status 'superseded'
-            // and must not come back as a live bid; only genuinely declined bids are restored.
+            // and must not come back as a live bid, only genuinely declined bids are restored.
             .or("bid_status.is.null,bid_status.neq.superseded")
             .select("id");
           if (restoredErr) {
