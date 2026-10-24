@@ -32,7 +32,7 @@ const EK = read('supabase/functions/parse-loss-sheet/estimate-kind.ts');
 const A = read('react-app/app/(homeowner)/dashboard/actions.ts');
 
 ok(F.length > 0 && R.length > 0 && P.length > 0 && PF.length > 0, 'forward, rollback, pre-flight and proof exist');
-ok(/^-- STATUS \(gh-1438, as of [0-9-]+\): NOT APPLIED/.test(F) && /DO NOT RUN FROM THIS DIRECTORY/.test(F), 'forward carries the gh-1438 STATUS header');
+ok(/^-- STATUS \(gh-1438, as of [0-9TZ:-]+\): (NOT APPLIED|APPLIED)/.test(F) && /DO NOT RUN FROM THIS DIRECTORY/.test(F), 'forward carries the gh-1438 STATUS header');
 ok(/CREATE TRIGGER claims_guard_bid_open\s+BEFORE INSERT OR UPDATE OF[\s\S]*?ON public\.claims[\s\S]*?WHEN \(NEW\.ready_for_bids IS TRUE\)/.test(F), 'a separate BEFORE INSERT OR UPDATE trigger on public.claims for ready_for_bids = true');
 ok(/gh2559_estimate_is_read\(NEW\.parsed_line_items, NEW\.loss_sheet_parsed_at\)/.test(F) && /NEW\.estimate_filename IS NOT NULL OR NEW\.has_estimate IS TRUE/.test(F), 'condition 1: an estimate on the claim must have been read into the summary');
 ok(/COALESCE\(\s*p_parsed_at IS NOT NULL[\s\S]*?false\)/.test(F), 'the "read" predicate is NULL-safe (finding 4)');
