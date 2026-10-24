@@ -101,7 +101,7 @@ on:
       - main
     paths-ignore:
       - '**.md'
-      - 'docs/**'
+      - 'Docs/**'
       - 'handoffs/**'
   pull_request:
     branches:
@@ -109,7 +109,7 @@ on:
       - main
     paths-ignore:
       - '**.md'
-      - 'docs/**'
+      - 'Docs/**'
       - 'handoffs/**'
 # gh-1731 (PR #1740, kept): skip this suite for pure prose/doc changes. Priced
 # again on this run against a random 45 of the 155 PRs opened Sep 1-7 2026: 1

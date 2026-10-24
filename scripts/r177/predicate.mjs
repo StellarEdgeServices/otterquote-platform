@@ -59,7 +59,7 @@ const EXCLUDED_PATH_RES = [
   /(^|\/)package-lock\.json$/,
   /^\.github\/workflows\//,
   /^scripts\/r177\//,
-  /^docs\//i,   // gh-2998: Docs/ folded into docs/; /i keeps legacy casing exempt
+  /^Docs\//,
   /^In Flight\//,
 ];
 

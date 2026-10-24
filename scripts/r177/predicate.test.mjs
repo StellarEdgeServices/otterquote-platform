@@ -72,7 +72,7 @@ describe('detectLegalMoneyContent', () => {
   });
 
   test('does NOT scan excluded paths', () => {
-    for (const f of ['js/pricing.test.js', 'react-app/src/__tests__/fee.tsx', 'package-lock.json', '.github/workflows/foo.yml', 'scripts/r177/notes.mjs', 'docs/pricing.md', 'Docs/pricing.md', 'In Flight/plan.md']) {
+    for (const f of ['js/pricing.test.js', 'react-app/src/__tests__/fee.tsx', 'package-lock.json', '.github/workflows/foo.yml', 'scripts/r177/notes.mjs', 'Docs/pricing.md', 'In Flight/plan.md']) {
       assert.equal(detectLegalMoneyContent(diff(f, ['the price is $5 and you consent'])).hit, false, f);
     }
   });
