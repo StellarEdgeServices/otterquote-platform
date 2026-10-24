@@ -2,11 +2,15 @@
  * Next.js Middleware — D-211 Admin Auth Gate
  *
  * Protects /admin/* routes in the React app.
- * Mirrors the security model of admin-auth-gate.ts (Netlify edge function):
- *   - No JWT signature verification (Supabase RLS is the real data gate)
+ * Mirrors admin-auth-gate.ts (Netlify edge function) as fixed by gh-3009/PR #3040:
+ *   - gh-3048: the JWT is VERIFIED through Supabase Auth (GET /auth/v1/user, the
+ *     same call as supabase.auth.getUser(token)) and the allow-list is checked
+ *     against the VERIFIED email, never the unverified payload. Needs only the
+ *     public publishable key, no secret. Fails closed on any error.
  *   - Reads sb_at cookie set by AuthProvider._setSingleAuthCookie, falling back
  *     to the canonical sb-otterquote-at cookie written by cookie-storage.ts
- *   - Verifies: token present + structurally valid + not expired + email in allowlist
+ *   - Verifies: token present + structurally valid + not expired (cheap pre-filter)
+ *     + Supabase Auth accepts it + verified email in allowlist
  *
  * NOTE: Uses atob() (not Buffer) — Next.js middleware runs in the Edge runtime
  * which does not have Node.js Buffer. atob() is available in all Edge environments.
@@ -20,7 +24,29 @@ import { firstTouchSetCookie } from './app/lib/attribution-core';
 
 const ADMIN_EMAILS = ['dustinstohler1@gmail.com', 'dustin@otterquote.com'];
 
-export function middleware(request: NextRequest) {
+// Public values (same as js/config.js and the NEXT_PUBLIC_* build env); the
+// publishable key is not a secret. Fallbacks mirror PR #3040.
+const SUPABASE_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://yeszghaspzwwstvsrioa.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_mKmYIsRMc6dCG8ZrGGbyyw_l_MOTwZP';
+
+// Returns the verified email, or null on any failure (bad signature, expired,
+// revoked, network error, bad body).
+async function verifiedEmail(token: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const user = await res.json();
+    return typeof user?.email === 'string' ? user.email : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // gh-1983: non-admin routes in the matcher only get the first-touch ad
@@ -69,8 +95,12 @@ export function middleware(request: NextRequest) {
       return redirectToLogin();
     }
 
+    // gh-3048: verify the signature via Supabase Auth; use ITS email, not the payload's.
+    const email = await verifiedEmail(token);
+    if (!email) return redirectToLogin();
+
     // Admin allow-list
-    if (!payload.email || !ADMIN_EMAILS.includes(payload.email)) {
+    if (!ADMIN_EMAILS.includes(email)) {
       return redirectToLogin();
     }
 
