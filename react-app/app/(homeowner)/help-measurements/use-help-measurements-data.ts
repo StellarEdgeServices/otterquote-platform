@@ -34,6 +34,7 @@ import {
   type MeasurementsClaim,
   type MeasurementsUser,
 } from './utils';
+import { CLAIM_PUBLIC_COLUMNS } from '@/lib/claim-columns';
 
 // ── Row shapes (supersets of the utils input shapes the page reads) ────────────────
 
@@ -96,7 +97,7 @@ export function useHelpMeasurementsData(
         // Latest claim (static loadClaimData 805-815).
         const { data: claim } = await supabase
           .from('claims')
-          .select('*')
+          .select(CLAIM_PUBLIC_COLUMNS)
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(1)

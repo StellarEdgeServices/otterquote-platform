@@ -67,6 +67,8 @@ export interface ContractorProfile {
   status?: string | null;
   /** Storage path or the 'not_provided' sentinel — drives the #534 license chip. */
   license_path?: string | null;
+  /** contractors_public derived state ('uploaded' | 'not_provided' | null) -- gh-3042. */
+  license_doc_state?: string | null;
   rating?: number | null;
   review_count?: number | null;
   specialties?: string | string[] | null;
