@@ -1204,18 +1204,21 @@
         };
 
         try {
+            // gh-2995: acceptance is recorded server-side only. accept_cpa() appends the immutable
+            // contractor_cpa_acceptances row and stamps cpa_version / cpa_accepted_at / agreement_accepted_at
+            // (contractors_freeze_privileged_columns pins those columns against browser writes).
+            const { data: acc, error: accErr } = await sb.rpc('accept_cpa', { p_version: 'v1-2026-04' });
+            if (accErr) throw accErr;
+            if (!acc || typeof acc.acceptance_id !== 'string' || !acc.acceptance_id) throw new Error('accept_cpa_no_record: no acceptance_id returned');
+
             const { data: upRows, error } = await sb.from('contractors')
                 .update({
-                    cpa_accepted_at:          now,
-                    cpa_version:              'v1-2026-04',
                     attestation_signer_name:  contractor.contact_name || '',
                     attestation_signer_title: contractor.attestation_signer_title || '',
                     attestation_text_version: 'ic-24511-v1-2026-04',
                     attestation_accepted_at:  now,
                     ic_24511_attestation:     attestation,
                     ...smsConsentFields,
-                    agreement_accepted_at:    now,
-                    agreement_version:        'v2-2026-10',
                     onboarding_step:          3,
                     updated_at:               now,
                 })

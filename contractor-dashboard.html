@@ -1123,14 +1123,13 @@
                     button.disabled = true;
 
                     try {
-                        // gh-2995: one server-side call; agreement_version is the version id, timestamps are server-side.
+                        // gh-2995: one server-side call; agreement_version is never written (D-366), timestamps are server-side.
                         const accepted = await acceptCpaServerSide(CURRENT_CPA_VERSION);
                         const error = accepted.error;
 
                         if (!error) {
                             const now = accepted.data.accepted_at;
                             currentContractor.agreement_accepted_at = now;
-                            currentContractor.agreement_version = CURRENT_CPA_VERSION;
                             currentContractor.cpa_version     = CURRENT_CPA_VERSION;
                             currentContractor.cpa_accepted_at = now;
                             document.getElementById('agreementModalOverlay').classList.remove('show');

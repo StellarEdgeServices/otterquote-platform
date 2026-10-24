@@ -48,7 +48,7 @@ import {
   validateLicenseEntry, licenseEntrySummary, buildLicenseInsert,
   docPath, wce1Path, licenseDocPath, buildStep2ContractorUpdate, buildStep2FallbackCreate,
   buildSupportEmailBody,
-  buildAttestationPayload, step3Complete, buildStep3ContractorUpdate, buildRecordAttestationBody,
+  buildAttestationPayload, step3Complete, buildStep3ContractorUpdate, acceptCpa, buildRecordAttestationBody,
   validateTemplate, templateSlotKey, templateFilePath, buildContractTemplatesArray, buildFinishSubmitUpdate,
   type LicenseEntry, type WcChoice, type ContractTemplate,
 } from './utils';
@@ -652,6 +652,7 @@ function Step3Card({ contractor, onAdvance }: { contractor: ContractorRecord; on
     const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
     const payload = buildAttestationPayload(ua, nowIso);
     try {
+      await acceptCpa((fn, args) => supabase.rpc(fn, args));
       const { data: upRows, error } = await supabase.from('contractors')
         .update(buildStep3ContractorUpdate(contractor, payload, tcpa, nowIso))
         .eq('user_id', contractor.user_id)

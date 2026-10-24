@@ -21,7 +21,7 @@ import {
   docPath, wce1Path, licenseDocPath, buildStep2ContractorUpdate, buildStep2FallbackCreate,
   buildSupportEmailBody,
   ATTESTATION_TEXT_VERSION, CPA_VERSION, AGREEMENT_VERSION,
-  buildAttestationPayload, step3Complete, buildStep3ContractorUpdate, buildRecordAttestationBody,
+  buildAttestationPayload, step3Complete, buildStep3ContractorUpdate, acceptCpa, buildRecordAttestationBody,
   validateTemplate, templateSlotKey, templateFilePath, buildContractTemplatesArray, buildFinishSubmitUpdate,
   REQUIRED_AGREEMENT_CHECKS, COUNTY_RE,
   type LicenseEntry,
@@ -274,17 +274,28 @@ describe('IC 24-5-11 attestation (Tier-3 verbatim version + payload)', () => {
     });
   });
 
-  it('buildStep3ContractorUpdate stamps cpa/attestation/agreement + sms gated on TCPA', () => {
+  it('buildStep3ContractorUpdate stamps attestation + sms gated on TCPA and NO acceptance columns (gh-2995: accept_cpa owns them)', () => {
     const a = buildAttestationPayload('UA', ISO);
     const withSms = buildStep3ContractorUpdate({ contact_name: 'Pat', attestation_signer_title: 'Owner' }, a, true, ISO);
     expect(withSms).toMatchObject({
-      cpa_accepted_at: ISO, cpa_version: 'v1-2026-04',
       attestation_signer_name: 'Pat', attestation_signer_title: 'Owner',
       attestation_text_version: 'ic-24511-v1-2026-04', attestation_accepted_at: ISO,
       ic_24511_attestation: a, sms_consent_ts: ISO,
-      agreement_accepted_at: ISO, agreement_version: 'v2-2026-10', onboarding_step: 3, updated_at: ISO,
+      onboarding_step: 3, updated_at: ISO,
     });
+    for (const col of ['cpa_accepted_at', 'cpa_version', 'agreement_accepted_at', 'agreement_version']) {
+      expect(col in withSms).toBe(false);
+    }
     expect(buildStep3ContractorUpdate({}, a, false, ISO).sms_consent_ts).toBeNull();
+  });
+
+  it('acceptCpa calls rpc accept_cpa with v1-2026-04 and requires an acceptance_id (gh-2995)', async () => {
+    const calls: unknown[][] = [];
+    const ok = await acceptCpa((fn, args) => { calls.push([fn, args]); return Promise.resolve({ data: { acceptance_id: 'abc' }, error: null }); });
+    expect(ok).toEqual({ acceptance_id: 'abc' });
+    expect(calls).toEqual([['accept_cpa', { p_version: 'v1-2026-04' }]]);
+    await expect(acceptCpa(() => Promise.resolve({ data: null, error: { message: 'boom' } }))).rejects.toEqual({ message: 'boom' });
+    await expect(acceptCpa(() => Promise.resolve({ data: {}, error: null }))).rejects.toThrow('accept_cpa_no_record');
   });
 
   it('record-attestation body is the static (mismatched, non-fatal) payload — NO attestation_type', () => {

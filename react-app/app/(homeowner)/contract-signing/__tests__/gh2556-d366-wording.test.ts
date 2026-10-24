@@ -107,9 +107,10 @@ describe('gh-2556 item 5 untouched and the version rule', () => {
     expect(privacy).toContain('We treat a Global Privacy Control (GPC) signal sent by your browser as a request to opt out of the sale or sharing of your personal information for advertising purposes.');
     expect(privacy).not.toContain('we do not load Clarity');
   });
-  it('agreement_version moves to v2-2026-10 on the static page; cpa_version stays v1-2026-04', () => {
-    expect(preApproval).toContain("agreement_version:        'v2-2026-10',");
-    expect(preApproval).not.toContain("agreement_version:        'v1-2026-04',");
-    expect(preApproval).toContain("cpa_version:              'v1-2026-04',"); // cpa_version line untouched
+  it('gh-2995 (#3037): the static page no longer writes agreement_version/cpa_version from the browser; cpa acceptance goes through accept_cpa with v1-2026-04', () => {
+    expect(preApproval).not.toMatch(/agreement_version:\s*'/);
+    expect(preApproval).not.toMatch(/\bcpa_version:\s*'/);
+    expect(preApproval).toContain("sb.rpc('accept_cpa', { p_version: 'v1-2026-04' })");
   });
+
 });

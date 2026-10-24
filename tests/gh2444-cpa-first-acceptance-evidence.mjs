@@ -48,6 +48,14 @@ ok(!/agreement_version:\s*today/.test(html) && !/split\('T'\)\[0\]/.test(first),
 ok(!/\.update\(/.test(first + re), 'NEG: neither handler PATCHes contractors from the browser (client clock timestamps gone)');
 ok(!/new Date\(\)\.toISOString\(\)/.test(first + re), 'NEG: neither handler stamps a browser-clock time');
 
+// gh-2995 (#3037) F2/F3: pre-approval step 3 goes through accept_cpa and no longer writes acceptance columns from the browser.
+{
+  const pre = fs.readFileSync(path.join(root, 'contractor-pre-approval.html'), 'utf8');
+  ok(/sb\.rpc\('accept_cpa', \{ p_version: 'v1-2026-04' \}\)/.test(pre), 'pre-approval step 3 calls rpc accept_cpa');
+  ok(!/\bcpa_accepted_at:/.test(pre) && !/\bagreement_accepted_at:/.test(pre) && !/\bagreement_version:/.test(pre) && !/\bcpa_version:/.test(pre), 'NEG: pre-approval writes no acceptance column from the browser');
+}
+ok(!/currentContractor\.agreement_version\s*=/.test(html), 'NEG: dashboard never sets agreement_version (D-366)');
+
 // Ordering: in-memory state and reload happen only after a successful call.
 const iErr = first.indexOf('if (!error)');
 const iCall = first.indexOf('acceptCpaServerSide(');

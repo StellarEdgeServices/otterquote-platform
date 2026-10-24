@@ -57,9 +57,25 @@ BEGIN
   SELECT c.a, c.ua, c.b, c.ub INTO a, ua, b, ub FROM proof_ctx c;
   IF a IS NULL OR b IS NULL THEN RAISE EXCEPTION 'proof needs two is_test contractors'; END IF;
   -- Start both from a NEW contractor: no acceptance yet.
-  UPDATE public.contractors SET agreement_accepted_at = NULL, agreement_version = NULL, cpa_version = NULL, cpa_accepted_at = NULL,
+  UPDATE public.contractors SET agreement_accepted_at = NULL, agreement_version = 'v2-2026-10', cpa_version = NULL, cpa_accepted_at = NULL,
          needs_cpa_reattestation = false, ic_24511_attestation = NULL WHERE id IN (a, b);
   DELETE FROM public.activity_log WHERE user_id IN (ua, ub) AND event_type = 'cpa_accepted';
+
+  -- D (F1 negative control): a contractor's own direct UPDATE of each acceptance column. TODAY the change lands; AFTER it is pinned.
+  -- Baseline row B: accepted 2019-01-01, cpa v1-2026-04, agreement v2-2026-10, flag true. Each attempt is a separate statement as authenticated.
+  UPDATE public.contractors SET agreement_accepted_at='2019-01-01', cpa_accepted_at='2019-01-01', cpa_version='v1-2026-04', agreement_version='v2-2026-10', needs_cpa_reattestation=true WHERE id = b;
+  r := pg_temp.try_as('authenticated', ub, 'b@otterquote-internal.test', h1, format('UPDATE public.contractors SET agreement_accepted_at=%L WHERE user_id=%L', '2020-01-01', ub));
+  PERFORM pg_temp.rec('[expect-differs] D1 direct UPDATE agreement_accepted_at', pg_temp.q(format('SELECT agreement_accepted_at::date::text FROM public.contractors WHERE id=%L', b)), CASE WHEN fixed THEN '2019-01-01' ELSE '2020-01-01' END, r);
+  r := pg_temp.try_as('authenticated', ub, 'b@otterquote-internal.test', h1, format('UPDATE public.contractors SET cpa_accepted_at=%L WHERE user_id=%L', '2020-01-01', ub));
+  PERFORM pg_temp.rec('[expect-differs] D2 direct UPDATE cpa_accepted_at', pg_temp.q(format('SELECT cpa_accepted_at::date::text FROM public.contractors WHERE id=%L', b)), CASE WHEN fixed THEN '2019-01-01' ELSE '2020-01-01' END, r);
+  r := pg_temp.try_as('authenticated', ub, 'b@otterquote-internal.test', h1, format('UPDATE public.contractors SET cpa_version=%L WHERE user_id=%L', 'v9-anything', ub));
+  PERFORM pg_temp.rec('[expect-differs] D3 direct UPDATE cpa_version', pg_temp.q(format('SELECT cpa_version FROM public.contractors WHERE id=%L', b)), CASE WHEN fixed THEN 'v1-2026-04' ELSE 'v9-anything' END, r);
+  r := pg_temp.try_as('authenticated', ub, 'b@otterquote-internal.test', h1, format('UPDATE public.contractors SET agreement_version=%L WHERE user_id=%L', 'v9-anything', ub));
+  PERFORM pg_temp.rec('[expect-differs] D4 direct UPDATE agreement_version', pg_temp.q(format('SELECT agreement_version FROM public.contractors WHERE id=%L', b)), CASE WHEN fixed THEN 'v2-2026-10' ELSE 'v9-anything' END, r);
+  UPDATE public.contractors SET cpa_version='v1-2026-04' WHERE id = b;
+  r := pg_temp.try_as('authenticated', ub, 'b@otterquote-internal.test', h1, format('UPDATE public.contractors SET needs_cpa_reattestation=false, cpa_version=%L WHERE user_id=%L', v, ub));
+  PERFORM pg_temp.rec('[expect-differs] D5 direct clear of needs_cpa_reattestation with the current version', pg_temp.q(format('SELECT needs_cpa_reattestation::text FROM public.contractors WHERE id=%L', b)), CASE WHEN fixed THEN 'true' ELSE 'false' END, r);
+  UPDATE public.contractors SET agreement_accepted_at = NULL, agreement_version = 'v2-2026-10', cpa_version = NULL, cpa_accepted_at = NULL, needs_cpa_reattestation = false WHERE id = b;
 
   -- L: legacy path (record_cpa_ip) is unchanged in both phases and shows the defect: first IP kept only under cpa_reaccept, overwritten by the next call.
   r := pg_temp.try_as('authenticated', ua, 'a@otterquote-internal.test', h1, format('SELECT public.record_cpa_ip(%L)', a));
@@ -78,7 +94,7 @@ BEGIN
     PERFORM pg_temp.rec('C1c record user agent', pg_temp.q(format('SELECT accepted_ua FROM public.contractor_cpa_acceptances WHERE id=%L', first_id)), 'UA-first/1.0', '');
     PERFORM pg_temp.rec('C1d record agreement version id is v1-2026-04 (not a date)', pg_temp.q(format('SELECT agreement_version FROM public.contractor_cpa_acceptances WHERE id=%L', first_id)), v, '');
     PERFORM pg_temp.rec('C1e record kind and server timestamp present', pg_temp.q(format('SELECT kind || (accepted_at IS NOT NULL)::text FROM public.contractor_cpa_acceptances WHERE id=%L', first_id)), 'firsttrue', '');
-    PERFORM pg_temp.rec('C1f contractors.agreement_version is the version id, not today''s date', pg_temp.q(format('SELECT agreement_version FROM public.contractors WHERE id=%L', a)), v, '');
+    PERFORM pg_temp.rec('C1f F3/D-366: accept_cpa leaves contractors.agreement_version untouched (stays v2-2026-10)', pg_temp.q(format('SELECT agreement_version FROM public.contractors WHERE id=%L', a)), 'v2-2026-10', '');
     PERFORM pg_temp.rec('C1g contractors cpa_version, flag and agreement_accepted_at set', pg_temp.q(format('SELECT cpa_version || needs_cpa_reattestation::text || (agreement_accepted_at IS NOT NULL AND cpa_accepted_at IS NOT NULL)::text FROM public.contractors WHERE id=%L', a)), v || 'falsetrue', '');
     PERFORM pg_temp.rec('C1h activity_log row: exact existing title, is_test, metadata carries IP, UA, version', pg_temp.q(format('SELECT title || ''|'' || is_test::text || ''|'' || (metadata->>''accepted_ip'') || ''|'' || (metadata->>''accepted_ua'') || ''|'' || (metadata->>''agreement_version'') || ''|'' || (metadata->>''acceptance_id'') FROM public.activity_log WHERE user_id=%L AND event_type=''cpa_accepted''', ua)), 'Accepted Contractor Partner Agreement (v1-2026-04)|true|203.0.113.7|UA-first/1.0|v1-2026-04|' || first_id, '');
     PERFORM pg_temp.rec('C1i acceptance row is_test stamped from contractors.is_test', pg_temp.q(format('SELECT is_test::text FROM public.contractor_cpa_acceptances WHERE id=%L', first_id)), 'true', '');
@@ -147,6 +163,33 @@ BEGIN
     PERFORM pg_temp.rec('C7c the contractors update rolled back with it', pg_temp.q(format('SELECT cpa_version FROM public.contractors WHERE id=%L', b)), 'v0-before', '');
     EXECUTE 'DROP TRIGGER proof_block_cpa_log ON public.activity_log';
     EXECUTE 'DROP FUNCTION public.proof_block_cpa_log()';
+
+    -- E: first acceptance through the pre-approval sequence (user inserts own contractor row, then accept_cpa)
+    INSERT INTO auth.users (id, email) VALUES ('cccccccc-1111-4000-8000-000000000003','c@otterquote-internal.test'), ('dddddddd-1111-4000-8000-000000000004','d@otterquote-internal.test');
+    r := pg_temp.try_as('authenticated', 'cccccccc-1111-4000-8000-000000000003', 'c@otterquote-internal.test', h1,
+      'INSERT INTO public.contractors (id, user_id, email, agreement_accepted_at, cpa_accepted_at, cpa_version, agreement_version) VALUES (''cccccccc-0000-4000-8000-000000000003'', ''cccccccc-1111-4000-8000-000000000003'', ''c@otterquote-internal.test'', now(), now(), ''v9-anything'', ''v9-anything'')');
+    PERFORM pg_temp.rec('E0 contractor INSERT by the user succeeds', left(r, 2), 'ok', r);
+    PERFORM pg_temp.rec('E0a INSERT cannot pre-accept: all four acceptance columns NULL', pg_temp.q('SELECT (agreement_accepted_at IS NULL AND cpa_accepted_at IS NULL AND cpa_version IS NULL AND agreement_version IS NULL)::text FROM public.contractors WHERE id=''cccccccc-0000-4000-8000-000000000003'''), 'true', '');
+    r := pg_temp.try_as('authenticated', 'cccccccc-1111-4000-8000-000000000003', 'c@otterquote-internal.test', h1, format('SELECT public.accept_cpa(%L)', v));
+    PERFORM pg_temp.rec('E2 accept_cpa from the pre-approval sequence succeeds', left(r, 2), 'ok', r);
+    PERFORM pg_temp.rec('E3 first acceptance via pre-approval produces ONE table row of kind first', pg_temp.q('SELECT count(*)::text || min(kind) FROM public.contractor_cpa_acceptances WHERE contractor_id=''cccccccc-0000-4000-8000-000000000003'''), '1first', '');
+    PERFORM pg_temp.rec('E4 contractors row: server-stamped cpa_version and agreement_accepted_at set; agreement_version still NULL (never written)', pg_temp.q('SELECT cpa_version || (agreement_accepted_at IS NOT NULL)::text || (agreement_version IS NULL)::text FROM public.contractors WHERE id=''cccccccc-0000-4000-8000-000000000003'''), v || 'truetrue', '');
+
+    -- F: deleting an auth user with an acceptance row succeeds and the evidence stays (no FK on user_id / contractor_id).
+    INSERT INTO public.contractors (id, user_id, email, is_test) VALUES ('dddddddd-0000-4000-8000-000000000004', 'dddddddd-1111-4000-8000-000000000004', 'd@otterquote-internal.test', true);
+    r := pg_temp.try_as('authenticated', 'dddddddd-1111-4000-8000-000000000004', 'd@otterquote-internal.test', h1, format('SELECT public.accept_cpa(%L)', v));
+    -- NEGATIVE CONTROL: the rejected design (contractor_id REFERENCES contractors ON DELETE RESTRICT) blocks the same delete.
+    CREATE TABLE public.proof_restrict_ctl (contractor_id uuid NOT NULL REFERENCES public.contractors(id) ON DELETE RESTRICT);
+    INSERT INTO public.proof_restrict_ctl VALUES ('dddddddd-0000-4000-8000-000000000004');
+    r := pg_temp.try_as('postgres', NULL, '', NULL, 'DELETE FROM auth.users WHERE id = ''dddddddd-1111-4000-8000-000000000004''');
+    PERFORM pg_temp.rec('F0 NEGATIVE CONTROL: a RESTRICT FK to contractors makes the auth-user delete fail (23503)', left(r, 15), 'REJECTED 23503 ', r);
+    DROP TABLE public.proof_restrict_ctl;
+    r := pg_temp.try_as('postgres', NULL, '', NULL, 'DELETE FROM auth.users WHERE id = ''cccccccc-1111-4000-8000-000000000003''');
+    PERFORM pg_temp.rec('F1 deleting the auth user that has an acceptance row succeeds', left(r, 2), 'ok', r);
+    PERFORM pg_temp.rec('F2 the contractor row cascaded away', pg_temp.q('SELECT count(*)::text FROM public.contractors WHERE id=''cccccccc-0000-4000-8000-000000000003'''), '0', '');
+    PERFORM pg_temp.rec('F3 the acceptance row REMAINS after the account is gone', pg_temp.q('SELECT count(*)::text FROM public.contractor_cpa_acceptances WHERE contractor_id=''cccccccc-0000-4000-8000-000000000003'' AND user_id=''cccccccc-1111-4000-8000-000000000003'''), '1', '');
+    r := pg_temp.try_as('postgres', NULL, '', NULL, 'DELETE FROM auth.users WHERE id = ''dddddddd-1111-4000-8000-000000000004''');
+    PERFORM pg_temp.rec('F4 with the control table gone the same delete succeeds and the row remains', left(r, 2) || pg_temp.q('SELECT count(*)::text FROM public.contractor_cpa_acceptances WHERE contractor_id=''dddddddd-0000-4000-8000-000000000004'''), 'ok1', r);
 
     -- C8 record_cpa_ip not dropped
     PERFORM pg_temp.rec('C8 record_cpa_ip() still exists (untouched)', (to_regprocedure('public.record_cpa_ip(uuid)') IS NOT NULL)::text, 'true', '');
