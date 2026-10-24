@@ -55,7 +55,7 @@ Case-insensitive. Skipped as obviously-not-content: import/require lines, URL-on
 
 **Scan modes** (`scanModeFor(file)`):
 
-- `none` — `*.test.*`, `__tests__/`, `package-lock.json`, `.github/workflows/`, `scripts/r177/`, `docs/`, `In Flight/`
+- `none` — `*.test.*`, `__tests__/`, `package-lock.json`, `.github/workflows/`, `scripts/r177/`, `Docs/`, `In Flight/`
 - `currency-only` — harness paths `tests/`, `scripts/`, `tools/`: literal currency amounts survive, prose word rules and the identifier rule do not
 - `full` — everything else, **plus** the `COPY_GUARD_FILES` carve-out: the files under `scripts/` and `tools/` that hold, quote or emit customer money/legal copy
 
