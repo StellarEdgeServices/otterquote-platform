@@ -651,6 +651,32 @@
                   });
                 }
 
+                // gh-1411 / D-317 cl. 4: per-CONTRACTOR purchase state. A contractor who has already bought
+                // the detailed report for a claim sees "Purchased" instead of the buy button again. This is
+                // NOT a claim-shape signal (the page still never special-cases measurementShape === 'full');
+                // it reads this contractor's own roof_upgrade_detailed hover_orders rows, the same
+                // (claim, product_code, requested_by_contractor_id) key the server's ALREADY_PURCHASED
+                // dedupe uses (measurement-upgrade-gate.ts buildPriorUpgradeLookupQuery). RLS hover_user_read
+                // (user_id = auth.uid()) returns only this contractor's own rows, whose user_id is the
+                // purchasing contractor. Fail-open to the buy panel on any read error: the server still
+                // refuses a repeat buyer, so the worst case is today's behaviour.
+                if (allOpportunities.length > 0 && currentContractor && currentContractor.id) {
+                  try {
+                    const { data: boughtRows, error: boughtErr } = await sb
+                      .from('hover_orders')
+                      .select('claim_id')
+                      .eq('product_code', 'roof_upgrade_detailed')
+                      .eq('requested_by_contractor_id', currentContractor.id)
+                      .in('claim_id', allOpportunities.map(o => o.id));
+                    if (!boughtErr && Array.isArray(boughtRows)) {
+                      const boughtSet = new Set(boughtRows.map(r => r.claim_id));
+                      allOpportunities.forEach(o => { o.upgradePurchased = boughtSet.has(o.id); });
+                    }
+                  } catch (e) {
+                    console.error('Error loading upgrade purchase state:', e);
+                  }
+                }
+
                 // Check how many bids already exist per opportunity and exclude those at max (6)
                 if (allOpportunities.length > 0) {
                   const claimIds = allOpportunities.map(o => o.id);
@@ -944,13 +970,20 @@
             // special-case measurementShape === 'full' as "nothing to buy"
             // here -- per D-317 cl. 4 (later contractors pay), a claim
             // already Shape B still owes the tier price from every
-            // contractor who has not personally bought it. This UI has no
-            // per-contractor "did I already buy this" signal, so it always
-            // renders the normal buy panel below; the server's own
+            // contractor who has not personally bought it. The per-contractor
+            // "did I already buy this" signal (o.upgradePurchased, below) is the
+            // only thing that replaces the buy panel; every other contractor
+            // still gets the normal buy panel, and the server's own
             // ALREADY_PURCHASED refusal (measurement-upgrade-gate.ts,
             // existing copy in UPGRADE_ERROR_COPY) is what actually stops a
             // repeat buyer, surfaced via the existing error-handling path in
             // confirmUpgradePayment below -- no new copy needed here.
+            // gh-1411: THIS contractor already bought the detailed report for this claim (per-contractor
+            // hover_orders signal set at load, NOT the claim's shape) -- show the plain factual state and
+            // never offer the buy button again. Everyone else is unaffected (D-317 cl. 4).
+            if (o.upgradePurchased === true) {
+                return '<div class="upgrade-section"><span class="upgrade-available-badge" data-oq-upgrade-purchased="1">&#x2713; Purchased</span></div>';
+            }
             // No basic-report squares on file yet — the gate would refuse with
             // SQUARES_UNKNOWN or BASIC_REPORT_NOT_READY. Don't offer a button
             // that can only fail; the badge above already covers "Measurements Pending."
