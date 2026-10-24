@@ -10,8 +10,8 @@
  * createColorAddendum EF call:1123-1159).
  *
  * Faithful-port notes:
- *   • Ownership is scoped by claims.homeowner_id (NOT user_id) — the static keys the
- *     claim on homeowner_id (color-selection.html:656). This page loads the claim by
+ *   • Ownership is scoped by claims.user_id. (The original port used claims.homeowner_id,
+ *     which does not exist; gh-2105 checklist A.) This page loads the claim by
  *     id and gates ownership separately (mirrors H4's missing-claim/access-denied
  *     split) rather than the static's in-query .eq() + alert/redirect.
  *   • The profile lookup uses profiles.id = auth uid (color-selection.html:636 and the
@@ -19,9 +19,11 @@
  *     all key profiles on `id`). H4's use-project-confirmation-data.ts keys on `user_id`,
  *     which is the outlier; this hook follows the static + the majority convention so the
  *     signer email (which gates the addendum) resolves.
- *   • The contractor join targets the private `contractors` table (color-selection.html:650),
- *     NOT contractors_public — contractors_public exposes neither preferred_brand nor the
- *     phone columns. Columns are verbatim from the static/brief. RLS unchanged (Tier-3).
+ *   • Homeowners have no SELECT on `contractors`, so the old embedded join (which also named
+ *     columns that do not exist) errored for every homeowner. The contractor's name and brand
+ *     now come from the get_claim_color_contractor RPC (company_name, preferred_brands; ownership
+ *     checked; see supabase/migrations_drafts/gh2105_color_contractor_rpc.sql). Contractor phone
+ *     and email are not returned. gh-2105 checklist B and C.
  *   • createColorAddendumEnvelope omits the `signer` field (D-220: the EF derives the
  *     signer server-side) and sends a return_url targeting this React route — the same
  *     delta H4 applied. The static sent signer + no return_url.
@@ -33,7 +35,6 @@ import { COLOR_COPY } from './copy';
 import {
   normalizeBrand,
   extractZip,
-  resolvePrimaryPhone,
   buildColorAddendumPayload,
   buildColorReturnUrl,
 } from './utils';
@@ -41,22 +42,15 @@ import {
 // ── Row shapes ─────────────────────────────────────────────────────────────────
 
 export interface ColorContractorRow {
-  id: string;
-  name?: string | null;
-  preferred_brand?: string | null;
-  phone?: string | null;
-  notification_phones?: string[] | null;
-  email?: string | null;
+  company_name?: string | null;
+  preferred_brands?: string[] | null;
 }
 
 export interface ColorClaimRow {
   id: string;
-  homeowner_id?: string | null;
+  user_id?: string | null;
   selected_contractor_id?: string | null;
   property_address?: string | null;
-  // Supabase returns an embedded to-one resource as an object; typed permissively
-  // (object | array | null) and normalized below so the page sees a single row.
-  contractor?: ColorContractorRow | ColorContractorRow[] | null;
   color_brand?: string | null;
   color_name?: string | null;
   color_selected_at?: string | null;
@@ -151,10 +145,9 @@ export function useColorSelectionData(
           .select(
             `
             id,
-            homeowner_id,
+            user_id,
             selected_contractor_id,
             property_address,
-            contractor:contractors(id, name, preferred_brand, phone, notification_phones, email),
             color_brand,
             color_name,
             color_selected_at
@@ -168,27 +161,35 @@ export function useColorSelectionData(
         }
         const claim = claimData as ColorClaimRow;
 
-        // 3. Ownership gate (static 656 scoped homeowner_id; here split like H4)
-        if (claim.homeowner_id && userId && claim.homeowner_id !== userId) {
+        // 3. Ownership gate (claims.user_id; here split like H4)
+        if (claim.user_id && userId && claim.user_id !== userId) {
           if (!active) return;
           setData({ ...EMPTY, loading: false, gate: 'access-denied' });
           return;
         }
 
-        // 4. Normalize the embedded contractor to a single row.
-        const contractor: ColorContractorRow | null = Array.isArray(claim.contractor)
-          ? claim.contractor[0] ?? null
-          : claim.contractor ?? null;
+        // 4. Contractor name and brand via the ownership-checked RPC (gh-2105 B, C).
+        //    A failure is not fatal: generic name, brand unconfirmed.
+        let contractor: ColorContractorRow | null = null;
+        try {
+          const { data: rpcData, error: rpcError } = await supabase.rpc(
+            'get_claim_color_contractor',
+            { p_claim_id: claimId },
+          );
+          if (rpcError) throw rpcError;
+          contractor = ((Array.isArray(rpcData) ? rpcData[0] : rpcData) as ColorContractorRow | null) ?? null;
+        } catch (rpcErr) {
+          console.warn('[ColorSelection] contractor lookup unavailable:', rpcErr);
+        }
 
         // 5. Derived fields (static 666-686)
         const contractorId = claim.selected_contractor_id ?? null;
-        const contractorName = contractor?.name || COLOR_COPY.contractorNameFallback;
-        const brand = normalizeBrand(contractor?.preferred_brand);
+        const contractorName = contractor?.company_name || COLOR_COPY.contractorNameFallback;
+        // preferred_brands is an array; the first entry is the brand.
+        const brand = normalizeBrand(contractor?.preferred_brands?.[0]);
         const zipCode = extractZip(claim.property_address);
-        const contractorPhone = resolvePrimaryPhone(
-          contractor?.notification_phones,
-          contractor?.phone,
-        );
+        // Contractor phone is not returned to the homeowner (gh-2105 C).
+        const contractorPhone: string | null = null;
         const selectedColorName = claim.color_name ?? null;
 
         if (!active) return;
@@ -229,9 +230,9 @@ export function useColorSelectionData(
 // ── Mutations ──────────────────────────────────────────────────────────────────
 
 /**
- * SAVE-FIRST step: persist the chosen color to claims, scoped by id + homeowner_id
- * (static handleColorConfirmation 1081-1091). Throws on error so the page can show
- * the success state only on a real save.
+ * SAVE-FIRST step: persist the chosen color to claims, scoped by id + user_id
+ * (static handleColorConfirmation). Throws on error, and on a write that matches
+ * zero rows (gh-2105 F), so the page shows the success state only on a real save.
  */
 export async function saveColorSelection({
   claimId,
@@ -244,7 +245,7 @@ export async function saveColorSelection({
   brand: string | null;
   colorName: string;
 }): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('claims')
     .update({
       color_brand: brand,
@@ -252,10 +253,14 @@ export async function saveColorSelection({
       color_selected_at: new Date().toISOString(),
     })
     .eq('id', claimId)
-    .eq('homeowner_id', userId);
+    .eq('user_id', userId)
+    .select('id');
 
   if (error) {
     throw new Error('Failed to save color selection: ' + error.message);
+  }
+  if (!data || data.length === 0) {
+    throw new Error('Error saving color. Please try again.');
   }
 }
 
