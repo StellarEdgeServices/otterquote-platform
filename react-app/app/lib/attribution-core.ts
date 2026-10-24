@@ -65,6 +65,13 @@ function maxFor(key: string): number {
   return CLICK_ID_KEYS.has(key) ? CLICK_ID_MAX : VALUE_MAX;
 }
 const PATH_MAX = 200;
+
+const ID_SEGMENT = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d{4,}|[0-9a-f]{16,})$/i;
+
+/** Replace record-id path segments (UUID, long numeric or hex ids, e.g. /contractor/bid/<claimId>) with ':id' so no record id is stored as a landing path. */
+export function normalizeLandingPath(path: string): string {
+  return path.split('/').map((seg) => (ID_SEGMENT.test(seg) ? ':id' : seg)).join('/');
+}
 /** Stay well below the 4096-byte per-cookie browser limit. */
 const COOKIE_VALUE_MAX = 3000;
 
@@ -110,7 +117,8 @@ export function parseFirstTouch(
     const val = cleanValue(u.searchParams.get(key), maxFor(key));
     if (val) ft[key] = val;
   }
-  const path = cleanValue(u.pathname, PATH_MAX);
+  const rawPath = cleanValue(u.pathname, PATH_MAX);
+  const path = rawPath ? normalizeLandingPath(rawPath) : undefined;
   if (path) ft.landing_path = path;
   if (!hasTrackedKey(ft) && !path) return null;
   const ref = referrerHost(referrer);
@@ -136,7 +144,8 @@ export function deserializeFirstTouch(raw: string | null | undefined): FirstTouc
     const val = cleanValue(src[key], maxFor(key));
     if (val) ft[key] = val;
   }
-  const path = cleanValue(src.landing_path, PATH_MAX);
+  const rawPath = cleanValue(src.landing_path, PATH_MAX);
+  const path = rawPath ? normalizeLandingPath(rawPath) : undefined;
   if (path) ft.landing_path = path;
   // A valid record carries a tracked key (tagged) or a landing path (organic).
   if (!hasTrackedKey(ft) && !path) return null;

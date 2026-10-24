@@ -126,6 +126,18 @@ describe('attribution-core cookie round trip', () => {
   const HTML = 'text/html';
   const URL0 = 'https://app.otterquote.com/get-started';
 
+  it('gh-3002: record-id path segments are normalised to :id (server cookie and client parse), ordinary paths untouched', () => {
+    const id = '3f2b8c1e-9a4d-4e7b-8c55-0a1b2c3d4e5f';
+    const c = firstTouchSetCookie(`https://app.otterquote.com/contractor/bid/${id}`, null, null, NOW, { accept: HTML });
+    const ft = deserializeFirstTouch(readCookieValue(c!.split(';')[0], FT_COOKIE));
+    expect(ft?.landing_path).toBe('/contractor/bid/:id');
+    expect(c).not.toContain(id);
+    expect(parseFirstTouch(`https://app.otterquote.com/contractor/sign/${id}`)?.landing_path).toBe('/contractor/sign/:id');
+    expect(parseFirstTouch('https://app.otterquote.com/contractor/sign/123456')?.landing_path).toBe('/contractor/sign/:id');
+    expect(parseFirstTouch('https://otterquote.com/blog/hail-vs-wind-roof-damage')?.landing_path).toBe('/blog/hail-vs-wind-roof-damage');
+    expect(deserializeFirstTouch(JSON.stringify({ ts: NOW.toISOString(), landing_path: `/contractor/bid/${id}` }))?.landing_path).toBe('/contractor/bid/:id');
+  });
+
   it('gh-3002 GPC: Sec-GPC: 1 suppresses UNTAGGED capture; Sec-GPC: 0 / absent does not', () => {
     expect(firstTouchSetCookie(URL0, null, null, NOW, { accept: HTML, gpc: '1' })).toBeNull();
     expect(firstTouchSetCookie(URL0, null, null, NOW, { accept: HTML, gpc: '0' })).toMatch(/^oq_ft=/);
