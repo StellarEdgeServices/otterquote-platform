@@ -1869,6 +1869,22 @@
   // ZIP prefill itself is a follow-up (RPC change = migration), tracked on #2598.
   var homeEntry = readHomeHandoff();
   function insertFreshLead(name, email, phoneDigits, isSynthetic, variantOverride, extraColumns) {
+    // gh-3051 / D-323 + D-336: the advertising-sharing opt-out this page sees (privacy.html Section 12), sent as the
+    // X-OQ-Ad-Optout header on the leads insert ONLY (same per-request setHeader pattern as x-oq-internal below). Defined INSIDE this function so
+    // tests that extract insertFreshLead's source alone (gh2068) still see it. '1' = the
+    // oq_ad_optout cookie or Global Privacy Control; '0' = neither. The BEFORE INSERT trigger records it on the row, and the
+    // server-side GA4 send (ga4-mp-conversion) sends nothing unless the row says '0' -- the same gate js/ga-gate.js applies to GA4.
+    // The cookie is Domain=.otterquote.com and never reaches the Supabase host, which is why it travels as a header.
+    function oqAdOptOutHeaderValue() {
+      try {
+        var m = document.cookie.match(/(?:^|; )oq_ad_optout=([^;]*)/);
+        if (m && decodeURIComponent(m[1]) === '1') return '1';
+        if (typeof navigator !== 'undefined' && navigator.globalPrivacyControl === true) return '1';
+        return '0';
+      } catch (e) {
+        return '1'; // cannot tell: report an opt-out, never a false "no"
+      }
+    }
     var newId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (
       'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
         var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
@@ -1906,6 +1922,9 @@
     var oqHeader = oqInternalHeader();
     if (oqHeader['x-oq-internal']) {
       leadInsert.setHeader('x-oq-internal', oqHeader['x-oq-internal']);
+    }
+    if (typeof leadInsert.setHeader === 'function') {
+      leadInsert.setHeader('x-oq-ad-optout', oqAdOptOutHeaderValue()); // gh-3051 / D-336 (no header = unknown = not sent)
     }
     return leadInsert.then(function (res) {
       if (res && res.error) throw res.error;
