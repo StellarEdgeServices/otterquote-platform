@@ -134,6 +134,11 @@ def build_fixtures(repo: pathlib.Path, deployed: pathlib.Path):
 # changing this set in the same reviewed diff; a line added to the allowlist alone fails
 # pinned_allowlist_cases (gh-1295, CTO RUN 63).
 PINNED_ALLOWLIST = {
+    "supabase/functions/check-siding-design-completion/caller-gate.ts",
+    "supabase/functions/create-hover-order/price-setting.ts",
+    "supabase/functions/get-hover-pdf/pdf-source.ts",
+    "supabase/functions/get-hover-siding-data/job-address.ts",
+    "supabase/functions/hover-webhook/job-completion.ts",
     "supabase/functions/meta-leadgen-webhook/email-footer.ts",
     "supabase/functions/send-partner-onboarding/claim-stage-sql-proof.ts",
     "supabase/functions/stripe-webhook/test-source-utils.ts",
