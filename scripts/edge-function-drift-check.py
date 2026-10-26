@@ -91,7 +91,7 @@ API rejects it). The CLI is used rather than hand-rolling the
 `GET /v1/projects/{ref}/functions/{slug}/body` eszip parse, because the CLI
 already handles eszip extraction and legacy-bundle formats.
 
-ADR: Docs/ADRs/ADR-010-schema-column-lint.md (same fail-hard CI convention as
+ADR: docs/ADRs/ADR-010-schema-column-lint.md (same fail-hard CI convention as
 schema-column-lint.py / schema-secret-lint.py / migration-filename-lint.py)
 """
 

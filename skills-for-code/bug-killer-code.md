@@ -397,7 +397,7 @@ Every bug-killer run produces a prevention artifact. Skipping this violates Hard
 
 For each artifact:
 - Write it
-- Reference it in the bug thread + a new ADR at `Docs/ADRs/ADR-N.md`
+- Reference it in the bug thread + a new ADR at `docs/ADRs/ADR-N.md`
 - Cross-link in `Deploy_Review_Checklist.md` or the relevant memory file as appropriate
 - If the prevention is process-level, run the decision skill (R-flow), not just a direct edit
 

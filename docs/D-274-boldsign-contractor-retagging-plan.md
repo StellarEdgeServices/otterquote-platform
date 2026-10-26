@@ -6,7 +6,7 @@
 
 ## Why this exists
 
-PR #797 (open, not merged) rewrites `create-docusign-envelope` to use BoldSign instead of DocuSign. BoldSign has no equivalent to DocuSign's flexible anchor-string matching (`/Customer/`, `Contract Price:`, etc. — see `Docs/contract-template-anchors.md`, the current contractor-facing spec). BoldSign's only API-placeable field mechanism is a literal bracket **Text Tag** baked into the PDF as its own contiguous run of text:
+PR #797 (open, not merged) rewrites `create-docusign-envelope` to use BoldSign instead of DocuSign. BoldSign has no equivalent to DocuSign's flexible anchor-string matching (`/Customer/`, `Contract Price:`, etc. — see `docs/contract-template-anchors.md`, the current contractor-facing spec). BoldSign's only API-placeable field mechanism is a literal bracket **Text Tag** baked into the PDF as its own contiguous run of text:
 
 ```
 {{FieldType|SignerIndex|Required|Label|FieldID}}
@@ -66,7 +66,7 @@ Two manifest rows (`Manufacturer's Warranty:`, `Workmanship Warranty:`) stay `me
 4. Send-test through a BoldSign sandbox envelope (not production) to confirm the tags actually place fields where expected — this catches label/positioning mistakes before any contractor sees the process.
 
 **Phase 2 — Contractor-facing spec:**
-1. Write the BoldSign successor to `Docs/contract-template-anchors.md` — same document shape, new tag syntax, one table per trade/funding-type pulled directly from the v3 manifest (do not hand-transcribe; script-generate from the manifest constant so the two can never drift, unlike the current anchor doc which is hand-maintained separately from the validator).
+1. Write the BoldSign successor to `docs/contract-template-anchors.md` — same document shape, new tag syntax, one table per trade/funding-type pulled directly from the v3 manifest (do not hand-transcribe; script-generate from the manifest constant so the two can never drift, unlike the current anchor doc which is hand-maintained separately from the validator).
 2. This is contractor-facing product copy. Per the authority model, drafting it is fine; **sending it or publishing it is not this lane's call** — flag to Dustin/CEO board before it goes out, same as any contractor communication.
 
 **Phase 3 — Rollout to the 6 contractors, 9 templates:**

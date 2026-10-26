@@ -61,7 +61,7 @@ done in that pass.
 
 ## Naming convention (2026-08-14, #822)
 
-The `v<N>` integer scheme used in `sql/` (see `Docs/sql-migration-conventions.md`)
+The `v<N>` integer scheme used in `sql/` (see `docs/sql-migration-conventions.md`)
 is not used here — it was de facto abandoned in this directory as of the two
 most recent entries (`20260812182824_gh720_...`, `20260812200000_gh738_...`),
 which switched to `<timestamp>_gh<issue>_<slug>.sql`. **Going forward, new
@@ -71,6 +71,6 @@ independent authors reserving the same identifier (the failure mode that
 prompted #822).
 
 `sql/` is a separate, still-live, actively-maintained directory with its own
-numbering convention documented in `Docs/sql-migration-conventions.md` — it is
+numbering convention documented in `docs/sql-migration-conventions.md` — it is
 not a duplicate or legacy path, and a shared identifier appearing in both
 directories (e.g. `v105` used once in each) is not itself a collision.

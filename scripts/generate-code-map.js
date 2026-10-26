@@ -5,8 +5,8 @@
  * JS files to produce a complete edge-function reference map.
  *
  * Outputs (always inside the repo, regardless of cwd):
- *   <repo>/Docs/code-map.json   — machine-readable map
- *   <repo>/Docs/code-map.md     — human-readable summary
+ *   <repo>/docs/code-map.json   — machine-readable map
+ *   <repo>/docs/code-map.md     — human-readable summary
  *
  * Usage: node scripts/generate-code-map.js [--repo-root <path>] [--docs-dir <path>]
  *        SUPABASE_MGMT_TOKEN=<sbp_...> SUPABASE_PROJECT_REF=<ref> node scripts/generate-code-map.js
@@ -39,7 +39,7 @@ const args      = process.argv.slice(2);
 const rootIdx   = args.indexOf('--repo-root');
 const docsIdx   = args.indexOf('--docs-dir');
 const REPO_ROOT = rootIdx !== -1 ? args[rootIdx + 1] : path.resolve(__dirname, '..');
-const DOCS_DIR  = docsIdx !== -1 ? args[docsIdx + 1] : path.resolve(REPO_ROOT, 'Docs');
+const DOCS_DIR  = docsIdx !== -1 ? args[docsIdx + 1] : path.resolve(REPO_ROOT, 'docs');
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
