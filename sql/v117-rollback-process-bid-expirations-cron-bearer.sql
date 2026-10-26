@@ -1,5 +1,5 @@
 -- v117 ROLLBACK — restore job 3 (process-bid-expirations) to its pre-gh-3104 command
--- (no Authorization header; measured 2026-10-26, length 201, md5 c6e638096e203ce7e8a88e49400b53b0).
+-- (no Authorization header; measured 2026-10-26, length 201, md5 prefix c6e63809).
 -- Direction of safety: leaving the bearer on job 3 is harmless against an ungated function, so this
 -- rollback only matters if the bearer itself must be removed. Do not run it while the gated function is deployed.
 DO $v117r$

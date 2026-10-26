@@ -63,6 +63,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.114.0"; // gh-3104: type-only
 import { type GetEnv, serviceGate } from "./caller-gate.ts"; // gh-3104
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import {
@@ -180,7 +181,7 @@ function tradeLabel(trades: string[] | null): string {
  * Caps walk at MAX_AUTO_RENEWALS + 1 to avoid infinite loops on bad data.
  */
 async function getRenewalDepth(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<any, "public", any>,
   quoteId: string
 ): Promise<number> {
   let depth = 0;
@@ -207,7 +208,7 @@ async function getRenewalDepth(
 // =============================================================================
 
 async function expireBids(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<any, "public", any>,
   mailgunApiKey: string,
   mailgunDomain: string,
   scopeClaimId?: string
@@ -529,7 +530,7 @@ async function expireBids(
 // =============================================================================
 
 async function notifyBidWindowExpirations(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<any, "public", any>,
   mailgunApiKey: string,
   mailgunDomain: string,
   scopeClaimId?: string

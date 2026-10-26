@@ -80,6 +80,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.114.0"; // gh-3104: type-only
 import { type GetEnv, serviceGate } from "./caller-gate.ts"; // gh-3104
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import {
@@ -221,7 +222,7 @@ interface ProcessResult {
 }
 
 async function processCOIReminders(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<any, "public", any>,
   mailgunApiKey: string,
   mailgunDomain: string,
   scopeContractorId?: string
@@ -512,7 +513,7 @@ async function processCOIReminders(
 }
 
 async function processWCReminders(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<any, "public", any>,
   mailgunApiKey: string,
   mailgunDomain: string,
   scopeContractorId?: string
