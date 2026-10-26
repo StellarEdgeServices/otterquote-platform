@@ -652,7 +652,7 @@
   };
 
   // ── gh-1980 PR 3/3 (re-scoped): PKCE for Google OAuth ONLY ──────────────────
-  // Dustin, verbatim (#1980 comment 5889011351): "PKCE for Google only
+  // Owner, verbatim (#1980 comment 5889011351): "PKCE for Google only
   // (Recommended)". Emailed magic / recovery / confirmation links stay IMPLICIT
   // (#access_token fragments) so they keep working on any device.
   //

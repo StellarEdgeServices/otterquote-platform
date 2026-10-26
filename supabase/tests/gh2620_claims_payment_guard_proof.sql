@@ -17,6 +17,9 @@
 --                            accept_bid() RPC to k_pm  -> expect ACCEPTED (the bids.html path still works)
 --                            homeowner still cannot SELECT contractors -> expect rows=0
 --                            prosecdef, search_path, EXECUTE grants, body md5 unchanged
+-- gh-2819 (draft supabase/migrations_drafts/gh2819_quotes_client_select_refused.sql, proof supabase/tests/gh2819_quotes_client_select_refused_proof.sql):
+--   once that migration is applied, AFTER-5b is expected to print REJECTED 42501 (the homeowner's direct quotes status='selected' write) while AFTER-6
+--   (accept_bid) still prints ACCEPTED. Until then AFTER-5b prints 'rows=1 ACCEPTED'. The proof body below is unchanged.
 
 CREATE FUNCTION pg_temp.try_as(p_sub uuid, p_sql text, p_select boolean) RETURNS text
 LANGUAGE plpgsql AS $f$

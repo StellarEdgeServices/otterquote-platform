@@ -179,11 +179,15 @@ serve(async (req) => {
   } catch (err) {
     console.error("[incomplete-onboarding] Fatal error:", err);
 
-    await supabase.rpc("record_cron_health", {
+    // gh-3052: rpc() returns a query builder, which has no `.catch`; destructure `{ error }`.
+    const { error: healthErrOnFail } = await supabase.rpc("record_cron_health", {
       p_job_name: "send-incomplete-onboarding-reminders",
       p_status:   "error",
       p_error:    String(err),
-    }).catch(() => {});
+    });
+    if (healthErrOnFail) {
+      console.error("[incomplete-onboarding] Failed to record cron_health on error:", healthErrOnFail);
+    }
 
     return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,

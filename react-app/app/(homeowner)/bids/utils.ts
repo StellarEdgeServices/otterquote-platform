@@ -657,9 +657,21 @@ export interface CredentialChip {
   kind: 'on-file' | 'neutral';
 }
 
+/**
+ * Single source of truth for "license on file" (chip AND credential modal).
+ * gh-3042: contractors_public has no license_path; it exposes license_doc_state.
+ */
+export function hasLicenseOnFile(c: ContractorProfile, licenses: PublicLicense[]): boolean {
+  return (
+    licenses.length > 0 ||
+    licenseDocState(c.license_path) === 'uploaded' ||
+    c.license_doc_state === 'uploaded'
+  );
+}
+
 /** License chip: uploaded license(s) vs the D-217 "not provided" state. */
 export function licenseChip(c: ContractorProfile, licenses: PublicLicense[]): CredentialChip {
-  const hasDoc = licenses.length > 0 || licenseDocState(c.license_path) === 'uploaded';
+  const hasDoc = hasLicenseOnFile(c, licenses);
   if (!hasDoc) return { label: BADGE_LICENSE_NOT_PROVIDED, kind: 'neutral' };
   return {
     label: licenses.length > 1 ? badgeLicensesOnFile(licenses.length) : BADGE_LICENSE_ON_FILE,

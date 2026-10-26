@@ -28,6 +28,7 @@ import { recordFirstTouch } from '@/lib/attribution';
 import { isTestEmail } from '@/lib/test-signal';
 import { parseAddress, fullAddress, isValidZip, hasFullAddress, type ParsedAddress } from './utils';
 import { gtagEventBeforeNavigation } from '@/lib/ga-events';
+import { isAdSharingOptedOut } from '@/lib/ad-optout';
 import { readFreshSignupRaw } from '@/lib/signup-storage';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1015,7 +1016,7 @@ export default function TradeSelectorPage() {
             // PR #714 only fixed the COI-identity contractor insert, never
             // any claims insert. Predicate mirrors the CEO-approved
             // contractor check (#543 / test-exclusion.ts).
-            const { data: insertedClaim, error: insertError } = await supabase
+            const claimInsert = supabase
               .from('claims')
               .insert({
                 user_id: user.id,
@@ -1026,7 +1027,16 @@ export default function TradeSelectorPage() {
                 ...(chainReferralId && { referral_id: chainReferralId }),
                 is_test: isTestEmail(user.email),
                 created_at: new Date().toISOString(),
-              })
+              });
+            // gh-3051 / D-323 + D-336: the advertising-sharing opt-out this page sees ('1' = oq_ad_optout cookie or GPC,
+            // '0' = neither), as X-OQ-Ad-Optout on THIS insert only (same per-request pattern as get-started's x-oq-internal).
+            // A BEFORE INSERT trigger records it on the claim; the server-side GA4 send (ga4-mp-conversion) sends nothing unless
+            // it is '0' -- the same gate GA4Gate applies to GA4 in the browser. Guarded so a builder without setHeader can never
+            // break the claim insert (no header = unknown = not sent).
+            if (typeof (claimInsert as { setHeader?: unknown }).setHeader === 'function') {
+              claimInsert.setHeader('x-oq-ad-optout', isAdSharingOptedOut() ? '1' : '0');
+            }
+            const { data: insertedClaim, error: insertError } = await claimInsert
               .select('id')
               .single();
             // gh-2062 round 3 audit: this insert branch does NOT have the

@@ -27,7 +27,7 @@ const NAP = Object.freeze({
   addressRegion: 'IN',
   postalCode: '46224',
   addressCountry: 'US',
-  // Phone changed 2026-08-25 to the cell, then reversed 2026-09-30 (Dustin: "Switch to 844
+  // Phone changed 2026-08-25 to the cell, then reversed 2026-09-30 (owner: "Switch to 844
   // (Recommended)", #2371): the sitewide nav phone is the business line 844-875-3412,
   // never a personal cell. Applies to footer NAP, JSON-LD, and every tel: href that
   // renders from this object.
@@ -36,7 +36,7 @@ const NAP = Object.freeze({
   phoneE164: '+1-844-875-3412',           // machine-readable schema.org telephone field (E.164-normalized)
   email: 'info@otterquote.com',
   url: 'https://otterquote.com',
-  // Tagline (D-377, Dustin 2026-10-07 on #2597): "Contractors Compete. Homeowners Win." exactly so. Single source for the shared footer slot (gh-2598 slice 4).
+  // Tagline (D-377, owner decision 2026-10-07 on #2597): "Contractors Compete. Homeowners Win." exactly so. Single source for the shared footer slot (gh-2598 slice 4).
   tagline: 'Contractors Compete. Homeowners Win.'
 });
 
@@ -392,7 +392,7 @@ const Nav = {
   /**
    * The role the visitor DELIBERATELY chose, if that choice is still fresh.
    *
-   * Why this exists (Dustin, 2026-08-25): signed in as a contractor, he
+   * Why this exists (owner report, 2026-08-25): signed in as a contractor, they
    * clicked "Homeowner" in row 1. The browser navigated to index.html — and
    * then the orange highlight snapped back to Contractor and row 2 stayed on
    * the contractor links, because _updateNavLinksForRole() treats the
@@ -429,7 +429,7 @@ const Nav = {
     // been on partner pages then arrived at the homeowner sign-in page and was
     // shown the partner nav — "Referral Partner" highlighted in row 1, and a
     // "Partner Login" button offered to a homeowner who was already on the
-    // right login page. Confirmed live in Dustin's browser 2026-08-25.
+    // right login page. Confirmed live in the owner's browser 2026-08-25.
     // partner-login.html and contractor-login.html are unaffected: the partner
     // and contractor URL checks above run first and claim them.
     if (/^(index|login|how-it-works|faq|dashboard|landing|help-|ref\.|ref-|refer-a-friend|repair-intake|color-selection|project-confirmation|contract-signing|bids|trade-selector|onboarding-demo)/.test(file)) {
@@ -650,7 +650,7 @@ const Nav = {
       // contractor-profile.html saw "Join · How It Works · Tools · FAQ",
       // i.e. the recruitment nav, with no route to the rest of his own
       // account. Same defect on partner-dashboard.html. Reported by
-      // Dustin 2026-08-25. The role correction is now independent of
+      // the owner 2026-08-25. The role correction is now independent of
       // whether the page renders auth buttons.
       //
       // NARROWED after this run's adversarial check: the first version called
@@ -708,7 +708,7 @@ const Nav = {
       // 'homeowner'. On contractor-profile.html that made urlRole ('contractor')
       // disagree with 'homeowner', so this returned early and left a signed-in
       // contractor stranded on the guest marketing line (Join · How It Works ·
-      // Tools · FAQ) with no route back into their own account — Dustin's
+      // Tools · FAQ) with no route back into their own account — the owner's
       // "I can't get to any other part of my account" report. When we have a
       // real session but no resolvable role, trust the page's own URL role
       // rather than silently downgrading the user to a guest.
@@ -1235,15 +1235,7 @@ const Nav = {
             <h4 class="footer-heading">Legal</h4>
             <a href="/terms.html">Terms of Service</a>
             <a href="/privacy.html">Privacy Policy</a>
-            <!-- gh-1925 item 2 (Dustin ruling 5881048326): link text is the ruled string, verbatim. Shared footer = every nav.js page. -->
             <a id="footer-do-not-sell-link" href="/privacy.html#do-not-sell-or-share">Do Not Sell or Share My Personal Information</a>
-            <!-- Moved out of the partner header nav 2026-08-25 (Dustin: "Does the
-                 agreement need its own button on our header or can it be in the
-                 disclaimers at the bottom?"). It is a reference document, not a
-                 destination — it was spending a header slot that the partner's
-                 actual account surfaces needed. Reachable from every page here,
-                 and linked again inline at the point of acceptance on the
-                 partner signup form, which is where it legally matters. -->
             <a id="footer-partner-agreement-link" href="${partnerAgreementHref}">Partner Agreement</a>
           </div>
         </div>

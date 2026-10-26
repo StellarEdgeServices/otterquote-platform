@@ -1264,7 +1264,7 @@
         // ── Load claim data ──
         const { data: claimData, error: claimError } = await sb
           .from('claims')
-          .select('*')
+          .select('id, user_id, claim_number, status, created_at, updated_at, carrier_id, adjuster_id, adjuster_name, adjuster_email, adjuster_phone, ingest_email, material_category, shingle_type, impact_class, designer_product, designer_manufacturer, metal_type, metal_material, color_brand, color_name, color_selected_at, color_addendum_signed, hover_order_id, hover_status, hover_paid, hover_rebated, has_estimate, has_measurements, has_material_selection, ready_for_bids, bids_submitted_at, selected_contractor_id, contract_signed_at, docusign_envelope_id, deductible_amount, deductible_collected, deductible_stripe_id, platform_fee_charged, platform_fee_amount, platform_fee_stripe_id, estimate_filename, measurements_filename, date_of_loss, damage_type, job_type, rcv_amount, acv_amount, roof_squares, repair_squares, existing_shingle_brand, existing_shingle_product, existing_shingle_color, urgency, urgency_deadline, referral_code, referral_id, policy_type, funding_type, trades, repair_type, repair_description, repair_shingle_count, roof_age_years, material_id_method, material_id_status, itel_order_id, itel_status, ai_id_confidence, trade_intents, color_confirmation_envelope_id, contract_sent_at, contract_signed_by, selected_bid_amount, deductible_collected_at, homeowner_name, contract_declined_at, contract_voided_at, color_confirmed_at, property_address, ingest_email_address, parsed_line_items, contractor_scope_summary, loss_sheet_parsed_at, project_confirmation_envelope_id, referral_source, referral_agent_id, contractor_switched_at, contractor_switch_count, siding_bid_released_at, roofing_bid_released_at, gutters_bid_released_at, windows_bid_released_at, bid_window_expires_at, bid_window_notified_at, property_state, switch_reason_survey, completion_date, video_url, profile_prompt_sent_at, is_test, carrier_name, hover_measurements, project_confirmation_signed_at, referrer_updates_opt_out, measurement_shape, live_charge_authorized_at, live_charge_authorized_by, loss_sheet_reviewed_at, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, gclid, first_touch_landing_path, first_touch_referrer, first_touch_at, property_city, property_zip, signed_contract_price, signed_price_raw, signed_price_verdict, signed_price_reason, signed_price_checked_at, out_of_state_alerted_at, contractor_released_at')
           .eq('id', state.claimId)
           .single();
 
@@ -1695,7 +1695,7 @@
         problems.push('homeowner attestation checkbox is visible to a contractor');
       }
       if (noCost && noCost.style.display !== 'none') {
-        problems.push('homeowner-only "No Cost to You" fee callout is visible to a contractor');
+        problems.push('homeowner-only "No fee to use Otter Quotes" fee callout is visible to a contractor');
       }
       // gh-1395 reopen: the guard must cover all four elements the issue
       // enumerated, not just the two the first patch touched. A null entry in
@@ -2141,20 +2141,14 @@
 
       let notifOk = false, emailOk = false;
 
-      // 1. Insert dashboard notification for the contractor
+      // 1. Dashboard notification for the contractor, sent server side (gh-3049): the contractor's
+      // user_id is private and a homeowner cannot insert a notification for another user, so
+      // request_bid_renewal looks it up after checking this homeowner owns the claim. Any error or
+      // false leaves notifOk false and the support email below still goes out.
       try {
-        if (state.contractor?.user_id) {
-          const { error: notifErr } = await sb.from('notifications').insert({
-            user_id: state.contractor.user_id,
-            claim_id: state.claimId,
-            notification_type: 'bid_renewal_requested',
-            channel: 'dashboard',
-            recipient: '',
-            message_preview: `A homeowner is requesting an updated bid on ${state.claim?.property_address || 'their project'}.`,
-          });
-          if (!notifErr) notifOk = true;
-          else console.warn('requestBidRenewal — notification insert error:', notifErr);
-        }
+        const { data: notifData, error: notifErr } = await sb.rpc('request_bid_renewal', { p_quote_id: bidId });
+        if (!notifErr && notifData === true) notifOk = true;
+        else if (notifErr) console.warn('requestBidRenewal — notification rpc error:', notifErr);
       } catch (err) {
         console.warn('requestBidRenewal — notification step error:', err);
       }

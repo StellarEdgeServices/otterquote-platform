@@ -53,7 +53,7 @@ cur = a.cursor()
 cur.execute('select version()')
 print('PG', cur.fetchone()[0][:16])
 cur.execute(rd('tests/gh2442_replica_fixture.sql'))
-fwd = open(sys.argv[3]).read() if len(sys.argv) > 3 else rd('migrations_drafts/gh2442_dunning_retry_request.sql')
+fwd = open(sys.argv[3]).read() if len(sys.argv) > 3 else rd('migrations/20261009000257_gh2442_dunning_retry_request.sql')
 if len(sys.argv) > 3:
     print('NEGATIVE CONTROL: forward file is', sys.argv[3].split('/')[-2] + '/' + sys.argv[3].split('/')[-1])
 cur.execute(fwd)

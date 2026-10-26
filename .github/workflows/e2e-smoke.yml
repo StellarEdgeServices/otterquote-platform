@@ -54,18 +54,55 @@ jobs:
         working-directory: tests/e2e
         run: npm ci
 
+      # gh-3050: the required check timed out 3x on 2026-10-23, always inside
+      # the install step (runs 39964306779, 39936723774, 39936608041 sat in
+      # "Install Playwright browser" for the full 10 min and were cancelled;
+      # 39976719446 took 9m22s). Healthy runs take 12-16s there. The old step
+      # ran `playwright install --with-deps`, whose apt-get update/install
+      # leg has no timeout and stalls on the runner's apt mirrors, and the
+      # cache key hashed the whole lockfile rather than the Playwright
+      # version. Now: (1) cache keyed on the resolved Playwright version,
+      # (2) the browser download is separate from the apt dependency step,
+      # (3) apt deps are installed only if chromium cannot launch, (4) every
+      # network leg has a hard per-attempt timeout and up to 3 attempts, so a
+      # stall costs ~100s and a retry rather than the whole job. The job
+      # timeout and the checks themselves are unchanged.
+      - name: Resolve Playwright version
+        id: pw-version
+        working-directory: tests/e2e
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
-          restore-keys: |
-            playwright-chromium-${{ runner.os }}-
+          key: playwright-chromium-${{ runner.os }}-${{ steps.pw-version.outputs.version }}
 
       - name: Install Playwright browser (chromium)
         working-directory: tests/e2e
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 5
+        run: |
+          for attempt in 1 2 3; do
+            if timeout 100 npx playwright install chromium; then exit 0; fi
+            echo "::warning::playwright install chromium attempt $attempt failed or timed out"
+          done
+          exit 1
+
+      - name: Install Chromium system dependencies (only if chromium cannot launch)
+        working-directory: tests/e2e
+        timeout-minutes: 5
+        run: |
+          launch_check='require("@playwright/test").chromium.launch().then(b=>b.close()).then(()=>process.exit(0),e=>{console.error(e.message.split("\n")[0]);process.exit(1)})'
+          if node -e "$launch_check"; then
+            echo "chromium launches; skipping apt dependency install"
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            if timeout 100 npx playwright install-deps chromium; then exit 0; fi
+            echo "::warning::playwright install-deps attempt $attempt failed or timed out"
+          done
+          exit 1
 
       - name: Run 5-page smoke check
         working-directory: tests/e2e

@@ -33,6 +33,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { isSmsPaused } from "../_shared/sms-pause.ts";
 import { appendPostalFooterHtml, appendPostalFooterText } from "./footer-append.ts"; // gh-1824 D-237
 import {
   describeGuardVerdict,
@@ -364,6 +365,16 @@ async function sendSMS(to: string, message: string): Promise<boolean> {
 
   if (!sid || !token) { console.warn("Twilio credentials not set — skipping SMS"); return false; }
   if (!svcSid && !from) { console.warn("No Twilio sender configured — skipping SMS"); return false; }
+
+  // D-391 / #2875 free-text opt-out flagger: a number with a pending opt-out review is paused for every send. Fails closed.
+  const pause = await isSmsPaused(
+    createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""),
+    to,
+  );
+  if (pause.paused) {
+    console.warn(`[process-dunning] SMS refused: number paused (${pause.reason}). No Twilio call attempted.`);
+    return false;
+  }
 
   const body = new URLSearchParams();
   body.append("To", to);
@@ -699,6 +710,9 @@ export async function handler(
             .update({ status: "submitted" })
             .eq("claim_id", failure.claim_id)
             .eq("status", "declined")
+            // gh-3052: a switched-away quote is retired as declined + bid_status 'superseded'
+            // and must not come back as a live bid, only genuinely declined bids are restored.
+            .or("bid_status.is.null,bid_status.neq.superseded")
             .select("id");
           if (restoredErr) {
             console.error(`[process-dunning] quotes status=submitted restore failed for claim ${failure.claim_id}:`, restoredErr);

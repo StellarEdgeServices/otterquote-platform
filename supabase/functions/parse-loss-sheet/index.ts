@@ -30,6 +30,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts"; // gh-2105 batch 13 (remaining sites)
+import { detectEstimateKind, isFileRejection } from "./estimate-kind.ts";
 
 const FUNCTION_NAME = "parse-loss-sheet";
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
@@ -352,6 +353,57 @@ serve(async (req) => {
     const arrayBuffer = await fileData.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
 
+    // ── gh-2559: decide the real file type from the bytes ───────────
+    // The estimate upload accepts PDF, JPG, PNG and Word; this function used to send every file as application/pdf, so an image
+    // or Word estimate never parsed and (with the bid-open guard) the claim could never open for bids. PDFs go as a document block,
+    // JPG/PNG as an image block; anything the provider cannot read is recorded as 'unsupported' (the guard lets such a claim open,
+    // the summary then carries no estimate fields) and an operator alert is written. Q6 for Ben on #2559.
+    // Records a file the parser cannot turn into a summary (never retried by the platform): status 'unsupported' (a type the provider
+    // cannot read) or 'failed' (the provider rejected this file: corrupt or encrypted PDF, truncated image, over its limits), plus an
+    // operator row in platform_alerts_log. The bid-open guard lets such a claim open without an estimate summary (Q6). Stale-safe:
+    // nothing is written if the claim no longer points at this file.
+    const markUnreadable = async (
+      status: "unsupported" | "failed",
+      alertType: "loss_sheet_unsupported_type" | "loss_sheet_parse_failed",
+      detail: string,
+    ): Promise<Response> => {
+      const { data: rows, error: markErr } = await supabase
+        .from("claims")
+        .update({ loss_sheet_parse_status: status })
+        .eq("id", claim_id)
+        .eq("estimate_filename", storage_path) // stale guard, as for the parse write below
+        .select("id");
+      if (!markErr && !checkRowsWritten(rows).wroteRows) {
+        console.warn(`[${FUNCTION_NAME}] ${status} mark skipped for claim ${claim_id}: estimate_filename no longer ${storage_path}`);
+        return new Response(
+          JSON.stringify({ success: false, stale: true, claim_id }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (markErr) {
+        console.error(`[${FUNCTION_NAME}] could not record ${status} estimate for claim ${claim_id}:`, markErr);
+        return new Response(
+          JSON.stringify({ error: `Failed to record ${status} estimate` }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const { error: alertErr } = await supabase.from("platform_alerts_log").insert({
+        alert_type: alertType,
+        function_name: FUNCTION_NAME,
+        message: `claim ${claim_id}: ${detail} (${bytes.length} bytes). The claim may open for bids without a parsed summary; an operator can re-run the parse with the service role, passing the claim's current estimate_filename as storage_path (gh-2559 Q6).`,
+      });
+      if (alertErr) console.error(`[${FUNCTION_NAME}] platform_alerts_log insert failed:`, alertErr);
+      return new Response(
+        JSON.stringify({ success: false, [status]: true, claim_id }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    };
+
+    const kind = detectEstimateKind(bytes);
+    if (!kind) {
+      return await markUnreadable("unsupported", "loss_sheet_unsupported_type", "the uploaded estimate is not a PDF, JPG or PNG the parser can read, or is an image over the provider's size limit");
+    }
+
     // Encode to base64 in chunks (avoid call stack overflow on large files)
     let binary = "";
     const CHUNK = 8192;
@@ -378,10 +430,10 @@ serve(async (req) => {
             role: "user",
             content: [
               {
-                type: "document",
+                type: kind.block,
                 source: {
                   type: "base64",
-                  media_type: "application/pdf",
+                  media_type: kind.mediaType,
                   data: base64Pdf,
                 },
               },
@@ -398,6 +450,20 @@ serve(async (req) => {
     if (!anthropicResponse.ok) {
       const errorText = await anthropicResponse.text();
       console.error(`Anthropic API error: ${anthropicResponse.status} ${errorText}`);
+      // gh-2559: a provider rejection that is about THIS FILE (HTTP 413, or a 400 whose error names the image/document/PDF/size) will fail the
+      // same way every time: mark it 'failed'. A 400 about the account or configuration (credit balance, auth, model, ...), 429, 5xx and
+      // timeouts are transient for the claim: no mark, a 502, and (for a non-file 400/401/402/403/404) an operator alert so it is not silent.
+      if (isFileRejection(anthropicResponse.status, errorText)) {
+        return await markUnreadable("failed", "loss_sheet_parse_failed", `the provider rejected the uploaded estimate (HTTP ${anthropicResponse.status}: ${errorText.slice(0, 160).replace(/\s+/g, " ")})`);
+      }
+      if ([400, 401, 402, 403, 404].includes(anthropicResponse.status)) {
+        const { error: provAlertErr } = await supabase.from("platform_alerts_log").insert({
+          alert_type: "loss_sheet_provider_error",
+          function_name: FUNCTION_NAME,
+          message: `claim ${claim_id}: the provider refused the parse request for a reason that is not the file (HTTP ${anthropicResponse.status}: ${errorText.slice(0, 160).replace(/\s+/g, " ")}). Check the account, key and model; the claim is NOT marked failed.`,
+        });
+        if (provAlertErr) console.error(`[${FUNCTION_NAME}] platform_alerts_log insert failed:`, provAlertErr);
+      }
       return new Response(
         JSON.stringify({
           error: "Anthropic API call failed",
@@ -470,17 +536,28 @@ serve(async (req) => {
         parsed_line_items: parsed,
         contractor_scope_summary: scopeSummary,
         loss_sheet_parsed_at: new Date().toISOString(),
+        loss_sheet_parse_status: "parsed",
         rcv_amount: rcvAmount,
         acv_amount: acvAmount,
         deductible_amount: deductibleAmount,
         carrier_name: carrierName,
       })
       .eq("id", claim_id)
+      .eq("estimate_filename", storage_path) // gh-2559: never write the parse of a file the claim no longer points at (stale parse after a replacement)
       .select("id");
 
     // gh-2105 (batch 2, decision a): the RCV/ACV/deductible columns feed the contract; a
     // zero-row match must be the same 500 as a DB error, not a "parsed OK" 200.
     if (!updateError && !checkRowsWritten(storedRows).wroteRows) {
+      // gh-2559: zero rows because the estimate was replaced while this parse ran is not an error; the new file's own parse writes.
+      const { data: cur } = await supabase.from("claims").select("estimate_filename").eq("id", claim_id).maybeSingle();
+      if (cur && cur.estimate_filename !== storage_path) {
+        console.warn(`[${FUNCTION_NAME}] stale parse discarded for claim ${claim_id}: estimate_filename changed while parsing`);
+        return new Response(
+          JSON.stringify({ success: false, stale: true, claim_id }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       console.error(zeroRowWriteMessage(FUNCTION_NAME, `claims parsed loss sheet for claim ${claim_id}`));
       return new Response(
         JSON.stringify({ error: "Failed to store parsed data", detail: "no claim row matched (gh-2105)" }),
@@ -489,6 +566,15 @@ serve(async (req) => {
     }
     if (updateError) {
       console.error("Failed to update claims table:", updateError);
+      // gh-2559 (R-177 N2): the bid-open guard refused a parse that repeats the homeowner identity on an open claim; page an operator so it is not silent.
+      if (typeof updateError.message === "string" && updateError.message.includes("[gh2559-bid-open:identity_in_summary]")) {
+        const { error: identAlertErr } = await supabase.from("platform_alerts_log").insert({
+          alert_type: "loss_sheet_identity_refused",
+          function_name: FUNCTION_NAME,
+          message: `claim ${claim_id}: the bid-open guard refused the parsed summary because it repeats the homeowner name, street address or claim number (storage_path ${storage_path}). The old summary stays; check the parser output.`,
+        });
+        if (identAlertErr) console.error(`[${FUNCTION_NAME}] platform_alerts_log insert failed:`, identAlertErr);
+      }
       return new Response(
         JSON.stringify({ error: "Failed to store parsed data", detail: updateError.message }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
