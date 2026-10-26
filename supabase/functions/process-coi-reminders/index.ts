@@ -80,6 +80,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { type GetEnv, serviceGate } from "./caller-gate.ts"; // gh-3104
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import {
   build30DayEmail,
@@ -668,28 +669,42 @@ async function processWCReminders(
 // MAIN HANDLER
 // =============================================================================
 
-serve(async (req) => {
+// gh-3104: exported so caller-gate.test.ts can drive the REAL handler (gh-2309 precedent:
+// serve() guarded by import.meta.main, which the Edge runtime sets for the entry file).
+export async function handler(
+  req: Request,
+  getEnv: GetEnv = (n) => Deno.env.get(n),
+  makeClient: typeof createClient = createClient,
+): Promise<Response> {
   const corsHeaders = buildCorsHeaders(req);
 
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // gh-3104 caller gate (the gh-2309 / gh-2462 pattern). Real callers: pg_cron job 4 (daily 08:00) with `Bearer <vault cron_service_role_key>`.
+  // Anything else gets 401 BEFORE the client is built or any DB read / email.
+  const denied = serviceGate(req, getEnv, corsHeaders);
+  if (denied) {
+    console.warn(`[process-coi-reminders] 401: called without the service bearer`);
+    return denied;
+  }
+
   if (req.method !== "POST") {
     return jsonResponse({ error: "Method not allowed" }, 405, corsHeaders);
   }
 
-  const supabaseUrl   = Deno.env.get("SUPABASE_URL")!;
-  const serviceKey    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const mailgunApiKey = Deno.env.get("MAILGUN_API_KEY")!;
-  const mailgunDomain = Deno.env.get("MAILGUN_DOMAIN")!;
+  const supabaseUrl   = getEnv("SUPABASE_URL")!;
+  const serviceKey    = getEnv("SUPABASE_SERVICE_ROLE_KEY")!;
+  const mailgunApiKey = getEnv("MAILGUN_API_KEY")!;
+  const mailgunDomain = getEnv("MAILGUN_DOMAIN")!;
 
   if (!supabaseUrl || !serviceKey || !mailgunApiKey || !mailgunDomain) {
     console.error(`[${FUNCTION_NAME}] Missing required env vars.`);
     return jsonResponse({ error: "Server configuration error" }, 500, corsHeaders);
   }
 
-  const supabase = createClient(supabaseUrl, serviceKey);
+  const supabase = makeClient(supabaseUrl, serviceKey);
 
   const { data: rateLimitOk, error: rlError } = await supabase.rpc(
     "check_rate_limit",
@@ -768,4 +783,6 @@ serve(async (req) => {
   }
 
   return jsonResponse(result, 200, corsHeaders);
-});
+}
+
+if (import.meta.main) serve((req) => handler(req));

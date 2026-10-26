@@ -9,9 +9,11 @@
  *
  * Auth: verify_jwt = false (see supabase/config.toml). Invoked by the
  *   apply_referral_commission() DB trigger via pg_net with service role bearer,
- *   and by process-payout-reminders for catch-up runs. A CRON_SECRET gate is
- *   deferred — requires Tier 3 SQL migration to update pg_net call in the trigger.
- *   Idempotency (notification_sent_at) and rate limiting provide abuse defense.
+ *   and by process-payout-reminders for catch-up runs. gh-3104: the handler now
+ *   refuses any caller without that service-role bearer (caller-gate.ts, 401);
+ *   the trigger already sends it from vault cron_service_role_key, so no
+ *   migration was needed for this function. Idempotency (notification_sent_at)
+ *   and rate limiting remain as defense in depth.
  *
  * Rate limiting: checked against rate_limit_config 'notify-payout-pending'.
  *
@@ -33,6 +35,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { type GetEnv, serviceGate } from "./caller-gate.ts"; // gh-3104
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import {
   formatCurrency,
@@ -102,17 +105,31 @@ async function sendMailgunEmail(
 // MAIN HANDLER
 // =============================================================================
 
-serve(async (req: Request) => {
+// gh-3104: exported so caller-gate.test.ts can drive the REAL handler (gh-2309 precedent:
+// serve() guarded by import.meta.main, which the Edge runtime sets for the entry file).
+export async function handler(
+  req: Request,
+  getEnv: GetEnv = (n) => Deno.env.get(n),
+  makeClient: typeof createClient = createClient,
+): Promise<Response> {
   const corsHeaders = buildCorsHeaders(req);
 
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
-  const supabaseUrl     = Deno.env.get("SUPABASE_URL")!;
-  const serviceRoleKey  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const mailgunApiKey   = Deno.env.get("MAILGUN_API_KEY")!;
-  const mailgunDomain   = Deno.env.get("MAILGUN_DOMAIN")!;
+  // gh-3104 caller gate (the gh-2309 / gh-2462 pattern). Real callers: apply_referral_commission() via pg_net (`Bearer <vault cron_service_role_key>`) and process-payout-reminders (`Bearer SUPABASE_SERVICE_ROLE_KEY`).
+  // Anything else gets 401 BEFORE the client is built or any DB read / email.
+  const denied = serviceGate(req, getEnv, corsHeaders);
+  if (denied) {
+    console.warn(`[notify-payout-pending] 401: called without the service bearer`);
+    return denied;
+  }
+
+  const supabaseUrl     = getEnv("SUPABASE_URL")!;
+  const serviceRoleKey  = getEnv("SUPABASE_SERVICE_ROLE_KEY")!;
+  const mailgunApiKey   = getEnv("MAILGUN_API_KEY")!;
+  const mailgunDomain   = getEnv("MAILGUN_DOMAIN")!;
 
   if (!supabaseUrl || !serviceRoleKey || !mailgunApiKey || !mailgunDomain) {
     console.error(`[${FUNCTION_NAME}] Missing required env vars.`);
@@ -122,7 +139,7 @@ serve(async (req: Request) => {
   }
 
   // Use service role client — this function is called from the DB trigger.
-  const supabase = createClient(supabaseUrl, serviceRoleKey);
+  const supabase = makeClient(supabaseUrl, serviceRoleKey);
 
   try {
     // ── Rate limiting ────────────────────────────────────────────────────────
@@ -235,4 +252,6 @@ serve(async (req: Request) => {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-});
+}
+
+if (import.meta.main) serve((req) => handler(req));
