@@ -7,7 +7,7 @@
  * Wrapped by <RequireAdmin tier="super"> + <AdminNav active="referrals">.
  *
  * GATE: the static page gated client-side on a single hardcoded email
- * (currentUser.email === 'dustinstohler1@gmail.com'). That is replaced by the
+ * (a hardcoded owner-email comparison). That is replaced by the
  * shared auth shell (AuthProvider + RequireAdmin tier="super") — the same
  * deliberate parity choice made for admin-payouts / admin-fee-config (do NOT
  * re-check email here). See the handoff for the super-allowlist (2 emails) vs

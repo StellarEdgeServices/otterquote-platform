@@ -676,7 +676,7 @@
                 // Fetch contractor records and last-login data in parallel.
                 // get_contractor_last_logins() is a SECURITY DEFINER RPC that replaces the
                 // revoked admin_contractor_last_logins view (Session 349 security fix, 86e11fa1g).
-                // Gated server-side to dustinstohler1@gmail.com via auth.email() check.
+                // Gated server-side to the admin allow-list via the is_admin_email() check.
                 const [contractorsResult, loginResult] = await Promise.all([
                     adminSb
                         .from('contractors')
@@ -771,7 +771,10 @@
                     return;
                 }
 
-                if (currentUser.email !== 'dustinstohler1@gmail.com') {
+                // gh-3009: admin status comes from the server (is_admin_email()), not a literal here.
+                let adminOk = false;
+                try { const adminRpc = await adminSb.rpc('is_admin_email'); adminOk = !adminRpc.error && adminRpc.data === true; } catch (e) { adminOk = false; }
+                if (!adminOk) {
                     showUnauthorized();
                     return;
                 }

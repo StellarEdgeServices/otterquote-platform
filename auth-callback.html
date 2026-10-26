@@ -236,7 +236,7 @@
     // (and future partner persona pages) sets cs_auth_role to a partnerRoles value
     // before sending the magic link — a stronger signal than getRole()'s
     // contractor-first precedence, which otherwise sends a dual-role account
-    // (contractor + referral_agents, e.g. dustinstohler1@gmail.com) to
+    // (contractor + referral_agents, e.g. the platform admin) to
     // /contractor-dashboard.html even when the user explicitly started from the
     // partner login page. This must run before the role==='contractor' check below.
     var partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
@@ -248,7 +248,7 @@
     }
 
     // gh-1476: honor admin identity before the contractor-first branch below.
-    // The platform's one admin account (dustinstohler1@gmail.com) also carries
+    // The platform's one admin account also carries
     // a leftover is_test=true contractor row ("Stohler Roofing, LLC"), so
     // role === 'contractor' is true for it too -- same "a second identity
     // outranks getRole()'s contractor-first precedence" shape as the

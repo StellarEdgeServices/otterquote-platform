@@ -24,6 +24,9 @@ export interface AuthState {
   role: OtterRole;
   /** True if user is in the admin allow-list (D-211) */
   isAdmin: boolean;
+  /** True if the SERVER says the caller's verified email is on the admin list
+   *  (public.is_admin_email(), gh-3009). No allow-list lives in client code. */
+  isSuperAdmin: boolean;
   /** True while INITIAL_SESSION has not yet fired */
   loading: boolean;
   /**
