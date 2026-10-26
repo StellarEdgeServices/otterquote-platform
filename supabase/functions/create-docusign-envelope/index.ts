@@ -2676,6 +2676,31 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
       throw new Error("No project confirmation template on file for this trade and funding type. " + "The contractor must upload a Project Confirmation Template in their profile before this document can be created.");
     }
     templateBase64 = await getPcTemplateFromStorage(supabase, slot.file_url);
+  } else if (document_type === "color_confirmation") {
+    // gh-3093 (Ben's ruling, comment 6426095687; D-112 / D-161): the colour document is the
+    // CONTRACTOR's uploaded PDF in contractors.color_confirmation_template, keyed
+    // `{trade}/{funding_type}`. The old fixed path `<contractor_id>/color_confirmation.pdf` has no
+    // upload surface, so no real contractor could ever start colour signing. EXACT key only: no
+    // `roofing/insurance` fallback (unlike selectPcTemplateSlot) and never a platform default.
+    // No slot means a 422 BEFORE the claim slot and BEFORE any BoldSign call, so nothing is
+    // claimed and nothing is charged; the claim continues under D-058.
+    const { data: colorClaim, error: colorClaimErr } = await supabase.from("claims").select("trades, funding_type, job_type").eq("id", claim_id).maybeSingle();
+    const { data: colorContractor, error: colorContractorErr } = await supabase.from("contractors").select("color_confirmation_template").eq("id", contractor_id).maybeSingle();
+    if (colorClaimErr || colorContractorErr) {
+      console.error(`[${FN_NAME}] color_confirmation template lookup failed:`, colorClaimErr || colorContractorErr);
+      return colorRefusal(503, "color_template_lookup_failed", corsHeaders);
+    }
+    const colorTrade = (colorClaim?.trades?.[0] || autoFields?.trade_type)?.toLowerCase() || "roofing";
+    const colorRawFunding = (colorClaim?.funding_type || colorClaim?.job_type || autoFields?.funding_type || "").toLowerCase();
+    const colorFunding = colorRawFunding.includes("insurance") ? "insurance" : "retail";
+    const colorKey = `${colorTrade}/${colorFunding}`;
+    const colorTemplates = colorContractor?.color_confirmation_template;
+    const colorSlot = colorTemplates && typeof colorTemplates === "object" ? colorTemplates[colorKey] : null;
+    if (!colorSlot?.file_url) {
+      console.error(`[${FN_NAME}] color_confirmation refused: contractor ${contractor_id} has no color_confirmation_template slot ${colorKey}`);
+      return colorRefusal(422, "color_template_missing", corsHeaders);
+    }
+    templateBase64 = await getPcTemplateFromStorage(supabase, colorSlot.file_url);
   } else {
     templateBase64 = await getTemplateFromStorage(supabase, contractor_id, document_type);
   }

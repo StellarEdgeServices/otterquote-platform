@@ -66,6 +66,9 @@ interface World {
   failSend: boolean;
   failSignLink: boolean;
   fields: Record<string, string>;
+  contractor?: { color_confirmation_template: unknown } | null;
+  claimExtra?: Record<string, unknown>;
+  templateReads?: string[];
 }
 
 function newWorld(over: Partial<World> = {}): World {
@@ -78,6 +81,9 @@ function newWorld(over: Partial<World> = {}): World {
     failSend: false,
     failSignLink: false,
     fields: { contractor_email: "pro@example-roofing.test", contractor_name: "Acme Roofing", customer_name: "H. Owner" },
+    contractor: { color_confirmation_template: { "roofing/retail": { file_url: "ctr-1/pc_roofing_retail_1.pdf" } } },
+    claimExtra: { trades: ["roofing"], funding_type: "retail" },
+    templateReads: [],
     ...over,
   };
 }
@@ -87,6 +93,10 @@ function fakeSupabase(w: World) {
   function from(table: string) {
     if (table === "platform_alerts_log") {
       return { insert: () => { w.alerts++; return Promise.resolve({ error: null }); } };
+    }
+    if (table === "contractors") {
+      const c: Record<string, unknown> = { select: () => c, eq: () => c, maybeSingle: () => Promise.resolve({ data: w.contractor ?? null, error: null }) };
+      return c;
     }
     const filters: Array<[string, string, unknown]> = [];
     let patch: Record<string, unknown> | null = null;
@@ -99,7 +109,7 @@ function fakeSupabase(w: World) {
       update: (p: Record<string, unknown>) => { patch = p; return chain; },
       eq: (c: string, v: unknown) => { filters.push(["eq", c, v]); return chain; },
       is: (c: string, v: unknown) => { filters.push(["is", c, v]); return chain; },
-      maybeSingle: () => w.selectLookupError ? Promise.resolve({ data: null, error: { message: "boom" } }) : Promise.resolve({ data: w.row && filters.every(([, c, v]) => (w.row as Record<string, unknown>)[c] === v || (v === null && ((w.row as Record<string, unknown>)[c] ?? null) === null)) ? { ...w.row } : null, error: null }),
+      maybeSingle: () => w.selectLookupError ? Promise.resolve({ data: null, error: { message: "boom" } }) : Promise.resolve({ data: w.row && filters.every(([, c, v]) => (w.row as Record<string, unknown>)[c] === v || (v === null && ((w.row as Record<string, unknown>)[c] ?? null) === null)) ? { ...w.row, ...(w.claimExtra || {}) } : null, error: null }),
       then: (resolve: (v: unknown) => void) => {
         if (patch && match()) {
           Object.assign(w.row as object, patch);
@@ -142,7 +152,8 @@ async function load(text: string, w: World) {
     `const WORLD_FIELDS = ${JSON.stringify(w.fields)};`,
     `function stripHomeownerPhone(f) { return f; }`,
     `async function autoPopulateFields() { globalThis.__autoCalls = (globalThis.__autoCalls || 0) + 1; return { fields: { ...WORLD_FIELDS }, claimData: null, contractorData: null }; }`,
-    `async function getTemplateFromStorage() { return "QkFTRTY0"; }`,
+    `async function getTemplateFromStorage() { globalThis.__legacyPathReads = (globalThis.__legacyPathReads || 0) + 1; return "QkFTRTY0"; }`,
+    `async function getPcTemplateFromStorage(_s, fileUrl) { (globalThis.__tplReads = globalThis.__tplReads || []).push(fileUrl); return "QkFTRTY0"; }`,
     `async function preflightTemplateTags() {}`,
     `function getDocumentLabel() { return "Color Confirmation"; }`,
     `function boldSignHeaders(h) { return h || {}; }`,
@@ -425,4 +436,81 @@ Deno.test("caller fields negative control: with the always-auto-populate conditi
     await submit(m, w, { fields: { contractor_email: "attacker@evil.test", contractor_name: "Evil Co" } });
   });
   assertEquals(w.sends, 1, "the control must mint, or the ignore-fields test above proves nothing");
+});
+
+// ---- gh-3093: the colour template comes from contractors.color_confirmation_template[trade/funding] ----
+
+Deno.test("gh-3093: slot present -> that slot's template is used, once, and the envelope is minted", async () => {
+  const w = newWorld({ contractor: { color_confirmation_template: {
+    "roofing/retail": { file_url: "ctr-1/pc_roofing_retail_111.pdf" },
+    "roofing/insurance": { file_url: "ctr-1/pc_roofing_insurance_222.pdf" },
+  } }, claimExtra: { trades: ["Roofing"], funding_type: "insurance" } });
+  (globalThis as any).__tplReads = []; (globalThis as any).__legacyPathReads = 0;
+  await run(w, src, async (m) => {
+    assertEquals((await submit(m, w)).status, 200);
+  });
+  assertEquals((globalThis as any).__tplReads, ["ctr-1/pc_roofing_insurance_222.pdf"]);
+  assertEquals((globalThis as any).__legacyPathReads, 0, "the fixed <id>/color_confirmation.pdf path must not be read");
+  assertEquals(w.sends, 1);
+});
+
+Deno.test("gh-3093: slot absent -> 422 color_template_missing, nothing claimed, nothing sent (fail closed)", async () => {
+  const w = newWorld({ contractor: { color_confirmation_template: {} } });
+  (globalThis as any).__tplReads = []; (globalThis as any).__legacyPathReads = 0;
+  await run(w, src, async (m) => {
+    const res = await submit(m, w);
+    assertEquals(res.status, 422);
+    assertEquals((await res.json()).error, "color_template_missing");
+  });
+  assertEquals(w.sends, 0);
+  assertEquals(w.row!.color_confirmation_envelope_id, null, "no envelope slot may be claimed");
+  assertEquals((globalThis as any).__tplReads, []);
+  assertEquals((globalThis as any).__legacyPathReads, 0);
+});
+
+Deno.test("gh-3093: null template column and missing contractor row also refuse", async () => {
+  for (const contractor of [{ color_confirmation_template: null }, null]) {
+    const w = newWorld({ contractor });
+    await run(w, src, async (m) => {
+      const res = await submit(m, w);
+      assertEquals(res.status, 422);
+      assertEquals((await res.json()).error, "color_template_missing");
+    });
+    assertEquals(w.sends, 0);
+  }
+});
+
+Deno.test("gh-3093: exact key only -- a roofing/insurance slot does NOT serve a roofing/retail claim, nor another trade", async () => {
+  for (const [tpl, extra] of [
+    [{ "roofing/insurance": { file_url: "ctr-1/pc_roofing_insurance_222.pdf" } }, { trades: ["roofing"], funding_type: "retail" }],
+    [{ "roofing/retail": { file_url: "ctr-1/pc_roofing_retail_111.pdf" } }, { trades: ["siding"], funding_type: "retail" }],
+    [{ "roofing/retail": { file_url: "" } }, { trades: ["roofing"], funding_type: "retail" }],
+  ] as const) {
+    const w = newWorld({ contractor: { color_confirmation_template: tpl }, claimExtra: extra });
+    (globalThis as any).__tplReads = [];
+    await run(w, src, async (m) => {
+      const res = await submit(m, w);
+      assertEquals(res.status, 422);
+    });
+    assertEquals(w.sends, 0);
+    assertEquals((globalThis as any).__tplReads, []);
+  }
+});
+
+Deno.test("gh-3093 negative control: with the guard removed a slot-less contractor mints", async () => {
+  const mutated = src.replace("const colorSlot =", "let colorSlot =").replace("if (!colorSlot?.file_url) {", 'colorSlot = colorSlot || { file_url: "platform-default.pdf" }; if (false) {');
+  assertNotEquals(mutated, src, "mutation must apply");
+  const w = newWorld({ contractor: { color_confirmation_template: {} } });
+  await run(w, mutated, async (m) => {
+    await submit(m, w);
+  });
+  assertEquals(w.sends, 1, "the control must mint, or the fail-closed test above proves nothing");
+});
+
+Deno.test("gh-3093: the slot refusal sits before the slot claim and the send", () => {
+  const legacy = grabFrom(src, "handleLegacyFlow", true);
+  const refuse = legacy.indexOf("color_template_missing");
+  assert(refuse !== -1);
+  assert(refuse < legacy.indexOf("claimColorEnvelopeSlot(supabase"));
+  assert(refuse < legacy.indexOf("/v1/document/send"));
 });
