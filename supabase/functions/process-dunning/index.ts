@@ -33,6 +33,10 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+
+// gh-3055: server-side client; no user session to refresh or persist. Without this, supabase-js auth-js starts a
+// setInterval (_startAutoRefresh) inside createClient that never completes, which Deno < 2.8 test sanitizers flag as a leak.
+const SERVER_CLIENT_OPTS = { auth: { autoRefreshToken: false, persistSession: false } } as const;
 import { isSmsPaused } from "../_shared/sms-pause.ts";
 import { appendPostalFooterHtml, appendPostalFooterText } from "./footer-append.ts"; // gh-1824 D-237
 import {
@@ -368,7 +372,7 @@ async function sendSMS(to: string, message: string): Promise<boolean> {
 
   // D-391 / #2875 free-text opt-out flagger: a number with a pending opt-out review is paused for every send. Fails closed.
   const pause = await isSmsPaused(
-    createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""),
+    createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", SERVER_CLIENT_OPTS),
     to,
   );
   if (pause.paused) {
@@ -573,7 +577,7 @@ export async function handler(
     return denied;
   }
 
-  const supabase    = createClient(supabaseUrl, supabaseKey);
+  const supabase    = createClient(supabaseUrl, supabaseKey, SERVER_CLIENT_OPTS);
 
   try {
 
