@@ -20,6 +20,11 @@
 #
 # Every run prints the excused files in the job summary.
 
+supabase/functions/check-siding-design-completion/caller-gate.ts :: gh-1873 Hover retirement left handler.ts a disabled stub that imports no gate; caller-gate.ts is imported by nothing (only a byte-identical sibling copy pinned by process-hover-rebate/caller-gate.test.ts), so it is never bundled
+supabase/functions/create-hover-order/price-setting.ts :: gh-1873 Hover retirement: the disabled stub no longer imports it; imported only by price-setting.test.ts, so it is never bundled
+supabase/functions/get-hover-pdf/pdf-source.ts :: gh-1873 Hover retirement: the disabled stub no longer imports it; imported only by pdf-source.test.ts, so it is never bundled
+supabase/functions/get-hover-siding-data/job-address.ts :: gh-1873 Hover retirement: the disabled stub no longer imports it; imported only by job-address.test.ts, so it is never bundled
+supabase/functions/hover-webhook/job-completion.ts :: gh-1873 Hover retirement: the disabled stub no longer imports it; imported only by job-completion.test.ts, so it is never bundled
 supabase/functions/meta-leadgen-webhook/email-footer.ts :: imported only by email-footer.test.ts; no production file imports it (invite-email.ts carries its own copy of the address)
 supabase/functions/send-partner-onboarding/claim-stage-sql-proof.ts :: a quoted SQL copy that exists only for claim-stage-sql-proof.test.ts; no production file imports it
 supabase/functions/validate-contract-template/__fixtures__/otterquote-v3-reference-roofing-retail.pdf :: PDF fixture read only by v3-fixture.test.ts; no production file reads it
