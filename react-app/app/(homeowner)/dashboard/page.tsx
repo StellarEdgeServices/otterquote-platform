@@ -56,7 +56,7 @@ function DashboardContent() {
   const { claim: liveClaim, loading: claimLoading } = useClaimStatus(claimId ?? '');
   const claim = liveClaim as HomeownerClaim | null;
   const { profile } = useHomeownerProfile(userId, email);
-  const aux = useClaimAux(claimId, userId);
+  const aux = useClaimAux(claimId, userId, claim?.selected_contractor_id);
   const { blockedStates, loading: blockedLoading } = useBlockedStates();
 
   if (idLoading || blockedLoading || (!!claimId && claimLoading)) return <Loading />;
@@ -89,6 +89,7 @@ function DashboardContent() {
         email={email}
         bidCount={aux.bidCount}
         warrantyUrl={aux.warrantyUrl}
+        installStartDate={aux.installStartDate}
       />
 
       <HomeProfilePrompt claim={claim} profile={profile} hasHomeProfile={aux.hasHomeProfile} />

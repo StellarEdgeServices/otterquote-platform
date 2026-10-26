@@ -138,15 +138,32 @@ export const SWITCH_REASONS: SwitchReason[] = [
 ];
 
 /**
- * 3-day switch cutoff. Mirrors dashboard.html:2333-2338 — switching is disabled
- * when the installation (estimated_start_date) is within the next 3 days.
+ * gh-3092: the contractor's start date lives in the winning quote's scope_summary (a JSON string
+ * or object) -- claims has no estimated_start_date column. Mirrors
+ * supabase/functions/switch-contractor/cutoff.ts. Absent/unparseable -> null.
+ */
+export function deriveEstimatedStartDate(scopeSummary: unknown): string | null {
+  if (!scopeSummary) return null;
+  try {
+    const parsed = typeof scopeSummary === 'string' ? JSON.parse(scopeSummary) : scopeSummary;
+    const d = (parsed as { estimated_start_date?: unknown } | null)?.estimated_start_date;
+    return typeof d === 'string' && d.trim() ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 3-day switch cutoff. Switching is disabled when the installation (the winning quote's
+ * estimated start date, see deriveEstimatedStartDate) is within the next 3 days.
+ * No/unparseable date -> allowed, matching the server.
  */
 export function isSwitchWithinCutoff(
-  claim: HomeownerClaim | null | undefined,
+  estimatedStartDate: string | null | undefined,
   now: Date = new Date(),
 ): boolean {
-  if (!claim?.estimated_start_date) return false;
-  const installDate = new Date(claim.estimated_start_date);
+  if (!estimatedStartDate) return false;
+  const installDate = new Date(estimatedStartDate);
   if (Number.isNaN(installDate.getTime())) return false;
   const cutoff = new Date(now);
   cutoff.setDate(cutoff.getDate() + 3);

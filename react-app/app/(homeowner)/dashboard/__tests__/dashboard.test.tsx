@@ -18,6 +18,7 @@ import {
   isStateGated,
   resolveBlockedStates,
   isSwitchWithinCutoff,
+  deriveEstimatedStartDate,
   shouldShowHomeProfilePrompt,
   shouldShowRebateCard,
   shouldShowWarrantyButton,
@@ -199,13 +200,24 @@ describe('D-171 switch contractor', () => {
     expect(canSwitchContractor(claim({ status: 'active' }))).toBe(false);
   });
   it('disables switching within the 3-day install cutoff', () => {
-    expect(isSwitchWithinCutoff(claim({ estimated_start_date: '2026-06-24' }), now)).toBe(true);
+    expect(isSwitchWithinCutoff('2026-06-24', now)).toBe(true);
   });
   it('allows switching well before install', () => {
-    expect(isSwitchWithinCutoff(claim({ estimated_start_date: '2026-07-30' }), now)).toBe(false);
+    expect(isSwitchWithinCutoff('2026-07-30', now)).toBe(false);
   });
   it('allows switching when no install date is set', () => {
-    expect(isSwitchWithinCutoff(claim({}), now)).toBe(false);
+    expect(isSwitchWithinCutoff(null, now)).toBe(false);
+  });
+  it('gh-3092: derives the start date from the quote scope_summary (string or object)', () => {
+    expect(deriveEstimatedStartDate(JSON.stringify({ estimated_start_date: '2026-06-24' }))).toBe('2026-06-24');
+    expect(deriveEstimatedStartDate({ estimated_start_date: '2026-06-24' })).toBe('2026-06-24');
+  });
+  it('gh-3092: absent or garbage scope_summary -> no date -> switching allowed', () => {
+    for (const v of [null, undefined, '', 'not json{', '{}', 'null', { estimated_start_date: 5 }]) {
+      expect(deriveEstimatedStartDate(v)).toBeNull();
+    }
+    expect(isSwitchWithinCutoff('soon', now)).toBe(false);
+    expect(isSwitchWithinCutoff(deriveEstimatedStartDate('not json{'), now)).toBe(false);
   });
   it('builds the support-email body with the job ref, reasons and notes', () => {
     const msg = buildSwitchSurveyMessage(claim({ id: 'claim-abcd1234' }), ['unresponsive', 'other'], 'too slow');
