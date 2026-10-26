@@ -20,5 +20,7 @@ ok(/detailedBidContractors = new Set\(\);\s*try \{/.test(html) && /detErr\.messa
 ok(!/hover_orders/.test(html), 'homeowner page never reads hover_orders directly');
 const mig = fs.readFileSync(path.join(root, 'supabase/migrations_drafts/20261026210000_gh1411_claim_detailed_measurement_bidders.sql'), 'utf8');
 ok(/c\.user_id = auth\.uid\(\)/.test(mig) && /SECURITY DEFINER/.test(mig) && /REVOKE ALL[^;]*anon/.test(mig), 'draft RPC is owner-scoped, definer, anon revoked');
+ok(/EXISTS\s*\(\s*SELECT 1 FROM public\.quotes q\s+WHERE q\.claim_id = h\.claim_id\s+AND q\.contractor_id = h\.requested_by_contractor_id\s*\)/.test(mig), 'draft RPC returns only contractors who have a quote on the claim (no non-bidder disclosure)');
+ok(/REVOKE ALL[^;]*PUBLIC[^;]*anon/.test(mig) && /GRANT EXECUTE[^;]*TO authenticated/.test(mig) && /SET search_path TO 'public'/.test(mig), 'draft RPC keeps REVOKE FROM PUBLIC, anon, GRANT to authenticated, pinned search_path');
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
