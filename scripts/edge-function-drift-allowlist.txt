@@ -20,7 +20,7 @@
 #
 # Every run prints the excused files in the job summary.
 
-supabase/functions/check-siding-design-completion/caller-gate.ts :: gh-1873 Hover retirement left handler.ts a disabled stub that imports no gate; caller-gate.ts is imported by nothing (only a byte-identical sibling copy pinned by process-hover-rebate/caller-gate.test.ts), so it is never bundled
+supabase/functions/check-siding-design-completion/caller-gate.ts :: gh-1873 Hover retirement left handler.ts a disabled stub that imports no gate; caller-gate.ts is imported by nothing (only a sibling function's caller-gate.test.ts reads it, to pin the copies byte-identical), so it is never bundled
 supabase/functions/create-hover-order/price-setting.ts :: gh-1873 Hover retirement: the disabled stub no longer imports it; imported only by price-setting.test.ts, so it is never bundled
 supabase/functions/get-hover-pdf/pdf-source.ts :: gh-1873 Hover retirement: the disabled stub no longer imports it; imported only by pdf-source.test.ts, so it is never bundled
 supabase/functions/get-hover-siding-data/job-address.ts :: gh-1873 Hover retirement: the disabled stub no longer imports it; imported only by job-address.test.ts, so it is never bundled
