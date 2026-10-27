@@ -4,7 +4,6 @@
 // one thing changed (other email / no JWT / bad JWT / RPC says false / RPC errors).
 import { assert, assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
-  type GateClient,
   type GateDeps,
   PRIMARY_ADMIN_EMAIL,
   requireAdmin,
@@ -30,27 +29,22 @@ function fakeDeps(email: string | null, opts: { rpcError?: boolean; getUserThrow
   const probe: Probe = { clientsMade: 0, rpcCalls: [], seenAuthHeader: null };
   const deps: GateDeps = {
     getEnv: (n) => ENV[n],
-    makeClient: (_url, _key, authHeader): GateClient => {
+    getUser: (_url, _key, authHeader) => {
       probe.clientsMade++;
       probe.seenAuthHeader = authHeader;
-      return {
-        auth: {
-          getUser: () => {
-            if (opts.getUserThrows) throw new Error("boom");
-            return Promise.resolve(
-              authHeader === `Bearer ${GOOD_JWT}`
-                ? { data: { user: { id: "u-1", email } }, error: null }
-                : { data: { user: null }, error: { message: "invalid JWT" } },
-            );
-          },
-        },
-        rpc: (fn: string) => {
-          probe.rpcCalls.push(fn);
-          if (opts.rpcError) return Promise.resolve({ data: null, error: { message: "rpc failed" } });
-          const ok = email === PRIMARY_ADMIN_EMAIL || email === SECOND_ADMIN;
-          return Promise.resolve({ data: ok, error: null });
-        },
-      };
+      if (opts.getUserThrows) throw new Error("boom");
+      return Promise.resolve(
+        authHeader === `Bearer ${GOOD_JWT}`
+          ? { data: { user: { id: "u-1", email } }, error: null }
+          : { data: { user: null }, error: { message: "invalid JWT" } },
+      );
+    },
+    callIsAdminEmail: (_url, _key, authHeader) => {
+      probe.rpcCalls.push("is_admin_email");
+      probe.seenAuthHeader = authHeader;
+      if (opts.rpcError) return Promise.resolve({ data: null, error: { message: "rpc failed" } });
+      const ok = email === PRIMARY_ADMIN_EMAIL || email === SECOND_ADMIN;
+      return Promise.resolve({ data: ok, error: null });
     },
   };
   return { deps, probe };

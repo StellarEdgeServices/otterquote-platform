@@ -37,34 +37,46 @@ export type GateResult =
   | { ok: true; user: GateUser }
   | { ok: false; status: 401 | 403; reason: string; user?: GateUser };
 
-/** The slice of the supabase-js client this helper uses. */
-export interface GateClient {
-  auth: {
-    getUser(): Promise<{
-      data: { user: { id: string; email?: string | null } | null } | null;
-      error: unknown;
-    }>;
-  };
-  rpc(fn: string): PromiseLike<{ data: unknown; error: unknown }>;
-}
+export type GateAuthResult = {
+  data: { user: { id: string; email?: string | null } | null } | null;
+  error: unknown;
+};
 
 export interface GateDeps {
   /** Env reader; defaults to Deno.env.get. */
   getEnv?: (name: string) => string | undefined;
-  /** Client factory; defaults to supabase-js. `authHeader` is the caller's Authorization header, verbatim. */
-  makeClient?: (url: string, key: string, authHeader: string) => GateClient | Promise<GateClient>;
+  /** Verifies the caller's JWT (auth.getUser). `authHeader` is the caller's Authorization header, verbatim. */
+  getUser?: (url: string, key: string, authHeader: string) => Promise<GateAuthResult>;
+  /** Calls public.is_admin_email() as the caller (their JWT in Authorization). Resolves to the RPC's boolean/error. */
+  callIsAdminEmail?: (url: string, key: string, authHeader: string) => Promise<{ data: unknown; error: unknown }>;
 }
 
-async function defaultMakeClient(url: string, key: string, authHeader: string): Promise<GateClient> {
+async function defaultGetUser(url: string, key: string, authHeader: string): Promise<GateAuthResult> {
   const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.114.0");
-  return createClient(url, key, { global: { headers: { Authorization: authHeader } } }) as unknown as GateClient;
+  // Caller-JWT client used for .auth only (tests/gh2881-ef-no-caller-jwt-claims.py).
+  const callerClient = createClient(url, key, { global: { headers: { Authorization: authHeader } } });
+  return await callerClient.auth.getUser() as unknown as GateAuthResult;
 }
 
-/** Verify the caller's JWT. Returns the client (carrying that JWT) and the verified user, or a deny. */
+// PostgREST RPC with the caller's JWT, so auth.jwt() inside is_admin_email() is the caller's.
+async function defaultCallIsAdminEmail(url: string, key: string, authHeader: string) {
+  const res = await fetch(`${url.replace(/\/+$/, "")}/rest/v1/rpc/is_admin_email`, {
+    method: "POST",
+    headers: { apikey: key, Authorization: authHeader, "Content-Type": "application/json" },
+    body: "{}",
+  });
+  if (!res.ok) return { data: null, error: { status: res.status } };
+  return { data: await res.json(), error: null };
+}
+
+/** Verify the caller's JWT. Returns the verified user plus the env needed for the RPC, or a deny. */
 async function verifyCaller(
   req: Request,
   deps: GateDeps,
-): Promise<{ ok: true; client: GateClient; user: GateUser } | { ok: false; status: 401 | 403; reason: string }> {
+): Promise<
+  | { ok: true; url: string; key: string; authHeader: string; user: GateUser }
+  | { ok: false; status: 401 | 403; reason: string }
+> {
   const getEnv = deps.getEnv ?? ((n: string) => Deno.env.get(n));
   const authHeader = req.headers.get("Authorization") ?? "";
   if (!/^Bearer\s+\S+/i.test(authHeader)) {
@@ -74,11 +86,10 @@ async function verifyCaller(
   const key = getEnv("SUPABASE_ANON_KEY") || getEnv("SUPABASE_SERVICE_ROLE_KEY") || "";
   if (!url || !key) return { ok: false, status: 403, reason: "gate not configured" };
   try {
-    const client = await (deps.makeClient ?? defaultMakeClient)(url, key, authHeader);
-    const { data, error } = await client.auth.getUser();
+    const { data, error } = await (deps.getUser ?? defaultGetUser)(url, key, authHeader);
     const u = data?.user;
     if (error || !u || !u.id) return { ok: false, status: 401, reason: "invalid token" };
-    return { ok: true, client, user: { id: u.id, email: u.email ?? null } };
+    return { ok: true, url, key, authHeader, user: { id: u.id, email: u.email ?? null } };
   } catch (_e) {
     return { ok: false, status: 403, reason: "gate error" };
   }
@@ -89,7 +100,7 @@ export async function requireAdmin(req: Request, deps: GateDeps = {}): Promise<G
   const v = await verifyCaller(req, deps);
   if (!v.ok) return v;
   try {
-    const { data, error } = await v.client.rpc("is_admin_email");
+    const { data, error } = await (deps.callIsAdminEmail ?? defaultCallIsAdminEmail)(v.url, v.key, v.authHeader);
     if (error || data !== true) return { ok: false, status: 403, reason: "not an admin", user: v.user };
   } catch (_e) {
     return { ok: false, status: 403, reason: "gate error", user: v.user };
