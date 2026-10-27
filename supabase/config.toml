@@ -56,8 +56,8 @@ verify_jwt = false
 
 [functions.notify-payout-pending]
 # DB-trigger-exception: called by apply_referral_commission() trigger via pg_net with service role bearer.
-# JWT verification disabled; rate-limited + idempotent (notification_sent_at stamp). CRON_SECRET gate
-# deferred — requires Tier 3 SQL migration to update pg_net call in apply_referral_commission trigger.
+# JWT verification disabled; rate-limited + idempotent (notification_sent_at stamp). Auth gated in-handler
+# (gh-3104: serviceGate accepts the service-role bearer the trigger already sends from vault cron_service_role_key).
 verify_jwt = false
 
 [functions.parse-loss-sheet]
@@ -195,7 +195,7 @@ enable_leaked_password_protection = true
 verify_jwt = false
 
 [functions.process-bid-expirations]
-# Cron — auth gated in-handler. Pin false (matches deployed v35).
+# Cron — auth gated in-handler (gh-3104: serviceGate; pg_cron job 3 sends the vault cron_service_role_key bearer, sql/v117). Pin false (matches deployed v35).
 verify_jwt = false
 
 [functions.process-dunning]
@@ -341,7 +341,7 @@ verify_jwt = false
 [functions.platform-health-check]
 verify_jwt = false
 
-# Cron-invoked.
+# Cron-invoked. Auth gated in-handler (gh-3104: serviceGate; pg_cron job 4 sends the vault cron_service_role_key bearer).
 [functions.process-coi-reminders]
 verify_jwt = false
 
