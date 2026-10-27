@@ -3,7 +3,7 @@
  *
  * D-180 — Admin Commission Rejection
  *
- * Rejects a pending commission. Admin-only (JWT must be dustinstohler1@gmail.com).
+ * Rejects a pending commission. Admin-only (JWT must be accepted by requireAdmin(), _shared/admin-gate.ts).
  * Rejected commissions are DEFERRED, not voided — status = 'rejected' with a
  * required reason. They can be re-approved by calling approve-payout later.
  *
@@ -14,7 +14,7 @@
  * Input: POST { payout_approval_id: string, rejection_reason: string }
  * Output: { ok: true, approval_id: string }
  *
- * Auth: Requires valid Supabase JWT with email = dustinstohler1@gmail.com.
+ * Auth: Requires valid Supabase JWT accepted by requireAdmin() (_shared/admin-gate.ts).
  *
  * Environment variables:
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY

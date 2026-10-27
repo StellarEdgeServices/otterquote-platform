@@ -15,6 +15,10 @@
  *                                Edge Function gates; it stays separate from requireAdmin so the
  *                                primary-only functions are not widened to the second address.
  *
+ * Note: requireAdmin trusts is_admin_email(), which reads the email claim inside the verified JWT; the
+ * old inline gates compared the email GoTrue returns now. The two differ only for the remaining life
+ * of a token issued before an email change.
+ *
  * Result shape: { ok: true, user } or { ok: false, status, reason, user? }.
  *   status 401 = no/invalid/expired credential (nobody was identified);
  *   status 403 = identified but not in the accepted set, or the check itself could not be completed.

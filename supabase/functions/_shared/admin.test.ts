@@ -114,8 +114,6 @@ const PRIMARY_ONLY_CONSUMERS = [
   "admin-reissue-contract",
   "mint-test-session",
   "send-measurement-ready",
-  "approve-warranty-drift",
-  "reject-warranty-drift",
   "send-referral-out-email",
   "vault-resync",
 ];

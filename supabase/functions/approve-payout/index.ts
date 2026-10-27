@@ -3,7 +3,7 @@
  *
  * D-180 — Admin Commission Approval
  *
- * Approves a pending commission. Admin-only (JWT must be dustinstohler1@gmail.com).
+ * Approves a pending commission. Admin-only (JWT must be accepted by requireAdmin(), _shared/admin-gate.ts).
  * On approval:
  *   1. Sets payout_approvals.status = 'approved', approved_at = NOW(), approved_by = 'admin'
  *   2. Sets referrals.commission_paid_at = NOW() and referrals.status =
@@ -16,7 +16,7 @@
  *   dialog before sending it.
  * Output: { ok: true, approval_id: string }
  *
- * Auth: Requires valid Supabase JWT with email = dustinstohler1@gmail.com.
+ * Auth: Requires valid Supabase JWT accepted by requireAdmin() (_shared/admin-gate.ts).
  *
  * Environment variables:
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
