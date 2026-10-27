@@ -6,7 +6,7 @@ name: R-177 pair gate
 # logic: scripts/r177/gate.mjs (offline tests: scripts/r177/gate.test.mjs).
 #
 # Why it exists: PR #2964 (flagged) merged through the merge queue with REVIEW
-# only, because the pair was enforced only by a local tool. See Docs/r177-legal-read.md.
+# only, because the pair was enforced only by a local tool. See docs/r177-legal-read.md.
 #
 # Triggers are UNCONDITIONAL (no path filter) and include `merge_group`, for the
 # reason spelled out in r177-predicate-tests.yml (gh-1855): a required context

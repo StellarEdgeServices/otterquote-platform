@@ -26,7 +26,7 @@ https://api.supabase.com/v1/projects/yeszghaspzwwstvsrioa/database/query`,
 `read_only: true`) using `aclexplode(pg_class.relacl)` grouped per
 table/grantee/privilege (query and full raw counts, plus the
 information_schema.role_table_grants discrepancy, are in
-Docs/sql-migration-conventions.md's "Premise correction" section --
+docs/sql-migration-conventions.md's "Premise correction" section --
 summary here):
 
   - 48 public tables currently carry an explicit anon/authenticated/

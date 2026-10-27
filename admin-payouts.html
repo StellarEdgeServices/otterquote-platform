@@ -340,7 +340,7 @@
         <a href="admin-payouts.html" class="active">Payouts</a>
     </div>
 
-    <div id="authError">You must be signed in as dustinstohler1@gmail.com to view this page.</div>
+    <div id="authError">You must be signed in as an administrator to view this page.</div>
 
     <!-- Summary cards -->
     <div class="summary-cards">
@@ -431,7 +431,12 @@
         }
 
         const { data: { session } } = await sb.auth.getSession();
-        if (!session || session.user.email !== 'dustinstohler1@gmail.com') {
+        // gh-3009: admin status comes from the server (is_admin_email()), not a literal here.
+        let adminOk = false;
+        if (session) {
+            try { const adminRpc = await sb.rpc('is_admin_email'); adminOk = !adminRpc.error && adminRpc.data === true; } catch (e) { adminOk = false; }
+        }
+        if (!session || !adminOk) {
             document.getElementById('authError').style.display = 'block';
             document.getElementById('loadingSpinner').style.display = 'none';
             return;

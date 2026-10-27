@@ -34,21 +34,21 @@ beforeEach(() => {
 
 describe('RequireAdmin — gate-on-settled (no flash)', () => {
   it('renders neither children nor the Unauthorized panel while not settled (unauthenticated)', () => {
-    mockAuth({ user: null, isAdmin: false, settled: false });
+    mockAuth({ user: null, isAdmin: false, isSuperAdmin: false, settled: false });
     render(<RequireAdmin tier="super"><div>secret</div></RequireAdmin>);
     expect(screen.queryByText('secret')).not.toBeInTheDocument();
     expect(screen.queryByText(/Unauthorized/i)).not.toBeInTheDocument();
   });
 
   it('renders neither children nor the Unauthorized panel while not settled (with a super-admin user)', () => {
-    mockAuth({ user: SUPER_USER, isAdmin: true, settled: false });
+    mockAuth({ user: SUPER_USER, isAdmin: true, isSuperAdmin: true, settled: false });
     render(<RequireAdmin tier="super"><div>secret</div></RequireAdmin>);
     expect(screen.queryByText('secret')).not.toBeInTheDocument();
     expect(screen.queryByText(/Unauthorized/i)).not.toBeInTheDocument();
   });
 
   it('renders neither children nor Unauthorized panel while not settled (reviewer tier)', () => {
-    mockAuth({ user: REVIEWER_USER, isAdmin: true, settled: false });
+    mockAuth({ user: REVIEWER_USER, isAdmin: true, isSuperAdmin: false, settled: false });
     render(<RequireAdmin tier="reviewer"><div>secret</div></RequireAdmin>);
     expect(screen.queryByText('secret')).not.toBeInTheDocument();
     expect(screen.queryByText(/Unauthorized/i)).not.toBeInTheDocument();
@@ -56,22 +56,22 @@ describe('RequireAdmin — gate-on-settled (no flash)', () => {
 });
 
 describe('RequireAdmin tier=super', () => {
-  it('admits a user in the ADMIN_EMAILS allow-list (primary email)', () => {
-    mockAuth({ user: SUPER_USER, isAdmin: true, settled: true });
+  it('admits a user in the server admin list (isSuperAdmin) (primary email)', () => {
+    mockAuth({ user: SUPER_USER, isAdmin: true, isSuperAdmin: true, settled: true });
     render(<RequireAdmin tier="super"><div>admin content</div></RequireAdmin>);
     expect(screen.getByText('admin content')).toBeInTheDocument();
     expect(screen.queryByText(/Unauthorized/i)).not.toBeInTheDocument();
   });
 
   it('admits the second allow-list email', () => {
-    mockAuth({ user: SECOND_SUPER, isAdmin: true, settled: true });
+    mockAuth({ user: SECOND_SUPER, isAdmin: true, isSuperAdmin: true, settled: true });
     render(<RequireAdmin tier="super"><div>admin content</div></RequireAdmin>);
     expect(screen.getByText('admin content')).toBeInTheDocument();
     expect(screen.queryByText(/Unauthorized/i)).not.toBeInTheDocument();
   });
 
-  it('rejects a user not in the ADMIN_EMAILS allow-list', () => {
-    mockAuth({ user: PLAIN_USER, isAdmin: false, settled: true });
+  it('rejects a user not in the server admin list (isSuperAdmin)', () => {
+    mockAuth({ user: PLAIN_USER, isAdmin: false, isSuperAdmin: false, settled: true });
     render(<RequireAdmin tier="super"><div>admin content</div></RequireAdmin>);
     expect(screen.queryByText('admin content')).not.toBeInTheDocument();
     expect(screen.getByText(/Unauthorized/i)).toBeInTheDocument();
@@ -79,15 +79,15 @@ describe('RequireAdmin tier=super', () => {
   });
 
   it('rejects a reviewer-only user (template_review_role=admin, not in allow-list)', () => {
-    // isAdmin=true via template_review_role, but email not in ADMIN_EMAILS — super tier must deny
-    mockAuth({ user: REVIEWER_USER, isAdmin: true, settled: true });
+    // isAdmin=true via template_review_role, but server says not on the admin list — super tier must deny
+    mockAuth({ user: REVIEWER_USER, isAdmin: true, isSuperAdmin: false, settled: true });
     render(<RequireAdmin tier="super"><div>admin content</div></RequireAdmin>);
     expect(screen.queryByText('admin content')).not.toBeInTheDocument();
     expect(screen.getByText(/Unauthorized/i)).toBeInTheDocument();
   });
 
   it('shows the Unauthorized panel (no redirect) when settled and unauthenticated', () => {
-    mockAuth({ user: null, isAdmin: false, settled: true });
+    mockAuth({ user: null, isAdmin: false, isSuperAdmin: false, settled: true });
     render(<RequireAdmin tier="super"><div>secret</div></RequireAdmin>);
     expect(screen.getByText(/Unauthorized/i)).toBeInTheDocument();
     expect(screen.getByText(/restricted to administrators/i)).toBeInTheDocument();
@@ -97,21 +97,21 @@ describe('RequireAdmin tier=super', () => {
 
 describe('RequireAdmin tier=reviewer', () => {
   it('admits a user with isAdmin=true (template_review_role path)', () => {
-    mockAuth({ user: REVIEWER_USER, isAdmin: true, settled: true });
+    mockAuth({ user: REVIEWER_USER, isAdmin: true, isSuperAdmin: false, settled: true });
     render(<RequireAdmin tier="reviewer"><div>reviewer content</div></RequireAdmin>);
     expect(screen.getByText('reviewer content')).toBeInTheDocument();
     expect(screen.queryByText(/Unauthorized/i)).not.toBeInTheDocument();
   });
 
   it('admits a super-admin user (also isAdmin via allow-list)', () => {
-    mockAuth({ user: SUPER_USER, isAdmin: true, settled: true });
+    mockAuth({ user: SUPER_USER, isAdmin: true, isSuperAdmin: true, settled: true });
     render(<RequireAdmin tier="reviewer"><div>reviewer content</div></RequireAdmin>);
     expect(screen.getByText('reviewer content')).toBeInTheDocument();
     expect(screen.queryByText(/Unauthorized/i)).not.toBeInTheDocument();
   });
 
   it('rejects a user with isAdmin=false', () => {
-    mockAuth({ user: PLAIN_USER, isAdmin: false, settled: true });
+    mockAuth({ user: PLAIN_USER, isAdmin: false, isSuperAdmin: false, settled: true });
     render(<RequireAdmin tier="reviewer"><div>reviewer content</div></RequireAdmin>);
     expect(screen.queryByText('reviewer content')).not.toBeInTheDocument();
     expect(screen.getByText(/Unauthorized/i)).toBeInTheDocument();
@@ -119,9 +119,24 @@ describe('RequireAdmin tier=reviewer', () => {
   });
 
   it('rejects unauthenticated user', () => {
-    mockAuth({ user: null, isAdmin: false, settled: true });
+    mockAuth({ user: null, isAdmin: false, isSuperAdmin: false, settled: true });
     render(<RequireAdmin tier="reviewer"><div>reviewer content</div></RequireAdmin>);
     expect(screen.queryByText('reviewer content')).not.toBeInTheDocument();
     expect(screen.getByText(/Unauthorized/i)).toBeInTheDocument();
+  });
+});
+
+describe('RequireAdmin tier=super trusts only the server flag (gh-3009)', () => {
+  it('denies when the server flag is false even for a user whose email looks like an owner address', () => {
+    mockAuth({ user: { id: 'x', email: 'dustin@otterquote.com' }, isAdmin: false, isSuperAdmin: false, settled: true });
+    render(<RequireAdmin tier="super"><div>admin content</div></RequireAdmin>);
+    expect(screen.queryByText('admin content')).not.toBeInTheDocument();
+    expect(screen.getByText(/Unauthorized/i)).toBeInTheDocument();
+  });
+
+  it('denies when the flag is absent (undefined) - fail closed', () => {
+    mockAuth({ user: PLAIN_USER, isAdmin: true, settled: true });
+    render(<RequireAdmin tier="super"><div>admin content</div></RequireAdmin>);
+    expect(screen.queryByText('admin content')).not.toBeInTheDocument();
   });
 });

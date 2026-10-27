@@ -1,7 +1,7 @@
--- STATUS (gh-1438, as of 2026-10-19T19:10:11Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-10-23T16:44:20Z): APPLIED
 -- FILE ROLE: step 3 of 3 of set gh2881_claims_private_text_column_grants: the gated column revoke (steps 1 and 2: gh2881_claim_private_text_rpc.sql, then publish the pages)
--- EVIDENCE: drafted 2026-10-19T19:10:11Z under #2881 (CTO RUN 72 worker cto72-b2881). No ledger row exists. Production was not touched by this draft; the proof ran on a throwaway Postgres only (supabase/tests/gh2881_claims_private_text_proof_run.sh).
--- REPO COPY: none. When applied, file the forward under its real ledger version in supabase/migrations/ and the rollback and pre-flight in supabase/migrations_rollbacks/.
+-- EVIDENCE: APPLIED -- #2881 comment 6369876631 (CTO RUN 77): step 4 of 4 applied at about 16:39Z via the Management API (HTTP 201) with --pages-published-yes, file sha256 0483655a... = the draft on main; NO schema_migrations row. Earlier draft-time evidence, kept: drafted 2026-10-19T19:10:11Z under #2881 (CTO RUN 72 worker cto72-b2881). No ledger row exists. Production was not touched by this draft; the proof ran on a throwaway Postgres only (supabase/tests/gh2881_claims_private_text_proof_run.sh).
+-- REPO COPY: supabase/migrations_applied_manually/20261023163900_gh2881_claims_private_text_column_grants.sql (forward, applied outside the ledger), supabase/migrations_rollbacks/20261023163900_gh2881_claims_private_text_column_grants_rollback.sql (rollback), supabase/migrations_rollbacks/20261023163900_gh2881_claims_private_text_column_grants_pre-flight.md (pre-flight)
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- Migration: gh2881_claims_private_text_column_grants

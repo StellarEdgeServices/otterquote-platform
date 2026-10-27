@@ -237,7 +237,7 @@ lookups and a completeness sweep, not steering verdicts, and are not part of thi
 **Derived by script, not by hand — this is the whole basis for the numbers below:**
 
 ```
-$ python3 count_rows.py Docs/is-test-steering-queries.md
+$ python3 count_rows.py docs/is-test-steering-queries.md
 Section rows  Yes  No   N/A
 B       7     3    3    1
 C       3     2    1    0

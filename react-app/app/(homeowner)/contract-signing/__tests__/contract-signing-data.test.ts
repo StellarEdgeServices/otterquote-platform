@@ -19,6 +19,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     from: vi.fn(),
+    rpc: vi.fn(),
     functions: { invoke: vi.fn() },
   },
 }));
@@ -135,35 +136,25 @@ describe('sendContractorNudge', () => {
 });
 
 describe('requestBidRenewal', () => {
-  it('inserts a contractor dashboard notification and emails support', async () => {
-    const inserts: unknown[] = [];
-    sb.from.mockImplementation((table: string) => {
-      if (table === 'notifications') {
-        return {
-          insert: (payload: unknown) => {
-            inserts.push(payload);
-            return Promise.resolve({ error: null });
-          },
-        };
-      }
-      return {};
-    });
+  const ARGS = {
+    bidId: 'q-1',
+    contractor: { user_id: 'cu1', company_name: 'Acme Roofing' },
+    claim: { id: 'c1', property_address: '1 Main St' },
+    claimId: 'c1',
+  };
+
+  it('notifies the contractor via the request_bid_renewal RPC (never a client notifications insert) and emails support', async () => {
+    sb.rpc.mockResolvedValue({ data: true, error: null });
     sb.functions.invoke.mockResolvedValue({ data: {}, error: null });
 
-    const ok = await requestBidRenewal({
-      bidId: 'q-1',
-      contractor: { user_id: 'cu1', company_name: 'Acme Roofing' },
-      claim: { id: 'c1', property_address: '1 Main St' },
-      claimId: 'c1',
-    });
+    const ok = await requestBidRenewal(ARGS);
 
     expect(ok).toBe(true);
-    expect(inserts).toHaveLength(1);
-    expect(inserts[0]).toMatchObject({
-      user_id: 'cu1',
-      notification_type: 'bid_renewal_requested',
-      channel: 'dashboard',
-    });
+    expect(sb.rpc).toHaveBeenCalledWith('request_bid_renewal', { p_quote_id: 'q-1' });
+    // gh-3049: production RLS refuses a homeowner inserting a notification for another user.
+    expect(sb.from).not.toHaveBeenCalled();
+    // the contractor's private user_id is never sent
+    expect(JSON.stringify(sb.rpc.mock.calls)).not.toContain('cu1');
     expect(sb.functions.invoke).toHaveBeenCalledWith(
       'send-support-email',
       expect.objectContaining({
@@ -172,15 +163,30 @@ describe('requestBidRenewal', () => {
     );
   });
 
-  it('returns true on email-only success when the notification step is skipped (no user_id)', async () => {
-    sb.from.mockImplementation(() => ({}));
+  it('still emails support (safe fallback) when the RPC is not yet applied', async () => {
+    sb.rpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'not found' } });
     sb.functions.invoke.mockResolvedValue({ data: {}, error: null });
-    const ok = await requestBidRenewal({
-      bidId: 'q-1',
-      contractor: { company_name: 'Acme' },
-      claim: { id: 'c1' },
-      claimId: 'c1',
-    });
+    const ok = await requestBidRenewal(ARGS);
     expect(ok).toBe(true);
+    expect(sb.from).not.toHaveBeenCalled();
+    expect(sb.functions.invoke).toHaveBeenCalledWith('send-support-email', expect.anything());
+  });
+
+  it('still emails support when the RPC throws', async () => {
+    sb.rpc.mockRejectedValue(new Error('network down'));
+    sb.functions.invoke.mockResolvedValue({ data: {}, error: null });
+    expect(await requestBidRenewal(ARGS)).toBe(true);
+  });
+
+  it('returns false when the RPC returns false and the support email fails', async () => {
+    sb.rpc.mockResolvedValue({ data: false, error: null });
+    sb.functions.invoke.mockResolvedValue({ data: null, error: new Error('boom') });
+    expect(await requestBidRenewal(ARGS)).toBe(false);
+  });
+
+  it('returns true on RPC-only success when the support email fails', async () => {
+    sb.rpc.mockResolvedValue({ data: true, error: null });
+    sb.functions.invoke.mockResolvedValue({ data: null, error: new Error('boom') });
+    expect(await requestBidRenewal(ARGS)).toBe(true);
   });
 });

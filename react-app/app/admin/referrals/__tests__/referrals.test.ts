@@ -5,7 +5,7 @@
  *   (a) referral_agents READ shape  → REFERRAL_AGENTS_SELECT (byte-for-byte)
  *   (b) payments_blocked WRITE       → unblockPayload() byte-identical; verifyW9Payload()
  *   (c) W-9 viewer wiring            → W9_BUCKET / W9_SIGNED_URL_TTL_SECONDS
- *   (d) the gate                     → RequireAdmin tier="super" ⇒ isSuperAdminEmail
+ *   (d) the gate                     → RequireAdmin tier="super" ⇒ server isSuperAdmin
  *   (e) verbatim tax/legal copy      → W-9 status labels + UNBLOCK_CONFIRM_TEXT
  *
  * Plus filterPartners, summaryCards, fullName, fmtDate, typeBadge, paymentsBadge,
@@ -15,7 +15,6 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isSuperAdminEmail } from '@/lib/admin-allowlist';
 import {
   type ReferralAgent,
   REFERRAL_AGENTS_SELECT,
@@ -110,23 +109,10 @@ describe('W-9 viewer contract', () => {
   });
 });
 
-// ── (d) Gate — RequireAdmin tier="super" ⇒ isSuperAdminEmail ───────────────────
-
-describe('gate parity (RequireAdmin tier="super")', () => {
-  it("admits the static page's sole hardcoded admin email (parity preserved)", () => {
-    expect(isSuperAdminEmail('dustinstohler1@gmail.com')).toBe(true);
-  });
-
-  it('DIVERGENCE (flagged, not fixed): the super allow-list also admits dustin@otterquote.com, which the static single-email gate did NOT', () => {
-    expect(isSuperAdminEmail('dustin@otterquote.com')).toBe(true);
-  });
-
-  it('rejects a non-allow-listed email', () => {
-    expect(isSuperAdminEmail('attacker@example.com')).toBe(false);
-    expect(isSuperAdminEmail(null)).toBe(false);
-    expect(isSuperAdminEmail(undefined)).toBe(false);
-  });
-});
+// ── (d) Gate — RequireAdmin tier="super" ───────────────────────────────────────
+// gh-3009: the email allow-list no longer exists in client code; the gate trusts the
+// server's is_admin_email() answer (AuthProvider isSuperAdmin). Gate behavior is
+// covered in app/admin/_shell/__tests__/RequireAdmin.test.tsx.
 
 // ── (e) Verbatim copy ───────────────────────────────────────────────────────
 

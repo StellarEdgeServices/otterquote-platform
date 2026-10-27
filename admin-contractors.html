@@ -873,7 +873,10 @@
                     return;
                 }
 
-                if (currentUser.email !== 'dustinstohler1@gmail.com') {
+                // gh-3009: admin status comes from the server (is_admin_email()), not a literal here.
+                let adminOk = false;
+                try { const adminRpc = await sb.rpc('is_admin_email'); adminOk = !adminRpc.error && adminRpc.data === true; } catch (e) { adminOk = false; }
+                if (!adminOk) {
                     showUnauthorized();
                     return;
                 }

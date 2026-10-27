@@ -67,7 +67,7 @@ SKIP, BUILD = 0, 1
 PAIRS = [
     ("SKIP  supabase-only",            "e11f7df7e894", "e33d859b166a", SKIP,  "supabase/functions + 3 migrations"),
     ("SKIP  .github + scripts",        "79a325d599c8", "318ef555c8f9", SKIP,  ".github/workflows/*.yml, scripts/*.txt"),
-    ("SKIP  Docs md only",             "e9d733d70065", "54169ec5d437", SKIP,  "Docs/is-test-steering-queries.md"),
+    ("SKIP  Docs md only",             "e9d733d70065", "54169ec5d437", SKIP,  "docs/is-test-steering-queries.md"),
     ("SKIP  sql + supabase (5 files)", "ce3d1ff555d9", "b935c46d37f8", SKIP,  "sql/schema-pending.json + supabase/functions"),
     ("SKIP  tests only",               "b41b1b7e30e9", "7c8da07c2c56", SKIP,  "tests/e2e/package*.json"),
     ("BUILD negative control: HTML",   "e33d859b166a", "7b2eee6d48d8", BUILD, "blog/hail-damage-roof-inspection-first-72-hours.html"),

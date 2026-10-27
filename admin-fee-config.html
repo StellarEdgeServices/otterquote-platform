@@ -531,8 +531,6 @@
 
     <script src="js/config.js"></script>
     <script>
-        const ADMIN_EMAIL = 'dustinstohler1@gmail.com';
-
         const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
 
         let allFees = [];
@@ -544,9 +542,14 @@
         async function checkAuth() {
             const { data: { session } } = await sb.auth.getSession();
             
-            if (!session || session.user.email !== ADMIN_EMAIL) {
+            // gh-3009: admin status comes from the server (is_admin_email()), not a literal here.
+            let adminOk = false;
+            if (session) {
+                try { const adminRpc = await sb.rpc('is_admin_email'); adminOk = !adminRpc.error && adminRpc.data === true; } catch (e) { adminOk = false; }
+            }
+            if (!session || !adminOk) {
                 document.getElementById('authError').style.display = 'block';
-                document.getElementById('authError').textContent = 'Access denied. Only ' + ADMIN_EMAIL + ' can access this page.';
+                document.getElementById('authError').textContent = 'Access denied. This page is for administrators only.';
                 document.querySelector('.container').innerHTML = '';
                 return false;
             }

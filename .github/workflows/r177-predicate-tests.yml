@@ -56,7 +56,7 @@ name: R-177 predicate tests
 # change only removes the precondition that made the last attempt unsafe; it
 # does not flip the switch. Until that repo-settings step happens, this job
 # is still informational -- it runs and reports, but nothing blocks on it.
-# See Docs/r177-legal-read.md.
+# See docs/r177-legal-read.md.
 
 on:
   merge_group:

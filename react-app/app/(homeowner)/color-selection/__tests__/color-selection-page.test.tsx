@@ -70,28 +70,16 @@ const authed = (over: Record<string, unknown> = {}) => ({
 const readyData = (over: Record<string, unknown> = {}) => ({
   claim: {
     id: 'c1',
-    homeowner_id: 'u1',
+    user_id: 'u1',
     selected_contractor_id: 'ctr1',
     property_address: '123 Oak St, Zionsville 46077',
-    contractor: {
-      id: 'ctr1',
-      name: 'Acme Roofing',
-      preferred_brand: 'GAF',
-      phone: '555-1234',
-      notification_phones: null,
-      email: 'ops@acme.test',
-    },
     color_brand: null,
     color_name: null,
     color_selected_at: null,
   },
   contractor: {
-    id: 'ctr1',
-    name: 'Acme Roofing',
-    preferred_brand: 'GAF',
-    phone: '555-1234',
-    notification_phones: null,
-    email: 'ops@acme.test',
+    company_name: 'Acme Roofing',
+    preferred_brands: ['GAF'],
   },
   contractorId: 'ctr1',
   brand: 'GAF',
@@ -133,7 +121,7 @@ describe('color-selection page — render', () => {
 
   it('shows the brand-unknown subtitle + state when no brand is confirmed', async () => {
     (useColorSelectionData as unknown as Fn).mockReturnValue(
-      readyData({ brand: null, contractor: { ...readyData().contractor, preferred_brand: null } }),
+      readyData({ brand: null, contractor: { ...readyData().contractor, preferred_brands: null } }),
     );
     render(<ColorSelectionPage />);
     expect(await screen.findByText(C.brandUnknownTitle)).toBeTruthy();

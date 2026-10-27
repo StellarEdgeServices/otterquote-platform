@@ -130,7 +130,8 @@ const DONE = { ok: true, status: 200, body: { success: true, audit_written: true
   ok(/data-claim="c&quot;&gt;&lt;img src=x&gt;"/.test(h) && /data-env="e&quot;1"/.test(h) && !/<img src=x>/.test(h), 'button attributes are escaped');
 }
 // 8. static guards: this page writes no table and never reaches for a vendor delete
-ok(!/\.(update|insert|delete|upsert|rpc)\(/.test(html), 'page makes no table write or rpc call');
+// gh-3009: the one allowed rpc is the read-only admin check is_admin_email() (no args, returns boolean).
+ok(!/\.(update|insert|delete|upsert)\(/.test(html) && !/\.rpc\((?!\s*'is_admin_email'\s*\))/.test(html), 'page makes no table write or rpc call (other than the read-only is_admin_email check)');
 ok(!/document\/(delete|revoke)/i.test(html), 'page never calls a vendor delete or revoke endpoint itself');
 ok(/admin-reissue-contract/.test(html), 'page targets admin-reissue-contract');
 

@@ -1,0 +1,44 @@
+name: Static gh1411 Purchased State Tests
+
+# gh-1411 -- contractor-opportunities.html shows "Purchased" (not the buy button) to a contractor who already
+# bought the detailed measurement report for a claim; every other contractor still sees the tier price.
+# `pull_request` + `push` to main, no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'contractor-opportunities.html'
+      - 'tests/gh1411-contractor-purchased-state.mjs'
+      - '.github/workflows/static-gh1411-purchased-state-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'contractor-opportunities.html'
+      - 'tests/gh1411-contractor-purchased-state.mjs'
+      - '.github/workflows/static-gh1411-purchased-state-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh1411-purchased-state-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-gh1411-purchased-state-tests:
+    name: Contractor purchased state (gh1411)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Buyer sees Purchased, non-buyer still sees the buy button (gh1411)
+        run: node tests/gh1411-contractor-purchased-state.mjs

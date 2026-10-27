@@ -33,6 +33,11 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+
+// gh-3055: server-side client; no user session to refresh or persist. Without this, supabase-js auth-js starts a
+// setInterval (_startAutoRefresh) inside createClient that never completes, which Deno < 2.8 test sanitizers flag as a leak.
+const SERVER_CLIENT_OPTS = { auth: { autoRefreshToken: false, persistSession: false } } as const;
+import { isSmsPaused } from "../_shared/sms-pause.ts";
 import { appendPostalFooterHtml, appendPostalFooterText } from "./footer-append.ts"; // gh-1824 D-237
 import {
   describeGuardVerdict,
@@ -365,6 +370,16 @@ async function sendSMS(to: string, message: string): Promise<boolean> {
   if (!sid || !token) { console.warn("Twilio credentials not set — skipping SMS"); return false; }
   if (!svcSid && !from) { console.warn("No Twilio sender configured — skipping SMS"); return false; }
 
+  // D-391 / #2875 free-text opt-out flagger: a number with a pending opt-out review is paused for every send. Fails closed.
+  const pause = await isSmsPaused(
+    createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", SERVER_CLIENT_OPTS),
+    to,
+  );
+  if (pause.paused) {
+    console.warn(`[process-dunning] SMS refused: number paused (${pause.reason}). No Twilio call attempted.`);
+    return false;
+  }
+
   const body = new URLSearchParams();
   body.append("To", to);
   body.append("Body", message);
@@ -562,7 +577,7 @@ export async function handler(
     return denied;
   }
 
-  const supabase    = createClient(supabaseUrl, supabaseKey);
+  const supabase    = createClient(supabaseUrl, supabaseKey, SERVER_CLIENT_OPTS);
 
   try {
 
@@ -585,7 +600,7 @@ export async function handler(
         .select(`
           *,
           contractors:contractor_id (id, company_name, email, notification_emails, notification_phones, user_id, sms_opt_in),
-          claims:claim_id (id, property_address, status)
+          claims:claim_id (id, property_address, status, color_confirmation_envelope_id, color_confirmed_at)
         `)
         .eq("id", failId)
         .single();
@@ -677,9 +692,20 @@ export async function handler(
         if (failure.claim_id) {
           // gh-2105 (batch 3, decision a): a zero-row match here strands the
           // claim mid-dunning-resolution -- not back in bidding, not signed.
+          // gh-3047 (sibling of gh-3017): an UNSIGNED colour-confirmation envelope
+          // belongs to the contractor being dropped; clear its id in this same
+          // write so the next contractor's colour flow cannot resume it. A signed
+          // one (color_confirmed_at set) is left as the record of what was signed.
+          const clearUnsignedColourEnvelope =
+            !!claim?.color_confirmation_envelope_id && !claim?.color_confirmed_at;
           const { data: biddingRows, error: biddingErr } = await supabase
             .from("claims")
-            .update({ status: "bidding", selected_contractor_id: null, selected_bid_amount: null })
+            .update({
+              status: "bidding",
+              selected_contractor_id: null,
+              selected_bid_amount: null,
+              ...(clearUnsignedColourEnvelope ? { color_confirmation_envelope_id: null } : {}),
+            })
             .eq("id", failure.claim_id)
             .select("id");
           if (biddingErr) {
@@ -699,6 +725,9 @@ export async function handler(
             .update({ status: "submitted" })
             .eq("claim_id", failure.claim_id)
             .eq("status", "declined")
+            // gh-3052: a switched-away quote is retired as declined + bid_status 'superseded'
+            // and must not come back as a live bid, only genuinely declined bids are restored.
+            .or("bid_status.is.null,bid_status.neq.superseded")
             .select("id");
           if (restoredErr) {
             console.error(`[process-dunning] quotes status=submitted restore failed for claim ${failure.claim_id}:`, restoredErr);

@@ -331,9 +331,10 @@ if (sb) {
 }
 
 async function checkAdminAndInit(user) {
-  // Same admin test as every other admin page: the primary admin address, or
-  // a contractor row flagged template_review_role='admin'.
-  var isAdmin = user.email === 'dustinstohler1@gmail.com';
+  // Same admin test as every other admin page: the server-side admin check
+  // (is_admin_email() RPC), or a contractor row flagged template_review_role='admin'.
+  var isAdmin = false;
+  try { var adminRpc = await sb.rpc('is_admin_email'); isAdmin = !adminRpc.error && adminRpc.data === true; } catch (e) { isAdmin = false; }
   if (!isAdmin) {
     var res = await sb.from('contractors').select('template_review_role').eq('user_id', user.id).maybeSingle();
     isAdmin = res.data && res.data.template_review_role === 'admin';

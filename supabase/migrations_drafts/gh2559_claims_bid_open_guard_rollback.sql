@@ -1,7 +1,7 @@
--- STATUS (gh-1438, as of 2026-10-19): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-10-23T16:44:20Z): APPLIED (forward); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh2559_claims_bid_open_guard (the STATUS is the set's; it describes the forward migration)
--- EVIDENCE: forward file not applied; see gh2559_claims_bid_open_guard.sql
--- REPO COPY: none
+-- EVIDENCE: APPLIED -- #2559 comment 6367264512 (CTO RUN 77): forward applied at about 14:26Z via the Supabase Management API (HTTP 201), file sha256 145e064f... = the draft at 9a5aee80; NO schema_migrations row (SELECT on 2026-10-23: no row mentions it). Earlier draft-time evidence, kept: forward file not applied; see gh2559_claims_bid_open_guard.sql
+-- REPO COPY: supabase/migrations_applied_manually/20261023142600_gh2559_claims_bid_open_guard.sql (forward, applied outside the ledger), supabase/migrations_rollbacks/20261023142600_gh2559_claims_bid_open_guard_rollback.sql (rollback), supabase/migrations_rollbacks/20261023142600_gh2559_claims_bid_open_guard_pre-flight.md (pre-flight)
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- Rollback for gh2559_claims_bid_open_guard. Run by hand, only after the forward file was applied.

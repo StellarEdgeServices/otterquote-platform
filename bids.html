@@ -86,6 +86,7 @@
     .bid-card-header { display: flex; align-items: center; gap: var(--sp-4); margin-bottom: var(--sp-6); padding-bottom: var(--sp-4); border-bottom: 1px solid rgba(255,255,255,0.06); }
     .bid-card-avatar { width: 48px; height: 48px; border-radius: var(--radius-md); background: var(--mid); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; color: var(--amber); flex-shrink: 0; overflow: hidden; }
     .bid-card-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .bid-detailed-mark { display: inline-block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; background: rgba(255,255,255,0.08); color: var(--amber); border: 1px solid var(--amber); padding: 2px 8px; border-radius: var(--radius-full); margin-bottom: 4px; }
     .bid-card-name { font-size: 1.1rem; font-weight: 700; color: var(--white); margin-bottom: 2px; }
     .bid-card-meta { font-size: 0.85rem; color: rgba(255,255,255,0.65); display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 
@@ -535,6 +536,7 @@
     let currentClaim = null;
     let bids = [];
     let contractors = {};  // keyed by contractor_id
+    let detailedBidContractors = new Set();  // gh-1411 / D-317 cl. 5: contractor ids whose bid gets the detailed-measurement bid mark
     let licensesByContractor = {};  // #534: contractor_licenses_public rows keyed by contractor_id (D-218)
 
     // gh-1964 should-fix: owner-photo blob: URLs created by
@@ -641,6 +643,23 @@
               // a bid whose contractor is missing here should be unreachable (GC note).
               if (!row) console.warn('[bids] contractor profile not in contractors_public (not active/approved?) for contractor', bid.contractor_id);
             });
+          }
+
+          // gh-1411 / D-317 cl. 5: which contractors bought the detailed measurement upgrade for this claim.
+          // Homeowner-safe SECURITY DEFINER RPC (the purchase table's SELECT RLS is user_id = auth.uid(), so a
+          // homeowner cannot read a contractor's purchase row directly). Fail-open: any error, or the RPC
+          // not yet applied, shows no mark; nothing else on the card changes.
+          detailedBidContractors = new Set();
+          try {
+            const { data: detRows, error: detErr } = await sb
+              .rpc('get_claim_detailed_measurement_bidders', { p_claim_id: currentClaim.id });
+            if (detErr) {
+              console.error('[bids] detailed-measurement bidders lookup failed:', detErr.message);
+            } else if (Array.isArray(detRows)) {
+              detRows.forEach(row => { if (row && row.contractor_id) detailedBidContractors.add(row.contractor_id); });
+            }
+          } catch (e) {
+            console.error('[bids] detailed-measurement bidders lookup error:', e);
           }
 
           // #534: homeowner-safe license drill-down (D-218). The view only returns
@@ -1181,6 +1200,7 @@
               <div class="bid-card-avatar">${avatarHTML}</div>
               <div>
                 <div class="bid-card-name">${esc(c.company_name || 'Contractor')}</div>
+                ${detailedBidContractors.has(bid.contractor_id) ? '<div class="bid-detailed-mark" data-gh1411-detailed-mark>Bid on detailed measurements</div>' : ''}
                 <div class="bid-card-meta">
                   ${c.years_in_business ? `<span>${c.years_in_business} years in business</span>` : ''}
                   ${c.rating ? `<span>★ ${c.rating}</span>` : ''}
@@ -1851,19 +1871,11 @@
       let emailOk = false;
 
       try {
-        // 1. Insert dashboard notification for the contractor (they'll see it on next login)
-        if (c.user_id) {
-          const { error: notifErr } = await sb.from('notifications').insert({
-            user_id: c.user_id,
-            claim_id: currentClaim ? currentClaim.id : null,
-            notification_type: 'bid_renewal_requested',
-            channel: 'dashboard',
-            recipient: '',
-            message_preview: `A homeowner is requesting an updated bid on ${currentClaim ? (currentClaim.property_address || 'their project') : 'their project'}.`,
-          });
-          if (!notifErr) notifOk = true;
-          else console.warn('requestBidRenewal — notification insert error:', notifErr);
-        }
+        // 1. Dashboard notification for the contractor, sent server side (gh-3049): the contractor's
+        // user_id is private, so request_bid_renewal looks it up after checking this homeowner owns the claim.
+        const { data: notifData, error: notifErr } = await sb.rpc('request_bid_renewal', { p_quote_id: bidId });
+        if (!notifErr && notifData === true) notifOk = true;
+        else if (notifErr) console.warn('requestBidRenewal — notification rpc error:', notifErr);
       } catch (err) {
         console.warn('requestBidRenewal — notification step error:', err);
       }

@@ -14,7 +14,7 @@
  * is NO createClient() call and NO literal key in this page.
  *
  * GATE: the static page gated client-side on a single hardcoded email
- * (session.user.email === 'dustinstohler1@gmail.com'). That is replaced by the
+ * (a hardcoded owner-email comparison). That is replaced by the
  * shared auth shell (AuthProvider + RequireAdmin tier="super") — the same
  * deliberate parity choice made for admin-payouts (do NOT re-check email here).
  * See handoff for the super-allowlist vs platform_fee_config RLS divergence note.
