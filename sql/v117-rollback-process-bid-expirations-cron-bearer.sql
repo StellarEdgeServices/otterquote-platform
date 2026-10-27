@@ -4,13 +4,15 @@
 -- rollback only matters if the bearer itself must be removed. Do not run it while the gated function is deployed.
 DO $v117r$
 DECLARE
-  updated INT := 0;
+  target_jobid BIGINT;
+  n INT;
 BEGIN
-  UPDATE cron.job SET command = $cmd$SELECT net.http_post(url := 'https://yeszghaspzwwstvsrioa.supabase.co/functions/v1/process-bid-expirations', headers := '{"Content-Type": "application/json"}'::jsonb, body := '{}'::jsonb) AS request_id$cmd$
-   WHERE jobname = 'process-bid-expirations';
-  GET DIAGNOSTICS updated = ROW_COUNT;
-  IF updated <> 1 THEN
-    RAISE EXCEPTION 'v117 rollback: expected 1 cron.job row updated, got %', updated;
+  SELECT count(*) INTO n FROM cron.job WHERE jobname = 'process-bid-expirations';
+  IF n <> 1 THEN
+    RAISE EXCEPTION 'v117 rollback: expected 1 cron.job row, got %', n;
   END IF;
+  SELECT jobid INTO target_jobid FROM cron.job WHERE jobname = 'process-bid-expirations';
+  -- cron.alter_job: the migration role has no UPDATE on cron.job (42501, 2026-10-27).
+  PERFORM cron.alter_job(target_jobid, command := $cmd$SELECT net.http_post(url := 'https://yeszghaspzwwstvsrioa.supabase.co/functions/v1/process-bid-expirations', headers := '{"Content-Type": "application/json"}'::jsonb, body := '{}'::jsonb) AS request_id$cmd$);
 END
 $v117r$;
