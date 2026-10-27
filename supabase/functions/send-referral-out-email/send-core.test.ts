@@ -189,9 +189,8 @@ Deno.test("admin gate: only the primary admin identity passes (same single-ident
 
 Deno.test("wiring: index.ts gates on the verified admin BEFORE any read/write", async () => {
   const idx = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
-  const gate = idx.indexOf("isPrimaryAdmin(user?.user?.email)");
-  assert(gate > 0, "in-handler admin gate present");
-  assert(idx.indexOf("auth.getUser(token)") > 0 && idx.indexOf("auth.getUser(token)") < gate);
+  const gate = idx.indexOf("await requirePrimaryAdmin(req)");
+  assert(gate > 0, "in-handler admin gate present (gh-3077: _shared/admin-gate.ts)");
   assert(gate < idx.indexOf("runSend("), "gate precedes runSend");
   assert(gate < idx.indexOf('.from("leads")'), "gate precedes the first DB read");
   assert(idx.includes("NOTIF_TYPE_REFERRAL_OUT") && idx.includes("PRIMARY_ADMIN_EMAIL"));

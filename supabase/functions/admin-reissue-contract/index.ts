@@ -40,13 +40,9 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { auditMessage, normalizeDocumentStatus, planReissue } from "./reissue-plan.ts";
+import { requirePrimaryAdmin } from "../_shared/admin-gate.ts";
 
 const FN_NAME = "admin-reissue-contract";
-
-// gh-1534: kept in sync with supabase/functions/_shared/admin.ts PRIMARY_ADMIN_EMAIL.
-// The deploy path does not resolve _shared imports for constants; same single-email
-// gate admin-contractor-action uses. Do not widen without an explicit decision.
-const PRIMARY_ADMIN_EMAIL = "dustinstohler1@gmail.com";
 
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
@@ -115,17 +111,16 @@ serve(async (req) => {
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return json(corsHeaders, 401, { error: "Missing or invalid Authorization header" });
     }
-    const token = authHeader.substring(7);
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!supabaseUrl || !supabaseKey) throw new Error("Supabase credentials not configured");
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: user, error: userError } = await supabase.auth.getUser(token);
-    if (userError || !user?.user || user.user.email !== PRIMARY_ADMIN_EMAIL) {
+    const gate = await requirePrimaryAdmin(req); // gh-3077: _shared/admin-gate.ts
+    if (!gate.ok) {
       return json(corsHeaders, 403, { error: "Unauthorized" });
     }
-    const adminEmail = user.user.email as string;
+    const adminEmail = gate.user.email as string;
 
     const body = await req.json().catch(() => ({}));
     const claimId = typeof body?.claim_id === "string" ? body.claim_id : "";

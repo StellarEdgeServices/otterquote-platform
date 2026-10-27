@@ -86,6 +86,9 @@ async function readConsumerSource(fn: string): Promise<string> {
   return await Deno.readTextFile(path);
 }
 
+// gh-3077: the gates now read ONE helper (_shared/admin-gate.ts). Each consumer must call the helper
+// that matches the set it accepted before: requireAdmin (both addresses, via live is_admin_email())
+// or requirePrimaryAdmin (primary only). A primary-only function must never call requireAdmin.
 const UNION_CONSUMERS = [
   "approve-payout",
   "reject-payout",
@@ -93,40 +96,34 @@ const UNION_CONSUMERS = [
   "get-payout-completion-status",
   "ga4-report",
   "get-business-lines-dashboard",
+  "get-homeowner-list",
+  "mark-loss-sheet-reviewed",
 ];
 
 for (const fn of UNION_CONSUMERS) {
-  Deno.test(`${fn}: still gates on the full ADMIN_EMAILS union (dustinstohler1@gmail.com, dustin@otterquote.com)`, async () => {
+  Deno.test(`${fn}: gates through requireAdmin() only (both addresses via is_admin_email()), no local email list`, async () => {
     const src = await readConsumerSource(fn);
-    assertStringIncludesBoth(src, ["dustinstohler1@gmail.com", "dustin@otterquote.com"], fn);
+    assert(src.includes("await requireAdmin(req)"), `${fn}/index.ts must call requireAdmin(req)`);
+    assert(!src.includes("requirePrimaryAdmin"), `${fn}/index.ts must not narrow to the primary admin`);
+    assert(!/ADMIN_EMAILS\s*=/.test(src), `${fn}/index.ts must not define its own admin list`);
   });
 }
 
 const PRIMARY_ONLY_CONSUMERS = [
   "admin-contractor-action",
+  "admin-reissue-contract",
   "mint-test-session",
   "send-measurement-ready",
-  "approve-warranty-drift",
-  "reject-warranty-drift",
+  "send-referral-out-email",
+  "vault-resync",
 ];
 
 for (const fn of PRIMARY_ONLY_CONSUMERS) {
-  Deno.test(`${fn}: still gates on PRIMARY_ADMIN_EMAIL only, not widened to the full union`, async () => {
+  Deno.test(`${fn}: gates through requirePrimaryAdmin() only, not widened to requireAdmin()`, async () => {
     const src = await readConsumerSource(fn);
-    assert(
-      src.includes('PRIMARY_ADMIN_EMAIL = "dustinstohler1@gmail.com"'),
-      `${fn}/index.ts must define PRIMARY_ADMIN_EMAIL = "dustinstohler1@gmail.com"`,
-    );
-    assert(
-      !src.includes('ADMIN_EMAILS      = ["dustinstohler1@gmail.com", "dustin@otterquote.com"]') &&
-        !/const ADMIN_EMAILS\s*=\s*\[/.test(src),
-      `${fn}/index.ts must NOT also define a full ADMIN_EMAILS array — that would widen this function's admin gate beyond its pre-gh-1534 behavior`,
-    );
+    assert(src.includes("await requirePrimaryAdmin(req)"), `${fn}/index.ts must call requirePrimaryAdmin(req)`);
+    assert(!/\brequireAdmin\(/.test(src), `${fn}/index.ts must NOT call requireAdmin() — that would widen this function's gate`);
+    assert(!/ADMIN_EMAILS\s*=/.test(src), `${fn}/index.ts must NOT define its own admin list`);
   });
 }
 
-function assertStringIncludesBoth(src: string, needles: string[], fn: string) {
-  for (const needle of needles) {
-    assert(src.includes(needle), `${fn}/index.ts is missing expected admin email "${needle}"`);
-  }
-}

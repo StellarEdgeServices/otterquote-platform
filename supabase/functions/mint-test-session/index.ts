@@ -54,6 +54,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { PRIMARY_ADMIN_EMAIL, requirePrimaryAdmin } from "../_shared/admin-gate.ts";
 import { authorizeCaller, EXEC_MINT_HEADER } from "./caller-auth.ts";
 import {
   type DbAdapter,
@@ -62,11 +63,8 @@ import {
   unexpectedErrorResponse,
 } from "./gate.ts";
 
-// gh-1534: kept in sync with supabase/functions/_shared/admin.ts PRIMARY_ADMIN_EMAIL —
-// do not edit without updating that file too (deploy path does not resolve imports).
-// This function has only ever gated on the single primary email, not the full
-// ADMIN_EMAILS allow-list — do not widen without an explicit decision (see gh-1534).
-const PRIMARY_ADMIN_EMAIL = "dustinstohler1@gmail.com";
+// gh-3077: the admin_jwt path resolves the caller through _shared/admin-gate.ts requirePrimaryAdmin()
+// (primary address only; not widened to the full admin set).
 
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
@@ -121,9 +119,9 @@ serve(async (req) => {
       execHeader: req.headers.get(EXEC_MINT_HEADER),
       execSecret: Deno.env.get("EXEC_MINT_SECRET"),
       primaryAdminEmail: PRIMARY_ADMIN_EMAIL,
-      resolveUserEmail: async (t) => {
-        const { data, error } = await supabase.auth.getUser(t);
-        return error || !data?.user ? null : (data.user.email ?? null);
+      resolveUserEmail: async () => {
+        const g = await requirePrimaryAdmin(req);
+        return g.ok ? g.user.email : null;
       },
     });
     if (!decision.ok) {

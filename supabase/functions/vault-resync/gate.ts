@@ -11,12 +11,10 @@
 // decides WHO may trigger that and WHAT gets written; it never logs, returns,
 // or serialises a secret value — only its name, length and 4-char prefix.
 
-// gh-1534: kept in sync with supabase/functions/_shared/admin.ts
-// PRIMARY_ADMIN_EMAIL — inlined, not imported, because the EF deploy path
-// does not bundle _shared/ (see that file's header). Single-admin gate, the
-// same narrow list as mint-test-session / admin-contractor-action; do not
-// widen to ADMIN_EMAILS without an explicit access-widening decision.
-export const PRIMARY_ADMIN_EMAIL = "dustinstohler1@gmail.com";
+// gh-3077: the primary-admin address now lives in _shared/admin-gate.ts (index.ts gates with
+// requirePrimaryAdmin()). authorizeCaller below is the pure email check kept for its unit tests.
+import { PRIMARY_ADMIN_EMAIL } from "../_shared/admin-gate.ts";
+export { PRIMARY_ADMIN_EMAIL };
 
 /** Vault secret name -> Edge Function env var it is re-synced from. */
 export const RESYNC_TARGETS: Readonly<Record<string, string>> = {
