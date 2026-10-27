@@ -19,6 +19,7 @@ AS $$
   WHERE h.claim_id = p_claim_id
     AND c.user_id = auth.uid()
     AND h.product_code = 'roof_upgrade_detailed'
+    AND h.status IN ('awaiting_fulfillment', 'completed')  -- Ben, CEO RUN 130, DECIDED on PR #3101: a refunded or cancelled purchase never marks the bid
     AND h.requested_by_contractor_id IS NOT NULL
     AND EXISTS (
       SELECT 1 FROM public.quotes q
