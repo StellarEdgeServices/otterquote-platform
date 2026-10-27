@@ -61,6 +61,8 @@ content per page", kept by D-345; STRICT reading per the CEO ruling on #2304):
     letters and Roman numerals become fixed placeholders; county_content and the other profile text must use the character allow-list
     (_char_allowed: ASCII, a few typographic marks, Latin-1 letters). See strict_unique_counts for the residual risk.
   - A page under the floor is NOT generated: not written, not sitemapped.
+    If that page is already live on disk, the whole run fails instead
+    (LivePageDropError, CLI exit 4, nothing written; issue #3108).
   - Each run prints min/median strict-unique words, plus an informational
     cross-page share-of-unshared-shingles metric.
 
@@ -264,6 +266,11 @@ PROFILES_DIR = REPO_ROOT / "data" / "location-state-profiles"
 
 class ComplianceError(RuntimeError):
     """A generated page failed the D-345 / D-104 / D-312 / D-168 / D-175 lint."""
+
+
+class LivePageDropError(RuntimeError):
+    """A page already live on disk fell under MIN_WORDS. The run writes nothing
+    and a human must decide (gh-3108)."""
 
 
 class StateConfigError(RuntimeError):
@@ -2113,6 +2120,20 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
     baseline_lists = template_baseline_words(states, profiles, generated_on, masks)
     strict = strict_unique_counts(word_lists, baseline_lists)
 
+    # gh-3108: a page already live on disk must never be dropped silently. Fail before ANY write
+    # (no pages, no hub, no sitemap); dry-run detects the same way.
+    live_drops = []
+    for (c_slug, trade, _h), wc in zip(built, strict):
+        live_path = out_dir / c_slug / trade / "index.html"
+        if wc < MIN_WORDS and live_path.exists():
+            live_drops.append((f"{c_slug}/{trade}", wc, live_path))
+    if live_drops:
+        for page_id, wc, live_path in live_drops:
+            print(f"LIVE PAGE WOULD BE DROPPED: {page_id} strict-unique {wc} < {MIN_WORDS} ({live_path})")
+        print(f"{len(live_drops)} live page(s) fell under the {MIN_WORDS}-word floor: a live page cannot be "
+              f"dropped silently; a human must decide (rewrite the page's county text, or remove the page deliberately).")
+        raise LivePageDropError(f"{len(live_drops)} live page(s) would be dropped (gh-3108)")
+
     # Pass 1: gate. Pass 2: lint EVERY passing page before any file is written,
     # so a lint failure leaves zero pages and no sitemap change. Pass 3: write.
     passing = []
@@ -2208,6 +2229,9 @@ def main():
     except (StateConfigError, ComplianceError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
+    except LivePageDropError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(4)
 
     print()
     print(f"Done{' (dry run)' if args.dry_run else ''}.")

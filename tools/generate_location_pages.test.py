@@ -217,6 +217,65 @@ class GeneratorTests(unittest.TestCase):
         self.assertNotIn("alpha-county-zz", self.sitemap.read_text(encoding="utf-8"))
         self.assertTrue((self.out / "beta-county-zz" / "roofing" / "index.html").exists())
 
+    # gh-3108: a live page must not be dropped silently ----------------------
+    def _thin_alpha(self):
+        profile = glp.load_profile("ZZ", self.fx_profiles)
+
+        def build(county, trade, generated_on, state):
+            if county != "Alpha":
+                return glp.build_page(county, trade, generated_on, state, profile=profile)
+            return ("<!DOCTYPE html><html><head><title>t</title></head><body><main>"
+                    "<p>We create a scope of work and send it to local contractors.</p>"
+                    "</main></body></html>")
+        return build
+
+    def _snapshot(self):
+        snap = {str(p): (p.stat().st_mtime_ns, p.read_bytes()) for p in self.tmp.rglob("*") if p.is_file()}
+        return snap, sorted(str(p) for p in self.tmp.rglob("*"))
+
+    def test_live_page_under_floor_fails_run_and_writes_nothing(self):
+        self.run_fx()  # first run: everything live
+        live = self.out / "alpha-county-zz" / "roofing" / "index.html"
+        self.assertTrue(live.exists())
+        before = self._snapshot()
+        buf = io.StringIO()
+        for dry in (False, True):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                with self.assertRaises(glp.LivePageDropError):
+                    glp.generate(["ZZ"], out_dir=self.out, sitemap_path=self.sitemap,
+                                 counties_path=self.fx_counties, profiles_dir=self.fx_profiles,
+                                 build_fn=self._thin_alpha(), dry_run=dry)
+            out = buf.getvalue()
+            self.assertEqual(out.count("LIVE PAGE WOULD BE DROPPED: alpha-county-zz/"), len(glp.ELIGIBLE_TRADES))
+            self.assertIn("a live page cannot be dropped silently", out)
+            self.assertEqual(self._snapshot(), before)  # no page, hub or sitemap written or touched
+
+    def test_new_page_under_floor_still_skipped_when_not_on_disk(self):
+        summary = self.run_fx(build_fn=self._thin_alpha())  # empty out dir: nothing live
+        self.assertEqual(sorted(summary["skipped_thin"]),
+                         sorted(f"alpha-county-zz/{t}" for t in glp.ELIGIBLE_TRADES))
+        self.assertFalse((self.out / "alpha-county-zz").exists())
+        self.assertTrue((self.out / "beta-county-zz" / "roofing" / "index.html").exists())
+
+    def test_cli_exits_4_on_live_page_drop(self):
+        def boom(*a, **k):
+            raise glp.LivePageDropError("x")
+        orig, glp.generate = glp.generate, boom
+        orig_load, glp.load_allowlist = glp.load_allowlist, lambda *a, **k: ["ZZ"]
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as cm:
+                    old = sys.argv
+                    sys.argv = ["x", "--dry-run"]
+                    try:
+                        glp.main()
+                    finally:
+                        sys.argv = old
+        finally:
+            glp.generate, glp.load_allowlist = orig, orig_load
+        self.assertEqual(cm.exception.code, 4)
+
     def test_identical_county_content_fails_both(self):
         def same(prof):
             prof["county_content"]["Beta"] = json.loads(json.dumps(prof["county_content"]["Alpha"]))
