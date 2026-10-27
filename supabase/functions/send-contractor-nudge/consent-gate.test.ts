@@ -69,6 +69,7 @@ Deno.test("opted-out (false): refused — no fetch call is ever made, phone is n
     "ctr-1",
     false,
     CURRENT_CONTRACTOR_SMS_CONSENT_VERSION,
+    true, // isTest: gh-2875 gate passes, so these cases isolate the consent gate
   );
   assertEquals(result, { attempted: false, ok: false });
   assertEquals(calls.length, 0);
@@ -85,6 +86,7 @@ Deno.test("null (never asked, v115 default): refused — no fetch call is ever m
     "ctr-1",
     null,
     null,
+    true, // isTest: gh-2875 gate passes, so these cases isolate the consent gate
   );
   assertEquals(result, { attempted: false, ok: false });
   assertEquals(calls.length, 0);
@@ -101,6 +103,7 @@ Deno.test("undefined (fields omitted): refused — no fetch call is ever made", 
     "ctr-1",
     undefined,
     undefined,
+    true, // isTest: gh-2875 gate passes, so these cases isolate the consent gate
   );
   assertEquals(result, { attempted: false, ok: false });
   assertEquals(calls.length, 0);
@@ -121,6 +124,7 @@ Deno.test("opted-in but consent text version is OLD (contractor-v1-2026-09-14): 
     "ctr-1",
     true,
     "contractor-v1-2026-09-14",
+    true, // isTest: gh-2875 gate passes, so these cases isolate the consent gate
   );
   assertEquals(result, { attempted: false, ok: false });
   assertEquals(calls.length, 0);
@@ -137,6 +141,7 @@ Deno.test("opted-in but consent text version is null: refused — no fetch call 
     "ctr-1",
     true,
     null,
+    true, // isTest: gh-2875 gate passes, so these cases isolate the consent gate
   );
   assertEquals(result, { attempted: false, ok: false });
   assertEquals(calls.length, 0);
@@ -156,6 +161,7 @@ Deno.test("opted-in with the CURRENT consent text version: send-sms is called, v
     "ctr-1",
     true,
     CURRENT_CONTRACTOR_SMS_CONSENT_VERSION,
+    true, // isTest: gh-2875 gate passes, so these cases isolate the consent gate
   );
   assertEquals(result, { attempted: true, ok: true });
   assertEquals(calls.length, 1);
@@ -180,7 +186,78 @@ Deno.test("opted-in + current version but send-sms itself fails: attempted true,
     "ctr-1",
     true,
     CURRENT_CONTRACTOR_SMS_CONSENT_VERSION,
+    true, // isTest: gh-2875 gate passes, so these cases isolate the consent gate
   );
   assertEquals(result, { attempted: true, ok: false });
   assertEquals(calls.length, 1);
+});
+
+// -- D-391 / #2875: TCR release gate (is_test-only until CONTRACTOR_SMS_TCR_RELEASED === "true") ------------------
+
+const CONSENTED = [true, CURRENT_CONTRACTOR_SMS_CONSENT_VERSION] as const;
+const envOf = (v: string | undefined) => (_n: string) => v;
+
+async function nudge(isTest: boolean | null | undefined, released: string | undefined) {
+  const { fetchImpl, calls } = makeFetchSpy(true);
+  const logs: string[] = [];
+  const result = await attemptContractorSms(
+    fetchImpl,
+    "https://proj.supabase.co",
+    "service-role-key",
+    "+15551234567",
+    "hello contractor",
+    "ctr-1",
+    CONSENTED[0],
+    CONSENTED[1],
+    isTest,
+    { getEnv: envOf(released), log: (l) => logs.push(l) },
+  );
+  return { result, calls, logs };
+}
+
+Deno.test("gh-2875: consented NON-test contractor, switch unset -> refused, send-sms never called, masked refusal logged", async () => {
+  const { result, calls, logs } = await nudge(false, undefined);
+  assertEquals(result, { attempted: false, ok: false });
+  assertEquals(calls.length, 0);
+  assertEquals(logs.length, 1);
+  assertEquals(logs[0].includes("1234567"), false, "full number must never be logged");
+  assertEquals(logs[0].includes("***4567"), true);
+  assertEquals(logs[0].includes("send-contractor-nudge/consent-gate"), true);
+});
+
+Deno.test("gh-2875: is_test null / undefined (unreadable) fails closed", async () => {
+  for (const v of [null, undefined]) {
+    const { result, calls } = await nudge(v, undefined);
+    assertEquals(result, { attempted: false, ok: false });
+    assertEquals(calls.length, 0);
+  }
+});
+
+Deno.test("gh-2875: switch values other than the exact string 'true' do not release", async () => {
+  for (const v of ["", "1", "TRUE", "yes", "false"]) {
+    const { calls } = await nudge(false, v);
+    assertEquals(calls.length, 0, `released=${JSON.stringify(v)}`);
+  }
+});
+
+Deno.test("gh-2875: consented is_test contractor IS texted (test traffic only reaches test contractors)", async () => {
+  const { result, calls } = await nudge(true, undefined);
+  assertEquals(result, { attempted: true, ok: true });
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("gh-2875: switch 'true' releases a consented non-test contractor", async () => {
+  const { result, calls } = await nudge(false, "true");
+  assertEquals(result, { attempted: true, ok: true });
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("gh-2875: is_test never bypasses the consent gate (test contractor with no opt-in is still refused)", async () => {
+  const { fetchImpl, calls } = makeFetchSpy();
+  const result = await attemptContractorSms(
+    fetchImpl, "https://proj.supabase.co", "service-role-key", "+15551234567", "hello", "ctr-1",
+    false, CURRENT_CONTRACTOR_SMS_CONSENT_VERSION, true, { getEnv: envOf("true") },
+  );
+  assertEquals(result, { attempted: false, ok: false });
+  assertEquals(calls.length, 0);
 });

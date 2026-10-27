@@ -25,6 +25,8 @@
 // same reason contractor-join.html and this Edge Function cannot share a
 // TS module (one is a static page, the other a Deno function); grepping the
 // repo for the literal found no existing shared constant to import instead.
+import { type ContractorSmsGateOptions, contractorSmsReleaseGate } from "../_shared/contractor-sms-release.ts"; // D-391 / #2875 TCR release gate
+
 export const CURRENT_CONTRACTOR_SMS_CONSENT_VERSION = "contractor-v2-2026-09-15";
 
 /**
@@ -54,7 +56,8 @@ export interface SendResult {
  * service-role bearer (send-sms's own auth gate trusts the service-role key
  * as an internal caller — see send-sms/index.ts). Refuses BEFORE any network
  * call unless `smsOptIn` is strictly `true` AND `smsConsentTextVersion`
- * equals `CURRENT_CONTRACTOR_SMS_CONSENT_VERSION`. `fetchImpl` is injected so
+ * equals `CURRENT_CONTRACTOR_SMS_CONSENT_VERSION`, and (D-391 / #2875) unless the contractor is_test or the
+ * CONTRACTOR_SMS_TCR_RELEASED switch is "true". `fetchImpl` is injected so
  * this is unit-testable without a live network call or a real Supabase
  * project — the test asserts fetchImpl is never called for a non-consenting
  * (or stale-version) contractor and IS called for a genuinely, currently
@@ -69,11 +72,25 @@ export async function attemptContractorSms(
   contractorId: string,
   smsOptIn: boolean | null | undefined,
   smsConsentTextVersion: string | null | undefined,
+  // D-391 / #2875: contractors.is_test. Required (no default) so a caller that forgets it fails closed:
+  // undefined/null is "not a test contractor", refused until CONTRACTOR_SMS_TCR_RELEASED === "true".
+  isTest: boolean | null | undefined,
+  gateOpts?: Pick<ContractorSmsGateOptions, "getEnv" | "log">,
 ): Promise<SendResult> {
   if (!isSmsConsented(smsOptIn, smsConsentTextVersion)) {
     console.warn(
       `[send-contractor-nudge] SMS refused (gh-1916 R-134 / D-328 gate) — sms_opt_in/sms_consent_text_version do not satisfy the gate for contractor ${contractorId} (sms_opt_in=${String(smsOptIn)}, sms_consent_text_version=${String(smsConsentTextVersion)}, required=${CURRENT_CONTRACTOR_SMS_CONSENT_VERSION}). No Twilio call attempted.`,
     );
+    return { attempted: false, ok: false };
+  }
+
+  // D-391 / #2875: until the TCR message_flow read-back is pasted, only is_test contractors are texted.
+  if (
+    !contractorSmsReleaseGate(
+      { id: contractorId, is_test: isTest },
+      { site: "send-contractor-nudge/consent-gate", phones: [to], ...gateOpts },
+    ).allowed
+  ) {
     return { attempted: false, ok: false };
   }
 

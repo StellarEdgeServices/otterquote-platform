@@ -46,6 +46,9 @@ const SEND_RE = /functions\/v1\/send-sms|api\.twilio\.com\/2010-04-01\/Accounts\
 // Call-site gates only: a negated consent call, or an explicit `sms_opt_in !== true` test.
 // `isSmsConsented(` without the `!` (the definition, a doc comment, a call that is not negated) is NOT a gate.
 const GATE_RE = /!\s*isSmsConsented\s*\(|\bsms_?opt_?in\s*!==\s*true/gi;
+// D-391 / #2875: every contractor send site ALSO needs the TCR release gate (_shared/contractor-sms-release.ts), a
+// negated `.allowed` check that refuses. The import line, doc comments and strings do not count (scan() blanks them).
+const RELEASE_RE = /!\s*contractorSmsReleaseGate\s*\(/g;
 const REFUSAL_RE = /\b(?:return|continue|throw)\b/;
 
 /**
@@ -111,6 +114,15 @@ function gateBlock(code: string, from: number): string {
   }
   return "";
 }
+/** Index just past the `)` that closes the call whose `(` ends the match at `from` (object-literal args contain `{`). */
+function afterCallArgs(code: string, from: number): number {
+  let depth = 1;
+  for (let k = from; k < code.length; k++) {
+    if (code[k] === "(") depth++;
+    else if (code[k] === ")" && --depth === 0) return k + 1;
+  }
+  return from;
+}
 /** Returns violation strings for one file given its classification (empty = ok). */
 export function checkFile(path: string, src: string, c: Site): string[] {
   const v: string[] = [];
@@ -129,6 +141,31 @@ export function checkFile(path: string, src: string, c: Site): string[] {
     const m = sc.code.slice(g).match(GATE_RE)![0];
     if (!REFUSAL_RE.test(gateBlock(sc.code, g + m.length))) {
       v.push(`${path}: gate at offset ${g} does not refuse (no return/continue/throw in its block)`);
+    }
+  }
+  // D-391 / #2875 release gate: same shape of check, counted separately from the sms_opt_in gates.
+  const releases = [...sc.code.matchAll(RELEASE_RE)].filter((m) => !sc.inStr[m.index!]).map((m) => m.index!);
+  if (releases.length < c.minGates) {
+    v.push(`${path}: ${releases.length} contractorSmsReleaseGate gates for ${sites} contractor send sites (need >= ${c.minGates})`);
+  }
+  for (const g of releases) {
+    const m = sc.code.slice(g).match(RELEASE_RE)![0];
+    if (!REFUSAL_RE.test(gateBlock(sc.code, afterCallArgs(sc.code, g + m.length)))) {
+      v.push(`${path}: contractorSmsReleaseGate at offset ${g} does not refuse (no return/continue/throw in its block)`);
+    }
+  }
+  if (c.order === "gate-before-send") {
+    let prevR = -1;
+    for (const s of [...sc.code.matchAll(SEND_RE)].map((m) => m.index!)) {
+      if (!releases.some((g) => g > prevR && g < s)) {
+        v.push(`${path}: send at offset ${s} has no contractorSmsReleaseGate before it (a gate after the send does not count)`);
+      }
+      prevR = s;
+    }
+  } else if (c.order === "upstream") {
+    const firstCallR = sc.code.search(c.callers!);
+    if (firstCallR !== -1 && (!releases.length || Math.min(...releases) > firstCallR)) {
+      v.push(`${path}: the first contractorSmsReleaseGate sits after the first send-helper call (offset ${firstCallR})`);
     }
   }
   if (c.order === "gate-before-send") {
@@ -181,7 +218,8 @@ Deno.test("each classified send site keeps its sms_opt_in gate (no opt-in -> no 
 // ── Negative controls: the checker must FAIL on a bad shape, and pass the good one ──
 const REFUSE = `{ console.warn("refused"); return false; }`;
 const SEND = "await fetch(`${url}/functions/v1/send-sms`, { method: \"POST\", body: \"x\" });";
-const GATED = `async function go(contractor) {\n  if (contractor.sms_opt_in !== true) ${REFUSE}\n  ${SEND}\n}`;
+const RELEASE = `if (!contractorSmsReleaseGate(contractor, { site: "x" }).allowed) ${REFUSE}`;
+const GATED = `async function go(contractor) {\n  if (contractor.sms_opt_in !== true) ${REFUSE}\n  ${RELEASE}\n  ${SEND}\n}`;
 const ORDERED: Site = { kind: "contractor", sites: 1, minGates: 1, order: "gate-before-send" };
 
 Deno.test("positive control: the gated shape passes", () => {
@@ -222,8 +260,8 @@ Deno.test("negative control: a gate whose block does not refuse is flagged", () 
 });
 Deno.test("negative control: upstream mode flags a gate after the first helper call", () => {
   const up: Site = { kind: "contractor", sites: 1, minGates: 1, order: "upstream", callers: /(?<!function\s)\bsendSMSToAll\s*\(/ };
-  const good = `async function sendSMSToAll(p) { ${SEND} }\nfunction contacts(c) { if (c.sms_opt_in !== true) ${REFUSE} }\nawait sendSMSToAll(x);`;
-  const bad = `async function sendSMSToAll(p) { ${SEND} }\nawait sendSMSToAll(x);\nfunction contacts(c) { if (c.sms_opt_in !== true) ${REFUSE} }`;
+  const good = `async function sendSMSToAll(p) { ${SEND} }\nfunction contacts(c) { if (c.sms_opt_in !== true) ${REFUSE} ${RELEASE} }\nawait sendSMSToAll(x);`;
+  const bad = `async function sendSMSToAll(p) { ${SEND} }\nawait sendSMSToAll(x);\nfunction contacts(c) { if (c.sms_opt_in !== true) ${REFUSE} ${RELEASE} }`;
   assertEquals(checkFile("x.ts", good, up), []);
   assert(checkFile("x.ts", bad, up).some((s) => s.includes("sits after the first send-helper call")));
 });
@@ -261,4 +299,41 @@ Deno.test("real files: a process-dunning gate moved below the helper calls fails
     "\nfunction late(contractor) { if (contractor.sms_opt_in !== true) { return null; } }\n";
   const v = checkFile("process-dunning/index.ts", src, SEND_SITES["process-dunning/index.ts"]);
   assert(v.some((s) => s.includes("sits after the first send-helper call")), JSON.stringify(v));
+});
+
+// ── D-391 / #2875: the TCR release gate must sit on every contractor send site too ──
+Deno.test("negative control: a contractor send with the sms_opt_in gate but NO TCR release gate is flagged", () => {
+  const src = `async function go(contractor) {\n  if (contractor.sms_opt_in !== true) ${REFUSE}\n  ${SEND}\n}`;
+  const v = checkFile("x.ts", src, ORDERED);
+  assert(v.some((s) => s.includes("contractorSmsReleaseGate gates")), JSON.stringify(v));
+  assert(v.some((s) => s.includes("no contractorSmsReleaseGate before it")), JSON.stringify(v));
+});
+Deno.test("negative control: a TCR release gate that sits AFTER the send is flagged", () => {
+  const src = `async function go(contractor) {\n  if (contractor.sms_opt_in !== true) ${REFUSE}\n  ${SEND}\n  ${RELEASE}\n}`;
+  assert(checkFile("x.ts", src, ORDERED).some((s) => s.includes("no contractorSmsReleaseGate before it")));
+});
+Deno.test("negative control: a TCR release gate named only in a comment or string is flagged", () => {
+  const src = `import { contractorSmsReleaseGate } from "x";\nasync function go(contractor) {\n  if (contractor.sms_opt_in !== true) ${REFUSE}\n  // if (!contractorSmsReleaseGate(contractor, {}).allowed) return false;\n  const d = "if (!contractorSmsReleaseGate(c, {}).allowed) return";\n  ${SEND}\n}`;
+  assert(checkFile("x.ts", src, ORDERED).some((s) => s.includes("0 contractorSmsReleaseGate gates")));
+});
+Deno.test("negative control: a TCR release gate whose block does not refuse is flagged", () => {
+  const src = `async function go(contractor) {\n  if (contractor.sms_opt_in !== true) ${REFUSE}\n  if (!contractorSmsReleaseGate(contractor, {}).allowed) { console.warn("noted"); }\n  ${SEND}\n}`;
+  assert(checkFile("x.ts", src, ORDERED).some((s) => s.includes("contractorSmsReleaseGate at offset") && s.includes("does not refuse")));
+});
+Deno.test("real files: removing the TCR release gate from each contractor send site fails", async () => {
+  const cases: Array<[string, string | RegExp]> = [
+    ["send-contractor-nudge/consent-gate.ts", "!contractorSmsReleaseGate("],
+    ["notify-contractors/index.ts", /!contractorSmsReleaseGate\(\s*\{ id: contractorId/],
+    ["process-dunning/index.ts", "!contractorSmsReleaseGate("],
+  ];
+  for (const [p, from] of cases) {
+    const src = mutate(await real(p), from, "false && contractorSmsReleaseGate(");
+    assert(checkFile(p, src, SEND_SITES[p]).length > 0, `${p}: removing the release gate was not caught`);
+  }
+  // notify-contractors has TWO send sites: dropping only the inline loop gate must also fail.
+  const nc = mutate(await real("notify-contractors/index.ts"), /!contractorSmsReleaseGate\(contractor, /, "false && contractorSmsReleaseGate(contractor, ");
+  assert(checkFile("notify-contractors/index.ts", nc, SEND_SITES["notify-contractors/index.ts"]).length > 0);
+});
+Deno.test("real files: the nudge's Dustin alert stays an ungated admin-alert (internal, not a contractor send)", () => {
+  assertEquals(SEND_SITES["send-contractor-nudge/index.ts"].kind, "admin-alert");
 });
