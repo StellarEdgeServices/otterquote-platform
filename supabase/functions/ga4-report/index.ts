@@ -42,15 +42,14 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { requireAdmin } from "../_shared/admin-gate.ts";
 // gh-1649: co-located copy of get-business-lines-dashboard/ga4.ts's wire
 // filter (hostName allow-list + bot/datacenter exclusions). See that file's
 // header for why it is a same-directory copy and not a _shared import.
 import { GA4_EXCLUSIONS, GA4_PRODUCTION_HOSTS, buildGa4ReportRequestBody } from "./ga4-filter.ts";
 
 const FUNCTION_NAME = "ga4-report";
-// gh-1534: kept in sync with supabase/functions/_shared/admin.ts ADMIN_EMAILS — do not
-// edit this array without updating that file too (deploy path does not resolve imports).
-const ADMIN_EMAILS = ["dustinstohler1@gmail.com", "dustin@otterquote.com"];
+// gh-3077: admin gate reads _shared/admin-gate.ts requireAdmin() (live is_admin_email()).
 
 /**
  * The NUMERIC GA4 property id, which is what the Data API takes.
@@ -284,17 +283,9 @@ serve(async (req: Request) => {
     const isServiceRole = serviceRoleKey.length > 0 && bearer === serviceRoleKey;
 
     if (!isServiceRole) {
-      const supabase = createClient(
-        Deno.env.get("SUPABASE_URL") ?? "",
-        Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-        { global: { headers: { Authorization: authHeader } } },
-      );
-      const { data: userData, error: userErr } = await supabase.auth.getUser();
-      // gh-1534: case-sensitive exact match, no normalization — was the only one of
-      // eleven admin gates that lower-cased first; tightened to match the majority
-      // (case-sensitive is the strictest of the two observed behaviors, see PR body).
-      const email = userData?.user?.email;
-      if (userErr || !email || !ADMIN_EMAILS.includes(email)) {
+      // gh-3077: admin set = live is_admin_email() (case-sensitive exact match, as before).
+      const gate = await requireAdmin(req);
+      if (!gate.ok) {
         return jsonResponse({ ok: false, error: "Forbidden" }, 403, cors);
       }
     }

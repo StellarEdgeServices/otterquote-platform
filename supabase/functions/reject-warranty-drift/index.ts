@@ -10,16 +10,13 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.104.0";
+import { requirePrimaryAdmin } from "../_shared/admin-gate.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-// gh-1534: kept in sync with supabase/functions/_shared/admin.ts PRIMARY_ADMIN_EMAIL —
-// do not edit without updating that file too (deploy path does not resolve imports).
-// checkAdminRole()'s email fast-path has only ever gated on this single primary
-// email (the DB template_review_role fallback below it is untouched by gh-1534) —
-// do not widen the fast-path without an explicit decision (see gh-1534).
-const PRIMARY_ADMIN_EMAIL = "dustinstohler1@gmail.com";
+// gh-3077: the primary-admin fast-path reads _shared/admin-gate.ts requirePrimaryAdmin(); the
+// contractors.template_review_role fallback below is unchanged.
 
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
@@ -55,15 +52,14 @@ Deno.serve(async (req: Request) => {
   if (!authHeader?.startsWith("Bearer ")) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
-  const callerToken = authHeader.slice(7);
-
-  const sbCaller = createClient(SUPABASE_URL, callerToken);
-  const { data: { user }, error: authErr } = await sbCaller.auth.getUser();
-  if (authErr || !user) {
+  // gh-3077: identity + primary-admin check via _shared/admin-gate.ts; role fallback unchanged.
+  const gate = await requirePrimaryAdmin(req);
+  const user = gate.user;
+  if (!user) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
-  const isAdmin = await checkAdminRole(user.id, user.email ?? "");
+  const isAdmin = gate.ok || await checkAdminRole(user.id);
   if (!isAdmin) {
     return new Response(JSON.stringify({ error: "Forbidden: admin role required" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
@@ -161,8 +157,7 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-async function checkAdminRole(userId: string, email: string): Promise<boolean> {
-  if (email === PRIMARY_ADMIN_EMAIL) return true;
+async function checkAdminRole(userId: string): Promise<boolean> {
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   const { data } = await sb
     .from("contractors")

@@ -24,8 +24,8 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { requirePrimaryAdmin } from "../_shared/admin-gate.ts";
 import {
-  isPrimaryAdmin,
   NOTIF_TYPE_REFERRAL_OUT,
   PRIMARY_ADMIN_EMAIL,
   runSend,
@@ -94,16 +94,14 @@ serve(async (req) => {
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return json(401, { error: "Missing or invalid Authorization header" });
     }
-    const token = authHeader.substring(7);
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!supabaseUrl || !supabaseKey) throw new Error("Supabase credentials not configured");
     const sb = createClient(supabaseUrl, supabaseKey);
 
     // Admin gate: verified JWT -> primary admin identity. Nothing below runs otherwise.
-    const { data: user, error: userError } = await sb.auth.getUser(token);
-    if (userError || !isPrimaryAdmin(user?.user?.email)) {
+    const gate = await requirePrimaryAdmin(req); // gh-3077: _shared/admin-gate.ts
+    if (!gate.ok) {
       return json(403, { error: "Unauthorized" });
     }
 

@@ -43,12 +43,12 @@ Deno.test("gh-1538: the admin 403 is returned BEFORE verifySend is ever computed
 });
 
 Deno.test("gh-1538: the caller's own JWT is resolved BEFORE verifySend is computed", () => {
-  const getUser = lineOf("await userClient.auth.getUser()");
+  const getUser = lineOf("await requirePrimaryAdmin(req)");
   const verifySend = lineOf("const verifySend = isVerifySendRequested(req.headers)");
   assert(getUser > 0 && verifySend > 0);
   assert(
     getUser < verifySend,
-    `auth.getUser() (line ${getUser}) must precede verifySend (line ${verifySend})`,
+    `requirePrimaryAdmin() (line ${getUser}) must precede verifySend (line ${verifySend})`,
   );
 });
 

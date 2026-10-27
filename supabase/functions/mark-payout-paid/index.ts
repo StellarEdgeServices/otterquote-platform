@@ -18,7 +18,7 @@
  * Input: POST { payout_approval_id: string }
  * Output: { ok: true, approval_id: string }
  *
- * Auth: Requires valid Supabase JWT with email in ADMIN_EMAILS (same
+ * Auth: Requires valid Supabase JWT accepted by requireAdmin() (_shared/admin-gate.ts) (same
  * allow-list as approve-payout / reject-payout).
  *
  * Environment variables:
@@ -30,14 +30,13 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { requireAdmin } from "../_shared/admin-gate.ts";
 import { paidEmailText, paidEmailHtml, formatCurrency, formatPayoutType } from "./templates.ts"; // gh-1824: email bodies moved to templates.ts (testable, no serve() import)
 import { isW9GateHeld, readW9GateFlag, w9GateHeldReason, W9_GATE_FLAG_KEY } from "./w9-gate.ts"; // D-319 (gh-1509): W-9 gate flag, per-function copy of approve-payout/w9-gate.ts
 
 const FUNCTION_NAME     = "mark-payout-paid";
 // Same admin allow-list as approve-payout / reject-payout (D-211 Phase 18 Unit 2).
-// gh-1534: kept in sync with supabase/functions/_shared/admin.ts ADMIN_EMAILS — do not
-// edit this array without updating that file too (deploy path does not resolve imports).
-const ADMIN_EMAILS      = ["dustinstohler1@gmail.com", "dustin@otterquote.com"];
+// gh-3077: admin gate reads _shared/admin-gate.ts requireAdmin() (live is_admin_email()).
 
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
@@ -107,7 +106,6 @@ serve(async (req: Request) => {
   }
 
   const supabaseUrl    = Deno.env.get("SUPABASE_URL")!;
-  const supabaseAnon   = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const mailgunApiKey  = Deno.env.get("MAILGUN_API_KEY")!;
   const mailgunDomain  = Deno.env.get("MAILGUN_DOMAIN")!;
@@ -119,13 +117,8 @@ serve(async (req: Request) => {
   }
 
   // ── JWT verification — admin only ────────────────────────────────────────
-  const authHeader = req.headers.get("Authorization") || "";
-  const userClient = createClient(supabaseUrl, supabaseAnon || serviceRoleKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data: userData, error: userError } = await userClient.auth.getUser();
-
-  if (userError || !userData?.user || !ADMIN_EMAILS.includes(userData.user.email ?? "")) {
+  const gate = await requireAdmin(req);
+  if (!gate.ok) {
     return new Response(JSON.stringify({ ok: false, error: "Unauthorized — admin only" }), {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

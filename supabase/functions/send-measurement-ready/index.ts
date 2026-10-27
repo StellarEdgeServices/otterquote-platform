@@ -36,6 +36,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { requirePrimaryAdmin } from "../_shared/admin-gate.ts";
 import {
   isVerifySendRequested,
   logNotificationFailureLoud,
@@ -48,12 +49,8 @@ import {
 const FUNCTION_NAME = "send-measurement-ready";
 const NOTIFICATION_TYPE = "measurement_ready";
 const DASHBOARD_URL = "https://otterquote.com/dashboard.html";
-// gh-1534: kept in sync with supabase/functions/_shared/admin.ts PRIMARY_ADMIN_EMAIL —
-// do not edit without updating that file too (deploy path does not resolve imports).
-// This function has only ever gated on the single primary email (plus the DB
-// template_review_role fallback below), not the full ADMIN_EMAILS allow-list —
-// do not widen the email fast-path without an explicit decision (see gh-1534).
-const PRIMARY_ADMIN_EMAIL = "dustinstohler1@gmail.com";
+// gh-3077: the primary-admin fast-path reads _shared/admin-gate.ts requirePrimaryAdmin(); the
+// DB template_review_role fallback below is unchanged.
 
 // CORS — origin-allowlisted per project standard (Session 254).
 const ALLOWED_ORIGINS = [
@@ -189,7 +186,6 @@ serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
     const mailgunKey = Deno.env.get("MAILGUN_API_KEY") || "";
     const mailgunDomain = Deno.env.get("MAILGUN_DOMAIN") || "";
     if (!supabaseUrl || !serviceRoleKey || !mailgunKey || !mailgunDomain) {
@@ -204,17 +200,16 @@ serve(async (req: Request) => {
     if (!authHeader?.startsWith("Bearer ")) {
       return json({ error: "Unauthorized" }, 401, corsHeaders);
     }
-    const userClient = createClient(supabaseUrl, anonKey || serviceRoleKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user }, error: authErr } = await userClient.auth.getUser();
-    if (authErr || !user) {
+    // gh-3077: identity + primary-admin check via _shared/admin-gate.ts; role fallback unchanged.
+    const gate = await requirePrimaryAdmin(req);
+    const user = gate.user;
+    if (!user) {
       return json({ error: "Unauthorized" }, 401, corsHeaders);
     }
 
     const sb = createClient(supabaseUrl, serviceRoleKey);
 
-    let isAdmin = user.email === PRIMARY_ADMIN_EMAIL;
+    let isAdmin = gate.ok;
     if (!isAdmin) {
       const { data: adminRow } = await sb
         .from("contractors")

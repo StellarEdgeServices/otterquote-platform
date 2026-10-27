@@ -21,6 +21,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { requirePrimaryAdmin } from "../_shared/admin-gate.ts";
 import {
   approvalEmailText,
   approvalEmailHtml,
@@ -29,12 +30,6 @@ import {
   coiEmailText,
   coiEmailHtml,
 } from "./templates.ts"; // gh-1824: email bodies moved to templates.ts (testable, no serve() import)
-
-// gh-1534: kept in sync with supabase/functions/_shared/admin.ts PRIMARY_ADMIN_EMAIL —
-// do not edit without updating that file too (deploy path does not resolve imports).
-// This function has only ever gated on the single primary email, not the full
-// ADMIN_EMAILS allow-list — do not widen without an explicit decision (see gh-1534).
-const PRIMARY_ADMIN_EMAIL = "dustinstohler1@gmail.com";
 
 // CORS tightened Apr 15, 2026 (Session 181, ClickUp 86e0xhz2j): admin-only
 // function (requires dustinstohler1@gmail.com auth) — origin allowlisted.
@@ -129,8 +124,6 @@ serve(async (req) => {
       );
     }
 
-    const token = authHeader.substring(7);
-
     // Initialize Supabase clients
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -141,12 +134,10 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Verify user is admin
-    const { data: user, error: userError } = await supabase.auth.getUser(
-      token
-    );
+    // Verify user is the primary admin (gh-3077: _shared/admin-gate.ts)
+    const gate = await requirePrimaryAdmin(req);
 
-    if (userError || !user?.user || user.user.email !== PRIMARY_ADMIN_EMAIL) {
+    if (!gate.ok) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }

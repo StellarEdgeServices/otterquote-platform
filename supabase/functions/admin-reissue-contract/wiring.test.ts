@@ -16,7 +16,7 @@ Deno.test("never deletes a vendor document and never emails a party", () => {
 });
 
 Deno.test("admin gate precedes every database read or write", () => {
-  const gate = code.indexOf("PRIMARY_ADMIN_EMAIL)");
+  const gate = code.indexOf("requirePrimaryAdmin(req)");
   assertEquals(gate > 0, true);
   for (const marker of [".from(\"claims\")", ".from(\"quotes\")", ".from(\"platform_alerts_log\")"]) {
     assertEquals(code.indexOf(marker) > gate, true, marker);

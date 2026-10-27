@@ -81,12 +81,11 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { requireAdmin } from "../_shared/admin-gate.ts";
 import { buildRows, isMigrationPendingError, type ClaimIn, type HomeownerRow, type ProfileIn } from "./rows.ts";
 
 const FUNCTION_NAME = "get-homeowner-list";
-// gh-1534: kept in sync with supabase/functions/_shared/admin.ts ADMIN_EMAILS — do not
-// edit this array without updating that file too (deploy path does not resolve imports).
-const ADMIN_EMAILS  = ["dustinstohler1@gmail.com", "dustin@otterquote.com"];
+// gh-3077: admin gate reads _shared/admin-gate.ts requireAdmin() (live is_admin_email()).
 
 const LOSS_SHEET_BUCKET = "claim-documents";
 /**
@@ -295,7 +294,6 @@ serve(async (req: Request) => {
   }
 
   const supabaseUrl    = Deno.env.get("SUPABASE_URL")!;
-  const supabaseAnon   = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
   if (!supabaseUrl || !serviceRoleKey) {
@@ -303,13 +301,8 @@ serve(async (req: Request) => {
   }
 
   // ── JWT verification — admin only (same pattern as get-payout-completion-status) ──
-  const authHeader = req.headers.get("Authorization") || "";
-  const userClient = createClient(supabaseUrl, supabaseAnon || serviceRoleKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data: userData, error: userError } = await userClient.auth.getUser();
-
-  if (userError || !userData?.user || !ADMIN_EMAILS.includes(userData.user.email ?? "")) {
+  const gate = await requireAdmin(req);
+  if (!gate.ok) {
     return jsonResponse({ ok: false, error: "Unauthorized — admin only" }, 401, corsHeaders);
   }
 

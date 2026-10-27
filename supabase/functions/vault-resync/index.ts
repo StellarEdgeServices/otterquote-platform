@@ -28,7 +28,8 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
-import { authorizeCaller, describe, parseBody, planResync, type ResyncResultRow } from "./gate.ts";
+import { requirePrimaryAdmin } from "../_shared/admin-gate.ts";
+import { describe, parseBody, planResync, type ResyncResultRow } from "./gate.ts";
 
 const FUNCTION_NAME = "vault-resync";
 
@@ -67,7 +68,6 @@ serve(async (req) => {
     if (!authHeader.startsWith("Bearer ")) {
       return json({ ok: false, error: "Missing or invalid Authorization header" }, 401, cors);
     }
-    const token = authHeader.substring(7);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -77,9 +77,9 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     // ── Caller gate: verified JWT email must be the single admin (gate.ts) ──
-    const { data: callerData, error: callerError } = await supabase.auth.getUser(token);
-    const gate = authorizeCaller(callerError ? null : callerData?.user?.email);
-    if (!gate.ok) return json({ ok: false, error: gate.error }, gate.status, cors);
+    // gh-3077: identity + primary-admin check via _shared/admin-gate.ts (401 unauthenticated, 403 not primary).
+    const gate = await requirePrimaryAdmin(req);
+    if (!gate.ok) return json({ ok: false, error: gate.status === 401 ? "Unauthenticated" : "Unauthorized" }, gate.status, cors);
 
     // ── Plan from our own env; values never leave this process ──
     const body = await req.json().catch(() => ({}));
@@ -109,7 +109,7 @@ serve(async (req) => {
 
     const ok = results.every((r) => r.action !== "error") && plan.rejected.length === 0;
     console.log(
-      `[${FUNCTION_NAME}] by=${callerData?.user?.email} dry_run=${dryRun} ` +
+      `[${FUNCTION_NAME}] by=${gate.user.email} dry_run=${dryRun} ` +
         results.map((r) => `${r.name}:${r.action}(len ${r.len})`).join(" ") +
         (plan.missing.length ? ` missing=${plan.missing.join(",")}` : ""),
     );
