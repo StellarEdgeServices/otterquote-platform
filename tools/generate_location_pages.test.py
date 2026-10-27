@@ -2113,5 +2113,108 @@ class SourcesListTests(unittest.TestCase):
                 self.assertFalse(self.out.exists())
 
 
+class CrossStateSharedTextTests(unittest.TestCase):
+    """gh-3108 (CEO ruling on #3108 amending #2304, option A): the template baseline and pages in the
+    SAME state keep the strict 3-word shared-run test; ACROSS states a word is shared only inside a run of
+    6 or more consecutive words found on a page of another state. Floor unchanged (500)."""
+
+    @staticmethod
+    def uniq(tag, n):
+        return ["%s%d" % (tag, i) for i in range(n)]
+
+    def pair(self, run, state_b):
+        """Page A (state AA) and page B (state state_b), each 40 own words, then the same `run`, then 40 more own words."""
+        a = self.uniq("a1_", 40) + run + self.uniq("a2_", 40)
+        b = self.uniq("b1_", 40) + run + self.uniq("b2_", 40)
+        return a, b, ["AA", state_b]
+
+    def test_cross_state_five_word_collision_does_not_count(self):
+        run = ["w%d" % i for i in range(5)]
+        a, b, st = self.pair(run, "BB")
+        self.assertEqual(glp.strict_unique_counts([a, b], page_states=st), [85, 85])
+
+    def test_cross_state_six_word_copied_run_counts(self):
+        run = ["w%d" % i for i in range(6)]
+        a, b, st = self.pair(run, "BB")
+        self.assertEqual(glp.strict_unique_counts([a, b], page_states=st), [80, 80])   # the 6 copied words count for neither
+
+    def test_cross_state_seven_word_run_counts_all_words(self):
+        run = ["w%d" % i for i in range(7)]
+        a, b, st = self.pair(run, "BB")
+        self.assertEqual(glp.strict_unique_counts([a, b], page_states=st), [80, 80])
+
+    def test_same_state_three_word_run_still_counts(self):
+        run = ["w%d" % i for i in range(3)]
+        a, b, st = self.pair(run, "AA")
+        self.assertEqual(glp.strict_unique_counts([a, b], page_states=st), [80, 80])
+
+    def test_same_state_two_word_run_does_not_count(self):
+        run = ["w%d" % i for i in range(2)]
+        a, b, st = self.pair(run, "AA")
+        self.assertEqual(glp.strict_unique_counts([a, b], page_states=st), [82, 82])
+
+    def test_cross_state_three_word_run_does_not_count_but_same_state_does(self):
+        # one page in BB shares a 3-word run with A (cross-state: free) and a different 3-word run with A2 (same state: counts)
+        x, y = ["x1", "x2", "x3"], ["y1", "y2", "y3"]
+        a = self.uniq("a_", 50) + x + y
+        b = self.uniq("b_", 50) + x          # other state: x is free
+        a2 = self.uniq("c_", 50) + y         # same state as a: y counts
+        self.assertEqual(glp.strict_unique_counts([a, b, a2], page_states=["AA", "BB", "AA"]), [53, 53, 50])
+
+    def test_template_baseline_stays_strict_across_states(self):
+        run = ["w%d" % i for i in range(3)]
+        a = self.uniq("a1_", 40) + run + self.uniq("a2_", 40)
+        # a 3-word baseline hit costs the page those words whatever state it is in
+        self.assertEqual(glp.strict_unique_counts([a], baseline_lists=[run], page_states=["AA"]), [80])
+        self.assertEqual(glp.strict_unique_counts([a], baseline_lists=[run], page_states=["BB"]), [80])
+
+    def test_repeat_on_the_page_itself_stays_strict(self):
+        run = ["w%d" % i for i in range(3)]
+        a = self.uniq("a1_", 40) + run + self.uniq("a2_", 40) + run
+        self.assertEqual(glp.strict_unique_counts([a], page_states=["AA"]), [83])   # 2nd copy of the run is shared with the 1st
+
+    def test_no_page_states_is_the_previous_global_behaviour(self):
+        # NEGATIVE CONTROL for the old behaviour: with no state information every page is one state, so a
+        # cross-state 3-word collision lowers the score exactly as on main before gh-3108.
+        run = ["w%d" % i for i in range(3)]
+        a, b, _ = self.pair(run, "BB")
+        self.assertEqual(glp.strict_unique_counts([a, b]), [80, 80])
+        self.assertEqual(glp.strict_unique_counts([a, b], page_states=["AA", "BB"]), [83, 83])
+
+    def test_adding_a_page_in_another_state_does_not_lower_an_existing_page(self):
+        # the #3108 failure: a live page near the floor loses score when an unrelated state adds pages
+        run = ["the", "roof", "is", "one", "of", "the"]    # 6 words but built from stock phrases
+        live = self.uniq("l_", 500)
+        live[100:103] = run[:3]
+        live[200:203] = run[3:]
+        before = glp.strict_unique_counts([live], page_states=["TN"])[0]
+        newpage = self.uniq("n_", 300) + run[:3] + self.uniq("m_", 10) + run[3:]
+        after = glp.strict_unique_counts([live, newpage], page_states=["TN", "IN"])[0]
+        self.assertEqual((before, after), (500, 500))
+        self.assertLess(glp.strict_unique_counts([live, newpage])[0], 500)    # old global measure evicts it
+
+    def test_page_states_length_mismatch_is_refused(self):
+        with self.assertRaises(ValueError):
+            glp.strict_unique_counts([["a", "b", "c"]], page_states=["AA", "BB"])
+
+    def test_generate_passes_each_page_state_to_the_measure(self):
+        seen = []
+        real = glp.strict_unique_counts
+
+        def spy(word_lists, baseline_lists=(), page_states=None):
+            seen.append(list(page_states) if page_states is not None else None)
+            return real(word_lists, baseline_lists, page_states)
+
+        helper = GeneratorTests("test_zero_contractor_county_emits_indexable_compliant_page")
+        helper.setUp()
+        try:
+            glp.strict_unique_counts = spy
+            helper.run_fx()
+        finally:
+            glp.strict_unique_counts = real
+            helper.tearDown()
+        self.assertEqual(seen, [["ZZ"] * 12])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

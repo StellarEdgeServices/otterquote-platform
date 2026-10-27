@@ -131,9 +131,17 @@ any per-page token inserted every 7 words defeats): a word of page P is **shared
 unique, when it sits inside a run of **3 or more consecutive words** that also appears
 
 - in any synthetic template baseline (never scored or emitted; 60 per trade), or
-- on **any other page of the run** (a global document-frequency table of 3-word shingles:
-  text found on two pages, or on two hundred, is shared however many pages repeat it), or
+- on **any other page in the same state** (a per-state document-frequency table of 3-word
+  shingles: text found on two pages, or on two hundred, is shared however many pages repeat
+  it), or
 - earlier on P itself (a paragraph repeated 14 times counts once).
+
+Across states the test is looser (gh-3108, CEO ruling amending #2304, option A): a word is
+also shared when it sits inside a run of **6 or more consecutive words** that appears on a
+page of a *different* state. A copied sentence is still caught in any state; incidental
+3-word collisions between states ("one of the") no longer lower a page's score, so adding a
+county in one state cannot push a live page of another state under the floor. The floor stays
+500.
 
 Order does not matter, so shuffled sentences are still shared. Inserted junk only breaks
 shared text into shorter runs; runs of 3+ words still match, so only the junk itself
