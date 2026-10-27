@@ -5,21 +5,23 @@
 //
 // Rule (constitution entry 6 / R-177): a PR flagged `r177:legal-read` (or whose
 // title carries [R-120]/[R-177]) passes only if BOTH of these were posted by a
-// HUMAN (never a bot) and name the PR's current head sha, or a sha reachable
-// from the head through main-merge-only commits:
+// TRUSTED HUMAN (OWNER/MEMBER/COLLABORATOR or the company login; never a bot) and name the PR's EXACT current head sha (STRICT_HEAD; no main-merge
+// ancestor walk):
 //   - a comment starting `LEGAL-READ: PASS` containing the sha, and
 //   - a comment starting `R-177 SIGNED: pr=<n> sha=<sha>`, or the CEO template:
 //     first line starts `R-177 SIGNED:` and a `Head: <40-hex sha>` line within
 //     the next five lines.
-// This mirrors r177_ok() in In Flight/bin/pr-merge-serial-device.py, with one
-// deliberate tightening (note: the local tool sets STRICT_HEAD=True, cto76, #2912,
-// which disables the main-merge walk entirely; this CI gate is looser than that tool
-// and the two should be reconciled -- REVIEW 6323696495 item 4): a "main-merge" is verified structurally, not by its
-// commit message (see mainMergeChain).
+// This mirrors r177_ok() in In Flight/bin/pr-merge-serial-device.py, including
+// STRICT_HEAD=True (reconciled in gh-2965 strict-head: REVIEW 6323696495 item 4).
 
 export const LABEL = 'r177:legal-read';
 export const TITLE_RE = /\[R-1(20|77)\]/;
 export const MAX_CHAIN = 10;
+// DECIDED 2026-10-21 (#2912 comment 6323562999, Tier A): the pair must name the EXACT head sha
+// being merged. A "Merge branch 'main'" commit can carry conflict-resolution edits to the PR's own
+// files, so the main-merge ancestor walk is disabled. Matches STRICT_HEAD=True in
+// In Flight/bin/pr-merge-serial-device.py. mainMergeChain is kept (tested) but unused while true.
+export const STRICT_HEAD = true;
 // The commit endpoint returns at most 100 files per page and the workflow asks
 // for one page, so a list of 100+ entries may be TRUNCATED and cannot be audited.
 // Treat >= 100 (or a missing list) as unauditable and stop the walk: fail closed.
@@ -28,32 +30,66 @@ export const MAX_CHAIN = 10;
 // large main-merge needs a fresh pair, which is the safe direction.
 export const MAX_MERGE_FILES = 100;
 
+// GitHub refuses to render a very large PR diff (406 diff too large, 413, or 422). Such a PR cannot
+// be scanned, so it is treated as flagged (needs the pair). Any other error still fails closed.
+export function isDiffTooLarge(e) {
+  return Boolean(e) && [406, 413, 422].includes(e.status);
+}
+
 export function isFlagged({ labels = [], title = '' }) {
   const names = labels.map((l) => (typeof l === 'string' ? l : l.name));
   return names.includes(LABEL) || TITLE_RE.test(title || '');
 }
 
-// github-actions[bot] interpolates the exact `R-177 SIGNED: pr=<n> sha=<head>`
-// text into its notice comment; bot comments must never count (ceo38, R-077).
+// Who may count toward the pair (R-134, REVIEW 6324652357 finding 1; Ben FYI 6324747555).
+// The repo is PUBLIC, so any GitHub account can comment. A comment counts only when GitHub says
+// the author is OWNER, MEMBER or COLLABORATOR, or the login is the company identity. Bots never
+// count: github-actions[bot] interpolates the exact `R-177 SIGNED: pr=<n> sha=<head>` text into
+// its notice comment (ceo38, R-077). Accepted limit: every agent role posts as the same identity,
+// so this proves the strings exist and who may post them, not which role read or signed.
+export const TRUSTED_ASSOCIATIONS = ['OWNER', 'MEMBER', 'COLLABORATOR'];
+export const COMPANY_LOGIN = 'dustinstohler1-dotcom';
 export function isHumanComment(c) {
   const u = (c && c.user) || {};
-  return u.type !== 'Bot' && !String(u.login || '').endsWith('[bot]');
+  const login = String(u.login || '');
+  if (u.type === 'Bot' || login.endsWith('[bot]')) return false;
+  return TRUSTED_ASSOCIATIONS.includes(c && c.author_association) || login === COMPANY_LOGIN;
+}
+
+// A sha counts only as a whole token: not a prefix, suffix or middle of a longer hex run.
+const HEX = '0-9a-fA-F';
+export function hasShaToken(text, sha) {
+  const esc = String(sha).replace(/[^0-9a-zA-Z]/g, '');
+  return new RegExp(`(?<![${HEX}])${esc}(?![${HEX}])`).test(text);
 }
 
 export function pairFor(comments, prNumber, chain) {
   const bodies = comments.filter(isHumanComment).map((c) => c.body || '');
-  const readOk = bodies.some(
-    (x) => x.trimStart().startsWith('LEGAL-READ: PASS') && chain.some((h) => x.includes(h)),
-  );
+  // The NEWEST eligible LEGAL-READ verdict (PASS, FAIL or QUESTION FOR DUSTIN) naming the exact
+  // head decides, so a later FAIL/QUESTION at the same head cancels an earlier PASS. `PASS` must
+  // end at a word boundary ("PASSING ... NOT" no longer counts). Comments arrive oldest first.
+  let verdict = null;
+  for (const x of bodies) {
+    const m = /^LEGAL-READ: (PASS(?![A-Za-z0-9_])|FAIL(?![A-Za-z0-9_])|QUESTION FOR DUSTIN)/.exec(x.trimStart());
+    if (m && chain.some((h) => hasShaToken(x, h))) verdict = m[1].startsWith('PASS') ? 'PASS' : 'NOT-PASS';
+  }
+  const readOk = verdict === 'PASS';
   let signOk = bodies.some((x) =>
-    chain.some((h) => x.trimStart().startsWith(`R-177 SIGNED: pr=${prNumber} sha=${h}`)),
+    chain.some((h) => {
+      const t = x.trimStart();
+      const lead = `R-177 SIGNED: pr=${prNumber} sha=${h}`;
+      return t.startsWith(lead) && !new RegExp(`^[${HEX}]`).test(t.slice(lead.length));
+    }),
   );
   if (!signOk) {
     signOk = bodies.some((x) => {
       const ls = x.trimStart().split(/\r?\n/);
       return (
         ls[0].startsWith('R-177 SIGNED:') &&
-        chain.some((h) => h.length === 40 && ls.slice(1, 6).some((l) => l.trim().startsWith('Head: ' + h)))
+        chain.some((h) => h.length === 40 && ls.slice(1, 6).some((l) => {
+          const t = l.trim();
+          return t.startsWith('Head: ' + h) && !new RegExp(`^[${HEX}]`).test(t.slice(6 + h.length));
+        }))
       );
     });
   }
@@ -95,21 +131,31 @@ export async function mainMergeChain(api, headSha) {
 export async function evaluate(api, prNumber) {
   const pr = await api.getPull(prNumber);
   const headSha = pr.head.sha;
-  const flagged = isFlagged({ labels: pr.labels || [], title: pr.title });
+  let flagged = isFlagged({ labels: pr.labels || [], title: pr.title });
+  // gh-2965 label race: the labeller (pull_request_target, GITHUB_TOKEN) adds the label seconds
+  // after this job reads the PR, and a label added with GITHUB_TOKEN does not trigger a new run, so
+  // an unlabeled read can stay green (observed live: PR #3043, gate success 14:40:44Z, label
+  // 14:40:41Z). When the label/title say "not flagged", ask the same predicate the labeller uses
+  // (api.predicateHit, supplied by run.cjs). A hit flags the PR. Unlabelling cannot unflag it.
+  let predicateFlagged = false;
+  if (!flagged && typeof api.predicateHit === 'function') {
+    predicateFlagged = Boolean(await api.predicateHit(prNumber));
+    flagged = predicateFlagged;
+  }
   if (!flagged) {
     return { ok: true, flagged, headSha, readOk: null, signOk: null, chain: [headSha],
       message: `PR #${prNumber} is not flagged ${LABEL}; gate not applicable.` };
   }
   const comments = await api.listComments(prNumber);
-  const chain = await mainMergeChain(api, headSha);
+  const chain = STRICT_HEAD ? [headSha] : await mainMergeChain(api, headSha);
   const { readOk, signOk } = pairFor(comments, prNumber, chain);
   const ok = readOk && signOk;
   const missing = [!readOk && 'LEGAL-READ: PASS', !signOk && 'R-177 SIGNED'].filter(Boolean);
-  return { ok, flagged, headSha, readOk, signOk, chain,
+  return { ok, flagged, predicateFlagged, headSha, readOk, signOk, chain,
     message: ok
       ? `PR #${prNumber}: LEGAL-READ: PASS and R-177 SIGNED both name head ${headSha} (chain length ${chain.length}).`
-      : `PR #${prNumber} is flagged ${LABEL} and is missing a human ${missing.join(' and ')} naming head ${headSha} ` +
-        `(or a main-merge-only ancestor). Post the pair over this exact sha, then re-run this check.` };
+      : `PR #${prNumber} is flagged ${predicateFlagged ? `by the legal/money predicate (label ${LABEL} not applied yet)` : LABEL} and is missing a human ${missing.join(' and ')} naming head ${headSha} ` +
+        `(exact head match required). Post the pair over this exact sha, then post a new comment: a new comment re-runs this check.` };
 }
 
 // merge_group head_ref looks like refs/heads/gh-readonly-queue/main/pr-2964-<sha>
