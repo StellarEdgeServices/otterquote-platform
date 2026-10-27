@@ -21,7 +21,12 @@ import type {
   HoverOrder,
   HoverRebateOrder,
 } from './types';
-import { BLOCKED_STATES_TIMEOUT_MS, DEFAULT_BLOCKED_STATES, resolveBlockedStates } from './utils';
+import {
+  BLOCKED_STATES_TIMEOUT_MS,
+  DEFAULT_BLOCKED_STATES,
+  deriveEstimatedStartDate,
+  resolveBlockedStates,
+} from './utils';
 
 // ── Latest claim id (with draft auto-create, dashboard.html:1594-1704) ───────
 
@@ -276,6 +281,7 @@ export interface ClaimAuxData {
   rebateOrder: HoverRebateOrder | null;
   warrantyUrl: string | null;
   bidCount: number;
+  installStartDate: string | null;
   hasHomeProfile: boolean;
   loading: boolean;
   refetch: () => void;
@@ -292,12 +298,14 @@ export interface ClaimAuxData {
 export function useClaimAux(
   claimId: string | null | undefined,
   homeownerUserId: string | null | undefined,
+  selectedContractorId?: string | null,
 ): ClaimAuxData {
   const [aux, setAux] = useState<Omit<ClaimAuxData, 'loading' | 'refetch'>>({
     hoverOrder: null,
     rebateOrder: null,
     warrantyUrl: null,
     bidCount: 0,
+    installStartDate: null,
     hasHomeProfile: false,
   });
   const [loading, setLoading] = useState(true);
@@ -318,6 +326,7 @@ export function useClaimAux(
         rebateOrder: null,
         warrantyUrl: null,
         bidCount: 0,
+        installStartDate: null,
         hasHomeProfile: false,
       };
 
@@ -367,6 +376,26 @@ export function useClaimAux(
         /* non-fatal */
       }
 
+      // gh-3092: install start date for the switch-button gating. It lives in the winning quote's
+      // scope_summary (claims has no estimated_start_date column). Existing RLS policy "Homeowners
+      // can read quotes for their claims" covers this read; failure -> null -> switching allowed.
+      try {
+        if (selectedContractorId) {
+          const { data } = await supabase
+            .from('quotes')
+            .select('scope_summary')
+            .eq('claim_id', claimId)
+            .eq('contractor_id', selectedContractorId)
+            .in('status', ['selected', 'awarded'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          next.installStartDate = deriveEstimatedStartDate(data?.scope_summary);
+        }
+      } catch {
+        /* non-fatal */
+      }
+
       // Bid count for the status banner.
       try {
         const { count } = await supabase
@@ -402,7 +431,7 @@ export function useClaimAux(
     return () => {
       mounted = false;
     };
-  }, [claimId, homeownerUserId, nonce]);
+  }, [claimId, homeownerUserId, selectedContractorId, nonce]);
 
   return { ...aux, loading, refetch };
 }

@@ -25,12 +25,14 @@ export function StatusBanner({
   email,
   bidCount,
   warrantyUrl,
+  installStartDate,
 }: {
   claim: HomeownerClaim;
   profile: HomeownerProfile | null;
   email: string | null | undefined;
   bidCount: number;
   warrantyUrl: string | null;
+  installStartDate?: string | null;
 }) {
   const banner = deriveStatusBanner(claim, bidCount);
   const [switchOpen, setSwitchOpen] = useState(false);
@@ -38,7 +40,7 @@ export function StatusBanner({
 
   if (!banner) return null;
 
-  const withinCutoff = isSwitchWithinCutoff(claim);
+  const withinCutoff = isSwitchWithinCutoff(installStartDate);
   const showWarranty = shouldShowWarrantyButton(claim, warrantyUrl);
 
   async function onWarranty() {

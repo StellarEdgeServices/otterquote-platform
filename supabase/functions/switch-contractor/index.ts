@@ -31,6 +31,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { SWITCH_CUTOFF_DAYS, deriveEstimatedStartDate, isWithinCutoff } from "./cutoff.ts";
 import { WINNING_QUOTE_OR_FILTER, pickWinningQuote, shouldIssueRefund } from "./winning-quote.ts";
 import {
   contractorSwitchEmailHtml,
@@ -61,19 +62,7 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
-/** Days before installation at which switching is no longer allowed. */
-const SWITCH_CUTOFF_DAYS = 3;
-
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-/** Returns true if the installation date is within the cutoff window. */
-function isWithinCutoff(estimatedStartDate: string | null): boolean {
-  if (!estimatedStartDate) return false; // no date set → always allow switch
-  const installDate = new Date(estimatedStartDate);
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() + SWITCH_CUTOFF_DAYS);
-  return installDate <= cutoff;
-}
 
 /** Issue a Stripe refund for a given PaymentIntent. Returns true on success. */
 async function stripeRefund(
@@ -263,14 +252,6 @@ serve(async (req) => {
       }, 400);
     }
 
-    // ── 4. Check 3-day window ─────────────────────────────────────────────
-    if (isWithinCutoff(claim.estimated_start_date)) {
-      return jsonResponse({
-        error: `Switching is no longer available — your installation is within ${SWITCH_CUTOFF_DAYS} days.`,
-        code: "WITHIN_CUTOFF",
-      }, 400);
-    }
-
     // ── 5. Load the winning quote ─────────────────────────────────────────
     // Scoped to the selected contractor so we never refund the wrong quote.
     let winningQuote: any = null;
@@ -292,6 +273,16 @@ serve(async (req) => {
         return jsonResponse({ error: "We could not load your contract details. Nothing was changed. Please try again." }, 500);
       }
       winningQuote = pickWinningQuote(quotes);
+    }
+
+    // ── 4. Check 3-day window ─────────────────────────────────────────────
+    // gh-3092: the start date lives in the winning quote's scope_summary (claims has no such column),
+    // so the quote (step 5) is loaded first.
+    if (isWithinCutoff(deriveEstimatedStartDate(winningQuote))) {
+      return jsonResponse({
+        error: `Switching is no longer available — your installation is within ${SWITCH_CUTOFF_DAYS} days.`,
+        code: "WITHIN_CUTOFF",
+      }, 400);
     }
 
     // It's OK if there's no quote record (e.g., older flow) — we continue
@@ -513,7 +504,7 @@ serve(async (req) => {
     // returned 500). Destructure `{ error }` and log; the audit row is non-critical.
     const { error: activityLogError } = await sb.from("activity_log").insert({
       event_type:  "contractor_switched",
-      title:       `Homeowner switched contractors. Original contractor: ${contractorName}. Refund: ${refundResult.success ? "issued" : "pending"}.${surveyDesc}`,
+      title:       `Homeowner switched contractors. Original contractor: ${contractorName}. Refund: ${refundResult.success ? (refundResult.refundId ? "issued" : "none needed") : "pending"}.${surveyDesc}`,
       user_id:     user.id,
       is_test:     claim.is_test ?? false,
       metadata:    { claim_id },

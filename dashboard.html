@@ -2484,12 +2484,34 @@
 
           // ── Switch Contractor button ───────────────────────────────────
           // Check 3-day cutoff on the frontend (Edge Function also enforces this server-side)
-          const installDate = currentClaim?.estimated_start_date
-            ? new Date(currentClaim.estimated_start_date)
-            : null;
+          // gh-3092: the start date lives in the winning quote's scope_summary (claims has no
+          // estimated_start_date column). Same parse as switch-contractor/cutoff.ts; absent or
+          // unparseable -> not within cutoff (allowed), matching the server.
+          let startDateStr = null;
+          try {
+            if (sb && currentClaim?.id && currentClaim?.selected_contractor_id && !CONFIG.DEMO_MODE) {
+              const { data: swQuote } = await sb
+                .from('quotes')
+                .select('scope_summary')
+                .eq('claim_id', currentClaim.id)
+                .eq('contractor_id', currentClaim.selected_contractor_id)
+                .in('status', ['selected', 'awarded'])
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              const scope = typeof swQuote?.scope_summary === 'string'
+                ? JSON.parse(swQuote.scope_summary)
+                : swQuote?.scope_summary;
+              startDateStr = (typeof scope?.estimated_start_date === 'string' && scope.estimated_start_date.trim())
+                ? scope.estimated_start_date : null;
+            }
+          } catch (swErr) {
+            console.warn('[Dashboard] Could not load install date for switch gating (non-fatal):', swErr);
+          }
+          const installDate = startDateStr ? new Date(startDateStr) : null;
           const cutoffDate = new Date();
           cutoffDate.setDate(cutoffDate.getDate() + 3);
-          const withinCutoff = installDate && installDate <= cutoffDate;
+          const withinCutoff = installDate && !isNaN(installDate.getTime()) && installDate <= cutoffDate;
 
           const actionsEl = document.getElementById('status-banner-actions');
           if (actionsEl) {
