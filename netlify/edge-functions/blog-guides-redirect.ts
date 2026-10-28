@@ -168,6 +168,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/manufacturer-backed-roof-warranties.html',
   '/guides/contractor-offers-to-waive-deductible':
     '/guides/contractor-offers-to-waive-deductible.html',
+  '/guides/hire-roofer-paying-out-of-pocket':
+    '/guides/hire-roofer-paying-out-of-pocket.html',
 
   // CRO RUN 52 / #2423: generated /locations/ pages -- the index.html twin 301s to the
   // trailing-slash URL (same class as /blog/index.html above).
