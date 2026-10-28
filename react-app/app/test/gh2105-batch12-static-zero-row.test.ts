@@ -121,18 +121,21 @@ describe('dashboard.html (gh-2105 batch 12)', () => {
 describe('contractor-dashboard.html (gh-2105 batch 12)', () => {
   const src = read('contractor-dashboard.html');
 
-  it('agreement acceptance treats zero rows as the existing failure branch', () => {
-    const b = block(src, 'const { data: acceptedRows, error: acceptErr }', 'location.reload();');
-    expect(b).toContain(".select('id')");
-    expect(b).toContain('acceptedRows.length === 0');
+  // gh-2995: the contractors PATCH (and its client-side zero-row check) is replaced by the server-side accept_cpa()
+  // RPC. A zero-row match cannot pass silently: the RPC raises when no contractor row belongs to the caller, and
+  // the page treats any returned error, or a response with no acceptance_id, as the existing failure branch.
+  it('agreement acceptance: a failed accept_cpa() call is the existing failure branch', () => {
+    const b = block(src, 'const accepted = await acceptCpaServerSide(CURRENT_CPA_VERSION);\n                        const error = accepted.error;', 'location.reload();');
+    expect(b).toContain('if (!error) {');
+    expect(src).not.toContain(".from('contractors')\n                            .update(");
     expect(src).toContain("alert('Error accepting agreement. Please try again.');");
   });
 
-  it('CPA re-acceptance treats zero rows as the existing failure branch', () => {
-    const b = block(src, 'const { data: cpaRows, error: cpaWriteErr }', "// 2. Record server-side IP");
-    expect(b).toContain(".select('id')");
-    expect(b).toContain('const updateErr = cpaWriteErr ||');
+  it('CPA re-acceptance: a failed accept_cpa() call is the existing failure branch', () => {
+    const b = block(src, 'function initCpaReacceptModal()', '// 4. Update in-memory state');
+    expect(b).toContain('if (accepted.error) {');
     expect(b).toContain("alert('Error saving agreement acceptance. Please try again.');");
+    expect(b).not.toContain('.update(');
   });
 
   // gh-2442 (#2927) removed the browser-side payment_failures .update(): the retry is now the

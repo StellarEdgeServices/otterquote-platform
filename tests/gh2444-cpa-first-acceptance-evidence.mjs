@@ -1,10 +1,11 @@
 /**
- * gh-2444 -- contractor-dashboard.html first agreement + CPA acceptance must record
- * the same evidence as re-acceptance: record_cpa_ip rpc + activity_log 'cpa_accepted' row,
- * both through ONE shared function, only after the row-checked update succeeds.
- * Part (a): a RETURNED supabase-js {error} (not only a throw) from either write is a failure.
+ * gh-2444 / gh-2995 -- contractor-dashboard.html first agreement + CPA re-acceptance must record the acceptance
+ * evidence through ONE server-side call: rpc('accept_cpa', { p_version }) (append-only record, contractors update
+ * and activity_log row written atomically by the database). Supersedes the gh-2444 browser-side sequence
+ * (contractors PATCH + record_cpa_ip + activity_log POST), which is asserted ABSENT below (negative controls).
+ * A RETURNED supabase-js {error} (not only a throw) is a failure; a response without acceptance_id is a failure.
  *
- * Runs the REAL recordCpaAcceptanceEvidence() source extracted from the page.
+ * Runs the REAL acceptCpaServerSide() source extracted from the page.
  * Run: node tests/gh2444-cpa-first-acceptance-evidence.mjs   (exit 0 = all pass)
  */
 import fs from 'node:fs';
@@ -28,77 +29,74 @@ function extractFn(src, name) {
   return null;
 }
 
-const shared = extractFn(html, 'recordCpaAcceptanceEvidence');
-ok(!!shared, 'shared recordCpaAcceptanceEvidence() exists');
+const shared = extractFn(html, 'acceptCpaServerSide');
+ok(!!shared, 'shared acceptCpaServerSide() exists');
+if (!shared) { console.log(`\n${pass} passed, ${fail} failed (acceptCpaServerSide missing: remaining checks need it)`); process.exit(1); }
 const first = extractFn(html, 'initAgreementModal');
 const re = extractFn(html, 'initCpaReacceptModal');
 ok(!!first && !!re, 'both acceptance handlers found');
 
-// Both paths call the shared function; neither inlines its own rpc/insert any more.
-ok((first.match(/recordCpaAcceptanceEvidence\(/g) || []).length === 1, 'first acceptance calls shared fn');
-ok((re.match(/recordCpaAcceptanceEvidence\(/g) || []).length === 1, 're-acceptance calls shared fn');
-ok(!/record_cpa_ip/.test(first + re), 'no inline record_cpa_ip left in handlers');
-ok(!/event_type:\s*'cpa_accepted'/.test(first + re), 'no inline cpa_accepted insert left in handlers');
+// Both paths call the shared function; neither writes the evidence from the browser any more.
+ok((first.match(/acceptCpaServerSide\(/g) || []).length === 1, 'first acceptance calls shared fn');
+ok((re.match(/acceptCpaServerSide\(/g) || []).length === 1, 're-acceptance calls shared fn');
+ok(/await acceptCpaServerSide\(CURRENT_CPA_VERSION\)/.test(first) && /await acceptCpaServerSide\(CURRENT_CPA_VERSION\)/.test(re), 'both paths await the call with the version id constant');
+// NEGATIVE CONTROLS: the old browser-side evidence writes are gone from the whole page.
+ok(!/record_cpa_ip/.test(html), 'NEG: no record_cpa_ip call left anywhere in the page');
+ok(!/event_type:\s*'cpa_accepted'/.test(html), 'NEG: no browser-side cpa_accepted activity_log insert left');
+ok(!/recordCpaAcceptanceEvidence/.test(html), 'NEG: the old browser-side evidence function is gone');
+ok(!/agreement_version:\s*today/.test(html) && !/split\('T'\)\[0\]/.test(first), 'NEG: agreement_version is no longer written as today\'s date');
+ok(!/\.update\(/.test(first + re), 'NEG: neither handler PATCHes contractors from the browser (client clock timestamps gone)');
+ok(!/new Date\(\)\.toISOString\(\)/.test(first + re), 'NEG: neither handler stamps a browser-clock time');
 
-// Ordering: the call sits inside `if (!error)` after the row-checked update, before reload.
+// gh-2995 (#3037) F2/F3: pre-approval step 3 goes through accept_cpa and no longer writes acceptance columns from the browser.
+{
+  const pre = fs.readFileSync(path.join(root, 'contractor-pre-approval.html'), 'utf8');
+  ok(/sb\.rpc\('accept_cpa', \{ p_version: 'v1-2026-04' \}\)/.test(pre), 'pre-approval step 3 calls rpc accept_cpa');
+  ok(!/\bcpa_accepted_at:/.test(pre) && !/\bagreement_accepted_at:/.test(pre) && !/\bagreement_version:/.test(pre) && !/\bcpa_version:/.test(pre), 'NEG: pre-approval writes no acceptance column from the browser');
+}
+ok(!/currentContractor\.agreement_version\s*=/.test(html), 'NEG: dashboard never sets agreement_version (D-366)');
+
+// Ordering: in-memory state and reload happen only after a successful call.
 const iErr = first.indexOf('if (!error)');
-const iCall = first.indexOf('recordCpaAcceptanceEvidence(');
+const iCall = first.indexOf('acceptCpaServerSide(');
 const iReload = first.indexOf('location.reload()');
-ok(iErr > -1 && iCall > iErr && iReload > iCall, 'first acceptance: evidence only after successful update, awaited before reload');
-ok(/await recordCpaAcceptanceEvidence\(/.test(first), 'first acceptance awaits the evidence call');
+ok(iCall > -1 && iErr > iCall && iReload > iErr, 'first acceptance: reload only after the awaited call succeeded');
+ok(first.indexOf('button.disabled = true') > -1 && first.indexOf('button.disabled = true') < iCall, 'first acceptance disables the button before the call');
+ok((first.match(/button\.disabled = false/g) || []).length >= 2, 'first acceptance re-enables the button on a failure path');
+ok(/if \(accepted\.error\)/.test(re) && (re.match(/button\.disabled = false/g) || []).length >= 2, 're-acceptance checks the result and re-enables the button');
 
-// Behaviour of the real function. supabase-js RETURNS {error} (it does not throw),
-// so failures are simulated as RETURNED errors; a throw is covered as a second mode.
-// mode: 'ok' | 'ret' (returned {error}) | 'throw'
-async function run(rpcMode, insertMode, isTest) {
-  const calls = { rpc: [], ins: [] };
-  const mk = (mode, log, args) => {
-    log.push(args);
-    if (mode === 'throw') throw new Error('thrown');
-    return mode === 'ret' ? { data: null, error: { message: 'returned' } } : { data: null, error: null };
-  };
+// Existing error copy only (no new wording).
+ok(first.includes("alert('Error accepting agreement. Please try again.');") && re.includes("alert('Error saving agreement acceptance. Please try again.');"), 'existing alert copy retained');
+
+// Behaviour of the real function. mode: 'ok' | 'ret' (returned {error}) | 'throw' | 'norec' (no acceptance_id)
+async function run(mode) {
+  const calls = [];
   const ctx = {
     console: { warn() {}, error() {} },
-    currentContractor: { id: 'c-1', is_test: isTest }, currentUser: { id: 'u-1' },
     sb: {
-      rpc: async (n, a) => mk(rpcMode, calls.rpc, [n, a]),
-      from: (t) => ({ insert: async (r) => mk(insertMode, calls.ins, [t, r]) }),
+      rpc: async (n, a) => {
+        calls.push([n, a]);
+        if (mode === 'throw') throw new Error('thrown');
+        if (mode === 'ret') return { data: null, error: { message: 'returned' } };
+        if (mode === 'norec') return { data: {}, error: null };
+        return { data: { acceptance_id: 'acc-1', accepted_at: '2026-10-23T00:00:00Z' }, error: null };
+      },
     },
   };
   vm.createContext(ctx);
-  vm.runInContext('async ' + shared + '; this.fn = recordCpaAcceptanceEvidence;', ctx);
-  calls.result = await ctx.fn('2026-10-06T00:00:00.000Z', 'T');
-  return calls;
+  vm.runInContext('async ' + shared + '; this.fn = acceptCpaServerSide;', ctx);
+  const result = await ctx.fn('v1-2026-04');
+  return { calls, result };
 }
-let c = await run('ok', 'ok');
-ok(c.rpc.length === 1 && c.rpc[0][0] === 'record_cpa_ip' && c.rpc[0][1].p_contractor_id === 'c-1', 'calls record_cpa_ip with contractor id');
-ok(c.ins.length === 1 && c.ins[0][0] === 'activity_log' && c.ins[0][1].event_type === 'cpa_accepted'
-  && c.ins[0][1].user_id === 'u-1' && c.ins[0][1].title === 'T', 'inserts activity_log cpa_accepted row');
-ok(c.result === null, 'success returns null');
-c = await run('ret', 'ok');
-ok(c.result && c.result.message === 'returned', 'RETURNED record_cpa_ip {error} is reported as a failure');
-ok(c.ins.length === 0, 'returned rpc error stops before the activity_log insert (no duplicate row on retry)');
-c = await run('ok', 'ret');
-ok(c.result && c.result.message === 'returned' && c.rpc.length === 1, 'RETURNED activity_log insert {error} is reported as a failure');
-c = await run('throw', 'ok');
-ok(c.result instanceof Error, 'thrown record_cpa_ip is also reported as a failure');
-c = await run('ok', 'throw');
-ok(c.result instanceof Error, 'thrown activity_log insert is also reported as a failure');
-
-// Callers act on the returned error and re-enable the button; first acceptance disables it in flight.
-ok(/const evidenceErr = await recordCpaAcceptanceEvidence\(/.test(first) && /if \(evidenceErr\)/.test(first), 'first acceptance checks the evidence result');
-ok(/const evidenceErr = await recordCpaAcceptanceEvidence\(/.test(re) && /if \(evidenceErr\)/.test(re), 're-acceptance checks the evidence result');
-ok(first.indexOf('button.disabled = true') > -1 && first.indexOf('button.disabled = true') < first.indexOf('.update('), 'first acceptance disables the button before the write');
-ok((first.match(/button\.disabled = false/g) || []).length >= 3, 'first acceptance re-enables the button on every failure path');
-
-// CEO RUN 104 finding 8: activity_log.is_test defaults false with no trigger, so the row
-// must carry the contractor's is_test (a test contractor's row must not read false).
-const tTrue = await run('ok', 'ok', true);
-ok(tTrue.ins[0][1].is_test === true, 'is_test contractor -> activity_log row is_test === true');
-const tFalse = await run('ok', 'ok', false);
-ok(tFalse.ins[0][1].is_test === false, 'real contractor -> activity_log row is_test === false');
-const tUndef = await run('ok', 'ok', undefined);
-ok(tUndef.ins[0][1].is_test === false, 'missing is_test -> false (never undefined/null)');
+let c = await run('ok');
+ok(c.calls.length === 1 && c.calls[0][0] === 'accept_cpa' && c.calls[0][1].p_version === 'v1-2026-04' && Object.keys(c.calls[0][1]).length === 1, 'calls accept_cpa with only p_version (the server derives contractor, time, IP, UA)');
+ok(c.result.error === null && c.result.data.acceptance_id === 'acc-1', 'success returns the server record');
+c = await run('ret');
+ok(c.result.error && c.result.error.message === 'returned' && c.result.data === null, 'NEG: a RETURNED {error} is a failure');
+c = await run('throw');
+ok(c.result.error instanceof Error, 'NEG: a thrown rpc is a failure');
+c = await run('norec');
+ok(c.result.error && /accept_cpa_no_record/.test(c.result.error.message), 'NEG: a response with no acceptance_id is a failure');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

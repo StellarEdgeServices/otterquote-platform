@@ -1078,46 +1078,28 @@
             document.getElementById('gettingStartedSection').classList.add('show');
         }
 
-        // gh-2444: shared acceptance evidence for first acceptance AND re-acceptance.
-        // Call only after the row-checked contractors update succeeded. supabase-js
-        // RETURNS {error} (it does not throw), so both results are checked. Returns
-        // null on success or the first error; a failed evidence write must NOT be
-        // treated as a successful acceptance. Stops at the first failure so a retry
-        // does not duplicate an activity_log row.
-        async function recordCpaAcceptanceEvidence(now, title) {
-            // Record server-side IP via SECURITY DEFINER function
+        // gh-2995 (part b of #2444): ONE server-side accept_cpa(p_version) call replaces the three browser writes (contractors PATCH,
+        // the IP RPC and the activity_log POST). It appends an acceptance record (server timestamp, IP, user agent,
+        // the agreement version id) and updates the contractors row and activity_log in a single transaction.
+        // supabase-js RETURNS {error} (it does not throw). Returns { error, data }; error is null only when the
+        // server confirmed an acceptance_id. A failed call is NOT a successful acceptance.
+        async function acceptCpaServerSide(version) {
             try {
-                const { error: ipErr } = await sb.rpc('record_cpa_ip', { p_contractor_id: currentContractor.id });
-                if (ipErr) {
-                    console.error('record_cpa_ip failed:', ipErr);
-                    return ipErr;
+                const { data, error } = await sb.rpc('accept_cpa', { p_version: version });
+                if (error) {
+                    console.error('accept_cpa failed:', error);
+                    return { error: error, data: null };
                 }
-            } catch (ipThrown) {
-                console.error('record_cpa_ip failed:', ipThrown);
-                return ipThrown;
-            }
-
-            // Log to activity_log
-            try {
-                const { error: logErr } = await sb.from('activity_log').insert({
-                    user_id:    currentUser.id,
-                    event_type: 'cpa_accepted',
-                    title:      title,
-                    created_at: now,
-                    // gh-2444 (CEO RUN 104 finding 8): activity_log.is_test defaults to false and has
-                    // no trigger, so stamp it from the contractor row (contractors.is_test is the
-                    // source of truth; the email-suffix heuristic misses 10 of 14 test profiles).
-                    is_test:    currentContractor.is_test === true,
-                });
-                if (logErr) {
-                    console.error('Activity log failed:', logErr);
-                    return logErr;
+                if (!data || typeof data.acceptance_id !== 'string' || !data.acceptance_id) {
+                    const noRec = new Error('accept_cpa_no_record: no acceptance_id returned');
+                    console.error('accept_cpa failed:', noRec);
+                    return { error: noRec, data: null };
                 }
-            } catch (logThrown) {
-                console.error('Activity log failed:', logThrown);
-                return logThrown;
+                return { error: null, data: data };
+            } catch (thrown) {
+                console.error('accept_cpa failed:', thrown);
+                return { error: thrown, data: null };
             }
-            return null;
         }
 
         // Handle agreement modal checkbox and button
@@ -1141,34 +1123,13 @@
                     button.disabled = true;
 
                     try {
-                        const today = new Date().toISOString().split('T')[0];
-                        const now = new Date().toISOString();
-                        const { data: acceptedRows, error: acceptErr } = await sb
-                            .from('contractors')
-                            .update({
-                                agreement_accepted_at: now,
-                                agreement_version: today,
-                                // Stamp cpa_version on first acceptance so new contractors
-                                // never see the re-acceptance modal for the current version.
-                                cpa_version:              CURRENT_CPA_VERSION,
-                                cpa_accepted_at:          now,
-                                needs_cpa_reattestation:  false,
-                            })
-                            .eq('id', currentContractor.id)
-                            .select('id');
-                        // gh-2105 decision (a, legal): a zero-row match is a failed acceptance and takes the existing 'Error accepting agreement' branch.
-                        const error = acceptErr || (!Array.isArray(acceptedRows) || acceptedRows.length === 0 ? new Error('zero_rows_updated') : null);
+                        // gh-2995: one server-side call; agreement_version is never written (D-366), timestamps are server-side.
+                        const accepted = await acceptCpaServerSide(CURRENT_CPA_VERSION);
+                        const error = accepted.error;
 
                         if (!error) {
-                            const evidenceErr = await recordCpaAcceptanceEvidence(now, `Accepted Contractor Partner Agreement (${CURRENT_CPA_VERSION})`);
-                            if (evidenceErr) {
-                                // gh-2444: evidence write failed -> not a successful acceptance; existing error copy, retry allowed.
-                                alert('Error accepting agreement. Please try again.');
-                                button.disabled = false;
-                                return;
-                            }
+                            const now = accepted.data.accepted_at;
                             currentContractor.agreement_accepted_at = now;
-                            currentContractor.agreement_version = today;
                             currentContractor.cpa_version     = CURRENT_CPA_VERSION;
                             currentContractor.cpa_accepted_at = now;
                             document.getElementById('agreementModalOverlay').classList.remove('show');
@@ -1206,33 +1167,16 @@
                     button.textContent = 'Saving…';
 
                     try {
-                        const now = new Date().toISOString();
-
-                        // 1. Write cpa_version + cpa_accepted_at (covered by existing RLS UPDATE policy)
-                        const { data: cpaRows, error: cpaWriteErr } = await sb
-                            .from('contractors')
-                            .update({ cpa_version: CURRENT_CPA_VERSION, cpa_accepted_at: now, needs_cpa_reattestation: false })
-                            .eq('id', currentContractor.id)
-                            .select('id');
-                        // gh-2105 decision (a, legal): a zero-row match is a failed acceptance and takes the existing 'Error saving agreement acceptance' branch.
-                        const updateErr = cpaWriteErr || (!Array.isArray(cpaRows) || cpaRows.length === 0 ? new Error('zero_rows_updated') : null);
-
-                        if (updateErr) {
-                            console.error('CPA update error:', updateErr);
+                        // gh-2995: one server-side accept_cpa() call (append-only record + contractors update + activity_log, atomic).
+                        const accepted = await acceptCpaServerSide(CURRENT_CPA_VERSION);
+                        if (accepted.error) {
+                            console.error('CPA update error:', accepted.error);
                             alert('Error saving agreement acceptance. Please try again.');
                             button.disabled = false;
                             button.textContent = 'Accept and Continue';
                             return;
                         }
-
-                        // 2. Record server-side IP + log to activity_log (shared with first acceptance; a returned error is a failure)
-                        const evidenceErr = await recordCpaAcceptanceEvidence(now, `Accepted updated Contractor Partner Agreement (${CURRENT_CPA_VERSION})`);
-                        if (evidenceErr) {
-                            alert('Error saving agreement acceptance. Please try again.');
-                            button.disabled = false;
-                            button.textContent = 'Accept and Continue';
-                            return;
-                        }
+                        const now = accepted.data.accepted_at;
 
                         // 4. Update in-memory state
                         currentContractor.cpa_version              = CURRENT_CPA_VERSION;

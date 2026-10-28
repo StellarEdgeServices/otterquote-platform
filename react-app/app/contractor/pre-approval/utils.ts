@@ -398,6 +398,20 @@ export function step3Complete(partner: boolean, cancellation: boolean, attestati
 }
 
 /**
+ * gh-2995: server-side acceptance. Calls rpc('accept_cpa') (append-only record + contractors stamps in one
+ * transaction) and throws if it errors or returns no acceptance_id.
+ */
+export async function acceptCpa(
+  rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }>,
+): Promise<{ acceptance_id: string }> {
+  const { data, error } = await rpc('accept_cpa', { p_version: CPA_VERSION });
+  if (error) throw error;
+  const id = (data as { acceptance_id?: unknown } | null)?.acceptance_id;
+  if (typeof id !== 'string' || !id) throw new Error('accept_cpa_no_record: no acceptance_id returned');
+  return { acceptance_id: id };
+}
+
+/**
  * contractors UPDATE at Step-3 submit. VERBATIM port of :1041-1055 — the cpa/attestation/
  * agreement version stamps, the ic_24511_attestation JSONB, sms_consent_ts gated on the
  * optional TCPA box, and onboarding_step=3.
@@ -409,16 +423,14 @@ export function buildStep3ContractorUpdate(
   nowIso: string,
 ): Record<string, unknown> {
   return {
-    cpa_accepted_at: nowIso,
-    cpa_version: CPA_VERSION,
+    // gh-2995: cpa_version / cpa_accepted_at / agreement_accepted_at / agreement_version are NOT written from the
+    // browser (pinned by contractors_freeze_privileged_columns); acceptCpa() below records them server-side.
     attestation_signer_name: str(contractor.contact_name) || '',
     attestation_signer_title: str(contractor.attestation_signer_title) || '',
     attestation_text_version: ATTESTATION_TEXT_VERSION,
     attestation_accepted_at: nowIso,
     ic_24511_attestation: attestation,
     sms_consent_ts: tcpaChecked ? nowIso : null,
-    agreement_accepted_at: nowIso,
-    agreement_version: AGREEMENT_VERSION,
     onboarding_step: 3,
     updated_at: nowIso,
   };
