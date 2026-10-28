@@ -60,9 +60,11 @@ describe('project-confirmation queries use real columns (gh-3056)', () => {
     expect(cols.length).toBeGreaterThan(0);
     expect(missing(cols, GET_CONTRACTORS_PUBLIC_COLUMNS)).toEqual([]);
   });
-  it('winning-quote select uses only existing quotes columns (gh-3138)', () => {
-    const cols = referencedColumns(SRC, ".from('quotes')");
-    expect(cols.length).toBeGreaterThan(0);
+  it('winning-quote select constant lists only existing quotes columns (gh-3138)', () => {
+    const m = /WINNING_QUOTE_COLUMNS\s*=\s*'([^']*)'/.exec(SRC);
+    expect(m).not.toBeNull();
+    const cols = m![1].split(',').map((c) => c.trim());
+    expect(cols).toContain('decking_price_per_sheet');
     expect(missing(cols, QUOTES_COLUMNS)).toEqual([]);
   });
   it('NEGATIVE CONTROL: the old query shapes fail the schema check', () => {

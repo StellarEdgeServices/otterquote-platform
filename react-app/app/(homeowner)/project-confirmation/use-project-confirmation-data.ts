@@ -51,6 +51,9 @@ export interface WinningQuoteRow {
 /** gh-3138: public.quotes has no brand/product_line columns; the bid form writes brand into scope_summary JSON. */
 export const WINNING_QUOTE_COLUMNS = 'scope_summary, decking_price_per_sheet, status';
 
+/** Winner statuses, same as the gh-3092 dashboard query. Renewals clone quotes (no unique constraint), so the newest wins. */
+export const WINNING_QUOTE_STATUSES = ['selected', 'awarded'];
+
 // ── Gate type ──────────────────────────────────────────────────────────────────
 
 export type ConfirmationGate =
@@ -173,12 +176,15 @@ export function useProjectConfirmationData(
         }
         const contractor = contractorData as ContractorPublicRow;
 
-        // 7. Load winning quote (static 2205-2213) — maybeSingle: a missing row is fine, a failed query is not (gh-3138)
+        // 7. Load winning quote (static 2205-2213) — newest of any number of rows (limit 1); zero rows is fine, a failed query is not (gh-3138)
         const { data: quoteData, error: quoteError } = await supabase
           .from('quotes')
           .select(WINNING_QUOTE_COLUMNS)
           .eq('claim_id', claimId)
           .eq('contractor_id', contractorId)
+          .in('status', WINNING_QUOTE_STATUSES)
+          .order('created_at', { ascending: false })
+          .limit(1)
           .maybeSingle();
 
         if (quoteError) {
