@@ -113,3 +113,9 @@ Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630)
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2543_halt_notice_marker_unique` | forward, rollback | APPLIED (2026-10-23, gh-1438 filing; header stamp 2026-10-23T16:44:20Z) | drafted 2026-10-21 under #2543 (REVIEW 6301123534 point 2, Ben RETURNED 6301145200). One partial unique index on `notifications (message_preview) WHERE notification_type = 'contract_halt_notice_sent'`; additive, Tier 3A, applied only under the Tier 3B path with an R-097 notice. The halt notices are not deployed, so no row of that type exists. No database was read or written | supabase/migrations/20261023130943_gh2543_halt_notice_marker_unique.sql (ledger row, applied 13:09:43Z 2026-10-23); rollback in supabase/migrations_rollbacks/ |
+
+## Added 2026-10-24 (gh-2997, PR #3035, quotes and activity_log inherit `is_test` from the claim): 3 files here (forward, rollback, pre-flight), the proof in `supabase/tests/gh2997_inherit_is_test_proof.sql` and the static test `tests/gh2997-static-inherit-is-test.mjs`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh2997_inherit_is_test` | forward, rollback, pre-flight (all three here) | NOT APPLIED | drafted 2026-10-23 under #2997; production read-only 2026-10-23 (project yeszghaspzwwstvsrioa): no trigger on `quotes` or `activity_log` sets `is_test` from the claim; 2 quotes on `is_test` claims read `is_test=false` and 6 `activity_log` rows keyed to an `is_test` claim via `metadata.claim_id` read false. Two BEFORE INSERT triggers (`quotes_inherit_is_test`, `activity_log_inherit_is_test`) raise false to true only, plus a one-off data correction. CTO ruling 6366805193 on #2997: include quote 403940dc in the correction, apply with `SET lock_timeout = '5s'`, add this row in the same PR. Tier 3B, applied only under the R-097 notice path. No database was written | none |
