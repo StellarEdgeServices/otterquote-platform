@@ -138,7 +138,7 @@ serve(async (req: Request) => {
   // consent-gate.ts's isSmsConsented.
   const { data: contractor, error: contractorErr } = await sb
     .from("contractors")
-    .select("company_name, phone, notification_phones, sms_opt_in, sms_consent_text_version")
+    .select("company_name, phone, notification_phones, sms_opt_in, sms_consent_text_version, is_test")
     .eq("id", contractor_id)
     .single();
 
@@ -205,6 +205,7 @@ serve(async (req: Request) => {
       contractor_id,
       contractor.sms_opt_in,
       contractor.sms_consent_text_version,
+      contractor.is_test, // D-391 / #2875 TCR release gate (fails closed when unreadable)
     );
     if (result.ok) contractorNotified = true;
   }

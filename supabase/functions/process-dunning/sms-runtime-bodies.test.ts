@@ -25,7 +25,7 @@ const ENV: Record<string, string> = {
 const contractor = {
   id: "c1", company_name: "Fixture Roofing", email: "c@example.com", notification_emails: [],
   notification_phones: ["317-555-0101", "317-555-0102"], user_id: null, timezone: "America/New_York",
-  address_state: "IN", sms_opt_in: true,
+  address_state: "IN", sms_opt_in: true, is_test: true,
 };
 const claim = { id: "cl1", property_address: "1 Main St", status: "payment_failed" };
 function failure(over: Record<string, unknown>) {

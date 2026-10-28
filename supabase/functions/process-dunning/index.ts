@@ -38,6 +38,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 // setInterval (_startAutoRefresh) inside createClient that never completes, which Deno < 2.8 test sanitizers flag as a leak.
 const SERVER_CLIENT_OPTS = { auth: { autoRefreshToken: false, persistSession: false } } as const;
 import { isSmsPaused } from "../_shared/sms-pause.ts";
+import { contractorSmsReleaseGate } from "../_shared/contractor-sms-release.ts"; // D-391 / #2875 TCR release gate
 import { appendPostalFooterHtml, appendPostalFooterText } from "./footer-append.ts"; // gh-1824 D-237
 import {
   describeGuardVerdict,
@@ -476,6 +477,12 @@ async function getContractorContacts(contractor: Record<string, any>, supabase: 
     return { emails, phones: [] };
   }
 
+  // D-391 / #2875: until the TCR message_flow read-back is pasted, only is_test contractors are texted.
+  // Same single choke point as the opt-in gate above. Email is unaffected.
+  if (phones.length > 0 && !contractorSmsReleaseGate(contractor, { site: "process-dunning/getContractorContacts", phones }).allowed) {
+    return { emails, phones: [] };
+  }
+
   return { emails, phones };
 }
 
@@ -599,7 +606,7 @@ export async function handler(
         .from("payment_failures")
         .select(`
           *,
-          contractors:contractor_id (id, company_name, email, notification_emails, notification_phones, user_id, sms_opt_in),
+          contractors:contractor_id (id, company_name, email, notification_emails, notification_phones, user_id, sms_opt_in, is_test),
           claims:claim_id (id, property_address, status, color_confirmation_envelope_id, color_confirmed_at)
         `)
         .eq("id", failId)
@@ -1121,7 +1128,7 @@ export async function handler(
       // Look up contractor (including timezone + address_state for derivation)
       const { data: contractor } = await supabase
         .from("contractors")
-        .select("id, company_name, email, notification_emails, notification_phones, user_id, timezone, address_state, sms_opt_in")
+        .select("id, company_name, email, notification_emails, notification_phones, user_id, timezone, address_state, sms_opt_in, is_test")
         .eq("id", contractor_id)
         .single();
 
@@ -1303,7 +1310,7 @@ export async function handler(
         *,
         contractors:contractor_id (
           id, company_name, email, notification_emails, notification_phones,
-          user_id, timezone, address_state, sms_opt_in
+          user_id, timezone, address_state, sms_opt_in, is_test
         ),
         claims:claim_id (id, property_address, status)
       `)

@@ -31,6 +31,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { selectFanOutContractors } from "./test-exclusion.ts";
+import { contractorSmsReleaseGate } from "../_shared/contractor-sms-release.ts"; // D-391 / #2875 TCR release gate
 import { acceptedServiceKeys, deny, type GetEnv } from "./caller-gate.ts"; // gh-2462
 import { authorizeNotifyCaller, type NotifyBody, type OwnershipLookups } from "./user-gate.ts"; // gh-2462
 
@@ -200,12 +201,17 @@ async function sendSmsViaEdgeFunction(
   to: string,
   message: string,
   contractorId: string,
-  smsOptIn: boolean | null | undefined
+  smsOptIn: boolean | null | undefined,
+  isTest: boolean | null | undefined
 ): Promise<boolean> {
   if (smsOptIn !== true) {
     console.warn(
       `[notify-contractors] SMS refused (gh-1916 R-134 gate) — sms_opt_in is not true for contractor ${contractorId} (value=${String(smsOptIn)}). No Twilio call attempted.`
     );
+    return false;
+  }
+  // D-391 / #2875: until the TCR message_flow read-back is pasted, only is_test contractors are texted.
+  if (!contractorSmsReleaseGate({ id: contractorId, is_test: isTest }, { site: "notify-contractors/helper", phones: [to] }).allowed) {
     return false;
   }
   const response = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
@@ -403,7 +409,7 @@ async function handleContractSigned(
 
   const { data: contractor, error: contractorErr } = await supabase
     .from("contractors")
-    .select("id, user_id, email, phone, contact_name, company_name, notification_emails, notification_phones, notification_preferences, sms_opt_in")
+    .select("id, user_id, email, phone, contact_name, company_name, notification_emails, notification_phones, notification_preferences, sms_opt_in, is_test")
     .eq("id", claim.selected_contractor_id)
     .single();
 
@@ -472,7 +478,7 @@ async function handleContractSigned(
 
   for (const phone of phoneRecipients) {
     try {
-      const ok = await sendSmsViaEdgeFunction(supabaseUrl, supabaseKey, phone, smsMessage, contractor.id, contractor.sms_opt_in);
+      const ok = await sendSmsViaEdgeFunction(supabaseUrl, supabaseKey, phone, smsMessage, contractor.id, contractor.sms_opt_in, contractor.is_test);
       if (ok) {
         smsSent = true;
         await supabase.from("notifications").insert({
@@ -927,6 +933,10 @@ async function notifyContractorsForSingleTrade(
           );
           continue;
         }
+        // D-391 / #2875: until the TCR message_flow read-back is pasted, only is_test contractors are texted.
+        if (!contractorSmsReleaseGate(contractor, { site: "notify-contractors/new_opportunity", phones: [phone] }).allowed) {
+          continue;
+        }
         const smsResponse = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseKey}` },
@@ -1189,7 +1199,7 @@ async function handleAgreementRequested(
 
   const { data: contractor, error: contractorErr } = await supabase
     .from("contractors")
-    .select("id, user_id, email, phone, contact_name, company_name, notification_emails, notification_phones, notification_preferences, sms_opt_in")
+    .select("id, user_id, email, phone, contact_name, company_name, notification_emails, notification_phones, notification_preferences, sms_opt_in, is_test")
     .eq("id", contractor_id)
     .single();
 
@@ -1265,7 +1275,7 @@ async function handleAgreementRequested(
 
   for (const phone of phoneRecipients) {
     try {
-      const ok = await sendSmsViaEdgeFunction(supabaseUrl, supabaseKey, phone, smsMessage, contractor.id, contractor.sms_opt_in);
+      const ok = await sendSmsViaEdgeFunction(supabaseUrl, supabaseKey, phone, smsMessage, contractor.id, contractor.sms_opt_in, contractor.is_test);
       if (ok) {
         smsSent = true;
         await supabase.from("notifications").insert({
