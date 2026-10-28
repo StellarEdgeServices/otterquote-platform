@@ -176,6 +176,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/allen-county-in/roofing/',
   '/locations/blount-county-tn/roofing/index.html':
     '/locations/blount-county-tn/roofing/',
+  '/locations/boone-county-in/roofing/index.html':
+    '/locations/boone-county-in/roofing/',
   '/locations/butler-county-oh/roofing/index.html':
     '/locations/butler-county-oh/roofing/',
   '/locations/cuyahoga-county-oh/roofing/index.html':
@@ -186,12 +188,20 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/delaware-county-oh/roofing/',
   '/locations/franklin-county-oh/roofing/index.html':
     '/locations/franklin-county-oh/roofing/',
+  '/locations/hamilton-county-in/roofing/index.html':
+    '/locations/hamilton-county-in/roofing/',
   '/locations/hamilton-county-oh/roofing/index.html':
     '/locations/hamilton-county-oh/roofing/',
   '/locations/hamilton-county-tn/roofing/index.html':
     '/locations/hamilton-county-tn/roofing/',
+  '/locations/hancock-county-in/roofing/index.html':
+    '/locations/hancock-county-in/roofing/',
+  '/locations/hendricks-county-in/roofing/index.html':
+    '/locations/hendricks-county-in/roofing/',
   '/locations/jackson-county-mo/roofing/index.html':
     '/locations/jackson-county-mo/roofing/',
+  '/locations/johnson-county-in/roofing/index.html':
+    '/locations/johnson-county-in/roofing/',
   '/locations/knox-county-tn/roofing/index.html':
     '/locations/knox-county-tn/roofing/',
   '/locations/lake-county-in/roofing/index.html':
@@ -202,6 +212,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/lorain-county-oh/roofing/',
   '/locations/lucas-county-oh/roofing/index.html':
     '/locations/lucas-county-oh/roofing/',
+  '/locations/madison-county-in/roofing/index.html':
+    '/locations/madison-county-in/roofing/',
   '/locations/marion-county-in/roofing/index.html':
     '/locations/marion-county-in/roofing/',
   '/locations/montgomery-county-oh/roofing/index.html':
