@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { extractDepreciation, isStatusAllowed } from './signing-utils';
+import { brandFromScopeSummary, extractDepreciation, isStatusAllowed } from './signing-utils';
 import { buildProjectConfirmationEnvelopeRequest } from './signing-utils';
 import { CLAIM_PUBLIC_COLUMNS, fetchClaimPrivateText } from '@/lib/claim-columns';
 
@@ -40,11 +40,16 @@ export interface ContractorPublicRow {
 }
 
 export interface WinningQuoteRow {
+  /** Derived from quotes.scope_summary JSON `.brand` (free-text "Brand & Product Line"); quotes has no brand column. */
   brand?: string | null;
+  /** gh-3138: the bid stores no separate product line anywhere; always null so the claim's shingle_type fallback shows. */
   product_line?: string | null;
   decking_price_per_sheet?: number | null;
   status?: string | null;
 }
+
+/** gh-3138: public.quotes has no brand/product_line columns; the bid form writes brand into scope_summary JSON. */
+export const WINNING_QUOTE_COLUMNS = 'scope_summary, decking_price_per_sheet, status';
 
 // ── Gate type ──────────────────────────────────────────────────────────────────
 
@@ -168,15 +173,31 @@ export function useProjectConfirmationData(
         }
         const contractor = contractorData as ContractorPublicRow;
 
-        // 7. Load winning quote (static 2205-2213) — maybeSingle, no-op on miss
-        const { data: quoteData } = await supabase
+        // 7. Load winning quote (static 2205-2213) — maybeSingle: a missing row is fine, a failed query is not (gh-3138)
+        const { data: quoteData, error: quoteError } = await supabase
           .from('quotes')
-          .select('brand, product_line, decking_price_per_sheet, status')
+          .select(WINNING_QUOTE_COLUMNS)
           .eq('claim_id', claimId)
           .eq('contractor_id', contractorId)
           .maybeSingle();
 
-        const quote = (quoteData as WinningQuoteRow | null) ?? null;
+        if (quoteError) {
+          throw new Error('Unable to load your contractor’s quote. Please refresh and try again.');
+        }
+
+        const quoteRaw = quoteData as {
+          scope_summary?: unknown;
+          decking_price_per_sheet?: number | null;
+          status?: string | null;
+        } | null;
+        const quote: WinningQuoteRow | null = quoteRaw
+          ? {
+              brand: brandFromScopeSummary(quoteRaw.scope_summary),
+              product_line: null,
+              decking_price_per_sheet: quoteRaw.decking_price_per_sheet ?? null,
+              status: quoteRaw.status ?? null,
+            }
+          : null;
         // `|| null` (NOT `??`) — faithful to the static (project-confirmation.html:2213):
         // a falsy rate (0) collapses to null, so the ack/banner show the default text.
         const deckingRatePerSheet = quote?.decking_price_per_sheet || null;
