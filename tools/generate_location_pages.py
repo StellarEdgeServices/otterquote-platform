@@ -41,9 +41,12 @@ content per page", kept by D-345; STRICT reading per the CEO ruling on #2304):
   appears on no other page in the same run. strict_unique_counts() measures
   it as: the number of words in the page's visible text that are NOT inside a
   run of 3 or more consecutive words that also appears in the template
-  baselines, on any other page of the run (global 3-word document frequency),
-  or earlier on the page itself (order does not matter). Inserted junk only breaks shared text
-  into shorter runs; runs of 3+ words still match.
+  baselines, on any other page of the SAME STATE in the run (per-state 3-word
+  document frequency), or earlier on the page itself (order does not matter).
+  Across states (gh-3108, CEO ruling amending #2304, option A) text is shared
+  only as a run of 6 or more consecutive words found on a page of another state.
+  Inserted junk only breaks shared text into shorter runs; within a state and
+  against the template, runs of 3+ words still match.
   - The shared template therefore contributes ~0. A page's 500 words must come
     from county-specific content in the state profile's `county_content`
     (per county and trade; see data/location-state-profiles/IN.json _readme).
@@ -787,6 +790,7 @@ def main_words(html_text: str, mask: "StateMask" = None) -> list:
 
 SHINGLE_SIZE = 8
 STRICT_BLOCK = 3          # a shared run of this many consecutive words is template, not content
+CROSS_STATE_BLOCK = 6     # gh-3108 (CEO ruling, option A): ACROSS states only a shared run of this many words counts
 
 
 def shingles(words: list) -> set:
@@ -801,19 +805,43 @@ def _tri(words: list) -> list:
     return [" ".join(w[i:i + STRICT_BLOCK]) for i in range(max(0, len(w) - STRICT_BLOCK + 1))]
 
 
-def strict_unique_counts(word_lists: list, baseline_lists=()) -> list:
+def _ngrams(words: list, n: int) -> list:
+    """The n-word shingle (lower-cased) starting at each position."""
+    w = [x.lower() for x in words]
+    return [" ".join(w[i:i + n]) for i in range(max(0, len(w) - n + 1))]
+
+
+def strict_unique_counts(word_lists: list, baseline_lists=(), page_states=None) -> list:
     """The D-345 / D-241 guardrail-2 measure, per page: the number of words of
     the page's visible text that are NOT part of text shared with other pages.
 
-    A word of page P is shared (template, not unique) when it lies inside a run
-    of at least STRICT_BLOCK (3) consecutive words that also appears
-      (a) in any synthetic template baseline (baseline_lists: template-only pages
+    A word of page P is shared (template, not unique) when it lies inside
+      (a) a run of at least STRICT_BLOCK (3) consecutive words that also appears
+          in any synthetic template baseline (baseline_lists: template-only pages
           that are compared against but never scored or emitted), or
-      (b) on ANY other page of the run (a global document-frequency table of
-          3-word shingles: text found on two pages or on two hundred counts as
-          shared, however many pages repeat it), or
-      (c) earlier on P itself (a repeated paragraph counts once).
+      (b) a run of at least STRICT_BLOCK (3) consecutive words that also appears
+          on another page IN THE SAME STATE as P (a document-frequency table of
+          3-word shingles per state: text found on two pages or on two hundred
+          counts as shared, however many pages repeat it), or
+      (c) a run of at least STRICT_BLOCK (3) consecutive words that appears
+          earlier on P itself (a repeated paragraph counts once), or
+      (d) a run of at least CROSS_STATE_BLOCK (6) consecutive words that also
+          appears on a page of a DIFFERENT state (gh-3108, CEO ruling on #3108
+          amending #2304: option A).
     Order does not matter, so shuffled sentences are still shared.
+
+    gh-3108: before this change (b) was global, so every page added in any state
+    lowered the score of every page in every other state through incidental
+    3-word collisions ("one of the", "the roof is"), and live pages near the floor
+    were pushed under 500. A copied sentence is still caught across states by (d)
+    (six words is a sentence fragment, not a phrase collision); the template
+    baseline stays strict at 3 words everywhere. page_states gives each page's
+    state code, in word_lists order; when it is None every page is treated as one
+    state, which is the previous (global 3-word) behaviour.
+    Accepted trade-off of the 6-word cross-state test: a copy from another state
+    that has a junk token inserted every 5 or fewer words is no longer caught
+    across states (it still is within a state and against the template); that
+    is the per-state R-177 read's job, as for the other residual risks below.
 
     Why this measure: any k-word shingle measure is beaten by inserting a
     per-page token every k-1 words. Here inserted junk only breaks the shared
@@ -841,23 +869,36 @@ def strict_unique_counts(word_lists: list, baseline_lists=()) -> list:
     Roman numerals do not help an attacker: they are dropped or masked first.
     Honest prose keeps most of its words: a page of genuinely different text
     (640 words, shared vocabulary) scores min 639, median 640."""
-    from collections import Counter
+    from collections import Counter, defaultdict
+    if page_states is None:
+        page_states = [None] * len(word_lists)
+    if len(page_states) != len(word_lists):
+        raise ValueError("page_states must have one entry per page")
     tris = [_tri(w) for w in word_lists]
-    page_df = Counter()
-    for t in tris:
-        page_df.update(set(t))
+    sixes = [_ngrams(w, CROSS_STATE_BLOCK) for w in word_lists]
+    state_df = Counter()                 # (state, 3-word shingle) -> number of pages of that state holding it
+    six_states = defaultdict(set)        # 6-word shingle -> states of the pages holding it
+    for t, six, st in zip(tris, sixes, page_states):
+        for s in set(t):
+            state_df[(st, s)] += 1
+        for s in set(six):
+            six_states[s].add(st)
     baseline_set = set()
     for words in baseline_lists:
         baseline_set.update(_tri(words))
     counts = []
-    for words, tri in zip(word_lists, tris):
+    for words, tri, six, st in zip(word_lists, tris, sixes, page_states):
         covered = [False] * len(words)
         first = set()
         for i, s in enumerate(tri):
-            if s in baseline_set or page_df[s] >= 2 or s in first:
+            if s in baseline_set or state_df[(st, s)] >= 2 or s in first:
                 for j in range(i, i + STRICT_BLOCK):
                     covered[j] = True
             first.add(s)
+        for i, s in enumerate(six):
+            if six_states[s] - {st}:
+                for j in range(i, i + CROSS_STATE_BLOCK):
+                    covered[j] = True
         counts.append(len(words) - sum(covered))
     return counts
 
@@ -2118,7 +2159,7 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
         built_meta.append({"state": state, "county": county, "trade": trade, "slug": county_slug(county, state)})
     word_lists = [main_words(page_html, masks[st]) for (_, _, page_html), st in zip(built, page_states)]
     baseline_lists = template_baseline_words(states, profiles, generated_on, masks)
-    strict = strict_unique_counts(word_lists, baseline_lists)
+    strict = strict_unique_counts(word_lists, baseline_lists, page_states)
 
     # gh-3108: a page already live on disk must never be dropped silently. Fail before ANY write
     # (no pages, no hub, no sitemap); dry-run detects the same way.
