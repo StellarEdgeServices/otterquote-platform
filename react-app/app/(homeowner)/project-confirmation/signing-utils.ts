@@ -158,3 +158,18 @@ export function resolveShingleManufacturerOption(
   }
   return null;
 }
+
+/**
+ * gh-3138: the winning bid's brand. public.quotes has no brand column; the bid form stores it as free text
+ * ("Brand & Product Line") under `brand` in the quotes.scope_summary JSON string. Malformed/absent yields null.
+ */
+export function brandFromScopeSummary(scopeSummary: unknown): string | null {
+  if (!scopeSummary) return null;
+  try {
+    const obj = typeof scopeSummary === 'string' ? JSON.parse(scopeSummary) : scopeSummary;
+    const brand = (obj as { brand?: unknown } | null)?.brand;
+    return typeof brand === 'string' && brand.trim() ? brand.trim() : null;
+  } catch {
+    return null;
+  }
+}
