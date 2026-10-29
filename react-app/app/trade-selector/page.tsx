@@ -182,16 +182,20 @@ function StepIndicator({
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        gap: '1.5rem',
+        gap: 'clamp(0.25rem, 2vw, 1.5rem)',
         marginBottom: '3rem',
+        maxWidth: '100%',
+        minWidth: 0,
       }}
     >
       {Array.from({ length: totalSteps }, (_, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 'clamp(0.25rem, 2vw, 1.5rem)', minWidth: 0 }}>
           <div
             style={{
-              width: 40,
-              height: 40,
+              // gh-ts390: scale down on phones so 4 steps fit at 320-390px; 40px at >=445px
+              width: 'clamp(30px, 9vw, 40px)',
+              height: 'clamp(30px, 9vw, 40px)',
+              flexShrink: 0,
               borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
@@ -219,8 +223,9 @@ function StepIndicator({
           {i < totalSteps - 1 && (
             <div
               style={{
-                width: 40,
+                width: 'clamp(12px, 5vw, 40px)',
                 height: 2,
+                flexShrink: 1,
                 background:
                   i < currentStep
                     ? 'var(--amber, #E07B00)'
