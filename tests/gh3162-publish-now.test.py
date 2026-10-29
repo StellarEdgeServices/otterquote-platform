@@ -12,9 +12,9 @@ class T(unittest.TestCase):
         ok = "REVIEW: PASS\nhead: %s\n\nSee 6505286731 and 6504914587; the code is defaced-free.\nprior head %s was reviewed" % (H, H[:7])
         self.assertTrue(pn.clean_pass(ok, H, "REVIEW"))
         bad = "REVIEW: PASS\nhead: %s\n\nAlso compared against %s" % (H, O)
-        self.assertFalse(pn.clean_pass(bad, H, "REVIEW"))
+        self.assertTrue(pn.clean_pass(bad, H, "REVIEW"))  # round 4: other shas in a PASS body are allowed
         bad2 = "REVIEW: PASS\nhead: %s\n\nshort other sha %s" % (H, O[:9])
-        self.assertFalse(pn.clean_pass(bad2, H, "REVIEW"))
+        self.assertTrue(pn.clean_pass(bad2, H, "REVIEW"))
 
     def test_sites(self):
         self.assertEqual(pn.sites_for_files(["news/x.html"]), {"jade"})
@@ -150,8 +150,8 @@ class T(unittest.TestCase):
             ("FAIL head on line 13", [P, F("REVIEW: FAIL", pre="l\n" * 11)], False),
             ("FAIL sha with ZWSP inside", [P, F("REVIEW: FAIL", h=H[:20] + Z + H[20:])], False),
             ("FAIL sha as URL", [P, "REVIEW: FAIL\nhead: https://github.com/x/y/commit/%s" % H], False),
-            ("PASS + other sha after line 12 (now blocks)", ["REVIEW: PASS\nhead: %s\n" % H + "l\n" * 12 + "```\n%s\n```" % O], False),
-            ("PASS + other sha line 5", ["REVIEW: PASS\nhead: %s\na\nb\nprev %s" % (H, O)], False),
+            ("PASS + other sha after line 12 (allowed, round 4)", ["REVIEW: PASS\nhead: %s\n" % H + "l\n" * 12 + "```\n%s\n```" % O], True),
+            ("PASS + other sha line 5 (allowed, round 4)", ["REVIEW: PASS\nhead: %s\na\nb\nprev %s" % (H, O)], True),
             ("PASS + own short sha anywhere", ["REVIEW: PASS\nhead: %s\n\n\nsee %s" % (H, H[:9])], True),
             ("PASS trailing space line1", ["REVIEW: PASS \nhead: %s" % H], True),
             ("PASS ZWSP after PASS", ["REVIEW: PASS" + Z + "\nhead: %s" % H], False),
@@ -195,9 +195,12 @@ class T(unittest.TestCase):
         # FAIL edited after the PASS is ordered by updated_at -> blocks
         self.assertEqual(ok([mk(1, "2026-10-29T18:00:00Z", "REVIEW: FAIL", "2026-10-29T19:00:00Z"),
                              mk(2, "2026-10-29T18:30:00Z", P)])[:2], (False, 1))
-        # PASS edited after a later FAIL -> the edited PASS is newest
-        self.assertTrue(ok([mk(1, "2026-10-29T18:00:00Z", P, "2026-10-29T19:00:00Z"),
-                            mk(2, "2026-10-29T18:30:00Z", "REVIEW: FAIL")])[0])
+        # round 4 (6505483986): PASS edited after a later FAIL must NOT overtake it (PASS orders by created_at)
+        self.assertFalse(ok([mk(1, "2026-10-29T18:00:00Z", P, "2026-10-29T19:00:00Z"),
+                             mk(2, "2026-10-29T18:30:00Z", "REVIEW: FAIL")])[0])
+        # round 4: a FAIL hidden below a letterless / HTML-comment / @mention first line still blocks
+        for pre in ("---\n", "<!-- x -->\n", "@dustinstohler1-dotcom\n", "\U0001F534\n"):
+            self.assertFalse(ok([mk(1, "2026-10-29T18:00:00Z", P), mk(2, "2026-10-29T18:30:00Z", pre + "REVIEW: FAIL")])[0], pre)
         # blocker id printed for a refusal; none when no review-ish comment
         self.assertEqual(ok([mk(9, t, "hi")]), (False, None, ""))
         # formal reviews

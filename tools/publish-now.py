@@ -238,9 +238,14 @@ def _wild(word):
 
 
 def first_line(body):
+    """First line that carries a verdict: skips blank lines, lines with no letters (---, emoji), HTML comments and
+    lines that are only @mentions (round-4 review: those let a FAIL hide on line 2)."""
     for l in normalize(body).split("\n"):
-        if l.strip():
-            return l
+        t = re.sub(r"<!--.*?-->", "", l).strip()
+        t2 = re.sub(r"@[\w-]+", "", t).strip(" ,:")
+        if not t2 or not re.search(r"[A-Za-z]", t2) and not any(ch.isalpha() for ch in t2):
+            continue
+        return t2
     return ""
 
 
@@ -259,27 +264,34 @@ def _item(x, i):
     return x
 
 
-def _order(c):
-    t = max(c.get("created_at") or "", c.get("updated_at") or "")  # an edit after the PASS counts as newer
+def _order(c, sha=None, prefix=None):
+    """Ordering key. A non-PASS review-ish comment sorts by max(created_at, updated_at) (editing an old comment into a
+    FAIL makes it newer). A clean PASS sorts by created_at ONLY (round-4 review 6505483986: an edit to a PASS after a
+    later FAIL must not let the PASS overtake the FAIL)."""
+    if sha is not None and clean_pass(c.get("body", ""), sha, prefix):
+        t = c.get("created_at") or ""
+    else:
+        t = max(c.get("created_at") or "", c.get("updated_at") or "")
     return (t, c.get("id") or 0)
 
 
 def clean_pass(body, sha, prefix):
     """True only for: raw line 1 exactly `<prefix>: PASS`; the first `head:` line exactly `head: <full 40-hex sha>` equal
-    to `sha`; and no other 7+-hex run anywhere in the body that is not a prefix of `sha`. The raw text is used for the
-    two line checks (a zero-width char or homoglyph in them is NOT clean); the hex scan uses the normalized text."""
+    to `sha`. Raw text is used, so a zero-width char or homoglyph in either line is NOT clean. Other shas cited in the
+    body are allowed (the gate's safety comes from fail-closed ordering, not from the body)."""
     sha = sha.lower()
     raw = (body or "").replace("\r\n", "\n").lstrip().split("\n")
     if raw[0].strip() != prefix + ": PASS":
         return False
-    head = next((l.strip() for l in raw[1:] if re.match(r"head:", l.strip(), re.I)), "")
+    heads = [l.strip() for l in raw[1:] if re.match(r"head:", l.strip(), re.I)]
+    head = heads[0] if heads else ""
     if re.fullmatch(r"head: ([0-9a-fA-F]{40})", head) is None or head[6:].lower() != sha:
         return False
-    # A "sha-like" run has 7+ hex chars with at least one digit AND one a-f letter: pure-digit runs (GitHub comment
-    # ids such as 6505286731) and pure-letter words ("defaced") are not shas and must not block a real PASS.
-    runs = [r for r in re.findall(r"[0-9a-fA-F]{7,}", normalize(body))
-            if re.search(r"[0-9]", r) and re.search(r"[a-fA-F]", r)]
-    return all(sha.startswith(r.lower()) for r in runs)
+    if any(h.lower() != head.lower() for h in heads):  # a PASS naming two different heads is ambiguous: not clean
+        return False
+    # Round-4 review 6505483986: no body-wide foreign-sha scan. The gate is sha-agnostic (any later review-ish comment
+    # blocks), so scanning the body added no safety and rejected every real PASS that cites another commit.
+    return True
 
 
 def gate(comments, sha, prefix):
@@ -291,12 +303,12 @@ def gate(comments, sha, prefix):
     older head posted after the PASS, a QUESTION, a malformed FAIL) blocks until a fresh clean PASS is posted. blocker_id
     is the comment that blocked (None when there is no review-ish comment at all); ts is the PASS ordering time."""
     items = [_item(x, i) for i, x in enumerate(comments)]
-    ish = sorted([c for c in items if review_ish(c.get("body", ""), prefix)], key=_order)
+    ish = sorted([c for c in items if review_ish(c.get("body", ""), prefix)], key=lambda c: _order(c, sha, prefix))
     if not ish:
         return False, None, ""
     last = ish[-1]
     if clean_pass(last.get("body", ""), sha, prefix):
-        return True, last.get("id"), _order(last)[0]
+        return True, last.get("id"), _order(last, sha, prefix)[0]
     return False, last.get("id"), ""
 
 
@@ -469,7 +481,25 @@ def step_merge(ctx, n):
         page += 1
         if page > 100:
             say("REFUSED: more than 100 pages of comments"); sys.exit(2)
-    trusted = [c for c in cs if trusted_human(c)]
+    # Round-4 review: a FAIL posted as a formal review body (any state) or as an inline diff comment must also count.
+    extra = []
+    for path in ("/repos/%s/pulls/%s/reviews" % (REPO, n), "/repos/%s/pulls/%s/comments" % (REPO, n)):
+        page = 1
+        while True:
+            s, d, _ = ctx.gh("GET", "%s?per_page=100&page=%d" % (path, page))
+            if s != 200 or not isinstance(d, list):
+                say("REFUSED: cannot read %s (HTTP %s, page %d)" % (path, s, page)); sys.exit(2)
+            if not d:
+                break
+            for r in d:
+                if r.get("body") and r.get("state") != "DISMISSED":
+                    t = r.get("submitted_at") or r.get("created_at") or ""
+                    extra.append({"id": r.get("id"), "user": r.get("user"), "body": r.get("body"),
+                                  "created_at": t, "updated_at": r.get("updated_at") or t})
+            page += 1
+            if page > 100:
+                say("REFUSED: more than 100 pages at %s" % path); sys.exit(2)
+    trusted = [c for c in cs + extra if trusted_human(c)]
     ok, blocker, pass_ts = gate(trusted, sha, "REVIEW")
     if not ok:
         say("REFUSED: newest review-ish `REVIEW` comment (id %s) is not a clean PASS on current head %s (fail-closed: any later review-ish comment on any head blocks until a fresh clean PASS)" % (blocker, sha[:10])); sys.exit(2)
