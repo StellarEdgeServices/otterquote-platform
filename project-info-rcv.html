@@ -89,48 +89,12 @@ main.pi-main {
 
   <div class="pi-card">
     <h2>Insurance Claim Details</h2>
-    <p class="pi-card-sub">This helps us match you with contractors experienced with your carrier and get your bids moving faster. Nothing here is required to submit &mdash; add what you have.</p>
+    <p class="pi-card-sub">This helps get your bids moving faster. Nothing here is required to submit &mdash; add what you have.</p>
 
+    <!-- gh-3136 (P14): carrier, date of loss, damage type, deductible and adjuster fields deferred to the dashboard claim-details edit form (dashboard.html "fields" list). Claim # stays: the contract needs it and parse-loss-sheet does not read it. -->
     <div class="form-group">
-      <label class="form-label" for="carrier_id">Insurance Carrier</label>
-      <select id="carrier_id" name="carrier_id" class="form-input">
-        <option value="">Select carrier&hellip;</option>
-      </select>
-    </div>
-    <div class="pi-row">
-      <div class="form-group">
-        <label class="form-label" for="claim_number">Insurance Claim #</label>
-        <input type="text" id="claim_number" name="claim_number" class="form-input">
-      </div>
-      <div class="form-group">
-        <label class="form-label" for="date_of_loss">Date of Loss</label>
-        <input type="date" id="date_of_loss" name="date_of_loss" class="form-input">
-      </div>
-    </div>
-    <div class="pi-row">
-      <div class="form-group">
-        <label class="form-label" for="damage_type">Damage Type</label>
-        <input type="text" id="damage_type" name="damage_type" class="form-input" placeholder="e.g. Wind, Hail">
-      </div>
-      <div class="form-group">
-        <label class="form-label" for="deductible_amount">Deductible Amount</label>
-        <input type="number" step="0.01" id="deductible_amount" name="deductible_amount" class="form-input" placeholder="0.00">
-      </div>
-    </div>
-    <h3 style="font-size: 1rem; margin: var(--sp-5) 0 var(--sp-3); color: var(--navy);">Adjuster Contact (optional)</h3>
-    <div class="form-group">
-      <label class="form-label" for="adjuster_name">Adjuster Name</label>
-      <input type="text" id="adjuster_name" name="adjuster_name" class="form-input">
-    </div>
-    <div class="pi-row">
-      <div class="form-group">
-        <label class="form-label" for="adjuster_email">Adjuster Email</label>
-        <input type="email" id="adjuster_email" name="adjuster_email" class="form-input">
-      </div>
-      <div class="form-group">
-        <label class="form-label" for="adjuster_phone">Adjuster Phone</label>
-        <input type="tel" id="adjuster_phone" name="adjuster_phone" class="form-input">
-      </div>
+      <label class="form-label" for="claim_number">Insurance Claim #</label>
+      <input type="text" id="claim_number" name="claim_number" class="form-input">
     </div>
   </div>
 
@@ -188,24 +152,7 @@ main.pi-main {
     Nav.renderHeader({ active: 'dashboard' });
     Nav.renderFooter();
 
-    await loadCarriers();
     wireEvents();
-  }
-
-  async function loadCarriers() {
-    try {
-      const { data, error } = await sb.from('carrier_profiles').select('id, carrier_name').order('carrier_name');
-      if (error || !data) return;
-      const sel = document.getElementById('carrier_id');
-      data.forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c.id;
-        opt.textContent = c.carrier_name;
-        sel.appendChild(opt);
-      });
-    } catch (err) {
-      console.warn('[project-info-rcv] loadCarriers failed:', err);
-    }
   }
 
   function wireEvents() {
@@ -252,24 +199,21 @@ main.pi-main {
       }
 
       const val = (id) => document.getElementById(id).value.trim();
+      // gh-3136 (P14): send ONLY keys still on this form. Removed fields (carrier, date of
+      // loss, damage type, deductible, adjuster, acv/rcv amounts) are never sent, so values
+      // parse-loss-sheet already wrote to the claim cannot be clobbered with null.
       const updates = {
         job_type: 'insurance_rcv',
         funding_type: 'insurance',
         policy_type: 'rcv',
-        carrier_id: val('carrier_id') || null,
-        claim_number: val('claim_number') || null,
-        date_of_loss: val('date_of_loss') || null,
-        damage_type: val('damage_type') || null,
-        deductible_amount: val('deductible_amount') ? parseFloat(val('deductible_amount')) : null,
-        adjuster_name: val('adjuster_name') || null,
-        adjuster_email: val('adjuster_email') || null,
-        adjuster_phone: val('adjuster_phone') || null,
         urgency: val('urgency'),
         urgency_deadline: val('urgency') === 'asap' ? (val('urgency_deadline') || null) : null,
         urgency_reason: val('urgency') === 'asap' ? (val('urgency_reason') || null) : null,
-        homeowner_notes: val('homeowner_notes') || null,
         updated_at: new Date().toISOString(),
       };
+      // Optional text keys are added only when filled, so a blank box cannot erase a saved value.
+      if (val('claim_number')) updates.claim_number = val('claim_number');
+      if (val('homeowner_notes')) updates.homeowner_notes = val('homeowner_notes');
 
       // gh-2105 batch 4 (a): money path (funding_type / job_type / policy_type / amounts).
       // .select('id') so a zero-row RLS or id match is loud, not a silent "saved".
@@ -277,24 +221,7 @@ main.pi-main {
       if (error) throw error;
       if (!Array.isArray(savedRows) || savedRows.length === 0) throw new Error('update_zero_rows: claims (project info rcv)');
 
-      // Adjuster Knowledge Base upsert (D-046) — same non-critical,
-      // fire-and-forget pattern dashboard.html uses; a failure here must
-      // not block navigation.
-      if (updates.adjuster_name) {
-        try {
-          const { data: adjData } = await sb.rpc('upsert_adjuster_from_claim', {
-            p_claim_id: claimId,
-            p_adjuster_name: updates.adjuster_name,
-            p_adjuster_email: updates.adjuster_email,
-            p_adjuster_phone: updates.adjuster_phone,
-            p_carrier_id: updates.carrier_id,
-          });
-          // update-no-select-ok: gh-2105 decision b -- adjuster link-back inside the existing non-critical try/catch; the claim row was just written and row-checked by the update above in this same submit, and a zero-row match only leaves claims.adjuster_id unset (the page navigates on regardless, by design).
-          if (adjData) await sb.from('claims').update({ adjuster_id: adjData }).eq('id', claimId);
-        } catch (adjErr) {
-          console.warn('[project-info-rcv] adjuster upsert failed (non-critical):', adjErr);
-        }
-      }
+      // gh-3136 (P14): D-046 adjuster upsert removed from this page (no adjuster fields here); dashboard.html has its own upsert.
 
       gtag('event', 'project_info_saved', { job_type: 'insurance_rcv' });
       window.location.href = '/dashboard.html';
