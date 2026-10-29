@@ -125,12 +125,9 @@
   var activeToken = null;
   var stack = [];
   var disqualifiedFired = {};
-  var DQ_SOURCE = {
-    'd-dq-hidden-costs': 'd-hidden-costs',
-    'd-dq-time': 'd-time',
-    'd-dq-criteria': 'd-criteria',
-    'd-dq-online': 'd-online'
-  };
+  // gh-3136 (P14): the four d-dq-* interstitials are cut with the screening questions.
+  var DQ_SOURCE = {};
+
 
   // gh-2096 item 4: step_index (1-based), one lookup table for this arm,
   // same depth-within-track convention as js/router-discovery.js's own
@@ -141,18 +138,18 @@
   // screen of their own tracks) share an index. Disqualifier tokens are
   // derived from DQ_SOURCE above, never hand-duplicated.
   var STEP_INDEX = {
-    'd-role': 1, 'd-email': 2, 'd-name': 3, 'd-phone': 4,
-    // Homeowner track.
-    'd-trades': 5, 'd-payer': 6, 'd-hidden-costs': 7, 'd-time': 8,
-    'd-criteria': 9, 'd-online': 10, 'd-summary': 11,
-    // Professional entry (parallel to d-trades).
-    'd-professional-industry': 5,
+    // gh-3136 (P14): d-name + d-phone merged into d-contact; the homeowner
+    // track is now d-role(1, skipped on ?entry=home) -> d-email(2) ->
+    // d-contact(3) -> redirect. Indexes are consecutive.
+    'd-role': 1, 'd-email': 2, 'd-contact': 3,
+    // Professional entry.
+    'd-professional-industry': 4,
     // Realtor track.
-    'd-realtor-1': 6, 'd-realtor-2': 7, 'd-realtor-3': 8, 'd-realtor-4': 9,
-    'd-realtor-close': 10,
+    'd-realtor-1': 5, 'd-realtor-2': 6, 'd-realtor-3': 7, 'd-realtor-4': 8,
+    'd-realtor-close': 9,
     // Insurance track.
-    'd-ins-1': 6, 'd-ins-2': 7, 'd-ins-3': 8, 'd-ins-4': 9, 'd-ins-5': 10,
-    'd-ins-6': 11, 'd-ins-7': 12, 'd-ins-close': 13
+    'd-ins-1': 5, 'd-ins-2': 6, 'd-ins-3': 7, 'd-ins-4': 8, 'd-ins-5': 9,
+    'd-ins-6': 10, 'd-ins-7': 11, 'd-ins-close': 12
   };
   Object.keys(DQ_SOURCE).forEach(function (dqToken) { STEP_INDEX[dqToken] = STEP_INDEX[DQ_SOURCE[dqToken]]; });
 
@@ -376,7 +373,7 @@
           redirectWithLeadId(bridge.ROLE_DESTINATIONS.contractor, leadId);
           return;
         }
-        go('d-name');
+        go('d-contact');
         return;
       }
 
@@ -414,7 +411,7 @@
           // router_step_complete for 'd-email' (activeToken is still
           // 'd-email' until show() runs). See d-professional-industry's
           // own comment on this exact pattern.
-          go('d-name');
+          go('d-contact');
         }
 
         bridge.sb.rpc('set_lead_role', { p_lead_id: newId, p_role: role }).then(function (res) {
@@ -433,79 +430,41 @@
     }
   };
 
-  // ══════════════════════ Screen 3: name ══════════════════════
-  RENDERERS['d-name'] = function () {
+  // ══════════════════════ Screen 3: contact (name + optional phone) ══════
+  // gh-3136 (P14): d-name and d-phone merged into one screen. Both
+  // update_lead_contact writes are kept, in the same order as before (name
+  // first with p_phone null, then name+phone), with the same validation.
+  // C4 (Tier C, legal/fee text): RD.COPY.home8Text, byte-identical, moved
+  // here from the cut d-summary screen. Homeowners only (as d-summary was);
+  // professionals never saw it and still do not.
+  RENDERERS['d-contact'] = function () {
     root.appendChild(backButton(goBack));
     root.appendChild(heading('What is your name?'));
-    var nameF = field('dName', 'Full Name', 'text', { autocomplete: 'name', maxlength: '200' });
-    var submitBtn = continueButton('Continue', onSubmit, true);
-    root.appendChild(submitBtn);
-
-    function onSubmit() {
-      nameF.err.textContent = '';
-      var value = nameF.input.value.trim();
-      if (!value) { nameF.err.textContent = 'Please enter your name.'; return; }
-      if (!bridge.sb) { bridge.showError('Something went wrong loading the form. Please refresh and try again.'); return; }
-
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Please wait…';
-
-      bridge.sb.rpc('update_lead_contact', { p_lead_id: leadId, p_name: value, p_email: email, p_phone: null }).then(function (res) {
-        name = value;
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Continue';
-        if (res && res.error) {
-          console.error('[router-variant-d] update_lead_contact (name) failed -- proceeding anyway:', res.error);
-        }
-        // Not emitComplete()'d here -- go() below already emits it.
-        go('d-phone');
-      }).catch(function (err) {
-        console.error('[router-variant-d] update_lead_contact (name) threw -- proceeding anyway:', err);
-        name = value;
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Continue';
-        go('d-phone');
-      });
+    if (role === 'homeowner') {
+      root.appendChild(bodyText(window.RouterDiscovery.COPY.home8Text));
     }
-  };
-
-  // ══════════════════════ Screen 4: phone (optional/skippable) ══════════
-  // #2075: "name, phone (skippable where C allows)" -- gh-2042 already
-  // made phone optional everywhere else on this router; this screen is
-  // never gated on it being filled in.
-  RENDERERS['d-phone'] = function () {
-    root.appendChild(backButton(goBack));
-    root.appendChild(heading('What is your phone number?'));
+    var nameF = field('dName', 'Full Name', 'text', { autocomplete: 'name', maxlength: '200' });
     var phoneF = field('dPhone', 'Phone Number', 'tel', { autocomplete: 'tel', inputmode: 'tel', maxlength: '20' }, true);
     var submitBtn = continueButton('Continue', onSubmit, true);
     root.appendChild(submitBtn);
 
-    function afterPhone() {
-      // gh-2075 round 2, review report ceo57-review-pr2086-20260921
-      // finding 3 (blocking, real-browser evidence on a 2.5s-delayed
-      // fetch: the button read {disabled:false} 500ms after the first
-      // tap, a second tap produced a duplicate update_lead_contact call
-      // and a phantom d-trades view/complete/view, and corrupted the
-      // back stack): this is the one network wait inside the funnel --
-      // go() below triggers js/router-discovery.js's lazy fetch (see
-      // that file's own top-of-file comment) -- so the button must NOT
-      // re-enable here. It stays disabled/"Please wait..." for the
-      // remainder of this screen's life; on success the screen is
-      // replaced entirely by show(), and on a load failure the go()
-      // wrapper's own bridge.showError(...) already covers it (a fresh
-      // page load is then the recovery path, same as every other
-      // unrecoverable error on this page).
-      //
-      // Not emitComplete()'d here -- go() below already emits it (same
-      // pattern as d-email/d-name above, and d-professional-industry
-      // further down).
+    function afterContact() {
+      // Button stays disabled ("Please wait...") for the rest of this
+      // screen's life: the next step is a redirect or a lazy-load (same
+      // reasoning as the old d-phone screen, gh-2075 round 2 finding 3).
       if (role === 'referral_partner') { go('d-professional-industry'); return; }
-      go('d-trades'); // homeowner
+      // Homeowner: identical to the old d-summary Continue.
+      emitComplete('d-contact');
+      HOOK_measurementPurchase();
+      redirectWithLeadId(bridge.ROLE_DESTINATIONS.homeowner, leadId);
     }
 
     function onSubmit() {
+      nameF.err.textContent = '';
       phoneF.err.textContent = '';
+      var value = nameF.input.value.trim();
       var raw = phoneF.input.value.trim();
+      if (!value) { nameF.err.textContent = 'Please enter your name.'; return; }
       if (raw && !isValidUsPhone(raw)) {
         phoneF.err.textContent = 'Please enter a valid 10-digit US phone number.';
         return;
@@ -516,14 +475,27 @@
       submitBtn.textContent = 'Please wait…';
 
       var phoneDigits = raw ? normalizePhone(raw) : null;
-      bridge.sb.rpc('update_lead_contact', { p_lead_id: leadId, p_name: name, p_email: email, p_phone: phoneDigits }).then(function (res) {
+      function writePhone() {
+        bridge.sb.rpc('update_lead_contact', { p_lead_id: leadId, p_name: name, p_email: email, p_phone: phoneDigits }).then(function (res) {
+          if (res && res.error) {
+            console.error('[router-variant-d] update_lead_contact (phone) failed -- proceeding anyway:', res.error);
+          }
+          afterContact();
+        }).catch(function (err) {
+          console.error('[router-variant-d] update_lead_contact (phone) threw -- proceeding anyway:', err);
+          afterContact();
+        });
+      }
+      bridge.sb.rpc('update_lead_contact', { p_lead_id: leadId, p_name: value, p_email: email, p_phone: null }).then(function (res) {
+        name = value;
         if (res && res.error) {
-          console.error('[router-variant-d] update_lead_contact (phone) failed -- proceeding anyway:', res.error);
+          console.error('[router-variant-d] update_lead_contact (name) failed -- proceeding anyway:', res.error);
         }
-        afterPhone();
+        writePhone();
       }).catch(function (err) {
-        console.error('[router-variant-d] update_lead_contact (phone) threw -- proceeding anyway:', err);
-        afterPhone();
+        console.error('[router-variant-d] update_lead_contact (name) threw -- proceeding anyway:', err);
+        name = value;
+        writePhone();
       });
     }
   };
@@ -555,115 +527,9 @@
   // COPY/renderMultiSelect/renderSingleSelect/renderDisqualifier are safe
   // to read from window.RouterDiscovery directly inside these RENDERERS.
 
-  // ══════════════════════ Homeowner track (reused from arm C verbatim) ═
-  RENDERERS['d-trades'] = function () {
-    var RD = window.RouterDiscovery;
-    root.appendChild(backButton(goBack));
-    RD.renderMultiSelect(root, {
-      heading: RD.COPY.home2Heading,
-      options: RD.COPY.home2Options,
-      onContinue: function (chosen) {
-        answers.trades = chosen.map(function (i) { return RD.COPY.home2Options[i - 1]; });
-        go('d-payer');
-      }
-    });
-  };
-  RENDERERS['d-payer'] = function () {
-    var RD = window.RouterDiscovery;
-    root.appendChild(backButton(goBack));
-    RD.renderSingleSelect(root, {
-      heading: RD.COPY.home3Heading,
-      options: RD.COPY.home3Options,
-      onSelect: function (idx) {
-        answers.payer = RD.COPY.home3Options[idx - 1];
-        go('d-hidden-costs');
-      }
-    });
-  };
-  RENDERERS['d-hidden-costs'] = function () {
-    var RD = window.RouterDiscovery;
-    root.appendChild(backButton(goBack));
-    RD.renderMultiSelect(root, {
-      heading: RD.COPY.home4Heading,
-      options: RD.COPY.home4Options,
-      onContinue: function (chosen) {
-        answers.hiddenCosts = chosen;
-        var qualifies = chosen.length === 1 && chosen[0] === 5;
-        if (qualifies) { go('d-time'); } else { go('d-dq-hidden-costs'); }
-      }
-    });
-  };
-  RENDERERS['d-dq-hidden-costs'] = function () {
-    var RD = window.RouterDiscovery;
-    RD.renderDisqualifier(root, {
-      text: RD.COPY.dq4Text,
-      opt1: RD.COPY.dq4Opt1,
-      onContinue: function () { go('d-time'); }
-    });
-  };
-  RENDERERS['d-time'] = function () {
-    var RD = window.RouterDiscovery;
-    root.appendChild(backButton(goBack));
-    RD.renderSingleSelect(root, {
-      heading: RD.COPY.home5Heading,
-      options: RD.COPY.home5Options,
-      onSelect: function (idx) {
-        answers.timeInvestment = RD.COPY.home5Options[idx - 1];
-        if (idx === 3) { go('d-dq-time'); } else { go('d-criteria'); }
-      }
-    });
-  };
-  RENDERERS['d-dq-time'] = function () {
-    var RD = window.RouterDiscovery;
-    RD.renderDisqualifier(root, {
-      text: RD.COPY.dq5Text,
-      opt1: RD.COPY.dq5Opt1,
-      onContinue: function () { go('d-criteria'); }
-    });
-  };
-  RENDERERS['d-criteria'] = function () {
-    var RD = window.RouterDiscovery;
-    root.appendChild(backButton(goBack));
-    RD.renderMultiSelect(root, {
-      heading: RD.COPY.home6Heading,
-      options: RD.COPY.home6Options,
-      onContinue: function (chosen) {
-        answers.selectionCriteria = chosen;
-        var disqualifyingChoice = chosen.some(function (n) { return n === 6 || n === 7 || n === 8; });
-        if (disqualifyingChoice) { go('d-dq-criteria'); } else { go('d-online'); }
-      }
-    });
-  };
-  RENDERERS['d-dq-criteria'] = function () {
-    var RD = window.RouterDiscovery;
-    RD.renderDisqualifier(root, {
-      text: RD.COPY.dq6Text,
-      opt1: RD.COPY.dq6Opt1,
-      onContinue: function () { go('d-online'); }
-    });
-  };
-  RENDERERS['d-online'] = function () {
-    var RD = window.RouterDiscovery;
-    root.appendChild(backButton(goBack));
-    RD.renderSingleSelect(root, {
-      heading: RD.COPY.home7Heading,
-      options: RD.COPY.home7Options,
-      onSelect: function (idx) {
-        answers.online = RD.COPY.home7Options[idx - 1];
-        // D-2 (issue #2011/#2017): option 1 disqualifies, option 2
-        // qualifies -- identical logic to arm C's own c-home-7.
-        if (idx === 1) { go('d-dq-online'); } else { go('d-summary'); }
-      }
-    });
-  };
-  RENDERERS['d-dq-online'] = function () {
-    var RD = window.RouterDiscovery;
-    RD.renderDisqualifier(root, {
-      text: RD.COPY.dq7Text,
-      opt1: RD.COPY.dq7Opt1,
-      onContinue: function () { go('d-summary'); }
-    });
-  };
+  // gh-3136 (P14): d-trades, d-payer, d-hidden-costs, d-time, d-criteria, d-online,
+  // the four d-dq-* interstitials and d-summary are removed (screening cut; the
+  // C4 paragraph now renders on d-contact).
   // gh-2078 HOOK POINT (not implemented here, on purpose): a homeowner's
   // real conversion event -- measurement_purchase -- fires downstream, in
   // the React app's measurement-checkout success callback, once #2078
@@ -673,16 +539,6 @@
   // downstream event attribute back to this arm. Do not implement the
   // actual event here -- #2078 owns it.
   function HOOK_measurementPurchase() { /* see gh-2078; the real event fires from help-measurements/page.tsx's checkout success, not here */ }
-  RENDERERS['d-summary'] = function () {
-    var RD = window.RouterDiscovery;
-    root.appendChild(bodyText(RD.COPY.home8Text));
-    root.appendChild(continueButton('Continue', function () {
-      emitComplete('d-summary');
-      HOOK_measurementPurchase();
-      redirectWithLeadId(bridge.ROLE_DESTINATIONS.homeowner, leadId);
-    }, true));
-  };
-
   // ══════════════════ Professional track ══════════════════
   // #2075's own role tap combines real estate and insurance into one
   // "Professional" target; this screen is the one extra question needed
@@ -835,7 +691,7 @@
   // keeps this a single choke point.
   var realGo = go;
   go = function (token) {
-    var needsDiscovery = token !== 'd-role' && token !== 'd-email' && token !== 'd-name' && token !== 'd-phone';
+    var needsDiscovery = token !== 'd-role' && token !== 'd-email';
     if (!needsDiscovery) { realGo(token); return; }
     loadDiscoveryModule().then(function () { realGo(token); }).catch(function (err) {
       console.error('[router-variant-d] failed to load js/router-discovery.js:', err);

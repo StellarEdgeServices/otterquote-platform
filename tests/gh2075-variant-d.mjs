@@ -433,7 +433,7 @@ function fillAndSubmit(root, inputId, value) {
     ok(!!roleCall && roleCall.args.p_role === 'homeowner', 'set_lead_role is called with p_role="homeowner" right after the insert');
     const stepNames = trackedEvents.map((e) => e.name + ':' + (e.extra.step || ''));
     ok(stepNames.indexOf('router_step_complete:d-email') !== -1, 'router_step_complete fires for d-email on submit');
-    ok(stepNames.indexOf('router_step_view:d-name') !== -1, 'router_step_view fires for d-name next (homeowner keeps going)');
+    ok(stepNames.indexOf('router_step_view:d-contact') !== -1, 'router_step_view fires for d-contact next (gh-3136: name + phone merged; homeowner keeps going)');
   }).catch((e) => { console.error('scenario3 error:', e); fail++; });
 })();
 
@@ -450,48 +450,60 @@ function fillAndSubmit(root, inputId, value) {
     ok(redirects[0].dest.indexOf('lead=lead-') !== -1, 'the redirect carries the freshly-inserted lead id');
     ok(redirects[0].preBuilt === true, 'redirectTo is called with preBuilt=true (lead id already appended by hand)');
     const stepViews = trackedEvents.filter((e) => e.name === 'router_step_view').map((e) => e.extra.step);
-    ok(stepViews.indexOf('d-name') === -1 && stepViews.indexOf('d-phone') === -1,
-      'contractor never sees d-name or d-phone -- #2075: "routes to the existing contractor-join path after the email screen"');
+    ok(stepViews.indexOf('d-contact') === -1,
+      'contractor never sees d-contact -- #2075: "routes to the existing contractor-join path after the email screen"');
   }).catch((e) => { console.error('scenario4 error:', e); fail++; });
 })();
 
-// ═══════════════════════ Scenario 5: homeowner clears name (required) and
-// phone (optional/skippable), then reaches the lazy-loaded d-trades screen
-// with arm C's own COPY, verbatim ═══════════════════════
+// ═══════════════════════ Scenario 5 (gh-3136, P14): homeowner reaches ONE
+// contact screen (name required + phone optional) carrying the C4 paragraph
+// byte-identical; submitting writes BOTH update_lead_contact calls and
+// redirects to get-started with the lead id. No screening screens. ═══════
 (function scenario5() {
-  const { routerDRoot, bridge, RouterVariantD, rpcCalls, trackedEvents } = buildScenario();
+  const { routerDRoot, bridge, RouterVariantD, rpcCalls, trackedEvents, redirects } = buildScenario();
   RouterVariantD.init(bridge, routerDRoot);
   findRoleButtons(routerDRoot)[0].dispatchClick(); // Homeowner
   fillAndSubmit(routerDRoot, 'dEmail', 'jane@example.com');
-  return Promise.resolve().then(() => Promise.resolve()).then(() => Promise.resolve()).then(() => {
+  return tick(8).then(() => {
+    // One screen: both inputs present, plus the C4 paragraph.
+    ok(!!flatten(routerDRoot).find((c) => c.id === 'dName') && !!flatten(routerDRoot).find((c) => c.id === 'dPhone'), 'd-contact renders the name input AND the phone input on ONE screen');
+    const C4 = 'From our stand point, it seems like you would be a good fit. You are a tech savvy homeowner who wants to save time and money. The next steps are: 1. We will get additional information about your job; 2. We will create a scope of work and submit it to multiple contractors for bids. 3. Their bids will appear here on the site. 4. If one of the bids suits your needs, you select your contractor on the site and schedule your job. There is no obligation to work with us or our contractors. They don\'t get your information unless you select them. There is no fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when they complete a job. To get started we need the following information:';
+    ok(flatten(routerDRoot).some((c) => c.tagName === 'P' && c.textContent === C4), 'C4 (COPY.home8Text) renders on d-contact byte-identical');
     fillAndSubmit(routerDRoot, 'dName', 'Jane Smith');
-    return Promise.resolve().then(() => Promise.resolve()).then(() => Promise.resolve());
+    return tick(10);
   }).then(() => {
-    const nameRpc = rpcCalls.find((c) => c.name === 'update_lead_contact' && c.args.p_name === 'Jane Smith');
-    ok(!!nameRpc, 'update_lead_contact is called with the entered name (PATCHing the existing row, not a second insert)');
-    // d-phone: leave blank (skippable) and hit Continue.
-    const phoneScreenInput = flatten(routerDRoot).find((c) => c.id === 'dPhone');
-    ok(!!phoneScreenInput, 'd-phone screen rendered with its own input');
-    ok(phoneScreenInput.getAttribute === undefined ? true : true, 'sanity');
-    const submitBtn = flatten(routerDRoot).find((c) => c.tagName === 'BUTTON' && c.textContent === 'Continue');
-    submitBtn.dispatchClick(); // blank phone -- must not block
-    return Promise.resolve().then(() => Promise.resolve()).then(() => Promise.resolve()).then(() => Promise.resolve());
-  }).then(() => {
-    const phoneRpc = rpcCalls.filter((c) => c.name === 'update_lead_contact').pop();
-    ok(phoneRpc.args.p_phone === null, 'blank phone submits p_phone=null and is never blocked (gh-2042 precedent)');
-    // By now js/router-discovery.js should have been lazy-loaded on demand
-    // (never at init()) and d-trades rendered with ITS heading/options,
-    // read verbatim from RouterDiscovery.COPY -- not reauthored in
-    // router-variant-d.js.
+    const ucc = rpcCalls.filter((c) => c.name === 'update_lead_contact');
+    ok(ucc.length === 2, 'both update_lead_contact writes still happen (name, then phone)');
+    ok(ucc[0].args.p_name === 'Jane Smith' && ucc[0].args.p_phone === null, 'first write carries the name with p_phone=null');
+    ok(ucc[1].args.p_name === 'Jane Smith' && ucc[1].args.p_phone === null, 'blank phone submits p_phone=null and is never blocked (gh-2042 precedent)');
+    ok(redirects.length === 1 && redirects[0].dest.indexOf('get-started') !== -1 && redirects[0].dest.indexOf('lead=lead-') !== -1 && redirects[0].preBuilt === true, 'Continue redirects to get-started with the lead id (preBuilt=true), exactly as d-summary did');
     const stepViews = trackedEvents.filter((e) => e.name === 'router_step_view').map((e) => e.extra.step);
-    ok(stepViews.indexOf('d-trades') !== -1, 'router_step_view fires for d-trades once js/router-discovery.js has lazy-loaded');
-    const heading = flatten(routerDRoot).find((c) => c.tagName === 'H1');
-    ok(!!heading && heading.textContent === 'What kind of work do you need done (check all that apply).',
-      'd-trades renders arm C\'s own COPY.home2Heading verbatim -- no new copy authored in router-variant-d.js');
-    const optionButtons = flatten(routerDRoot).filter((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('role-option'));
-    ok(optionButtons.length === 5, 'd-trades renders all 5 of arm C\'s home2Options (Roofing/Siding/Gutters/Windows/Other)');
+    ok(JSON.stringify(stepViews) === JSON.stringify(['d-role', 'd-email', 'd-contact']), 'homeowner sees exactly d-role(skipped on entry=home), d-email, d-contact -- got ' + JSON.stringify(stepViews));
+    ok(['d-trades','d-payer','d-hidden-costs','d-time','d-criteria','d-online','d-summary','d-dq-time'].every((t) => stepViews.indexOf(t) === -1), 'no screening, DQ or summary screen is ever viewed');
+    const idx = trackedEvents.filter((e) => e.name === 'router_step_view').map((e) => e.extra.step_index);
+    ok(JSON.stringify(idx) === '[1,2,3]', 'step_index is consecutive: 1,2,3');
+    ok(trackedEvents.some((e) => e.name === 'router_step_complete' && e.extra.step === 'd-contact' && e.extra.step_index === 3), 'router_step_complete still fires for d-contact');
   }).catch((e) => { console.error('scenario5 error:', e); fail++; });
 })();
+
+// Invalid phone on d-contact blocks (existing validation kept) and a typed phone is normalised.
+(async function scenario5b() {
+  const { routerDRoot, bridge, RouterVariantD, rpcCalls, redirects } = buildScenario();
+  RouterVariantD.init(bridge, routerDRoot);
+  findRoleButtons(routerDRoot)[0].dispatchClick();
+  fillAndSubmit(routerDRoot, 'dEmail', 'jane@example.com');
+  await tick(8);
+  flatten(routerDRoot).find((c) => c.id === 'dName').value = 'Jane Smith';
+  flatten(routerDRoot).find((c) => c.id === 'dPhone').value = '123';
+  flatten(routerDRoot).find((c) => c.tagName === 'BUTTON' && c.textContent === 'Continue').dispatchClick();
+  await tick(6);
+  ok(redirects.length === 0 && rpcCalls.filter((c) => c.name === 'update_lead_contact').length === 0, 'an invalid phone blocks d-contact: no RPC, no redirect');
+  flatten(routerDRoot).find((c) => c.id === 'dPhone').value = '(317) 555-0142';
+  flatten(routerDRoot).find((c) => c.tagName === 'BUTTON' && c.textContent === 'Continue').dispatchClick();
+  await tick(10);
+  const ucc = rpcCalls.filter((c) => c.name === 'update_lead_contact');
+  ok(ucc.length === 2 && ucc[1].args.p_phone === '3175550142', 'a valid phone is normalised to 10 digits on the second write');
+})().catch((e) => { console.error('scenario5b error:', e); fail++; });
 
 // A handful of microtask-queue turns without a real timer -- used by the
 // three round-2 regression scenarios below, which each need to inspect
@@ -516,14 +528,14 @@ function tick(n) {
   ok(insertCalls.length === 1, 'first email submit inserts exactly one leads row');
   ok(leadEvents.length === 1, 'first email submit fires exactly one Meta Lead');
 
-  // Now on d-name. Click ITS OWN "<- Back" button (the real user path),
+  // Now on d-contact. Click ITS OWN "<- Back" button (the real user path),
   // which returns to d-email.
   const backBtn = flatten(routerDRoot).find((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('router-back'));
-  ok(!!backBtn, 'd-name renders its own Back button');
+  ok(!!backBtn, 'd-contact renders its own Back button');
   backBtn.dispatchClick();
   await tick(1);
   const emailInputAgain = flatten(routerDRoot).find((c) => c.id === 'dEmail');
-  ok(!!emailInputAgain, 'Back from d-name returns to d-email, freshly rendered');
+  ok(!!emailInputAgain, 'Back from d-contact returns to d-email, freshly rendered');
 
   // Resubmit a CORRECTED email (the realistic trigger, per the review report).
   fillAndSubmit(routerDRoot, 'dEmail', 'fixed@example.com');
@@ -537,7 +549,7 @@ function tick(n) {
 
   // The corrected email should be the one d-name eventually PATCHes in.
   fillAndSubmit(routerDRoot, 'dName', 'Jane Smith');
-  await tick(4);
+  await tick(10);
   const nameRpc = rpcCalls.filter((c) => c.name === 'update_lead_contact').pop();
   ok(nameRpc.args.p_email === 'fixed@example.com', 'the corrected email (not the typo) is what update_lead_contact PATCHes onto the single lead row');
 })().catch((e) => { console.error('scenario6 error:', e); fail++; });
@@ -552,22 +564,16 @@ function tick(n) {
   findRoleButtons(routerDRoot)[0].dispatchClick(); // Homeowner
   fillAndSubmit(routerDRoot, 'dEmail', 'jane@example.com');
   await tick(4);
-  fillAndSubmit(routerDRoot, 'dName', 'Jane Smith');
   await tick(4);
 
   const phoneSubmitBtn = flatten(routerDRoot).find((c) => c.tagName === 'BUTTON' && c.textContent === 'Continue');
-  ok(!!phoneSubmitBtn && !phoneSubmitBtn.disabled, 'd-phone\'s Continue starts enabled');
+  ok(!!phoneSubmitBtn && !phoneSubmitBtn.disabled, 'd-contact\'s Continue starts enabled');
+  flatten(routerDRoot).find((c) => c.id === 'dName').value = 'Jane Smith';
   phoneSubmitBtn.dispatchClick(); // blank phone -- must not block
-  ok(phoneSubmitBtn.disabled === true, 'Continue disables IMMEDIATELY on tap (synchronous, before any RPC/lazy-load settles)');
-  // One tick: update_lead_contact's stubbed RPC resolves and afterPhone()
-  // runs, which kicks off js/router-discovery.js's lazy load (itself
-  // deferred one more microtask turn by this test's own script-src shim --
-  // see makeDom() above) -- so at THIS exact point the module has not
-  // finished loading and d-phone's own screen (and this same submitBtn)
-  // is still what is rendered.
+  ok(phoneSubmitBtn.disabled === true, 'Continue disables IMMEDIATELY on tap (synchronous, before any RPC settles)');
   await tick(1);
-  ok(phoneSubmitBtn.disabled === true, 'Continue is STILL disabled one tick later, while the discovery module is still loading (round-2 fix: afterPhone() no longer re-enables it)');
-  ok(phoneSubmitBtn.textContent === 'Please wait…', 'the button still reads "Please wait..." during the lazy-load window, not "Continue"');
+  ok(phoneSubmitBtn.disabled === true, 'Continue is STILL disabled one tick later (never re-enabled on the way to the redirect)');
+  ok(phoneSubmitBtn.textContent === 'Please wait…', 'the button still reads "Please wait..." not "Continue"');
 })().catch((e) => { console.error('scenario7 error:', e); fail++; });
 
 // ═══════════════════════ Scenario 8 (gh-2075 round 2, review finding 4):
@@ -580,11 +586,10 @@ function tick(n) {
   findRoleButtons(routerDRoot)[1].dispatchClick(); // Professional
   fillAndSubmit(routerDRoot, 'dEmail', 'agent@example.com');
   await tick(4);
-  fillAndSubmit(routerDRoot, 'dName', 'Pat Realtor');
   await tick(4);
-  const phoneSubmitBtn = flatten(routerDRoot).find((c) => c.tagName === 'BUTTON' && c.textContent === 'Continue');
-  phoneSubmitBtn.dispatchClick(); // blank phone
-  await tick(4); // settle into d-professional-industry (discovery lazy-load)
+  ok(!flatten(routerDRoot).some((c) => c.tagName === 'P' && /good fit/.test(c.textContent || '')), 'professionals do not see the C4 homeowner paragraph');
+  fillAndSubmit(routerDRoot, 'dName', 'Pat Realtor'); // blank phone
+  await tick(10); // settle into d-professional-industry (discovery lazy-load)
 
   const industryButtons = flatten(routerDRoot).filter((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('role-option'));
   ok(industryButtons.length === 2, 'd-professional-industry renders exactly the 2 industries #2075 names');
@@ -661,8 +666,8 @@ function tick(n) {
 })().catch((e) => { console.error('scenario9 error:', e); fail++; });
 
 // ═══════════════════════ Scenario 10 (gh-2075 round 3 re-review, finding
-// (a)): Homeowner -> email -> name (advances straight to d-phone) -> Back
-// x3 (d-phone -> d-name -> d-email -> d-role) -> Contractor -> submit
+// (a)): Homeowner -> email -> d-contact -> Back
+// x2 (d-contact -> d-email -> d-role) -> Contractor -> submit
 // must reuse the SAME lead id (one row, one admin alert), not insert a
 // second leads row -- round 2's fix guarded the reuse branch with
 // `role !== 'contractor'`, which this exact path defeats (see the long
@@ -673,18 +678,14 @@ function tick(n) {
   findRoleButtons(routerDRoot)[0].dispatchClick(); // Homeowner
   fillAndSubmit(routerDRoot, 'dEmail', 'first@example.com');
   await tick(4);
-  fillAndSubmit(routerDRoot, 'dName', 'First Name');
-  await tick(4);
+  await tick(4); // now on d-contact
 
   function tapBack() {
     const backBtn = flatten(routerDRoot).find((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('router-back'));
     backBtn.dispatchClick();
   }
-  // Submitting the name screen advances straight to d-phone (not a
-  // pause on d-name) -- three Backs are needed to reach d-role: d-phone ->
-  // d-name -> d-email -> d-role.
-  tapBack(); // d-phone -> d-name
-  tapBack(); // d-name -> d-email
+  // gh-3136: two Backs reach d-role: d-contact -> d-email -> d-role.
+  tapBack(); // d-contact -> d-email
   tapBack(); // d-email -> d-role
   findRoleButtons(routerDRoot)[2].dispatchClick(); // Contractor
   fillAndSubmit(routerDRoot, 'dEmail', 'first@example.com'); // resubmit -- leadId already set
