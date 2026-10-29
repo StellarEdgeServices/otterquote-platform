@@ -60,6 +60,67 @@ class T(unittest.TestCase):
         self.assertFalse(pn.needs_r177("x", []))
         self.assertFalse(pn.trusted_human({"user": {"login": "x", "type": "User"}, "author_association": "NONE"}))
         self.assertFalse(pn.trusted_human({"user": {"login": "github-actions[bot]", "type": "Bot"}, "author_association": "MEMBER"}))
+    def test_b1prime_adversarial(self):
+        H = "bd6813d37b7955baf56f6996d7ef715920acffc2"; O = "e0e6e0d64d0b2cfca7b266a95a9e698d8eb94bb9"
+        P = lambda h=H, x="": "REVIEW: PASS\nhead: %s%s\nbody" % (h, x)
+        F = lambda h=H, x="": "REVIEW: FAIL\nhead: %s%s\nbody" % (h, x)
+        cases = [
+            ("PASS then FAIL", [P(), F()], False),
+            ("FAIL then PASS", [F(), P()], True),
+            ("PASS old, mentions short new", ["REVIEW: PASS\nhead: %s\nre-review for bd6813d" % O], False),
+            ("PASS short head line", ["REVIEW: PASS\nhead: bd6813d"], False),
+            ("PASS head trailing chars", [P(x=" (fix)")], False),
+            ("PASS then FAIL head trailing chars", [P(), F(x=" (re-review)")], False),
+            ("PASS then FAIL em-dash", [P(), "REVIEW: FAIL \u2014 B1\nhead: %s" % H], False),
+            ("PASS then bold FAIL", [P(), "**REVIEW: FAIL**\nhead: %s" % H], False),
+            ("PASS then backtick/quote FAIL", [P(), "> `REVIEW: FAIL`\nhead: %s" % H], False),
+            ("PASS then lowercase fail", [P(), "REVIEW: fail\nhead: %s" % H], False),
+            ("PASS then QUESTION", [P(), "REVIEW: QUESTION\nhead: %s" % H], False),
+            ("PASS then FAIL head on line 7", [P(), "REVIEW: FAIL\na\nb\nc\nd\ne\nhead: %s" % H], False),
+            ("PASS then FAIL naming H only in prose", [P(), "REVIEW: FAIL on %s" % H], False),
+            ("two head lines H,O PASS", ["REVIEW: PASS\nhead: %s\nhead: %s" % (H, O)], False),
+            ("two head lines O,H PASS", ["REVIEW: PASS\nhead: %s\nhead: %s" % (O, H)], False),
+            ("PASS then FAIL heads O,H", [P(), "REVIEW: FAIL\nhead: %s\nhead: %s" % (O, H)], False),
+            ("PASS uppercase sha", ["REVIEW: PASS\nhead: %s" % H.upper()], True),
+            ("PASS 41-hex", ["REVIEW: PASS\nhead: %sa" % H], False),
+            ("PASS then FAIL 41-hex", [P(), "REVIEW: FAIL\nhead: %sa" % H], False),
+            ("PASS leading blank line", ["  \nREVIEW: PASS\nhead: %s" % H], True),
+            ("PASS not first line", ["note\nREVIEW: PASS\nhead: %s" % H], False),
+            ("PASS trailing text", ["REVIEW: PASS with nits\nhead: %s" % H], False),
+            ("PASS lowercase verdict", ["REVIEW: pass\nhead: %s" % H], False),
+            ("CRLF PASS", ["REVIEW: PASS\r\nhead: %s\r\n" % H], True),
+            ("FAIL on other head is irrelevant", [P(), F(O)], True),
+        ]
+        for name, b, exp in cases:
+            self.assertEqual(pn.review_ok(b, H), exp, name)
+        L = lambda v, h=H: "LEGAL-READ: %s\nhead: %s" % (v, h)
+        S = "R-177 SIGNED: pr=3202 sha=%s" % H
+        self.assertEqual(pn.r177_pair([L("PASS"), L("QUESTION FOR DUSTIN"), S], "3202", H), (False, True))
+        self.assertEqual(pn.r177_pair([L("PASS"), L("FAIL"), S], "3202", H), (False, True))
+        self.assertEqual(pn.r177_pair([L("QUESTION FOR DUSTIN"), L("PASS"), S], "3202", H), (True, True))
+        self.assertEqual(pn.r177_pair([L("PASS"), "LEGAL-READ: QUESTION\nhead: " + H, S], "3202", H)[0], False)
+        self.assertEqual(pn.r177_pair([L("PASS"), "**LEGAL-READ: FAIL**\nhead: " + H, S], "3202", H)[0], False)
+        self.assertEqual(pn.r177_pair([L("PASS"), "R-177 SIGNED: pr=3202 sha=bd6813d"], "3202", H), (True, False))
+        self.assertEqual(pn.r177_pair([L("PASS"), "R-177 SIGNED: pr=3202 sha=%sab" % H], "3202", H), (True, False))
+        self.assertEqual(pn.r177_pair([L("PASS"), "R-177 SIGNED: pr=32021 sha=%s" % H], "3202", H), (True, False))
+        th = pn.trusted_human
+        self.assertFalse(th({"author_association": "MEMBER", "user": {"login": "x", "type": "Bot"}}))
+        self.assertFalse(th({"author_association": "OWNER", "user": {"login": "github-actions[bot]", "type": "User"}}))
+        self.assertFalse(th({"author_association": "CONTRIBUTOR", "user": {"login": "x", "type": "User"}}))
+        self.assertTrue(th({"author_association": "NONE", "user": {"login": "dustinstohler1-dotcom", "type": "User"}}))
+        self.assertTrue(th({"author_association": "MEMBER", "user": {"login": "x", "type": "User"}}))
+        # out-of-order list sorted by (created_at,id) the way step_merge does; bots ignored both ways
+        mk = lambda i, t, b, typ="User", login="a": {"id": i, "created_at": t, "body": b, "author_association": "MEMBER", "user": {"login": login, "type": typ}}
+        cs = [mk(3, "2026-10-29T18:30:00Z", F()), mk(1, "2026-10-29T18:00:00Z", P()), mk(2, "2026-10-29T18:10:00Z", P(), "Bot", "bot[bot]")]
+        cs = sorted(cs, key=lambda c: (c.get("created_at") or "", c.get("id") or 0))
+        self.assertFalse(pn.review_ok([c["body"] for c in cs if th(c)], H))
+        cs = [mk(1, "2026-10-29T18:00:00Z", P()), mk(9, "2026-10-29T18:40:00Z", F(), "Bot", "evil[bot]")]
+        self.assertTrue(pn.review_ok([c["body"] for c in cs if th(c)], H))
+    def test_n1_n2_wiring(self):
+        import inspect
+        self.assertIn("page=%d", inspect.getsource(pn.step_merge))
+        self.assertEqual(inspect.signature(pn.Ctx.nl).parameters["timeout"].default, 60)
+        self.assertEqual(inspect.getsource(pn.publish_site).count("timeout=15"), 4)
     def test_s2_s3_s6(self):
         ents = [{"filename": "a.html", "status": "modified"}, {"filename": "gone.html", "status": "removed"},
                 {"filename": "new.html", "status": "renamed", "previous_filename": "old.html"}]

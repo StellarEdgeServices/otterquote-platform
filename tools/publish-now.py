@@ -197,37 +197,43 @@ def judge_url(status, sitemap_needed, in_live_sitemap):
     return (status == 200 and bool(in_live_sitemap)), ("yes" if in_live_sitemap else "no")
 
 
-def ruling(bodies, sha, prefix, verdicts):
-    """Newest ruling on the exact head. `bodies` are trusted comment bodies, OLDEST FIRST. A comment counts only when
-    its first line is `<prefix>: <VERDICT>` and a `head: <40-hex>` line (within its first 6 lines) equals `sha`
-    exactly (full sha only; a short sha, or a sha merely mentioned in prose, never matches). Returns the verdict of
-    the newest such comment, or None."""
+def ruling(bodies, sha, prefix):
+    """Newest ruling on the exact head. `bodies` are trusted comment bodies, OLDEST FIRST.
+    A comment is a RULING on `sha` when its first line, after stripping markdown emphasis/backticks/whitespace, starts
+    with `<prefix>:` (case-insensitive) AND a 40+ hex run in its first 12 lines names the full `sha`. Asymmetric on
+    purpose: anything that looks like a ruling on this head and is not a clean PASS is a non-pass, so a malformed FAIL
+    can never leave an older PASS standing. Returns "PASS" (line 1 exactly `<prefix>: PASS`, the first `head:` line is
+    exactly `head: <sha>`, and no other hex sha appears in the first 12 lines), "NOT-PASS" (any other ruling), or None
+    (no ruling on this head). The newest ruling wins."""
     found = None
+    sha = sha.lower()
     for b in bodies:
         lines = b.lstrip().splitlines()
         if not lines:
             continue
-        m = re.match(r"%s: (%s)\s*$" % (re.escape(prefix), "|".join(verdicts)), lines[0])
-        if not m:
+        first = re.sub(r"[*_`>#\s]+", "", lines[0][:80]).upper()
+        if not first.startswith(prefix.upper() + ":"):
             continue
-        for l in lines[1:6]:
-            h = re.match(r"head: ([0-9a-f]{40})\s*$", l.strip(), re.I)
-            if h:
-                if h.group(1).lower() == sha.lower():
-                    found = m.group(1)
-                break
+        runs = [r.lower() for r in re.findall(r"[0-9a-fA-F]{40,}", "\n".join(lines[:12]))]
+        if not any(sha in r for r in runs):
+            continue
+        head = next((l.strip() for l in lines[1:12] if re.match(r"head:", l.strip(), re.I)), "")
+        ok = (lines[0].strip() == prefix + ": PASS"
+              and re.fullmatch(r"head: ([0-9a-fA-F]{40})", head) is not None and head[6:].lower() == sha
+              and set(runs) == {sha})
+        found = "PASS" if ok else "NOT-PASS"
     return found
 
 
 def review_ok(bodies, sha):
-    """True only if the newest `REVIEW: PASS|FAIL` ruling on exactly this head is PASS."""
-    return ruling(bodies, sha, "REVIEW", ("PASS", "FAIL")) == "PASS"
+    """True only if the newest `REVIEW:` ruling on exactly this head is a clean PASS."""
+    return ruling(bodies, sha, "REVIEW") == "PASS"
 
 
 def r177_pair(bodies, n, sha):
-    """(legal_read_pass, signed). LEGAL-READ: newest ruling on the exact head must be PASS. SIGNED must name the
+    """(legal_read_pass, signed). LEGAL-READ: newest ruling on the exact head must be a clean PASS. SIGNED must name the
     FULL head sha."""
-    read_ok = ruling(bodies, sha, "LEGAL-READ", ("PASS", "FAIL", "QUESTION FOR DUSTIN")) == "PASS"
+    read_ok = ruling(bodies, sha, "LEGAL-READ") == "PASS"
     boundary = r"(?![0-9a-f])"
     signed = any(re.match(re.escape("R-177 SIGNED: pr=%s sha=%s" % (n, sha)) + boundary, x.lstrip()) for x in bodies)
     if not signed:
@@ -336,8 +342,8 @@ class Ctx:
         s, b = http("POST", GH + "/graphql", {"Authorization": "Bearer " + self.gh_tok}, {"query": query, "variables": variables or {}})
         return s, jload(b)
 
-    def nl(self, method, path):
-        s, b = http(method, NL + path, {"Authorization": "Bearer " + self.nl_tok}, {} if method == "POST" else None, timeout=60)
+    def nl(self, method, path, timeout=60):
+        s, b = http(method, NL + path, {"Authorization": "Bearer " + self.nl_tok}, {} if method == "POST" else None, timeout=timeout)
         return s, jload(b) if b else None
 
 
@@ -368,9 +374,17 @@ def step_merge(ctx, n):
     sha = p["head"]["sha"]
     labels = [l["name"] for l in p.get("labels", [])]
     say("PR #%s head=%s labels=%s" % (n, sha[:10], ",".join(labels) or "-"))
-    s, cs, _ = ctx.gh("GET", "/repos/%s/issues/%s/comments?per_page=100" % (REPO, n))
-    if s != 200:
-        say("REFUSED: cannot read comments (HTTP %s)" % s); sys.exit(2)
+    cs, page = [], 1
+    while True:  # page through ALL comments: a newer FAIL on a later page must be seen
+        s, d, _ = ctx.gh("GET", "/repos/%s/issues/%s/comments?per_page=100&page=%d" % (REPO, n, page))
+        if s != 200 or not isinstance(d, list):
+            say("REFUSED: cannot read comments (HTTP %s, page %d)" % (s, page)); sys.exit(2)
+        if not d:
+            break
+        cs.extend(d)
+        page += 1
+        if page > 100:
+            say("REFUSED: more than 100 pages of comments"); sys.exit(2)
     cs = sorted(cs, key=lambda c: (c.get("created_at") or "", c.get("id") or 0))  # oldest first: newest ruling wins
     bodies = [c.get("body", "") for c in cs if trusted_human(c)]
     if not review_ok(bodies, sha):
@@ -469,16 +483,16 @@ def publish_site(ctx, key, merge_sha):
             say("PENDING: only %ds left in this invocation's budget; not unlocking %s now. Re-run the same command" % (left(), key)); sys.exit(3)
         say("[%s] publishing %s (commit %s) over %s" % (key, new["id"], merge_sha[:10], old["id"]))
         try:
-            su, _ = ctx.nl("POST", "/deploys/%s/unlock" % old["id"]); say("  unlock old -> HTTP %s" % su)
-            sr, _ = ctx.nl("POST", "/sites/%s/deploys/%s/restore" % (sid, new["id"])); say("  restore new -> HTTP %s" % sr)
+            su, _ = ctx.nl("POST", "/deploys/%s/unlock" % old["id"], timeout=15); say("  unlock old -> HTTP %s" % su)
+            sr, _ = ctx.nl("POST", "/sites/%s/deploys/%s/restore" % (sid, new["id"]), timeout=15); say("  restore new -> HTTP %s" % sr)
             time.sleep(6)
         finally:
-            s2, d2 = ctx.nl("GET", "/sites/%s" % sid)
+            s2, d2 = ctx.nl("GET", "/sites/%s" % sid, timeout=15)
             live = (d2 or {}).get("published_deploy") or {}
             if s2 != 200 or not live.get("id"):
                 say("WARNING: site may be UNLOCKED \u2014 re-run this command"); sys.exit(1)
             if not live.get("locked"):
-                sl, _ = ctx.nl("POST", "/deploys/%s/lock" % live["id"]); say("  lock live %s -> HTTP %s" % (live["id"], sl))
+                sl, _ = ctx.nl("POST", "/deploys/%s/lock" % live["id"], timeout=15); say("  lock live %s -> HTTP %s" % (live["id"], sl))
                 if not 200 <= sl < 300:
                     say("WARNING: site may be UNLOCKED \u2014 re-run this command"); sys.exit(1)
     s, d = ctx.nl("GET", "/sites/%s" % sid)
