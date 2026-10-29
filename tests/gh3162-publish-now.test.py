@@ -16,6 +16,38 @@ class T(unittest.TestCase):
         bad2 = "REVIEW: PASS\nhead: %s\n\nshort other sha %s" % (H, O[:9])
         self.assertTrue(pn.clean_pass(bad2, H, "REVIEW"))
 
+    def test_step_merge_stub(self):
+        """Round 5 (6505893965): step_merge must run end to end against a stub GitHub (no UnboundLocalError)."""
+        H = "0243951a8e6777a6d39c76ef9d7bb5e4a716ea46"; who = {"login": "dustinstohler1-dotcom", "type": "User"}
+        def mk(i, t, body): return {"id": i, "created_at": t, "updated_at": t, "body": body, "user": who, "author_association": "OWNER"}
+        PASS = "REVIEW: PASS\nhead: " + H + "\n\nok"
+        class Stub:
+            def __init__(s, comments, reviews=(), inline=()):
+                s.c, s.r, s.i, s.enq = comments, list(reviews), list(inline), 0
+            def gh(s, m, path, body=None):
+                if path.endswith("/pulls/3202"): return 200, {"merged": s.enq > 0, "state": "open", "head": {"sha": H}, "labels": [], "title": "t", "merge_commit_sha": "f" * 40}, ""
+                import re as _re; m = _re.search(r"[?&]page=(\d+)", path); pg = int(m.group(1)) if m else 1
+                if "/issues/3202/comments" in path: return 200, (s.c if pg == 1 else []), ""
+                if "/pulls/3202/reviews" in path: return 200, (s.r if pg == 1 else []), ""
+                if "/pulls/3202/comments" in path: return 200, (s.i if pg == 1 else []), ""
+                if "/check-runs" in path: return 200, {"check_runs": [{"name": k, "status": "completed", "conclusion": "success", "started_at": "1"} for k in pn.REQUIRED_CHECKS]}, ""
+                raise AssertionError(path)
+            def gql(s, q, v=None):
+                if "mutation" in q: s.enq += 1; return 200, {"data": {"enqueuePullRequest": {"mergeQueueEntry": {"id": "x"}}}}
+                return 200, {"data": {"repository": {"pullRequest": {"id": "PR_x", "isInMergeQueue": False}}}}
+        orig_sleep = pn.time.sleep; pn.time.sleep = lambda x: None
+        try:
+            st = Stub([mk(1, "2026-10-29T18:00:00Z", PASS)])
+            self.assertEqual(pn.step_merge(st, 3202), "f" * 40); self.assertEqual(st.enq, 1)
+            for blocked in (Stub([mk(1, "2026-10-29T18:00:00Z", PASS), mk(2, "2026-10-29T18:30:00Z", "REVIEW: FAIL\nhead: " + H)]),
+                            Stub([mk(1, "2026-10-29T18:00:00Z", PASS)], reviews=[{"id": 9, "state": "COMMENTED", "body": "REVIEW: FAIL", "submitted_at": "2026-10-29T18:40:00Z", "user": who, "author_association": "OWNER"}]),
+                            Stub([mk(1, "2026-10-29T18:00:00Z", PASS)], inline=[{"id": 8, "body": "review: fail here", "created_at": "2026-10-29T18:41:00Z", "user": who, "author_association": "OWNER"}])):
+                with self.assertRaises(SystemExit) as cm:
+                    pn.step_merge(blocked, 3202)
+                self.assertEqual(cm.exception.code, 2); self.assertEqual(blocked.enq, 0)
+        finally:
+            pn.time.sleep = orig_sleep
+
     def test_sites(self):
         self.assertEqual(pn.sites_for_files(["news/x.html"]), {"jade"})
         self.assertEqual(pn.sites_for_files(["react-app/src/a.tsx"]), {"app"})

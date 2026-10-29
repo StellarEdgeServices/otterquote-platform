@@ -495,6 +495,7 @@ def step_merge(ctx, n):
                 if r.get("body") and r.get("state") != "DISMISSED":
                     t = r.get("submitted_at") or r.get("created_at") or ""
                     extra.append({"id": r.get("id"), "user": r.get("user"), "body": r.get("body"),
+                                  "author_association": r.get("author_association"),
                                   "created_at": t, "updated_at": r.get("updated_at") or t})
             page += 1
             if page > 100:
@@ -532,13 +533,13 @@ def step_merge(ctx, n):
     if s != 200:
         say("REFUSED: cannot read check-runs (HTTP %s)" % s); sys.exit(2)
     if flagged:
-        gate = sorted([r for r in runs if r["name"] == R177_JOB], key=lambda r: r.get("started_at") or "")
-        if gate and gate[-1].get("status") == "completed" and gate[-1].get("conclusion") == "failure":
-            # the gate does not re-run when a signature lands: re-run the latest failed job
-            s, _, b = ctx.gh("POST", "/repos/%s/actions/jobs/%s/rerun" % (REPO, gate[-1]["id"]))
-            say("re-ran stale failed `%s` job %s -> HTTP %s" % (R177_JOB, gate[-1]["id"], s))
+        r177_runs = sorted([r for r in runs if r["name"] == R177_JOB], key=lambda r: r.get("started_at") or "")
+        if r177_runs and r177_runs[-1].get("status") == "completed" and r177_runs[-1].get("conclusion") == "failure":
+            # the r177_runs does not re-run when a signature lands: re-run the latest failed job
+            s, _, b = ctx.gh("POST", "/repos/%s/actions/jobs/%s/rerun" % (REPO, r177_runs[-1]["id"]))
+            say("re-ran stale failed `%s` job %s -> HTTP %s" % (R177_JOB, r177_runs[-1]["id"], s))
             say("PENDING: re-run the same command"); sys.exit(3)
-        if gate and gate[-1].get("status") != "completed":
+        if r177_runs and r177_runs[-1].get("status") != "completed":
             say("PENDING: `%s` still running; re-run the same command" % R177_JOB); sys.exit(3)
     latest = {}
     for r in sorted(runs, key=lambda r: r.get("started_at") or ""):
