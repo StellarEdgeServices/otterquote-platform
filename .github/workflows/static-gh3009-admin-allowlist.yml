@@ -34,8 +34,19 @@ jobs:
           node-version: '22.x'
       - name: Shipped-file email and server-gate checks
         run: node tests/gh3009-no-owner-email-in-shipped-files.mjs
-      - name: Negative control (with the exemption list emptied the still-owed middleware.ts MUST fail)
+      - name: Negative control (a tracked shipped file carrying the owner email MUST make the detector fail)
         run: |
-          if node tests/gh3009-no-owner-email-in-shipped-files.mjs --no-exemptions; then
-            echo "negative control did not fail"; exit 1
+          # Plant a temporary tracked file under a shipped path; the literal is assembled at
+          # runtime so it is never committed. Then require the detector to fail on it.
+          f=react-app/gh3009-negative-control.ts
+          cleanup() { git rm -q --cached -f "$f" 2>/dev/null || true; rm -f "$f"; }
+          trap cleanup EXIT
+          a=dustinstohler1; b=gmail.com
+          printf "export const x = '%s@%s';\n" "$a" "$b" > "$f"
+          git add -f "$f"
+          if node tests/gh3009-no-owner-email-in-shipped-files.mjs > nc.log 2>&1; then
+            cat nc.log; rm -f nc.log; echo "negative control did not fail"; exit 1
           fi
+          grep -q "offenders: $f" nc.log || { cat nc.log; rm -f nc.log; echo "negative control failed for the wrong reason"; exit 1; }
+          rm -f nc.log
+          echo "negative control failed as expected"
