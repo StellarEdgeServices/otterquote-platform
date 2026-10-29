@@ -36,16 +36,55 @@ class T(unittest.TestCase):
         self.assertEqual(pn.judge_url(404, False, False), (False, "n/a"))
         self.assertEqual(pn.judge_url(200, False, False), (True, "n/a"))
     def test_gates(self):
-        self.assertTrue(pn.review_ok(["REVIEW: PASS head " + SHA[:10]], SHA))
-        self.assertFalse(pn.review_ok(["REVIEW: PASS head " + "b" * 10], SHA))
-        self.assertFalse(pn.review_ok(["note REVIEW: PASS " + SHA], SHA))
-        self.assertEqual(pn.r177_pair(["LEGAL-READ: PASS " + SHA, "R-177 SIGNED: pr=5 sha=" + SHA], 5, SHA), (True, True))
+        P = lambda v, h, pre="REVIEW": "%s: %s\nhead: %s\nStamp: x" % (pre, v, h)
+        OLD = "b" * 40
+        self.assertTrue(pn.review_ok([P("PASS", SHA)], SHA))
+        self.assertFalse(pn.review_ok([P("PASS", OLD)], SHA))
+        self.assertFalse(pn.review_ok(["note REVIEW: PASS\nhead: " + SHA], SHA))
+        self.assertFalse(pn.review_ok(["REVIEW: PASS head " + SHA], SHA))  # no `head:` line
+        # B1: newest ruling on the exact head wins
+        self.assertFalse(pn.review_ok([P("PASS", SHA), P("FAIL", SHA)], SHA))           # PASS then FAIL -> refuse
+        self.assertTrue(pn.review_ok([P("FAIL", SHA), P("PASS", SHA)], SHA))            # FAIL then PASS -> allow
+        self.assertFalse(pn.review_ok([P("PASS", OLD) + "\nre-review pending for " + SHA[:7]], SHA))  # short sha mention
+        self.assertFalse(pn.review_ok(["REVIEW: PASS\nhead: " + SHA[:12]], SHA))        # short sha in head line
+        self.assertTrue(pn.review_ok([P("PASS", SHA), P("FAIL", OLD)], SHA))            # FAIL on another head is irrelevant
+        self.assertEqual(pn.r177_pair([P("PASS", SHA, "LEGAL-READ"), "R-177 SIGNED: pr=5 sha=" + SHA], 5, SHA), (True, True))
+        self.assertEqual(pn.r177_pair([P("PASS", SHA, "LEGAL-READ"), P("FAIL", SHA, "LEGAL-READ")], 5, SHA), (False, False))
+        self.assertEqual(pn.r177_pair([P("QUESTION FOR DUSTIN", SHA, "LEGAL-READ"), P("PASS", SHA, "LEGAL-READ")], 5, SHA)[0], True)
+        self.assertEqual(pn.r177_pair([P("PASS", SHA, "LEGAL-READ") + " " + SHA[:7]], 5, SHA)[0], True)
+        self.assertEqual(pn.r177_pair([P("PASS", OLD, "LEGAL-READ") + "\n" + SHA], 5, SHA), (False, False))
         self.assertEqual(pn.r177_pair(["R-177 SIGNED: Ben, CEO\nHead: " + SHA], 5, SHA), (False, True))
-        self.assertEqual(pn.r177_pair(["LEGAL-READ: PASS " + "b" * 40], 5, SHA), (False, False))
+        self.assertEqual(pn.r177_pair(["R-177 SIGNED: pr=5 sha=" + SHA[:7]], 5, SHA), (False, False))  # short sha
+        self.assertEqual(pn.r177_pair(["R-177 SIGNED: Ben\nHead: " + SHA[:7]], 5, SHA), (False, False))
         self.assertTrue(pn.needs_r177("x", ["r177:legal-read"]))
         self.assertFalse(pn.needs_r177("x", []))
         self.assertFalse(pn.trusted_human({"user": {"login": "x", "type": "User"}, "author_association": "NONE"}))
         self.assertFalse(pn.trusted_human({"user": {"login": "github-actions[bot]", "type": "Bot"}, "author_association": "MEMBER"}))
+    def test_s2_s3_s6(self):
+        ents = [{"filename": "a.html", "status": "modified"}, {"filename": "gone.html", "status": "removed"},
+                {"filename": "new.html", "status": "renamed", "previous_filename": "old.html"}]
+        allp, chk = pn.split_pr_files(ents)
+        self.assertEqual(chk, ["a.html", "new.html"])
+        self.assertEqual(sorted(allp), ["a.html", "gone.html", "new.html", "old.html"])
+        self.assertEqual(pn.sites_for_files(["netlify.toml"]), {"jade"})
+        self.assertEqual(pn.sites_for_files(["_headers"]), {"jade"})
+        self.assertEqual(pn.sites_for_files(["react-app/netlify.toml"]), {"app"})
+        self.assertEqual(pn.check_urls(["netlify.toml", "_redirects"]), ["https://otterquote.com/"])
+        self.assertEqual(pn.check_urls(["netlify.toml", "a.html"]), ["https://otterquote.com/a.html", "https://otterquote.com/"])
+        self.assertEqual(pn.check_urls(["a.html"]), ["https://otterquote.com/a.html"])
+        self.assertEqual(pn.url_for_path(".well-known/security.txt"), "https://otterquote.com/.well-known/security.txt")
+        self.assertIsNone(pn.url_for_path(".github/workflows/a.yml"))
+        self.assertEqual(pn.sites_for_files([".well-known/security.txt"]), {"jade"})
+        self.assertEqual(pn.empty_dirs("a.html,news/,x/", ["news/1.html"]), ["x/"])
+        self.assertEqual(pn.empty_dirs("news/", []), ["news/"])
+    def test_s4_redirect_guard(self):
+        import urllib.request
+        h = pn._SameOriginAuthRedirect()
+        req = urllib.request.Request("https://api.github.com/x", headers={"Authorization": "Bearer t"})
+        n1 = h.redirect_request(req, None, 302, "Found", {}, "https://objects.example.com/y")
+        self.assertFalse(any(k.lower() == "authorization" for k in list(n1.headers) + list(n1.unredirected_hdrs)))
+        n2 = h.redirect_request(req, None, 302, "Found", {}, "https://api.github.com/z")
+        self.assertTrue(any(k.lower() == "authorization" for k in list(n2.headers) + list(n2.unredirected_hdrs)))
     def test_pick(self):
         ds = [{"id": "1", "state": "ready", "branch": "main", "commit_ref": "m1"}, {"id": "2", "state": "building", "branch": "main", "commit_ref": "m2"}]
         self.assertEqual(pn.pick_deploy(ds, "m1")["id"], "1")

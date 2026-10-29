@@ -13,8 +13,9 @@ Env (never printed): GITHUB_TOKEN, NETLIFY_TOKEN. Python 3 stdlib only.
 
 RESUMABLE: every invocation is bounded to ~165 s (a device shell call dies at 180 s). Each step is idempotent,
 so on exit 3 ("PENDING") just run the same command again:
-  1. PR still open: require `REVIEW: PASS` naming the current head sha; for label r177:legal-read (or [R-120]/
-     [R-177] in the title) also `LEGAL-READ: PASS` + `R-177 SIGNED:` naming the head. Re-run a stale failed
+  1. PR still open: the NEWEST trusted `REVIEW: PASS|FAIL` comment carrying a `head: <full 40-hex sha>` line equal to
+     the current head must be PASS; for label r177:legal-read (or [R-120]/[R-177] in the title) likewise the newest
+     `LEGAL-READ:` ruling on the head must be PASS, plus `R-177 SIGNED:` naming the full head sha. Re-run a stale failed
      "R-177 pair gate" job once the pair is present. Require the required checks green and no red check-run.
      Enqueue on the merge queue (GraphQL; main is queue-only, REST merge returns 405). Poll for the merge.
   2. Merged: pick the site(s) from the changed files (react-app/** -> app.otterquote.com; anything served from
@@ -64,6 +65,8 @@ NOT_SERVED_TOP = {
 NOT_SERVED_EXT = (".md", ".py", ".sh", ".toml", ".ts", ".tsx")
 # _redirects is copied into _site but is config, not a public URL.
 NOT_A_URL = {"_redirects", "_headers"}
+# Root config files that change the jade site (headers/redirects/edge gate) but are not public URLs themselves.
+ROOT_CONFIG = {"netlify.toml", "_redirects", "_headers"}
 
 _T0 = time.time()
 _SECRETS = []
@@ -74,9 +77,11 @@ _SECRETS = []
 def is_served(path):
     """True if this repo path ends up in the published _site tree (mirrors the netlify.toml build command)."""
     p = path.strip().lstrip("/")
-    if not p or p.startswith("."):
+    if not p:
         return False
     top = p.split("/", 1)[0]
+    if p.startswith(".") and top != ".well-known":  # .well-known/ is copied by the build; other dot paths are not
+        return False
     if top.lower() in NOT_SERVED_TOP:
         return False
     if p.lower().endswith(NOT_SERVED_EXT):
@@ -92,7 +97,9 @@ def sites_for_files(files):
     out = set()
     for f in files:
         p = f.strip().lstrip("/")
-        if p.startswith("react-app/"):
+        if p in ROOT_CONFIG:
+            out.add("jade")  # netlify.toml / _headers / _redirects build and ship the root site
+        elif p.startswith("react-app/"):
             out.add("app")
             if p == "react-app/app/lib/attribution-core.ts":
                 out.add("jade")
@@ -129,6 +136,47 @@ def expand_paths(spec, tree_files):
     return out
 
 
+def empty_dirs(spec, tree_files):
+    """--paths directory entries ('b/') that expand to zero files (unreadable tree or a wrong prefix)."""
+    out = []
+    for item in [s.strip() for s in spec.split(",") if s.strip()]:
+        item = item.lstrip("/")
+        if item.endswith("/") and not any(f.startswith(item) for f in tree_files):
+            out.append(item)
+    return out
+
+
+def split_pr_files(entries):
+    """entries: [{filename, status, previous_filename}] -> (all_paths, check_paths).
+    all_paths (site selection) = new paths + removed paths + old rename paths.
+    check_paths (URL checks) = added/modified/renamed NEW paths only; deleted files and old rename paths are not checked."""
+    allp, chk = [], []
+    for e in entries:
+        f = e["filename"]
+        allp.append(f)
+        if e.get("previous_filename"):
+            allp.append(e["previous_filename"])
+        if e.get("status") != "removed":
+            chk.append(f)
+    return allp, chk
+
+
+def check_urls(paths, sites=()):
+    """Public URLs to verify for these repo paths. Root config changes (netlify.toml, _headers, _redirects) add no
+    URL of their own, only the site root."""
+    urls = []
+    for f in paths:
+        u = url_for_path(f)
+        if u and u not in urls:
+            urls.append(u)
+    root = SITES["jade"]["host"] + "/"
+    if any(f.strip().lstrip("/") in ROOT_CONFIG for f in paths) and root not in urls:
+        urls.append(root)
+    if "app" in sites:
+        urls.append(SITES["app"]["host"] + "/")
+    return urls
+
+
 def sitemap_locs(xml_text):
     return set(re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", xml_text or ""))
 
@@ -149,35 +197,44 @@ def judge_url(status, sitemap_needed, in_live_sitemap):
     return (status == 200 and bool(in_live_sitemap)), ("yes" if in_live_sitemap else "no")
 
 
-def review_ok(bodies, sha):
-    """`REVIEW: PASS` (anchored at comment start) whose text names the current head sha (>= 7 hex chars)."""
+def ruling(bodies, sha, prefix, verdicts):
+    """Newest ruling on the exact head. `bodies` are trusted comment bodies, OLDEST FIRST. A comment counts only when
+    its first line is `<prefix>: <VERDICT>` and a `head: <40-hex>` line (within its first 6 lines) equals `sha`
+    exactly (full sha only; a short sha, or a sha merely mentioned in prose, never matches). Returns the verdict of
+    the newest such comment, or None."""
+    found = None
     for b in bodies:
-        t = b.lstrip()
-        if re.match(r"REVIEW: PASS\b", t) and _names_sha(t, sha):
-            return True
-    return False
+        lines = b.lstrip().splitlines()
+        if not lines:
+            continue
+        m = re.match(r"%s: (%s)\s*$" % (re.escape(prefix), "|".join(verdicts)), lines[0])
+        if not m:
+            continue
+        for l in lines[1:6]:
+            h = re.match(r"head: ([0-9a-f]{40})\s*$", l.strip(), re.I)
+            if h:
+                if h.group(1).lower() == sha.lower():
+                    found = m.group(1)
+                break
+    return found
 
 
-def _names_sha(text, sha):
-    for n in (40, 12, 10, 8, 7):
-        h = sha[:n]
-        if re.search(r"(?<![0-9a-f])" + re.escape(h) + r"(?![0-9a-f])", text):
-            return True
-    return False
+def review_ok(bodies, sha):
+    """True only if the newest `REVIEW: PASS|FAIL` ruling on exactly this head is PASS."""
+    return ruling(bodies, sha, "REVIEW", ("PASS", "FAIL")) == "PASS"
 
 
 def r177_pair(bodies, n, sha):
-    """(legal_read_pass, signed) over the exact head sha -- same strength as pr-merge-serial-device.py (STRICT_HEAD)."""
-    read_ok = any(
-        re.match(r"LEGAL-READ: PASS\b", x.lstrip())
-        and re.search(r"(?<![0-9a-f])" + re.escape(sha) + r"(?![0-9a-f])", x)
-        for x in bodies
-    )
-    signed = any(x.lstrip().startswith("R-177 SIGNED: pr=%s sha=%s" % (n, sha)) for x in bodies)
-    if not signed and len(sha) == 40:
+    """(legal_read_pass, signed). LEGAL-READ: newest ruling on the exact head must be PASS. SIGNED must name the
+    FULL head sha."""
+    read_ok = ruling(bodies, sha, "LEGAL-READ", ("PASS", "FAIL", "QUESTION FOR DUSTIN")) == "PASS"
+    boundary = r"(?![0-9a-f])"
+    signed = any(re.match(re.escape("R-177 SIGNED: pr=%s sha=%s" % (n, sha)) + boundary, x.lstrip()) for x in bodies)
+    if not signed:
         for x in bodies:
             ls = x.lstrip().splitlines()
-            if ls and ls[0].startswith("R-177 SIGNED:") and any(l.strip().startswith("Head: " + sha) for l in ls[1:6]):
+            if ls and ls[0].startswith("R-177 SIGNED:") and any(
+                    re.match(re.escape("Head: " + sha) + boundary, l.strip()) for l in ls[1:6]):
                 signed = True
                 break
     return read_ok, signed
@@ -220,6 +277,24 @@ def scrub(s):
     return s
 
 
+class _SameOriginAuthRedirect(urllib.request.HTTPRedirectHandler):
+    """Same approach as In Flight/bin/gh-device.py (MARKER-GHDEVICE-NO-XHOST-AUTH): urllib copies Authorization onto
+    a redirect target; follow the redirect but drop Authorization when scheme, host or port change."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is None:
+            return None
+        a, b = urllib.parse.urlsplit(req.full_url), urllib.parse.urlsplit(new.full_url)
+        if (a.scheme, a.hostname, a.port) != (b.scheme, b.hostname, b.port):
+            for store in (new.headers, new.unredirected_hdrs):
+                for k in [k for k in store if k.lower() == "authorization"]:
+                    del store[k]
+        return new
+
+
+_OPENER = urllib.request.build_opener(_SameOriginAuthRedirect)
+
+
 def http(method, url, headers=None, body=None, timeout=30):
     data = None
     h = {"User-Agent": "publish-now"}
@@ -229,7 +304,7 @@ def http(method, url, headers=None, body=None, timeout=30):
         h["Content-Type"] = "application/json"
     req = urllib.request.Request(url, method=method, headers=h, data=data)
     try:
-        with urllib.request.urlopen(req, timeout=max(5, min(timeout, left()))) as r:
+        with _OPENER.open(req, timeout=max(5, min(timeout, left()))) as r:
             return r.status, r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode("utf-8", "replace")
@@ -267,17 +342,15 @@ class Ctx:
 
 
 def pr_files(ctx, n):
-    files, page = [], 1
+    entries, page = [], 1
     while True:
         s, d, _ = ctx.gh("GET", "/repos/%s/pulls/%s/files?per_page=100&page=%d" % (REPO, n, page))
         if s != 200 or not isinstance(d, list):
             raise RuntimeError("cannot list PR files: HTTP %s" % s)
         for f in d:
-            files.append(f["filename"])
-            if f.get("previous_filename"):
-                files.append(f["previous_filename"])
+            entries.append({"filename": f["filename"], "status": f.get("status"), "previous_filename": f.get("previous_filename")})
         if len(d) < 100:
-            return files
+            return entries
         page += 1
 
 
@@ -298,10 +371,11 @@ def step_merge(ctx, n):
     s, cs, _ = ctx.gh("GET", "/repos/%s/issues/%s/comments?per_page=100" % (REPO, n))
     if s != 200:
         say("REFUSED: cannot read comments (HTTP %s)" % s); sys.exit(2)
+    cs = sorted(cs, key=lambda c: (c.get("created_at") or "", c.get("id") or 0))  # oldest first: newest ruling wins
     bodies = [c.get("body", "") for c in cs if trusted_human(c)]
     if not review_ok(bodies, sha):
-        say("REFUSED: no `REVIEW: PASS` comment naming current head %s (a pass over an older head does not count)" % sha[:10]); sys.exit(2)
-    say("gate ok: REVIEW: PASS names %s" % sha[:10])
+        say("REFUSED: newest `REVIEW:` ruling on current head %s (full `head:` line) is not PASS (a pass over an older head, or a later FAIL, does not count)" % sha[:10]); sys.exit(2)
+    say("gate ok: newest REVIEW ruling on %s is PASS" % sha[:10])
     flagged = needs_r177(p.get("title"), labels)
     pair_ok = True
     if flagged:
@@ -342,7 +416,7 @@ def step_merge(ctx, n):
     if not node:
         say("REFUSED: GraphQL PR lookup failed (HTTP %s)" % s); sys.exit(2)
     if not node["isInMergeQueue"]:
-        s, d = ctx.gql('mutation($id:ID!){enqueuePullRequest(input:{pullRequestId:$id}){mergeQueueEntry{id state position}}}', {"id": node["id"]})
+        s, d = ctx.gql('mutation($id:ID!,$oid:GitObjectID){enqueuePullRequest(input:{pullRequestId:$id,expectedHeadOid:$oid}){mergeQueueEntry{id state position}}}', {"id": node["id"], "oid": sha})
         if s != 200 or (d or {}).get("errors"):
             say("REFUSED: enqueue failed: HTTP %s %s" % (s, scrub(json.dumps((d or {}).get("errors"))[:300]))); sys.exit(2)
         say("enqueued PR #%s on the merge queue" % n)
@@ -391,6 +465,8 @@ def publish_site(ctx, key, merge_sha):
     else:
         if (new.get("created_at") or "") <= (old.get("created_at") or ""):
             say("REFUSED: [%s] merge deploy is older than the published one; publishing would roll back" % key); sys.exit(2)
+        if left() < 60:
+            say("PENDING: only %ds left in this invocation's budget; not unlocking %s now. Re-run the same command" % (left(), key)); sys.exit(3)
         say("[%s] publishing %s (commit %s) over %s" % (key, new["id"], merge_sha[:10], old["id"]))
         try:
             su, _ = ctx.nl("POST", "/deploys/%s/unlock" % old["id"]); say("  unlock old -> HTTP %s" % su)
@@ -399,8 +475,12 @@ def publish_site(ctx, key, merge_sha):
         finally:
             s2, d2 = ctx.nl("GET", "/sites/%s" % sid)
             live = (d2 or {}).get("published_deploy") or {}
-            if live.get("id") and not live.get("locked"):
+            if s2 != 200 or not live.get("id"):
+                say("WARNING: site may be UNLOCKED \u2014 re-run this command"); sys.exit(1)
+            if not live.get("locked"):
                 sl, _ = ctx.nl("POST", "/deploys/%s/lock" % live["id"]); say("  lock live %s -> HTTP %s" % (live["id"], sl))
+                if not 200 <= sl < 300:
+                    say("WARNING: site may be UNLOCKED \u2014 re-run this command"); sys.exit(1)
     s, d = ctx.nl("GET", "/sites/%s" % sid)
     pd = (d or {}).get("published_deploy") or {}
     if pd.get("id") != new["id"] and pd.get("commit_ref") != merge_sha:
@@ -467,13 +547,7 @@ def step_check(ctx, files, ref, sites):
     live_locs = sitemap_locs(live_xml) if s == 200 else set()
     if s != 200:
         say("note: live sitemap.xml returned HTTP %s" % s)
-    urls = []
-    for f in files:
-        u = url_for_path(f)
-        if u and u not in urls:
-            urls.append(u)
-    if "app" in sites:
-        urls.append(SITES["app"]["host"] + "/")
+    urls = check_urls(files, sites)
     ok_all = True
     dirs = set()
     if not urls:
@@ -498,6 +572,10 @@ def step_check(ctx, files, ref, sites):
 # ---------------------------------------------------------------- main
 
 def main(argv):
+    try:
+        sys.stdout.reconfigure(errors="replace")  # a non-UTF-8 console must not break the WARNING line
+    except Exception:
+        pass
     args = [a for a in argv if not a.startswith("--")]
     check_only = "--check-only" in argv
     paths = None
@@ -517,15 +595,23 @@ def main(argv):
     if n in ("-", "0", ""):
         if not paths:
             say("usage: a PR number or --paths is required"); return 2
-        files, ref, sites = None, "main", None
-        files = expand_paths(paths, tree_files(ctx, "main"))
+        ref = "main"
+        tree = tree_files(ctx, "main")
+        bad = empty_dirs(paths, tree)
+        if bad:
+            say("REFUSED: --paths director%s %s expanded to no files (repo tree unreadable, e.g. HTTP 403 without a GITHUB_TOKEN, or no such prefix); not checking a partial list" % ("y" if len(bad) == 1 else "ies", ", ".join(bad))); return 2
+        files = expand_paths(paths, tree)
         sites = sites_for_files(files)
     else:
         n = str(int(n))
-        files = pr_files(ctx, n)
-        sites = sites_for_files(files)
+        all_paths, files = split_pr_files(pr_files(ctx, n))
+        sites = sites_for_files(all_paths)
         if paths:
-            files = expand_paths(paths, tree_files(ctx, "main"))
+            tree = tree_files(ctx, "main")
+            bad = empty_dirs(paths, tree)
+            if bad:
+                say("REFUSED: --paths director%s %s expanded to no files (repo tree unreadable or no such prefix)" % ("y" if len(bad) == 1 else "ies", ", ".join(bad))); return 2
+            files = expand_paths(paths, tree)
         ref = "main"
     if check_only:
         say("check-only: no merge, no publish")
@@ -537,7 +623,7 @@ def main(argv):
         say("RESULT: %s" % ("PASS" if ok else "FAIL")); return 0 if ok else 1
     if n in ("-", "0", ""):
         say("REFUSED: publishing requires a PR number"); return 2
-    say("PR #%s changes %d file(s); sites: %s" % (n, len(files), sorted(sites) or "none (nothing served changes)"))
+    say("PR #%s changes %d file(s) (%d to URL-check); sites: %s" % (n, len(all_paths), len(files), sorted(sites) or "none (nothing served changes)"))
     merge_sha = step_merge(ctx, n)
     ref = merge_sha
     if sites:
