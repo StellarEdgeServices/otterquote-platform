@@ -45,6 +45,7 @@ on:
       - '!img/**'
       - '!js/**'
       - '!locations/**'
+      - '!news/**'
       - '!netlify/**'
       - '!otterquote-deploy/**'
       - '!partners/**'
