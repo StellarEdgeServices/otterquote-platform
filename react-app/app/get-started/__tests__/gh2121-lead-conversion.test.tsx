@@ -87,7 +87,7 @@ function fillAccountFormAndSubmit() {
   fireEvent.change(screen.getByLabelText('Last Name'), { target: { value: 'Doe' } });
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'jane@example.com' } });
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct-horse-1' } });
-  fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'correct-horse-1' } });
+  // gh-3136 (P14): Confirm Password removed.
   fireEvent.click(screen.getByRole('button', { name: /Create My Account/i }));
 }
 

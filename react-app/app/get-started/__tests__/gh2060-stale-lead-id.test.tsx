@@ -147,6 +147,12 @@ describe('gh-2060 negative control: stale oq_lead_id from another visitor vs a b
     render(<GetStartedPage />);
     await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('get_lead_prefill', { p_lead_id: OWN_LEAD_ID }));
     fillStep1AndContinue();
+    // gh-3136 (P14): name + email known => compact line, inputs hidden until "Edit".
+    const line = await screen.findByTestId('signing-up-as');
+    expect(line.textContent).toContain('Jane Homeowner');
+    expect(line.textContent).toContain('jane.h@example.com');
+    expect(screen.queryByLabelText('First Name')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     await screen.findByLabelText('First Name');
     await waitFor(() => expect(valueDump().some((v) => v === 'jane.h@example.com')).toBe(true));
   });
