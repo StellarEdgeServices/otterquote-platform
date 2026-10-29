@@ -13,9 +13,15 @@ Env (never printed): GITHUB_TOKEN, NETLIFY_TOKEN. Python 3 stdlib only.
 
 RESUMABLE: every invocation is bounded to ~165 s (a device shell call dies at 180 s). Each step is idempotent,
 so on exit 3 ("PENDING") just run the same command again:
-  1. PR still open: the NEWEST trusted `REVIEW: PASS|FAIL` comment carrying a `head: <full 40-hex sha>` line equal to
-     the current head must be PASS; for label r177:legal-read (or [R-120]/[R-177] in the title) likewise the newest
-     `LEGAL-READ:` ruling on the head must be PASS, plus `R-177 SIGNED:` naming the full head sha. Re-run a stale failed
+  1. PR still open. FAIL-CLOSED review gate: trusted (non-bot) comment bodies are normalized (NFKC, Cf/Cc dropped);
+     a comment is review-ish when its first line, reduced to ASCII letters, starts with REVIEW (or has it in its first
+     40 letters); LEGAL-READ likewise. The NEWEST review-ish comment (ordered by max(created_at, updated_at), then id)
+     must be a clean PASS: line 1 exactly `REVIEW: PASS`, first `head:` line exactly `head: <full 40-hex current head>`,
+     no other 7+-hex run in the body that is not a prefix of the head. ACCEPTED TRADE: any later review-ish comment on
+     ANY head (e.g. a FAIL on an older head posted after the PASS) blocks until a fresh clean PASS is posted; the
+     refusal prints the blocking comment id. A CHANGES_REQUESTED formal review newer than the PASS also refuses. For
+     label r177:legal-read (or [R-120]/[R-177] in the title) the same gate applies to `LEGAL-READ:` plus
+     `R-177 SIGNED:` naming the full head sha. Re-run a stale failed
      "R-177 pair gate" job once the pair is present. Require the required checks green and no red check-run.
      Enqueue on the merge queue (GraphQL; main is queue-only, REST merge returns 405). Poll for the merge.
   2. Merged: pick the site(s) from the changed files (react-app/** -> app.otterquote.com; anything served from
@@ -36,6 +42,7 @@ import os
 import re
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -197,43 +204,116 @@ def judge_url(status, sitemap_needed, in_live_sitemap):
     return (status == 200 and bool(in_live_sitemap)), ("yes" if in_live_sitemap else "no")
 
 
-def ruling(bodies, sha, prefix):
-    """Newest ruling on the exact head. `bodies` are trusted comment bodies, OLDEST FIRST.
-    A comment is a RULING on `sha` when its first line, after stripping markdown emphasis/backticks/whitespace, starts
-    with `<prefix>:` (case-insensitive) AND a 40+ hex run in its first 12 lines names the full `sha`. Asymmetric on
-    purpose: anything that looks like a ruling on this head and is not a clean PASS is a non-pass, so a malformed FAIL
-    can never leave an older PASS standing. Returns "PASS" (line 1 exactly `<prefix>: PASS`, the first `head:` line is
-    exactly `head: <sha>`, and no other hex sha appears in the first 12 lines), "NOT-PASS" (any other ruling), or None
-    (no ruling on this head). The newest ruling wins."""
-    found = None
+_CONFUSABLES = dict(zip(
+    "\u0410\u0412\u0415\u041a\u041c\u041d\u041e\u0420\u0421\u0422\u0425\u0406\u0405\u0408\u0430\u0435\u043e\u0440\u0441\u0445\u0456\u0455\u0458"
+    "\u0391\u0392\u0395\u0399\u039a\u039c\u039d\u039f\u03a1\u03a4\u03a7\u03a5\u0396\u03b1\u03b5\u03b9\u03bf\u03c1\u03bd",
+    "ABEKMHOPCTXISJaeopcxisj" "ABEIKMNOPTXYZaeiopv"))
+_CTRL_ASCII = re.compile("[\x00-\x09\x0b-\x1f\x7f]")
+
+
+def normalize(s):
+    """NFKC (folds fullwidth colon, NBSP, ...), then drop every Cf (zero-width, BOM, LRM) and Cc (except \\n) char."""
+    s = s or ""
+    if s.isascii():
+        return _CTRL_ASCII.sub("", s)
+    return "".join(ch for ch in unicodedata.normalize("NFKC", s)
+                   if ch == "\n" or unicodedata.category(ch) not in ("Cf", "Cc"))
+
+
+def _letters(line):
+    """ASCII letters only, uppercased. Known Cyrillic/Greek look-alikes map to their Latin twin; any other non-ASCII
+    letter becomes `?` (a wildcard when matching), so a homoglyph can never hide a review-ish comment."""
+    out = []
+    for ch in line:
+        ch = _CONFUSABLES.get(ch, ch)
+        if "A" <= ch.upper() <= "Z" and ch.isascii():
+            out.append(ch.upper())
+        elif not ch.isascii() and ch.isalpha():
+            out.append("?")
+    return "".join(out)
+
+
+def _wild(word):
+    return "".join("[%s?]" % c for c in word)
+
+
+def first_line(body):
+    for l in normalize(body).split("\n"):
+        if l.strip():
+            return l
+    return ""
+
+
+def review_ish(body, prefix):
+    """FAIL-CLOSED detector, deliberately over-inclusive and blind to shas: True when the first non-empty line, reduced
+    to ASCII letters, STARTS WITH the prefix word(s) (REVIEW | LEGALREAD) or has them anywhere in its first 40 letters."""
+    word = re.sub(r"[^A-Z]", "", prefix.upper())
+    letters = _letters(first_line(body))
+    pat = _wild(word)
+    return bool(re.match(pat, letters) or re.search(pat, letters[:40]))
+
+
+def _item(x, i):
+    if isinstance(x, str):  # tests/harnesses: bare bodies, oldest first
+        return {"id": i, "created_at": "%08d" % i, "updated_at": "%08d" % i, "body": x}
+    return x
+
+
+def _order(c):
+    t = max(c.get("created_at") or "", c.get("updated_at") or "")  # an edit after the PASS counts as newer
+    return (t, c.get("id") or 0)
+
+
+def clean_pass(body, sha, prefix):
+    """True only for: raw line 1 exactly `<prefix>: PASS`; the first `head:` line exactly `head: <full 40-hex sha>` equal
+    to `sha`; and no other 7+-hex run anywhere in the body that is not a prefix of `sha`. The raw text is used for the
+    two line checks (a zero-width char or homoglyph in them is NOT clean); the hex scan uses the normalized text."""
     sha = sha.lower()
-    for b in bodies:
-        lines = b.lstrip().splitlines()
-        if not lines:
-            continue
-        first = re.sub(r"[*_`>#\s]+", "", lines[0][:80]).upper()
-        if not first.startswith(prefix.upper() + ":"):
-            continue
-        runs = [r.lower() for r in re.findall(r"[0-9a-fA-F]{40,}", "\n".join(lines[:12]))]
-        if not any(sha in r for r in runs):
-            continue
-        head = next((l.strip() for l in lines[1:12] if re.match(r"head:", l.strip(), re.I)), "")
-        ok = (lines[0].strip() == prefix + ": PASS"
-              and re.fullmatch(r"head: ([0-9a-fA-F]{40})", head) is not None and head[6:].lower() == sha
-              and set(runs) == {sha})
-        found = "PASS" if ok else "NOT-PASS"
-    return found
+    raw = (body or "").replace("\r\n", "\n").lstrip().split("\n")
+    if raw[0].strip() != prefix + ": PASS":
+        return False
+    head = next((l.strip() for l in raw[1:] if re.match(r"head:", l.strip(), re.I)), "")
+    if re.fullmatch(r"head: ([0-9a-fA-F]{40})", head) is None or head[6:].lower() != sha:
+        return False
+    return all(sha.startswith(r.lower()) for r in re.findall(r"[0-9a-fA-F]{7,}", normalize(body)))
 
 
-def review_ok(bodies, sha):
-    """True only if the newest `REVIEW:` ruling on exactly this head is a clean PASS."""
-    return ruling(bodies, sha, "REVIEW") == "PASS"
+def gate(comments, sha, prefix):
+    """FAIL-CLOSED gate (gh-3162, CTO Tier A). `comments` are TRUSTED (non-bot) comment dicts (id, created_at,
+    updated_at, body), any order; bare strings are taken oldest-first. Returns (ok, blocker_id, ts):
+    ok is True only when the NEWEST review-ish comment (ordering max(created_at, updated_at), tie by id; so an edit made
+    after the PASS counts as newer) is a clean PASS. Review-ish is decided from the first line alone, after
+    normalization, and never looks at shas. Accepted consequence: ANY later review-ish comment on ANY head (a FAIL on an
+    older head posted after the PASS, a QUESTION, a malformed FAIL) blocks until a fresh clean PASS is posted. blocker_id
+    is the comment that blocked (None when there is no review-ish comment at all); ts is the PASS ordering time."""
+    items = [_item(x, i) for i, x in enumerate(comments)]
+    ish = sorted([c for c in items if review_ish(c.get("body", ""), prefix)], key=_order)
+    if not ish:
+        return False, None, ""
+    last = ish[-1]
+    if clean_pass(last.get("body", ""), sha, prefix):
+        return True, last.get("id"), _order(last)[0]
+    return False, last.get("id"), ""
 
 
-def r177_pair(bodies, n, sha):
-    """(legal_read_pass, signed). LEGAL-READ: newest ruling on the exact head must be a clean PASS. SIGNED must name the
-    FULL head sha."""
-    read_ok = ruling(bodies, sha, "LEGAL-READ") == "PASS"
+def reviews_block(reviews, pass_ts):
+    """id of a formal PR review in state CHANGES_REQUESTED submitted after the clean PASS (any author), else None."""
+    for r in reviews or []:
+        if r.get("state") == "CHANGES_REQUESTED" and (r.get("submitted_at") or "9") > pass_ts:
+            return r.get("id")
+    return None
+
+
+def review_ok(comments, sha):
+    """True only if the newest review-ish `REVIEW` comment is a clean PASS on exactly this head."""
+    return gate(comments, sha, "REVIEW")[0]
+
+
+def r177_pair(comments, n, sha):
+    """(legal_read_pass, signed). LEGAL-READ: the newest review-ish LEGAL-READ comment must be a clean PASS (same
+    fail-closed gate). SIGNED must name the FULL head sha."""
+    read_ok = gate(comments, sha, "LEGAL-READ")[0]
+    bodies = [x if isinstance(x, str) else x.get("body", "") for x in comments]
     boundary = r"(?![0-9a-f])"
     signed = any(re.match(re.escape("R-177 SIGNED: pr=%s sha=%s" % (n, sha)) + boundary, x.lstrip()) for x in bodies)
     if not signed:
@@ -385,11 +465,26 @@ def step_merge(ctx, n):
         page += 1
         if page > 100:
             say("REFUSED: more than 100 pages of comments"); sys.exit(2)
-    cs = sorted(cs, key=lambda c: (c.get("created_at") or "", c.get("id") or 0))  # oldest first: newest ruling wins
-    bodies = [c.get("body", "") for c in cs if trusted_human(c)]
-    if not review_ok(bodies, sha):
-        say("REFUSED: newest `REVIEW:` ruling on current head %s (full `head:` line) is not PASS (a pass over an older head, or a later FAIL, does not count)" % sha[:10]); sys.exit(2)
-    say("gate ok: newest REVIEW ruling on %s is PASS" % sha[:10])
+    trusted = [c for c in cs if trusted_human(c)]
+    ok, blocker, pass_ts = gate(trusted, sha, "REVIEW")
+    if not ok:
+        say("REFUSED: newest review-ish `REVIEW` comment (id %s) is not a clean PASS on current head %s (fail-closed: any later review-ish comment on any head blocks until a fresh clean PASS)" % (blocker, sha[:10])); sys.exit(2)
+    rv, page = [], 1
+    while True:
+        s, d, _ = ctx.gh("GET", "/repos/%s/pulls/%s/reviews?per_page=100&page=%d" % (REPO, n, page))
+        if s != 200 or not isinstance(d, list):
+            say("REFUSED: cannot read PR reviews (HTTP %s, page %d)" % (s, page)); sys.exit(2)
+        if not d:
+            break
+        rv.extend(d)
+        page += 1
+        if page > 100:
+            say("REFUSED: more than 100 pages of reviews"); sys.exit(2)
+    rb = reviews_block(rv, pass_ts)
+    if rb is not None:
+        say("REFUSED: CHANGES_REQUESTED PR review %s is newer than the clean PASS (comment %s)" % (rb, blocker)); sys.exit(2)
+    say("gate ok: newest review-ish comment %s is a clean PASS on %s" % (blocker, sha[:10]))
+    bodies = trusted  # R-177 pair reads the same trusted comments
     flagged = needs_r177(p.get("title"), labels)
     pair_ok = True
     if flagged:

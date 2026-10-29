@@ -47,7 +47,7 @@ class T(unittest.TestCase):
         self.assertTrue(pn.review_ok([P("FAIL", SHA), P("PASS", SHA)], SHA))            # FAIL then PASS -> allow
         self.assertFalse(pn.review_ok([P("PASS", OLD) + "\nre-review pending for " + SHA[:7]], SHA))  # short sha mention
         self.assertFalse(pn.review_ok(["REVIEW: PASS\nhead: " + SHA[:12]], SHA))        # short sha in head line
-        self.assertTrue(pn.review_ok([P("PASS", SHA), P("FAIL", OLD)], SHA))            # FAIL on another head is irrelevant
+        self.assertFalse(pn.review_ok([P("PASS", SHA), P("FAIL", OLD)], SHA))           # fail-closed: FAIL on an old head AFTER the PASS blocks
         self.assertEqual(pn.r177_pair([P("PASS", SHA, "LEGAL-READ"), "R-177 SIGNED: pr=5 sha=" + SHA], 5, SHA), (True, True))
         self.assertEqual(pn.r177_pair([P("PASS", SHA, "LEGAL-READ"), P("FAIL", SHA, "LEGAL-READ")], 5, SHA), (False, False))
         self.assertEqual(pn.r177_pair([P("QUESTION FOR DUSTIN", SHA, "LEGAL-READ"), P("PASS", SHA, "LEGAL-READ")], 5, SHA)[0], True)
@@ -89,7 +89,7 @@ class T(unittest.TestCase):
             ("PASS trailing text", ["REVIEW: PASS with nits\nhead: %s" % H], False),
             ("PASS lowercase verdict", ["REVIEW: pass\nhead: %s" % H], False),
             ("CRLF PASS", ["REVIEW: PASS\r\nhead: %s\r\n" % H], True),
-            ("FAIL on other head is irrelevant", [P(), F(O)], True),
+            ("FAIL on OLD head after PASS blocks (fail-closed)", [P(), F(O)], False),
         ]
         for name, b, exp in cases:
             self.assertEqual(pn.review_ok(b, H), exp, name)
@@ -116,6 +116,93 @@ class T(unittest.TestCase):
         self.assertFalse(pn.review_ok([c["body"] for c in cs if th(c)], H))
         cs = [mk(1, "2026-10-29T18:00:00Z", P()), mk(9, "2026-10-29T18:40:00Z", F(), "Bot", "evil[bot]")]
         self.assertTrue(pn.review_ok([c["body"] for c in cs if th(c)], H))
+    def test_failclosed_round3(self):
+        H = "a9536ca38c5be2d78bd267d444576e425da1ddcc"; O = "bd6813d37b7955baf56f6996d7ef715920acffc2"
+        P = "REVIEW: PASS\nhead: %s\nbody" % H
+        def F(first, h=H, pre=""): return "%s\n%shead: %s\nx" % (first, pre, h)
+        Z = "\u200b"
+        cases = [
+            ("ZWSP inside prefix", [P, F("REVIEW" + Z + ": FAIL")], False),
+            ("ZWSP before line", [P, F(Z + "REVIEW: FAIL")], False),
+            ("BOM before line", [P, F("\ufeffREVIEW: FAIL")], False),
+            ("ZWJ after colon", [P, F("REVIEW:\u200d FAIL")], False),
+            ("fullwidth colon", [P, F("REVIEW\uff1a FAIL")], False),
+            ("ratio colon", [P, F("REVIEW\u2236 FAIL")], False),
+            ("Cyrillic E", [P, F("R\u0415VIEW: FAIL")], False),
+            ("Cyrillic E, other unmapped letter", [P, F("R\u04d5VIEW: FAIL")], False),
+            ("NBSP after colon", [P, F("REVIEW:\u00a0FAIL")], False),
+            ("heading", [P, F("## REVIEW: FAIL")], False),
+            ("list", [P, F("- REVIEW: FAIL")], False),
+            ("strike", [P, F("~~REVIEW: FAIL~~")], False),
+            ("85 stars", [P, F("*" * 85 + "REVIEW: FAIL")], False),
+            ("FAIL short sha only", [P, F("REVIEW: FAIL", h=H[:7])], False),
+            ("FAIL 12-char sha", [P, F("REVIEW: FAIL", h=H[:12])], False),
+            ("FAIL no sha at all", [P, "REVIEW: FAIL"], False),
+            ("FAIL head on line 13", [P, F("REVIEW: FAIL", pre="l\n" * 11)], False),
+            ("FAIL sha with ZWSP inside", [P, F("REVIEW: FAIL", h=H[:20] + Z + H[20:])], False),
+            ("FAIL sha as URL", [P, "REVIEW: FAIL\nhead: https://github.com/x/y/commit/%s" % H], False),
+            ("PASS + other sha after line 12 (now blocks)", ["REVIEW: PASS\nhead: %s\n" % H + "l\n" * 12 + "```\n%s\n```" % O], False),
+            ("PASS + other sha line 5", ["REVIEW: PASS\nhead: %s\na\nb\nprev %s" % (H, O)], False),
+            ("PASS + own short sha anywhere", ["REVIEW: PASS\nhead: %s\n\n\nsee %s" % (H, H[:9])], True),
+            ("PASS trailing space line1", ["REVIEW: PASS \nhead: %s" % H], True),
+            ("PASS ZWSP after PASS", ["REVIEW: PASS" + Z + "\nhead: %s" % H], False),
+            ("PASS ZWSP in head line", ["REVIEW: PASS\nhead: %s%s" % (H, Z)], False),
+            ("huge FAIL body", [P, F("REVIEW: FAIL") + "y" * 5000000], False),
+            ("huge first line", [P, "REVIEW: FAIL " + "z" * 2000000 + "\nhead: " + H], False),
+            ("u2028 FAIL", [P, "REVIEW: FAIL\u2028head: " + H], False),
+            ("quoted PASS in FAIL", [P, "> REVIEW: PASS\n> head: %s\nREVIEW: FAIL" % H], False),
+            ("Review in lowercase prose first line", [P, "my review: not great\nhead: " + H], False),
+            ("sentence containing review in first 40", [P, "Please see the REVIEW above"], False),
+            ("clean PASS newest", [F("REVIEW: FAIL"), P], True),
+            ("PASS then unrelated comment", [P, "thanks, merging after CI\nSee aaaaaaaa"], True),
+            ("PASS then LEGAL-READ comment is not a REVIEW comment", [P, "LEGAL-READ: FAIL\nhead: " + H], True),
+            ("FAIL on old head after PASS", [P, F("REVIEW: FAIL", h=O)], False),
+            ("no review at all", ["hello"], False),
+            ("empty list", [], False),
+        ]
+        for name, b, exp in cases:
+            self.assertEqual(pn.review_ok(b, H), exp, name)
+        L = "LEGAL-READ: PASS\nhead: " + H; S = "R-177 SIGNED: pr=3202 sha=" + H
+        for name, bad in [("ZWSP", "LEGAL" + Z + "-READ: QUESTION FOR DUSTIN\nhead: " + H),
+                          ("fullwidth colon", "LEGAL-READ\uff1a FAIL\nhead: " + H),
+                          ("en dash", "LEGAL\u2013READ: FAIL\nhead: " + H),
+                          ("no sha", "LEGAL-READ: FAIL"),
+                          ("short sha", "legal-read: fail " + H[:7]),
+                          ("old head", "LEGAL-READ: FAIL\nhead: " + "b" * 40)]:
+            self.assertEqual(pn.r177_pair([L, bad, S], "3202", H), (False, True), name)
+        self.assertEqual(pn.r177_pair([L, S], "3202", H), (True, True))
+    def test_ordering_and_reviews(self):
+        H = "a" * 40
+        P = "REVIEW: PASS\nhead: %s" % H
+        mk = lambda i, c, b, u=None: {"id": i, "created_at": c, "updated_at": u or c, "body": b}
+        ok = lambda cs: pn.gate(cs, H, "REVIEW")
+        # list order is irrelevant; created_at/id decide
+        self.assertTrue(ok([mk(2, "2026-10-29T18:10:00Z", P), mk(1, "2026-10-29T18:00:00Z", "REVIEW: FAIL")])[0])
+        self.assertEqual(ok([mk(2, "2026-10-29T18:10:00Z", "REVIEW: FAIL"), mk(1, "2026-10-29T18:00:00Z", P)])[:2], (False, 2))
+        # tie on created_at -> higher id is newer
+        t = "2026-10-29T18:00:00Z"
+        self.assertEqual(ok([mk(5, t, P), mk(6, t, "REVIEW: FAIL")])[:2], (False, 6))
+        self.assertTrue(ok([mk(6, t, "REVIEW: FAIL"), mk(7, t, P)])[0])
+        # FAIL edited after the PASS is ordered by updated_at -> blocks
+        self.assertEqual(ok([mk(1, "2026-10-29T18:00:00Z", "REVIEW: FAIL", "2026-10-29T19:00:00Z"),
+                             mk(2, "2026-10-29T18:30:00Z", P)])[:2], (False, 1))
+        # PASS edited after a later FAIL -> the edited PASS is newest
+        self.assertTrue(ok([mk(1, "2026-10-29T18:00:00Z", P, "2026-10-29T19:00:00Z"),
+                            mk(2, "2026-10-29T18:30:00Z", "REVIEW: FAIL")])[0])
+        # blocker id printed for a refusal; none when no review-ish comment
+        self.assertEqual(ok([mk(9, t, "hi")]), (False, None, ""))
+        # formal reviews
+        good, bid, ts = ok([mk(1, "2026-10-29T18:00:00Z", P)])
+        self.assertTrue(good)
+        self.assertEqual(pn.reviews_block([{"id": 7, "state": "CHANGES_REQUESTED", "submitted_at": "2026-10-29T18:05:00Z"}], ts), 7)
+        self.assertIsNone(pn.reviews_block([{"id": 7, "state": "CHANGES_REQUESTED", "submitted_at": "2026-10-29T17:59:00Z"}], ts))
+        self.assertIsNone(pn.reviews_block([{"id": 8, "state": "APPROVED", "submitted_at": "2026-10-29T18:05:00Z"},
+                                            {"id": 9, "state": "DISMISSED", "submitted_at": "2026-10-29T18:06:00Z"}], ts))
+        # trusted filter still applies before the gate
+        th = pn.trusted_human
+        bot = {"id": 3, "created_at": "2026-10-29T19:00:00Z", "body": "REVIEW: FAIL", "author_association": "MEMBER", "user": {"login": "x[bot]", "type": "Bot"}}
+        self.assertTrue(ok([c for c in [mk(1, "2026-10-29T18:00:00Z", P), bot] if th(c) or "user" not in c])[0])
+        self.assertIn("reviews?per_page=100&page=%d", __import__("inspect").getsource(pn.step_merge))
     def test_n1_n2_wiring(self):
         import inspect
         self.assertIn("page=%d", inspect.getsource(pn.step_merge))
