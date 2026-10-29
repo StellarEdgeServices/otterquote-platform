@@ -984,11 +984,11 @@
         function getMeasurementVariant() {
             var VARIANT_RE = /^[a-z0-9]{1,8}$/;
             try {
-                var v = String(window.localStorage.getItem('oq_variant_v3') || '').trim().toLowerCase();
+                var v = String(window.localStorage.getItem('oq_variant_v4') || '').trim().toLowerCase();
                 if (VARIANT_RE.test(v)) return v;
             } catch (e) {}
             try {
-                var m = document.cookie.match(/(?:^|; )oq_variant_v3=([^;]*)/);
+                var m = document.cookie.match(/(?:^|; )oq_variant_v4=([^;]*)/);
                 var c = m ? decodeURIComponent(m[1]).trim().toLowerCase() : '';
                 if (VARIANT_RE.test(c)) return c;
             } catch (e) {}

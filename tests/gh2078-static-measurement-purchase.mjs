@@ -66,7 +66,7 @@ const JWT = b64u({ alg: 'HS256' }) + '.' + b64u({ sub: UID }) + '.sig';
 async function runCheckout({ stripeResult, orderThrows = false, store = new Map(), piId = 'pi_TEST123', variant = 'e', cookie = '', gpc = false, account, noHelper = false, pageUser = false, pageProfile }) {
   const calls = [];
   const ls = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) };
-  if (variant) store.set('oq_variant_v3', variant);
+  if (variant) store.set('oq_variant_v4', variant);
   const els = new Map();
   const el = (id) => { if (!els.has(id)) els.set(id, { id, style: {}, classList: { add() {} }, querySelector: () => el(id + '>'), textContent: '', innerHTML: '', disabled: false }); return els.get(id); };
   const doc = { getElementById: el, cookie: (account !== undefined ? 'sb-otterquote-at=' + JWT + '; ' : '') + cookie, createElement: (tag) => ({ tag }), head: { appendChild() {} } };

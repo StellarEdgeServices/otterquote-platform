@@ -2235,10 +2235,10 @@
         deferredReferralDismissed = true;
       }
       function shouldShowDeductiblePrompt(claim) {
-        // C6: ask only when the parser (or the homeowner) has not filled deductible_amount.
+        // C6: ask only when the parser has run (loss_sheet_parsed_at) and deductible_amount is still empty.
         return !!claim && claim.funding_type === 'insurance'
           && (claim.deductible_amount === null || claim.deductible_amount === undefined || claim.deductible_amount === '')
-          && !!(claim.loss_sheet_parsed_at || claim.has_estimate);
+          && !!claim.loss_sheet_parsed_at; // only once the parser has run, so "we couldn't read it" is true
       }
       function shouldShowReferralCard(claim) {
         // Only while we do not already know how they found us.

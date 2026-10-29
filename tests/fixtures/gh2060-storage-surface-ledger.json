@@ -201,6 +201,34 @@
       ]
     },
     {
+      "key": "oq_variant_v4",
+      "stack": "static (start.html writer; partner-*, hi-*, ins-*, re-*, help-measurements readers)",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "a stale value of the wrong shape (older app version) is never forwarded"
+        },
+        {
+          "file": "tests/gh2078-partner-signup-complete.mjs",
+          "contains": "matches start.html's KEY"
+        }
+      ],
+      "note": "gh-3136 (P14): start.html bumped KEY v3 -> v4 with LIVE_VARIANTS=['d']; every static reader now reads v4 (no v3 fallback, because start.html re-buckets old v3 visitors to D). The React app keeps its own oq_variant_v3 copy fed by ?v=."
+    },
+    {
+      "key": "oq_referral_answered_",
+      "stack": "static (dashboard.html; key built in referralAnsweredKey(), invisible to the scanner)",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "tests/gh3136-dashboard-deferred.mjs",
+          "contains": "oq_referral_answered_ key is scoped per claim id"
+        }
+      ],
+      "note": "gh-3136 (P14): per-claim '1' flag set after the deferred How-did-you-hear card is answered or skipped; scoped by claim id so another claim's answer never hides this claim's card. Templated key: prefix oq_referral_answered_<claimId>."
+    },
+    {
       "key": "oq_hm_hover_charge_v1",
       "stack": "react",
       "status": "tested",

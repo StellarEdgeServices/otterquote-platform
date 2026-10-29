@@ -10,46 +10,39 @@
 // 'd' until the orchestrator flips LIVE_VARIANTS at merge), then calls
 // window.RouterVariantD.init(bridge, root) once it has loaded.
 //
-// Screens, in order (brief, issue #2075):
+// Screens, in order (gh-3136 / P14 shortened flow; was issue #2075's longer list):
 //   1. d-role    -- three tap targets, no typing: Homeowner / Professional
-//                   (real estate or insurance) / Contractor.
-//   2. d-email   -- ONE input + Continue. Nothing else. First commitment:
-//                   writes the leads row (variant 'd', role, email, the
-//                   utm/first-touch fields the router already captures)
-//                   and emits Meta Lead. Contractor branches straight to
-//                   the existing contractor-join path from here -- no
-//                   name/phone/questions for that role (brief, issue body).
-//   3. d-name    -- one field, required.
-//   4. d-phone   -- one field, optional/skippable (gh-2042 precedent: phone
-//                   is optional everywhere else on this router already).
-//   5+ role-specific questions -- REUSED, not reauthored: homeowner gets
-//      arm C's home2-home7 question set verbatim (trades/payer/hidden-
-//      costs/time-investment/selection-criteria/online-comfort, same four
-//      disqualifier branches), then a closing screen using arm C's own
-//      home8 paragraph; professional picks real estate or insurance, then
-//      gets arm C's realtor or insurance question set verbatim, then arm
-//      C's own close paragraphs. Every heading/option/disqualifier/close
-//      string below is read from window.RouterDiscovery.COPY (js/router-
-//      discovery.js) -- this file does not define a single word of new
-//      copy for any reused screen, per the work order ("reuse C's step
-//      components and copy verbatim -- no new copy in D").
+//                   (real estate or insurance) / Contractor. Skipped on
+//                   ?entry=home (homeowner is implied).
+//   2. d-email   -- ONE input + Continue. First commitment: writes the
+//                   leads row (variant 'd', role, email, the utm/first-touch
+//                   fields the router already captures) and emits Meta Lead.
+//                   Contractor branches straight to the existing
+//                   contractor-join path from here.
+//   3. d-contact -- name (required) + phone (optional) on ONE screen. For
+//                   homeowners it also shows RouterDiscovery.COPY.home8Text
+//                   verbatim (C4, Tier C legal/fee text, relocated from the
+//                   cut d-summary screen). Continue hands off to get-started.
+//   Professionals: d-professional-industry (real estate or insurance), then
+//      arm C's realtor or insurance question set verbatim, then arm C's own
+//      close paragraphs. Every heading/option/close string for those
+//      reused screens is read from window.RouterDiscovery.COPY (js/router-
+//      discovery.js) -- this file defines no new copy for them.
+//   CUT in gh-3136: the six homeowner screening questions (d-trades,
+//      d-payer, d-hidden-costs, d-time, d-criteria, d-online), the four
+//      d-dq-* "not a fit" interstitials, d-summary, and the separate
+//      d-name / d-phone screens (merged into d-contact).
 //
-// Contact capture is SPLIT across d-email/d-name/d-phone (unlike arm C,
-// which collects name+email+phone together at the very end) -- that split
-// is D's entire point (#2075: "no typing until a single email field, defer
-// name/phone/all other data to after that first commitment"). A lead row
-// exists after d-email (email only; leads.email is NOT NULL, leads.name/
-// phone are nullable -- verified against supabase/migrations/
-// 20260101000000_v000_baseline_schema.sql); d-name and d-phone each PATCH
-// that same row via update_lead_contact (gh-2042: phone optional there
-// too), never a second insert.
+// Contact capture: d-email creates the lead row (email only; leads.email is
+// NOT NULL, leads.name/phone are nullable -- verified against supabase/
+// migrations/20260101000000_v000_baseline_schema.sql); d-contact PATCHes
+// that same row via update_lead_contact (name, then phone -- gh-2042: phone
+// optional there too), never a second insert.
 //
 // Analytics: router_step_view fires on every screen view, router_step_
-// complete on leaving one -- step tokens are `d-role`, `d-email`, `d-name`,
-// `d-phone`, `d-<question>` (issue #2075's own naming). router_disqualified
-// fires once per (session, source screen), identical semantics to arm C's
-// own dedupe (see DQ_SOURCE below) -- carries the ORIGINAL screen's token,
-// never the dq screen's own token, matching arm C's D-2 control.
+// complete on leaving one -- step tokens are `d-role`, `d-email`,
+// `d-contact`, `d-<question>`. router_disqualified is no longer emitted for
+// the homeowner track (DQ_SOURCE below is empty after the screening cut).
 //
 // gh-2078 (gh-2011's sub-issue, NOT this issue): the two conversion events
 // -- measurement_purchase (homeowner) and partner_signup_complete
@@ -73,10 +66,10 @@
 //   the same as arm C's single-file load.
 //   window.RouterVariantD.init() below.
 // - js/router-discovery.js -- the file this module reuses COPY/rendering
-//   from for every screen AFTER d-phone -- is fetched lazily, on demand,
+//   from for every screen AFTER d-contact (and the home8Text on d-contact itself) -- is fetched lazily, on demand,
 //   only when a visitor actually reaches the first reused question screen
 //   (loadDiscoveryModule() below), never at d-role's paint. A visitor who
-//   never gets that far (drops at d-role/d-email/d-name/d-phone, or is
+//   never gets that far (drops at d-role/d-email, or is
 //   the contractor branch, which never reaches a reused screen at all)
 //   never fetches it.
 // - bridge.sb (below) is the same lazy `ensureSb()` getter every other

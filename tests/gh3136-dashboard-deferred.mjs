@@ -33,8 +33,9 @@ ok('gate mentions neither deductible nor referral');
 const ded = fnBody(cur, 'shouldShowDeductiblePrompt');
 assert.match(ded, /funding_type === 'insurance'/);
 assert.match(ded, /deductible_amount === null/);
-assert.match(ded, /loss_sheet_parsed_at \|\| claim\.has_estimate/);
-ok('deductible prompt requires insurance + deductible_amount null + estimate parsed/uploaded');
+assert.match(ded, /!!claim\.loss_sheet_parsed_at/);
+assert.ok(!/has_estimate/.test(ded), 'has_estimate alone (parser not run) must not trigger the prompt');
+ok('deductible prompt requires insurance + deductible_amount null + loss_sheet_parsed_at set (parser ran)');
 const dsave = fnBody(cur, 'saveDeferredDeductible');
 assert.match(dsave, /\.update\(\{ deductible_amount: n \}\)\.eq\('id', currentClaim\.id\)\.select\('id'\)/);
 assert.match(dsave, /rows\.length === 0/);
@@ -56,6 +57,10 @@ for (const v of ['insurance_agent', 'realtor', 'friend', 'web']) assert.ok(cur.i
 for (const l of ['Insurance Agent', 'Realtor', 'Friend/Family', 'Found Online', 'Their Name', 'Their Email (optional)', 'How did you hear about us?', 'Skip'])
   assert.ok(cur.includes(l), l);
 ok('four chips, follow-up labels, Skip present');
+
+// 3b. per-claim localStorage key
+assert.match(fnBody(cur, 'referralAnsweredKey'), /'oq_referral_answered_' \+ \(currentClaim && currentClaim\.id\)/);
+ok('oq_referral_answered_ key is scoped per claim id');
 
 // 4. Not wired into gate/submit
 assert.ok(!/isChecklistComplete[^\n]*(deductible|referral)/.test(cur));
