@@ -168,27 +168,30 @@ const GOOGLE_REDIRECT_GRACE_MS = 2500;
 const ALREADY_REGISTERED_MESSAGE =
   'An account with that email already exists. Sign in instead — use the "Sign in here" link below, or reset your password from that page if you have forgotten it.';
 
-// gh-1901: Step 1 "what do you need help with" options. Kept short and
-// storm-damage-led to match the trades OtterQuote actually serves; trade-selector
-// (the very next screen after account creation) is still where the homeowner
-// gives the full project detail — this is only the one-word headline CRO RUN 20
-// asked to see ahead of account creation, not a replacement for that page.
-// gh-1991: Roof/Siding/Gutters/Windows/Other — exactly the four trades
-// trade-selector (TRADE_OPTIONS, ./../trade-selector/page.tsx) offers,
-// plus "Other". "Water Damage" and "Doors" removed — not trades OtterQuote
-// sells (CRO standing position 11). Values are named to match
-// trade-selector's TradeKey 1:1 (`windows_doors` -> `windows`, new
-// `gutters`) so the mapping in that page's pre-select effect is a direct
-// lookup, not a translation table that can drift out of sync.
-type ProjectType = 'roof' | 'siding' | 'gutters' | 'windows' | 'other' | '';
+// gh-3136 (P14): the Step 1 "What do you need help with?" chip row (and its
+// ProjectType / PROJECT_TYPE_OPTIONS) was CUT. trade-selector's pre-select
+// effect reads cs_signup.project_type defensively (absent => no pre-select,
+// not an error), so cs_signup simply no longer carries the key.
 
-const PROJECT_TYPE_OPTIONS: { value: ProjectType; label: string }[] = [
-  { value: 'roof', label: 'Roof' },
-  { value: 'siding', label: 'Siding' },
-  { value: 'gutters', label: 'Gutters' },
-  { value: 'windows', label: 'Windows' },
-  { value: 'other', label: 'Other' },
-];
+// gh-3136 (P14): C2 gate. The referrer-updates opt-out checkbox (gh-1337,
+// text approved verbatim) is shown ONLY when a referrer is attached to this
+// visitor. To flip C2 back to "always show", change this function's body to
+// `return true;` -- nothing else needs to move.
+function hasReferrer(): boolean {
+  try {
+    const ids = readReferralIds();
+    if (ids.oq_referral_id || ids.oq_referral_agent_id) return true;
+  } catch { /* cookie blocked: fall through to the storage mirrors */ }
+  try {
+    if (
+      (typeof sessionStorage !== 'undefined' &&
+        (sessionStorage.getItem('oq_referral_id') || sessionStorage.getItem('oq_referral_agent_id'))) ||
+      (typeof localStorage !== 'undefined' &&
+        (localStorage.getItem('oq_referral_id') || localStorage.getItem('oq_referral_agent_id')))
+    ) return true;
+  } catch { /* storage blocked */ }
+  return false;
+}
 
 // gh-1993: 50 states + DC + Puerto Rico — matches VALID_STATE_CODES in
 // trade-selector/utils.ts (the same set that page's address-parsing safety
@@ -600,7 +603,16 @@ export default function GetStartedPage() {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  // gh-3136 (P14): Confirm Password CUT; show/hide toggle on Password instead.
+  const [showPassword, setShowPassword] = useState(false);
+  // gh-3136 (P14): true when get_lead_prefill supplied first+last name AND email;
+  // then Step 2 shows a compact "Signing up as" line instead of those inputs.
+  const [identityPrefilled, setIdentityPrefilled] = useState(false);
+  const [phonePrefilled, setPhonePrefilled] = useState(false);
+  const [editingIdentity, setEditingIdentity] = useState(false);
+  // gh-3136 (P14): see hasReferrer(). Read after mount (cookie/storage are client-only).
+  const [referrerAttached, setReferrerAttached] = useState(false);
+  useEffect(() => { setReferrerAttached(hasReferrer()); }, []);
   const [phone, setPhone] = useState('');
   // gh-1993: single free-text "address" box replaced with four separate
   // fields (Street / City / State / ZIP) — Dustin, 2026-09-16 chat,
@@ -614,13 +626,6 @@ export default function GetStartedPage() {
   const [city, setCity] = useState('');
   const [addrState, setAddrState] = useState('');
   const [zip, setZip] = useState('');
-  // gh-1901: asked in Step 1, before any account field — "what does the
-  // homeowner want help with" is the value CRO RUN 20 found missing ahead of
-  // account creation. Informational only: carried in the cs_signup
-  // localStorage payload for the next step (trade-selector) to prefill, never
-  // sent to the `leads` insert or supabase.auth.signUp() — no backend schema
-  // touched by this field.
-  const [projectType, setProjectType] = useState<ProjectType>('');
   // gh-1901: two-step flow — Step 1 asks about the home, Step 2 asks for the
   // account. Client-side only; no route change, so /get-started keeps its
   // one URL and Google's redirectTo target is untouched.
@@ -632,9 +637,10 @@ export default function GetStartedPage() {
   // the only value that permits the send-partner-status-email consent gate
   // to fire (see supabase/functions/send-partner-status-email/index.ts).
   const [referrerOptOut, setReferrerOptOut] = useState(false);
-  const [referralSource, setReferralSource] = useState<ReferralSource>('');
-  const [refName, setRefName] = useState('');
-  const [refEmail, setRefEmail] = useState('');
+  // gh-3136 (P14): the "How did you hear about us?" chips and the agent/realtor
+  // name+email follow-ups moved to the dashboard. referralSource stays '' here so
+  // every `referralSource || 'web'` default below behaves exactly as before.
+  const [referralSource] = useState<ReferralSource>('');
 
   // UI state
   const [submitting, setSubmitting] = useState(false);
@@ -733,13 +739,12 @@ export default function GetStartedPage() {
       lastName.trim() &&
       email.trim() &&
       isValidEmail(email.trim()) &&
-      password.length >= MIN_PASSWORD_LENGTH &&
-      password === confirmPassword
+      password.length >= MIN_PASSWORD_LENGTH
     ) {
       accountStepFiredRef.current = true;
       track('form_step_complete', { step_name: 'account' });
     }
-  }, [firstName, lastName, email, password, confirmPassword]);
+  }, [firstName, lastName, email, password]);
 
   // `form_abandon` — fires on real page unload (pagehide beats beforeunload
   // for mobile Safari/bfcache reliability) when the visitor started the form
@@ -820,17 +825,26 @@ export default function GetStartedPage() {
         }
         const row = Array.isArray(data) ? data[0] : data;
         if (!row) return; // no prefill available: expired, already used, or unknown id
+        let gotFirst = false;
+        let gotLast = false;
+        let gotEmail = false;
         if (typeof row.name === 'string' && row.name.trim()) {
           const { firstName: fn, lastName: ln } = splitLeadName(row.name);
-          if (fn) setFirstName(fn);
-          if (ln) setLastName(ln);
+          if (fn) { setFirstName(fn); gotFirst = true; }
+          if (ln) { setLastName(ln); gotLast = true; }
         }
         if (typeof row.email === 'string' && row.email.trim()) {
           setEmail(row.email.trim());
+          gotEmail = isValidEmail(row.email.trim());
         }
         if (typeof row.phone === 'string' && row.phone.trim()) {
-          setPhone(formatPhoneValue(row.phone));
+          const formattedPhone = formatPhoneValue(row.phone);
+          setPhone(formattedPhone);
+          if (formattedPhone) setPhonePrefilled(true);
         }
+        // gh-3136 (P14): only collapse the identity inputs when we really
+        // have everything the password path validates (name x2 + valid email).
+        if (gotFirst && gotLast && gotEmail) setIdentityPrefilled(true);
         // gh-2849 (D-389, Dustin 2026-10-18 on #2801: "Store it, purpose:
         // prefill + service area"): the homepage ZIP that /start stored on the
         // lead row seeds the property step, so the visitor is not asked for it
@@ -851,21 +865,6 @@ export default function GetStartedPage() {
     // this also covers the autofill case markFieldTouched's onFocus-only
     // wiring used to miss.
     markFieldTouched('phone');
-  }, [markFieldTouched]);
-
-  // ── Referral chip click ──
-  const handleReferralChip = useCallback((val: ReferralSource) => {
-    setReferralSource(prev => (prev === val ? '' : val));
-    markFieldTouched('referral_source');
-  }, [markFieldTouched]);
-
-  // ── Project-type chip click (Step 1) — gh-1901 ──
-  // gh-1940 (rebase onto #1929, CEO RUN 47): new markFieldTouched call site
-  // — project_type did not exist when #1948 was written; it is #1929's one
-  // new Step-1 field, added to TRACKED_FIELDS above.
-  const handleProjectTypeChip = useCallback((val: ProjectType) => {
-    setProjectType(prev => (prev === val ? '' : val));
-    markFieldTouched('project_type');
   }, [markFieldTouched]);
 
   // ── Step 1 → Step 2 (gh-1901: home info before account fields) ──
@@ -946,7 +945,6 @@ export default function GetStartedPage() {
     if (password.length < MIN_PASSWORD_LENGTH) {
       return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
     }
-    if (password !== confirmPassword) return 'Passwords do not match.';
     return null;
   };
 
@@ -1046,14 +1044,14 @@ export default function GetStartedPage() {
         address_city: city.trim(),
         address_state: addrState.trim(),
         address_zip: zip.trim(),
-        // gh-1901: Step 1's "what do you need help with" answer, carried
-        // forward for trade-selector to prefill — same non-schema-touching
-        // localStorage bridge every other field here already uses.
-        project_type: projectType || null,
+        // gh-3136 (P14): project_type key removed (chip cut); trade-selector
+        // treats an absent key as "no pre-select".
         referral_source:
           referralSource || (storedReferralAgentId ? 'partner_link' : 'web'),
-        referring_agent_name: refName.trim() || null,
-        referring_agent_email: refEmail.trim() || null,
+        // gh-3136 (P14): agent name/email follow-ups moved to the dashboard;
+        // keys kept (null) so cs_signup keeps its shape for readers.
+        referring_agent_name: null,
+        referring_agent_email: null,
         role: 'homeowner',
         sms_consent_ts: smsConsent ? new Date().toISOString() : null,
         // gh-1337: FALSE (not omitted/null) means "shown the checkbox, did not
@@ -1167,7 +1165,7 @@ export default function GetStartedPage() {
     // password path (handleSubmit) still calls validateAccountProfile(),
     // since there is no OAuth identity to backfill from on that path.
     // gh-1940 (CEO RUN 47 fix, ceo47-review-pr1948 defect 2) — the
-    // `[firstName, lastName, email, password, confirmPassword]` effect
+    // `[firstName, lastName, email, password]` effect
     // above requires a valid email+password, so it never fires for a
     // visitor who converts through Google. This is the moment the visitor
     // commits to the Google sign-in, so `account` fires here instead,
@@ -1398,8 +1396,6 @@ export default function GetStartedPage() {
       </div>
     );
   }
-
-  const showReferralAgentFields = referralSource === 'insurance_agent' || referralSource === 'realtor';
 
   return (
     <>
@@ -1906,21 +1902,7 @@ export default function GetStartedPage() {
                   </div>
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">What do you need help with?</label>
-                  <div className="project-type-options">
-                    {PROJECT_TYPE_OPTIONS.map(({ value, label }) => (
-                      <button
-                        key={value}
-                        type="button"
-                        className={`project-type-chip${projectType === value ? ' active' : ''}`}
-                        onClick={() => handleProjectTypeChip(value)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                {/* gh-3136 (P14): "What do you need help with?" chip row CUT. */}
 
                 {error && <div className="form-error" role="alert">{error}</div>}
 
@@ -1953,7 +1935,26 @@ export default function GetStartedPage() {
                 </p>
                 {/* ── Email + Password Sign-Up Form ── */}
                 <form className="gs-form" onSubmit={handleSubmit} noValidate>
-                {/* Name row */}
+                {/* gh-3136 (P14): when the router lead prefill supplied name + email,
+                    show one compact line instead of re-asking; "Edit" reveals the
+                    same inputs (state, validation and signUp payload unchanged). */}
+                {identityPrefilled && !editingIdentity && (
+                  <div className="form-group gs-signing-as" data-testid="signing-up-as">
+                    <span>
+                      Signing up as <strong>{`${firstName.trim()} ${lastName.trim()}`.trim()}</strong> · {email.trim()}
+                    </span>{' '}
+                    <button
+                      type="button"
+                      className="gs-edit-link"
+                      style={{ background: 'none', border: 'none', padding: 0, color: 'var(--amber, #E07B00)', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}
+                      onClick={() => setEditingIdentity(true)}
+                    >
+                      Edit
+                    </button>
+                  </div>
+                )}
+                {(!identityPrefilled || editingIdentity) && (
+                  <>
                 <div className="form-row">
                   <div className="form-group">
                     <label className="form-label" htmlFor="first-name">First Name</label>
@@ -2002,38 +2003,40 @@ export default function GetStartedPage() {
                   <span className="form-hint">This is how you&apos;ll sign in, and where bid alerts go.</span>
                 </div>
 
-                {/* Password + confirm — the alternative to Google, per Dustin 2026-08-26 */}
+                  </>
+                )}
+
+                {/* Password — the alternative to Google, per Dustin 2026-08-26.
+                    gh-3136 (P14): Confirm Password CUT; show/hide toggle added. */}
                 <div className="form-group">
                   <label className="form-label" htmlFor="password">Password</label>
-                  <input
-                    type="password"
-                    id="password"
-                    className="form-input"
-                    required
-                    minLength={MIN_PASSWORD_LENGTH}
-                    autoComplete="new-password"
-                    placeholder="At least 8 characters"
-                    value={password}
-                    onChange={e => { setPassword(e.target.value); markFieldTouched('password'); }}
-                    onFocus={() => markFieldTouched('password')}
-                  />
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      id="password"
+                      className="form-input"
+                      style={{ paddingRight: '4.5rem' }}
+                      required
+                      minLength={MIN_PASSWORD_LENGTH}
+                      autoComplete="new-password"
+                      placeholder="At least 8 characters"
+                      value={password}
+                      onChange={e => { setPassword(e.target.value); markFieldTouched('password'); }}
+                      onFocus={() => markFieldTouched('password')}
+                    />
+                    <button
+                      type="button"
+                      className="gs-password-toggle"
+                      aria-pressed={showPassword}
+                      aria-controls="password"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      onClick={() => setShowPassword(v => !v)}
+                      style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--amber, #E07B00)', cursor: 'pointer', font: 'inherit', fontSize: '0.85rem' }}
+                    >
+                      {showPassword ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
                   <span className="form-hint">Minimum {MIN_PASSWORD_LENGTH} characters.</span>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" htmlFor="confirm-password">Confirm Password</label>
-                  <input
-                    type="password"
-                    id="confirm-password"
-                    className="form-input"
-                    required
-                    minLength={MIN_PASSWORD_LENGTH}
-                    autoComplete="new-password"
-                    placeholder="Re-enter your password"
-                    value={confirmPassword}
-                    onChange={e => { setConfirmPassword(e.target.value); markFieldTouched('confirm_password'); }}
-                    onFocus={() => markFieldTouched('confirm_password')}
-                  />
                 </div>
 
                 {/* Phone — optional by default (gh-1901: this page's own
@@ -2045,6 +2048,10 @@ export default function GetStartedPage() {
                     downstream even when unchecked — trade-selector writes
                     it to `profiles` (the HubSpot send was removed in PR #2624)
                     (CEO RUN 43 review F3). */}
+                {/* gh-3136 (P14): hidden when the router already supplied a phone;
+                    still shown if SMS consent is ticked with no phone, so the
+                    existing validateSmsConsent() error is actionable. */}
+                {(!phonePrefilled || editingIdentity || (smsConsent && !phone.trim())) && (
                 <div className="form-group">
                   <label className="form-label" htmlFor="phone">Phone <span style={{ fontWeight: 400, color: 'var(--slate, #94a3b8)' }}>(optional)</span></label>
                   <input
@@ -2060,6 +2067,7 @@ export default function GetStartedPage() {
                   />
                   <span className="form-hint">For bid notifications and updates via text.</span>
                 </div>
+                )}
 
                 {/* SMS Consent — TWILIO MESSAGE_FLOW / TCPA */}
                 {/* Text source: legal.ts SMS_CONSENT_LABEL + inline privacy/terms links */}
@@ -2094,7 +2102,9 @@ export default function GetStartedPage() {
                 </div>
 
                 {/* Referrer-updates opt-out — gh-1337, copy approved by Dustin on #1336 (R-120) */}
+                {/* gh-3136 (P14) C2: rendered ONLY when a referrer is attached -- see hasReferrer(). */}
                 {/* Text source: referrer-disclosure-copy-2026-08-19.md § 2 — verbatim, do not reword */}
+                {referrerAttached && (
                 <div className="form-group">
                   <label className="form-checkbox-wrapper">
                     <input
@@ -2116,63 +2126,13 @@ export default function GetStartedPage() {
                     </span>
                   </label>
                 </div>
+                )}
 
                 {/* Property Address moved to Step 1 (gh-1901) — already
                     captured in street/city/addrState/zip state (gh-1993)
                     by the time this step renders. */}
 
-                {/* Referral Source */}
-                <fieldset className="referral-section" style={{ padding: '1rem', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)' }}>
-                  <legend className="referral-legend">How did you hear about us?</legend>
-                  <div className="referral-options">
-                    {(
-                      [
-                        { value: 'insurance_agent', label: 'Insurance Agent' },
-                        { value: 'realtor', label: 'Realtor' },
-                        { value: 'friend', label: 'Friend/Family' },
-                        { value: 'web', label: 'Found Online' },
-                      ] as { value: ReferralSource; label: string }[]
-                    ).map(({ value, label }) => (
-                      <button
-                        key={value}
-                        type="button"
-                        className={`referral-chip${referralSource === value ? ' active' : ''}`}
-                        onClick={() => handleReferralChip(value)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {showReferralAgentFields && (
-                    <div className="referral-name-row">
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="ref-name">Their Name</label>
-                        <input
-                          type="text"
-                          id="ref-name"
-                          className="form-input"
-                          placeholder="Agent / Realtor name"
-                          value={refName}
-                          onChange={e => { setRefName(e.target.value); markFieldTouched('ref_name'); }}
-                          onFocus={() => markFieldTouched('ref_name')}
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="ref-email">Their Email (optional)</label>
-                        <input
-                          type="email"
-                          id="ref-email"
-                          className="form-input"
-                          placeholder="agent@company.com"
-                          value={refEmail}
-                          onChange={e => { setRefEmail(e.target.value); markFieldTouched('ref_email'); }}
-                          onFocus={() => markFieldTouched('ref_email')}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </fieldset>
+                {/* gh-3136 (P14): "How did you hear about us?" + Their Name / Their Email moved to the dashboard. */}
 
                 {/* Error */}
                 {error && <div className="form-error" role="alert">{error}</div>}

@@ -12,7 +12,7 @@
  * Surfaces covered here:
  *   cs_utm_context (14 partner/funnel pages, captureUtmContext)
  *   utm_params (landing.html)
- *   oq_variant_v3 (11 static readers, getOqVariant)
+ *   oq_variant_v4 (11 static readers, getOqVariant)
  *   oq_ft (js/auth.js recordFirstTouchAttribution)
  *   cs_contractor_signup (js/auth.js handleAuthCallback)      [CLOSED by gh-2340]
  *   cs_recruit_code (11 partner/funnel pages, detectRecruitCode) [CLOSED by gh-2060 item 4]
@@ -218,7 +218,7 @@ for (const page of utmPages) {
 }
 
 // ---------------------------------------------------------------------------
-// oq_variant_v3 -- getOqVariant() on every static reader
+// oq_variant_v4 -- getOqVariant() on every static reader
 // ---------------------------------------------------------------------------
 const variantPages = rootHtml().filter((f) => read(f).includes('function getOqVariant('));
 await check('discovery: getOqVariant exists on the static partner/funnel pages', () => {
@@ -227,7 +227,7 @@ await check('discovery: getOqVariant exists on the static partner/funnel pages',
 for (const page of variantPages) {
   const fnSrc = extractFunction(read(page), 'getOqVariant');
   const run = ({ search = '', stored, cookie = '' }) => {
-    const localStorage = makeStorage(stored === undefined ? {} : { oq_variant_v3: stored });
+    const localStorage = makeStorage(stored === undefined ? {} : { oq_variant_v4: stored });
     const sandbox = {
       window: { location: { search }, localStorage },
       document: { cookie },

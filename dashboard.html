@@ -1216,6 +1216,20 @@
         white-space: nowrap;
       }
       .payment-path-change:hover { border-color: #E07B00; color: #E07B00; }
+      /* gh-3136 (P14): deferred prompts (deductible + how-did-you-hear) */
+      .deferred-prompts { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+      .deferred-prompts:empty { display: none; }
+      .deferred-card { color: var(--white); border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; padding: 14px 16px; background: rgba(224,123,0,0.06); }
+      .deferred-card-title { font-weight: 600; margin-bottom: 4px; }
+      .deferred-card-sub { font-size: 0.875rem; color: rgba(255,255,255,0.75); margin-bottom: 10px; }
+      .deferred-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+      .deferred-row .form-input { max-width: 220px; }
+      .deferred-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+      .deferred-chip { border: 1px solid rgba(255,255,255,0.5); background: transparent; color: var(--white); border-radius: 999px; padding: 8px 14px; font-size: 0.875rem; cursor: pointer; min-height: 40px; }
+      .deferred-chip.active { border-color: #E07B00; background: #E07B00; color: #fff; }
+      .deferred-card .form-label { color: rgba(255,255,255,0.85); }
+      .deferred-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+      @media (max-width: 600px) { .deferred-fields { grid-template-columns: 1fr; } .deferred-row .form-input { max-width: none; flex: 1 1 100%; } }
     </style>
 
     <!-- Project Info Section -->
@@ -1247,6 +1261,10 @@
           <form id="claim-edit-form" class="claim-form" style="display: none;">
             <!-- Populated by JS -->
           </form>
+
+          <!-- gh-3136 (P14): questions deferred out of sign-up / project-info. Both are
+               optional, non-blocking, and NOT part of isChecklistComplete()/Submit. -->
+          <div id="deferred-prompts" class="deferred-prompts"></div>
 
           <!-- Job Type Section (inserted after form population) -->
           <div id="job-type-section" style="display: none; margin-top: var(--sp-6);">
@@ -2194,6 +2212,147 @@
             </div>
           `;
         }).join('');
+
+        renderDeferredPrompts(); // gh-3136 (P14)
+      }
+
+      // gh-3136 (P14): the two questions deferred out of sign-up / project-info.
+      // Both are optional and non-blocking; neither is read by isChecklistComplete().
+      const REFERRAL_CHIPS = [
+        { value: 'insurance_agent', label: 'Insurance Agent' },
+        { value: 'realtor', label: 'Realtor' },
+        { value: 'friend', label: 'Friend/Family' },
+        { value: 'web', label: 'Found Online' },
+      ];
+      let deferredReferralPick = null;
+      let deferredReferralDismissed = false;
+      function referralAnsweredKey() { return 'oq_referral_answered_' + (currentClaim && currentClaim.id); }
+      function referralAlreadyAnswered() {
+        try { return localStorage.getItem(referralAnsweredKey()) === '1'; } catch (e) { return false; }
+      }
+      function markReferralAnswered() {
+        try { localStorage.setItem(referralAnsweredKey(), '1'); } catch (e) { /* storage blocked: in-memory flag still hides it this load */ }
+        deferredReferralDismissed = true;
+      }
+      function shouldShowDeductiblePrompt(claim) {
+        // C6: ask only when the parser has run (loss_sheet_parsed_at) and deductible_amount is still empty.
+        return !!claim && claim.funding_type === 'insurance'
+          && (claim.deductible_amount === null || claim.deductible_amount === undefined || claim.deductible_amount === '')
+          && !!claim.loss_sheet_parsed_at; // only once the parser has run, so "we couldn't read it" is true
+      }
+      function shouldShowReferralCard(claim) {
+        // Only while we do not already know how they found us.
+        return !!claim
+          && (!claim.referral_source || claim.referral_source === 'web')
+          && !claim.referral_code && !claim.referral_id && !claim.referral_agent_id
+          && !deferredReferralDismissed && !referralAlreadyAnswered();
+      }
+
+      function renderDeferredPrompts() {
+        const host = document.getElementById('deferred-prompts');
+        if (!host || !currentClaim) return;
+        let html = '';
+        if (shouldShowDeductiblePrompt(currentClaim)) {
+          html += `
+            <div class="deferred-card" id="deductible-prompt">
+              <div class="deferred-card-title">Add your deductible &mdash; we couldn&rsquo;t read it from your estimate.</div>
+              <div class="deferred-card-sub">Optional. You can still submit for bids without it.</div>
+              <div class="deferred-row">
+                <input type="number" step="0.01" min="0" class="form-input" id="deductible-prompt-input" placeholder="Deductible amount ($)" aria-label="Deductible amount">
+                <button type="button" class="btn btn-sm btn-primary" id="deductible-prompt-save">Save</button>
+              </div>
+            </div>`;
+        }
+        if (shouldShowReferralCard(currentClaim)) {
+          const needsWho = ['insurance_agent', 'realtor', 'friend'].includes(deferredReferralPick);
+          html += `
+            <div class="deferred-card" id="referral-card">
+              <div class="deferred-card-title">How did you hear about us?</div>
+              <div class="deferred-card-sub">Optional.</div>
+              <div class="deferred-chips">
+                ${REFERRAL_CHIPS.map(c => `<button type="button" class="deferred-chip${deferredReferralPick === c.value ? ' active' : ''}" data-ref="${c.value}">${c.label}</button>`).join('')}
+              </div>
+              ${needsWho ? `
+              <div class="deferred-fields">
+                <div class="form-group"><label class="form-label" for="dash-ref-name">Their Name</label>
+                  <input type="text" class="form-input" id="dash-ref-name" placeholder="Agent / Realtor name"></div>
+                <div class="form-group"><label class="form-label" for="dash-ref-email">Their Email (optional)</label>
+                  <input type="email" class="form-input" id="dash-ref-email" placeholder="agent@company.com"></div>
+              </div>` : ''}
+              <div class="deferred-row">
+                <button type="button" class="btn btn-sm btn-primary" id="referral-save" ${deferredReferralPick ? '' : 'disabled'}>Save</button>
+                <button type="button" class="btn btn-sm btn-ghost" id="referral-skip">Skip</button>
+              </div>
+            </div>`;
+        }
+        host.innerHTML = html;
+
+        const dSave = document.getElementById('deductible-prompt-save');
+        if (dSave) dSave.addEventListener('click', saveDeferredDeductible);
+        host.querySelectorAll('.deferred-chip').forEach(btn => btn.addEventListener('click', () => {
+          deferredReferralPick = btn.dataset.ref;
+          renderDeferredPrompts();
+        }));
+        const rSave = document.getElementById('referral-save');
+        if (rSave) rSave.addEventListener('click', saveDeferredReferral);
+        const rSkip = document.getElementById('referral-skip');
+        if (rSkip) rSkip.addEventListener('click', () => { markReferralAnswered(); renderDeferredPrompts(); });
+      }
+
+      async function saveDeferredDeductible() {
+        const input = document.getElementById('deductible-prompt-input');
+        const n = input ? parseFloat(input.value) : NaN;
+        if (!isFinite(n) || n < 0) { showError('Enter your deductible as a dollar amount.'); return; }
+        try {
+          if (CONFIG.DEMO_MODE) {
+            currentClaim.deductible_amount = n;
+          } else if (sb) {
+            const { data: rows, error } = await sb.from('claims').update({ deductible_amount: n }).eq('id', currentClaim.id).select('id');
+            if (error) throw error;
+            if (!Array.isArray(rows) || rows.length === 0) throw new Error('zero-row update: claims.deductible_amount matched no rows for claim ' + currentClaim.id);
+            currentClaim.deductible_amount = n;
+          }
+          renderClaimInfo();
+          showSuccess('Deductible saved.');
+        } catch (err) {
+          console.error('Deductible save error:', err);
+          showError('Failed to save your deductible. Please try again.');
+        }
+      }
+
+      async function saveDeferredReferral() {
+        if (!deferredReferralPick) return;
+        const pick = deferredReferralPick;
+        const nameEl = document.getElementById('dash-ref-name');
+        const emailEl = document.getElementById('dash-ref-email');
+        const refName = nameEl ? nameEl.value.trim() : '';
+        const refEmail = emailEl ? emailEl.value.trim() : '';
+        try {
+          if (CONFIG.DEMO_MODE) {
+            currentClaim.referral_source = pick;
+          } else if (sb) {
+            const { data: rows, error } = await sb.from('claims').update({ referral_source: pick }).eq('id', currentClaim.id).select('id');
+            if (error) throw error;
+            if (!Array.isArray(rows) || rows.length === 0) throw new Error('zero-row update: claims.referral_source matched no rows for claim ' + currentClaim.id);
+            currentClaim.referral_source = pick;
+            // claims has no referrer name/email columns; sign-up stored them on profiles
+            // (referring_agent_name / referring_agent_email). Non-critical: log-only on failure.
+            if ((refName || refEmail) && currentUser) {
+              const upd = {};
+              if (refName) upd.referring_agent_name = refName;
+              if (refEmail) upd.referring_agent_email = refEmail;
+              const { data: pRows, error: pErr } = await sb.from('profiles').update(upd).eq('id', currentUser.id).select('id');
+              if (pErr) console.warn('Referrer name/email save failed (non-critical):', pErr);
+              else if (!Array.isArray(pRows) || pRows.length === 0) console.warn('gh-3136: zero-row update -- profiles referrer fields matched no rows');
+            }
+          }
+          markReferralAnswered();
+          renderDeferredPrompts();
+          showSuccess('Thanks for letting us know.');
+        } catch (err) {
+          console.error('Referral save error:', err);
+          showError('Failed to save. Please try again.');
+        }
       }
 
       function renderChecklist() {

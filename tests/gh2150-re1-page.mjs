@@ -487,7 +487,7 @@ const gaGateSrc = fs.readFileSync(path.join(repoRoot, 'js', 'ga-gate.js'), 'utf8
     crypto: { getRandomValues(arr) { for (let i = 0; i < arr.length; i++) arr[i] = i % 256; return arr; } },
   };
   win.window = win;
-  win.localStorage.setItem('oq_variant_v3', 'g');
+  win.localStorage.setItem('oq_variant_v4', 'g');
   const gtagCalls = [];
   const ctx = {
     window: win, document: doc, localStorage,
@@ -701,7 +701,7 @@ const gaGateSrc = fs.readFileSync(path.join(repoRoot, 'js', 'ga-gate.js'), 'utf8
   }
 }
 {
-  // No oq_variant_v3 cookie/localStorage/URL param at all (the normal case
+  // No oq_variant_v4 cookie/localStorage/URL param at all (the normal case
   // on every real visit, since no partner page ever sets that key) -- the
   // conversion event must carry variant:"re-1" and its own funnel_id, not
   // "unknown" and not a missing field.

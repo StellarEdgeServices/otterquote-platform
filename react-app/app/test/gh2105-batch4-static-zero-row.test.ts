@@ -61,10 +61,11 @@ describe('project-info money pages: claims write requires a row (THROW)', () => 
     expect(show({ message: 'No project found for your account. Please start from the beginning.' })).toBe('No project found for your account. Please start from the beginning.');
     expect(show({})).toBe('Something went wrong. Please try again.');
   });
-  it('the adjuster_id (b) write on acv/rcv is untouched', () => {
+  it('gh-3136 (P14): the adjuster_id write is gone from acv/rcv (moved to the dashboard, zero-row-checked there)', () => {
     for (const f of ['project-info-acv.html', 'project-info-rcv.html']) {
-      expect(read(f)).toContain("await sb.from('claims').update({ adjuster_id: adjData }).eq('id', claimId);");
+      expect(read(f)).not.toContain("update({ adjuster_id: adjData })");
     }
+    expect(read('dashboard.html')).toContain("update({ adjuster_id: adjData }).eq('id', currentClaim.id).select('id')");
   });
 });
 

@@ -1001,7 +1001,7 @@
         // Router-arm variant start.html forwards as `?v=<arm>` (same
         // helper as ins-1.html/re-1.html/partner-re.html).
         function getOqVariant() {
-            var VARIANT_KEY = 'oq_variant_v3';
+            var VARIANT_KEY = 'oq_variant_v4';
             var VARIANT_RE = /^[a-z0-9]{1,8}$/;
             function clean(v) {
                 if (typeof v !== 'string') return null;
@@ -1021,7 +1021,7 @@
                 var fromCookie = m ? clean(decodeURIComponent(m[1])) : null;
                 if (fromCookie) return fromCookie;
             } catch (e) {}
-            // S11 fix: no partner page ever sets the oq_variant_v3 cookie,
+            // S11 fix: no partner page ever sets the oq_variant_v4 cookie,
             // so this always fell through to 'unknown' on HI-5 (this
             // getOqVariant() was copied from hi-1.html's router-arm test,
             // where 'unknown' is the correct fallback). HI-5 has exactly

@@ -455,7 +455,7 @@ async function main() {
   ok(/STEP_INDEX = \{ 'f-funding': 1, 'f-contact': 2, 'f-address': 3, 'f-thanks': 4 \}/.test(ROUTER), 'STEP_INDEX is positional: f-funding 1, f-contact 2, f-address 3, f-thanks 4 (tokens unchanged)');
   ok(/var CONSENT_KEY = 'arm_f_s3_consent_checkbox';/.test(ROUTER), "consent.key stays 'arm_f_s3_consent_checkbox'");
   ok(/fbq\('track', 'Lead', \{\}, \{ eventID: eventId \}\)/.test(ROUTER) && /'router_contact_submitted'/.test(ROUTER) && /'generate_lead'/.test(ROUTER), 'the conversion events keep their names and the Meta Lead call shape');
-  ok(/var KNOWN_ARMS = \['a', 'b', 'c', 'd', 'e', 'f'\];/.test(START) && /var DIRECT_ONLY_ARMS = \['f'\]/.test(START) && /var LIVE_VARIANTS = \['d',\s*'e'\]/.test(START), 'KNOWN_ARMS / DIRECT_ONLY_ARMS / LIVE_VARIANTS are unchanged');
+  ok(/var KNOWN_ARMS = \['a', 'b', 'c', 'd', 'e', 'f'\];/.test(START) && /var DIRECT_ONLY_ARMS = \['f', 'e'\]/.test(START) && /var LIVE_VARIANTS = \['d'\]/.test(START), 'KNOWN_ARMS unchanged; DIRECT_ONLY_ARMS / LIVE_VARIANTS are the gh-3136 values (e direct-only, d live)');
   ok(/var INSERT_EXTRA_COLUMNS = \['zip'\];/.test(START) && /var ATTR_KEYS = \['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid', 'v'\];/.test(START), 'INSERT_EXTRA_COLUMNS and ATTR_KEYS are unchanged in start.html');
   ok(/id="routerFRoot"[^>]*data-ssr-step="f-funding"/.test(START), 'the SSR-hydrate markup contract on #routerFRoot is unchanged');
   ok(!fs.existsSync(path.join(repoRoot, 'supabase/migrations')) || !/gh2362|2362/.test(fs.readdirSync(path.join(repoRoot, 'supabase/migrations')).join('\n')), 'no migration for this issue (Q3: no migration in this PR)');
