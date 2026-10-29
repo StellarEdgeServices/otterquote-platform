@@ -15,14 +15,15 @@
  * NOTE: Uses atob() (not Buffer) — Next.js middleware runs in the Edge runtime
  * which does not have Node.js Buffer. atob() is available in all Edge environments.
  *
- * ADMIN EMAILS: dustinstohler1@gmail.com, dustin@otterquote.com
+ * gh-3077: there is no email list in this file. After the token is verified, the caller's own
+ * JWT is sent to the SQL function public.is_admin_email() (PostgREST RPC), the single source
+ * of truth for who is an admin (same call as supabase/functions/_shared/admin-gate.ts
+ * requireAdmin). Anything other than a literal `true` denies (fail closed).
  * REDIRECT: /get-started (React unauthenticated landing)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { firstTouchSetCookie } from './app/lib/attribution-core';
-
-const ADMIN_EMAILS = ['dustinstohler1@gmail.com', 'dustin@otterquote.com'];
 
 // Public values (same as js/config.js and the NEXT_PUBLIC_* build env); the
 // publishable key is not a secret. Fallbacks mirror PR #3040.
@@ -43,6 +44,27 @@ async function verifiedEmail(token: string): Promise<string | null> {
     return typeof user?.email === 'string' ? user.email : null;
   } catch {
     return null;
+  }
+}
+
+// gh-3077: asks the database whether THIS caller is an admin, using the caller's JWT so
+// auth.jwt() inside public.is_admin_email() is theirs. True only for a literal `true`;
+// any error, non-200 or other body denies.
+async function isAdminCaller(token: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/is_admin_email`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+    });
+    if (!res.ok) return false;
+    return (await res.json()) === true;
+  } catch {
+    return false;
   }
 }
 
@@ -95,12 +117,12 @@ export async function middleware(request: NextRequest) {
       return redirectToLogin();
     }
 
-    // gh-3048: verify the signature via Supabase Auth; use ITS email, not the payload's.
+    // gh-3048: verify the token (signature, revocation) via Supabase Auth.
     const email = await verifiedEmail(token);
     if (!email) return redirectToLogin();
 
-    // Admin allow-list
-    if (!ADMIN_EMAILS.includes(email)) {
+    // gh-3077: admin set = whatever public.is_admin_email() accepts for this caller.
+    if (!(await isAdminCaller(token))) {
       return redirectToLogin();
     }
 
