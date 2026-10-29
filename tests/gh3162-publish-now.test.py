@@ -7,6 +7,15 @@ pn = importlib.util.module_from_spec(spec); spec.loader.exec_module(pn)
 SHA = "a" * 40
 
 class T(unittest.TestCase):
+    def test_clean_pass_real_shas(self):
+        H = "0243951a8e6777a6d39c76ef9d7bb5e4a716ea46"; O = "18ae16fa827884520e3539caf0145cdd3b006674"
+        ok = "REVIEW: PASS\nhead: %s\n\nSee 6505286731 and 6504914587; the code is defaced-free.\nprior head %s was reviewed" % (H, H[:7])
+        self.assertTrue(pn.clean_pass(ok, H, "REVIEW"))
+        bad = "REVIEW: PASS\nhead: %s\n\nAlso compared against %s" % (H, O)
+        self.assertFalse(pn.clean_pass(bad, H, "REVIEW"))
+        bad2 = "REVIEW: PASS\nhead: %s\n\nshort other sha %s" % (H, O[:9])
+        self.assertFalse(pn.clean_pass(bad2, H, "REVIEW"))
+
     def test_sites(self):
         self.assertEqual(pn.sites_for_files(["news/x.html"]), {"jade"})
         self.assertEqual(pn.sites_for_files(["react-app/src/a.tsx"]), {"app"})

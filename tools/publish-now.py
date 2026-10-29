@@ -275,7 +275,11 @@ def clean_pass(body, sha, prefix):
     head = next((l.strip() for l in raw[1:] if re.match(r"head:", l.strip(), re.I)), "")
     if re.fullmatch(r"head: ([0-9a-fA-F]{40})", head) is None or head[6:].lower() != sha:
         return False
-    return all(sha.startswith(r.lower()) for r in re.findall(r"[0-9a-fA-F]{7,}", normalize(body)))
+    # A "sha-like" run has 7+ hex chars with at least one digit AND one a-f letter: pure-digit runs (GitHub comment
+    # ids such as 6505286731) and pure-letter words ("defaced") are not shas and must not block a real PASS.
+    runs = [r for r in re.findall(r"[0-9a-fA-F]{7,}", normalize(body))
+            if re.search(r"[0-9]", r) and re.search(r"[a-fA-F]", r)]
+    return all(sha.startswith(r.lower()) for r in runs)
 
 
 def gate(comments, sha, prefix):
