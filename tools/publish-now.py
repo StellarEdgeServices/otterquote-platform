@@ -1,0 +1,553 @@
+#!/usr/bin/env python3
+"""publish-now.py -- ship-today path: merge an approved PR, publish production, re-lock, verify every URL.
+
+gh-3162 (P04). Dustin's design ruling (chat with Ben, 2026-10-29 10:58 ET): "A.   Your call." = KEEP the
+2026-09-30 publish lock. This is the "publish now" path for something that must go out today; it does NOT
+replace the twice-daily netlify-publish-batch.yml. Same API sequence as that workflow
+(unlock old -> restore new -> lock live), run for one merge commit.
+
+Usage:
+  publish-now.py <pr-number> [--check-only] [--paths a.html,b/ ...]
+
+Env (never printed): GITHUB_TOKEN, NETLIFY_TOKEN. Python 3 stdlib only.
+
+RESUMABLE: every invocation is bounded to ~165 s (a device shell call dies at 180 s). Each step is idempotent,
+so on exit 3 ("PENDING") just run the same command again:
+  1. PR still open: require `REVIEW: PASS` naming the current head sha; for label r177:legal-read (or [R-120]/
+     [R-177] in the title) also `LEGAL-READ: PASS` + `R-177 SIGNED:` naming the head. Re-run a stale failed
+     "R-177 pair gate" job once the pair is present. Require the required checks green and no red check-run.
+     Enqueue on the merge queue (GraphQL; main is queue-only, REST merge returns 405). Poll for the merge.
+  2. Merged: pick the site(s) from the changed files (react-app/** -> app.otterquote.com; anything served from
+     the root tree -> otterquote.com), read Netlify credits (< 300 -> stop, exit 4), wait for the READY main
+     deploy whose commit_ref is the merge sha, publish it (unlock old, restore new, lock live) and verify
+     published_deploy == new and locked == true.
+  3. Check: for each changed public URL curl it with ?oq_internal=1 (expect 200), confirm presence in the live
+     sitemap.xml when the page is listed in the repo sitemap at the merge sha, plus a negative control (a random
+     non-existent path in the same directory must return 404). Prints `PASS|FAIL <url> <status> sitemap=<..>`
+     per URL and `RESULT: PASS|FAIL`.
+  --check-only skips steps 1-2 (no merge, no publish) and only runs step 3. With --paths the PR number may be
+  given as 0 (or `-`).
+
+Exit codes: 0 PASS | 1 FAIL | 2 refused (gate not met / error) | 3 PENDING, re-run | 4 Netlify credits < 300.
+"""
+import json
+import os
+import re
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+
+REPO = "StellarEdgeServices/otterquote-platform"
+GH = "https://api.github.com"
+NL = "https://api.netlify.com/api/v1"
+SITES = {
+    "jade": {"id": "6748a414-1baa-4309-a5f9-f3a7f45e3d94", "host": "https://otterquote.com"},
+    "app": {"id": "26316673-212a-4f20-a95e-902ece8387c4", "host": "https://app.otterquote.com"},
+}
+NETLIFY_ACCOUNT = "dustin-otlykss"
+CREDIT_FLOOR = 300
+REQUIRED_CHECKS = ("Null-Byte & Size Sanity Check", "5-Page Revenue-Path Smoke Check")
+# retired / advisory checks that may be red without blocking (same list as pr-merge-serial-device.py)
+TOLERATED_RED = {"REVIEW PASS gate", "R-120 path gate", "Run E2E Tests", "R-120 signed review"}
+R177_JOB = "R-177 pair gate"
+BUDGET_S = 165  # one invocation must fit a 180 s device-shell call
+
+# Top-level entries netlify.toml does NOT copy into _site (lower-cased); keep in sync with netlify.toml [build].
+NOT_SERVED_TOP = {
+    "_site", "netlify", "react-app", "supabase", "scripts", "sql", "tests", "handoffs", "docs", "archive",
+    "runbooks", "skills-for-code", "democracy", "deploy-checks", "forge-config", "otterquote-deploy",
+    "tools", "node_modules", "netlify.toml", "tools-e2e-test.txt", "package.json", "package-lock.json",
+}
+NOT_SERVED_EXT = (".md", ".py", ".sh", ".toml", ".ts", ".tsx")
+# _redirects is copied into _site but is config, not a public URL.
+NOT_A_URL = {"_redirects", "_headers"}
+
+_T0 = time.time()
+_SECRETS = []
+
+
+# ---------------------------------------------------------------- pure functions (unit-tested, no network)
+
+def is_served(path):
+    """True if this repo path ends up in the published _site tree (mirrors the netlify.toml build command)."""
+    p = path.strip().lstrip("/")
+    if not p or p.startswith("."):
+        return False
+    top = p.split("/", 1)[0]
+    if top.lower() in NOT_SERVED_TOP:
+        return False
+    if p.lower().endswith(NOT_SERVED_EXT):
+        return False
+    if any(seg in ("node_modules", ".git", ".DS_Store") for seg in p.split("/")):
+        return False
+    return True
+
+
+def sites_for_files(files):
+    """Which Netlify sites a change set touches: react-app/** -> 'app'; served root-tree files -> 'jade'.
+    react-app/app/lib/attribution-core.ts is bundled into the jade edge function, so it also builds jade."""
+    out = set()
+    for f in files:
+        p = f.strip().lstrip("/")
+        if p.startswith("react-app/"):
+            out.add("app")
+            if p == "react-app/app/lib/attribution-core.ts":
+                out.add("jade")
+        elif is_served(p) or p.startswith("netlify/"):
+            # netlify/ (edge functions) is not copied to _site but is bundled into the jade deploy
+            out.add("jade")
+    return out
+
+
+def url_for_path(path, host=SITES["jade"]["host"]):
+    """Public URL for a served repo path, or None when the path is not a public URL."""
+    p = path.strip().lstrip("/")
+    if not is_served(p) or p in NOT_A_URL:
+        return None
+    base = p.rsplit("/", 1)[-1]
+    if base in NOT_A_URL:
+        return None
+    if p == "index.html":
+        return host + "/"
+    if p.endswith("/index.html"):
+        return host + "/" + p[: -len("index.html")]
+    return host + "/" + urllib.parse.quote(p, safe="/-_.~")
+
+
+def expand_paths(spec, tree_files):
+    """--paths entries: a file, or a directory ('b/') expanded against the known tree listing."""
+    out = []
+    for item in [s.strip() for s in spec.split(",") if s.strip()]:
+        item = item.lstrip("/")
+        if item.endswith("/"):
+            out += [f for f in tree_files if f.startswith(item)]
+        else:
+            out.append(item)
+    return out
+
+
+def sitemap_locs(xml_text):
+    return set(re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", xml_text or ""))
+
+
+def listed_in_sitemap(url, locs):
+    return url in locs or (url.endswith("/index.html") and url[: -len("index.html")] in locs)
+
+
+def format_line(ok, url, status, sitemap):
+    """`PASS|FAIL <url> <status> sitemap=<yes|no|n/a>`"""
+    return "%s %s %s sitemap=%s" % ("PASS" if ok else "FAIL", url, status, sitemap)
+
+
+def judge_url(status, sitemap_needed, in_live_sitemap):
+    """-> (ok, sitemap_label). 200 is required; if the page is listed in the repo sitemap it must also be live."""
+    if not sitemap_needed:
+        return status == 200, "n/a"
+    return (status == 200 and bool(in_live_sitemap)), ("yes" if in_live_sitemap else "no")
+
+
+def review_ok(bodies, sha):
+    """`REVIEW: PASS` (anchored at comment start) whose text names the current head sha (>= 7 hex chars)."""
+    for b in bodies:
+        t = b.lstrip()
+        if re.match(r"REVIEW: PASS\b", t) and _names_sha(t, sha):
+            return True
+    return False
+
+
+def _names_sha(text, sha):
+    for n in (40, 12, 10, 8, 7):
+        h = sha[:n]
+        if re.search(r"(?<![0-9a-f])" + re.escape(h) + r"(?![0-9a-f])", text):
+            return True
+    return False
+
+
+def r177_pair(bodies, n, sha):
+    """(legal_read_pass, signed) over the exact head sha -- same strength as pr-merge-serial-device.py (STRICT_HEAD)."""
+    read_ok = any(
+        re.match(r"LEGAL-READ: PASS\b", x.lstrip())
+        and re.search(r"(?<![0-9a-f])" + re.escape(sha) + r"(?![0-9a-f])", x)
+        for x in bodies
+    )
+    signed = any(x.lstrip().startswith("R-177 SIGNED: pr=%s sha=%s" % (n, sha)) for x in bodies)
+    if not signed and len(sha) == 40:
+        for x in bodies:
+            ls = x.lstrip().splitlines()
+            if ls and ls[0].startswith("R-177 SIGNED:") and any(l.strip().startswith("Head: " + sha) for l in ls[1:6]):
+                signed = True
+                break
+    return read_ok, signed
+
+
+def needs_r177(title, labels):
+    return bool(re.search(r"\[R-1(20|77)\]", title or "")) or "r177:legal-read" in set(labels or [])
+
+
+def trusted_human(c):
+    u = c.get("user") or {}
+    trusted = c.get("author_association") in ("OWNER", "MEMBER", "COLLABORATOR") or u.get("login") == "dustinstohler1-dotcom"
+    return bool(trusted) and u.get("type") != "Bot" and not str(u.get("login") or "").endswith("[bot]")
+
+
+def pick_deploy(deploys, merge_sha, branch="main"):
+    """Ready production deploy built from the merge commit."""
+    for d in deploys:
+        if (d.get("state") == "ready" and d.get("branch") == branch and d.get("context", "production") == "production"
+                and str(d.get("commit_ref") or "") == merge_sha):
+            return d
+    return None
+
+
+# ---------------------------------------------------------------- plumbing
+
+def left():
+    return BUDGET_S - (time.time() - _T0)
+
+
+def say(*a):
+    print(*a, flush=True)
+
+
+def scrub(s):
+    s = str(s)
+    for sec in _SECRETS:
+        if sec:
+            s = s.replace(sec, "***")
+    return s
+
+
+def http(method, url, headers=None, body=None, timeout=30):
+    data = None
+    h = {"User-Agent": "publish-now"}
+    h.update(headers or {})
+    if body is not None:
+        data = json.dumps(body).encode()
+        h["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, method=method, headers=h, data=data)
+    try:
+        with urllib.request.urlopen(req, timeout=max(5, min(timeout, left()))) as r:
+            return r.status, r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", "replace")
+    except Exception as e:  # network error
+        return 0, "ERR %s" % scrub(e)
+
+
+def jload(s):
+    try:
+        return json.loads(s)
+    except Exception:
+        return None
+
+
+class Ctx:
+    def __init__(self):
+        self.gh_tok = os.environ.get("GITHUB_TOKEN", "")
+        self.nl_tok = os.environ.get("NETLIFY_TOKEN", "")
+        _SECRETS.extend([self.gh_tok, self.nl_tok])
+
+    def gh(self, method, path, body=None):
+        h = {"Accept": "application/vnd.github+json"}
+        if self.gh_tok:
+            h["Authorization"] = "Bearer " + self.gh_tok
+        s, b = http(method, GH + path, h, body)
+        return s, jload(b) if b else None, b
+
+    def gql(self, query, variables=None):
+        s, b = http("POST", GH + "/graphql", {"Authorization": "Bearer " + self.gh_tok}, {"query": query, "variables": variables or {}})
+        return s, jload(b)
+
+    def nl(self, method, path):
+        s, b = http(method, NL + path, {"Authorization": "Bearer " + self.nl_tok}, {} if method == "POST" else None, timeout=60)
+        return s, jload(b) if b else None
+
+
+def pr_files(ctx, n):
+    files, page = [], 1
+    while True:
+        s, d, _ = ctx.gh("GET", "/repos/%s/pulls/%s/files?per_page=100&page=%d" % (REPO, n, page))
+        if s != 200 or not isinstance(d, list):
+            raise RuntimeError("cannot list PR files: HTTP %s" % s)
+        for f in d:
+            files.append(f["filename"])
+            if f.get("previous_filename"):
+                files.append(f["previous_filename"])
+        if len(d) < 100:
+            return files
+        page += 1
+
+
+# ---------------------------------------------------------------- step 1: gates + enqueue + merge
+
+def step_merge(ctx, n):
+    """Returns merge sha (str) when merged; exits 2/3 otherwise."""
+    s, p, _ = ctx.gh("GET", "/repos/%s/pulls/%s" % (REPO, n))
+    if s != 200:
+        say("REFUSED: cannot read PR #%s (HTTP %s)" % (n, s)); sys.exit(2)
+    if p.get("merged"):
+        say("PR #%s already merged: %s" % (n, p["merge_commit_sha"][:10])); return p["merge_commit_sha"]
+    if p.get("state") != "open":
+        say("REFUSED: PR #%s is %s and not merged" % (n, p.get("state"))); sys.exit(2)
+    sha = p["head"]["sha"]
+    labels = [l["name"] for l in p.get("labels", [])]
+    say("PR #%s head=%s labels=%s" % (n, sha[:10], ",".join(labels) or "-"))
+    s, cs, _ = ctx.gh("GET", "/repos/%s/issues/%s/comments?per_page=100" % (REPO, n))
+    if s != 200:
+        say("REFUSED: cannot read comments (HTTP %s)" % s); sys.exit(2)
+    bodies = [c.get("body", "") for c in cs if trusted_human(c)]
+    if not review_ok(bodies, sha):
+        say("REFUSED: no `REVIEW: PASS` comment naming current head %s (a pass over an older head does not count)" % sha[:10]); sys.exit(2)
+    say("gate ok: REVIEW: PASS names %s" % sha[:10])
+    flagged = needs_r177(p.get("title"), labels)
+    pair_ok = True
+    if flagged:
+        ro, so = r177_pair(bodies, n, sha)
+        if not (ro and so):
+            say("REFUSED: R-177 flagged; LEGAL-READ: PASS over %s=%s, R-177 SIGNED over %s=%s" % (sha[:10], ro, sha[:10], so)); sys.exit(2)
+        say("gate ok: R-177 pair present over %s" % sha[:10])
+    # check-runs on the head
+    s, d, _ = ctx.gh("GET", "/repos/%s/commits/%s/check-runs?per_page=100" % (REPO, sha))
+    runs = (d or {}).get("check_runs", []) if s == 200 else []
+    if s != 200:
+        say("REFUSED: cannot read check-runs (HTTP %s)" % s); sys.exit(2)
+    if flagged:
+        gate = sorted([r for r in runs if r["name"] == R177_JOB], key=lambda r: r.get("started_at") or "")
+        if gate and gate[-1].get("status") == "completed" and gate[-1].get("conclusion") == "failure":
+            # the gate does not re-run when a signature lands: re-run the latest failed job
+            s, _, b = ctx.gh("POST", "/repos/%s/actions/jobs/%s/rerun" % (REPO, gate[-1]["id"]))
+            say("re-ran stale failed `%s` job %s -> HTTP %s" % (R177_JOB, gate[-1]["id"], s))
+            say("PENDING: re-run the same command"); sys.exit(3)
+        if gate and gate[-1].get("status") != "completed":
+            say("PENDING: `%s` still running; re-run the same command" % R177_JOB); sys.exit(3)
+    latest = {}
+    for r in sorted(runs, key=lambda r: r.get("started_at") or ""):
+        latest[r["name"]] = r
+    red = [k for k, r in latest.items() if r.get("conclusion") in ("failure", "timed_out") and k not in TOLERATED_RED]
+    if red:
+        say("REFUSED: failing check-run(s) on head %s: %s" % (sha[:10], red)); sys.exit(2)
+    missing = [k for k in REQUIRED_CHECKS if not (latest.get(k) and latest[k].get("conclusion") == "success")]
+    if missing:
+        pend = [k for k in missing if not latest.get(k) or latest[k].get("status") != "completed"]
+        if pend:
+            say("PENDING: required check(s) not finished: %s; re-run the same command" % pend); sys.exit(3)
+        say("REFUSED: required check(s) not green: %s" % missing); sys.exit(2)
+    say("gate ok: required checks green")
+    # enqueue
+    s, d = ctx.gql('query($n:Int!){repository(owner:"StellarEdgeServices",name:"otterquote-platform"){pullRequest(number:$n){id isInMergeQueue}}}', {"n": int(n)})
+    node = ((d or {}).get("data") or {}).get("repository", {}).get("pullRequest") if s == 200 else None
+    if not node:
+        say("REFUSED: GraphQL PR lookup failed (HTTP %s)" % s); sys.exit(2)
+    if not node["isInMergeQueue"]:
+        s, d = ctx.gql('mutation($id:ID!){enqueuePullRequest(input:{pullRequestId:$id}){mergeQueueEntry{id state position}}}', {"id": node["id"]})
+        if s != 200 or (d or {}).get("errors"):
+            say("REFUSED: enqueue failed: HTTP %s %s" % (s, scrub(json.dumps((d or {}).get("errors"))[:300]))); sys.exit(2)
+        say("enqueued PR #%s on the merge queue" % n)
+    else:
+        say("PR #%s already in the merge queue" % n)
+    deadline = time.time() + min(140, left() - 5)
+    while time.time() < deadline:
+        time.sleep(10)
+        s, p, _ = ctx.gh("GET", "/repos/%s/pulls/%s" % (REPO, n))
+        if s == 200 and p.get("merged"):
+            say("MERGED %s" % p["merge_commit_sha"][:10]); return p["merge_commit_sha"]
+        if s == 200 and p.get("state") == "closed":
+            say("REFUSED: PR #%s closed without merging (left the queue)" % n); sys.exit(2)
+    say("PENDING: not merged yet; re-run the same command"); sys.exit(3)
+
+
+# ---------------------------------------------------------------- step 2: publish
+
+def credits(ctx):
+    s, d = ctx.nl("GET", "/%s/billing/credits" % NETLIFY_ACCOUNT)
+    try:
+        return float(d["plan_credits"]["available"])
+    except Exception:
+        say("STOP: cannot read Netlify credits (HTTP %s); not publishing blind" % s); sys.exit(4)
+
+
+def publish_site(ctx, key, merge_sha):
+    site = SITES[key]
+    sid = site["id"]
+    s, d = ctx.nl("GET", "/sites/%s" % sid)
+    if s != 200:
+        say("REFUSED: cannot read %s site (HTTP %s)" % (key, s)); sys.exit(2)
+    old = d["published_deploy"]
+    s, ds = ctx.nl("GET", "/sites/%s/deploys?production=true&state=ready&per_page=30" % sid)
+    new = pick_deploy(ds if isinstance(ds, list) else [], merge_sha)
+    if old.get("commit_ref") == merge_sha:
+        say("[%s] merge deploy %s already published (locked=%s)" % (key, old["id"], old.get("locked")))
+        new = old
+    elif not new:
+        # still building? show state of the newest deploys for the merge sha
+        s, all_ = ctx.nl("GET", "/sites/%s/deploys?production=true&per_page=10" % sid)
+        st = [x.get("state") for x in (all_ or []) if str(x.get("commit_ref") or "") == merge_sha]
+        return ("wait", st)
+    elif new.get("published_at"):
+        say("[%s] deploy %s was already published before; not re-publishing" % (key, new["id"]));
+    else:
+        if (new.get("created_at") or "") <= (old.get("created_at") or ""):
+            say("REFUSED: [%s] merge deploy is older than the published one; publishing would roll back" % key); sys.exit(2)
+        say("[%s] publishing %s (commit %s) over %s" % (key, new["id"], merge_sha[:10], old["id"]))
+        try:
+            su, _ = ctx.nl("POST", "/deploys/%s/unlock" % old["id"]); say("  unlock old -> HTTP %s" % su)
+            sr, _ = ctx.nl("POST", "/sites/%s/deploys/%s/restore" % (sid, new["id"])); say("  restore new -> HTTP %s" % sr)
+            time.sleep(6)
+        finally:
+            s2, d2 = ctx.nl("GET", "/sites/%s" % sid)
+            live = (d2 or {}).get("published_deploy") or {}
+            if live.get("id") and not live.get("locked"):
+                sl, _ = ctx.nl("POST", "/deploys/%s/lock" % live["id"]); say("  lock live %s -> HTTP %s" % (live["id"], sl))
+    s, d = ctx.nl("GET", "/sites/%s" % sid)
+    pd = (d or {}).get("published_deploy") or {}
+    if pd.get("id") != new["id"] and pd.get("commit_ref") != merge_sha:
+        # a newer main deploy published by the batch is fine only if it carries the merge sha ancestry; be strict
+        say("FAIL: [%s] published deploy %s != expected %s" % (key, pd.get("id"), new["id"])); sys.exit(1)
+    if not pd.get("locked"):
+        sl, _ = ctx.nl("POST", "/deploys/%s/lock" % pd["id"]); say("  re-lock -> HTTP %s" % sl)
+        s, d = ctx.nl("GET", "/sites/%s" % sid); pd = (d or {}).get("published_deploy") or {}
+        if not pd.get("locked"):
+            say("FAIL: [%s] site left UNLOCKED; lock it by hand" % key); sys.exit(1)
+    say("[%s] verified: published_deploy=%s commit=%s locked=%s" % (key, pd["id"], str(pd.get("commit_ref"))[:10], pd.get("locked")))
+    return ("ok", pd["id"])
+
+
+def step_publish(ctx, sites, merge_sha):
+    c = credits(ctx)
+    say("netlify credits available: %s" % c)
+    if c < CREDIT_FLOOR:
+        say("STOP: credits %s < %s (Dustin's rule). Not publishing; tell Dustin." % (c, CREDIT_FLOOR)); sys.exit(4)
+    pending = set(sites)
+    while pending:
+        for key in sorted(pending):
+            st, info = publish_site(ctx, key, merge_sha)
+            if st == "ok":
+                pending.discard(key)
+        if not pending:
+            break
+        if left() < 25:
+            say("PENDING: ready main deploy for %s not up yet (state %s); re-run the same command" % (sorted(pending), info)); sys.exit(3)
+        time.sleep(10)
+
+
+# ---------------------------------------------------------------- step 3: verify
+
+def tree_files(ctx, ref):
+    s, d, _ = ctx.gh("GET", "/repos/%s/git/trees/%s?recursive=1" % (REPO, ref))
+    if s != 200 or not d:
+        return []
+    return [t["path"] for t in d.get("tree", []) if t.get("type") == "blob"]
+
+
+def fetch_repo_sitemap(ctx, ref):
+    s, d, _ = ctx.gh("GET", "/repos/%s/contents/sitemap.xml?ref=%s" % (REPO, ref))
+    if s == 200 and d and d.get("content"):
+        import base64
+        return base64.b64decode(d["content"]).decode("utf-8", "replace")
+    # fallback: raw.githubusercontent.com (public repo) when the API is unavailable
+    s, b = http("GET", "https://raw.githubusercontent.com/%s/%s/sitemap.xml" % (REPO, ref), timeout=30)
+    if s == 200 and "<loc>" in b:
+        return b
+    say("note: could not read repo sitemap.xml at %s (HTTP %s); sitemap=n/a for all URLs" % (ref[:10], s))
+    return ""
+
+
+def curl_status(url):
+    sep = "&" if "?" in url else "?"
+    s, _ = http("GET", url + sep + "oq_internal=1", timeout=30)
+    return s
+
+
+def step_check(ctx, files, ref, sites):
+    repo_locs = sitemap_locs(fetch_repo_sitemap(ctx, ref))
+    s, live_xml = http("GET", SITES["jade"]["host"] + "/sitemap.xml?oq_internal=1", timeout=30)
+    live_locs = sitemap_locs(live_xml) if s == 200 else set()
+    if s != 200:
+        say("note: live sitemap.xml returned HTTP %s" % s)
+    urls = []
+    for f in files:
+        u = url_for_path(f)
+        if u and u not in urls:
+            urls.append(u)
+    if "app" in sites:
+        urls.append(SITES["app"]["host"] + "/")
+    ok_all = True
+    dirs = set()
+    if not urls:
+        say("FAIL: no public URLs derived from the change set"); return False
+    for u in urls:
+        st = curl_status(u)
+        needs = u.startswith(SITES["jade"]["host"]) and listed_in_sitemap(u, repo_locs)
+        in_live = listed_in_sitemap(u, live_locs)
+        ok, label = judge_url(st, needs, in_live)
+        say(format_line(ok, u, st, label))
+        ok_all &= ok
+        dirs.add(u.rsplit("/", 1)[0] + "/")
+    for d in sorted(dirs):
+        ctl = d + "oq-negative-control-%s.html" % uuid.uuid4().hex[:10]
+        st = curl_status(ctl)
+        good = st == 404
+        say("%s control %s %s (non-existent path must be 404)" % ("PASS" if good else "FAIL", ctl, st))
+        ok_all &= good
+    return ok_all
+
+
+# ---------------------------------------------------------------- main
+
+def main(argv):
+    args = [a for a in argv if not a.startswith("--")]
+    check_only = "--check-only" in argv
+    paths = None
+    if "--paths" in argv:
+        i = argv.index("--paths")
+        if i + 1 >= len(argv):
+            say("usage: publish-now.py <pr-number> [--check-only] [--paths a.html,b/]"); return 2
+        paths = argv[i + 1]
+        args = [a for a in args if a != paths]
+    if not args and not paths:
+        say("usage: publish-now.py <pr-number> [--check-only] [--paths a.html,b/]"); return 2
+    n = args[0] if args else "0"
+    ctx = Ctx()
+    if not check_only and not (ctx.gh_tok and ctx.nl_tok):
+        say("REFUSED: GITHUB_TOKEN and NETLIFY_TOKEN must be set in the environment"); return 2
+    # --check-only reads only public data; GITHUB_TOKEN is optional there (avoids anonymous rate limits)
+    if n in ("-", "0", ""):
+        if not paths:
+            say("usage: a PR number or --paths is required"); return 2
+        files, ref, sites = None, "main", None
+        files = expand_paths(paths, tree_files(ctx, "main"))
+        sites = sites_for_files(files)
+    else:
+        n = str(int(n))
+        files = pr_files(ctx, n)
+        sites = sites_for_files(files)
+        if paths:
+            files = expand_paths(paths, tree_files(ctx, "main"))
+        ref = "main"
+    if check_only:
+        say("check-only: no merge, no publish")
+        if n not in ("-", "0", ""):
+            s, p, _ = ctx.gh("GET", "/repos/%s/pulls/%s" % (REPO, n))
+            if s == 200 and p.get("merged"):
+                ref = p["merge_commit_sha"]
+        ok = step_check(ctx, files, ref, sites)
+        say("RESULT: %s" % ("PASS" if ok else "FAIL")); return 0 if ok else 1
+    if n in ("-", "0", ""):
+        say("REFUSED: publishing requires a PR number"); return 2
+    say("PR #%s changes %d file(s); sites: %s" % (n, len(files), sorted(sites) or "none (nothing served changes)"))
+    merge_sha = step_merge(ctx, n)
+    ref = merge_sha
+    if sites:
+        step_publish(ctx, sites, merge_sha)
+    else:
+        say("no served files changed: nothing to publish")
+    ok = step_check(ctx, files, ref, sites)
+    say("RESULT: %s" % ("PASS" if ok else "FAIL"))
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
