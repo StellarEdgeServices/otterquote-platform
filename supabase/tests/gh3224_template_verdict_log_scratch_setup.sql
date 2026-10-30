@@ -119,3 +119,14 @@ INSERT INTO public.contractors(id, user_id, template_review_role) VALUES
 INSERT INTO public.contractor_templates(id, contractor_id, trade, funding_type, pdf_storage_path, status, reviewed_at) VALUES
   ('00000000-0000-0000-0000-00000000b001','00000000-0000-0000-0000-0000000000c3','roofing','retail','c3/old.pdf','rejected', '2026-10-01T00:00:00Z'),
   ('00000000-0000-0000-0000-00000000b002','00000000-0000-0000-0000-0000000000c3','siding','retail','c3/s.pdf','admin_validated', '2026-10-02T00:00:00Z');
+
+-- REVIEW 6524262213 R1: mirror production's role attributes and default privileges, so the migration's own grants
+-- are what the proof tests. Read-only from production 2026-10-30 (project yeszghaspzwwstvsrioa, PG 17.6):
+--   pg_roles: service_role rolbypassrls = true; anon, authenticated = false
+--   pg_default_acl (postgres, public): r = arwdDxtm, S = rwU, f = X  to anon, authenticated, service_role
+-- Placed AFTER the fixture tables above so it only shapes objects the migration creates (PG16 has no MAINTAIN
+-- privilege, so ALL on tables here is arwdDxt).
+ALTER ROLE service_role BYPASSRLS;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES    TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authenticated, service_role;

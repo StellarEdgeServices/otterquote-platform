@@ -251,6 +251,10 @@ export async function revalidateTemplates(opts: RevalidateOptions): Promise<Reva
       .from("contractor_templates")
       .update({ validation_result: validationResult, status: newStatus })
       .eq("id", tmpl.id)
+      // [gh-3224] Conditional on the status read at the start of this pass (mirrors gh-3216 / ruling 5 in
+      // index.ts): if an admin verdict (rejected / admin_validated) landed while the pass ran, this matches
+      // zero rows and the gh2105 branch below reports an error without writing over the verdict.
+      .eq("status", tmpl.status)
       .select("id");
     if (updateErr) {
       rowReport.error = `Failed to update template: ${updateErr.message}`;
@@ -260,7 +264,7 @@ export async function revalidateTemplates(opts: RevalidateOptions): Promise<Reva
     // gh-2105 (decision a, legal): `tmpl` was already read from this same
     // table earlier in this pass, so a zero-row match here means the row
     // changed out from under the sweep (deleted, RLS) between that read and
-    // this write -- without this check `report.written` would count a
+    // this write (gh-3224: including a status change, e.g. an admin verdict) -- without this check `report.written` would count a
     // revalidation that never actually persisted the new verdict.
     if (!checkRowsWritten(updateRows).wroteRows) {
       rowReport.error = zeroRowWriteMessage("validate-contract-template/revalidate", `contractor_templates.status=${newStatus} for template ${tmpl.id}`);

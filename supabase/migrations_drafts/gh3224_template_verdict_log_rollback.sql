@@ -12,6 +12,8 @@ BEGIN;
 DROP TRIGGER IF EXISTS trg_contractor_templates_log_verdict ON public.contractor_templates;
 DROP FUNCTION IF EXISTS public.template_admin_verdict_blocks_auto_validation(uuid);
 DROP FUNCTION IF EXISTS public.log_template_admin_verdict();
-DROP TABLE IF EXISTS public.contractor_template_verdicts;   -- takes trg_ctv_append_only with it
+DROP TRIGGER IF EXISTS trg_ctv_no_truncate ON public.contractor_template_verdicts;
+DROP TRIGGER IF EXISTS trg_ctv_append_only ON public.contractor_template_verdicts;
+DROP TABLE IF EXISTS public.contractor_template_verdicts;   -- takes its grants (service_role SELECT) and indexes with it
 DROP FUNCTION IF EXISTS public.contractor_template_verdicts_append_only();
 COMMIT;

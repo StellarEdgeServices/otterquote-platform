@@ -19,7 +19,7 @@ export const HOLD_STATUS = "submitted_for_admin_review";
 export const ADMIN_VERDICT_STATUSES = ["rejected", "admin_validated"] as const;
 
 export const HELD_FOR_ADMIN_NOTICE =
-  "This template was rejected in admin review earlier, so it has been sent back to an admin for a decision instead of being validated automatically.";
+  "This template was rejected in admin review earlier, so it has been sent back to an admin for a decision instead of being validated.";
 
 /** Statuses a scan may write that count as a validated template. */
 export function isValidatedStatus(s: string): boolean {

@@ -40,7 +40,9 @@ const TEXT_BY_PATH: Record<string, string> = {
 };
 
 // deno-lint-ignore no-explicit-any
-function fakeSupabase(rows: any[], zeroRowIds: string[] = [], blockedIds: string[] = [], rpcError = false) {
+// gh-3224: `statusAtWrite` maps a row id to the status the row holds when the write lands (an admin verdict
+// that arrived during the pass); the fake applies the write's `.eq("status", ...)` filter against it.
+function fakeSupabase(rows: any[], zeroRowIds: string[] = [], blockedIds: string[] = [], rpcError = false, statusAtWrite: Record<string, string> = {}) {
   // deno-lint-ignore no-explicit-any
   const writes: any[] = [];
   const client = {
@@ -62,25 +64,29 @@ function fakeSupabase(rows: any[], zeroRowIds: string[] = [], blockedIds: string
           then(resolve: (v: unknown) => void) { resolve({ data: filtered, error: null }); },
           // deno-lint-ignore no-explicit-any
           update(patch: any) {
-            return {
-              eq(_col: string, id: string) {
-                return {
-                  select(_cols: string) {
-                    // gh-2105: mirrors the real .update().eq().select("id")
-                    // shape -- a matching row (id present in `rows` and NOT
-                    // in `zeroRowIds`) yields one row back; a zero-row match
-                    // (the row was in `rows` when read, but is in
-                    // `zeroRowIds` -- simulating a row that changed out from
-                    // under the sweep between the read and this write, e.g.
-                    // deleted or RLS-denied) yields an empty array, same as
-                    // PostgREST would for a real zero-row miss.
-                    const matched = rows.some((r) => r.id === id) && !zeroRowIds.includes(id);
-                    writes.push({ id, patch });
-                    return Promise.resolve({ data: matched ? [{ id }] : [], error: null });
-                  },
-                };
+            // gh-3224: the write may carry several .eq() filters (id, then status); collect them all.
+            const filters: Record<string, unknown> = {};
+            const upd = {
+              eq(col: string, val: unknown) { filters[col] = val; return upd; },
+              select(_cols: string) {
+                // gh-2105: mirrors the real .update().eq().select("id")
+                // shape -- a matching row (id present in `rows` and NOT
+                // in `zeroRowIds`) yields one row back; a zero-row match
+                // (the row was in `rows` when read, but is in
+                // `zeroRowIds` -- simulating a row that changed out from
+                // under the sweep between the read and this write, e.g.
+                // deleted or RLS-denied) yields an empty array, same as
+                // PostgREST would for a real zero-row miss.
+                const id = filters.id as string;
+                const r = rows.find((x) => x.id === id);
+                const liveStatus = statusAtWrite[id] ?? r?.status;
+                const statusOk = !("status" in filters) || filters.status === liveStatus;
+                const matched = !!r && !zeroRowIds.includes(id) && statusOk;
+                writes.push({ id, patch, filters: { ...filters }, matched });
+                return Promise.resolve({ data: matched ? [{ id }] : [], error: null });
               },
             };
+            return upd;
           },
         };
         return chain;

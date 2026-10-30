@@ -46,10 +46,17 @@ CREATE INDEX IF NOT EXISTS idx_ctv_template ON public.contractor_template_verdic
 CREATE INDEX IF NOT EXISTS idx_ctv_slot ON public.contractor_template_verdicts (contractor_id, trade, funding_type, recorded_at DESC, id DESC);
 
 ALTER TABLE public.contractor_template_verdicts ENABLE ROW LEVEL SECURITY;   -- no policies: deny by default
-REVOKE ALL ON public.contractor_template_verdicts FROM PUBLIC, anon, authenticated;
+-- Production's pg_default_acl for postgres in public grants arwdDxtm on every new table to anon, authenticated
+-- AND service_role, and service_role has BYPASSRLS, so service_role must be revoked explicitly (REVIEW
+-- 6524262213 R1). After this: relacl = {postgres=arwdDxt, service_role=r}. The writer below is SECURITY
+-- DEFINER owned by postgres, so logging does not depend on service_role holding INSERT.
+REVOKE ALL ON public.contractor_template_verdicts FROM PUBLIC, anon, authenticated, service_role;
 GRANT SELECT ON public.contractor_template_verdicts TO service_role;
 
--- append-only: no UPDATE / DELETE by anyone short of dropping the table
+-- append-only: no UPDATE, DELETE or TRUNCATE by any role that is not the table owner or a superuser (the grants
+-- above refuse those to every API role; the triggers below refuse them even to a role holding the privilege,
+-- short of dropping or disabling the triggers, which only the owner can do). INSERT is the only write, and only
+-- the owner and the SECURITY DEFINER writer hold it.
 CREATE OR REPLACE FUNCTION public.contractor_template_verdicts_append_only()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -63,6 +70,13 @@ DROP TRIGGER IF EXISTS trg_ctv_append_only ON public.contractor_template_verdict
 CREATE TRIGGER trg_ctv_append_only
   BEFORE UPDATE OR DELETE ON public.contractor_template_verdicts
   FOR EACH ROW EXECUTE FUNCTION public.contractor_template_verdicts_append_only();
+-- TRUNCATE fires no row triggers, so it needs its own statement-level trigger.
+DROP TRIGGER IF EXISTS trg_ctv_no_truncate ON public.contractor_template_verdicts;
+CREATE TRIGGER trg_ctv_no_truncate
+  BEFORE TRUNCATE ON public.contractor_template_verdicts
+  FOR EACH STATEMENT EXECUTE FUNCTION public.contractor_template_verdicts_append_only();
+-- a trigger function cannot be called directly; revoked anyway so the default ACL leaves nothing behind (REVIEW N3)
+REVOKE ALL ON FUNCTION public.contractor_template_verdicts_append_only() FROM PUBLIC, anon, authenticated;
 
 -- ------------------------------------------------- writer (fires for any actor)
 -- AFTER trigger: it sees the row as stored, so a contractor write that

@@ -16,7 +16,7 @@ function row(id: string, status: string, extra: Record<string, any> = {}) {
   return { id, contractor_id: "c-" + id, trade: "roofing", funding_type: "retail", status, pdf_storage_path: `${id}.pdf`, validation_result: null, manual_overrides: null, ...extra };
 }
 // deno-lint-ignore no-explicit-any
-function fake(rows: any[], blockedIds: string[] = [], rpcError = false) {
+function fake(rows: any[], blockedIds: string[] = [], rpcError = false, statusAtWrite: Record<string, string> = {}) {
   // deno-lint-ignore no-explicit-any
   const writes: any[] = [];
   const rpcCalls: string[] = [];
@@ -39,7 +39,21 @@ function fake(rows: any[], blockedIds: string[] = [], rpcError = false) {
         in(_c: string, ids: string[]) { filtered = rows.filter((r) => ids.includes(r.id)); return chain; },
         then(res: (v: unknown) => void) { res({ data: filtered, error: null }); },
         // deno-lint-ignore no-explicit-any
-        update(patch: any) { return { eq(_c: string, id: string) { return { select() { writes.push({ id, patch }); return Promise.resolve({ data: [{ id }], error: null }); } }; } }; },
+        update(patch: any) {
+          const filters: Record<string, unknown> = {};
+          const upd = {
+            eq(c: string, v: unknown) { filters[c] = v; return upd; },
+            select() {
+              const id = filters.id as string;
+              const r = rows.find((x) => x.id === id);
+              const live = statusAtWrite[id] ?? r?.status;
+              const matched = !!r && (!("status" in filters) || filters.status === live);
+              if (matched) writes.push({ id, patch, filters: { ...filters } });
+              return Promise.resolve({ data: matched ? [{ id }] : [], error: null });
+            },
+          };
+          return upd;
+        },
       };
       return chain;
     },
@@ -158,4 +172,54 @@ Deno.test("mutation control: dropping the hold from the wiring would be caught b
   const mutated = src.replace("applyRejectionHold(supabase, contractor_template_id, newStatus)", "Promise.resolve({ ok: true, status: newStatus })");
   assert(mutated.indexOf("applyRejectionHold(supabase, contractor_template_id, newStatus)") === -1);
   assert(src.indexOf("applyRejectionHold(supabase, contractor_template_id, newStatus)") > 0);
+});
+
+// ---------------------------------------------------------------- revalidate write is conditional on the status read (REVIEW N2)
+// An admin verdict landing while revalidate_all runs must not be overwritten. The write carries
+// .eq("status", <status read at the start of the pass>), so a changed status matches zero rows.
+Deno.test("revalidate_all: the write is filtered on the status read at load time", async () => {
+  const sb = fake([row("P", "pending_validation")]);
+  await revalidateTemplates({ supabase: sb, dryRun: false, extractPdfText: extract });
+  assertEquals(sb.writes.length, 1);
+  assertEquals(sb.writes[0].filters, { id: "P", status: "pending_validation" });
+});
+
+Deno.test("revalidate_all: a rejection landing mid-pass is not overwritten by a PASSING scan (no write, error counted)", async () => {
+  const sb = fake([row("P", "pending_validation")], [], false, { P: "rejected" });
+  const r = await revalidateTemplates({ supabase: sb, dryRun: false, extractPdfText: extract });
+  assertEquals(sb.writes.length, 0, "the rejected row is not written over");
+  assertEquals(r.written, 0);
+  assertEquals(r.errors, 1);
+  assertEquals(r.rows[0].written, false);
+  assertStringIncludes(r.rows[0].error!, "gh-2105");
+});
+
+Deno.test("revalidate_all: an admin_validated verdict landing mid-pass is not overwritten by a FAILING scan (manual_mapping_pending, no lookup)", async () => {
+  const sb = fake([row("P", "pending_validation")], [], false, { P: "admin_validated" });
+  const failing = (_b: Uint8Array) => Promise.resolve("no anchors here\n");
+  const r = await revalidateTemplates({ supabase: sb, dryRun: false, extractPdfText: failing });
+  assertEquals(r.rows[0].after?.status, "manual_mapping_pending", "the scan would have written a failing status");
+  assertEquals(sb.rpcCalls.length, 0, "a failing scan makes no verdict lookup, so only the status filter protects the verdict");
+  assertEquals(sb.writes.length, 0);
+  assertEquals(r.written, 0);
+  assertEquals(r.errors, 1);
+});
+
+Deno.test("revalidate_all: NEGATIVE CONTROL an unchanged status still writes", async () => {
+  const sb = fake([row("P", "pending_validation")], [], false, { P: "pending_validation" });
+  const r = await revalidateTemplates({ supabase: sb, dryRun: false, extractPdfText: extract });
+  assertEquals(r.written, 1);
+  assertEquals(r.errors, 0);
+});
+
+const revalSrc = await Deno.readTextFile(new URL("./revalidate.ts", import.meta.url));
+Deno.test("wiring + mutation control: revalidate.ts write carries .eq(\"status\", tmpl.status) between the id filter and .select", () => {
+  const iUpd = revalSrc.indexOf('.update({ validation_result: validationResult, status: newStatus })');
+  const iSel = revalSrc.indexOf('.select("id")', iUpd);
+  assert(iUpd > 0 && iSel > iUpd);
+  const block = revalSrc.slice(iUpd, iSel);
+  assertStringIncludes(block, '.eq("id", tmpl.id)');
+  assertStringIncludes(block, '.eq("status", tmpl.status)');
+  const mutated = block.replace('.eq("status", tmpl.status)', "");
+  assert(!mutated.includes('.eq("status", tmpl.status)'), "removing the filter is visible to this assertion");
 });

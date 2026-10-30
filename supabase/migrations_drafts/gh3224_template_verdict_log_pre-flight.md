@@ -7,11 +7,12 @@ DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 -->
 # gh3224 pre-flight (Tier 3B, D-199 legal gate)
 
-Additive only: one new table, two functions, one AFTER trigger on `contractor_templates`, a backfill of rows already in `rejected` / `admin_validated`. No existing function or policy is replaced.
+Additive only: one new table (append-only: row trigger against UPDATE/DELETE, statement trigger against TRUNCATE; SELECT is the only privilege any API role holds, and only service_role holds it), three functions, one AFTER trigger on `contractor_templates`, a backfill of rows already in `rejected` / `admin_validated`. No existing function or policy is replaced.
 
 1. Confirm absent: `select to_regclass('public.contractor_template_verdicts');` returns null.
 2. Confirm the two live trigger bodies still match what the proof assumes (`pg_get_functiondef` of `contractor_templates_freeze_verdict` and `enforce_template_privileged_columns`); this set does not change them, so PR #3214 may be applied before or after.
 3. Apply the forward file, then: `select count(*) from contractor_template_verdicts;` equals the number of `rejected` + `admin_validated` rows (13 rows live on 2026-10-30: 0 + 1).
+   Then confirm the grants (REVIEW 6524262213 R1; production's default ACL hands every new public table to anon, authenticated and service_role): `select relacl from pg_class where oid = 'public.contractor_template_verdicts'::regclass;` shows the owner plus `service_role=r/postgres` and no `anon` or `authenticated` entry; `select proacl from pg_proc where proname = 'contractor_template_verdicts_append_only';` has no `anon`, `authenticated` or `=X` (PUBLIC) entry.
 4. Only then deploy validate-contract-template (PR for #3224). Deploy order matters: the new code fails closed if the reader function is missing.
 5. Rollback: deploy the previous Edge Function first, then run the rollback file (drops the log; recorded rejections are lost).
 6. Contractor-visible new string (LEGAL-READ): the `notice` in the 200 response when a previously rejected template is sent to admin review.
