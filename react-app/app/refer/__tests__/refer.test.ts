@@ -64,10 +64,10 @@ describe('referral link + code', () => {
 // Referrals table — full 7-status enum + all four header columns
 // ============================================================
 describe('referral table cells (four columns, header order, #576)', () => {
-  it('referralFriendName: homeowner_name || homeowner_email || positional fallback', () => {
-    expect(referralFriendName({ homeowner_name: 'Jane Doe', homeowner_email: 'jane@x.com' }, 0)).toBe('Jane Doe');
-    expect(referralFriendName({ homeowner_name: null, homeowner_email: 'jane@x.com' }, 0)).toBe('jane@x.com');
-    expect(referralFriendName({ homeowner_name: null, homeowner_email: null }, 2)).toBe('Referral #3');
+  it('referralFriendName: masked display_name || positional fallback (never an email, gh-3217)', () => {
+    expect(referralFriendName({ display_name: 'Jane D.' }, 0)).toBe('Jane D.');
+    expect(referralFriendName({ display_name: null, homeowner_email: 'jane@x.com' } as never, 0)).toBe('Referral #1');
+    expect(referralFriendName({ display_name: null }, 2)).toBe('Referral #3');
   });
   it('referralDate: en-US short date; null → "—"', () => {
     expect(referralDate(null)).toBe('—');
@@ -105,7 +105,7 @@ describe('referral table cells (four columns, header order, #576)', () => {
   });
   it('referralRowCells yields ALL FOUR header columns in order', () => {
     const cells = referralRowCells(
-      mkRef({ homeowner_name: 'Jane Doe', created_at: '2026-03-04T00:00:00Z', status: 'commission_paid' }),
+      mkRef({ display_name: 'Jane Doe', created_at: '2026-03-04T00:00:00Z', status: 'commission_paid' }),
       0,
     );
     expect(cells.friend).toBe('Jane Doe');
