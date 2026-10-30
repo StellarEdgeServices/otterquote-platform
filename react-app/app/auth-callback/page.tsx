@@ -48,7 +48,7 @@ import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
-import { readReferralIds, writeReferralIds, writeClaimReferralId } from '@/lib/cookie-storage';
+import { readReferralIds, writeReferralIds, writeClaimReferralId, adoptLockedReferral } from '@/lib/cookie-storage';
 import { linkPendingLeadOnce } from '@/lib/lead-capture';
 import { readOwnedContractorSignup } from '@/lib/contractor-signup-owner';
 import { clearRoleBreadcrumb, roleOwnerMatches } from '@/lib/role-breadcrumb-owner';
@@ -231,6 +231,17 @@ export default function AuthCallbackPage() {
               oq_referral_agent_id: kept.oq_referral_agent_id,
               oq_referral_code: kept.oq_referral_code,
             });
+          }
+          // P18 credit lock: the credit locks to the first partner recorded at
+          // account creation. If a later click put another partner's id in the
+          // cookie, swap it back for the locked one. The database overrides the
+          // claim's referral_id with the locked one regardless (BEFORE INSERT
+          // trigger); this keeps the browser state honest. Non-fatal.
+          try {
+            const { data: lockedId } = await supabase.rpc('get_locked_referral_id');
+            adoptLockedReferral(lockedId);
+          } catch {
+            /* non-fatal */
           }
           if (typeof sessionStorage !== 'undefined') {
             sessionStorage.removeItem('oq_referral_id');

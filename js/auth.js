@@ -1692,6 +1692,17 @@ Log in to the admin panel to review and approve this contractor.`;
             oq_referral_code: kept.oq_referral_code
           });
         }
+        // P18 credit lock: the credit locks to the first partner recorded at
+        // account creation. If a later click put another partner's id in the
+        // cookie, swap it back for the locked one. The database overrides the
+        // claim's referral_id with the locked one regardless (BEFORE INSERT
+        // trigger); this keeps the browser state honest. Non-fatal.
+        try {
+          const lockRes = await sb.rpc('get_locked_referral_id');
+          if (window.OtterQuoteReferral && window.OtterQuoteReferral.adoptLocked) {
+            window.OtterQuoteReferral.adoptLocked(lockRes && lockRes.data);
+          }
+        } catch (lockErr) { /* non-fatal */ }
         localStorage.removeItem('oq_referral_id');
         sessionStorage.removeItem('oq_referral_id');
       } catch (err) {
