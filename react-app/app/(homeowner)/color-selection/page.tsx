@@ -433,7 +433,6 @@ function PageBody({
             </div>
           </div>
 
-          <div className="oqcs-note">{C.confirmationNote}</div>
 
           {saveError && <div className="oqcs-submit-error">{saveError}</div>}
 

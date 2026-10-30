@@ -65,10 +65,8 @@ const STATIC = {
   brandLabel: 'Brand',
   colorNameLabel: 'Color Name',
   colorNamePlaceholder: 'e.g., Estate Gray, Charcoal, Weathered Wood',
-  confirmationNote:
-    'Note: Your color selection will be added to your contract as a separate addendum for signature.',
   successText:
-    "✓ Color confirmed! We've saved your selection. You'll see the addendum on your next contract review.",
+    "✓ Color confirmed! We've saved your selection.",
   addendumHeading: 'Sign Color Addendum',
   addendumBody:
     'Almost done! Please sign the color addendum below to add your selected color to your contract.',
@@ -176,7 +174,9 @@ describe('verbatim homeowner copy (byte-for-byte)', () => {
     expect(COLOR_COPY.brandDisplayUnconfirmed).toBe('To be confirmed');
     expect(COLOR_COPY.contractorNameFallback).toBe('Your Contractor');
     expect(COLOR_COPY.signerNameFallback).toBe('Homeowner');
-    expect(COLOR_COPY.confirmationNote).toBe(STATIC.confirmationNote);
+    // gh-3110 option (a): no separate colour addendum, so the addendum note is retired.
+    expect((COLOR_COPY as Record<string, unknown>).confirmationNote).toBeUndefined();
+    expect(Object.values(COLOR_COPY).join(' ')).not.toMatch(/separate addendum|addendum on your next contract review/);
     expect(COLOR_COPY.confirmButton).toBe('Confirm My Color');
     expect(COLOR_COPY.confirmButtonSaving).toBe('Saving...');
     expect(COLOR_COPY.confirmButtonConfirmed).toBe('Color Confirmed ✓');
