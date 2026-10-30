@@ -109,7 +109,7 @@ type PayState = 'idle' | 'processing' | 'ordering' | 'orderFailed';
  */
 export const ORDER_RETRY_COPY = {
   paidNoRecharge:
-    'Your $22.63 payment went through and is confirmed. We could not start your measurement order — use Retry Order below. Retrying will not charge your card again.',
+    'Your payment went through and is confirmed. We could not start your measurement order — use Retry Order below. Retrying will not charge your card again.',
   retryButton: 'Retry Order',
   orderFailedFallback: 'Could not create your measurement order. Please retry.',
   supportNote:

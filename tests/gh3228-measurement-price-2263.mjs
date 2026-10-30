@@ -60,11 +60,24 @@ for (const f of surface) {
 ok(stale.length === 0, 'S1: zero "$15" measurement-fee hits on served pages, js, react copy and email sources' + (stale.length ? '\n  ' + stale.join('\n  ') : ''));
 
 // ── S2: the fee is stated as $22.63 where it is stated ───────────────────────
-for (const f of ['faq.html', 'help-measurements.html', 'index.html', 'home-next.html', 'terms.html', 'privacy.html', 're-1.html', 'ref-re.html', 'partner-re.html',
+for (const f of ['faq.html', 'help-measurements.html', 'index.html', 'home-next.html', 'terms.html', 're-1.html', 'ref-re.html', 'partner-re.html',
   'react-app/app/(homeowner)/help-measurements/copy.ts', 'supabase/functions/send-homeowner-next-steps/welcome-hook.ts', 'supabase/functions/send-lead-next-step-reminder/email-content.ts']) {
   ok(read(f).includes('$22.63'), 'S2: ' + f + ' states $22.63');
 }
 ok(/measurement fee of \$22\.63 USD/.test(read('terms.html')), 'S2: terms.html Section 8.5 reads "measurement fee of $22.63 USD" (number-only change; LEGAL-READ)');
+
+// ── S2b: legal copy that must NOT carry a figure (LEGAL-READ L6/L7), and the dates ───────────────────────────────────────
+const terms = read('terms.html'), privacy = read('privacy.html');
+const notOwed = /<strong>When the Rebate Is Not Owed\.<\/strong>[\s\S]*?<\/p>/.exec(terms);
+ok(!!notOwed && !/\$\d/.test(notOwed[0]) && /the Measurement Fee compensates Otter Quotes for the cost of ordering the report on your behalf/.test(notOwed[0]), 'S2b: Terms 8.5 "When the Rebate Is Not Owed" states no figure and says "the Measurement Fee compensates"');
+ok(/Payment processing and billing services, including processing of the Measurement Fee and any associated rebate/.test(privacy), 'S2b: privacy.html Stripe line names the Measurement Fee with no figure');
+ok(!/Stripe:<\/strong>[^<]*\$\d/.test(privacy), 'S2b: negative control -- no dollar figure on the privacy.html Stripe line');
+ok(/<strong>Effective Date:<\/strong> October 30, 2026/.test(terms) && /Effective Date: October 30, 2026/.test(privacy), 'S2b: terms.html and privacy.html Effective Date is October 30, 2026');
+const faq = read('faq.html');
+ok(faq.includes('The fee pays for ordering the report for you.') && !/covers (Otter Quotes\'|our) cost/.test(faq), 'S2b: FAQ says "The fee pays for ordering the report for you." (no "covers ... cost")');
+const hpf = read('react-app/app/(homeowner)/help-measurements/HoverPaymentForm.tsx');
+ok(/'Your payment went through and is confirmed\./.test(hpf) && !/Your \$\d[\d.]* payment went through/.test(hpf), 'S2b: the order-failed "payment went through" message carries no amount (a customer caught across the apply was charged the old price)');
+ok(/fallback of 1500 cents \(\$15\)/.test(read('supabase/functions/create-hover-order/price-setting.ts')), 'S2b: create-hover-order/price-setting.ts comment still reads "1500 cents ($15)" (historical)');
 
 // ── S3: the draft settings migration ─────────────────────────────────────────
 const fwd = read('supabase/migrations_drafts/gh3228_measurement_price_2263.sql');
@@ -84,6 +97,17 @@ ok(/HOVER_AMOUNT_CENTS = 2263 as const/.test(utils) && /HOVER_AMOUNT_DOLLARS = 2
 const capi = read('supabase/functions/stripe-webhook/meta-capi.ts');
 ok(/MEASUREMENT_PURCHASE_VALUE_USD = 22\.63;/.test(capi) && /MEASUREMENT_PURCHASE_AMOUNT_CENTS = 2263;/.test(capi), 'S4: Meta CAPI value/amount guard is 22.63 / 2263 (a stale 1500 guard would silently drop every Purchase)');
 ok(!/MEASUREMENT_PURCHASE_AMOUNT_CENTS = 1500/.test(capi), 'S4: negative control -- the CAPI amount guard no longer reads 1500');
+
+// ── S3b: runbook + mid-checkout sweep ───────────────────────────────────────────────────────────────────────────────────
+const pre = read('supabase/migrations_drafts/gh3228_measurement_price_2263_pre-flight.md');
+for (const [label, text] of [['SQL header', fwd], ['pre-flight', pre]]) {
+  ok(/stripe-webhook/.test(text) && /send-homeowner-next-steps/.test(text) && /send-lead-next-step-reminder/.test(text), 'S3b: ' + label + ' names the three edge functions to deploy before the apply');
+  ok(/NEVER apply/i.test(text) && /D-291 amendment/.test(text), 'S3b: ' + label + ' says never apply the SQL before the code is live and keeps the D-291 amendment gate');
+  ok(/captured immediately|captured automatically/.test(text) && /refund|by hand/.test(text), 'S3b: ' + label + ' states the PaymentIntent is captured and the sweep refunds or creates the order by hand');
+}
+ok(!/lapse/i.test(fwd) && !/authori[sz]ation/i.test(fwd), 'S3b: negative control -- the retired "authorisation lapses" claim is gone from the SQL header');
+ok(/payment_intents search/.test(pre) && /amount:1500/.test(pre) && /hover_orders/.test(pre) && /T-1h|T - 1h/.test(pre), 'S3b: pre-flight carries the sweep query (Stripe search at 1500 cents, +-1h, anti-join to hover_orders)');
+ok(/status:'succeeded'/.test(pre) && /measurement_order/.test(pre) && /hover_measurement/.test(pre), 'S3b: the sweep covers both PaymentIntent types (measurement_order and legacy hover_measurement)');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

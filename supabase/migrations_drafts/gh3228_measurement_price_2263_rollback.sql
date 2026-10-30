@@ -7,7 +7,7 @@
 -- Restores the homeowner measurement fee to $15 (1500 cents) in BOTH keys, in one transaction (the two must agree, see the forward
 -- file). Run only if the forward file was applied. Orders already charged 2263 keep their recorded hover_orders.homeowner_charge_amount
 -- and are still rebated at 2263 (the rebate refunds what was charged). If the code half (the PR carrying this file) is also rolled
--- back, roll it back in the same window; the copy and the Meta CAPI amount guard otherwise disagree with the price.
+-- back, roll it back in the same window (code and edge functions first is the wrong direction for a rollback: apply this file, then redeploy the old code); the copy and the Meta CAPI amount guard otherwise disagree with the price.
 BEGIN;
 
 DO $$

@@ -8,16 +8,28 @@
 -- measurement up to $22.63."). Still rebated on job completion (D-291); the rebate refunds hover_orders.homeowner_charge_amount
 -- (what was charged), so it follows this price with no code change.
 --
--- Tier 3B (money). The CTO applies this AFTER the 24-hour R-097 notice, together with the deploy of the PR that carries it.
--- A D-291 amendment is being drafted separately; do not apply before it exists.
+-- Tier 3B (money). The CTO applies this after the 24-hour R-097 notice AND after the D-291 amendment exists (D-291 amendment
+-- pending: do not apply before it). Full runbook, sweep query and post-apply checks: gh3228_measurement_price_2263_pre-flight.md.
 --
 -- BOTH keys MUST change in this one transaction. create-payment-intent prices the charge from hover_measurement_price and
 -- create-measurement-order prices the order from measurement_products.roof_basic; create-measurement-order refuses the sale
 -- ("price is misconfigured") when they disagree (detectPriceDrift). Do not split this into two applies.
 --
--- Timing note for the CTO: a homeowner who loaded the payment form before the apply holds a PaymentIntent at 1500; the order
--- call verifies the PaymentIntent against the NEW price and refuses it, nothing is fulfilled, and the homeowner retries (the
--- card is then charged 2263; the old 1500 authorisation is the homeowner's to see lapse). Apply in a quiet hour.
+-- RUNBOOK (CTO, in this order; NEVER apply this file before steps 1 and 2 are live):
+--   1. Merge the PR and wait for the Netlify production deploy (static pages, react app) to go green.
+--   2. Deploy the edge functions stripe-webhook, send-homeowner-next-steps and send-lead-next-step-reminder at the merged head
+--      (stripe-webhook carries the Meta CAPI 2263 guard; left stale it silently drops every Purchase).
+--   3. Apply this file within minutes, in a quiet hour. Settings first would show $15 while charging $22.63 (Terms 8.5: the fee is
+--      "displayed on the measurement purchase page at the time of payment"). Code first is the safe direction.
+--   4. Run the mid-checkout sweep (REQUIRED, see below).
+--   5. Run the post-apply checks in the pre-flight and record the result on #3228.
+--
+-- MID-CHECKOUT RISK (corrected): measurement PaymentIntents are captured immediately (no manual capture anywhere), and
+-- create-measurement-order runs only after the PaymentIntent has succeeded. A homeowner who confirms a PaymentIntent created at
+-- 1500 AFTER this apply is CHARGED $15, and the order is then refused (402: the verified amount must equal 2263), leaving no
+-- hover_orders row, no report and no rebate record. The sweep in step 4 is therefore mandatory: list succeeded measurement
+-- PaymentIntents of 1500 cents created from 1 hour before to 1 hour after the apply; for each with no hover_orders row, refund it
+-- in full or create its order by hand at 1500 with rebate_due = true. The query is in the pre-flight.
 -- Not changed: roof_full / exterior_full (contractor-priced, homeowner_price_cents null), expected_vendor_cost_cents, rebate_on_close.
 BEGIN;
 
