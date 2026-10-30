@@ -27,7 +27,7 @@
 --          (request_is_privileged(): no jwt claims, service_role, or is_admin_email()), template admins, or the #510 pending_validation reset.
 --          A contractor's JWT is none of those, so the RPC's UPDATE would raise 42501 "review/validation columns are admin-managed".
 --        So this migration replaces enforce_template_privileged_columns with the live body plus ONE extra allowance, inside the status check only:
---        pass when set_config('oq.template_submit') = 'on' (transaction-local, set by the RPC around its single UPDATE) AND current_user <> 'authenticated'
+--        pass when set_config('oq.template_submit') = 'on' (transaction-local, set by the RPC around its single UPDATE) AND current_user NOT IN ('authenticated','anon')
 --        (only code running as the function owner, i.e. inside a SECURITY DEFINER function, qualifies; a client cannot satisfy this even if it sets the GUC)
 --        AND OLD.status IN (pending_validation, manual_mapping_pending) AND NEW.status = 'submitted_for_admin_review'. Nothing else is relaxed:
 --        the reviewed_by / reviewed_at / admin_notes check below it is unchanged.
@@ -52,7 +52,7 @@ BEGIN
   -- gh-3199: also permit exactly one transition, written by submit_template_for_admin_review():
   -- (pending_validation | manual_mapping_pending) -> submitted_for_admin_review, and only while the
   -- transaction-local flag oq.template_submit is 'on' AND the code runs as the function owner
-  -- (current_user is not the client role), so a client-set GUC alone never opens this.
+  -- (current_user is not a client role: not authenticated, not anon), so a client-set GUC alone never opens this.
   IF NEW.status IS DISTINCT FROM OLD.status
      AND NOT (
        NEW.status = 'pending_validation'
@@ -66,7 +66,7 @@ BEGIN
      )
      AND NOT (
        coalesce(current_setting('oq.template_submit', true), '') = 'on'
-       AND current_user <> 'authenticated'
+       AND current_user NOT IN ('authenticated', 'anon')
        AND OLD.status IN ('pending_validation', 'manual_mapping_pending')
        AND NEW.status = 'submitted_for_admin_review'
      ) THEN

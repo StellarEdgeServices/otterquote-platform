@@ -1,6 +1,7 @@
 -- gh-3199 proof for submit_template_for_admin_review + the enforce_template_privileged_columns allowance.
 -- SCRATCH database only (creates stub auth schema, roles, tables). Run via gh3199_submit_template_proof_run.sh, or:
---   psql -v ON_ERROR_STOP=1 -f supabase/tests/gh3199_submit_template_proof.sql scratchdb
+--   psql -v ON_ERROR_STOP=1 -v mig=supabase/migrations_drafts/gh3199_submit_template_for_admin_review.sql -f supabase/tests/gh3199_submit_template_proof.sql scratchdb
+-- (:mig is the forward file under test; the runner's --mutations mode points it at mutated copies and expects a FAIL.)
 -- Scratch DB only; the file ends in RAISE EXCEPTION 'PROOF-OK ...' which aborts the last open transaction (the included migration files COMMIT their own).
 -- Trigger/function bodies of freeze_verdict, set_updated_at and request_is_privileged are the production definitions
 -- (pg_get_functiondef, 2026-10-30); enforce_template_privileged_columns "before" is the rollback file's body.
@@ -119,7 +120,7 @@ SELECT set_config('request.jwt.claims', '{"role":"service_role"}', false);  -- s
 UPDATE contractor_templates SET status='manual_mapping_pending', manual_overrides='{"old":"x"}', validation_result='{"requiredCount":3}' WHERE id='e0000000-0000-0000-0000-000000000001';
 
 -- ===== APPLY THE MIGRATION =====
-\i supabase/migrations_drafts/gh3199_submit_template_for_admin_review.sql
+\i :mig
 BEGIN;
 
 -- ===== POSITIVE =====
@@ -182,6 +183,69 @@ SELECT proof.as_user('a1000000-0000-0000-0000-000000000001');
 SELECT public.submit_template_for_admin_review('e0000000-0000-0000-0000-000000000007', NULL, NULL);
 RESET ROLE;
 INSERT INTO proof.results SELECT 'flag is off again after the RPC (same txn)', coalesce(current_setting('oq.template_submit', true),''), 'off';
+-- ===== POST-MIGRATION CHECKS OF THE GUARD ALLOWANCE (each conjunct load-bearing; REVIEW: FAIL 6523204279 B2) =====
+-- fresh row for these checks (the RPC tests above already moved row 7 to submitted_for_admin_review)
+SELECT set_config('request.jwt.claims', '{"role":"service_role"}', false);
+INSERT INTO contractor_templates (id, contractor_id, trade, funding_type, pdf_storage_path, status, validation_result) VALUES ('e0000000-0000-0000-0000-000000000008','c1000000-0000-0000-0000-000000000001','doors','insurance','a/8.pdf','manual_mapping_pending','{"requiredCount":3}');
+-- (1) a SECURITY DEFINER caller WITHOUT the flag is still refused by the new guard (kills "flag test replaced with true").
+SET ROLE authenticated;
+SELECT proof.as_user('a1000000-0000-0000-0000-000000000001');
+INSERT INTO proof.results SELECT 'POST-MIGRATION: definer UPDATE without the flag', public.zz_definer_no_flag('e0000000-0000-0000-0000-000000000008'), 'error 42501';
+RESET ROLE;
+-- (2) the flag + the right transition, but current_user = authenticated: refused (kills "delete the current_user test").
+--     freeze_verdict is disabled for this one check so it cannot rewrite the status first and mask the guard.
+ALTER TABLE public.contractor_templates DISABLE TRIGGER contractor_templates_freeze_verdict;
+SET ROLE authenticated;
+SELECT proof.as_user('a1000000-0000-0000-0000-000000000001');
+DO $$ BEGIN
+  PERFORM set_config('oq.template_submit','on',true);
+  BEGIN
+    UPDATE public.contractor_templates SET status='submitted_for_admin_review' WHERE id='e0000000-0000-0000-0000-000000000008';
+    INSERT INTO proof.results VALUES ('POST-MIGRATION: flag on + right transition, current_user = authenticated', 'updated', 'error 42501');
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO proof.results VALUES ('POST-MIGRATION: flag on + right transition, current_user = authenticated', 'error ' || SQLSTATE, 'error 42501');
+  END;
+  PERFORM set_config('oq.template_submit','off',true);
+END $$;
+RESET ROLE;
+ALTER TABLE public.contractor_templates ENABLE TRIGGER contractor_templates_freeze_verdict;
+-- (3) the flag + the right transition, but current_user = anon (a definer function owned by anon): refused (NOT IN list).
+GRANT CREATE ON SCHEMA public TO anon;
+GRANT SELECT, UPDATE ON public.contractor_templates TO anon;
+GRANT SELECT ON public.contractors TO anon;
+CREATE POLICY zz_anon_all ON public.contractor_templates FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE FUNCTION public.zz_definer_anon_flag(p uuid) RETURNS text LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN PERFORM set_config('oq.template_submit','on',true); UPDATE contractor_templates SET status='submitted_for_admin_review' WHERE id=p; RETURN 'updated'; EXCEPTION WHEN OTHERS THEN RETURN 'error ' || SQLSTATE; END $$;
+ALTER FUNCTION public.zz_definer_anon_flag(uuid) OWNER TO anon;
+GRANT EXECUTE ON FUNCTION public.zz_definer_anon_flag(uuid) TO authenticated;
+SET ROLE authenticated;
+SELECT proof.as_user('a1000000-0000-0000-0000-000000000001');
+INSERT INTO proof.results SELECT 'POST-MIGRATION: flag on + right transition, current_user = anon', public.zz_definer_anon_flag('e0000000-0000-0000-0000-000000000008'), 'error 42501';
+RESET ROLE;
+-- (4) positive control for the same harness: a definer owned by a non-client role WITH the flag and the right transition is allowed (so the refusals above are not a broken harness).
+CREATE FUNCTION public.zz_definer_ok(p uuid) RETURNS text LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN PERFORM set_config('oq.template_submit','on',true); UPDATE contractor_templates SET status='submitted_for_admin_review' WHERE id=p; RETURN 'updated'; EXCEPTION WHEN OTHERS THEN RETURN 'error ' || SQLSTATE; END $$;
+GRANT EXECUTE ON FUNCTION public.zz_definer_ok(uuid) TO authenticated;
+SET ROLE authenticated;
+SELECT proof.as_user('a1000000-0000-0000-0000-000000000001');
+INSERT INTO proof.results SELECT 'POST-MIGRATION: harness positive control (definer + flag + right transition)', public.zz_definer_ok('e0000000-0000-0000-0000-000000000008'), 'updated';
+RESET ROLE;
+
+-- ===== B1: a corrected upload on a rejected row, by a plain client UPDATE, uses the existing #510 path =====
+SET ROLE authenticated;
+SELECT proof.as_user('a1000000-0000-0000-0000-000000000001');
+-- same PDF path, client asks for pending_validation: nothing moves (a rejection is not undone without a new file)
+UPDATE contractor_templates SET status='pending_validation', validation_result=NULL WHERE id='e0000000-0000-0000-0000-000000000005';
+RESET ROLE;
+INSERT INTO proof.results SELECT 'B1 control: rejected + same path + client asks pending_validation', status, 'rejected' FROM contractor_templates WHERE id='e0000000-0000-0000-0000-000000000005';
+SET ROLE authenticated;
+SELECT proof.as_user('a1000000-0000-0000-0000-000000000001');
+-- new PDF path, client even asks for admin_validated and sets reviewer columns: lands on pending_validation, reviewer columns unchanged
+UPDATE contractor_templates SET pdf_storage_path='a/5-corrected.pdf', status='admin_validated', validation_result='{"forged":1}', reviewed_by='a1000000-0000-0000-0000-000000000001', admin_notes='forged' WHERE id='e0000000-0000-0000-0000-000000000005';
+RESET ROLE;
+INSERT INTO proof.results SELECT 'B1: rejected + new path (client asks admin_validated) -> status', status, 'pending_validation' FROM contractor_templates WHERE id='e0000000-0000-0000-0000-000000000005';
+INSERT INTO proof.results SELECT 'B1: validation_result cleared, new path stored, reviewer columns untouched', (validation_result IS NULL AND pdf_storage_path='a/5-corrected.pdf' AND reviewed_by IS NULL AND admin_notes IS NULL)::text, 'true' FROM contractor_templates WHERE id='e0000000-0000-0000-0000-000000000005';
+
 -- The guard still refuses other status moves for a definer caller with the flag on (e.g. to admin_validated).
 CREATE FUNCTION public.zz_definer_flag_other(p uuid) RETURNS text LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN PERFORM set_config('oq.template_submit','on',true); UPDATE contractor_templates SET status='admin_validated' WHERE id=p; RETURN 'updated'; EXCEPTION WHEN OTHERS THEN RETURN 'error ' || SQLSTATE; END $$;

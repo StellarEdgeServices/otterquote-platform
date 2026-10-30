@@ -62,6 +62,29 @@ async function upsertValidationRow(contractorId: string, trade: string, fundingT
   }
 }
 
+/**
+ * gh-3199 (B1): a corrected upload on a `rejected` template. A plain client UPDATE is enough and is the
+ * existing allowed path: the new PDF path makes contractor_templates_freeze_verdict set
+ * status = 'pending_validation' and validation_result = NULL (whatever the client sent), and
+ * enforce_template_privileged_columns permits exactly that reset (#510). A contractor cannot reach any
+ * validated state this way; validate-contract-template (service role) then validates the new file.
+ */
+async function resubmitCorrectedUpload(rowId: string, storagePath: string): Promise<D199Row | null> {
+  try {
+    const { data, error } = await supabase
+      .from('contractor_templates')
+      .update({ pdf_storage_path: storagePath, status: 'pending_validation', validation_result: null })
+      .eq('id', rowId)
+      .select('*');
+    if (error) { console.error('[D-199] resubmitCorrectedUpload error:', error); return null; }
+    if (!Array.isArray(data) || data.length === 0) { console.error('[D-199] resubmitCorrectedUpload wrote no row'); return null; }
+    return data[0] as D199Row;
+  } catch (e) {
+    console.error('[D-199] resubmitCorrectedUpload threw:', e);
+    return null;
+  }
+}
+
 /** Call validate-contract-template. Body shape identical to the static fetch; EF unchanged. */
 async function callValidate(contractorTemplateId: string, manualOverrides?: Record<string, string>): Promise<{ validation_result?: unknown; status?: string; error?: string }> {
   try {
@@ -87,6 +110,17 @@ export function D199Validation({ contractorId, trade, fundingType, storagePath, 
   const refresh = useCallback(async () => {
     if (!contractorId || !trade || !fundingType) return;
     let r = await findValidationRow(contractorId, trade, fundingType);
+    // gh-3199 (B1): a corrected upload on a rejected row re-enters validation (new path, back to pending_validation).
+    if (r && r.id && r.status === 'rejected' && storagePath && r.pdf_storage_path !== storagePath) {
+      const reset = await resubmitCorrectedUpload(r.id, storagePath);
+      if (reset) {
+        r = reset;
+        const result = await callValidate(reset.id!);
+        if (result && result.validation_result) {
+          r = { ...r, validation_result: result.validation_result as D199Row['validation_result'], status: result.status ?? r.status };
+        }
+      }
+    }
     if (!r && storagePath) {
       r = await upsertValidationRow(contractorId, trade, fundingType, storagePath);
       if (r && r.id) {
@@ -156,7 +190,9 @@ export function D199Validation({ contractorId, trade, fundingType, storagePath, 
 
       {showActions && (
         <div className="oqp-val-actions">
-          <button type="button" className="oqp-btn-sm oqp-btn-sm-primary" onClick={() => setMappingOpen(true)}>Map anchors manually</button>
+          {row.status !== 'rejected' && (
+            <button type="button" className="oqp-btn-sm oqp-btn-sm-primary" onClick={() => setMappingOpen(true)}>Map anchors manually</button>
+          )}
           {/* gh-3199 (Ben's ruling on #3199): the RPC accepts only pending_validation and manual_mapping_pending.
               A rejected template needs a new upload (which re-enters at pending_validation), not a resubmit. */}
           {row.status === 'rejected' ? (
@@ -230,7 +266,7 @@ function ManualMappingModal({ row, onClose, onResolved }: {
           p_missing_fields: missingFields,
         });
         if (persistErr) throw persistErr;
-        if (!submitted || (submitted as D199Row).status !== 'submitted_for_admin_review') throw new Error('update_zero_rows: contractor_templates (manual mapping submit)');
+        if (!submitted || (submitted as D199Row).status !== 'submitted_for_admin_review') throw new Error('status_not_reached: submit_template_for_admin_review (manual mapping submit)');
         const { data: refreshed } = await supabase.from('contractor_templates').select('*').eq('id', row.id!).single();
         alert('Submitted for admin review. We will notify you once a member of the Otter Quotes team has looked at your template.');
         onResolved((refreshed as D199Row) ?? row);
@@ -244,10 +280,11 @@ function ManualMappingModal({ row, onClose, onResolved }: {
       onResolved((refreshed as D199Row) ?? row);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      // The internal zero-row token goes to the console, not to the contractor; the
+      // The internal token goes to the console, not to the contractor; the
       // existing "Submission failed" prefix is the only text shown (no new copy).
-      if (msg.startsWith('update_zero_rows')) console.error('[D-199] manual mapping submit wrote no row:', msg);
-      setErr(msg.startsWith('update_zero_rows') ? 'Submission failed' : 'Submission failed: ' + msg);
+      const internal = msg.startsWith('status_not_reached');
+      if (internal) console.error('[D-199] manual mapping submit did not reach submitted_for_admin_review:', msg);
+      setErr(internal ? 'Submission failed' : 'Submission failed: ' + msg);
       setBusy(false);
     }
   }

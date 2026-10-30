@@ -32,7 +32,8 @@ describe('d199-validation submit goes through the status RPC (gh-3199)', () => {
 
   it('no client write of status submitted_for_admin_review remains', () => {
     expect(src).not.toMatch(/status:\s*'submitted_for_admin_review'/);
-    expect(src).not.toMatch(/\.update\(/);
+    expect(requestBlock).not.toMatch(/\.update\(/);
+    expect(block).not.toMatch(/\.update\(/);
   });
 
   it('requestAdminReview calls the RPC with the template id and null overrides/missing fields', () => {
@@ -54,8 +55,10 @@ describe('d199-validation submit goes through the status RPC (gh-3199)', () => {
 
   it('internal tokens are logged, never shown', () => {
     const catchBlock = src.slice(src.indexOf('} catch (e) {', end));
-    expect(catchBlock).toContain("console.error('[D-199] manual mapping submit wrote no row:'");
-    expect(catchBlock).toContain("? 'Submission failed' :");
+    expect(catchBlock).toContain("console.error('[D-199] manual mapping submit did not reach submitted_for_admin_review:'");
+    expect(catchBlock).toContain("internal ? 'Submission failed' :");
+    expect(src).not.toContain('wrote no row:');
+    expect(block).toContain("status_not_reached: submit_template_for_admin_review (manual mapping submit)");
     expect(requestBlock).toContain("console.error('[D-199] admin review submit did not reach the status:'");
     expect(requestBlock).toContain("alert('Could not submit for admin review.')");
   });

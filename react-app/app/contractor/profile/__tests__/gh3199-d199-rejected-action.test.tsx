@@ -33,6 +33,7 @@ describe('d199-validation action row by status (gh-3199)', () => {
     const onUpload = vi.fn();
     await renderWith('rejected', onUpload);
     expect(screen.queryByText('Request admin review')).toBeNull();
+    expect(screen.queryByText('Map anchors manually')).toBeNull();
     fireEvent.click(screen.getByText('Upload a corrected template'));
     expect(onUpload).toHaveBeenCalledTimes(1);
   });
@@ -40,6 +41,7 @@ describe('d199-validation action row by status (gh-3199)', () => {
   it('manual_mapping_pending: "Request admin review" present, no upload-corrected button', async () => {
     await renderWith('manual_mapping_pending');
     expect(screen.getByText('Request admin review')).toBeTruthy();
+    expect(screen.getByText('Map anchors manually')).toBeTruthy();
     expect(screen.queryByText('Upload a corrected template')).toBeNull();
   });
 

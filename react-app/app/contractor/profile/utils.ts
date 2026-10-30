@@ -422,6 +422,7 @@ export interface D199ValidationResult {
 export interface D199Row {
   id?: string;
   status: string;
+  pdf_storage_path?: string | null;
   validation_result?: D199ValidationResult | null;
   manual_overrides?: unknown;
 }
