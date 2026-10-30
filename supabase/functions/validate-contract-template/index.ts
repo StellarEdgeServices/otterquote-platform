@@ -78,6 +78,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.104.0";
 import { extractPdfText } from "./pdf-text.ts";
 import { MANIFEST, scanRequiredAnchors, scanOptionalAnchors, scanLabeledSignTags } from "./manifest.ts";
 import { revalidateTemplates } from "./revalidate.ts";
+import { applyRejectionHold, HELD_FOR_ADMIN_NOTICE } from "./admin-verdict-hold.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { checkAdminVerdictGuard } from "./verdict-guard.ts";
 import {
@@ -202,9 +203,22 @@ Deno.serve(async (req: Request) => {
         return jsonResponse({ error: "Forbidden: service role or admin role required for revalidate_all" }, 403, corsHeaders);
       }
       const dryRun = body.dry_run !== false;
+      // [gh-3224] force_admin_verdicts: admin JWT only (the service-role key is not an admin) and logged.
+      let forceAdminVerdicts = false;
+      if (body.force_admin_verdicts === true) {
+        const { data: { user: fvUser } } = bearerToken === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+          ? { data: { user: null } }
+          : await supabase.auth.getUser(bearerToken);
+        if ((fvUser?.app_metadata as any)?.role !== "admin") {
+          return jsonResponse({ error: "Forbidden: force_admin_verdicts requires an admin JWT" }, 403, corsHeaders);
+        }
+        forceAdminVerdicts = true;
+        console.warn(`validate-contract-template revalidate_all force_admin_verdicts by ${fvUser!.id} dry_run=${dryRun} template_ids=${JSON.stringify(body.template_ids ?? null)}`);
+      }
       const report = await revalidateTemplates({
         supabase,
         dryRun,
+        forceAdminVerdicts,
         force: body.force === true,
         templateIds: Array.isArray(body.template_ids) ? body.template_ids.map(String) : undefined,
         extractPdfText,
@@ -467,6 +481,17 @@ Deno.serve(async (req: Request) => {
       newStatus = "manual_mapping_pending";
     }
 
+    // [gh-3224] A template an admin rejected never validates on a scan alone: it goes back to an admin.
+    // Fails closed: if the verdict lookup errors, nothing is written.
+    const hold = await applyRejectionHold(supabase, contractor_template_id, newStatus);
+    if (!hold.ok) {
+      console.error("validate-contract-template: admin verdict lookup failed:", hold.error);
+      return jsonResponse({ error: "Could not confirm this template's review history; nothing was changed.", code: "verdict_lookup_failed" }, 500, corsHeaders);
+    }
+    newStatus = hold.status;
+    const heldForAdmin = hold.held;
+    if (heldForAdmin) (validationResult as any).heldForAdminReview = true;
+
     const { error: updateErr, data: updateRows } = await supabase
       .from("contractor_templates")
       .update({
@@ -502,6 +527,7 @@ Deno.serve(async (req: Request) => {
       ok: true,
       status: newStatus,
       validation_result: validationResult,
+      ...(heldForAdmin ? { held_for_admin_review: true, notice: HELD_FOR_ADMIN_NOTICE } : {}),
     }, 200, corsHeaders);
   } catch (e: any) {
     console.error("validate-contract-template error:", e);
