@@ -665,9 +665,16 @@ export function readReferralIds(): ReferralIds {
   }
   // P18: oq-ref missing or expired and no ids anywhere => fall back to the
   // server-set oq_pc cookie (only the partner code is known server-side).
+  const pc = readPartnerClick();
   if (!REFERRAL_KEYS.some((key) => out[key])) {
-    const pc = readPartnerClick();
     if (pc) out.oq_referral_code = pc.code;
+  } else if (pc && clickTs !== null && pc.ts > clickTs && out.oq_referral_code !== pc.code) {
+    // P18 last click wins: a NEWER server-recorded click on another partner
+    // (this browser's JS never ran, or its oq-ref write was dropped) beats the
+    // older oq-ref. Drop the stale partner's ids; only the code is known.
+    // (clickTs === null with ids was handled above: oq_pc wins in-window.)
+    clearOqRef();
+    return { oq_referral_code: pc.code };
   }
   // In-window claim-scoped id (the windowed fallback for the claim writers).
   if (clickTs !== null) {

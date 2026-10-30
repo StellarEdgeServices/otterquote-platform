@@ -58,6 +58,7 @@ function freshSandbox() {
     setPc: (code, clickMs, maxAge = 90 * DAY, raw) =>
       { doc.cookie = `oq_pc=${raw ?? encodeURIComponent(JSON.stringify({ c: code, t: new Date(clickMs).toISOString() }))}; Path=/; Max-Age=${maxAge}`; },
     dropOqRef: () => { doc.cookie = 'oq-ref=; Path=/; Max-Age=0'; sandbox.window.localStorage.removeItem('oq_referral_ts'); },
+    setRaw: (k, v) => { doc.cookie = `${k}=${v}; Path=/; Max-Age=${90 * DAY}`; },
     hasPc: () => { void doc.cookie; return jar.has('oq_pc'); },
   };
 }
@@ -131,6 +132,48 @@ const A = { oq_referral_id: 'ref-A', oq_referral_agent_id: 'agent-A', oq_referra
   check(t.R.read().oq_referral_code === 'PARTNERA', 'before clear: code present');
   t.R.clear();
   check(!t.hasPc() && eq(t.R.read(), {}), 'after clear(): oq_pc is gone and read() returns nothing');
+}
+
+// 7. Last click wins between oq-ref and oq_pc.
+{
+  // older A in oq-ref + newer B in oq_pc => B, stale A ids gone
+  const t = freshSandbox();
+  t.R.write(A, { click: true });
+  t.advanceDays(3);
+  t.setPc('PARTNERB', t.now());
+  const r = t.R.read();
+  check(eq(r, { oq_referral_code: 'PARTNERB' }), `older A + newer B: B wins and A's ids are not returned (got ${JSON.stringify(r)})`);
+  check(eq(t.R.read(), { oq_referral_code: 'PARTNERB' }), 'older A + newer B: stable on re-read');
+}
+{
+  // newer A + older B => A
+  const t = freshSandbox();
+  t.setPc('PARTNERB', t.now() - 5 * DAY * 1000);
+  t.R.write(A, { click: true });
+  const r = t.R.read();
+  check(r.oq_referral_id === 'ref-A' && r.oq_referral_code === 'PARTNERA', `newer A + older B: A wins (got ${JSON.stringify(r)})`);
+}
+{
+  // same partner, newer oq_pc => keep oq-ref ids
+  const t = freshSandbox();
+  t.R.write(A, { click: true });
+  t.advanceDays(1);
+  t.setPc('PARTNERA', t.now());
+  check(t.R.read().oq_referral_id === 'ref-A', 'same partner, newer oq_pc: oq-ref ids kept');
+}
+{
+  // oq-ref with no click time (legacy) => in-window oq_pc wins
+  const t = freshSandbox();
+  t.setRaw('oq-ref', encodeURIComponent(JSON.stringify(A)));
+  t.setPc('PARTNERB', t.now() - DAY * 1000);
+  check(eq(t.R.read(), { oq_referral_code: 'PARTNERB' }), 'legacy oq-ref (no click time): in-window oq_pc wins');
+}
+{
+  // negative control: oq_pc outside the window => oq-ref returned
+  const t = freshSandbox();
+  t.R.write(A, { click: true });
+  t.setPc('PARTNERB', t.now() - 91 * DAY * 1000);
+  check(t.R.read().oq_referral_id === 'ref-A', 'oq_pc outside the 90-day window is ignored; oq-ref returned');
 }
 
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');

@@ -73,6 +73,45 @@ describe('P18: readReferralIds falls back to oq_pc', () => {
     expect(document.cookie).toContain('oq_pc=');
   });
 
+  describe('last click wins between oq-ref and oq_pc', () => {
+    const B_CODE = 'PARTNERB';
+    it('older A in oq-ref + newer B in oq_pc => B, and A\'s stale ids are gone', () => {
+      writeReferralIds(A, { click: true }); // click at NOW
+      vi.setSystemTime(new Date(NOW.getTime() + 3 * DAY_MS));
+      setPc(B_CODE, new Date()); // B clicked 3 days later, server-side only
+      expect(readReferralIds()).toEqual({ oq_referral_code: B_CODE });
+      expect(localStorage.getItem('oq_referral_id')).toBeNull();
+      expect(readReferralIds()).toEqual({ oq_referral_code: B_CODE }); // stable on re-read
+    });
+
+    it('newer A in oq-ref + older B in oq_pc => A', () => {
+      setPc(B_CODE, new Date(NOW.getTime() - 5 * DAY_MS));
+      writeReferralIds(A, { click: true }); // click at NOW, newer
+      const ids = readReferralIds();
+      expect(ids.oq_referral_id).toBe('ref-A');
+      expect(ids.oq_referral_code).toBe('PARTNERA');
+    });
+
+    it('same partner, newer oq_pc => oq-ref ids are kept (nothing stale to drop)', () => {
+      writeReferralIds(A, { click: true });
+      vi.setSystemTime(new Date(NOW.getTime() + DAY_MS));
+      setPc('PARTNERA', new Date());
+      expect(readReferralIds().oq_referral_id).toBe('ref-A');
+    });
+
+    it('oq-ref with no click time (legacy) => in-window oq_pc wins', () => {
+      document.cookie = `oq-ref=${encodeURIComponent(JSON.stringify(A))}; Path=/`; // no oq_referral_ts
+      setPc(B_CODE, new Date(NOW.getTime() - DAY_MS));
+      expect(readReferralIds()).toEqual({ oq_referral_code: B_CODE });
+    });
+
+    it('negative control: an oq_pc outside the 90-day window is ignored and the in-window oq-ref is returned', () => {
+      writeReferralIds(A, { click: true });
+      setPc(B_CODE, new Date(NOW.getTime() - 91 * DAY_MS));
+      expect(readReferralIds().oq_referral_id).toBe('ref-A');
+    });
+  });
+
   it('negative control: no oq_pc and no oq-ref returns nothing', () => {
     expect(readReferralIds()).toEqual({});
   });

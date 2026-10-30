@@ -635,9 +635,16 @@
       // server-set oq_pc cookie (only the partner code is known server-side).
       var hasIds = false;
       for (var h = 0; h < REFERRAL_KEYS.length; h++) { if (out[REFERRAL_KEYS[h]]) hasIds = true; }
+      var pc = readPartnerClick();
       if (!hasIds) {
-        var pc = readPartnerClick();
         if (pc) out.oq_referral_code = pc.code;
+      } else if (pc && clickTs !== null && pc.ts > clickTs && out.oq_referral_code !== pc.code) {
+        // P18 last click wins: a NEWER server-recorded click on another partner
+        // (this browser's JS never ran, or its oq-ref write was dropped) beats
+        // the older oq-ref. Drop the stale partner's ids; only the code is known.
+        // (clickTs === null with ids was handled above: oq_pc wins in-window.)
+        this._clearOqRef();
+        return { oq_referral_code: pc.code };
       }
       // In-window claim-scoped id (the windowed fallback for the claim writers).
       if (clickTs !== null) {
