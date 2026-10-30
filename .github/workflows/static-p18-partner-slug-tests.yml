@@ -1,0 +1,38 @@
+name: Static P18 Partner Slug Tests
+
+# P18 (#3218): runs tests/p18-partner-slug-picker.mjs (js/partner-slug.js + the "your short link" card on partner-profile.html, with negative controls).
+# `pull_request` only, no secrets, read-only token, path-filtered. The SQL proof (supabase/tests/p18_vanity_slug_proof.sql) runs by hand, rolled back.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'partner-profile.html'
+      - 'js/partner-slug.js'
+      - 'tests/p18-partner-slug-picker.mjs'
+      - '.github/workflows/static-p18-partner-slug-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-p18-partner-slug-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  p18-slug:
+    name: P18 partner slug picker tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Picker tests with negative controls
+        run: node tests/p18-partner-slug-picker.mjs

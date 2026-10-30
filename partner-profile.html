@@ -128,6 +128,21 @@
         text-align: left;
     }
 
+    /* P18 (#3218): "your short link" card, shown only to the signed-in owner of this profile. */
+    .slug-card {
+        margin-top: var(--sp-8);
+        padding-top: var(--sp-6);
+        border-top: 1px solid rgba(224, 123, 0, 0.2);
+        text-align: left;
+    }
+    .slug-card h2 { font-size: 1.1rem; color: var(--white); margin-bottom: var(--sp-2); }
+    .slug-card p { color: var(--slate); font-size: 0.9rem; line-height: 1.6; margin-bottom: var(--sp-3); }
+    .slug-row { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+    .slug-prefix { color: var(--slate); font-size: 0.95rem; }
+    .slug-row .form-input { flex: 1 1 140px; min-width: 0; }
+    .slug-current { color: var(--white); font-weight: 600; word-break: break-all; }
+    #slugMsg { min-height: 1.2em; margin-top: var(--sp-2); font-size: 0.85rem; }
+
     .profile-loading,
     .profile-error {
         color: var(--slate);
@@ -155,6 +170,7 @@
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
 <script src="js/agent-types.js"></script>
+<script src="js/partner-slug.js"></script>
 
 <script>
     // gh-862/gh-881: reads ?code=, looks up the partner via the same public
@@ -223,6 +239,82 @@
         `;
     }
 
+    // P18 (#3218): "your short link" card. Only the signed-in owner of the displayed profile sees it; the RPC is the
+    // authority (it resolves the partner from auth.uid()), this check only decides whether to draw the card.
+    function slugDisplayHost() { return String(CONFIG.SITE_URL || '').replace(/^https?:\/\//, '').replace(/\/+$/, ''); }
+
+    function renderSlugState(slug) {
+        const cur = document.getElementById('slugCurrent');
+        if (!cur) return;
+        if (!slug) { cur.innerHTML = ''; return; }
+        const shown = escapeHtml(PartnerSlug.displayUrl(CONFIG.SITE_URL, slug));
+        cur.innerHTML = PartnerSlug.ROUTING_LIVE
+            ? `<p>Your short link: <span class="slug-current">${shown}</span> <button type="button" class="btn btn-secondary" id="slugCopy">Copy</button></p>`
+            : `<p>Your short link: <span class="slug-current">${shown}</span><br>Saved. It will start working when short links launch. Your regular link keeps working in the meantime.</p>`;
+        const copy = document.getElementById('slugCopy');
+        if (copy) copy.addEventListener('click', async function () {
+            try { await navigator.clipboard.writeText(PartnerSlug.shortUrl(CONFIG.SITE_URL, slug)); copy.textContent = 'Copied'; }
+            catch (_) { copy.textContent = 'Copy failed'; }
+        });
+    }
+
+    function setSlugMsg(text, isError) {
+        const el = document.getElementById('slugMsg');
+        if (!el) return;
+        el.className = isError ? 'form-error' : 'form-hint';
+        el.textContent = text;
+    }
+
+    async function onSlugSubmit(ev) {
+        ev.preventDefault();
+        const input = document.getElementById('slugInput');
+        const btn = document.getElementById('slugSave');
+        btn.disabled = true;
+        setSlugMsg('Saving\u2026', false);
+        const r = await PartnerSlug.save(sb, input.value);
+        btn.disabled = false;
+        if (!r.ok) { input.classList.add('error'); setSlugMsg(r.message, true); return; }
+        input.classList.remove('error');
+        input.value = r.slug;
+        setSlugMsg(r.changed ? 'Saved.' : 'That is already your short link.', false);
+        renderSlugState(r.slug);
+    }
+
+    async function maybeRenderSlugCard(code) {
+        try {
+            if (typeof Auth === 'undefined' || typeof PartnerSlug === 'undefined') return;
+            const user = await Auth.getUser();
+            if (!user) return;
+            const { data: mine } = await sb.from('referral_agents')
+                .select('unique_code, vanity_slug, status')
+                .eq('user_id', user.id).maybeSingle();
+            if (!mine || mine.unique_code !== code || mine.status !== 'active') return;
+            const card = document.getElementById('profileCard');
+            if (!card) return;
+            const wrap = document.createElement('div');
+            wrap.className = 'slug-card';
+            wrap.id = 'slugCard';
+            wrap.innerHTML = `
+                <h2>Your short link</h2>
+                <p>Pick a short address that is easy to say out loud. Visitors who use it are credited to you, the same as your regular link.</p>
+                <div id="slugCurrent"></div>
+                <form id="slugForm" novalidate>
+                    <label class="form-label" for="slugInput">Short link</label>
+                    <div class="slug-row">
+                        <span class="slug-prefix">${escapeHtml(slugDisplayHost())}/</span>
+                        <input class="form-input" id="slugInput" name="slug" type="text" inputmode="url" autocomplete="off"
+                               autocapitalize="none" spellcheck="false" minlength="${PartnerSlug.MIN}" maxlength="${PartnerSlug.MAX}"
+                               placeholder="jane-doe" value="${escapeHtml(mine.vanity_slug || '')}">
+                        <button type="submit" class="btn btn-primary" id="slugSave">Save</button>
+                    </div>
+                    <div id="slugMsg" role="status" aria-live="polite"></div>
+                </form>`;
+            card.appendChild(wrap);
+            document.getElementById('slugForm').addEventListener('submit', onSlugSubmit);
+            renderSlugState(mine.vanity_slug);
+        } catch (_) { /* the picker is optional; the profile above is already drawn */ }
+    }
+
     async function init() {
         // Header/footer auto-render via nav.js's DOMContentLoaded listener
         // reading data-active/data-auth off #site-header (same pattern as
@@ -270,6 +362,7 @@
             }
 
             renderProfile(data, code);
+            maybeRenderSlugCard(code);
         } catch (err) {
             console.error('Error loading partner profile:', err);
             showError("Something went wrong loading this partner profile. Please try again.");
