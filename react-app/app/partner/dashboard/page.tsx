@@ -61,6 +61,7 @@ import {
   referralStatusLabel,
   referralStatusClass,
   referralClientName,
+  ownReferralsFromRpc,
   referralDate,
   fmtMoneyCell,
   payoutBadge,
@@ -113,13 +114,11 @@ export default function PartnerDashboardPage() {
 
   // ── Data loaders (supabase singleton — ADR-009 pattern) ─────────────────────
   const loadReferrals = useCallback(async (p: PartnerRecord) => {
-    const { data: refs } = await supabase
-      .from('referrals')
-      .select('*')
-      .eq('referral_agent_id', p.id)
-      .order('created_at', { ascending: false });
+    // gh-3217: masked read via get_my_referrals() (display_name = first name + last initial; no
+    // email/phone). Direct reads of homeowner contact columns on `referrals` are revoked.
+    const { data: refs } = await supabase.rpc('get_my_referrals');
 
-    const list = (refs || []) as PartnerReferral[];
+    const list = ownReferralsFromRpc((refs || []) as PartnerReferral[], p.id);
     setReferrals(list);
 
     // D-180: payout-approval status only for commission rows (commission_amount > 0).

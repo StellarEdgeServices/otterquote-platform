@@ -30,6 +30,7 @@ import {
   referralStatusLabel,
   referralStatusClass,
   referralClientName,
+  ownReferralsFromRpc,
   fmtMoneyCell,
   payoutBadge,
   referralIdsForPayout,
@@ -171,10 +172,11 @@ describe('referral table cells', () => {
     expect(referralStatusClass('commission_paid')).toBe('status-paid');
     expect(referralStatusClass('mystery')).toBe('status-clicked');
   });
-  it('client name: homeowner_name || homeowner_email || "Visitor"', () => {
-    expect(referralClientName({ homeowner_name: 'John', homeowner_email: 'j@x.com' })).toBe('John');
-    expect(referralClientName({ homeowner_name: null, homeowner_email: 'j@x.com' })).toBe('j@x.com');
-    expect(referralClientName({ homeowner_name: null, homeowner_email: null })).toBe('Visitor');
+  it('client name: masked display_name || "Visitor" (never an email, gh-3217)', () => {
+    expect(referralClientName({ display_name: 'John S.' })).toBe('John S.');
+    expect(referralClientName({ display_name: null })).toBe('Visitor');
+    // a stray contact field on the row (e.g. a stale client) is never shown
+    expect(referralClientName({ display_name: null, homeowner_email: 'j@x.com' } as never)).toBe('Visitor');
   });
   it('money cell: falsy → "—" else $-formatted', () => {
     expect(fmtMoneyCell(null)).toBe('—');
