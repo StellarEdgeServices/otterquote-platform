@@ -475,6 +475,9 @@ Deno.serve(async (req: Request) => {
         status: newStatus,
       })
       .eq("id", contractor_template_id)
+      // [gh-3216] Conditional on the status read at load time: if an admin verdict landed while the
+      // scan ran, this matches zero rows and the gh2105 branch below fails closed without writing.
+      .eq("status", tmpl.status)
       .select("id");
 
     if (updateErr) {

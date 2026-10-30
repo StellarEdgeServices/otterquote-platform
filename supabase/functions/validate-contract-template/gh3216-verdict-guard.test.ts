@@ -142,3 +142,27 @@ Deno.test("mutation control: removing the early return would let the refused req
   const mutated = block.replace("return jsonResponse(verdictGuard.body, verdictGuard.httpStatus, corsHeaders);", "");
   assert(block.includes("return jsonResponse(verdictGuard.body") && !mutated.includes("return jsonResponse(verdictGuard.body"));
 });
+
+// ─── Race: the final write is conditional on the status read at load time ───────────────────────
+function updateBlock(): string {
+  const idxUpdate = mustFind('.from("contractor_templates")\n      .update(');
+  const idxSelect = mustFind('.select("id")', idxUpdate);
+  return src.slice(idxUpdate, idxSelect + '.select("id")'.length);
+}
+
+Deno.test("wiring: the status update is conditioned on the status read earlier (.eq(\"status\", tmpl.status)) between the id match and .select", () => {
+  const block = updateBlock();
+  const iId = block.indexOf('.eq("id", contractor_template_id)');
+  const iStatus = block.indexOf('.eq("status", tmpl.status)');
+  const iSel = block.indexOf('.select("id")');
+  assert(iId !== -1 && iStatus !== -1, "update must match on id AND on the previously read status");
+  assert(iId < iStatus && iStatus < iSel);
+  assertStringIncludes(src, '.select("id, contractor_id, trade, funding_type, pdf_storage_path, status")');
+});
+
+Deno.test("mutation control: removing .eq(\"status\", ...) makes the race assertion fail", () => {
+  const block = updateBlock();
+  const mutated = block.replace('.eq("status", tmpl.status)', "");
+  assert(block.includes('.eq("status", tmpl.status)'));
+  assert(!mutated.includes('.eq("status", tmpl.status)'), "mutated block must lose the condition the wiring test requires");
+});
