@@ -80,6 +80,7 @@ import { MANIFEST, scanRequiredAnchors, scanOptionalAnchors, scanLabeledSignTags
 import { revalidateTemplates } from "./revalidate.ts";
 import { applyRejectionHold, HELD_FOR_ADMIN_NOTICE } from "./admin-verdict-hold.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { checkAdminVerdictGuard } from "./verdict-guard.ts";
 import {
   describeMissingMarkers,
   describeLabeledTagMarkers,
@@ -306,6 +307,15 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // [gh-3216] An admin verdict (`rejected` / `admin_validated`) is not the contractor's to overwrite.
+    // Runs after the ownership check (a non-owner still gets the 403 above, not a status leak) and
+    // BEFORE the assisted path's storage writes, the scan and the status update, so a refusal writes
+    // nothing at all. Admin callers and every other status fall through unchanged.
+    const verdictGuard = await checkAdminVerdictGuard({ req, currentStatus: tmpl.status, isAdminPath });
+    if (!verdictGuard.ok) {
+      return jsonResponse(verdictGuard.body, verdictGuard.httpStatus, corsHeaders);
+    }
+
     // Manifest lookup
     const tradeManifest = MANIFEST.trades?.[tmpl.trade]?.[tmpl.funding_type];
     if (!tradeManifest) {
@@ -490,6 +500,9 @@ Deno.serve(async (req: Request) => {
         status: newStatus,
       })
       .eq("id", contractor_template_id)
+      // [gh-3216] Conditional on the status read at load time: if an admin verdict landed while the
+      // scan ran, this matches zero rows and the gh2105 branch below fails closed without writing.
+      .eq("status", tmpl.status)
       .select("id");
 
     if (updateErr) {

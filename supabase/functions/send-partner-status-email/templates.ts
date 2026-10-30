@@ -81,6 +81,9 @@ export function textCta({ href, label }: EmailCtaInput): string {
 
 /**
  * "Jane Doe" -> "Jane D."   "Jane" -> "Jane"   null/"" -> "your referral"
+ * A name containing "@" or a digit (an email or phone typed into the name
+ * field) is not shown either -> "your referral" (gh-3217; same rule as the
+ * display_name mask in get_my_referrals()).
  * Deliberately drops the surname to limit disclosure to the partner per the
  * privacy scope documented above.
  */
@@ -88,7 +91,7 @@ export function formatReferralDisplayName(
   homeownerName: string | null | undefined,
 ): string {
   const trimmed = (homeownerName || "").trim();
-  if (!trimmed) return "your referral";
+  if (!trimmed || /[@0-9]/.test(trimmed)) return "your referral";
   const parts = trimmed.split(/\s+/).filter(Boolean);
   if (parts.length === 1) return parts[0];
   const first = parts[0];
