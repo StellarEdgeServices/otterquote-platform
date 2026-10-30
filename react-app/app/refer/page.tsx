@@ -175,13 +175,14 @@ export default function ReferAFriendPage() {
         if (agentError) {
           console.error('Failed to resolve referral agent:', agentError);
         } else if (agentRow) {
-          const { data: refs, error: refsError } = await supabase
-            .from('referrals')
-            .select('*')
-            .eq('referral_agent_id', (agentRow as { id: string }).id)
-            .order('created_at', { ascending: false });
+          // gh-3217: masked read via get_my_referrals() (display_name = first name + last initial;
+          // no email/phone). Direct reads of homeowner contact columns are revoked.
+          const { data: refs, error: refsError } = await supabase.rpc('get_my_referrals');
           if (refsError) console.error('Failed to load referrals:', refsError);
-          setReferrals((refs || []) as CustomerReferral[]);
+          const agentId = (agentRow as { id: string }).id;
+          setReferrals(
+            ((refs || []) as CustomerReferral[]).filter((r) => r.referral_agent_id === agentId),
+          );
         }
       } catch (err) {
         console.error('Error loading refer-a-friend data:', err);

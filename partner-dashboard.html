@@ -2318,11 +2318,12 @@ Let me know if you have any questions!
 
             try {
                 // referral_agent_id is the FK column name in the referrals table
-                const { data: referrals } = await sb
-                    .from('referrals')
-                    .select('*')
-                    .eq('referral_agent_id', currentPartner.id)
-                    .order('created_at', { ascending: false });
+                // gh-3217: masked read via get_my_referrals() (display_name = first name + last
+                // initial; no email/phone). Direct reads of homeowner contact columns are revoked.
+                const { data: allMine, error: refsError } = await sb.rpc('get_my_referrals');
+                if (refsError) console.error('Error loading referrals:', refsError);
+                const referrals = refsError ? null : (allMine || [])
+                    .filter(r => r.referral_agent_id === currentPartner.id);
 
                 if (referrals) {
                     allReferrals = referrals;
@@ -2857,8 +2858,8 @@ Let me know if you have any questions!
                 const dateObj = new Date(ref.created_at);
                 const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-                // Schema uses homeowner_name and commission_amount
-                const clientName = ref.homeowner_name || ref.homeowner_email || 'Visitor';
+                // gh-3217 / privacy.html 4.7: first name + last initial only (display_name from get_my_referrals())
+                const clientName = escapeHtml(ref.display_name || 'Visitor');
                 const jobValue = ref.job_value ? `$${Number(ref.job_value).toLocaleString()}` : '—';
                 const commissionAmt = ref.commission_amount ? `$${Number(ref.commission_amount).toLocaleString()}` : '—';
 

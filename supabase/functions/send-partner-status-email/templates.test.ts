@@ -18,6 +18,14 @@ import { POSTAL_ADDRESS } from "./email-footer.ts";
 const ALL_STAGES: Stage[] = [1, 2, 3, 4, 5];
 const DASHBOARD_URL = "https://otterquote.com/partner-dashboard.html";
 
+Deno.test("formatReferralDisplayName: a name holding an email or digits falls back (gh-3217)", () => {
+  assertEquals(formatReferralDisplayName("jane@example.com"), "your referral");
+  assertEquals(formatReferralDisplayName("Jane Doe jane@x.com"), "your referral");
+  assertEquals(formatReferralDisplayName("317-555-0199"), "your referral");
+  assertEquals(formatReferralDisplayName("Jane 2 Doe"), "your referral");
+  assertEquals(formatReferralDisplayName("Jane Doe"), "Jane D.");
+});
+
 // ── formatReferralDisplayName — privacy scope (#856 AC) ───────────────────
 
 Deno.test("full name collapses to first name + last initial", () => {

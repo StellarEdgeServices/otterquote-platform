@@ -1355,16 +1355,15 @@ Best regards`;
         return;
       }
 
-      const { data: referrals, error } = await sb
-        .from('referrals')
-        .select('*')
-        .eq('referral_agent_id', agentRow.id)
-        .order('created_at', { ascending: false });
+      // gh-3217: masked read via get_my_referrals() (display_name = first name + last initial;
+      // no email/phone). Direct reads of homeowner contact columns are revoked.
+      const { data: allMine, error } = await sb.rpc('get_my_referrals');
 
       if (error) {
         console.error('Failed to load referrals:', error);
         return;
       }
+      const referrals = (allMine || []).filter(r => r.referral_agent_id === agentRow.id);
 
       const dashboard = document.getElementById('referrals-dashboard');
       if (referrals && referrals.length > 0) {
@@ -1400,9 +1399,9 @@ Best regards`;
       const tbody = document.getElementById('referrals-tbody') || document.getElementById('referrals-table-body');
       if (!tbody) return;
       tbody.innerHTML = referrals.map((r, i) => {
-        // homeowner_name / homeowner_email are nullable — fall back to a
+        // display_name (first name + last initial, gh-3217) is nullable — fall back to a
         // positional label. Cells match the headers: Name | Date | Status | Referral Fee.
-        const name = r.homeowner_name || r.homeowner_email || ('Referral #' + (i + 1));
+        const name = r.display_name || ('Referral #' + (i + 1));
         const date = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
         const label = REFERRAL_STATUS_LABELS[r.status] || 'Pending';
         const cls = REFERRAL_STATUS_CLASSES[r.status] || 'status-clicked';
