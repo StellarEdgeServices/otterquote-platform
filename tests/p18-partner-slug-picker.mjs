@@ -97,6 +97,9 @@ async function runPage({ user, mine, code }) {
   const owner = await runPage({ user: { id: 'u1' }, mine: { unique_code: 'JFY5GZOD', vanity_slug: null, status: 'active' }, code: 'JFY5GZOD' });
   ok(owner.created.length === 1 && /id="slugForm"/.test(owner.created[0].innerHTML), '(6) the owner of the profile gets the picker card');
   ok(/placeholder="jane-doe"/.test(owner.created[0].innerHTML) && /maxlength="30"/.test(owner.created[0].innerHTML), '(6b) the card has the slug field (maxlength 30)');
+  ok(/Once short links launch, visitors who use it will be credited to you, the same as your regular link\./.test(owner.created[0].innerHTML), '(6k) ROUTING_LIVE false: the crediting sentence is future tense, exactly as specified');
+  ok(!/visitors who use it are credited/i.test(owner.created[0].innerHTML), '(6l) NEGATIVE CONTROL: no present-tense crediting promise while routing is not live');
+  ok(/\$\{PartnerSlug\.ROUTING_LIVE \?/.test(pageSrc) && /Visitors who use it are credited to you/.test(pageSrc), '(6m) the present-tense sentence exists only on the ROUTING_LIVE branch');
   owner.byId.slugInput.value = 'Jane-Doe';
   await owner.byId.slugForm.handlers.submit({ preventDefault() {} });
   ok(owner.rpcCalls.length === 1 && owner.rpcCalls[0][0] === 'set_partner_slug' && owner.rpcCalls[0][1].p === 'jane-doe', '(6c) submitting calls set_partner_slug("jane-doe")');

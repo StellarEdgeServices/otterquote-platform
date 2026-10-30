@@ -27,3 +27,9 @@ CREATE POLICY "Agents can view own profile" ON public.referral_agents FOR SELECT
 INSERT INTO public.referral_agents (id, user_id, email, unique_code, status, agent_type, is_test) VALUES
  ('9bf90639-269c-41b6-9d99-153ea187b36b','fe97bbb6-6117-4147-98e4-be28e9f78bda','a@example.test','JFY5GZOD','active','re_agent',true),
  ('80219b53-6f78-46ef-9236-2c2802faa9ea','24bd2fbb-8ec3-44bc-8495-5c0adaef1f3c','b@example.test','ZN73R8GY','active','re_agent',true);
+-- platform_settings(key text, value jsonb, updated_at), as read 2026-10-30; no partner_attribution_window_days row today (PR #3226 seeds 90)
+CREATE TABLE public.platform_settings (key text PRIMARY KEY, value jsonb, updated_at timestamptz DEFAULT now());
+-- Supabase default privileges: new public tables / sequences are open to anon + authenticated until revoked (reproduced so the REVOKEs are tested)
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authenticated, service_role;

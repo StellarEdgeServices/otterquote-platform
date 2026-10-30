@@ -10,6 +10,8 @@ on:
       - 'partner-profile.html'
       - 'js/partner-slug.js'
       - 'tests/p18-partner-slug-picker.mjs'
+      - 'scripts/p18-reserved-slugs.py'
+      - 'scripts/p18-reserved-slugs.test.py'
       - '.github/workflows/static-p18-partner-slug-tests.yml'
 
 permissions:
@@ -36,3 +38,5 @@ jobs:
           node-version: '22.x'
       - name: Picker tests with negative controls
         run: node tests/p18-partner-slug-picker.mjs
+      - name: Reserved-slug generator self-test with negative controls
+        run: python3 scripts/p18-reserved-slugs.test.py

@@ -10,6 +10,8 @@
 -- Each probe prints OK or REFUSED <sqlstate> <message>. Expected AFTER: P1 OK; every N-line REFUSED with the stated state;
 -- H-lines as written. The closes-on negatives are N1 'admin', N2 'partners', N3 'Partners', N4 existing slug, N5 'ab', N6 'a--b',
 -- N7 direct UPDATE of referral_agents.vanity_slug.
+-- Revision after REVIEW: FAIL 6523727019: R-lines (reserved names refused for service_role/admin writers and by pattern), W-lines (90-day release,
+-- history never loses a row), and the DELETE-on-reclaim of the earlier version is gone (H3 keeps both history rows).
 
 CREATE TEMP TABLE _r(k text, v text) ON COMMIT DROP;
 -- @@MIGRATION@@
@@ -101,10 +103,10 @@ BEGIN
 
   -- history: a changed slug keeps crediting
   INSERT INTO _r VALUES ('H1 A changes to jane-d [want OK]', pg_temp._rpc(a, 'jane-d'));
-  INSERT INTO _r VALUES ('H1 history of A [want jane-doe]', coalesce((SELECT string_agg(slug, ',') FROM referral_agent_slug_history WHERE referral_agent_id = aid), 'NONE'));
+  INSERT INTO _r VALUES ('H1 history of A [want jane-doe]', coalesce((SELECT string_agg(slug, ',' ORDER BY id) FROM referral_agent_slug_history WHERE referral_agent_id = aid), 'NONE'));
   INSERT INTO _r VALUES ('H2 B takes A''s retired jane-doe [want REFUSED 22023]', pg_temp._rpc(b, 'jane-doe'));
   INSERT INTO _r VALUES ('H3 A re-claims jane-doe [want OK]', pg_temp._rpc(a, 'jane-doe'));
-  INSERT INTO _r VALUES ('H3 history of A [want jane-d]', coalesce((SELECT string_agg(slug, ',') FROM referral_agent_slug_history WHERE referral_agent_id = aid), 'NONE'));
+  INSERT INTO _r VALUES ('H3 history of A, nothing lost on re-claim [want jane-doe,jane-d]', coalesce((SELECT string_agg(slug, ',' ORDER BY id) FROM referral_agent_slug_history WHERE referral_agent_id = aid), 'NONE'));
 
   -- backstops (service_role path skips the RPC): CHECK and unique index still bite
   PERFORM set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
@@ -116,8 +118,67 @@ BEGIN
     INSERT INTO _r VALUES ('B3 service_role change archives old [want the 30-b slug then svc-set]', coalesce((SELECT string_agg(slug, ',') FROM referral_agent_slug_history WHERE referral_agent_id = bid), 'NONE'));
   EXCEPTION WHEN OTHERS THEN INSERT INTO _r VALUES ('B3 ERROR', SQLSTATE || ' ' || left(SQLERRM, 80)); END;
 
+  -- R: reserved names are enforced for EVERY writer (the review set `admin` as service_role), plus the pattern rule
+  PERFORM set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
+  BEGIN UPDATE referral_agents SET vanity_slug = 'admin' WHERE id = bid; INSERT INTO _r VALUES ('R1 service_role sets reserved admin', 'OK');
+  EXCEPTION WHEN OTHERS THEN INSERT INTO _r VALUES ('R1 service_role sets reserved admin [want REFUSED 22023]', 'REFUSED ' || SQLSTATE); END;
+  BEGIN UPDATE referral_agents SET vanity_slug = 'Admin' WHERE id = bid; INSERT INTO _r VALUES ('R1b service_role sets Admin', 'OK');
+  EXCEPTION WHEN OTHERS THEN INSERT INTO _r VALUES ('R1b service_role sets Admin [want REFUSED, 23514 case CHECK or 22023]', 'REFUSED ' || SQLSTATE); END;
+  BEGIN UPDATE referral_agents SET vanity_slug = 'refer' WHERE id = bid; INSERT INTO _r VALUES ('R2 service_role sets React route refer', 'OK');
+  EXCEPTION WHEN OTHERS THEN INSERT INTO _r VALUES ('R2 service_role sets React route refer [want REFUSED 22023]', 'REFUSED ' || SQLSTATE); END;
+  BEGIN UPDATE referral_agents SET vanity_slug = 'oq-crm' WHERE id = bid; INSERT INTO _r VALUES ('R3 service_role sets _redirects source oq-crm', 'OK');
+  EXCEPTION WHEN OTHERS THEN INSERT INTO _r VALUES ('R3 service_role sets _redirects source oq-crm [want REFUSED 22023]', 'REFUSED ' || SQLSTATE); END;
+  BEGIN UPDATE referral_agents SET vanity_slug = 'home-anything' WHERE id = bid; INSERT INTO _r VALUES ('R4 service_role sets home- prefix (pattern rule)', 'OK');
+  EXCEPTION WHEN OTHERS THEN INSERT INTO _r VALUES ('R4 service_role sets home- prefix (pattern rule) [want REFUSED 22023]', 'REFUSED ' || SQLSTATE); END;
+  PERFORM set_config('request.jwt.claims', json_build_object('role', 'authenticated', 'email', 'dustin@otterquote.com')::text, true);
+  BEGIN UPDATE referral_agents SET vanity_slug = 'partners' WHERE id = bid; INSERT INTO _r VALUES ('R5 admin email sets reserved partners', 'OK');
+  EXCEPTION WHEN OTHERS THEN INSERT INTO _r VALUES ('R5 admin email sets reserved partners [want REFUSED 22023]', 'REFUSED ' || SQLSTATE); END;
+  PERFORM set_config('request.jwt.claims', '', true);
+  INSERT INTO _r VALUES ('R6 partner RPC home- prefix [want REFUSED 22023]', pg_temp._rpc(b, 'home-whatever'));
+  INSERT INTO _r VALUES ('R7 partner RPC refer / oq-crm / inspector-landing [want 3x REFUSED 22023]',
+    pg_temp._rpc(b, 'refer') || ' | ' || pg_temp._rpc(b, 'oq-crm') || ' | ' || pg_temp._rpc(b, 'inspector-landing'));
+  INSERT INTO _r VALUES ('R8 B slug unchanged by the refused writes [want svc-set-2]', (SELECT coalesce(vanity_slug, 'NULL') FROM referral_agents WHERE id = bid));
+
+  -- W: 90-day release. platform_settings.partner_attribution_window_days absent => 90.
+  DELETE FROM platform_settings WHERE key = 'partner_attribution_window_days';
+  INSERT INTO _r VALUES ('W0 A takes win-slug [want OK]', pg_temp._rpc(a, 'win-slug'));
+  INSERT INTO _r VALUES ('W0 A moves to win-a2, retiring win-slug [want OK]', pg_temp._rpc(a, 'win-a2'));
+  INSERT INTO _r VALUES ('W1a retired just now: B refused [want REFUSED 22023]', pg_temp._rpc(b, 'win-slug'));
+  UPDATE referral_agent_slug_history SET retired_at = now() - interval '91 days' WHERE referral_agent_id = aid AND slug = 'win-slug';
+  INSERT INTO _r VALUES ('W1 retired 91 days ago by A: B claims win-slug [want OK]', pg_temp._rpc(b, 'win-slug'));
+  INSERT INTO _r VALUES ('W1 A cannot take it back now, B holds it [want REFUSED 22023]', pg_temp._rpc(a, 'win-slug'));
+
+  INSERT INTO _r VALUES ('W2 A retires ten-days', pg_temp._rpc(a, 'ten-days') || ' / ' || pg_temp._rpc(a, 'win-a3'));
+  UPDATE referral_agent_slug_history SET retired_at = now() - interval '10 days' WHERE referral_agent_id = aid AND slug = 'ten-days';
+  INSERT INTO _r VALUES ('W2 retired 10 days ago by A: B refused [want REFUSED 22023]', pg_temp._rpc(b, 'ten-days'));
+  INSERT INTO _r VALUES ('W2 retired 10 days ago by A: A reclaims [want OK]', pg_temp._rpc(a, 'ten-days'));
+  INSERT INTO _r VALUES ('W2 history of A kept both rows [want win-slug,win-a2,ten-days,win-a3 (as stored, by id)]',
+    coalesce((SELECT string_agg(slug, ',' ORDER BY id) FROM referral_agent_slug_history WHERE referral_agent_id = aid AND slug IN ('win-slug','win-a2','ten-days','win-a3')), 'NONE'));
+
+  -- W3: B later retires win-slug: archived next to A's stale row, nothing dropped, B's row is the newest
+  INSERT INTO _r VALUES ('W3 B moves off win-slug [want OK]', pg_temp._rpc(b, 'win-b2'));
+  INSERT INTO _r VALUES ('W3 history rows for win-slug [want 2, A and B]',
+    (SELECT count(*)::text || ' ' || string_agg(CASE referral_agent_id WHEN aid THEN 'A' WHEN bid THEN 'B' END, ',' ORDER BY retired_at, id) FROM referral_agent_slug_history WHERE slug = 'win-slug'));
+  INSERT INTO _r VALUES ('W3 newest row for win-slug is B''s (routing picks it) [want B]',
+    (SELECT CASE referral_agent_id WHEN bid THEN 'B' WHEN aid THEN 'A' END FROM referral_agent_slug_history WHERE slug = 'win-slug' ORDER BY retired_at DESC, id DESC LIMIT 1));
+  INSERT INTO _r VALUES ('W3 A refused win-slug while B''s retirement is in the window [want REFUSED 22023]', pg_temp._rpc(a, 'win-slug'));
+
+  -- W4: the window comes from the setting
+  UPDATE referral_agent_slug_history SET retired_at = now() - interval '45 days' WHERE referral_agent_id = aid AND slug = 'win-a2';
+  INSERT INTO _r VALUES ('W4 setting absent (90): 45-day-old retirement still blocks B [want REFUSED 22023]', pg_temp._rpc(b, 'win-a2'));
+  INSERT INTO platform_settings (key, value) VALUES ('partner_attribution_window_days', to_jsonb(30));
+  INSERT INTO _r VALUES ('W4 setting 30: same 45-day-old retirement releases [want OK]', pg_temp._rpc(b, 'win-a2'));
+  UPDATE platform_settings SET value = to_jsonb('abc'::text) WHERE key = 'partner_attribution_window_days';
+  UPDATE referral_agent_slug_history SET retired_at = now() - interval '45 days' WHERE slug = 'win-b2';
+  INSERT INTO _r VALUES ('W4 setting non-numeric falls back to 90: 45 days blocks A [want REFUSED 22023]', pg_temp._rpc(a, 'win-b2'));
+  UPDATE platform_settings SET value = to_jsonb(0) WHERE key = 'partner_attribution_window_days';
+  INSERT INTO _r VALUES ('W4 setting 0 (out of range) falls back to 90: still blocks A [want REFUSED 22023]', pg_temp._rpc(a, 'win-b2'));
+  DELETE FROM platform_settings WHERE key = 'partner_attribution_window_days';
+
   INSERT INTO _r VALUES ('S1 function search_path pinned', coalesce((SELECT proconfig::text FROM pg_proc WHERE proname = 'set_partner_slug' AND pronamespace = 'public'::regnamespace), 'absent'));
   INSERT INTO _r VALUES ('S1 SECURITY DEFINER', coalesce((SELECT prosecdef::text FROM pg_proc WHERE proname = 'set_partner_slug' AND pronamespace = 'public'::regnamespace), 'absent'));
+  INSERT INTO _r VALUES ('S3 history sequence usage anon,authenticated [want false,false]', coalesce(has_sequence_privilege('anon','public.referral_agent_slug_history_id_seq','USAGE')::text,'absent') || ',' || coalesce(has_sequence_privilege('authenticated','public.referral_agent_slug_history_id_seq','USAGE')::text,'absent'));
+  INSERT INTO _r VALUES ('S4 non-pk unique indexes on history [want 0]', (SELECT count(*)::text FROM pg_index i WHERE i.indrelid = 'public.referral_agent_slug_history'::regclass AND i.indisunique AND NOT i.indisprimary));
   INSERT INTO _r VALUES ('S2 reserved_slugs rows', coalesce((SELECT count(*)::text FROM reserved_slugs), 'absent'));
 END $t$;
 

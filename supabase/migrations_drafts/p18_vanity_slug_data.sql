@@ -1,6 +1,6 @@
--- STATUS (gh-1438, as of 2026-10-30T12:30:00Z): NOT APPLIED
--- EVIDENCE: drafted 2026-10-30 under #3218 (P18 partner vanity slug, data layer). Read-only production reads the same day (yeszghaspzwwstvsrioa): referral_agents has no vanity_slug column; tables reserved_slugs and referral_agent_slug_history do not exist; policy "Agents can update own profile" is UPDATE USING/WITH CHECK (user_id = auth.uid()) with table-level UPDATE granted to authenticated, so a partner can PATCH any column of their own row without a trigger.
--- REPO COPY: none (draft; Tier 3B because it adds a trigger on referral_agents: R-097 24-hour notice before apply). Rollback: p18_vanity_slug_data_rollback.sql; proof: supabase/tests/p18_vanity_slug_proof.sql
+-- STATUS (gh-1438, as of 2026-10-30T14:00:00Z): NOT APPLIED
+-- EVIDENCE: drafted 2026-10-30 under #3218 (P18 partner vanity slug, data layer), revised after REVIEW: FAIL 6523727019. Read-only production reads the same day (yeszghaspzwwstvsrioa): referral_agents has no vanity_slug column; tables reserved_slugs and referral_agent_slug_history do not exist; policy "Agents can update own profile" is UPDATE USING/WITH CHECK (user_id = auth.uid()) with table-level UPDATE granted to authenticated, so a partner can PATCH any column of their own row without a trigger; platform_settings(key text, value jsonb, updated_at) has no partner_attribution_window_days row (PR #3226 seeds it at 90).
+-- REPO COPY: none (draft; Tier 3B because it adds a trigger on referral_agents: R-097 24-hour notice before apply). Rollback: p18_vanity_slug_data_rollback.sql; proof: supabase/tests/p18_vanity_slug_proof.sql, runner supabase/tests/p18_vanity_slug_proof_run.sh
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- P18 (partner program): a short, speakable address otterquote.com/<slug> that credits a
@@ -9,41 +9,57 @@
 --
 -- Objects (all new; nothing existing is altered except one new nullable column):
 --   referral_agents.vanity_slug text NULL + CHECK + unique index on lower(vanity_slug)
---   reserved_slugs(slug pk)                    -- 163 rows
---   referral_agent_slug_history                -- a retired slug keeps resolving to its partner
+--   reserved_slugs(slug pk)                    -- 168 rows (scripts/p18-reserved-slugs.py)
+--   p18_slug_is_reserved(text)                 -- reserved_slugs row OR a pattern rule (the `home-` prefix)
+--   referral_agent_slug_history                -- a retired slug keeps crediting for the attribution window
 --   referral_agents_guard_vanity_slug()        -- BEFORE INSERT OR UPDATE trigger
 --   set_partner_slug(p text)                   -- the only client path that writes the column
 --
--- Write guard, mirroring referral_agents_guard_payout_columns(): service_role and admin pass;
--- everyone else is refused (42501) on INSERT with a slug and on UPDATE that changes it, unless
--- the transaction-local flag oq.p18_slug_write = '1' is set, which only set_partner_slug() does.
--- The test is wrapped in coalesce(..., true) so a NULL can never read as "allowed" (the
--- gh-2154 three-valued-logic lesson in the payout guard).
+-- Reserved names are enforced for EVERY writer in the guard trigger (service_role and admin included), so a
+-- direct admin/service_role edit cannot set `admin`. Format rules (3-30, hyphens, digits, blocklist) are enforced in the
+-- RPC; the CHECK constraint and unique index back them for every writer.
 --
--- Retired slugs: the same trigger copies the old value into the history table on ANY path that
--- changes or clears it (RPC, admin, service_role), so crediting cannot be lost by an admin edit.
--- A retired slug stays reserved to its partner; another partner cannot take it.
+-- Pattern rule: the staging-page name starting with `home-` is refused by prefix (p18_slug_is_reserved) instead of a seed row,
+-- because the static pixel gate (T5 in the gh2598 staging-page test) forbids any other tracked file naming that page.
+--
+-- Write guard, mirroring referral_agents_guard_payout_columns(): service_role and admin pass; everyone else is refused (42501)
+-- on INSERT with a slug and on UPDATE that changes it, unless the transaction-local flag oq.p18_slug_write = '1' is set, which
+-- only set_partner_slug() does. The test is wrapped in coalesce(..., true) so a NULL can never read as "allowed".
+--
+-- History and the 90-day release (Ben): the trigger copies the old value into the history table on ANY path that changes or
+-- clears it, with a plain INSERT: history never silently loses a row, and the same string may appear in several rows (A retired it,
+-- later B did). There is deliberately NO unique index on history.slug. A slug is unavailable to partner X if it is any other
+-- partner's current slug, or in history with retired_at inside the window for a DIFFERENT partner. A partner can always reclaim
+-- their own retired slug. The window is platform_settings.partner_attribution_window_days, 90 when absent or not a whole number
+-- of days 1-3650 (the same rule as referral_attribution_window() in PR #3226). Routing (later PR) must resolve a slug to the current
+-- holder first, else to the NEWEST history row still inside the window.
 
 BEGIN;
 
 ALTER TABLE public.referral_agents ADD COLUMN IF NOT EXISTS vanity_slug text;
 
-ALTER TABLE public.referral_agents ADD CONSTRAINT referral_agents_vanity_slug_format
-  CHECK (
-    vanity_slug IS NULL
-    OR (
-      vanity_slug = lower(vanity_slug)
-      AND vanity_slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'
-      AND char_length(vanity_slug) BETWEEN 3 AND 30
-      AND vanity_slug !~ '^[0-9]+$'
-    )
-  );
+DO $c$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                  WHERE conrelid = 'public.referral_agents'::regclass AND conname = 'referral_agents_vanity_slug_format') THEN
+    ALTER TABLE public.referral_agents ADD CONSTRAINT referral_agents_vanity_slug_format
+      CHECK (
+        vanity_slug IS NULL
+        OR (
+          vanity_slug = lower(vanity_slug)
+          AND vanity_slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'
+          AND char_length(vanity_slug) BETWEEN 3 AND 30
+          AND vanity_slug !~ '^[0-9]+$'
+        )
+      );
+  END IF;
+END $c$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS referral_agents_vanity_slug_lower_key
   ON public.referral_agents (lower(vanity_slug));
 
--- Reserved names: every top-level repo file/folder (.html stripped) plus the named list.
--- Generated by scripts/p18-reserved-slugs.py at main c8142228.
+-- Reserved names: every top-level repo file/folder, every top-level React route, every _redirects / netlify.toml source path,
+-- plus the named list. Generated by scripts/p18-reserved-slugs.py at main c8142228.
 CREATE TABLE IF NOT EXISTS public.reserved_slugs (
   slug text PRIMARY KEY
 );
@@ -107,6 +123,7 @@ INSERT INTO public.reserved_slugs (slug) VALUES
   ('css'),
   ('dashboard'),
   ('data'),
+  ('democracy'),
   ('deploy-checks'),
   ('deploy_review_checklist.md'),
   ('docs'),
@@ -130,13 +147,13 @@ INSERT INTO public.reserved_slugs (slug) VALUES
   ('hi-5'),
   ('ho6'),
   ('ho6-start'),
-  ('home-next'),
   ('how-it-works'),
   ('img'),
   ('index'),
   ('ins-1'),
   ('ins-3'),
   ('ins-5'),
+  ('inspector-landing'),
   ('js'),
   ('landing'),
   ('llms'),
@@ -147,11 +164,14 @@ INSERT INTO public.reserved_slugs (slug) VALUES
   ('netlify.toml'),
   ('news'),
   ('onboarding-demo'),
+  ('oq-crm'),
   ('oq-voice-ai'),
   ('oqom-onboarding'),
   ('otter'),
   ('otterquote'),
   ('otterquote-deploy'),
+  ('package-lock.json'),
+  ('package.json'),
   ('partner'),
   ('partner-adjusters'),
   ('partner-agreement'),
@@ -188,6 +208,7 @@ INSERT INTO public.reserved_slugs (slug) VALUES
   ('ref-inspector'),
   ('ref-insurance'),
   ('ref-re'),
+  ('refer'),
   ('refer-a-friend'),
   ('repair-intake'),
   ('robots'),
@@ -217,19 +238,36 @@ INSERT INTO public.reserved_slugs (slug) VALUES
   ('www')
 ON CONFLICT (slug) DO NOTHING;
 
+CREATE OR REPLACE FUNCTION public.p18_slug_is_reserved(s text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $fn$
+  SELECT lower(s) LIKE 'home-%'
+      OR EXISTS (SELECT 1 FROM public.reserved_slugs r WHERE lower(r.slug) = lower(s));
+$fn$;
+REVOKE ALL ON FUNCTION public.p18_slug_is_reserved(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.p18_slug_is_reserved(text) TO service_role;
+
 CREATE TABLE IF NOT EXISTS public.referral_agent_slug_history (
   id               bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   referral_agent_id uuid NOT NULL REFERENCES public.referral_agents(id) ON DELETE CASCADE,
   slug             text NOT NULL,
   retired_at       timestamptz NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS referral_agent_slug_history_slug_lower_key
-  ON public.referral_agent_slug_history (lower(slug));
+-- NOT unique: see the header. Lookup indexes only.
+DROP INDEX IF EXISTS public.referral_agent_slug_history_slug_lower_key;
+CREATE INDEX IF NOT EXISTS referral_agent_slug_history_slug_idx
+  ON public.referral_agent_slug_history (lower(slug), retired_at DESC);
 CREATE INDEX IF NOT EXISTS referral_agent_slug_history_agent_idx
   ON public.referral_agent_slug_history (referral_agent_id);
 ALTER TABLE public.referral_agent_slug_history ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.referral_agent_slug_history FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.referral_agent_slug_history TO service_role;
+REVOKE ALL ON SEQUENCE public.referral_agent_slug_history_id_seq FROM PUBLIC, anon, authenticated;
+GRANT USAGE, SELECT ON SEQUENCE public.referral_agent_slug_history_id_seq TO service_role;
 
 -- Write guard + history archiver.
 CREATE OR REPLACE FUNCTION public.referral_agents_guard_vanity_slug()
@@ -240,12 +278,19 @@ SET search_path TO 'public', 'pg_temp'
 AS $fn$
 BEGIN
   IF TG_OP = 'INSERT' THEN
-    IF NEW.vanity_slug IS NOT NULL
-       AND auth.role() IS DISTINCT FROM 'service_role'
-       AND NOT COALESCE(public.is_admin_email(), false)
-       AND COALESCE(current_setting('oq.p18_slug_write', true), '') <> '1' THEN
-      RAISE EXCEPTION 'referral_agents: vanity_slug can only be set through set_partner_slug() (P18)'
-        USING ERRCODE = '42501';
+    IF NEW.vanity_slug IS NOT NULL THEN
+      IF COALESCE(
+           auth.role() IS DISTINCT FROM 'service_role'
+           AND NOT COALESCE(public.is_admin_email(), false)
+           AND COALESCE(current_setting('oq.p18_slug_write', true), '') <> '1',
+           true
+         ) THEN
+        RAISE EXCEPTION 'referral_agents: vanity_slug can only be set through set_partner_slug() (P18)'
+          USING ERRCODE = '42501';
+      END IF;
+      IF public.p18_slug_is_reserved(NEW.vanity_slug) THEN
+        RAISE EXCEPTION 'referral_agents: vanity_slug is a reserved name (P18)' USING ERRCODE = '22023';
+      END IF;
     END IF;
     RETURN NEW;
   END IF;
@@ -260,10 +305,13 @@ BEGIN
       RAISE EXCEPTION 'referral_agents: vanity_slug can only be set through set_partner_slug() (P18)'
         USING ERRCODE = '42501';
     END IF;
+    -- every writer, service_role and admin included
+    IF NEW.vanity_slug IS NOT NULL AND public.p18_slug_is_reserved(NEW.vanity_slug) THEN
+      RAISE EXCEPTION 'referral_agents: vanity_slug is a reserved name (P18)' USING ERRCODE = '22023';
+    END IF;
     IF OLD.vanity_slug IS NOT NULL THEN
       INSERT INTO public.referral_agent_slug_history (referral_agent_id, slug)
-      VALUES (OLD.id, OLD.vanity_slug)
-      ON CONFLICT DO NOTHING;
+      VALUES (OLD.id, OLD.vanity_slug);
     END IF;
   END IF;
   RETURN NEW;
@@ -271,6 +319,7 @@ END;
 $fn$;
 REVOKE ALL ON FUNCTION public.referral_agents_guard_vanity_slug() FROM PUBLIC, anon, authenticated;
 
+DROP TRIGGER IF EXISTS referral_agents_guard_vanity_slug ON public.referral_agents;
 CREATE TRIGGER referral_agents_guard_vanity_slug
   BEFORE INSERT OR UPDATE ON public.referral_agents
   FOR EACH ROW EXECUTE FUNCTION public.referral_agents_guard_vanity_slug();
@@ -288,6 +337,7 @@ DECLARE
   s       text;
   v_taken constant text := 'That short link is not available. Please try another.';
   v_bad   text;
+  v_days  int;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'Please sign in to choose a short link.' USING ERRCODE = '42501', HINT = 'not_signed_in';
@@ -325,7 +375,7 @@ BEGIN
   -- Serialize slug claims so two partners cannot both pass the checks below for one slug.
   PERFORM pg_advisory_xact_lock(hashtext('p18_vanity_slug'));
 
-  IF EXISTS (SELECT 1 FROM public.reserved_slugs r WHERE lower(r.slug) = s) THEN
+  IF public.p18_slug_is_reserved(s) THEN
     RAISE EXCEPTION '%', v_taken USING ERRCODE = '22023', HINT = 'unavailable';
   END IF;
 
@@ -335,22 +385,31 @@ BEGIN
     RAISE EXCEPTION '%', v_taken USING ERRCODE = '22023', HINT = 'unavailable';
   END IF;
 
+  -- The release window: platform_settings.partner_attribution_window_days, 90 when absent / not whole days 1-3650.
+  v_days := COALESCE(
+    (SELECT CASE WHEN (st.value #>> '{}') ~ '^[0-9]{1,4}$'
+                 THEN CASE WHEN (st.value #>> '{}')::int BETWEEN 1 AND 3650 THEN (st.value #>> '{}')::int END
+            END
+       FROM public.platform_settings st
+      WHERE st.key = 'partner_attribution_window_days'),
+    90);
+
+  -- Unavailable: anyone's unique_code / recruit_code; another partner's CURRENT slug; or a slug another partner RETIRED
+  -- inside the window. The caller's own retired slugs are always claimable.
   IF EXISTS (SELECT 1 FROM public.referral_agents a
               WHERE lower(a.unique_code) = s OR lower(COALESCE(a.recruit_code, '')) = s)
      OR EXISTS (SELECT 1 FROM public.referral_agents a
                  WHERE lower(a.vanity_slug) = s AND a.id <> v_agent.id)
      OR EXISTS (SELECT 1 FROM public.referral_agent_slug_history h
-                 WHERE lower(h.slug) = s AND h.referral_agent_id <> v_agent.id) THEN
+                 WHERE lower(h.slug) = s
+                   AND h.referral_agent_id <> v_agent.id
+                   AND h.retired_at > now() - make_interval(days => v_days)) THEN
     RAISE EXCEPTION '%', v_taken USING ERRCODE = '22023', HINT = 'unavailable';
   END IF;
 
   IF lower(COALESCE(v_agent.vanity_slug, '')) = s THEN
     RETURN jsonb_build_object('slug', s, 'changed', false);
   END IF;
-
-  -- Re-claiming one of the caller's own retired slugs takes it back out of history.
-  DELETE FROM public.referral_agent_slug_history
-   WHERE referral_agent_id = v_agent.id AND lower(slug) = s;
 
   PERFORM set_config('oq.p18_slug_write', '1', true);
   UPDATE public.referral_agents SET vanity_slug = s WHERE id = v_agent.id;

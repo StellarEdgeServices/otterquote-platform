@@ -296,7 +296,7 @@
             wrap.id = 'slugCard';
             wrap.innerHTML = `
                 <h2>Your short link</h2>
-                <p>Pick a short address that is easy to say out loud. Visitors who use it are credited to you, the same as your regular link.</p>
+                <p>Pick a short address that is easy to say out loud. ${PartnerSlug.ROUTING_LIVE ? 'Visitors who use it are credited to you, the same as your regular link.' : 'Once short links launch, visitors who use it will be credited to you, the same as your regular link.'}</p>
                 <div id="slugCurrent"></div>
                 <form id="slugForm" novalidate>
                     <label class="form-label" for="slugInput">Short link</label>
