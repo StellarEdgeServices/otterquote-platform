@@ -221,6 +221,12 @@ echo 'STRIPE_PK injected into _site/js/config.js; repo internals excluded from p
   path = "/ref/*"
   function = "ref-redirect"
 
+# P18: POST /ref-bind?rid=<uuid>&code=<code> re-issues the server-set oq_pc
+# cookie with the referral id (same function, see ref-redirect.ts).
+[[edge_functions]]
+  path = "/ref-bind"
+  function = "ref-redirect"
+
 # gh-1540 REFUTED-REOPENED fix (2026-09-03): /recruit/ and /Recruit.html
 # were measuring 301 (not the required 200) because Netlify's built-in
 # Pretty URLs post-processing normalizes trailing slashes and .html-case

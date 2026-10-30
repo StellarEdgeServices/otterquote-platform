@@ -24,6 +24,16 @@ function wipe() {
   sessionStorage.clear();
 }
 
+const RID_A = '11111111-1111-4111-8111-111111111111';
+const RID_B = '22222222-2222-4222-8222-222222222222';
+const IDS_B = { oq_referral_id: 'ref-B', oq_referral_agent_id: 'agent-B', oq_referral_code: 'PARTNERB' };
+function hasPc() {
+  return document.cookie.split('; ').some((c) => c.startsWith('oq_pc='));
+}
+function setPcObj(o: Record<string, unknown>) {
+  document.cookie = `oq_pc=${encodeURIComponent(JSON.stringify(o))}; Path=/`;
+}
+
 describe('P18: readReferralIds falls back to oq_pc', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -131,5 +141,112 @@ describe('P18: readReferralIds falls back to oq_pc', () => {
     expect(readReferralIds().oq_referral_code).toBe('PARTNERA');
     clearReferralIds();
     expect(readReferralIds()).toEqual({});
+  });
+});
+
+describe('P18 REVIEW 6524205688: last click wins in both directions; forged values rejected; rid carried', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    wipe();
+  });
+  afterEach(() => {
+    wipe();
+    vi.useRealTimers();
+  });
+
+  it('S1: /ref/A then a newer direct click on B; B write deletes oq_pc A; after Safari drops oq-ref A never resurfaces', () => {
+    setPc('PARTNERA', NOW);
+    writeReferralIds(A, { click: true });
+    vi.setSystemTime(new Date(NOW.getTime() + 2 * DAY_MS));
+    writeReferralIds(IDS_B, { click: true });
+    expect(hasPc()).toBe(false);
+    expect(readReferralIds().oq_referral_code).toBe('PARTNERB');
+    vi.setSystemTime(new Date(NOW.getTime() + 10 * DAY_MS));
+    document.cookie = 'oq-ref=; Path=/; Max-Age=0';
+    localStorage.clear();
+    sessionStorage.clear();
+    const ids = readReferralIds();
+    expect(ids.oq_referral_code).not.toBe('PARTNERA');
+    expect(ids).toEqual({});
+  });
+
+  it('S2: oq-ref B passes its window; the older oq_pc A is not returned', () => {
+    setPc('PARTNERA', NOW);
+    writeReferralIds(A, { click: true });
+    vi.setSystemTime(new Date(NOW.getTime() + 5 * DAY_MS));
+    writeReferralIds(IDS_B, { click: true });
+    vi.setSystemTime(new Date(NOW.getTime() + 36 * DAY_MS));
+    expect(readReferralIds().oq_referral_code).not.toBe('PARTNERA');
+  });
+
+  it('read-time purge: newer oq-ref B deletes an older oq_pc A planted after the write', () => {
+    writeReferralIds(IDS_B, { click: true });
+    setPc('PARTNERA', new Date(NOW.getTime() - 3 * DAY_MS));
+    expect(readReferralIds().oq_referral_id).toBe('ref-B');
+    expect(hasPc()).toBe(false);
+  });
+
+  it('same partner: a click on the same code keeps oq_pc', () => {
+    setPc('PARTNERA', NOW);
+    writeReferralIds(A, { click: true });
+    expect(hasPc()).toBe(true);
+  });
+
+  it('expired oq-ref + NEWER in-window oq_pc => oq_pc; expired oq-ref + OLDER oq_pc => nothing, and it is deleted', () => {
+    writeReferralIds(A, { click: true });
+    vi.setSystemTime(new Date(NOW.getTime() + 10 * DAY_MS));
+    setPc('PARTNERB', new Date());
+    vi.setSystemTime(new Date(NOW.getTime() + 35 * DAY_MS));
+    expect(readReferralIds().oq_referral_code).toBe('PARTNERB');
+    wipe();
+    vi.setSystemTime(NOW);
+    writeReferralIds(A, { click: true });
+    vi.setSystemTime(new Date(NOW.getTime() + DAY_MS));
+    setPc('PARTNERB', new Date(NOW.getTime() - 5 * DAY_MS));
+    vi.setSystemTime(new Date(NOW.getTime() + 32 * DAY_MS));
+    expect(readReferralIds()).toEqual({});
+    expect(hasPc()).toBe(false);
+  });
+
+  it('S3: a future-dated oq_pc never beats a real click', () => {
+    setPc('EVIL', new Date(NOW.getTime() + 3650 * DAY_MS));
+    writeReferralIds(IDS_B, { click: true });
+    const ids = readReferralIds();
+    expect(ids.oq_referral_code).toBe('PARTNERB');
+    expect(ids.oq_referral_id).toBe('ref-B');
+  });
+
+  it('a future-dated oq_pc alone is ignored; 4 minutes of skew is tolerated, 6 is not', () => {
+    setPc('EVIL', new Date(NOW.getTime() + 3650 * DAY_MS));
+    expect(readReferralIds()).toEqual({});
+    wipe();
+    setPc('PARTNERA', new Date(NOW.getTime() + 4 * 60 * 1000));
+    expect(readReferralIds().oq_referral_code).toBe('PARTNERA');
+    wipe();
+    setPc('PARTNERA', new Date(NOW.getTime() + 6 * 60 * 1000));
+    expect(readReferralIds()).toEqual({});
+  });
+
+  it.each([['a;b'], ['x'.repeat(65)], ['<script>'], ['a b']])('oq_pc code %s fails the shape check', (bad) => {
+    setPc(bad, NOW);
+    expect(readReferralIds()).toEqual({});
+  });
+
+  it('oq_pc carrying a valid rid: the fallback returns the referral id too', () => {
+    setPcObj({ c: 'PARTNERA', t: NOW.toISOString(), r: RID_A });
+    expect(readReferralIds()).toEqual({ oq_referral_code: 'PARTNERA', oq_referral_id: RID_A });
+  });
+
+  it('oq_pc with a malformed rid: rid ignored, code still returned', () => {
+    setPcObj({ c: 'PARTNERA', t: NOW.toISOString(), r: 'not-a-uuid' });
+    expect(readReferralIds()).toEqual({ oq_referral_code: 'PARTNERA' });
+  });
+
+  it('newer B oq_pc with rid beats older A oq-ref and carries the rid', () => {
+    writeReferralIds(A, { click: true });
+    vi.setSystemTime(new Date(NOW.getTime() + 3 * DAY_MS));
+    setPcObj({ c: 'PARTNERB', t: new Date().toISOString(), r: RID_B });
+    expect(readReferralIds()).toEqual({ oq_referral_code: 'PARTNERB', oq_referral_id: RID_B });
   });
 });

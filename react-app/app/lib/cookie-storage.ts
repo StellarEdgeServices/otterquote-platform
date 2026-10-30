@@ -593,20 +593,37 @@ function purgeSessionIds(): void {
 export const PARTNER_COOKIE = 'oq_pc';
 const PARTNER_COOKIE_MAX_AGE = 60 * 60 * 24 * 90; // 90 days; == REFERRAL_MAX_AGE once #3226 merges
 
-/** {code, ts} from a well-formed, in-window oq_pc cookie, else null. */
-function readPartnerClick(): { code: string; ts: number } | null {
+const PARTNER_CODE_RE = /^[A-Za-z0-9_-]{1,64}$/; // same as the edge function
+const PARTNER_RID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PARTNER_SKEW_MS = 5 * 60 * 1000; // a click time further in the future is forged
+
+/** {code, ts, rid} from a well-formed, in-window oq_pc cookie, else null.
+ *  The cookie is script-readable (not HttpOnly) and therefore script-writable
+ *  too, so it is re-validated here: code shape, no future click time, window.
+ *  rid (the referral id the page bound after track_referral_click) is optional. */
+function readPartnerClick(): { code: string; ts: number; rid: string | null } | null {
   try {
     const raw = readCookie(PARTNER_COOKIE);
     if (!raw) return null;
-    const p = JSON.parse(raw) as { c?: unknown; t?: unknown };
+    const p = JSON.parse(raw) as { c?: unknown; t?: unknown; r?: unknown };
     const code = typeof p?.c === 'string' ? p.c : '';
     const ts = typeof p?.t === 'string' ? Date.parse(p.t) : NaN;
-    if (!code || !Number.isFinite(ts)) return null;
-    if (Date.now() - ts > PARTNER_COOKIE_MAX_AGE * 1000) return null;
-    return { code, ts };
+    if (!PARTNER_CODE_RE.test(code) || !Number.isFinite(ts)) return null;
+    const now = Date.now();
+    if (ts > now + PARTNER_SKEW_MS) return null;
+    if (now - ts > PARTNER_COOKIE_MAX_AGE * 1000) return null;
+    const rid = typeof p.r === 'string' && PARTNER_RID_RE.test(p.r) ? p.r : null;
+    return { code, ts, rid };
   } catch {
     return null;
   }
+}
+
+/** What readReferralIds returns when oq_pc is the winning record. */
+function partnerOut(pc: { code: string; rid: string | null }): ReferralIds {
+  const o: ReferralIds = { oq_referral_code: pc.code };
+  if (pc.rid) o.oq_referral_id = pc.rid;
+  return o;
 }
 
 export type ReferralIds = Partial<Record<(typeof REFERRAL_KEYS)[number], string>> & {
@@ -631,8 +648,11 @@ export function readReferralIds(): ReferralIds {
   const clickTs = readReferralTs();
   if (clickTs !== null && Date.now() - clickTs > REFERRAL_MAX_AGE * 1000) {
     clearOqRef();
-    const pcExp = readPartnerClick(); // a newer server-set click may still be in window
-    if (pcExp) out.oq_referral_code = pcExp.code;
+    // A newer server-set click may still be in window; an OLDER one is the
+    // stale partner's, so it goes too (last click wins).
+    const pcExp = readPartnerClick();
+    if (pcExp && pcExp.ts > clickTs) return partnerOut(pcExp);
+    try { deleteCookie(PARTNER_COOKIE); } catch { /* cookie blocked */ }
     return out;
   }
   // A claim-scoped id with no click time on record is undated => expired.
@@ -661,20 +681,24 @@ export function readReferralIds(): ReferralIds {
   if (clickTs === null && Object.keys(out).length) {
     clearOqRef();
     const pcUndated = readPartnerClick();
-    return pcUndated ? { oq_referral_code: pcUndated.code } : {};
+    return pcUndated ? partnerOut(pcUndated) : {};
   }
   // P18: oq-ref missing or expired and no ids anywhere => fall back to the
   // server-set oq_pc cookie (only the partner code is known server-side).
   const pc = readPartnerClick();
   if (!REFERRAL_KEYS.some((key) => out[key])) {
-    if (pc) out.oq_referral_code = pc.code;
-  } else if (pc && clickTs !== null && pc.ts > clickTs && out.oq_referral_code !== pc.code) {
-    // P18 last click wins: a NEWER server-recorded click on another partner
-    // (this browser's JS never ran, or its oq-ref write was dropped) beats the
-    // older oq-ref. Drop the stale partner's ids; only the code is known.
-    // (clickTs === null with ids was handled above: oq_pc wins in-window.)
-    clearOqRef();
-    return { oq_referral_code: pc.code };
+    if (pc) Object.assign(out, partnerOut(pc));
+  } else if (pc && clickTs !== null && out.oq_referral_code && out.oq_referral_code !== pc.code) {
+    if (pc.ts > clickTs) {
+      // P18 last click wins: a NEWER server-recorded click on another partner
+      // (this browser's JS never ran, or its oq-ref write was dropped) beats the
+      // older oq-ref. Drop the stale partner's ids.
+      clearOqRef();
+      return partnerOut(pc);
+    }
+    // oq-ref holds the NEWER click on a different partner: the older server
+    // cookie is the stale one, and must not resurface once oq-ref is gone.
+    try { deleteCookie(PARTNER_COOKIE); } catch { /* cookie blocked */ }
   }
   // In-window claim-scoped id (the windowed fallback for the claim writers).
   if (clickTs !== null) {
@@ -726,6 +750,16 @@ export function writeReferralIds(ids: ReferralIds, opts?: { click?: boolean }): 
     } else {
       try { localStorage.removeItem(key); } catch { /* storage blocked */ }
       try { sessionStorage.removeItem(key); } catch { /* storage blocked */ }
+    }
+  }
+  // P18 last click wins: a click on a DIFFERENT partner (ref-*.html pages write
+  // straight here, without a /ref/<code> hop) retires the server-set cookie of
+  // the previous partner now, because a later read may never see both copies at
+  // once (Safari can drop oq-ref first).
+  if (opts?.click && payload.oq_referral_code) {
+    const pcw = readPartnerClick();
+    if (pcw && pcw.code !== payload.oq_referral_code) {
+      try { deleteCookie(PARTNER_COOKIE); } catch { /* cookie blocked */ }
     }
   }
   payload[REFERRAL_TS_KEY] = String(ts);

@@ -176,5 +176,98 @@ const A = { oq_referral_id: 'ref-A', oq_referral_agent_id: 'agent-A', oq_referra
   check(t.R.read().oq_referral_id === 'ref-A', 'oq_pc outside the 90-day window is ignored; oq-ref returned');
 }
 
+// 8. REVIEW 6524205688 finding 1: last click wins in BOTH directions (repro S1-S3).
+const RID_A = '11111111-1111-4111-8111-111111111111';
+const RID_B = '22222222-2222-4222-8222-222222222222';
+const IDS_A = { oq_referral_id: 'ref-A', oq_referral_agent_id: 'agent-A', oq_referral_code: 'PARTNERA' };
+const IDS_B = { oq_referral_id: 'ref-B', oq_referral_agent_id: 'agent-B', oq_referral_code: 'PARTNERB' };
+{
+  // S1: /ref/A, then a newer direct (non-/ref) click on B; Safari later drops oq-ref.
+  const t = freshSandbox();
+  t.setPc('PARTNERA', t.now());
+  t.R.write(IDS_A, { click: true });
+  t.advanceDays(2);
+  t.R.write(IDS_B, { click: true });
+  check(!t.hasPc(), 'S1: a click on a different partner deletes the old oq_pc at write time');
+  check(t.R.read().oq_referral_code === 'PARTNERB', 'S1: right after the B click B is returned');
+  t.advanceDays(8); t.dropOqRef();
+  const r = t.R.read();
+  check(!r.oq_referral_code || r.oq_referral_code === 'PARTNERB', `S1: after Safari drops oq-ref, A never resurfaces (got ${JSON.stringify(r)})`);
+  check(r.oq_referral_code !== 'PARTNERA', 'S1: stale partner A is not returned');
+}
+{
+  // S2: no Safari; oq-ref B passes its window while oq_pc A is older than B's click.
+  const t = freshSandbox();
+  t.setPc('PARTNERA', t.now());
+  t.R.write(IDS_A, { click: true });
+  t.advanceDays(5);
+  t.R.write(IDS_B, { click: true });
+  t.advanceDays(31);
+  const r = t.R.read();
+  check(r.oq_referral_code !== 'PARTNERA', `S2: oq-ref B expired, stale oq_pc A is not returned (got ${JSON.stringify(r)})`);
+}
+{
+  // Same as S1/S2 but the stale oq_pc is planted AFTER the write (read-time purge, no write hook).
+  const t = freshSandbox();
+  t.R.write(IDS_B, { click: true });
+  t.setPc('PARTNERA', t.now() - 3 * DAY * 1000);          // older than B's click, different partner
+  check(t.R.read().oq_referral_id === 'ref-B', 'read-time: newer oq-ref B wins over older oq_pc A');
+  check(!t.hasPc(), 'read-time: the older oq_pc A is deleted when oq-ref B is newer');
+  t.dropOqRef();
+  check(eq(t.R.read(), {}), 'read-time: after oq-ref is gone A does not come back');
+}
+{
+  // Expired-oq-ref branch: only an oq_pc NEWER than the oq-ref click may be used.
+  const t = freshSandbox();
+  t.R.write(IDS_A, { click: true });
+  t.advanceDays(10);
+  t.setPc('PARTNERB', t.now());                            // B newer than A's click
+  t.advanceDays(25);                                       // A is 35d old (> 30d oq-ref window), B is 25d old
+  check(t.R.read().oq_referral_code === 'PARTNERB', 'expired oq-ref + NEWER in-window oq_pc: oq_pc used');
+  const u = freshSandbox();
+  u.R.write(IDS_A, { click: true });
+  u.advanceDays(1);
+  u.setPc('PARTNERB', u.now() - 5 * DAY * 1000);           // B older than A's click
+  u.advanceDays(31);                                       // A expired
+  check(eq(u.R.read(), {}), 'expired oq-ref + OLDER oq_pc: nothing returned');
+  check(!u.hasPc(), 'expired oq-ref + OLDER oq_pc: the stale oq_pc is deleted');
+}
+// S3 + forged values (finding 2)
+{
+  const t = freshSandbox();
+  t.setPc('EVIL', t.now() + 3650 * DAY * 1000);
+  t.R.write(IDS_B, { click: true });
+  const r = t.R.read();
+  check(r.oq_referral_code === 'PARTNERB' && r.oq_referral_id === 'ref-B', `S3: a future-dated oq_pc never beats a real click (got ${JSON.stringify(r)})`);
+  const u = freshSandbox();
+  u.setPc('EVIL', u.now() + 3650 * DAY * 1000);
+  check(eq(u.R.read(), {}), 'future-dated oq_pc alone is ignored');
+  const v = freshSandbox();
+  v.setPc('PARTNERA', v.now() + 4 * 60 * 1000);
+  check(v.R.read().oq_referral_code === 'PARTNERA', '4 minutes of clock skew is tolerated');
+  const w = freshSandbox();
+  w.setPc('PARTNERA', w.now() + 6 * 60 * 1000);
+  check(eq(w.R.read(), {}), '6 minutes in the future is rejected');
+  for (const bad of ['a;b', 'x'.repeat(65), '<script>', 'a b', '']) {
+    const x = freshSandbox();
+    x.setPc(bad, x.now());
+    check(eq(x.R.read(), {}), `oq_pc code ${JSON.stringify(bad.slice(0, 12))} fails the shape check and is ignored`);
+  }
+}
+// rid (finding 3)
+{
+  const t = freshSandbox();
+  t.setRaw('oq_pc', encodeURIComponent(JSON.stringify({ c: 'PARTNERA', t: new Date(t.now()).toISOString(), r: RID_A })));
+  check(eq(t.R.read(), { oq_referral_code: 'PARTNERA', oq_referral_id: RID_A }), 'oq_pc with a valid rid: fallback returns the referral id too');
+  const u = freshSandbox();
+  u.setRaw('oq_pc', encodeURIComponent(JSON.stringify({ c: 'PARTNERA', t: new Date(u.now()).toISOString(), r: 'not-a-uuid' })));
+  check(eq(u.R.read(), { oq_referral_code: 'PARTNERA' }), 'oq_pc with a malformed rid: rid ignored, code still returned');
+  const v = freshSandbox();
+  v.R.write(IDS_A, { click: true });
+  v.advanceDays(3);
+  v.setRaw('oq_pc', encodeURIComponent(JSON.stringify({ c: 'PARTNERB', t: new Date(v.now()).toISOString(), r: RID_B })));
+  check(eq(v.R.read(), { oq_referral_code: 'PARTNERB', oq_referral_id: RID_B }), 'newer B oq_pc with rid beats older A oq-ref and carries the rid');
+}
+
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');
 process.exit(failed ? 1 : 0);
