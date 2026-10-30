@@ -16,6 +16,9 @@
 -- Pre-flight: supabase/migrations_drafts/gh3219_partner_credit_lock_pre-flight.md
 -- Proof: supabase/tests/gh3219_partner_credit_lock_proof.sql (one batch, forced RAISE EXCEPTION rollback)
 --
+-- Implements D-40x (D-349 superseded by D-40x, Dustin 2026-10-30; placeholder number, the real one is filed in the D-registry):
+--   90-day window, last partner click credited, credit locks at account creation, lock lapses at 90 days (Ben, #3219 comment 6523708028).
+--
 -- Rule (Dustin, one plan for every partner, realtor or influencer): a 90-day window from the partner-link click; the LAST partner link
 -- clicked before the homeowner creates an account wins; the credit LOCKS at account creation, so a later click on another partner's link
 -- cannot take it.
@@ -35,6 +38,16 @@
 --   that is itself inside the window, that partner is credited and the lock MOVES to that referral (the lapsed referral's
 --   homeowner_user_id is cleared, so the one-lock-per-user index holds); if it does not, nobody is credited (the claim's referral_id is
 --   NULLed). The rejected alternative was a lock that holds forever but credits nothing.
+-- STRICT LOCK (Ben, rulings on REVIEW: FAIL 6524490927 / LEGAL-READ: FAIL 6524491314): credit is decided when the account is created. A click is
+--   creditable to a user only if it was made at or before the moment the account was created (referrals.created_at <= auth.users.created_at)
+--   and is inside the window. An account created with no in-window partner click stays unattributed, and a later partner click does not attach
+--   a lock or a credit (advance_referral_registered refuses it; claims_apply_locked_referral clears it). The one exception is Ben's lapse
+--   ruling: an account whose own lock has lapsed can be credited to a newer in-window click.
+-- CLAIM GATE: after claims_lock_referral runs, claims.referral_id is either NULL or a referral that is credited to that claim's user. A sent
+--   referral that is locked to someone else, outside the window, already past 'registered' (and not this user's own), or clicked after the
+--   user's account was created is cleared, so no fee can accrue on a referral not credited to the claim's user.
+-- FAIL CLOSED: the file refuses to run while anon or authenticated hold table-level SELECT on public.referrals (PR #3225 part B,
+--   gh3217b_referrals_column_allowlist, must be applied first), because homeowner_user_id must not be partner-readable.
 -- referrals.homeowner_user_id is NOT added to any grant or allow-list here, and must stay off the partner column allow-list that PR #3225
 --   (#3217) introduces: whichever of the two merges second must keep it excluded. This file contains no GRANT/REVOKE on referrals.
 -- Signatures, return types, SECURITY DEFINER, search_path and ACLs of the three existing functions are unchanged (CREATE OR REPLACE keeps them).
@@ -44,6 +57,15 @@
 BEGIN;
 
 SET LOCAL lock_timeout = '5s';
+
+-- 0. fail closed (REVIEW: FAIL 6524490927 finding 3): homeowner_user_id must never be partner-readable. While anon or authenticated hold
+--    table-level SELECT on referrals, the new column would be readable through the "Agents can read own referrals" policy.
+DO $guard$ BEGIN
+  IF has_table_privilege('anon', 'public.referrals', 'SELECT')
+     OR has_table_privilege('authenticated', 'public.referrals', 'SELECT') THEN
+    RAISE EXCEPTION 'gh3219: anon/authenticated still hold table-level SELECT on public.referrals; apply #3225 (gh3217b_referrals_column_allowlist) first, or homeowner_user_id becomes partner-readable';
+  END IF;
+END $guard$;
 
 -- 1. column and index -------------------------------------------------------------------------------------------------------------
 ALTER TABLE public.referrals
@@ -78,7 +100,7 @@ AS $function$
 $function$;
 
 COMMENT ON FUNCTION public.referral_attribution_window() IS
-  'gh-3219 (P18): the ONE place the partner-referral attribution window lives: platform_settings.partner_attribution_window_days (whole days, 1-3650), 90 when the key is absent or not such a number. Counted from the partner-link click. Used by advance_referral_registered, claims_advance_referral and apply_referral_commission. Internal helper: no client role may execute it. (Replaces the gh-2345 hard-coded IMMUTABLE 30 days.)';
+  'gh-3219 (P18): the ONE place the partner-referral attribution window lives: platform_settings.partner_attribution_window_days (whole days, 1-3650), 90 when the key is absent or not such a number. Counted from the partner-link click. Used by advance_referral_registered, claims_advance_referral and apply_referral_commission. Internal helper: no client role may execute it. WARNING: apply_referral_commission() re-tests click-to-claim against the CURRENT setting at completion, so LOWERING this value also cancels the referral fee (and any later per-order fee that reads it) on claims already credited under the longer window; changing it is a Dustin decision (Tier C, money), not an ops toggle. (Replaces the gh-2345 hard-coded IMMUTABLE 30 days.)';
 
 REVOKE ALL ON FUNCTION public.referral_attribution_window() FROM PUBLIC, anon, authenticated, service_role;
 
@@ -90,8 +112,10 @@ CREATE OR REPLACE FUNCTION public.advance_referral_registered(p_referral_id uuid
  SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
-  v_email text;
-  v_uid   uuid;
+  v_email  text;
+  v_uid    uuid;
+  v_acct   timestamptz;
+  v_lapsed boolean := false;
 BEGIN
   IF p_referral_id IS NULL THEN
     RETURN false;
@@ -113,6 +137,16 @@ BEGIN
     RETURN false;
   END IF;
 
+  -- gh-3219 strict lock: credit is decided at account creation. Only a click made at or before the
+  -- moment this user's account was created can attach the lock; a click made after it (an organic
+  -- account that later meets a partner link) advances nothing and locks nothing. The one exception is
+  -- an account whose own lock has lapsed (any lock left here is lapsed, the live-lock guard returned
+  -- above): Ben's lapse ruling lets a newer in-window click take over.
+  IF v_uid IS NOT NULL THEN
+    SELECT created_at INTO v_acct FROM auth.users WHERE id = v_uid;
+    v_lapsed := EXISTS (SELECT 1 FROM referrals WHERE homeowner_user_id = v_uid AND id <> p_referral_id);
+  END IF;
+
   -- gh-2345: server-side attribution window. The click time is
   -- referrals.created_at (the row is inserted by track_referral_click at the
   -- click). A click older than the window, or with no click time, is a no-op
@@ -129,6 +163,7 @@ BEGIN
                     WHERE id = p_referral_id
                       AND status = 'clicked'
                       AND created_at >= now() - public.referral_attribution_window()
+                      AND (v_lapsed OR created_at <= v_acct)
                       AND (homeowner_user_id IS NULL OR homeowner_user_id = v_uid)) THEN
       UPDATE referrals SET homeowner_user_id = NULL
        WHERE homeowner_user_id = v_uid AND id <> p_referral_id;
@@ -141,7 +176,8 @@ BEGIN
      WHERE id = p_referral_id
        AND status = 'clicked'
        AND created_at >= now() - public.referral_attribution_window()
-       AND (homeowner_user_id IS NULL OR homeowner_user_id = v_uid);
+       AND (homeowner_user_id IS NULL OR homeowner_user_id = v_uid)
+       AND (v_uid IS NULL OR v_lapsed OR created_at <= v_acct);   -- CREATION-CHECK
   EXCEPTION WHEN unique_violation THEN
     -- two sign-ins of the same user raced for two different referrals; the first one won
     RAISE LOG 'advance_referral_registered: gh-3219 lost the lock race for referral_id=%', p_referral_id;
@@ -194,6 +230,7 @@ DECLARE
   v_ref_id  uuid;
   v_agent   uuid;
   v_clicked timestamptz;
+  v_acct    timestamptz;
 BEGIN
   IF NEW.user_id IS NULL THEN
     RETURN NEW;
@@ -205,6 +242,24 @@ BEGIN
    LIMIT 1;
 
   IF v_ref_id IS NULL THEN
+    -- No lock. Keep the sent referral only if claims_advance_referral can credit it to THIS user: inside the window, not
+    -- locked to anyone, still clicked/registered (or already this user's own claim referral, the un-backfilled case), and
+    -- clicked at or before this user's account was created (strict lock). Anything else is cleared, so nothing accrues on a
+    -- referral not credited to this claim's user (shared browser, uncredited status, organic account that later met a link).
+    IF NEW.referral_id IS NOT NULL THEN
+      SELECT created_at INTO v_acct FROM auth.users WHERE id = NEW.user_id;
+      IF NOT EXISTS (SELECT 1 FROM public.referrals n   -- NOLOCK-FILTER
+                      WHERE n.id = NEW.referral_id
+                        AND n.created_at >= now() - public.referral_attribution_window()
+                        AND n.homeowner_user_id IS NULL
+                        AND n.created_at <= v_acct   -- CREATION-CHECK
+                        AND (n.status IN ('clicked', 'registered')
+                             OR EXISTS (SELECT 1 FROM public.claims c WHERE c.user_id = NEW.user_id AND c.referral_id = n.id))) THEN
+        RAISE LOG 'claims_apply_locked_referral: gh-3219 sent referral % is not creditable to user_id=%; cleared', NEW.referral_id, NEW.user_id;
+        NEW.referral_id       := NULL;
+        NEW.referral_agent_id := NULL;
+      END IF;
+    END IF;
     RETURN NEW;
   END IF;
 
@@ -223,6 +278,7 @@ BEGIN
      AND EXISTS (SELECT 1 FROM public.referrals n
                   WHERE n.id = NEW.referral_id
                     AND n.created_at >= now() - public.referral_attribution_window()
+                    AND n.status IN ('clicked', 'registered')   -- LAPSE-STATUS-CHECK
                     AND n.homeowner_user_id IS NULL) THEN
     -- A newer click inside the window is on the claim: that partner is credited and the lock moves to it.
     -- Clear the lapsed lock now (one lock per user); claims_advance_referral (AFTER INSERT) advances the new
@@ -232,12 +288,12 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- No newer click inside the window: nobody is credited.
+  -- No creditable newer click inside the window: nobody is credited.
   IF NEW.referral_agent_id IS NOT DISTINCT FROM v_agent THEN
     NEW.referral_agent_id := NULL;
   END IF;
   NEW.referral_id := NULL;
-  RAISE LOG 'claims_apply_locked_referral: gh-3219 lock on % lapsed and no newer click inside the window; no partner credited for user_id=%', v_ref_id, NEW.user_id;
+  RAISE LOG 'claims_apply_locked_referral: gh-3219 lock on % lapsed and no creditable newer click inside the window; no partner credited for user_id=%', v_ref_id, NEW.user_id;
   RETURN NEW;
 END;
 $function$;

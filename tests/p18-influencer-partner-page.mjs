@@ -139,7 +139,7 @@ for (const f of partnerPages) {
   ok(!/Monthly portfolio report/i.test(h), '(g2) ' + f + ': no "Monthly portfolio report" claim');
 }
 ok(/Referral history by month/.test(page) && /Filter your referrals by month and see each one's status and referral fee\./.test(page), '(g3) influencer page uses the corrected report line');
-ok(/Your link identifies your referrals, so each one is credited to you\./.test(page), '(g4) influencer page uses the corrected link line');
+ok(/Your link identifies your referrals\. A homeowner is credited to the partner whose link they clicked most recently, within 90 days, before creating their Otter Quotes account\. That credit then stays with that partner for 90 days\./.test(page), '(g4) influencer page uses the corrected link line (P18 credit-lock copy, #3226)');
 ok(!/p_funnel_id:\s+'influencer'/.test(re), '(h) control: partner-re.html does not tag influencer');
 
 // (f) legal pages untouched

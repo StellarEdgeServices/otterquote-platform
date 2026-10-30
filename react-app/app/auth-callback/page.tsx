@@ -214,12 +214,12 @@ export default function AuthCallbackPage() {
               advanceError
             );
           }
-          // gh-2062: claim-scoped copy under the same 30-day click clock.
+          // gh-2062: claim-scoped copy under the same 90-day click clock.
           writeClaimReferralId(referralId);
           if (typeof localStorage !== 'undefined') {
             localStorage.removeItem('oq_referral_id');
           }
-          // gh-2062: only re-arm the cookie's 30-day clock on a successful
+          // gh-2062: only re-arm the cookie's 90-day clock on a successful
           // advance (mirrors js/auth.js). A failed RPC call is not a reason
           // to extend the life of an id we were just told is not
           // advanceable — the cookie keeps whatever TTL it already had
