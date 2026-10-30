@@ -98,16 +98,26 @@ const capi = read('supabase/functions/stripe-webhook/meta-capi.ts');
 ok(/MEASUREMENT_PURCHASE_VALUE_USD = 22\.63;/.test(capi) && /MEASUREMENT_PURCHASE_AMOUNT_CENTS = 2263;/.test(capi), 'S4: Meta CAPI value/amount guard is 22.63 / 2263 (a stale 1500 guard would silently drop every Purchase)');
 ok(!/MEASUREMENT_PURCHASE_AMOUNT_CENTS = 1500/.test(capi), 'S4: negative control -- the CAPI amount guard no longer reads 1500');
 
-// ── S3b: runbook + mid-checkout sweep ───────────────────────────────────────────────────────────────────────────────────
+// ── S3b: runbook, cancel-open-intents step, sweep, idempotency key ─────────────────────────────────────────────────────
 const pre = read('supabase/migrations_drafts/gh3228_measurement_price_2263_pre-flight.md');
 for (const [label, text] of [['SQL header', fwd], ['pre-flight', pre]]) {
-  ok(/stripe-webhook/.test(text) && /send-homeowner-next-steps/.test(text) && /send-lead-next-step-reminder/.test(text), 'S3b: ' + label + ' names the three edge functions to deploy before the apply');
+  ok(['create-payment-intent', 'stripe-webhook', 'send-homeowner-next-steps', 'send-lead-next-step-reminder'].every((f) => text.includes(f)), 'S3b: ' + label + ' names the four edge functions to deploy before the apply (incl. create-payment-intent)');
   ok(/NEVER apply/i.test(text) && /D-291 amendment/.test(text), 'S3b: ' + label + ' says never apply the SQL before the code is live and keeps the D-291 amendment gate');
-  ok(/captured immediately|captured automatically/.test(text) && /refund|by hand/.test(text), 'S3b: ' + label + ' states the PaymentIntent is captured and the sweep refunds or creates the order by hand');
+  ok(/captured immediately|captured automatically/.test(text) && /refund/.test(text) && /by hand/.test(text), 'S3b: ' + label + ' states the PaymentIntent is captured and the sweep refunds or creates the order by hand');
+  ok(/requires_payment_method/.test(text) && /requires_confirmation/.test(text) && /requires_action/.test(text) && /cancel/i.test(text), 'S3b: ' + label + ' cancels open 1500-cent intents (requires_payment_method / requires_confirmation / requires_action) right after the apply');
+  ok(/7 days/.test(text) && /T\+24h/.test(text) && /T\+1h/.test(text), 'S3b: ' + label + ' widens the sweep to the 7 days before T and runs it at T+1h and T+24h');
+  ok(/2026-10-30/.test(text) && /Effective Dates?/.test(text) && /LEGAL-READ/.test(text), 'S3b: ' + label + ' tells the CTO to bump the Effective Dates if the merge lands after 2026-10-30 and to re-run LEGAL-READ');
+  ok(/<amount_cents>/.test(text), 'S3b: ' + label + ' documents the amount in the idempotency key');
 }
 ok(!/lapse/i.test(fwd) && !/authori[sz]ation/i.test(fwd), 'S3b: negative control -- the retired "authorisation lapses" claim is gone from the SQL header');
-ok(/payment_intents search/.test(pre) && /amount:1500/.test(pre) && /hover_orders/.test(pre) && /T-1h|T - 1h/.test(pre), 'S3b: pre-flight carries the sweep query (Stripe search at 1500 cents, +-1h, anti-join to hover_orders)');
+ok(/payment_intents search/.test(pre) && /amount:1500/.test(pre) && /hover_orders/.test(pre) && /<T-7d epoch>/.test(pre), 'S3b: pre-flight carries the sweep query (Stripe search at 1500 cents, 7 days back, anti-join to hover_orders)');
+ok(!/T-1h|T - 1h/.test(pre), 'S3b: negative control -- the old +-1h sweep window is gone');
 ok(/status:'succeeded'/.test(pre) && /measurement_order/.test(pre) && /hover_measurement/.test(pre), 'S3b: the sweep covers both PaymentIntent types (measurement_order and legacy hover_measurement)');
+const idem = read('supabase/functions/create-payment-intent/standard-create-form.ts');
+ok(/\$\{metadata\.type\}-\$\{metadata\.claim_id\}-\$\{String\(amount\)\}/.test(idem) && /standardIdempotencyKey\(metadata, amount\)/.test(read('supabase/functions/create-payment-intent/index.ts')), 'S3b: the create-payment-intent idempotency key includes the amount (a reload after the change gets a fresh 2263 intent)');
+ok(!/return `\$\{metadata\.type\}-\$\{metadata\.claim_id\}`;/.test(idem), 'S3b: negative control -- the per-claim-only key is gone');
+const rd = read('supabase/migrations_drafts/README.md');
+ok(/measurement fee \$15 -> \$22\.63\): 3 files here \(forward, rollback, pre-flight\)/.test(rd), 'S3b: the README section counts the three gh3228 files');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

@@ -17,19 +17,26 @@
 --
 -- RUNBOOK (CTO, in this order; NEVER apply this file before steps 1 and 2 are live):
 --   1. Merge the PR and wait for the Netlify production deploy (static pages, react app) to go green.
---   2. Deploy the edge functions stripe-webhook, send-homeowner-next-steps and send-lead-next-step-reminder at the merged head
---      (stripe-webhook carries the Meta CAPI 2263 guard; left stale it silently drops every Purchase).
+--   2. Deploy the edge functions create-payment-intent (the idempotency key now includes the amount), stripe-webhook (the Meta CAPI
+--      2263 guard; left stale it silently drops every Purchase), send-homeowner-next-steps and send-lead-next-step-reminder.
 --   3. Apply this file within minutes, in a quiet hour. Settings first would show $15 while charging $22.63 (Terms 8.5: the fee is
 --      "displayed on the measurement purchase page at the time of payment"). Code first is the safe direction.
---   4. Run the mid-checkout sweep (REQUIRED, see below).
---   5. Run the post-apply checks in the pre-flight and record the result on #3228.
+--   4. Right after the apply (time T), cancel every OPEN 1500-cent measurement PaymentIntent (requires_payment_method,
+--      requires_confirmation, requires_action). A homeowner holding one would otherwise be charged $15 and then refused.
+--   5. Run the succeeded-without-order sweep over the 7 days before T through T+1h, and again at T+24h (REQUIRED, see below).
+--   6. Run the post-apply checks in the pre-flight and record the results on #3228.
+--   7. If the merge lands after 2026-10-30, bump the Effective Dates on terms.html and privacy.html to the deploy date. That is a
+--      copy change and needs a fresh LEGAL-READ before it merges.
 --
 -- MID-CHECKOUT RISK (corrected): measurement PaymentIntents are captured immediately (no manual capture anywhere), and
 -- create-measurement-order runs only after the PaymentIntent has succeeded. A homeowner who confirms a PaymentIntent created at
 -- 1500 AFTER this apply is CHARGED $15, and the order is then refused (402: the verified amount must equal 2263), leaving no
--- hover_orders row, no report and no rebate record. The sweep in step 4 is therefore mandatory: list succeeded measurement
--- PaymentIntents of 1500 cents created from 1 hour before to 1 hour after the apply; for each with no hover_orders row, refund it
--- in full or create its order by hand at 1500 with rebate_due = true. The query is in the pre-flight.
+-- hover_orders row, no report and no rebate record. Root cause fixed in code: create-payment-intent's idempotency key was
+-- per claim and type for 24 hours, so a reload after the change was handed the stale $15 intent; the key now includes the amount
+-- (hover_measurement-<claim_id>-<amount_cents>), so a reload creates a fresh $22.63 intent. Intents already created at 1500 are
+-- cancelled in step 4; anything that still succeeded is caught by the sweep in step 5: for each succeeded measurement
+-- PaymentIntent of 1500 cents with no hover_orders row, refund it in full or create its order by hand at 1500 with
+-- rebate_due = true. The queries are in the pre-flight.
 -- Not changed: roof_full / exterior_full (contractor-priced, homeowner_price_cents null), expected_vendor_cost_cents, rebate_on_close.
 BEGIN;
 

@@ -14,22 +14,35 @@ Authority: Dustin, chat 2026-10-30 09:17 ET. Still rebated on job completion (D-
 ## Runbook (CTO, in this order)
 
 1. Merge the PR; wait for the Netlify production deploy to go green.
-2. Deploy edge functions at the merged head: `stripe-webhook`, `send-homeowner-next-steps`, `send-lead-next-step-reminder`. (Comment-only changes in `create-measurement-order`, `create-hover-order`, `create-docusign-envelope` may ride along or wait.)
+2. Deploy edge functions at the merged head: `create-payment-intent` (idempotency key now includes the amount), `stripe-webhook`, `send-homeowner-next-steps`, `send-lead-next-step-reminder`. (Comment-only changes in `create-measurement-order`, `create-hover-order`, `create-docusign-envelope` may ride along or wait.)
 3. Apply `gh3228_measurement_price_2263.sql` within minutes, in a quiet hour. **Never apply the SQL before steps 1 and 2 are live.** Record the apply time `T`.
-4. Run the mid-checkout sweep (below). REQUIRED.
-5. Run the post-apply checks (below) and post the results on #3228.
+4. Right after the apply, cancel every open 1500-cent measurement PaymentIntent (see "Cancel open intents").
+5. Run the succeeded-without-order sweep (see below) at T+1h and again at T+24h. REQUIRED.
+6. Run the post-apply checks (below) and post the results on #3228.
+7. If the merge lands after 2026-10-30, bump the Effective Dates on `terms.html` and `privacy.html` to the deploy date. That is a copy change and needs a fresh LEGAL-READ before it merges.
 
-## Why the sweep is required
+## Why the steps are required
 
 Measurement PaymentIntents are captured automatically (no `capture_method: manual` in `supabase/functions`) and `create-measurement-order` runs only after the PaymentIntent has `succeeded`. A homeowner who confirms a PaymentIntent created at 1500 after the apply is charged $15; the order call then refuses it (verified amount must equal 2263). Result: a charge with no `hover_orders` row, no report and no rebate record. The form's "Retry Order" retries into the same refusal.
 
-## Mid-checkout sweep (T - 1h to T + 1h)
+Root cause, fixed in code: `create-payment-intent` used the idempotency key `hover_measurement-<claim_id>`, and Stripe pins a key to its first body for 24 hours, so a reload after the change returned the stale $15 intent (or a 400 and a 500 from the function for 24 hours). The key is now `hover_measurement-<claim_id>-<amount_cents>`: a reload after the change creates a fresh $22.63 intent, and the same amount still reuses the same intent. This is why `create-payment-intent` must be live (step 2) before the apply.
+
+## Cancel open intents (right after T)
+
+```
+stripe payment_intents search --live \
+  --query "status:'requires_payment_method' AND amount:1500 AND currency:'usd' AND metadata['type']:'hover_measurement' AND created>=<T-7d epoch>"
+# repeat for status 'requires_confirmation' and 'requires_action', and for metadata['type']:'measurement_order'
+stripe payment_intents cancel <pi_id> --live     # for each result
+```
+
+## Succeeded-without-order sweep (7 days before T through now; run at T+1h and again at T+24h)
 
 Stripe (live mode), `metadata.type` is `measurement_order` or the legacy `hover_measurement`:
 
 ```
 stripe payment_intents search --live \
-  --query "status:'succeeded' AND amount:1500 AND currency:'usd' AND metadata['type']:'hover_measurement' AND created>=<T-1h epoch> AND created<=<T+1h epoch>"
+  --query "status:'succeeded' AND amount:1500 AND currency:'usd' AND metadata['type']:'hover_measurement' AND created>=<T-7d epoch>"
 # repeat with metadata['type']:'measurement_order'
 ```
 
@@ -43,7 +56,7 @@ where not exists (
 );
 ```
 
-For each id returned: refund it in full in Stripe, OR create its order by hand at 1500 with `rebate_due = true` (so the completion rebate still refunds the $15 actually charged). Record each id and its disposition on #3228. An empty result is recorded too.
+Intents succeeded BEFORE T that already have an order are fine (they are 1500 orders, rebated at 1500); the ones to act on are those with no order. For each id returned: refund it in full in Stripe, OR create its order by hand at 1500 with `rebate_due = true` (so the completion rebate still refunds the $15 actually charged). Record each id and its disposition on #3228, and record an empty result too.
 
 ## Post-apply checks
 
