@@ -24,9 +24,8 @@
  *     now come from the get_claim_color_contractor RPC (company_name, preferred_brands; ownership
  *     checked; see supabase/migrations_drafts/gh2105_color_contractor_rpc.sql). Contractor phone
  *     and email are not returned. gh-2105 checklist B and C.
- *   • createColorAddendumEnvelope omits the `signer` field (D-220: the EF derives the
- *     signer server-side) and sends a return_url targeting this React route — the same
- *     delta H4 applied. The static sent signer + no return_url.
+ *   • gh-3110: createColorAddendumEnvelope was removed -- the separate colour envelope is
+ *     retired (Dustin on #3145); colour is signed on the Project Confirmation (D-155).
  */
 
 import { useEffect, useState } from 'react';
@@ -35,8 +34,6 @@ import { COLOR_COPY } from './copy';
 import {
   normalizeBrand,
   extractZip,
-  buildColorAddendumPayload,
-  buildColorReturnUrl,
 } from './utils';
 
 // ── Row shapes ─────────────────────────────────────────────────────────────────
@@ -262,43 +259,6 @@ export async function saveColorSelection({
   if (!data || data.length === 0) {
     throw new Error('Error saving color. Please try again.');
   }
-}
-
-/**
- * Create the color_confirmation DocuSign envelope and return its embedded signing URL.
- * Calls create-docusign-envelope EF UNCHANGED. No `signer` field (D-220); return_url
- * targets this React route. Throws on EF error or missing signing_url (→ page fallback).
- */
-export async function createColorAddendumEnvelope({
-  claimId,
-  contractorId,
-  origin,
-}: {
-  claimId: string;
-  contractorId: string;
-  origin: string;
-}): Promise<{ signingUrl: string; envelopeId: string | null }> {
-  const body = buildColorAddendumPayload({
-    claimId,
-    contractorId,
-    returnUrl: buildColorReturnUrl(origin, claimId),
-  });
-
-  const { data: result, error } = await supabase.functions.invoke('create-docusign-envelope', {
-    body,
-  });
-
-  if (error) {
-    throw new Error(error.message || 'Failed to create color addendum envelope.');
-  }
-  if (!result?.signing_url) {
-    throw new Error('No signing URL returned');
-  }
-
-  return {
-    signingUrl: result.signing_url as string,
-    envelopeId: (result.envelope_id as string | null | undefined) ?? null,
-  };
 }
 
 // ── In-person color board request ────────────────────────────────────────────────

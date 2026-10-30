@@ -23,7 +23,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import {
-  DocuSignEmbed,
   isSigningCompleteReturn,
   runSigningReturnBridge,
 } from '@/components/docusign-embed';
@@ -34,8 +33,6 @@ import {
   subtitleBrandUnconfirmed,
   colorBoardVisitRequested,
   colorBoardPhoneSuffix,
-  addendumFallbackWithPhone,
-  addendumFallbackNoPhone,
   colorBoardMailtoBody,
 } from './copy';
 import {
@@ -43,13 +40,11 @@ import {
   isLinkOutBrand,
   getVisualizerDescription,
   resolveLinkOut,
-  canCreateAddendum,
   jobNumberFromClaimId,
 } from './utils';
 import {
   useColorSelectionData,
   saveColorSelection,
-  createColorAddendumEnvelope,
   requestColorBoardVisit,
 } from './use-color-selection-data';
 
@@ -164,7 +159,7 @@ function PageBody({
   userId: string;
   signedReturn: boolean;
 }) {
-  const { brand, contractorName, contractorPhone, contractorId, signerEmail, zipCode } = data;
+  const { brand, contractorName, contractorPhone, zipCode } = data;
 
   // ── Phase ──
   const [phase, setPhase] = useState<'page' | 'done'>('page');
@@ -176,24 +171,12 @@ function PageBody({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // ── Addendum state ──
-  const [addendum, setAddendum] = useState<'none' | 'signing' | 'fallback'>('none');
-  const [signingUrl, setSigningUrl] = useState<string | null>(null);
-
   // ── In-person request state ──
   const [inPersonMsg, setInPersonMsg] = useState<string | null>(null);
   const [inPersonDisabled, setInPersonDisabled] = useState(false);
 
   // ── Visualizer scroll target ──
   const visualizerRef = useRef<HTMLDivElement>(null);
-
-  // ── onComplete ref (stable identity for the embed listener) ──
-  const onCompleteRef = useRef<() => void>(() => {});
-  onCompleteRef.current = () => {
-    setPhase('done');
-    setSigningUrl(null);
-  };
-  const handleComplete = useCallback(() => onCompleteRef.current(), []);
 
   // ── Init-time signed=true return (mirror H4) ──
   const firedReturn = useRef(false);
@@ -228,23 +211,10 @@ function PageBody({
     setConfirmed(true);
     setSaving(false);
 
-    // c. THEN attempt the DocuSign addendum
-    if (!canCreateAddendum({ claimId, contractorId, signerEmail })) {
-      setAddendum('fallback');
-      return;
-    }
-    try {
-      const { signingUrl: url } = await createColorAddendumEnvelope({
-        claimId,
-        contractorId: contractorId!,
-        origin: window.location.origin,
-      });
-      setSigningUrl(url);
-      setAddendum('signing');
-    } catch {
-      setAddendum('fallback');
-    }
-  }, [colorInput, claimId, userId, brand, contractorId, signerEmail]);
+    // c. gh-3110 (Dustin on #3145, 2026-10-30): the separate colour-confirmation envelope is
+    //    retired. The saved colour is carried into, and signed on, the Project Confirmation
+    //    (D-155), so no envelope is created from this page.
+  }, [colorInput, claimId, userId, brand]);
 
   // ── In-person color board request ──
   const handleInPerson = useCallback(async () => {
@@ -467,30 +437,6 @@ function PageBody({
 
           {confirmed && <div className="oqcs-success">{C.successText}</div>}
         </form>
-
-        {/* Addendum (rendered below the form, like the static) */}
-        {addendum === 'signing' && signingUrl && (
-          <div className="oqcs-addendum">
-            <h3 className="oqcs-addendum-heading">{C.addendumHeading}</h3>
-            <p className="oqcs-addendum-body">{C.addendumBody}</p>
-            <DocuSignEmbed
-              signingUrl={signingUrl}
-              onComplete={handleComplete}
-              title={C.addendumIframeTitle}
-            />
-          </div>
-        )}
-
-        {addendum === 'fallback' && (
-          <div className="oqcs-addendum-fallback">
-            <p>
-              {C.addendumFallbackBase}{' '}
-              {contractorPhone
-                ? addendumFallbackWithPhone(contractorName, contractorPhone)
-                : addendumFallbackNoPhone(contractorName)}
-            </p>
-          </div>
-        )}
       </div>
     </Wrap>
   );

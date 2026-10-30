@@ -4,8 +4,7 @@
  * Mirrors project-confirmation-page.test.tsx (H4): mock the shell's auth + notification
  * hooks, the supabase singleton, the data layer, and docusign-embed — drive the data
  * hook's return value directly. Asserts the brief's render + flow self-verify points:
- * gating, two-stage save→success, addendum guard/payload (no signer), signing_url→embed
- * vs fallback, and the return-bridge call.
+ * gating, save→success with NO separate colour envelope (gh-3110), and the return-bridge call.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -23,7 +22,6 @@ vi.mock('@/lib/supabase', () => ({
 vi.mock('../use-color-selection-data', () => ({
   useColorSelectionData: vi.fn(),
   saveColorSelection: vi.fn(() => Promise.resolve()),
-  createColorAddendumEnvelope: vi.fn(),
   requestColorBoardVisit: vi.fn(),
 }));
 
@@ -43,9 +41,9 @@ import { useAuthReady } from '@/hooks/use-auth-ready';
 import {
   useColorSelectionData,
   saveColorSelection,
-  createColorAddendumEnvelope,
   requestColorBoardVisit,
 } from '../use-color-selection-data';
+import { supabase } from '@/lib/supabase';
 import { runSigningReturnBridge } from '@/components/docusign-embed';
 import {
   COLOR_COPY as C,
@@ -166,15 +164,10 @@ describe('color-selection page — empty color guard', () => {
   });
 });
 
-// ── 4. Two-stage: save FIRST → success → THEN create the addendum envelope ──────
+// ── 4. gh-3110: save the colour, show success, and create NO envelope ──────────
 
-describe('color-selection page — two-stage confirm', () => {
-  it('saves the color, shows success, then calls createColorAddendumEnvelope and renders the embed', async () => {
-    (createColorAddendumEnvelope as unknown as Fn).mockResolvedValue({
-      signingUrl: 'https://ds/sign?token=color',
-      envelopeId: 'env-1',
-    });
-
+describe('color-selection page — confirm saves the colour only (separate envelope retired)', () => {
+  it('saves the color, shows success, renders no signing embed and no addendum fallback', async () => {
     render(<ColorSelectionPage />);
     await screen.findByText(C.confirmationTitle);
 
@@ -191,101 +184,34 @@ describe('color-selection page — two-stage confirm', () => {
       colorName: 'Charcoal',
     });
 
-    // Inline success shown independent of signing.
     expect(await screen.findByText(C.successText)).toBeTruthy();
 
-    // Envelope created with claim/contractor/origin (payload itself omits signer — utils).
-    await waitFor(() =>
-      expect(createColorAddendumEnvelope as unknown as Fn).toHaveBeenCalledTimes(1),
-    );
-    const efArg = (createColorAddendumEnvelope as unknown as Fn).mock.calls[0][0];
-    expect(efArg).toMatchObject({ claimId: 'c1', contractorId: 'ctr1' });
-    expect(efArg.origin).toBe(window.location.origin);
+    // The colour is signed on the Project Confirmation: no second envelope from this page.
+    expect(document.getElementById('docusignFrame')).toBeNull();
+    expect(document.querySelector('.oqcs-addendum')).toBeNull();
+    expect(document.querySelector('.oqcs-addendum-fallback')).toBeNull();
+    expect(screen.queryByTestId('complete-signing')).toBeNull();
 
-    // Embed renders with the returned signing URL.
-    await waitFor(() => {
-      const frame = document.getElementById('docusignFrame') as HTMLIFrameElement | null;
-      expect(frame?.getAttribute('src')).toBe('https://ds/sign?token=color');
-    });
-
-    // The confirm button reflects the confirmed state.
     expect((document.getElementById('confirmBtn') as HTMLButtonElement).textContent).toBe(
       C.confirmButtonConfirmed,
     );
   });
-});
 
-// ── 5. onComplete → done screen with /dashboard link ───────────────────────────
-
-describe('color-selection page — onComplete advances UI', () => {
-  it('shows the done screen with a /dashboard link after onComplete fires', async () => {
-    (createColorAddendumEnvelope as unknown as Fn).mockResolvedValue({
-      signingUrl: 'https://ds/sign?token=color',
-      envelopeId: null,
-    });
-
-    render(<ColorSelectionPage />);
-    await screen.findByText(C.confirmationTitle);
-
-    fireEvent.change(document.getElementById('color-input') as HTMLInputElement, {
-      target: { value: 'Slate' },
-    });
-    fireEvent.click(document.getElementById('confirmBtn') as HTMLButtonElement);
-
-    await waitFor(() => screen.findByTestId('complete-signing'));
-    fireEvent.click(screen.getByTestId('complete-signing'));
-
-    expect(await screen.findByText('Color Confirmed!')).toBeTruthy();
-    const link = screen.getByRole('link', { name: /Back to Dashboard/ });
-    expect(link.getAttribute('href')).toBe('/dashboard');
-  });
-});
-
-// ── 6. EF error → graceful fallback (save still happened) ───────────────────────
-
-describe('color-selection page — graceful EF failure', () => {
-  it('shows the fallback copy when the envelope call rejects, save still ran', async () => {
-    (createColorAddendumEnvelope as unknown as Fn).mockRejectedValue(new Error('EF down'));
-
-    render(<ColorSelectionPage />);
-    await screen.findByText(C.confirmationTitle);
-
-    fireEvent.change(document.getElementById('color-input') as HTMLInputElement, {
-      target: { value: 'Birchwood' },
-    });
-    fireEvent.click(document.getElementById('confirmBtn') as HTMLButtonElement);
-
-    await waitFor(() => expect(saveColorSelection as unknown as Fn).toHaveBeenCalledTimes(1));
-
-    const fallback = await waitFor(() => {
-      const el = document.querySelector('.oqcs-addendum-fallback');
-      expect(el).toBeTruthy();
-      return el!;
-    });
-    expect(fallback.textContent).toContain(C.addendumFallbackBase);
-    expect(fallback.textContent).toContain('555-1234'); // with-phone clause
-  });
-});
-
-// ── 7. Addendum guard: no signer email → fallback, envelope NOT called ──────────
-
-describe('color-selection page — addendum guard', () => {
-  it('skips the envelope and shows fallback when signerEmail is missing', async () => {
-    (useColorSelectionData as unknown as Fn).mockReturnValue(readyData({ signerEmail: '' }));
-
-    render(<ColorSelectionPage />);
-    await screen.findByText(C.confirmationTitle);
-
-    fireEvent.change(document.getElementById('color-input') as HTMLInputElement, {
-      target: { value: 'Estate Gray' },
-    });
-    fireEvent.click(document.getElementById('confirmBtn') as HTMLButtonElement);
-
-    await waitFor(() => expect(saveColorSelection as unknown as Fn).toHaveBeenCalledTimes(1));
-    await waitFor(() =>
-      expect(document.querySelector('.oqcs-addendum-fallback')).toBeTruthy(),
-    );
-    expect(createColorAddendumEnvelope as unknown as Fn).not.toHaveBeenCalled();
+  it('creates no envelope (no create-docusign-envelope call) with or without a signer email', async () => {
+    for (const signerEmail of ['owner@home.test', '']) {
+      (useColorSelectionData as unknown as Fn).mockReturnValue(readyData({ signerEmail }));
+      const { unmount } = render(<ColorSelectionPage />);
+      await screen.findByText(C.confirmationTitle);
+      fireEvent.change(document.getElementById('color-input') as HTMLInputElement, {
+        target: { value: 'Estate Gray' },
+      });
+      fireEvent.click(document.getElementById('confirmBtn') as HTMLButtonElement);
+      await waitFor(() => expect(saveColorSelection as unknown as Fn).toHaveBeenCalled());
+      await screen.findByText(C.successText);
+      unmount();
+      (saveColorSelection as unknown as Fn).mockClear();
+    }
+    expect((supabase.functions.invoke as unknown as Fn)).not.toHaveBeenCalled();
   });
 });
 

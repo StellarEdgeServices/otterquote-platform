@@ -156,6 +156,42 @@ describe('project-confirmation page — verbatim disclosure copy', () => {
   });
 });
 
+
+// ── gh-3110: colour carried from the colour page (separate colour envelope retired) ──
+
+describe('project-confirmation page — shingle colour prefill (gh-3110)', () => {
+  it('prefills Shingle Color from claims.color_name so the colour is signed on this document', async () => {
+    const base = readyData();
+    (useProjectConfirmationData as unknown as Fn).mockReturnValue(
+      readyData({ claim: { ...base.claim, color_name: 'Weathered Wood' } }),
+    );
+    render(<ProjectConfirmationPage />);
+    await waitFor(() => {
+      expect((document.getElementById('shingleColor') as HTMLInputElement).value).toBe('Weathered Wood');
+    });
+  });
+
+  it('a colour already saved on the confirmation wins over the colour-page value', async () => {
+    const base = readyData();
+    (useProjectConfirmationData as unknown as Fn).mockReturnValue(
+      readyData({
+        claim: { ...base.claim, color_name: 'Weathered Wood' },
+        existingConfirmation: { shingleColor: 'Charcoal' },
+      }),
+    );
+    render(<ProjectConfirmationPage />);
+    await waitFor(() => {
+      expect((document.getElementById('shingleColor') as HTMLInputElement).value).toBe('Charcoal');
+    });
+  });
+
+  it('stays empty (and required) when no colour was chosen', async () => {
+    render(<ProjectConfirmationPage />);
+    await screen.findByText(/Shingle Color/);
+    expect((document.getElementById('shingleColor') as HTMLInputElement).value).toBe('');
+  });
+});
+
 // ── 2. Submit is gated until all applicable acks checked AND shingle color present ──
 
 describe('project-confirmation page — submit gate', () => {

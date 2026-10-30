@@ -2627,6 +2627,15 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   if (document_type === "color_confirmation" && requestBody.resolved_envelope_id) {
     return await resumeColorConfirmation(requestBody.resolved_envelope_id, requestBody, corsHeaders);
   }
+  // gh-3110 (option a, Dustin on #3145, 2026-10-30): the separate colour-confirmation envelope is
+  // RETIRED. The colour is signed on the Project Confirmation (D-155: shingleColor / dripEdgeColor),
+  // so a claim now produces exactly one envelope. A colour envelope already minted before this
+  // change is still resumed above (free, never re-minted); nothing new is claimed, read from
+  // storage or sent to BoldSign. Machine code only; no customer wording, no contract change.
+  if (document_type === "color_confirmation") {
+    console.warn(`[${FN_NAME}] color_confirmation refused: the separate colour envelope is retired (gh-3110); colour is signed on the project confirmation`);
+    return colorRefusal(410, "color_envelope_retired", corsHeaders);
+  }
   let autoFields = stripHomeownerPhone(providedFields);
   let claimData = null;
   let contractorData = null;

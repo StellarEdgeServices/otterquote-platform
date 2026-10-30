@@ -290,9 +290,14 @@ function FormContent({
       : null;
     const prefillType = quote?.product_line ?? '';
 
+    // gh-3110: the separate colour envelope is retired; the colour chosen on the colour page
+    // (claims.color_name) is carried here and signed on this document (D-155).
+    const prefillColor = claim?.color_name ?? '';
+
     let initForm: ConfirmationFormValues = {
       shingleManufacturer: prefillMftr ?? '',
       shingleType: prefillType,
+      shingleColor: prefillColor,
     };
 
     // Restore existing confirmation on top of prefill (static 2308-2311: restore wins)
@@ -322,7 +327,7 @@ function FormContent({
         // Restored values win
         ...(d.shingleManufacturer != null && { shingleManufacturer: d.shingleManufacturer as string }),
         ...(d.shingleType != null && { shingleType: d.shingleType as string }),
-        shingleColor: (d.shingleColor as string | undefined) ?? '',
+        shingleColor: (d.shingleColor as string | undefined) || prefillColor,
         dripEdgeColor: (d.dripEdgeColor as string | undefined) ?? '',
         valleys: (d.valleys as string | undefined) ?? '',
         gutterGuards: (d.gutterGuards as string | undefined) ?? 'None',

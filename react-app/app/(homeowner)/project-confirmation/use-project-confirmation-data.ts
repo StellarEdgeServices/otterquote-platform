@@ -28,6 +28,8 @@ export interface ConfirmationClaimRow {
   selected_trades?: unknown;
   funding_type?: string | null;
   job_type?: string | null;
+  /** gh-3110: colour chosen on the colour page; prefills shingleColor on the confirmation. */
+  color_name?: string | null;
   project_confirmation?: Record<string, unknown> | null;
 }
 

@@ -2328,6 +2328,14 @@
           populateExistingData(existingConf);
         }
 
+        // gh-3110: the separate colour envelope is retired; the colour the homeowner chose on the
+        // colour page (claims.color_name) is carried here and signed on this document. A colour
+        // already saved on the confirmation wins; this only fills an empty field.
+        const shingleColorEl = document.getElementById('shingleColor');
+        if (shingleColorEl && !shingleColorEl.value.trim() && claimData.color_name) {
+          shingleColorEl.value = claimData.color_name;
+        }
+
         // ── Trade detection: show/hide trade-specific sections ──
         // Fall back to roofing if no selected_trades column on claim.
         const rawTrades = Array.isArray(claimData.selected_trades) ? claimData.selected_trades : [];

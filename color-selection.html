@@ -1125,9 +1125,9 @@
             color: colorName
           });
 
-          // Attempt to create DocuSign color addendum (D-058)
-          // Graceful fallback if contractor has no color_confirmation.pdf template
-          await this.createColorAddendum(colorName);
+          // gh-3110 (Dustin on #3145, 2026-10-30): the separate colour-confirmation envelope is
+          // retired. The colour saved above is carried into, and signed on, the Project
+          // Confirmation (D-155) -- no second envelope is created from this page.
 
           button.disabled = false;
           button.textContent = 'Confirm My Color';
