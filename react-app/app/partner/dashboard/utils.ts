@@ -24,11 +24,15 @@ import { RECRUIT_LINK_BASE } from './copy';
 
 // ── Data models ───────────────────────────────────────────────────────────────
 
-/** A row of the `referrals` table (the partner's own referrals). */
+/**
+ * A row of the partner's own referrals, as returned by the `get_my_referrals()` RPC (gh-3217).
+ * `display_name` is the homeowner's first name + last initial only (privacy.html 4.7). The RPC never
+ * returns homeowner email, phone or address, and direct reads of those `referrals` columns are revoked.
+ * (`recruit_commission_amount` rows from the direct column-granted recruit-earnings query reuse this shape.)
+ */
 export interface PartnerReferral {
   id: string;
-  homeowner_name?: string | null;
-  homeowner_email?: string | null;
+  display_name?: string | null;
   created_at?: string | null;
   status?: string | null;
   job_value?: number | null;
@@ -217,9 +221,23 @@ export function referralStatusClass(status: string | null | undefined): string {
   return REFERRAL_STATUS_CLASS[status ?? ''] ?? 'status-clicked';
 }
 
-/** Client cell: homeowner_name || homeowner_email || 'Visitor'. */
-export function referralClientName(ref: Pick<PartnerReferral, 'homeowner_name' | 'homeowner_email'>): string {
-  return ref.homeowner_name || ref.homeowner_email || 'Visitor';
+/** Client cell: masked display_name (first name + last initial) || 'Visitor'. Never an email (gh-3217). */
+export function referralClientName(ref: Pick<PartnerReferral, 'display_name'>): string {
+  return ref.display_name || 'Visitor';
+}
+
+/**
+ * gh-3217: rows from `get_my_referrals()` (all of the signed-in user's referral_agents rows) narrowed to
+ * one agent, newest first (the RPC already orders by created_at desc; re-sorted here so the order never
+ * depends on the server).
+ */
+export function ownReferralsFromRpc<T extends { referral_agent_id?: string | null; created_at?: string | null }>(
+  rows: T[] | null | undefined,
+  agentId: string,
+): T[] {
+  return (rows || [])
+    .filter((r) => r.referral_agent_id === agentId)
+    .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')));
 }
 
 /** Referral date label — `toLocaleDateString('en-US', {month,day,year})`. */

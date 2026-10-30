@@ -41,13 +41,13 @@ export const COMING_SOON_REDIRECT = '/coming-soon.html?from=refer-a-friend&perso
 
 // ── Data models (only the columns this page reads) ────────────────────────────
 
-/** A row of the `referrals` table for a customer referrer (own row resolved via
- *  referral_agents.id -> referrals.referral_agent_id — see #567; there is no
- *  referrer_id column). */
+/** A row of the customer referrer's own referrals from the `get_my_referrals()` RPC
+ *  (gh-3217; own rows resolved via referral_agents.user_id = auth.uid()). `display_name` is
+ *  first name + last initial only (privacy.html 4.7); the RPC returns no email or phone. */
 export interface CustomerReferral {
   id?: string;
-  homeowner_name?: string | null;
-  homeowner_email?: string | null;
+  display_name?: string | null;
+  referral_agent_id?: string | null;
   status?: string | null;
   created_at?: string | null;
   [key: string]: unknown;
@@ -96,13 +96,13 @@ export const REFERRAL_STATUS_CLASSES: Record<string, string> = {
   commission_paid: 'status-paid',
 };
 
-/** "Friend's Name" cell: homeowner_name || homeowner_email || positional
- *  fallback (both are nullable — static). */
+/** "Friend's Name" cell: masked display_name (first name + last initial) || positional
+ *  fallback (nullable). Never an email (gh-3217). */
 export function referralFriendName(
-  ref: Pick<CustomerReferral, 'homeowner_name' | 'homeowner_email'>,
+  ref: Pick<CustomerReferral, 'display_name'>,
   index: number,
 ): string {
-  return ref.homeowner_name || ref.homeowner_email || `Referral #${index + 1}`;
+  return ref.display_name || `Referral #${index + 1}`;
 }
 
 /** "Date Referred" cell — `toLocaleDateString('en-US', {month,day,year})`; null -> '—'. */

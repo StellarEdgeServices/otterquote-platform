@@ -265,7 +265,11 @@
                         redirectUrl = '/ref-insurance.html';
                         break;
                     case 'other':
-                        redirectUrl = '/ref-re.html';
+                        // P18: influencer partners register as agent_type 'other' (funnel_id
+                        // 'influencer'), and the public agents RPC does not expose funnel_id, so
+                        // 'other' partners (creators and anyone else on partner-other.html) land
+                        // on the homepage rather than the realtor page.
+                        redirectUrl = '/';
                         break;
                     default:
                         redirectUrl = '/ref-re.html';
