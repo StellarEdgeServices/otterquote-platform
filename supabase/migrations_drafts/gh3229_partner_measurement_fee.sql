@@ -21,16 +21,18 @@
 --   1. platform_settings: partner_measurement_fee_cents (500) and partner_payout_minimum_cents (2500); both read at use time.
 --   2. payout_approvals_payout_type_check admits 'measurement_fees_monthly' (the monthly batch row; referral_id stays NULL).
 --   3. partner_fee_events (ledger, one row per paid homeowner measurement) + RLS: a partner reads own rows, admin all, no client writes.
---   4. AFTER INSERT/UPDATE trigger on hover_orders: a homeowner-paid order accrues one row when the claim carries a credited referral
---      inside the attribution window, is_test agrees on claim/referral/agent, and the agent is not a home inspector. UNIQUE(hover_order_id).
+--   4. AFTER INSERT trigger on hover_orders (insert only, so editing an older order never backfills; create-measurement-order writes role, payment, amount and claim in one INSERT): a homeowner-paid order accrues one row when the claim carries a credited referral
+--      inside the attribution window, is_test agrees on claim/referral/agent, and the agent is not a home inspector. UNIQUE(hover_order_id) and UNIQUE(payment_ref) (the PaymentIntent id, else the charge id), so a retried payment that produced a second order row accrues once.
 --      It never raises: the order is written after the buyer's money moved, so a fee-side failure is logged (WARNING) and the order stands.
 --   5. NO void on refund (CEO ruling, #3236): the fee is earned when the purchase completes. The job-completion rebate (rebate_paid_at) does not touch
 --      it. The status 'void' stays in the table for a manual correction. A refund made by hand in the Stripe dashboard is not detected (no charge.refunded handler).
 --   6. get_partner_dashboard_stats(): the caller's numbers from auth.uid() only; rows whose is_test matches the caller's (a test partner sees test rows, a real
 --      partner real rows); includes per-recruit recruit-bonus earnings.
 --   7. create_monthly_fee_batch(p_month): admin/service-role only; one payout_approvals row per partner at or above the minimum; idempotent.
---   8. partner_fee_events_mark_paid(payout id): service-role only, called by mark-payout-paid.
---   9. Rejecting a batch payout releases its events back to accrued (so rejected money is not stranded as batched).
+--   8. A payout_approvals AFTER UPDATE OF status trigger flips its batched events to paid when the payout becomes paid (atomic with the payout);
+--      partner_fee_events_mark_paid(payout id), service-role only, stays as an idempotent repair tool and is still called by mark-payout-paid.
+--   9. Rejecting a batch payout, or deleting it, releases its events back to accrued (so the money is not stranded as batched).
+--  Month boundaries are America/New_York (the business day), not UTC; only past months can be batched.
 
 BEGIN;
 
@@ -54,6 +56,7 @@ CREATE TABLE IF NOT EXISTS public.partner_fee_events (
   referral_id        uuid        REFERENCES public.referrals(id) ON DELETE SET NULL,
   claim_id           uuid        REFERENCES public.claims(id) ON DELETE SET NULL,
   hover_order_id     uuid        REFERENCES public.hover_orders(id) ON DELETE SET NULL,
+  payment_ref        text        NOT NULL,   -- the Stripe PaymentIntent id, else the charge id: one fee per payment, even if a retry made two order rows
   event_type         text        NOT NULL DEFAULT 'measurement_purchase' CHECK (event_type IN ('measurement_purchase')),
   amount_cents       integer     NOT NULL CHECK (amount_cents > 0),
   status             text        NOT NULL DEFAULT 'accrued' CHECK (status IN ('accrued', 'batched', 'paid', 'void')),
@@ -63,6 +66,7 @@ CREATE TABLE IF NOT EXISTS public.partner_fee_events (
   voided_at          timestamptz,
   paid_at            timestamptz,
   CONSTRAINT partner_fee_events_hover_order_id_key UNIQUE (hover_order_id),
+  CONSTRAINT partner_fee_events_payment_ref_key UNIQUE (payment_ref),
   CONSTRAINT partner_fee_events_void_stamp CHECK ((status = 'void') = (voided_at IS NOT NULL)),
   CONSTRAINT partner_fee_events_paid_stamp CHECK ((status = 'paid') = (paid_at IS NOT NULL))
 );
@@ -108,10 +112,12 @@ DECLARE
   v_agent_type    text;
   v_setting       text;
   v_cents         integer;
+  v_ref           text;
 BEGIN
   -- homeowner-paid order: requested by the homeowner, a Stripe payment id on it, and a positive charge
+  v_ref := COALESCE(NULLIF(btrim(NEW.homeowner_stripe_payment_intent_id), ''), NULLIF(btrim(NEW.stripe_payment_id), ''));
   IF NEW.requested_by_role IS DISTINCT FROM 'homeowner'
-     OR COALESCE(NULLIF(btrim(NEW.homeowner_stripe_payment_intent_id), ''), NULLIF(btrim(NEW.stripe_payment_id), '')) IS NULL
+     OR v_ref IS NULL
      OR COALESCE(NEW.homeowner_charge_amount, 0) <= 0 THEN
     RETURN NEW;
   END IF;
@@ -153,10 +159,10 @@ BEGIN
   v_cents := v_setting::integer;
 
   INSERT INTO public.partner_fee_events
-    (referral_agent_id, referral_id, claim_id, hover_order_id, event_type, amount_cents, status, is_test)
+    (referral_agent_id, referral_id, claim_id, hover_order_id, payment_ref, event_type, amount_cents, status, is_test)
   VALUES
-    (v_agent_id, v_ref_id, NEW.claim_id, NEW.id, 'measurement_purchase', v_cents, 'accrued', COALESCE(v_claim_test, false))
-  ON CONFLICT ON CONSTRAINT partner_fee_events_hover_order_id_key DO NOTHING;
+    (v_agent_id, v_ref_id, NEW.claim_id, NEW.id, v_ref, 'measurement_purchase', v_cents, 'accrued', COALESCE(v_claim_test, false))
+  ON CONFLICT DO NOTHING;       -- either unique key (order row or payment) stops a second fee
 
   RETURN NEW;
 EXCEPTION WHEN OTHERS THEN
@@ -169,7 +175,7 @@ REVOKE ALL ON FUNCTION public.partner_fee_accrue_on_order() FROM PUBLIC, anon, a
 
 DROP TRIGGER IF EXISTS partner_fee_accrue_on_order ON public.hover_orders;
 CREATE TRIGGER partner_fee_accrue_on_order
-  AFTER INSERT OR UPDATE OF homeowner_stripe_payment_intent_id, stripe_payment_id, requested_by_role, homeowner_charge_amount, claim_id
+  AFTER INSERT
   ON public.hover_orders
   FOR EACH ROW
   WHEN (NEW.requested_by_role = 'homeowner')
@@ -191,6 +197,7 @@ CREATE OR REPLACE FUNCTION public.get_partner_dashboard_stats()
    recruit_earnings_cents        bigint,   -- recruit bonuses on the caller's recruits (paid or accrued)
    recruits                      jsonb,    -- [{recruit_id, earnings_cents}] bonuses only; never the recruit's own fees
    accrued_toward_minimum_cents  bigint,   -- $5 fees still 'accrued' (what the next batch would count)
+   payments_blocked              boolean,  -- true: payouts are held (all of the caller's partner rows are payments_blocked)
    payout_minimum_cents          bigint,
    next_payout_cents             bigint,   -- estimate: accrued if at or above the minimum and not payments-blocked, else 0
    next_payout_month             date
@@ -262,6 +269,7 @@ BEGIN
                        WHERE rec.recruited_by_id = ANY (v_ids) AND r.is_test = v_test AND COALESCE(r.recruit_commission_amount, 0) > 0
                        GROUP BY rec.id) t), '[]'::jsonb),
     v_accrued,
+    v_blocked,
     v_min,
     CASE WHEN v_accrued >= v_min AND NOT v_blocked THEN v_accrued ELSE 0 END::bigint,
     (date_trunc('month', now()) + interval '1 month')::date;
@@ -303,10 +311,12 @@ BEGIN
   END IF;
 
   v_month := date_trunc('month', p_month)::date;
-  IF v_month > date_trunc('month', now())::date THEN
-    RAISE EXCEPTION 'create_monthly_fee_batch: % is a future month', v_month USING ERRCODE = '22023';
+  -- only a month that has ended can be batched: an accrual landing during the run could not otherwise be told from the batch's own rows
+  IF v_month >= date_trunc('month', now() AT TIME ZONE 'America/New_York')::date THEN
+    RAISE EXCEPTION 'create_monthly_fee_batch: % is the current or a future month (Eastern time)', v_month USING ERRCODE = '22023';
   END IF;
-  v_end := (v_month + interval '1 month');        -- everything accrued before the end of p_month, rollover included
+  -- month boundary = midnight America/New_York (the business day), not UTC; everything accrued before it, rollover included
+  v_end := ((v_month + interval '1 month')::timestamp AT TIME ZONE 'America/New_York');
 
   -- two clicks at once serialize here; the second finds nothing left to batch
   PERFORM pg_advisory_xact_lock(hashtext('create_monthly_fee_batch'));
@@ -362,12 +372,12 @@ END;
 $function$;
 
 COMMENT ON FUNCTION public.create_monthly_fee_batch(date) IS
-  'gh-3229 (P18): admin/service-role only. For every partner whose accrued measurement fees (through the end of p_month) reach partner_payout_minimum_cents and who is not payments_blocked, creates one payout_approvals row (measurement_fees_monthly, pending_approval, referral_id NULL) and marks those events batched. Idempotent.';
+  'gh-3229 (P18): admin/service-role only. For every partner whose accrued measurement fees (through the end of p_month) reach partner_payout_minimum_cents and who is not payments_blocked, creates one payout_approvals row (measurement_fees_monthly, pending_approval, referral_id NULL) and marks those events batched. Idempotent. Month boundaries are midnight America/New_York; the current and future months are refused.';
 
 REVOKE ALL ON FUNCTION public.create_monthly_fee_batch(date) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.create_monthly_fee_batch(date) TO authenticated, service_role;
 
--- 8. paid flip (called by mark-payout-paid with the service key) ---------------------------------------------------------------------------
+-- 8. paid flip: repair tool and belt-and-braces call from mark-payout-paid (the payout_approvals trigger below is the primary path) ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.partner_fee_events_mark_paid(p_payout_approval_id uuid)
  RETURNS integer
  LANGUAGE plpgsql
@@ -397,28 +407,45 @@ $function$;
 REVOKE ALL ON FUNCTION public.partner_fee_events_mark_paid(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.partner_fee_events_mark_paid(uuid) TO service_role;
 
--- 9. rejected batch payout releases its events ------------------------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.partner_fee_release_on_reject()
+-- 9. paid, rejected or deleted batch payout moves its events with it ---------------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.partner_fee_events_follow_payout()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
 AS $function$
 BEGIN
+  IF TG_OP = 'DELETE' OR NEW.status = 'rejected' THEN
+    UPDATE public.partner_fee_events                       -- released: batched again by the next run
+       SET status = 'accrued', payout_approval_id = NULL
+     WHERE payout_approval_id = OLD.id AND status = 'batched';
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+  -- status became 'paid'
   UPDATE public.partner_fee_events
-     SET status = 'accrued', payout_approval_id = NULL
+     SET status = 'paid', paid_at = COALESCE(NEW.paid_at, now())
    WHERE payout_approval_id = NEW.id AND status = 'batched';
   RETURN NEW;
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.partner_fee_release_on_reject() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.partner_fee_events_follow_payout() FROM PUBLIC, anon, authenticated;
 
 DROP TRIGGER IF EXISTS partner_fee_release_on_reject ON public.payout_approvals;
-CREATE TRIGGER partner_fee_release_on_reject
+DROP TRIGGER IF EXISTS partner_fee_follow_payout_status ON public.payout_approvals;
+CREATE TRIGGER partner_fee_follow_payout_status
   AFTER UPDATE OF status ON public.payout_approvals
   FOR EACH ROW
-  WHEN (NEW.status = 'rejected' AND OLD.status IS DISTINCT FROM 'rejected' AND NEW.payout_type = 'measurement_fees_monthly')
-  EXECUTE FUNCTION public.partner_fee_release_on_reject();
+  WHEN (NEW.payout_type = 'measurement_fees_monthly'
+        AND ((NEW.status = 'rejected' AND OLD.status IS DISTINCT FROM 'rejected')
+             OR (NEW.status = 'paid' AND OLD.status IS DISTINCT FROM 'paid')))
+  EXECUTE FUNCTION public.partner_fee_events_follow_payout();
+
+DROP TRIGGER IF EXISTS partner_fee_follow_payout_delete ON public.payout_approvals;
+CREATE TRIGGER partner_fee_follow_payout_delete
+  BEFORE DELETE ON public.payout_approvals
+  FOR EACH ROW
+  WHEN (OLD.payout_type = 'measurement_fees_monthly')
+  EXECUTE FUNCTION public.partner_fee_events_follow_payout();
 
 COMMIT;

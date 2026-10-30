@@ -20,9 +20,12 @@ BEGIN
   END IF;
 END $g$;
 
+DROP TRIGGER IF EXISTS partner_fee_follow_payout_delete ON public.payout_approvals;
+DROP TRIGGER IF EXISTS partner_fee_follow_payout_status ON public.payout_approvals;
 DROP TRIGGER IF EXISTS partner_fee_release_on_reject ON public.payout_approvals;
 DROP TRIGGER IF EXISTS partner_fee_accrue_on_order ON public.hover_orders;
 
+DROP FUNCTION IF EXISTS public.partner_fee_events_follow_payout();
 DROP FUNCTION IF EXISTS public.partner_fee_release_on_reject();
 DROP FUNCTION IF EXISTS public.partner_fee_events_mark_paid(uuid);
 DROP FUNCTION IF EXISTS public.create_monthly_fee_batch(date);

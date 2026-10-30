@@ -650,7 +650,7 @@
         const out = document.getElementById('batchResult');
         if (!month) return;
         if (!confirm('Create the monthly measurement referral fee payouts through the end of ' +
-            document.getElementById('batchMonth').selectedOptions[0].textContent + '?\n\nPartners under the minimum roll over to next month. Running it again creates nothing new.')) return;
+            document.getElementById('batchMonth').selectedOptions[0].textContent + ' (month boundaries are midnight Eastern time)?\n\nPartners under the minimum roll over to next month. Running it again creates nothing new.')) return;
         btn.disabled = true;
         out.textContent = 'Running…';
         try {

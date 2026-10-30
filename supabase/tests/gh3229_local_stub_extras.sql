@@ -2,7 +2,7 @@
 -- Tables/columns the migration and the proof touch that the base stub lacks. RLS on partner_fee_events comes from the migration itself.
 CREATE TABLE auth.users (id uuid PRIMARY KEY, email text);
 ALTER TABLE public.referral_agents
-  ADD COLUMN user_id uuid, ADD COLUMN payments_blocked boolean NOT NULL DEFAULT false,
+  ADD COLUMN user_id uuid, ADD COLUMN payments_blocked boolean NOT NULL DEFAULT true,
   ADD COLUMN email text, ADD COLUMN unique_code text;
 ALTER TABLE public.payout_approvals
   ADD COLUMN created_at timestamptz DEFAULT now(), ADD COLUMN paid_at timestamptz, ADD COLUMN rejected_at timestamptz;

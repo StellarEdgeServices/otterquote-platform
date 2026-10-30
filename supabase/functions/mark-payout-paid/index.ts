@@ -304,9 +304,10 @@ serve(async (req: Request) => {
     }
 
     // ── gh-3229 (P18): monthly measurement-fee payout -> its batched fee events become paid ──
-    // The payout has no referral (referral_id NULL), so the block above did nothing for it. The flip is a service-role RPC
-    // (partner_fee_events_mark_paid) that only acts on a payout already in 'paid'. A failure is logged and returned to the
-    // caller (the payout row is already paid and cannot be re-run through this function); re-run the RPC by hand.
+    // The payout has no referral (referral_id NULL), so the block above did nothing for it. The primary flip is the
+    // payout_approvals status trigger (same transaction as the payout going to 'paid'); this RPC is an idempotent repair/
+    // belt-and-braces call (service role, only acts on a payout already in 'paid', returns 0 when the trigger already ran).
+    // A failure is logged and returned to the caller; re-run the RPC by hand.
     let feeEventsPaid: number | null = null;
     let feeEventsError: string | null = null;
     if (approval.payout_type === "measurement_fees_monthly") {
