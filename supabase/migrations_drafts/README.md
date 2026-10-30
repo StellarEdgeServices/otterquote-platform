@@ -119,3 +119,9 @@ Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630)
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2997_inherit_is_test` | forward, rollback, pre-flight (all three here) | NOT APPLIED | drafted 2026-10-23 under #2997; production read-only 2026-10-23 (project yeszghaspzwwstvsrioa): no trigger on `quotes` or `activity_log` sets `is_test` from the claim; 2 quotes on `is_test` claims read `is_test=false` and 6 `activity_log` rows keyed to an `is_test` claim via `metadata.claim_id` read false. Two BEFORE INSERT triggers (`quotes_inherit_is_test`, `activity_log_inherit_is_test`) raise false to true only, plus a one-off data correction. CTO ruling 6366805193 on #2997: include quote 403940dc in the correction, apply with `SET lock_timeout = '5s'`, add this row in the same PR. Tier 3B, applied only under the R-097 notice path. No database was written | none |
+
+## Added 2026-10-30 (gh-3228, P18, homeowner measurement fee $15 -> $22.63): 2 files here (forward, rollback), not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh3228_measurement_price_2263` | forward, rollback | NOT APPLIED | drafted 2026-10-30 under #3228 on Dustin's word (chat 2026-10-30 09:17 ET); production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): `hover_measurement_price` = 1500 and `measurement_products.roof_basic.homeowner_price_cents` = 1500. Tier 3B money: CTO applies after the 24-hour R-097 notice and the D-291 amendment; both keys change in one transaction | none |

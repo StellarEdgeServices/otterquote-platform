@@ -621,7 +621,7 @@ async function main() {
     const before = inWin.leadFbq().length;
     buttonByText(inWin.root, COPY.arm_f_s4_button_measure).dispatchClick();
     const href = inWin.fakeWindow.location.href;
-    ok(/^https:\/\/app\.otterquote\.com\/help-measurements\?lead=00000000-0000-4000-8000-000000000001/.test(href) && href.indexOf('v=f') !== -1, 'the $15 button deep-links to the existing /help-measurements with lead + attribution (' + href + ')');
+    ok(/^https:\/\/app\.otterquote\.com\/help-measurements\?lead=00000000-0000-4000-8000-000000000001/.test(href) && href.indexOf('v=f') !== -1, 'the $22.63 button deep-links to the existing /help-measurements with lead + attribution (' + href + ')');
     ok(inWin.leadFbq().length === before && inWin.ev('generate_lead').length === 1, 'clicking a deep link does NOT count a second conversion');
     const cta = inWin.ev('router_f_cta_measure');
     ok(cta.length === 1 && cta[0].params.step === 'f-thanks' && cta[0].params.step_index === 4 && cta[0].params.variant === 'f' && !('cta' in cta[0].params),

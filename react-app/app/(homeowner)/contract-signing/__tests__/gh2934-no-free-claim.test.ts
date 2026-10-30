@@ -1,6 +1,6 @@
 /**
  * gh-2934 (refs #2745, #2891, PR #2920) -- the D-206 signed-document callout must not call the service "free" beside the
- * $15 aerial report fee, on BOTH surfaces (static contract-signing.html and its React twin copy.ts), and both must carry
+ * $22.63 aerial report fee, on BOTH surfaces (static contract-signing.html and its React twin copy.ts), and both must carry
  * the same approved text. Approved wording sources: heading + sentence 1 + sentence 2 = #2745 6170194316 / CEO 6273560637;
  * sentence 3 clause "other than the report fee above," = Ben 6274463089 item 1. LEGAL-READ: PASS 6301070553 and
  * R-177 SIGNED 6301083060 on PR #2920 head ff09e652 (merged at 93faee01). Read as text, per the repo source-guard convention.

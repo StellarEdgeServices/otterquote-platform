@@ -143,12 +143,12 @@ type TrackEventParams = {
    */
   sign_up: { method: 'google'; referral_source: ReferralSource };
   /**
-   * gh-2078 -- fires once, from the measurement ($15 Hover) checkout
+   * gh-2078 -- fires once, from the measurement ($22.63 Hover) checkout
    * success path (help-measurements/page.tsx's handlePaid), immediately
    * after placeHoverOrder resolves (a real, confirmed Stripe charge --
    * see HoverPaymentForm.tsx's own gh-416 double-charge guard, which this
    * reuses rather than re-deriving). `value`/`currency` are fixed
-   * (the $15 RoofScope price), `variant` is the persisted router arm
+   * (the $22.63 RoofScope price), `variant` is the persisted router arm
    * (lib/variant.ts), `'unknown'` when none was ever captured.
    */
   measurement_purchase: { value: number; currency: 'USD'; variant: string };
@@ -242,7 +242,7 @@ function sanitizeSignUpMethod(value: unknown): 'google' | 'unknown' {
   return typeof value === 'string' && SIGN_UP_METHODS.has(value) ? (value as 'google') : 'unknown';
 }
 
-/** fix -- measurement_purchase.value: fixed $15 price, but never trust the caller's number as-is. */
+/** fix -- measurement_purchase.value: fixed $22.63 price, but never trust the caller's number as-is. */
 function sanitizeMeasurementValue(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
 }

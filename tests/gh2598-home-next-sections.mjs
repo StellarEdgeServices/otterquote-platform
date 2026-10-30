@@ -10,9 +10,9 @@
  * not covered.", so DESIGN_DIR=<drive> reports exactly that one string pair as different until the originals are re-approved with the new line.
  *
  * SECOND RULED EXCEPTION to "verbatim" (Dustin, #2813 comment 6253699223, 2026-10-18, option (b), \"Narrow: \"...that contractors use to bid\" (Recommended)\"): the #paid
- * sentence reads "You pay as little as $15 up front for professional measurements that contractors use to bid." in the page AND in both committed fixtures
+ * sentence reads "You pay as little as $22.63 up front for professional measurements that contractors use to bid." in the page AND in both committed fixtures
  * (the approved drive originals still say "that every contractor uses"). Re-run the legal read on that line.
- * Slice 3 (How we're paid, What we do not do, You can change your mind) is built; it restates the fee, the $15 measurement charge and its refund and the
+ * Slice 3 (How we're paid, What we do not do, You can change your mind) is built; it restates the fee, the $22.63 measurement charge and its refund and the
  * switch-contractor promise, so the PR that adds it carries an independent LEGAL-READ and the CEO's R-177 SIGNED line (D-377, D-378, D-291, D-313, D-371).
  *
  * What it pins, for every section the page has built so far (BUILT below):
@@ -20,7 +20,7 @@
  *   S2  phone view:   the same against the phone design (elements the CSS hides on phones are dropped for the phone view and the
  *                     elements it hides on desktop are dropped for the desktop view; the class lists are DESKTOP_ONLY / PHONE_ONLY)
  *   S3  section order on the page follows the design
- *   S4  money and promise wording stays where it was approved: the fee, the $15 charge, its refund and the switch promise appear only inside #paid and #promise,
+ *   S4  money and promise wording stays where it was approved: the fee, the $22.63 charge, its refund and the switch promise appear only inside #paid and #promise,
  *       never in any other section, never in an attribute text (placeholder, value, title, alt, aria-label), and the design's own strings for those two
  *       sections are not repeated anywhere else (reviewer m1 of #2716: attribute text was never compared)
  * Every check has a NEGATIVE CONTROL: a mutation of the page or of a design copy that must turn it red.
@@ -141,7 +141,7 @@ control('S1 (two list items swapped on the page)', bad(sectionResults(word(word(
 control('S1 (the Questions header link removed)', bad(sectionResults(word(PAGE, '<a href="#questions">Questions</a>', ''), DESK, PHONE)).length > 0);
 control('S1 (the How we\'re paid header link removed)', bad(sectionResults(word(PAGE, '<a href="#paid">How we\'re paid</a>', ''), DESK, PHONE)).length > 0);
 control('S1 (one word changed in the fee sentence)', bad(sectionResults(word(PAGE, 'Contractors pay Otter Quotes a fee on the bid you accept.', 'Contractors pay Otter Quotes a fee on the bid they accept.'), DESK, PHONE)).length > 0);
-control('S1 (the $15 sentence loses its refund sentence)', bad(sectionResults(word(PAGE, ' If you complete a job on the platform, that money is refunded to you.', ''), DESK, PHONE)).length > 0);
+control('S1 (the $22.63 sentence loses its refund sentence)', bad(sectionResults(word(PAGE, ' If you complete a job on the platform, that money is refunded to you.', ''), DESK, PHONE)).length > 0);
 control('S1 (switch promise changed from 3 days to 5 days)', bad(sectionResults(word(PAGE, 'up to 3 days before your start date', 'up to 5 days before your start date'), DESK, PHONE)).length > 0);
 control('S1 (a "What we do not do" item removed)', bad(sectionResults(word(PAGE, '<li>We do not sell upgrades.</li>', ''), DESK, PHONE)).length > 0);
 control('S1 (the desktop side block of the promise band removed)', bad(sectionResults(PAGE.replace(/<div class="hr-promise-side hr-full">[\s\S]*?<\/div>\s*<\/div>/, ''), DESK, PHONE)).length > 0);
@@ -187,9 +187,9 @@ ok(/id="paid"/.test(PAGE) && /id="promise"/.test(PAGE), 'S4 the page has #paid a
 ok(MONEY_SECTIONS.every((k) => MONEY.test(sectionTextAll(byKey(PAGE)[k] || { html: '' }).join('\n'))), 'S4 the money sections do carry the wording (a MONEY pattern that matches nothing must not pass)');
 control('S4 (the fee sentence repeated in the hero)', stray(word(PAGE, '<div class="hr-reassure">No salesperson in your home. No obligation to hire.</div>', '<div class="hr-reassure">No salesperson in your home. Contractors pay Otter Quotes a fee on the bid you accept.</div>')).length > 0);
 control('S4 (a refund word added to a built paragraph)', stray(word(PAGE, 'Nobody sits at your kitchen table.', 'Nobody sits at your kitchen table. Any fee is refunded.')).length > 0);
-control('S4 (a price in the questions section)', stray(word(PAGE, 'No. There is no obligation to work with our contractors.', 'No. There is no obligation to work with our contractors. Measurements cost $15.')).length > 0);
+control('S4 (a price in the questions section)', stray(word(PAGE, 'No. There is no obligation to work with our contractors.', 'No. There is no obligation to work with our contractors. Measurements cost $22.63.')).length > 0);
 control('S4 (money wording in a placeholder attribute: reviewer m1)', stray(word(PAGE, '<input id="hr-zip-end"', '<input placeholder="Free quote, no fee" id="hr-zip-end"')).length > 0);
-control('S4 (money wording in a value attribute: reviewer m1)', stray(word(PAGE, '<input id="hr-zip"', '<input value="$15 refunded" id="hr-zip"')).length > 0);
+control('S4 (money wording in a value attribute: reviewer m1)', stray(word(PAGE, '<input id="hr-zip"', '<input value="$22.63 refunded" id="hr-zip"')).length > 0);
 control('S4 (money wording in an aria-label)', stray(word(PAGE, 'aria-label="Call Otter Quotes at 844 875 3412"', 'aria-label="Call us, no cost to switch to another contractor"')).length > 0);
 control('S4 (the switch promise copied into the footer)', stray(word(PAGE, '<a href="/privacy.html">Privacy Policy</a>', '<a href="/privacy.html">Switch to another Otter Quotes contractor at no cost</a>')).length > 0);
 

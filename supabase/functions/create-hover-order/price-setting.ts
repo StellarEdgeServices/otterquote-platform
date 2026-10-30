@@ -3,7 +3,7 @@
 // gh-1537 (audit: every `?? <literal>` / `|| <literal>` fallback on a
 // platform_settings price/fee read): this function's hover_measurement_price
 // read (in verifyHoverPayment, the D-181 payment guard) had a hardcoded
-// fallback of 1500 cents ($15) — which happens to equal the live value at
+// fallback of 1500 cents ($22.63) — which happens to equal the live value at
 // audit time (2026-09-02), but is the same guess-on-missing-row pattern that
 // left create-payment-intent's parallel read at a stale $79 default for two
 // repricings (D-205, D-291). A verification guard that can be satisfied by a

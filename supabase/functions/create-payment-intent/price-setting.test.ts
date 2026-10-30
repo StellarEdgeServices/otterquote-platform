@@ -54,3 +54,13 @@ Deno.test("gh-1537 regression: no code path returns the retired 7900 default", (
   }
   assertEquals(thrown, true);
 });
+
+// gh-3228 / P18: the live setting becomes 2263 cents ($22.63) on Dustin's word (2026-10-30).
+Deno.test("gh-3228: resolveRequiredPriceCents returns 2263 for the new setting, numeric and numeric-string", () => {
+  assertEquals(resolveRequiredPriceCents("hover_measurement_price", { value: 2263 }, null), 2263);
+  assertEquals(resolveRequiredPriceCents("hover_measurement_price", { value: "2263" }, null), 2263);
+});
+
+Deno.test("gh-3228: NEGATIVE CONTROL -- the resolver follows the setting, it does not pin 2263 (1500 still resolves to 1500)", () => {
+  assertEquals(resolveRequiredPriceCents("hover_measurement_price", { value: 1500 }, null), 1500);
+});
