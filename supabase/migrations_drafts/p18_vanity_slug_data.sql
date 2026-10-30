@@ -10,7 +10,7 @@
 -- Objects (all new; nothing existing is altered except one new nullable column):
 --   referral_agents.vanity_slug text NULL + CHECK + unique index on lower(vanity_slug)
 --   reserved_slugs(slug pk)                    -- 169 rows (scripts/p18-reserved-slugs.py)
---   p18_slug_is_reserved(text)                 -- reserved_slugs row OR a pattern rule (the `home-` prefix)
+--   p18_slug_is_reserved(text)                 -- reserved_slugs row OR a pattern rule (the `home-`, `admin-`, `get-started`, `the-ashes` prefixes)
 --   referral_agent_slug_history                -- a retired slug keeps crediting for the attribution window
 --   referral_agents_guard_vanity_slug()        -- BEFORE INSERT OR UPDATE trigger
 --   set_partner_slug(p text)                   -- the only client path that writes the column
@@ -21,6 +21,8 @@
 --
 -- Pattern rule: the staging-page name starting with `home-` is refused by prefix (p18_slug_is_reserved) instead of a seed row,
 -- because the static pixel gate (T5 in the gh2598 staging-page test) forbids any other tracked file naming that page.
+-- The same function also refuses the prefixes admin-, get-started and the-ashes (routes that match a whole prefix and never 404;
+-- see scripts/p18-reserved-slugs.py, PREFIX_RULES). Existing seed rows under those prefixes stay in the seed.
 --
 -- Write guard, mirroring referral_agents_guard_payout_columns(): service_role and admin pass; everyone else is refused (42501)
 -- on INSERT with a slug and on UPDATE that changes it, unless the transaction-local flag oq.p18_slug_write = '1' is set, which
@@ -247,6 +249,11 @@ SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
 AS $fn$
   SELECT lower(s) LIKE 'home-%'
+      -- Prefix routes that never 404 (#3235 REVIEW 6524261593): any slug starting with these would be served by the
+      -- admin-auth-gate edge function (^/admin-.*), the /get-started* redirect or the forced the-ashes* redirect, so never credit.
+      OR lower(s) LIKE 'admin-%'
+      OR lower(s) LIKE 'get-started%'
+      OR lower(s) LIKE 'the-ashes%'
       OR EXISTS (SELECT 1 FROM public.reserved_slugs r WHERE lower(r.slug) = lower(s));
 $fn$;
 REVOKE ALL ON FUNCTION public.p18_slug_is_reserved(text) FROM PUBLIC, anon, authenticated;

@@ -25,6 +25,11 @@ EXTRA = ("api, app, www, support, otter, otterquote, stellar-edge, .well-known, 
          "recruit, get-started, the-ashes").split(", ")
 
 PATTERN_PREFIXES = ("home-",)  # refused by pattern in the database, not listed in the seed
+# Prefix rules ALSO refused by p18_slug_is_reserved (hard-coded in the migration, kept here so the list is in one reviewed place).
+# They match a whole prefix and never 404: the admin-auth-gate edge function (pattern ^/admin-.*), the `/get-started*` redirect in
+# _redirects/netlify.toml and the forced `the-ashes*` redirect. Unlike PATTERN_PREFIXES, seed rows under these prefixes are kept.
+# If a new `*` redirect source or a new `^/...` edge-function prefix is added, add it here and to p18_slug_is_reserved.
+PREFIX_RULES = ("admin-", "get-started", "the-ashes")
 REACT_APP = Path("react-app") / "app"
 PAGE_RE = re.compile(r"^(page|route)\.(tsx?|jsx?)$")
 

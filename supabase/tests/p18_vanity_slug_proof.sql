@@ -137,6 +137,12 @@ BEGIN
   INSERT INTO _r VALUES ('R6 partner RPC home- prefix [want REFUSED 22023]', pg_temp._rpc(b, 'home-whatever'));
   INSERT INTO _r VALUES ('R7 partner RPC refer / oq-crm / inspector-landing [want 3x REFUSED 22023]',
     pg_temp._rpc(b, 'refer') || ' | ' || pg_temp._rpc(b, 'oq-crm') || ' | ' || pg_temp._rpc(b, 'inspector-landing'));
+  INSERT INTO _r VALUES ('R9 partner RPC prefix routes admin-pro / get-started-now / the-ashes-club [want 3x REFUSED 22023]',
+    pg_temp._rpc(b, 'admin-pro') || ' | ' || pg_temp._rpc(b, 'get-started-now') || ' | ' || pg_temp._rpc(b, 'the-ashes-club'));
+  INSERT INTO _r VALUES ('R9b p18_slug_is_reserved: admin-pro,get-started-now,the-ashes-club,Admin-X [want true,true,true,true]',
+    (SELECT concat_ws(',', p18_slug_is_reserved('admin-pro'), p18_slug_is_reserved('get-started-now'), p18_slug_is_reserved('the-ashes-club'), p18_slug_is_reserved('Admin-X'))));
+  INSERT INTO _r VALUES ('R9c p18_slug_is_reserved: normal slugs jane,jane-doe,adminpro,ashes-club [want false,false,false,false]',
+    (SELECT concat_ws(',', p18_slug_is_reserved('jane'), p18_slug_is_reserved('jane-doe'), p18_slug_is_reserved('adminpro'), p18_slug_is_reserved('ashes-club'))));
   INSERT INTO _r VALUES ('R8 B slug unchanged by the refused writes [want svc-set-2]', (SELECT coalesce(vanity_slug, 'NULL') FROM referral_agents WHERE id = bid));
 
   -- W: 90-day release. platform_settings.partner_attribution_window_days absent => 90.
