@@ -138,9 +138,9 @@ export function D199Validation({ contractorId, trade, fundingType, storagePath, 
       }
     }
     setRow(r);
-  }, [contractorId, trade, fundingType, storagePath, refreshKey]);
+  }, [contractorId, trade, fundingType, storagePath]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh, refreshKey]);
 
   if (!row) return null;
 
