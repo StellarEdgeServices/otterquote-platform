@@ -79,6 +79,7 @@ import { extractPdfText } from "./pdf-text.ts";
 import { MANIFEST, scanRequiredAnchors, scanOptionalAnchors, scanLabeledSignTags } from "./manifest.ts";
 import { revalidateTemplates } from "./revalidate.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { checkAdminVerdictGuard } from "./verdict-guard.ts";
 import {
   describeMissingMarkers,
   describeLabeledTagMarkers,
@@ -290,6 +291,15 @@ Deno.serve(async (req: Request) => {
       if (tmpl.contractor_id !== contractorRec.id) {
         return jsonResponse({ error: "Forbidden: you do not own this template" }, 403, corsHeaders);
       }
+    }
+
+    // [gh-3216] An admin verdict (`rejected` / `admin_validated`) is not the contractor's to overwrite.
+    // Runs after the ownership check (a non-owner still gets the 403 above, not a status leak) and
+    // BEFORE the assisted path's storage writes, the scan and the status update, so a refusal writes
+    // nothing at all. Admin callers and every other status fall through unchanged.
+    const verdictGuard = await checkAdminVerdictGuard({ req, currentStatus: tmpl.status, isAdminPath });
+    if (!verdictGuard.ok) {
+      return jsonResponse(verdictGuard.body, verdictGuard.httpStatus, corsHeaders);
     }
 
     // Manifest lookup
