@@ -12,6 +12,7 @@ on:
     branches: [main, staging]
     paths:
       - 'color-selection.html'
+      - 'project-confirmation.html'
       - 'supabase/migrations_drafts/gh2105_color_contractor_rpc*'
       - 'tests/gh2105-colour-signature-page.mjs'
       - '.github/workflows/static-gh2105-colour-signature-tests.yml'
@@ -19,6 +20,7 @@ on:
     branches: [main]
     paths:
       - 'color-selection.html'
+      - 'project-confirmation.html'
       - 'supabase/migrations_drafts/gh2105_color_contractor_rpc*'
       - 'tests/gh2105-colour-signature-page.mjs'
       - '.github/workflows/static-gh2105-colour-signature-tests.yml'

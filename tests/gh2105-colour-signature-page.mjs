@@ -78,5 +78,25 @@ const rb = stripComments(read('supabase/migrations_drafts/gh2105_color_contracto
 check('rollback: drops the function and nothing else', /DROP FUNCTION IF EXISTS public\.get_claim_color_contractor\(uuid\);/.test(rb) && !/DROP (TABLE|POLICY|VIEW)/i.test(rb));
 check('draft: not under supabase/migrations/ (never applied by this PR)', !fwdPath.startsWith('supabase/migrations/'));
 
+// ---- gh-3110 / D-393 amended: the separate colour envelope is retired ----
+// The colour page saves the colour and never asks create-docusign-envelope for a
+// color_confirmation envelope; the Project Confirmation page prefills the saved colour into the
+// shingle colour field it signs. Negative control: the colour page as it was on main (the
+// envelope call restored) must FAIL the guard.
+const retireGuards = (page, pc) => {
+  const js = stripComments(page);
+  const pcJs = stripComments(pc);
+  return {
+    'gh-3110: the colour page requests no color_confirmation envelope': !/document_type:\s*'color_confirmation'/.test(js) && !/createColorAddendum\(/.test(js),
+    'gh-3110: the colour page still saves the colour, then shows the saved-colour note': /color_name: colorName/.test(js) && /this\.showAddendumFallback\(\);/.test(js),
+    'gh-3110: the Project Confirmation prefills shingleColor from claims.color_name (only when empty)': /claimData\?\.color_name/.test(pcJs) && /!colorInputEl\.value\) colorInputEl\.value = claimData\.color_name/.test(pcJs),
+  };
+};
+const pcHtml = read('project-confirmation.html');
+for (const [label, ok] of Object.entries(retireGuards(html, pcHtml))) check(label, ok);
+const mainShape = html.replace('this.showAddendumFallback();\n', "await this.createColorAddendum(colorName);\n").replace('</script>', "async function createColorAddendum(){ await sb.functions.invoke('create-docusign-envelope', { body: { document_type: 'color_confirmation' } }); }\n</script>");
+check('control: restoring the colour envelope call is detected', !retireGuards(mainShape, pcHtml)['gh-3110: the colour page requests no color_confirmation envelope']);
+check('control: dropping the PC prefill is detected', !retireGuards(html, pcHtml.replace('claimData?.color_name', 'claimData?.nope'))['gh-3110: the Project Confirmation prefills shingleColor from claims.color_name (only when empty)']);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

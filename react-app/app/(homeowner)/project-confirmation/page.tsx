@@ -289,10 +289,14 @@ function FormContent({
       ? resolveShingleManufacturerOption(quote.brand, SHINGLE_MFTR_OPTIONS)
       : null;
     const prefillType = quote?.product_line ?? '';
+    // gh-3110 / D-393 amended: the colour saved on the colour page is signed HERE (the separate
+    // colour envelope is retired), so prefill it. A restored draft still wins.
+    const prefillColor = claim?.color_name ?? '';
 
     let initForm: ConfirmationFormValues = {
       shingleManufacturer: prefillMftr ?? '',
       shingleType: prefillType,
+      shingleColor: prefillColor,
     };
 
     // Restore existing confirmation on top of prefill (static 2308-2311: restore wins)
@@ -322,7 +326,7 @@ function FormContent({
         // Restored values win
         ...(d.shingleManufacturer != null && { shingleManufacturer: d.shingleManufacturer as string }),
         ...(d.shingleType != null && { shingleType: d.shingleType as string }),
-        shingleColor: (d.shingleColor as string | undefined) ?? '',
+        shingleColor: (d.shingleColor as string | undefined) || prefillColor,
         dripEdgeColor: (d.dripEdgeColor as string | undefined) ?? '',
         valleys: (d.valleys as string | undefined) ?? '',
         gutterGuards: (d.gutterGuards as string | undefined) ?? 'None',
@@ -382,7 +386,7 @@ function FormContent({
     setStructures(initStructures);
     setSkylights(initSkylights);
     setForm(initForm);
-  }, [existingConfirmation, quote, hasSiding, hasGutters]);
+  }, [existingConfirmation, quote, hasSiding, hasGutters, claim?.color_name]);
 
   // ── Ack state for submit gate ──
   const ackIds = useMemo(() => buildAckIds(trades, isInsurance), [trades, isInsurance]);

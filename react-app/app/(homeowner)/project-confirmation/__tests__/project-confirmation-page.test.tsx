@@ -368,3 +368,42 @@ describe('project-confirmation page — gate panels', () => {
     expect(screen.queryByRole('button', { name: /Submit Project Confirmation/ })).toBeNull();
   });
 });
+
+// ── gh-3110 / D-393 amended: the saved colour is prefilled into the PC (the colour envelope is retired) ──
+// Negative control: on main the shingle colour field ignored claims.color_name and started empty,
+// so the first assertion fails there.
+
+describe('project-confirmation page — gh-3110 colour prefill', () => {
+  it('prefills Shingle Color from claims.color_name when there is no saved draft', async () => {
+    const base = readyData();
+    (useProjectConfirmationData as unknown as Fn).mockReturnValue(
+      readyData({ claim: { ...base.claim, color_name: 'Weathered Wood' } }),
+    );
+    render(<ProjectConfirmationPage />);
+    await screen.findByRole('button', { name: /Submit Project Confirmation/ });
+    await waitFor(() =>
+      expect((document.getElementById('shingleColor') as HTMLInputElement).value).toBe('Weathered Wood'),
+    );
+  });
+
+  it('a saved draft colour wins over the prefill', async () => {
+    const base = readyData();
+    (useProjectConfirmationData as unknown as Fn).mockReturnValue(
+      readyData({
+        claim: { ...base.claim, color_name: 'Weathered Wood' },
+        existingConfirmation: { shingleColor: 'Charcoal' },
+      }),
+    );
+    render(<ProjectConfirmationPage />);
+    await screen.findByRole('button', { name: /Submit Project Confirmation/ });
+    await waitFor(() =>
+      expect((document.getElementById('shingleColor') as HTMLInputElement).value).toBe('Charcoal'),
+    );
+  });
+
+  it('no saved colour leaves the field empty (homeowner must still enter one)', async () => {
+    render(<ProjectConfirmationPage />);
+    await screen.findByRole('button', { name: /Submit Project Confirmation/ });
+    expect((document.getElementById('shingleColor') as HTMLInputElement).value).toBe('');
+  });
+});

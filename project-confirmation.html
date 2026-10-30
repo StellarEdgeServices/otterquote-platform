@@ -2307,6 +2307,14 @@
           if (typeInput && !typeInput.value) typeInput.value = quoteData.product_line;
         }
 
+        // gh-3110 / D-393 amended: the colour the homeowner saved on the colour page is signed
+        // HERE (the separate colour envelope is retired), so prefill it. A restored draft below
+        // still wins, and the homeowner can edit it before signing.
+        if (claimData?.color_name) {
+          const colorInputEl = document.getElementById('shingleColor');
+          if (colorInputEl && !colorInputEl.value) colorInputEl.value = claimData.color_name;
+        }
+
         // ── Pre-fill depreciation amount in disclosure ──
         const depDisplay = document.getElementById('depreciationAmtDisplay');
         if (depDisplay) {

@@ -24,6 +24,7 @@ export interface ConfirmationClaimRow {
   property_address?: string | null;
   shingle_manufacturer?: string | null;
   shingle_type?: string | null;
+  color_name?: string | null; // gh-3110: prefills the PC shingle colour (CLAIM_PUBLIC_COLUMNS selects it)
   parsed_line_items?: unknown;
   selected_trades?: unknown;
   funding_type?: string | null;
