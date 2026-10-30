@@ -180,3 +180,57 @@ CREATE POLICY "Service role full access" ON public.referral_agents USING (auth.r
 GRANT SELECT ON public.referral_agents TO anon;
 GRANT SELECT, UPDATE ON public.referral_agents TO authenticated;
 GRANT ALL ON public.referral_agents TO service_role;
+
+-- gh-1059 re-acceptance RPC: production body (pg_get_functiondef 2026-10-30) and production ACL
+-- {postgres=X, authenticated=X, service_role=X}; gh3239 revokes authenticated.
+CREATE OR REPLACE FUNCTION public.record_partner_agreement_reacceptance(p_referral_agent_id uuid, p_agreement_version text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_headers jsonb;
+  v_ip      text;
+  v_ua      text;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM referral_agents
+    WHERE id = p_referral_agent_id
+      AND user_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Not authorized for referral_agent %', p_referral_agent_id;
+  END IF;
+
+  IF p_agreement_version IS NULL OR btrim(p_agreement_version) = '' THEN
+    RAISE EXCEPTION 'missing_agreement_version';
+  END IF;
+
+  BEGIN
+    v_headers := current_setting('request.headers', true)::jsonb;
+  EXCEPTION WHEN OTHERS THEN
+    v_headers := '{}'::jsonb;
+  END;
+  v_ip := COALESCE(
+    NULLIF(split_part(v_headers->>'x-forwarded-for', ',', 1), ''),
+    v_headers->>'cf-connecting-ip',
+    v_headers->>'x-real-ip'
+  );
+  v_ua := v_headers->>'user-agent';
+
+  UPDATE referral_agents
+  SET
+    partner_agreement_version     = btrim(p_agreement_version),
+    partner_agreement_accepted_at = now(),
+    needs_partner_reacceptance    = false,
+    partner_agreement_attestation =
+      COALESCE(partner_agreement_attestation, '{}'::jsonb)
+      || jsonb_build_object(
+           btrim(p_agreement_version),
+           jsonb_build_object('accepted_ip', v_ip, 'accepted_ua', v_ua, 'accepted_at', now())
+         )
+  WHERE id = p_referral_agent_id;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.record_partner_agreement_reacceptance(uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.record_partner_agreement_reacceptance(uuid, text) TO authenticated, service_role;

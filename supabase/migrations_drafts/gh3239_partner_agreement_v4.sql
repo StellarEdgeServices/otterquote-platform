@@ -14,7 +14,8 @@
 --   referral_agents_guard_payout_columns() nor referral_agents_guard_agent_type() pins the four agreement columns, so today a partner can
 --   PATCH their own version, timestamp and attestation directly. No accept_partner_agreement_v4, partner_v4_accepted_at,
 --   partner_agreement_current_version or referral_agents_guard_agreement_columns object exists. user_id has no duplicates (34 linked rows).
---   record_partner_agreement_reacceptance(uuid, text) exists (gh-1059) with no caller; this file does not touch it.
+--   record_partner_agreement_reacceptance(uuid, text) exists (gh-1059, SECURITY DEFINER) with no caller in the repo; its ACL is
+--   {postgres=X, authenticated=X, service_role=X} (no PUBLIC, no anon), and it stamps ANY caller-supplied version string.
 --
 -- Migration: gh3239_partner_agreement_v4
 -- GitHub: #3239 (PROJECT P18), refs #3238 (Amendment No. 1 rulings). Legal + money gate: Tier 3B / Tier C.
@@ -37,6 +38,8 @@
 --   5. referral_agents_guard_agreement_columns: BEFORE UPDATE trigger. A direct anon/authenticated UPDATE (PostgREST PATCH) may not change
 --      the four agreement columns; only SECURITY DEFINER functions (which run as their owner) and service_role can. Without it, a partner
 --      could write v4 and a back-dated timestamp straight into their own row and pass the $5 accrual gate.
+--   6. record_partner_agreement_reacceptance(uuid, text): EXECUTE revoked from authenticated (Ben ruling on PR #3242). It has no caller and
+--      would let a signed-in partner stamp any version string, a v4 key included, outside the v4 flow. service_role keeps EXECUTE.
 
 BEGIN;
 
@@ -242,5 +245,8 @@ CREATE TRIGGER referral_agents_guard_agreement_columns
   BEFORE UPDATE ON public.referral_agents
   FOR EACH ROW
   EXECUTE FUNCTION public.referral_agents_guard_agreement_columns();
+
+-- 6. the gh-1059 re-acceptance RPC (no caller, any version string) is no longer callable by a signed-in user ------------------------------
+REVOKE EXECUTE ON FUNCTION public.record_partner_agreement_reacceptance(uuid, text) FROM authenticated;
 
 COMMIT;

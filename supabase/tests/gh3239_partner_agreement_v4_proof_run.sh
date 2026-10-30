@@ -31,7 +31,7 @@ pass 3-ROLLBACK
 psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "$D/gh3239_partner_agreement_v4.sql" >/dev/null || fail "forward after rollback failed"
 pass 4-REAPPLIED
 for ph in 1-BASELINE 2-AFTER 3-ROLLBACK 4-REAPPLIED; do
-  grep -q '^FAILING=0 of 2[0-9]$' "$OUT/$ph.txt" || fail "$ph must report FAILING=0 of the full check list"
+  grep -q '^FAILING=0 of 23$' "$OUT/$ph.txt" || fail "$ph must report FAILING=0 of the full check list"
 done
 grep -q '|before|' "$OUT/1-BASELINE.txt" && grep -q '|after|' "$OUT/2-AFTER.txt" || fail "phase detection"
 diff "$OUT/1-BASELINE.txt" "$OUT/3-ROLLBACK.txt" >/dev/null || fail "ROLLBACK differs from BASELINE"

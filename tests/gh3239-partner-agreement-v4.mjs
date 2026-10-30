@@ -203,6 +203,8 @@ else console.log('SKIP: (c3) base commit not available');
 ok(!/referral bonus/i.test(partnerCopy(raf)), '(c4) refer-a-friend.html: no "$200 referral bonus"');
 ok(/you earn a \$200 referral fee/.test(raf) && /Referral fee payments are subject to Otter Quotes' approval process/.test(raf), '(c5) refer-a-friend.html says "referral fee" (D-301)');
 
+ok(/We'll send payment via Venmo or PayPal, whichever you prefer\./.test(raf) && !/bank transfer|\bcheck, whichever/i.test(raf), '(c6) refer-a-friend FAQ names Venmo or PayPal (Section 5.2, D-401), not bank transfer or check');
+
 // ---------------------------------------------------------------- (m) migration shape
 const acceptFn = fwd.slice(fwd.indexOf('CREATE OR REPLACE FUNCTION public.accept_partner_agreement_v4()'), fwd.indexOf('COMMENT ON FUNCTION public.accept_partner_agreement_v4()'));
 ok(/accept_partner_agreement_v4\(\)\s*\n RETURNS jsonb/.test(acceptFn) && /SECURITY DEFINER/.test(acceptFn) && /SET search_path TO 'public', 'pg_temp'/.test(acceptFn), '(m1) accept RPC: no arguments, SECURITY DEFINER, search_path pinned');
@@ -212,6 +214,8 @@ ok(/CREATE TRIGGER referral_agents_guard_agreement_columns\s+BEFORE UPDATE ON pu
 ok(/042da30fdc75423c32383035b27f2fa4/.test(fwd) && /f4affeb5b17e2b4d242ce452686ada4d/.test(fwd) && /042da30fdc75423c32383035b27f2fa4/.test(rb), '(m5) forward and rollback pin the audited and rewritten register_partner md5');
 for (const f of ['gh3239_partner_agreement_v4.sql', 'gh3239_partner_agreement_v4_rollback.sql', 'gh3239_partner_agreement_v4_pre-flight.md'])
   ok(/STATUS \(gh-1438, as of [^)]+\): NOT APPLIED/.test(read('supabase/migrations_drafts/' + f)), `(m6) ${f} carries the STATUS header`);
+ok(/REVOKE EXECUTE ON FUNCTION public\.record_partner_agreement_reacceptance\(uuid, text\) FROM authenticated;/.test(fwd)
+  && /GRANT EXECUTE ON FUNCTION public\.record_partner_agreement_reacceptance\(uuid, text\) TO authenticated;/.test(rb), '(m8) re-acceptance RPC revoked from authenticated; rollback grants it back');
 ok(fs.existsSync(path.join(root, 'supabase/tests/gh3239_partner_agreement_v4_proof_run.sh')) && fs.existsSync(path.join(root, 'supabase/tests/gh3239_partner_agreement_v4_proof.sql')), '(m7) throwaway-Postgres proof and runner are in the repo');
 
 console.log(`\n${pass} passed, ${fail} failed`);

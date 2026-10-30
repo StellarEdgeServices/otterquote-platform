@@ -8,6 +8,7 @@
 --   - register_partner() goes back to the audited v3 body; the file checks md5(prosrc) = 042da30fdc75423c32383035b27f2fa4 afterwards
 --     (byte-identical to production on 2026-10-30), so a partial or wrong restore aborts.
 --   - the trigger and the four functions the forward created are dropped.
+--   - EXECUTE on record_partner_agreement_reacceptance(uuid, text) is granted back to authenticated (its production ACL on 2026-10-30).
 -- DATA IS KEPT ON PURPOSE: acceptances already recorded (partner_agreement_version = 'v4-2026-10', the v4 key of
 --   partner_agreement_attestation) are records of consent a partner gave and are not erased. After a rollback those partners still
 --   read as v4 in their rows; partner-agreement-v3.html and partner-agreement.html stay published, so each recorded version still
@@ -24,6 +25,8 @@ DROP FUNCTION IF EXISTS public.referral_agents_guard_agreement_columns();
 DROP FUNCTION IF EXISTS public.accept_partner_agreement_v4();
 DROP FUNCTION IF EXISTS public.partner_v4_accepted_at(uuid);
 DROP FUNCTION IF EXISTS public.partner_agreement_current_version();
+
+GRANT EXECUTE ON FUNCTION public.record_partner_agreement_reacceptance(uuid, text) TO authenticated;
 
 DO $restore$
 DECLARE

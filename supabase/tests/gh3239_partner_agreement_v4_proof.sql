@@ -169,6 +169,21 @@ END $d$;
 RESET ROLE;
 SELECT pg_temp.chk('L5 service_role may still set the agreement columns', 'ok', 'ok', current_setting('proof.l5'));
 
+-- X1: the gh-1059 re-acceptance RPC (any version string) is no longer callable by a signed-in partner (Ben ruling, PR #3242)
+SELECT set_config('request.jwt.claims', '{"role": "authenticated", "sub": "11111111-0000-0000-0000-000000000004"}', true);
+SET LOCAL ROLE authenticated;
+DO $d$ BEGIN
+  PERFORM public.record_partner_agreement_reacceptance('aaaaaaaa-0000-0000-0000-000000000004', 'v4-2026-10');
+  PERFORM set_config('proof.x1', 'ok', true);
+EXCEPTION WHEN others THEN PERFORM set_config('proof.x1', 'ERR ' || SQLSTATE, true);
+END $d$;
+RESET ROLE;
+SELECT pg_temp.chk('X1 reacceptance RPC: authenticated call|authenticated EXECUTE|service_role EXECUTE|row v4 key after call',
+  'ok|true|true|true', 'ERR 42501|false|true|false',
+  current_setting('proof.x1') || '|' || has_function_privilege('authenticated', 'public.record_partner_agreement_reacceptance(uuid,text)', 'EXECUTE')::text
+  || '|' || has_function_privilege('service_role', 'public.record_partner_agreement_reacceptance(uuid,text)', 'EXECUTE')::text
+  || '|' || (SELECT (partner_agreement_attestation ? 'v4-2026-10')::text FROM public.referral_agents WHERE id = 'aaaaaaaa-0000-0000-0000-000000000004'));
+
 -- G1-G4: accrual gate helper --------------------------------------------------------------------------------------------------------------
 DO $d$ BEGIN
   PERFORM set_config('proof.g', (

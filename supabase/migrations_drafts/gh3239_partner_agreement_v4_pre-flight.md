@@ -30,6 +30,8 @@ SELECT proname FROM pg_proc WHERE pronamespace = 'public'::regnamespace
 SELECT tgname FROM pg_trigger WHERE tgrelid = 'public.referral_agents'::regclass AND tgname = 'referral_agents_guard_agreement_columns';
 -- C. no client code writes the agreement columns directly (repo check, not SQL): only supabase/functions/partner-invite-accept (service role)
 --    writes them; grep -rn "partner_agreement_" --include=*.html --include=*.js . finds no .update() of them.
+-- C2. the gh-1059 re-acceptance RPC ACL (expect {postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres})
+SELECT proacl FROM pg_proc WHERE oid = 'public.record_partner_agreement_reacceptance(uuid,text)'::regprocedure;
 -- D. one row per user (expect dup_users = 0); the accept RPC updates every row of the caller
 SELECT count(*) FILTER (WHERE n > 1) AS dup_users FROM (SELECT user_id, count(*) n FROM public.referral_agents WHERE user_id IS NOT NULL GROUP BY 1) t;
 -- E. baseline distribution (record it on the issue; 2026-10-30: v3-2026-09 57, v2-2026-08 2, NULL 16, of which is_test=false: v3 1, v2 1)
@@ -44,6 +46,9 @@ SELECT md5(prosrc), prosecdef, proconfig FROM pg_proc
 -- accept RPC: DEFINER, pinned path, authenticated only
 SELECT prosecdef, proconfig, has_function_privilege('anon', oid, 'EXECUTE') anon, has_function_privilege('authenticated', oid, 'EXECUTE') authd
   FROM pg_proc WHERE oid = 'public.accept_partner_agreement_v4()'::regprocedure;
+-- re-acceptance RPC no longer callable by authenticated (expect false, true)
+SELECT has_function_privilege('authenticated', 'public.record_partner_agreement_reacceptance(uuid,text)', 'EXECUTE'),
+       has_function_privilege('service_role',  'public.record_partner_agreement_reacceptance(uuid,text)', 'EXECUTE');
 -- E again: identical to before (the apply writes no row)
 ```
 Then the closes-on probe (a test account, `@example.test` / is_test): sign up a test partner and see `v4-2026-10`; sign in as a test
@@ -56,14 +61,13 @@ whatever they accepted until they click.
 
 ## Risks
 - A direct browser PATCH of the four agreement columns is refused after the apply (42501), admins included. No page does this today (check C).
-- record_partner_agreement_reacceptance(uuid, text) (gh-1059, no caller) still accepts any version string; it is left untouched. Recommend
-  revoking it from `authenticated` in a follow-up, since `partner_v4_accepted_at()` would honor a v4 key it writes (it stamps server time, so
-  it cannot back-date).
+- EXECUTE on record_partner_agreement_reacceptance(uuid, text) is revoked from authenticated (Ben ruling on PR #3242). It has no caller
+  in the repo (grep), so nothing user-facing changes; service_role keeps it.
 
 ## Rollback
-`gh3239_partner_agreement_v4_rollback.sql`: drops the trigger and functions and restores register_partner() to md5 042da30f... (checked).
+`gh3239_partner_agreement_v4_rollback.sql`: drops the trigger and functions, grants record_partner_agreement_reacceptance back to authenticated, and restores register_partner() to md5 042da30f... (checked).
 Recorded acceptances are kept. Roll back the #3236 gate first if it is applied.
 
 ## Proof
 `PGHOST=... PGPORT=... PGUSER=postgres bash supabase/tests/gh3239_partner_agreement_v4_proof_run.sh` on a throwaway Postgres 16:
-BASELINE / AFTER / ROLLBACK / REAPPLIED, 22 checks each, plus a drifted-body negative control.
+BASELINE / AFTER / ROLLBACK / REAPPLIED, 23 checks each, plus a drifted-body negative control.
