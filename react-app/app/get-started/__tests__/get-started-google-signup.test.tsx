@@ -162,4 +162,18 @@ describe('get-started page — Google OAuth path fires no pre-redirect sign_up',
     expect(screen.getByLabelText('State')).toBeInTheDocument();
     expect(screen.getByLabelText('ZIP Code')).toBeInTheDocument();
   });
+
+  it('gh-3270: cs_signup carries the typed email (null when left blank) for auth-callback to compare', async () => {
+    render(<GetStartedPage />);
+    fireEvent.change(screen.getByLabelText('Street Address'), { target: { value: '1 Otter Way' } });
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Austin' } });
+    fireEvent.change(screen.getByLabelText('State'), { target: { value: 'TX' } });
+    fireEvent.change(screen.getByLabelText('ZIP Code'), { target: { value: '78701' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByLabelText('Email');
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: ' typed@example.com ' } });
+    fireEvent.click(screen.getByRole('button', { name: /Continue with Google/ }));
+    await waitFor(() => expect(localStorage.getItem('cs_signup')).not.toBeNull());
+    expect(JSON.parse(localStorage.getItem('cs_signup') || '{}').email).toBe('typed@example.com');
+  });
 });
