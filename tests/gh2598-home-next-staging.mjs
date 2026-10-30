@@ -153,7 +153,9 @@ control('T4', canonicals(HTML.replace(/(rel="canonical" href=")[^"]*/, '$1https:
 /* ---------- T5 ---------- */
 const own = new Set([...NEW_FILES, 'tests/gh2598-home-next-staging.mjs', 'tests/gh2598-home-next-sections.mjs', '.github/workflows/static-pixel-gate-tests.yml',
   /* gh-2598 slice 5: the production homepage is the same page, so it loads css/home-reskin.css and js/home-reskin.js; tests/gh2598-index-swap.mjs pins it */
-  'index.html', 'tests/gh2598-index-swap.mjs']);
+  'index.html', 'tests/gh2598-index-swap.mjs',
+  /* gh-3228 (#3233): the measurement-price pin reads home-next.html to prove it shows the current $22.63 price */
+  'tests/gh3228-measurement-price-2263.mjs']);
 const ls = spawnSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' });
 const files = ls.status === 0 ? ls.stdout.split('\n').filter(Boolean) : [];
 ok(files.length > 100, 'T5 git ls-files lists the tree (' + files.length + ' files)');
