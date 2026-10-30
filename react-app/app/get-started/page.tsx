@@ -1413,7 +1413,7 @@ export default function GetStartedPage() {
         }
         /* gh-3266: one contained card, one (left) alignment, tighter rhythm.
            Colours/radii follow the approved homepage reskin tokens
-           (css/home-reskin.css, #2598 / D-377) adapted to this navy page. */
+           (the homepage reskin tokens, #2598 / D-377) adapted to this navy page. */
         .gs-layout {
           --gs-card-bg: #142844;      /* --navy-2 */
           --gs-card-line: #2A3C54;    /* --hr-line-navy */
