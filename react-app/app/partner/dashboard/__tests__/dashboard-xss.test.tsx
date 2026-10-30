@@ -3,7 +3,7 @@
  *
  * The static page built HTML strings and interpolated DB/user values into
  * innerHTML. Notably populateReferralsTable() interpolated the referral client
- * name (homeowner_name || homeowner_email || 'Visitor') UNESCAPED into
+ * name (homeowner_name || homeowner_email || 'Visitor'; now the masked display_name, gh-3217) UNESCAPED into
  * `<td>${clientName}</td>` — a stored-XSS sink (homeowner_name/email are
  * user-controlled). populateRecruitsTable() escaped the recruit name via
  * escapeHtml(), but the React port should make BOTH inert by construction.
@@ -68,25 +68,23 @@ function RecruitCells({ recruit }: { recruit: RecruitRecord }) {
 describe('partner dashboard XSS fold — malicious values render as inert text', () => {
   it('referral client name (the UNESCAPED static sink) renders inert', () => {
     const { container } = render(
-      <ReferralCells referral={{ id: 'r1', homeowner_name: XSS_PAYLOAD, status: 'registered' }} />,
+      <ReferralCells referral={{ id: 'r1', display_name: XSS_PAYLOAD, status: 'registered' }} />,
     );
     expect(screen.getByTestId('client-cell').textContent).toContain('onerror=alert(1)');
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('script')).toBeNull();
   });
 
-  it('referral client name falls through homeowner_email (also user-controlled) inertly', () => {
-    const { container } = render(
-      <ReferralCells referral={{ id: 'r1', homeowner_name: null, homeowner_email: XSS_PAYLOAD, status: 'clicked' }} />,
+  it('referral client name never renders a stray homeowner_email (gh-3217)', () => {
+    render(
+      <ReferralCells referral={{ id: 'r1', display_name: null, homeowner_email: 'leak@x.com', status: 'clicked' }} />,
     );
-    expect(screen.getByTestId('client-cell').textContent).toContain('onerror=alert(1)');
-    expect(container.querySelector('img')).toBeNull();
-    expect(container.querySelector('script')).toBeNull();
+    expect(screen.getByTestId('client-cell').textContent).toBe('Visitor');
   });
 
   it('an unknown referral status renders as inert raw text (label fallback)', () => {
     const { container } = render(
-      <ReferralCells referral={{ id: 'r1', homeowner_name: 'Jane', status: XSS_PAYLOAD }} />,
+      <ReferralCells referral={{ id: 'r1', display_name: 'Jane Q.', status: XSS_PAYLOAD }} />,
     );
     expect(screen.getByTestId('status-cell').textContent).toContain('onerror=alert(1)');
     expect(container.querySelector('img')).toBeNull();

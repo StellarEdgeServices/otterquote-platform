@@ -1,0 +1,51 @@
+name: Static P18 Influencer Partner Page Tests
+
+# P18 / #3220: partner-influencers.html feeds the same register_partner and
+# partner agreement as every other partner; ref.html routing for each agent
+# type; no false feature claims on any partner-*.html page. `pull_request`
+# (never `pull_request_target`), no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'partner-*.html'
+      - 'partners.html'
+      - 'ref.html'
+      - 'sitemap.xml'
+      - 'tests/p18-influencer-partner-page.mjs'
+      - '.github/workflows/static-p18-influencer-partner-page-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'partner-*.html'
+      - 'partners.html'
+      - 'ref.html'
+      - 'sitemap.xml'
+      - 'tests/p18-influencer-partner-page.mjs'
+      - '.github/workflows/static-p18-influencer-partner-page-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-p18-influencer-partner-page-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-p18-influencer-partner-page-tests:
+    name: Influencer partner page, ref routing, no false feature claims
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: P18 influencer partner page tests
+        run: node tests/p18-influencer-partner-page.mjs

@@ -24,10 +24,12 @@ import {
   buildFirstTouchCookie,
   deserializeFirstTouch,
   parseFirstTouch,
+  hasTrackedKey,
   readCookieValue,
   serializeFirstTouch,
   type FirstTouch,
 } from './attribution-core';
+import { gpcOptOut, hasAdOptOutCookie } from './ad-optout';
 
 export type { FirstTouch } from './attribution-core';
 
@@ -88,6 +90,9 @@ export function adoptFirstTouchFromParam(raw: string | null | undefined): FirstT
     if (existing) return existing;
     const ft = decodeFirstTouchParam(raw);
     if (!ft) return null;
+    // gh-3002: an untagged touch carried over the hand-off honours the ad-sharing opt-out
+    // of THIS browser too (GPC or oq_ad_optout=1); a tagged touch is unchanged from gh-1983.
+    if (!hasTrackedKey(ft) && (gpcOptOut() || hasAdOptOutCookie())) return null;
     writeLocal(ft);
     writeCookie(ft);
     return ft;
@@ -96,12 +101,18 @@ export function adoptFirstTouchFromParam(raw: string | null | undefined): FirstT
   }
 }
 
-/** Store this page's tagged touch if none is stored; heal a half-missing store. */
+/** Routes Supabase auth returns to; an untagged touch is never captured there (gh-3002). */
+function isAuthReturnPath(pathname: string): boolean {
+  return pathname === '/auth-callback' || pathname.startsWith('/auth-callback/');
+}
+
+/** Store this page's first touch (tagged or not) if none is stored; heal a half-missing store. */
 export function captureFirstTouch(): FirstTouch | null {
   if (!isBrowser()) return null;
   try {
     const { cookie, local } = readStored();
     const existing = cookie || local;
+    // A stored first touch is never replaced (gh-3002): heal a half-missing store only.
     if (existing) {
       if (!local) writeLocal(existing);
       if (!cookie) writeCookie(existing);
@@ -109,6 +120,14 @@ export function captureFirstTouch(): FirstTouch | null {
     }
     const ft = parseFirstTouch(window.location.href, document.referrer);
     if (!ft) return null;
+    // gh-3002: /auth-callback is where every OAuth / email-confirmation round trip lands, never a
+    // visitor's first page. Layout capture runs before the page adopts a carried `?ft=` hand-off,
+    // so an untagged touch stored here would shadow the real one (adopt returns early when a touch
+    // exists). Tagged capture is unchanged.
+    if (!hasTrackedKey(ft) && isAuthReturnPath(window.location.pathname)) return null;
+    // Untagged capture honours the ad-sharing opt-out (GPC or oq_ad_optout=1);
+    // tagged capture is unchanged from gh-1983.
+    if (!hasTrackedKey(ft) && (gpcOptOut() || hasAdOptOutCookie())) return null;
     writeLocal(ft);
     writeCookie(ft);
     return ft;

@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { d199StatusLabel } from './copy';
+import { d199StatusLabel, D199_UPLOAD_CORRECTED_LABEL } from './copy';
 import {
   tradeKey, fundingKey, validationCounts, missingAnchors, D199_FAIL_STATES,
   type D199Row, type D199Anchor,
@@ -62,6 +62,29 @@ async function upsertValidationRow(contractorId: string, trade: string, fundingT
   }
 }
 
+/**
+ * gh-3199 (B1): a corrected upload on a `rejected` template. A plain client UPDATE is enough and is the
+ * existing allowed path: the new PDF path makes contractor_templates_freeze_verdict set
+ * status = 'pending_validation' and validation_result = NULL (whatever the client sent), and
+ * enforce_template_privileged_columns permits exactly that reset (#510). A contractor cannot reach any
+ * validated state this way; validate-contract-template (service role) then validates the new file.
+ */
+async function resubmitCorrectedUpload(rowId: string, storagePath: string): Promise<D199Row | null> {
+  try {
+    const { data, error } = await supabase
+      .from('contractor_templates')
+      .update({ pdf_storage_path: storagePath, status: 'pending_validation', validation_result: null })
+      .eq('id', rowId)
+      .select('*');
+    if (error) { console.error('[D-199] resubmitCorrectedUpload error:', error); return null; }
+    if (!Array.isArray(data) || data.length === 0) { console.error('[D-199] resubmitCorrectedUpload wrote no row'); return null; }
+    return data[0] as D199Row;
+  } catch (e) {
+    console.error('[D-199] resubmitCorrectedUpload threw:', e);
+    return null;
+  }
+}
+
 /** Call validate-contract-template. Body shape identical to the static fetch; EF unchanged. */
 async function callValidate(contractorTemplateId: string, manualOverrides?: Record<string, string>): Promise<{ validation_result?: unknown; status?: string; error?: string }> {
   try {
@@ -75,8 +98,28 @@ async function callValidate(contractorTemplateId: string, manualOverrides?: Reco
   }
 }
 
-export function D199Validation({ contractorId, trade, fundingType, storagePath }: {
+/**
+ * gh-3199 (B1): called ONLY from the upload handler, after a corrected file was uploaded successfully,
+ * with the new storage path. If the slot's contractor_templates row is `rejected`, point it at the new file
+ * (the server resets status to pending_validation) and validate. Never called from render/refresh, and a
+ * missing or empty path does nothing. Returns true when a reset was sent.
+ */
+export async function reenterValidationAfterUpload(contractorId: string, trade: string, fundingType: string, newPath: string): Promise<boolean> {
+  if (!contractorId || !newPath || newPath === 'undefined') return false;
+  const r = await findValidationRow(contractorId, trade, fundingType);
+  if (!r || !r.id || r.status !== 'rejected' || r.pdf_storage_path === newPath) return false;
+  const reset = await resubmitCorrectedUpload(r.id, newPath);
+  if (!reset?.id) return false;
+  await callValidate(reset.id);
+  return true;
+}
+
+export function D199Validation({ contractorId, trade, fundingType, storagePath, onUploadCorrected, refreshKey }: {
   contractorId: string; trade: string; fundingType: string; storagePath: string;
+  /** Bumped by the card after a corrected upload re-entered validation, to reload the row. */
+  refreshKey?: number;
+  /** Opens the card's existing template upload (same control as "Replace"). Used for `rejected` rows. */
+  onUploadCorrected?: () => void;
 }) {
   const [row, setRow] = useState<D199Row | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -97,7 +140,7 @@ export function D199Validation({ contractorId, trade, fundingType, storagePath }
     setRow(r);
   }, [contractorId, trade, fundingType, storagePath]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh, refreshKey]);
 
   if (!row) return null;
 
@@ -110,16 +153,21 @@ export function D199Validation({ contractorId, trade, fundingType, storagePath }
     if (!row?.id) return;
     if (!window.confirm('Submit this template for admin review? You will be notified once Otter Quotes has reviewed it.')) return;
     try {
-      const { data, error } = await supabase
-        .from('contractor_templates')
-        .update({ status: 'submitted_for_admin_review' })
-        .eq('id', row.id)
-        .select('*')
-        .single();
+      // gh-3199: the status transition is server-side only (contractor_templates_freeze_verdict
+      // rewrites any client-written status); the RPC owns it and returns the row.
+      const { data, error } = await supabase.rpc('submit_template_for_admin_review', {
+        p_template_id: row.id,
+        p_overrides: null,
+        p_missing_fields: null,
+      });
       if (error) throw error;
-      if (data) setRow(data as D199Row);
+      if (!data || (data as D199Row).status !== 'submitted_for_admin_review') throw new Error('status_not_reached: submit_template_for_admin_review');
+      setRow(data as D199Row);
     } catch (e) {
-      alert('Could not submit for admin review: ' + (e instanceof Error ? e.message : String(e)));
+      const msg = e instanceof Error ? e.message : String(e);
+      // The internal token goes to the console, not to the contractor (existing prefix, no new copy).
+      if (msg.startsWith('status_not_reached')) { console.error('[D-199] admin review submit did not reach the status:', msg); alert('Could not submit for admin review.'); return; }
+      alert('Could not submit for admin review: ' + msg);
     }
   }
 
@@ -149,8 +197,18 @@ export function D199Validation({ contractorId, trade, fundingType, storagePath }
 
       {showActions && (
         <div className="oqp-val-actions">
-          <button type="button" className="oqp-btn-sm oqp-btn-sm-primary" onClick={() => setMappingOpen(true)}>Map anchors manually</button>
-          <button type="button" className="oqp-btn-sm oqp-btn-sm-amber" onClick={requestAdminReview}>Request admin review</button>
+          {row.status !== 'rejected' && (
+            <button type="button" className="oqp-btn-sm oqp-btn-sm-primary" onClick={() => setMappingOpen(true)}>Map anchors manually</button>
+          )}
+          {/* gh-3199 (Ben's ruling on #3199): the RPC accepts only pending_validation and manual_mapping_pending.
+              A rejected template needs a new upload (which re-enters at pending_validation), not a resubmit. */}
+          {row.status === 'rejected' ? (
+            onUploadCorrected && (
+              <button type="button" className="oqp-btn-sm oqp-btn-sm-amber" onClick={onUploadCorrected}>{D199_UPLOAD_CORRECTED_LABEL}</button>
+            )
+          ) : (
+            <button type="button" className="oqp-btn-sm oqp-btn-sm-amber" onClick={requestAdminReview}>Request admin review</button>
+          )}
         </div>
       )}
 
@@ -205,19 +263,17 @@ function ManualMappingModal({ row, onClose, onResolved }: {
     }
     try {
       if (missingFields.length > 0) {
-        // gh-2105 batch 3 (legal: D-199 template verdict path). Chain .select('id') and
-        // fail loudly on a zero-row match (RLS-denied or wrong id resolves error:null with
-        // no row written, so the contractor saw "Submitted for admin review" for nothing).
-        // This proves the row matched, not the final `status` value: the
-        // contractor_templates_freeze_verdict trigger always rewrites status for a regular
-        // contractor; the success alert is not yet true (#2717 Q2, server-side RPC).
-        const { data: persistedRows, error: persistErr } = await supabase
-          .from('contractor_templates')
-          .update({ manual_overrides: { ...overrides, _missing_fields: missingFields }, status: 'submitted_for_admin_review' })
-          .eq('id', row.id!)
-          .select('id');
+        // gh-3199 (#2717 Q2, Ben's ruling on #3199): overrides and status land in one server-side
+        // transaction through submit_template_for_admin_review. A direct client update cannot reach
+        // 'submitted_for_admin_review' because contractor_templates_freeze_verdict rewrites status.
+        // The success alert below is only shown once the RPC returns the row in that status.
+        const { data: submitted, error: persistErr } = await supabase.rpc('submit_template_for_admin_review', {
+          p_template_id: row.id!,
+          p_overrides: overrides,
+          p_missing_fields: missingFields,
+        });
         if (persistErr) throw persistErr;
-        if (!Array.isArray(persistedRows) || persistedRows.length === 0) throw new Error('update_zero_rows: contractor_templates (manual mapping submit)');
+        if (!submitted || (submitted as D199Row).status !== 'submitted_for_admin_review') throw new Error('status_not_reached: submit_template_for_admin_review (manual mapping submit)');
         const { data: refreshed } = await supabase.from('contractor_templates').select('*').eq('id', row.id!).single();
         alert('Submitted for admin review. We will notify you once a member of the Otter Quotes team has looked at your template.');
         onResolved((refreshed as D199Row) ?? row);
@@ -231,10 +287,11 @@ function ManualMappingModal({ row, onClose, onResolved }: {
       onResolved((refreshed as D199Row) ?? row);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      // The internal zero-row token goes to the console, not to the contractor; the
+      // The internal token goes to the console, not to the contractor; the
       // existing "Submission failed" prefix is the only text shown (no new copy).
-      if (msg.startsWith('update_zero_rows')) console.error('[D-199] manual mapping submit wrote no row:', msg);
-      setErr(msg.startsWith('update_zero_rows') ? 'Submission failed' : 'Submission failed: ' + msg);
+      const internal = msg.startsWith('status_not_reached');
+      if (internal) console.error('[D-199] manual mapping submit did not reach submitted_for_admin_review:', msg);
+      setErr(internal ? 'Submission failed' : 'Submission failed: ' + msg);
       setBusy(false);
     }
   }

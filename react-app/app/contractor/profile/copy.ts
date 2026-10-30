@@ -217,6 +217,9 @@ export const DEFAULT_FIELD_MAPPINGS: Record<string, { label: string; description
   statement_of_work: { label: 'Statement of Work:', description: 'Scope of work / SOW' },
 };
 
+/** gh-3199: shown instead of "Request admin review" on a rejected template; opens the existing upload picker. */
+export const D199_UPLOAD_CORRECTED_LABEL = 'Upload a corrected template';
+
 /** D-199 validation status presentation. Ported from STATUS_LABELS in contract-template-validation.js. */
 export interface D199StatusLabel {
   cls: string;

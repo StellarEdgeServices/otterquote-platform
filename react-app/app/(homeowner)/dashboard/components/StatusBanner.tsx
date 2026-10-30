@@ -190,8 +190,9 @@ function SwitchContractorModal({
           <div>
             <h2 style={{ marginTop: 0 }}>🔄 What happened? Can we fix it?</h2>
             <p style={{ fontSize: '0.85rem', lineHeight: 1.5, color: 'rgba(255,255,255,0.75)' }}>
-              Switching voids the signed contract, reopens your project to bidding, and refunds the
-              platform fee. Tell us what went wrong:
+              Submitting this request does not by itself cancel the contract you signed with your
+              current contractor. An Otter Quotes team member will contact you to confirm the switch
+              and your next contractor. Tell us what went wrong:
             </p>
             <div style={{ display: 'grid', gap: '0.5rem', margin: '1rem 0' }}>
               {SWITCH_REASONS.map((r) => (
