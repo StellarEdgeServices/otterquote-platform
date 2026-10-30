@@ -1,0 +1,60 @@
+name: Static gh3239 Partner Agreement v4 Tests
+
+# gh-3239 / #3238: partner-agreement.html serves v4-2026-10 rendered verbatim from docs/legal/partner-agreement-v4-2026-10.md,
+# v3-2026-09 stays archived byte-for-byte, the dashboard and refer-a-friend acceptance flows are wired, no "commission" in
+# partner-facing copy. `pull_request` (never `pull_request_target`), no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'partner-agreement.html'
+      - 'partner-agreement-v3.html'
+      - 'partner-dashboard.html'
+      - 'refer-a-friend.html'
+      - 'docs/legal/partner-agreement-*.md'
+      - 'scripts/render-partner-agreement.py'
+      - 'supabase/migrations_drafts/gh3239_*'
+      - 'supabase/functions/partner-invite-accept/**'
+      - 'tests/gh3239-partner-agreement-v4.mjs'
+      - '.github/workflows/static-gh3239-partner-agreement-v4-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'partner-agreement.html'
+      - 'partner-agreement-v3.html'
+      - 'partner-dashboard.html'
+      - 'refer-a-friend.html'
+      - 'docs/legal/partner-agreement-*.md'
+      - 'scripts/render-partner-agreement.py'
+      - 'supabase/migrations_drafts/gh3239_*'
+      - 'supabase/functions/partner-invite-accept/**'
+      - 'tests/gh3239-partner-agreement-v4.mjs'
+      - '.github/workflows/static-gh3239-partner-agreement-v4-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3239-partner-agreement-v4-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-gh3239-partner-agreement-v4-tests:
+    name: Partner Agreement v4 page, acceptance wiring, copy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: gh3239 Partner Agreement v4 tests
+        run: node tests/gh3239-partner-agreement-v4.mjs
