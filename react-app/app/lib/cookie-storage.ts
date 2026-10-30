@@ -586,6 +586,46 @@ function purgeSessionIds(): void {
   try { sessionStorage.removeItem(REFERRAL_TS_KEY); } catch { /* storage blocked */ }
 }
 
+// P18: server-set partner cookie (netlify/edge-functions/ref-redirect.ts). Set
+// by the /ref/<code> redirect RESPONSE, so Safari's 7-day cap on script-written
+// cookies does not apply. Value: JSON {c: code, t: ISO click time}. Read-only
+// here; the server owns writes (last click wins there).
+export const PARTNER_COOKIE = 'oq_pc';
+const PARTNER_COOKIE_MAX_AGE = 60 * 60 * 24 * 90; // 90 days; == REFERRAL_MAX_AGE once #3226 merges
+
+const PARTNER_CODE_RE = /^[A-Za-z0-9_-]{1,64}$/; // same as the edge function
+const PARTNER_RID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PARTNER_SKEW_MS = 5 * 60 * 1000; // a click time further in the future is forged
+
+/** {code, ts, rid} from a well-formed, in-window oq_pc cookie, else null.
+ *  The cookie is script-readable (not HttpOnly) and therefore script-writable
+ *  too, so it is re-validated here: code shape, no future click time, window.
+ *  rid (the referral id the page bound after track_referral_click) is optional. */
+function readPartnerClick(): { code: string; ts: number; rid: string | null } | null {
+  try {
+    const raw = readCookie(PARTNER_COOKIE);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as { c?: unknown; t?: unknown; r?: unknown };
+    const code = typeof p?.c === 'string' ? p.c : '';
+    const ts = typeof p?.t === 'string' ? Date.parse(p.t) : NaN;
+    if (!PARTNER_CODE_RE.test(code) || !Number.isFinite(ts)) return null;
+    const now = Date.now();
+    if (ts > now + PARTNER_SKEW_MS) return null;
+    if (now - ts > PARTNER_COOKIE_MAX_AGE * 1000) return null;
+    const rid = typeof p.r === 'string' && PARTNER_RID_RE.test(p.r) ? p.r : null;
+    return { code, ts, rid };
+  } catch {
+    return null;
+  }
+}
+
+/** What readReferralIds returns when oq_pc is the winning record. */
+function partnerOut(pc: { code: string; rid: string | null }): ReferralIds {
+  const o: ReferralIds = { oq_referral_code: pc.code };
+  if (pc.rid) o.oq_referral_id = pc.rid;
+  return o;
+}
+
 export type ReferralIds = Partial<Record<(typeof REFERRAL_KEYS)[number], string>> & {
   oq_referral_id_for_claim?: string;
 };
@@ -607,7 +647,12 @@ export function readReferralIds(): ReferralIds {
   // only bound on the same-origin storage mirrors): nothing to return.
   const clickTs = readReferralTs();
   if (clickTs !== null && Date.now() - clickTs > REFERRAL_MAX_AGE * 1000) {
-    clearReferralIds();
+    clearOqRef();
+    // A newer server-set click may still be in window; an OLDER one is the
+    // stale partner's, so it goes too (last click wins).
+    const pcExp = readPartnerClick();
+    if (pcExp && pcExp.ts > clickTs) return partnerOut(pcExp);
+    try { deleteCookie(PARTNER_COOKIE); } catch { /* cookie blocked */ }
     return out;
   }
   // A claim-scoped id with no click time on record is undated => expired.
@@ -634,8 +679,26 @@ export function readReferralIds(): ReferralIds {
   }
   // Undated id (no click time anywhere): no click, no window => expired.
   if (clickTs === null && Object.keys(out).length) {
-    clearReferralIds();
-    return {};
+    clearOqRef();
+    const pcUndated = readPartnerClick();
+    return pcUndated ? partnerOut(pcUndated) : {};
+  }
+  // P18: oq-ref missing or expired and no ids anywhere => fall back to the
+  // server-set oq_pc cookie (only the partner code is known server-side).
+  const pc = readPartnerClick();
+  if (!REFERRAL_KEYS.some((key) => out[key])) {
+    if (pc) Object.assign(out, partnerOut(pc));
+  } else if (pc && clickTs !== null && out.oq_referral_code && out.oq_referral_code !== pc.code) {
+    if (pc.ts > clickTs) {
+      // P18 last click wins: a NEWER server-recorded click on another partner
+      // (this browser's JS never ran, or its oq-ref write was dropped) beats the
+      // older oq-ref. Drop the stale partner's ids.
+      clearOqRef();
+      return partnerOut(pc);
+    }
+    // oq-ref holds the NEWER click on a different partner: the older server
+    // cookie is the stale one, and must not resurface once oq-ref is gone.
+    try { deleteCookie(PARTNER_COOKIE); } catch { /* cookie blocked */ }
   }
   // In-window claim-scoped id (the windowed fallback for the claim writers).
   if (clickTs !== null) {
@@ -689,6 +752,16 @@ export function writeReferralIds(ids: ReferralIds, opts?: { click?: boolean }): 
       try { sessionStorage.removeItem(key); } catch { /* storage blocked */ }
     }
   }
+  // P18 last click wins: a click on a DIFFERENT partner (ref-*.html pages write
+  // straight here, without a /ref/<code> hop) retires the server-set cookie of
+  // the previous partner now, because a later read may never see both copies at
+  // once (Safari can drop oq-ref first).
+  if (opts?.click && payload.oq_referral_code) {
+    const pcw = readPartnerClick();
+    if (pcw && pcw.code !== payload.oq_referral_code) {
+      try { deleteCookie(PARTNER_COOKIE); } catch { /* cookie blocked */ }
+    }
+  }
   payload[REFERRAL_TS_KEY] = String(ts);
   try { localStorage.setItem(REFERRAL_TS_KEY, String(ts)); } catch { /* storage blocked */ }
   // gh-2346: this tab's own stamp, next to its ids.
@@ -716,6 +789,17 @@ export function adoptLockedReferral(lockedId: unknown): boolean {
 
 /** Clear attribution once it has been stamped onto a claim. */
 export function clearReferralIds(): void {
+  if (typeof document === 'undefined') return;
+  clearOqRef();
+  // P18: attribution consumed => the server-set copy must go too, or the
+  // readReferralIds() fallback would hand the same code back.
+  try { deleteCookie(PARTNER_COOKIE); } catch { /* cookie blocked */ }
+}
+
+/** Everything clearReferralIds() removes EXCEPT the server-set oq_pc cookie.
+ *  readReferralIds() uses this to purge expired/undated oq-ref data without
+ *  destroying a still-valid oq_pc, which is exactly what the fallback is for. */
+function clearOqRef(): void {
   if (typeof document === 'undefined') return;
   for (const key of REFERRAL_KEYS) {
     try { localStorage.removeItem(key); } catch { /* storage blocked */ }
