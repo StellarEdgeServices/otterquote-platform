@@ -166,6 +166,7 @@ async function runRaf(checked) {
     userReferralCode: null,
     fetchOrCreateReferralCode: async () => { calls.push(['get_or_create_customer_referral_code']); ctx.userReferralCode = 'ABC'; },
     startReferring: async () => calls.push(['startReferring']),
+    showAcceptedHero: () => {},   // gh-3245: hero copy swap after acceptance (covered by tests/gh3245-refer-fee-display.mjs)
     sb: { rpc: async (n, a) => { calls.push([n, a]); return { data: { agreement_version: V4, accepted_at: '2026-11-01T00:00:00Z' }, error: null }; } } };
   vm.createContext(ctx);
   vm.runInContext(rafSrc.replace('if (!userReferralCode) await', 'if (!globalThis.userReferralCode) await').replace("if (!userReferralCode) throw", "if (!globalThis.userReferralCode) throw") + '\nglobalThis.__p = acceptAgreementV4();', ctx);
