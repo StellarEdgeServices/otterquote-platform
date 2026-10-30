@@ -52,6 +52,14 @@
     .refer-wrapper { min-height: calc(100vh - 64px); display: flex; flex-direction: column; }
     .refer-main { flex: 1; padding: var(--sp-12) 0; }
     .refer-section { margin-bottom: var(--sp-20); }
+    /* gh-3239 (#3238): the link and share tools appear only after the customer has accepted Partner Agreement v4 */
+    .requires-agreement { display: none; }
+    body.agreement-v4-ok .requires-agreement { display: block; }
+    .agreement-card { background: #FFFFFF; border: 1px solid var(--amber); border-radius: var(--radius-md); padding: var(--sp-8); }
+    .agreement-card h2 { margin-bottom: var(--sp-3); }
+    .agreement-card .agreement-check { display: flex; gap: var(--sp-2); align-items: flex-start; margin: var(--sp-4) 0; }
+    .agreement-card .agreement-check input { margin-top: 4px; }
+    .agreement-status { font-size: 0.9rem; margin-top: var(--sp-3); }
     .refer-section:last-child { margin-bottom: 0; }
 
     /* Hero Section */
@@ -586,11 +594,30 @@
       <!-- Hero Section -->
       <section class="hero-section">
         <h1>Love Your Project Results? Share the Love &mdash; and Earn $200</h1>
-        <p class="subtitle">For every friend you refer who completes a project of $10,000 or more through Otter Quotes, you earn $200. Share your unique link and we'll handle the rest.</p>
+        <!-- gh-3245 (Ben, PR #3249 LEGAL-READ 6525943244): fail closed. The static line is the conditional one; init() swaps in the
+             unconditional line only after hasAcceptedAgreementV4() confirms this customer accepted Partner Agreement v4. -->
+        <p class="subtitle" id="hero-subtitle">Once you accept the Partner Agreement, you earn $200 for every friend you refer who completes a project of $10,000 or more through Otter Quotes. Share your unique link and we'll handle the rest.</p>
+      </section>
+
+      <!-- gh-3239 (#3238, Amendment No. 1 Section A2.1): a customer becomes a Partner only by accepting the Partner Agreement.
+           Shown by init() when the signed-in customer has no v4-2026-10 acceptance; the link and share tools below stay hidden
+           (.requires-agreement) until accept_partner_agreement_v4() records the acceptance (version, timestamp, IP/UA). -->
+      <section class="refer-section" id="agreement-accept-section" style="display: none;">
+        <div class="agreement-card">
+          <h2>Accept the Partner Agreement to start earning</h2>
+          <p>Customers who refer friends join the Otter Quotes partner program and earn referral fees under the same Partner Agreement as every other partner.</p>
+          <p>Referral fees apply to friends whose projects start after you accept.</p>
+          <label class="agreement-check" for="agreement-v4-checkbox">
+            <input type="checkbox" id="agreement-v4-checkbox" required>
+            <span>I agree to the Otter Quotes <a href="/partner-agreement.html" target="_blank" rel="noopener">Partner Terms</a> (Partner Agreement v4-2026-10).</span>
+          </label>
+          <button class="btn btn-primary" id="agreement-v4-accept" type="button" disabled>Get My Referral Link</button>
+          <div class="agreement-status" id="agreement-v4-status" role="status" aria-live="polite"></div>
+        </div>
       </section>
 
       <!-- Your Referral Link -->
-      <section class="refer-section">
+      <section class="refer-section requires-agreement">
         <div class="referral-link-card">
           <div class="referral-link-label">Your Unique Referral Link</div>
           <div class="referral-link-display" id="referral-link-display">Loading...</div>
@@ -610,7 +637,7 @@
       </section>
 
       <!-- Share Options -->
-      <section class="refer-section">
+      <section class="refer-section requires-agreement">
         <h2 style="margin-bottom: var(--sp-8);">Share Your Referral</h2>
         <div class="share-grid">
 
@@ -800,7 +827,7 @@
           <div class="how-step">
             <div class="how-step-number">3</div>
             <h4>You Earn $200</h4>
-            <p>When their job completes ($10K or more), you earn $200 in commission.</p>
+            <p>When their job completes ($10K or more), you earn a $200 referral fee.</p>
           </div>
         </div>
       </section>
@@ -815,7 +842,7 @@
               <span class="faq-icon">▼</span>
             </button>
             <div class="faq-answer">
-              <p>Commissions are paid after job completion and approval. We'll send payment via bank transfer or check, whichever you prefer.</p>
+              <p>Referral fees are paid after job completion and approval. We'll send payment via Venmo or PayPal, whichever you prefer.</p>
             </div>
           </div>
           <div class="faq-item">
@@ -833,7 +860,7 @@
               <span class="faq-icon">▼</span>
             </button>
             <div class="faq-answer">
-              <p>Your referred friend still gets the full experience with no fee to use Otter Quotes &mdash; multiple competing bids, easy comparison, and quality assurance. You won't receive a cash commission for jobs under $10K, but you're still helping them get great bids.</p>
+              <p>Your referred friend still gets the full experience with no fee to use Otter Quotes &mdash; multiple competing bids, easy comparison, and quality assurance. You won't receive a referral fee for jobs under $10K, but you're still helping them get great bids.</p>
             </div>
           </div>
         </div>
@@ -843,14 +870,14 @@
       <section class="refer-section">
         <div style="background: #FFFFFF; border: 1px solid rgba(224, 123, 0, 0.2); border-radius: var(--radius-md); padding: var(--sp-8);">
           <p style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--amber-2); margin-bottom: var(--sp-3);">Tax Reporting Notice</p>
-          <p style="color: #5A6B7B; font-size: 0.9rem; line-height: 1.7; margin: 0;">Your $200 referral bonus is taxable income. You are responsible for all applicable federal, state, and local taxes on referral income. Otter Quotes does not withhold taxes from bonus payments. We recommend consulting a qualified tax professional if you have questions about your tax obligations.</p>
+          <p style="color: #5A6B7B; font-size: 0.9rem; line-height: 1.7; margin: 0;">Your $200 referral fee is taxable income. You are responsible for all applicable federal, state, and local taxes on referral income. Otter Quotes does not withhold taxes from referral fee payments. We recommend consulting a qualified tax professional if you have questions about your tax obligations.</p>
         </div>
       </section>
 
-      <!-- D-180: Commission Approval Disclosure -->
+      <!-- D-180: Referral Fee Approval Disclosure (gh-3239 / D-301: "commission" -> "referral fee", meaning unchanged) -->
       <section class="refer-section">
         <p style="color: #5A6B7B; font-size: 0.85rem; line-height: 1.6; text-align: center; margin: 0;">
-          Commission payments are subject to Otter Quotes' approval process. Commissions are paid after job completion and approval.
+          Referral fee payments are subject to Otter Quotes' approval process. Referral fees are paid after job completion and approval.
         </p>
       </section>
 
@@ -893,8 +920,87 @@
       Nav.renderHeader({ active: 'refer' });
       Nav.renderFooter();
 
+      // gh-3239: no link until the customer has accepted Partner Agreement v4
+      const accepted = await hasAcceptedAgreementV4();
+      if (!accepted) {
+        showAgreementGate();
+        await loadReferrals();
+        return;
+      }
+      document.body.classList.add('agreement-v4-ok');
+      showAcceptedHero();
+      await startReferring();
+
+      // Load referrals if dashboard needed
+      await loadReferrals();
+    }
+
+    // ── gh-3239 (#3238): Partner Agreement v4 acceptance ──
+    const PARTNER_AGREEMENT_CURRENT_VERSION = 'v4-2026-10';
+
+    // Reads the caller's own referral_agents row (RLS: user_id = auth.uid()). No row yet = not accepted.
+    async function hasAcceptedAgreementV4() {
+      try {
+        const { data, error } = await sb
+          .from('referral_agents')
+          .select('partner_agreement_version, partner_agreement_attestation')
+          .eq('user_id', currentUser.id)
+          .limit(1)
+          .maybeSingle();
+        if (error || !data) return false;
+        const att = data.partner_agreement_attestation || {};
+        return Object.prototype.hasOwnProperty.call(att, PARTNER_AGREEMENT_CURRENT_VERSION)
+          || data.partner_agreement_version === PARTNER_AGREEMENT_CURRENT_VERSION;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    const HERO_ACCEPTED = "For every friend you refer who completes a project of $10,000 or more through Otter Quotes, you earn $200. Share your unique link and we'll handle the rest.";
+    function showAcceptedHero() {
+      const el = document.getElementById('hero-subtitle');
+      if (el) el.textContent = HERO_ACCEPTED;
+    }
+
+    function showAgreementGate() {
+      const section = document.getElementById('agreement-accept-section');
+      const box = document.getElementById('agreement-v4-checkbox');
+      const btn = document.getElementById('agreement-v4-accept');
+      section.style.display = '';
+      box.addEventListener('change', () => { btn.disabled = !box.checked; });
+      btn.addEventListener('click', acceptAgreementV4);
+    }
+
+    async function acceptAgreementV4() {
+      const box = document.getElementById('agreement-v4-checkbox');
+      const btn = document.getElementById('agreement-v4-accept');
+      const status = document.getElementById('agreement-v4-status');
+      if (!box.checked || btn.disabled) return;   // the checkbox is a hard gate: no RPC unless it is ticked
+      btn.disabled = true;
+      status.style.color = '';
+      status.textContent = 'Saving your acceptance…';
+      try {
+        // the customer's referral_agents row must exist before it can carry the acceptance
+        if (!userReferralCode) await fetchOrCreateReferralCode();
+        if (!userReferralCode) throw new Error('no referral code');
+        const { data, error } = await sb.rpc('accept_partner_agreement_v4');
+        if (error) throw error;
+        if (!data || data.agreement_version !== PARTNER_AGREEMENT_CURRENT_VERSION || !data.accepted_at) throw new Error('unexpected response');
+        document.getElementById('agreement-accept-section').style.display = 'none';
+        document.body.classList.add('agreement-v4-ok');
+        showAcceptedHero();
+        await startReferring();
+      } catch (err) {
+        console.error('Partner Agreement v4 acceptance failed:', err);
+        status.style.color = 'var(--red)';
+        status.textContent = 'We could not record your acceptance. Please try again, or contact support@otterquote.com.';
+        btn.disabled = !box.checked;
+      }
+    }
+
+    async function startReferring() {
       // Fetch or create referral code
-      await fetchOrCreateReferralCode();
+      if (!userReferralCode) await fetchOrCreateReferralCode();
 
       if (userReferralCode) {
         // Display referral link
@@ -912,9 +1018,6 @@
         // link from a hardcoded fallback string.
         renderReferralCodeError();
       }
-
-      // Load referrals if dashboard needed
-      await loadReferrals();
     }
 
     let currentAgent = null;
@@ -1263,16 +1366,15 @@ Best regards`;
         return;
       }
 
-      const { data: referrals, error } = await sb
-        .from('referrals')
-        .select('*')
-        .eq('referral_agent_id', agentRow.id)
-        .order('created_at', { ascending: false });
+      // gh-3217: masked read via get_my_referrals() (display_name = first name + last initial;
+      // no email/phone). Direct reads of homeowner contact columns are revoked.
+      const { data: allMine, error } = await sb.rpc('get_my_referrals');
 
       if (error) {
         console.error('Failed to load referrals:', error);
         return;
       }
+      const referrals = (allMine || []).filter(r => r.referral_agent_id === agentRow.id);
 
       const dashboard = document.getElementById('referrals-dashboard');
       if (referrals && referrals.length > 0) {
@@ -1292,7 +1394,7 @@ Best regards`;
       bid_received:    'Bids In',
       contract_signed: 'Contract Signed',
       job_completed:   'Job Completed',
-      commission_paid: 'Commission Paid',
+      commission_paid: 'Referral Fee Paid',
     };
     const REFERRAL_STATUS_CLASSES = {
       clicked:         'status-clicked',
@@ -1308,16 +1410,19 @@ Best regards`;
       const tbody = document.getElementById('referrals-tbody') || document.getElementById('referrals-table-body');
       if (!tbody) return;
       tbody.innerHTML = referrals.map((r, i) => {
-        // homeowner_name / homeowner_email are nullable — fall back to a
-        // positional label. Cells match the headers: Name | Date | Status | Commission.
-        const name = r.homeowner_name || r.homeowner_email || ('Referral #' + (i + 1));
+        // display_name (first name + last initial, gh-3217) is nullable — fall back to a
+        // positional label. Cells match the headers: Name | Date | Status | Referral Fee.
+        const name = r.display_name || ('Referral #' + (i + 1));
         const date = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
         const label = REFERRAL_STATUS_LABELS[r.status] || 'Pending';
         const cls = REFERRAL_STATUS_CLASSES[r.status] || 'status-clicked';
-        const commission = (r.status === 'job_completed' || r.status === 'commission_paid') ? '$200' : '—';
+        // gh-3245 (#3243, LEGAL-READ 6525943244): the fee cell shows what actually accrued (commission_amount from
+        // get_my_referrals()), never a $200 inferred from the status. A completed referral the Partner Agreement v4 gate
+        // withheld is job_completed with no commission_amount and shows "No fee".
+        const fee = referralFeeCell(r);
         return '<tr><td>' + escapeHtml(name) + '</td><td>' + date + '</td>' +
                '<td><span class="status-badge ' + cls + '">' + label + '</span></td>' +
-               '<td>' + commission + '</td></tr>';
+               '<td>' + fee + '</td></tr>';
       }).join('');
     }
 
@@ -1331,20 +1436,32 @@ Best regards`;
         .replace(/'/g, '&#039;');
     }
 
+    // gh-3245: money shown on this page is the accrued commission_amount (get_my_referrals()), not count x $200.
+    function referralFeeAmount(r) {
+      const n = Number(r && r.commission_amount);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    }
+    function referralFeeCell(r) {
+      const amt = referralFeeAmount(r);
+      if (amt > 0) return '$' + amt.toLocaleString('en-US');
+      if (r.status === 'job_completed' || r.status === 'commission_paid') return 'No fee';
+      return '—';
+    }
+
     function calculateSummary(referrals) {
       const total = referrals.length;
-      // D-139 (#567): $200 per completed referral. 'job_completed' has accrued
-      // but not yet paid out; 'commission_paid' is paid.
-      const paid = referrals.filter(r => r.status === 'commission_paid').length;
-      const completedUnpaid = referrals.filter(r => r.status === 'job_completed').length;
-      const completed = paid + completedUnpaid;
+      // D-139 (#567): 'job_completed' has accrued but not yet paid out; 'commission_paid' is paid. gh-3245: the totals sum
+      // the accrued commission_amount, so a completed referral with no fee (Partner Agreement v4 gate) adds $0.
+      const paidAmt = referrals.filter(r => r.status === 'commission_paid').reduce((t, r) => t + referralFeeAmount(r), 0);
+      const pendingAmt = referrals.filter(r => r.status === 'job_completed').reduce((t, r) => t + referralFeeAmount(r), 0);
+      const completed = referrals.filter(r => r.status === 'job_completed' || r.status === 'commission_paid').length;
       const earnedEl  = document.getElementById('total-earned');
       const pendingEl = document.getElementById('total-pending');
-      if (earnedEl)  earnedEl.textContent  = '$' + (paid * 200).toLocaleString('en-US');
-      if (pendingEl) pendingEl.textContent = '$' + (completedUnpaid * 200).toLocaleString('en-US');
+      if (earnedEl)  earnedEl.textContent  = '$' + paidAmt.toLocaleString('en-US');
+      if (pendingEl) pendingEl.textContent = '$' + pendingAmt.toLocaleString('en-US');
       const el = document.getElementById('referral-summary');
       if (el) {
-        el.textContent = total + ' referral' + (total !== 1 ? 's' : '') + ' · ' + completed + ' completed · $' + (paid * 200).toLocaleString('en-US') + ' earned';
+        el.textContent = total + ' referral' + (total !== 1 ? 's' : '') + ' · ' + completed + ' completed · $' + paidAmt.toLocaleString('en-US') + ' earned';
       }
     }
 

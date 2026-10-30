@@ -63,7 +63,7 @@
   </url>
   <url>
     <loc>https://otterquote.com/privacy.html</loc>
-    <lastmod>2026-03-24</lastmod>
+    <lastmod>2026-10-30</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
@@ -112,6 +112,12 @@
   <url>
     <loc>https://otterquote.com/partner-adjusters.html</loc>
     <lastmod>2026-07-24</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/partner-influencers.html</loc>
+    <lastmod>2026-10-30</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
