@@ -149,3 +149,9 @@ function buildGoldenEmail(bodyHtml: string): string {
 </body>
 </html>`.trim();
 }
+
+// gh-3229 (P18): the monthly measurement-fee payout has its own label; the existing two are unchanged.
+Deno.test("formatPayoutType labels measurement_fees_monthly and leaves the existing types alone (gh-3229)", () => {
+  assertEquals(formatPayoutType("measurement_fees_monthly").startsWith("Measurement"), true);
+  assertEquals(formatPayoutType("commission_recruit").includes("Recruit"), true);
+});

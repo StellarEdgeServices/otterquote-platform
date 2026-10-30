@@ -24,9 +24,10 @@
 --   4. AFTER INSERT/UPDATE trigger on hover_orders: a homeowner-paid order accrues one row when the claim carries a credited referral
 --      inside the attribution window, is_test agrees on claim/referral/agent, and the agent is not a home inspector. UNIQUE(hover_order_id).
 --      It never raises: the order is written after the buyer's money moved, so a fee-side failure is logged (WARNING) and the order stands.
---   5. Void on refund: the only refund the system records is process-hover-rebate setting hover_orders.rebate_paid_at. Setting it voids an
---      ACCRUED event. A batched or paid event is left alone (the payout is already built; reject the payout to release it).
---   6. get_partner_dashboard_stats(): the caller's numbers from auth.uid() only; test rows excluded; includes per-recruit recruit-bonus earnings.
+--   5. NO void on refund (CEO ruling, #3236): the fee is earned when the purchase completes. The job-completion rebate (rebate_paid_at) does not touch
+--      it. The status 'void' stays in the table for a manual correction. A refund made by hand in the Stripe dashboard is not detected (no charge.refunded handler).
+--   6. get_partner_dashboard_stats(): the caller's numbers from auth.uid() only; rows whose is_test matches the caller's (a test partner sees test rows, a real
+--      partner real rows); includes per-recruit recruit-bonus earnings.
 --   7. create_monthly_fee_batch(p_month): admin/service-role only; one payout_approvals row per partner at or above the minimum; idempotent.
 --   8. partner_fee_events_mark_paid(payout id): service-role only, called by mark-payout-paid.
 --   9. Rejecting a batch payout releases its events back to accrued (so rejected money is not stranded as batched).
@@ -174,35 +175,7 @@ CREATE TRIGGER partner_fee_accrue_on_order
   WHEN (NEW.requested_by_role = 'homeowner')
   EXECUTE FUNCTION public.partner_fee_accrue_on_order();
 
--- 5. void on refund -----------------------------------------------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.partner_fee_void_on_refund()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public', 'pg_temp'
-AS $function$
-BEGIN
-  UPDATE public.partner_fee_events
-     SET status = 'void', voided_at = now()
-   WHERE hover_order_id = NEW.id
-     AND status = 'accrued';
-  RETURN NEW;
-EXCEPTION WHEN OTHERS THEN
-  RAISE WARNING 'partner_fee_void_on_refund failed for hover_order_id=% sqlstate=% sqlerrm=%', NEW.id, SQLSTATE, SQLERRM;
-  RETURN NEW;
-END;
-$function$;
-
-REVOKE ALL ON FUNCTION public.partner_fee_void_on_refund() FROM PUBLIC, anon, authenticated;
-
-DROP TRIGGER IF EXISTS partner_fee_void_on_refund ON public.hover_orders;
-CREATE TRIGGER partner_fee_void_on_refund
-  AFTER UPDATE OF rebate_paid_at ON public.hover_orders
-  FOR EACH ROW
-  WHEN (OLD.rebate_paid_at IS NULL AND NEW.rebate_paid_at IS NOT NULL)
-  EXECUTE FUNCTION public.partner_fee_void_on_refund();
-
--- 6. dashboard stats ---------------------------------------------------------------------------------------------------------------------
+-- 6. dashboard stats (is_test-matching) ---------------------------------------------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.get_partner_dashboard_stats()
  RETURNS TABLE(
    clicks                        bigint,
@@ -230,13 +203,14 @@ AS $function$
 DECLARE
   v_ids      uuid[];
   v_blocked  boolean;
+  v_test     boolean;
   v_min      bigint;
   v_setting  text;
   v_accrued  bigint;
 BEGIN
   -- the caller is resolved from the session only; there is no partner argument
-  SELECT array_agg(ra.id), COALESCE(bool_and(ra.payments_blocked), true)
-    INTO v_ids, v_blocked
+  SELECT array_agg(ra.id), COALESCE(bool_and(ra.payments_blocked), true), COALESCE(bool_or(ra.is_test), false)
+    INTO v_ids, v_blocked, v_test
     FROM public.referral_agents ra
    WHERE ra.user_id = auth.uid();
 
@@ -249,43 +223,43 @@ BEGIN
 
   SELECT COALESCE(sum(e.amount_cents), 0) INTO v_accrued
     FROM public.partner_fee_events e
-   WHERE e.referral_agent_id = ANY (v_ids) AND e.status = 'accrued' AND NOT e.is_test;
+   WHERE e.referral_agent_id = ANY (v_ids) AND e.status = 'accrued' AND e.is_test = v_test;
 
   RETURN QUERY
   SELECT
-    (SELECT count(*) FROM public.referrals r WHERE r.referral_agent_id = ANY (v_ids) AND NOT r.is_test),
-    (SELECT count(*) FROM public.referrals r WHERE r.referral_agent_id = ANY (v_ids) AND NOT r.is_test AND r.status <> 'clicked'),
-    (SELECT count(*) FROM public.partner_fee_events e WHERE e.referral_agent_id = ANY (v_ids) AND NOT e.is_test AND e.status <> 'void'),
-    (SELECT count(*) FROM public.referrals r WHERE r.referral_agent_id = ANY (v_ids) AND NOT r.is_test AND r.status IN ('job_completed', 'commission_paid')),
+    (SELECT count(*) FROM public.referrals r WHERE r.referral_agent_id = ANY (v_ids) AND r.is_test = v_test),
+    (SELECT count(*) FROM public.referrals r WHERE r.referral_agent_id = ANY (v_ids) AND r.is_test = v_test AND r.status <> 'clicked'),
+    (SELECT count(*) FROM public.partner_fee_events e WHERE e.referral_agent_id = ANY (v_ids) AND e.is_test = v_test AND e.status <> 'void'),
+    (SELECT count(*) FROM public.referrals r WHERE r.referral_agent_id = ANY (v_ids) AND r.is_test = v_test AND r.status IN ('job_completed', 'commission_paid')),
     (SELECT COALESCE(round(sum(p.amount) * 100), 0)::bigint FROM public.payout_approvals p
-      WHERE p.partner_id = ANY (v_ids) AND NOT p.is_test AND p.payout_type = 'commission_referral'
+      WHERE p.partner_id = ANY (v_ids) AND p.is_test = v_test AND p.payout_type = 'commission_referral'
         AND p.status IN ('pending_approval', 'approved', 'auto_approved', 'pre_approved')),
     (SELECT COALESCE(round(sum(p.amount) * 100), 0)::bigint FROM public.payout_approvals p
-      WHERE p.partner_id = ANY (v_ids) AND NOT p.is_test AND p.payout_type = 'commission_referral' AND p.status = 'paid'),
+      WHERE p.partner_id = ANY (v_ids) AND p.is_test = v_test AND p.payout_type = 'commission_referral' AND p.status = 'paid'),
     (SELECT COALESCE(sum(e.amount_cents), 0)::bigint FROM public.partner_fee_events e
-      WHERE e.referral_agent_id = ANY (v_ids) AND NOT e.is_test AND e.status IN ('accrued', 'batched')),
+      WHERE e.referral_agent_id = ANY (v_ids) AND e.is_test = v_test AND e.status IN ('accrued', 'batched')),
     (SELECT COALESCE(sum(e.amount_cents), 0)::bigint FROM public.partner_fee_events e
-      WHERE e.referral_agent_id = ANY (v_ids) AND NOT e.is_test AND e.status = 'paid'),
+      WHERE e.referral_agent_id = ANY (v_ids) AND e.is_test = v_test AND e.status = 'paid'),
     (
       (SELECT COALESCE(round(sum(p.amount) * 100), 0)::bigint FROM public.payout_approvals p
-        WHERE p.partner_id = ANY (v_ids) AND NOT p.is_test AND p.payout_type = 'commission_referral'
+        WHERE p.partner_id = ANY (v_ids) AND p.is_test = v_test AND p.payout_type = 'commission_referral'
           AND p.status IN ('pending_approval', 'approved', 'auto_approved', 'pre_approved'))
       + (SELECT COALESCE(sum(e.amount_cents), 0)::bigint FROM public.partner_fee_events e
-          WHERE e.referral_agent_id = ANY (v_ids) AND NOT e.is_test AND e.status IN ('accrued', 'batched'))
+          WHERE e.referral_agent_id = ANY (v_ids) AND e.is_test = v_test AND e.status IN ('accrued', 'batched'))
     ),
     (
       (SELECT COALESCE(round(sum(p.amount) * 100), 0)::bigint FROM public.payout_approvals p
-        WHERE p.partner_id = ANY (v_ids) AND NOT p.is_test AND p.payout_type = 'commission_referral' AND p.status = 'paid')
+        WHERE p.partner_id = ANY (v_ids) AND p.is_test = v_test AND p.payout_type = 'commission_referral' AND p.status = 'paid')
       + (SELECT COALESCE(sum(e.amount_cents), 0)::bigint FROM public.partner_fee_events e
-          WHERE e.referral_agent_id = ANY (v_ids) AND NOT e.is_test AND e.status = 'paid')
+          WHERE e.referral_agent_id = ANY (v_ids) AND e.is_test = v_test AND e.status = 'paid')
     ),
     (SELECT COALESCE(round(sum(r.recruit_commission_amount) * 100), 0)::bigint
        FROM public.referrals r JOIN public.referral_agents rec ON rec.id = r.referral_agent_id
-      WHERE rec.recruited_by_id = ANY (v_ids) AND NOT r.is_test AND COALESCE(r.recruit_commission_amount, 0) > 0),
+      WHERE rec.recruited_by_id = ANY (v_ids) AND r.is_test = v_test AND COALESCE(r.recruit_commission_amount, 0) > 0),
     COALESCE((SELECT jsonb_agg(jsonb_build_object('recruit_id', t.recruit_id, 'earnings_cents', t.cents) ORDER BY t.recruit_id)
                 FROM (SELECT rec.id AS recruit_id, round(sum(r.recruit_commission_amount) * 100)::bigint AS cents
                         FROM public.referrals r JOIN public.referral_agents rec ON rec.id = r.referral_agent_id
-                       WHERE rec.recruited_by_id = ANY (v_ids) AND NOT r.is_test AND COALESCE(r.recruit_commission_amount, 0) > 0
+                       WHERE rec.recruited_by_id = ANY (v_ids) AND r.is_test = v_test AND COALESCE(r.recruit_commission_amount, 0) > 0
                        GROUP BY rec.id) t), '[]'::jsonb),
     v_accrued,
     v_min,
@@ -295,7 +269,7 @@ END;
 $function$;
 
 COMMENT ON FUNCTION public.get_partner_dashboard_stats() IS
-  'gh-3229 (P18): the signed-in partner''s dashboard numbers. Caller from auth.uid() only (no partner argument); is_test rows excluded; recruits[] carries the recruit bonus earned per recruit and nothing of the recruit''s own fees.';
+  'gh-3229 (P18): the signed-in partner''s dashboard numbers. Caller from auth.uid() only (no partner argument); only rows whose is_test matches the caller''s (test partner sees test rows, real partner real rows); recruits[] carries the recruit bonus earned per recruit and nothing of the recruit''s own fees.';
 
 REVOKE ALL ON FUNCTION public.get_partner_dashboard_stats() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_partner_dashboard_stats() TO authenticated, service_role;

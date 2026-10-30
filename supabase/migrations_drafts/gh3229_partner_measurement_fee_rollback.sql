@@ -21,14 +21,12 @@ BEGIN
 END $g$;
 
 DROP TRIGGER IF EXISTS partner_fee_release_on_reject ON public.payout_approvals;
-DROP TRIGGER IF EXISTS partner_fee_void_on_refund ON public.hover_orders;
 DROP TRIGGER IF EXISTS partner_fee_accrue_on_order ON public.hover_orders;
 
 DROP FUNCTION IF EXISTS public.partner_fee_release_on_reject();
 DROP FUNCTION IF EXISTS public.partner_fee_events_mark_paid(uuid);
 DROP FUNCTION IF EXISTS public.create_monthly_fee_batch(date);
 DROP FUNCTION IF EXISTS public.get_partner_dashboard_stats();
-DROP FUNCTION IF EXISTS public.partner_fee_void_on_refund();
 DROP FUNCTION IF EXISTS public.partner_fee_accrue_on_order();
 
 DROP TABLE IF EXISTS public.partner_fee_events;

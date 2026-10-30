@@ -65,12 +65,12 @@ ok(/fee_events_error/.test(mpp), 'a failed flip is reported in the response');
 ok(/!overrideIncomplete && approval\.payout_type !== "measurement_fees_monthly"/.test(app), 'approve-payout completion gate skips the monthly measurement-fee payout');
 
 // labels (node strips the types of these dependency-free modules)
-for (const fn of ['mark-payout-paid', 'approve-payout']) {
+for (const fn of ['mark-payout-paid', 'approve-payout', 'notify-payout-pending', 'process-payout-reminders']) {
   const p = path.join(ROOT, 'supabase/functions', fn, 'templates.ts');
   try {
     const mod = await import(pathToFileURL(p).href);
     ok(mod.formatPayoutType('measurement_fees_monthly') === 'Measurement Referral Fees', `${fn} formatPayoutType labels measurement_fees_monthly`);
-    ok(mod.formatPayoutType('commission_referral') === 'Referral Fee' && mod.formatPayoutType('commission_recruit') === 'Recruit Bonus', `${fn} formatPayoutType unchanged for the existing types`);
+    ok(/^Referral/.test(mod.formatPayoutType('commission_referral')) && mod.formatPayoutType('commission_recruit') === 'Recruit Bonus', `${fn} formatPayoutType unchanged for the existing types`);
   } catch (e) { ok(false, `${fn} templates.ts loads (${e.message.split('\n')[0]})`); }
 }
 

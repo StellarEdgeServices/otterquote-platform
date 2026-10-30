@@ -16,8 +16,10 @@
 --   S1-S8 partner B cannot read A's rows; no client writes; anon nothing; privileges
 --   B1-B9 $30 batches once, a rerun creates nothing; $20 no batch; payments_blocked no batch; non-admin refused
 --   P1-P3 mark paid flips the events (service role only), once; R1 a rejected batch payout releases its events and the next run re-batches them
---   V1-V3 refund (rebate_paid_at) voids an accrued event, not a paid one, and the void is not undone by a later update
---   D1-D9 dashboard stats: caller only, test rows excluded, both fees, next payout, recruit earnings for A but not the recruit's own fees
+--   V1-V2 the job-completion rebate (rebate_paid_at) does NOT void or change a fee event, accrued or paid (CEO ruling, #3236)
+--   F10   a customer (refer-a-friend) agent accrues the $5 like any partner
+--   D10-D11 stats are is_test-matching: a test partner sees only test rows, a real partner only real rows
+--   D1-D9 dashboard stats: caller only, is_test-matching, both fees, next payout, recruit earnings for A but not the recruit's own fees
 
 CREATE TEMP TABLE _r(k text, got text, want text) ON COMMIT DROP;
 -- (migration body is spliced here for the AFTER run; the BEFORE run has nothing here)
@@ -96,6 +98,7 @@ SELECT pg_temp.mk_agent(8, 'other', false, true);              -- W, payments_bl
 SELECT pg_temp.mk_agent(9, 'other', true);                     -- T, is_test
 SELECT pg_temp.mk_agent(10, 'other');                          -- M
 SELECT pg_temp.mk_agent(11, 'other');                          -- X
+SELECT pg_temp.mk_agent(12, 'customer');                       -- C, refer-a-friend customer
 INSERT INTO auth.users(id, email) VALUES (pg_temp.u(299), 'gh3229-nonpartner@example.invalid');
 INSERT INTO platform_settings(key, value) VALUES ('partner_measurement_fee_cents', to_jsonb(500)), ('partner_payout_minimum_cents', to_jsonb(2500))
   ON CONFLICT (key) DO NOTHING;   -- the migration seeds these; harmless in the AFTER run, supplies them in the BEFORE run
@@ -147,6 +150,11 @@ INSERT INTO c VALUES ('t', pg_temp.mk_claim(9, true, true));
 INSERT INTO o SELECT 't', pg_temp.mk_order((SELECT id FROM c WHERE k = 't'));
 SELECT pg_temp.chk('F9 all-test chain: rows / is_test / amount', pg_temp.q(format($$ SELECT count(*) || '/' || bool_and(is_test) || '/' || max(amount_cents) FROM partner_fee_events WHERE referral_agent_id = %L $$, pg_temp.u(109))), '1/true/500');
 
+-- F10 customer agent accrues
+INSERT INTO c VALUES ('cu', pg_temp.mk_claim(12));
+INSERT INTO o SELECT 'cu', pg_temp.mk_order((SELECT id FROM c WHERE k = 'cu'));
+SELECT pg_temp.chk('F10 customer agent: rows / amount', pg_temp.q(format($$ SELECT count(*) || '/' || max(amount_cents) FROM partner_fee_events WHERE referral_agent_id = %L $$, pg_temp.u(112))), '1/500');
+
 -- B's own order, K's order (K is recruited by A)
 INSERT INTO c VALUES ('b', pg_temp.mk_claim(2));
 INSERT INTO o SELECT 'b', pg_temp.mk_order((SELECT id FROM c WHERE k = 'b'));
@@ -183,6 +191,13 @@ INSERT INTO payout_approvals(referral_id, payout_type, partner_id, partner_name,
   (NULL, 'commission_referral', pg_temp.u(101), 'Proof P1', 200, 'rejected', false);
 UPDATE referrals SET recruit_commission_amount = 50, status = 'job_completed' WHERE id = (SELECT referral_id FROM claims WHERE id = (SELECT id FROM c WHERE k = 'k'));
 
+-- cross-flag fixtures for D10/D11 (inserted directly): a TEST fee event + test referral under real partner A, a REAL fee event under test partner T
+INSERT INTO referrals(id, referral_agent_id, status, created_at, is_test) VALUES
+  ('3229e000-0000-4000-8000-000000000001', pg_temp.u(101), 'clicked', now(), true),
+  ('3229e000-0000-4000-8000-000000000002', pg_temp.u(109), 'clicked', now(), false);
+INSERT INTO partner_fee_events(referral_agent_id, amount_cents, status, is_test) SELECT pg_temp.u(101), 500, 'accrued', true WHERE to_regclass('public.partner_fee_events') IS NOT NULL;
+INSERT INTO partner_fee_events(referral_agent_id, amount_cents, status, is_test) SELECT pg_temp.u(109), 500, 'accrued', false WHERE to_regclass('public.partner_fee_events') IS NOT NULL;
+
 -- dashboard stats, before any batch ---------------------------------------------------------------------------------------------------------------
 SELECT pg_temp.chk('D1 A stats: clicks/signed up/measurements/jobs', pg_temp.as_sess('authenticated', pg_temp.u(201), 'gh3229-1@example.invalid',
   $$ SELECT clicks || '/' || homeowners_signed_up || '/' || measurements_purchased || '/' || jobs_completed FROM get_partner_dashboard_stats() $$), '2/2/2/0');
@@ -195,8 +210,12 @@ SELECT pg_temp.chk('D4 P stats: next payout = $30 (accrued, at the minimum, not 
   $$ SELECT next_payout_cents || '/' || accrued_toward_minimum_cents FROM get_partner_dashboard_stats() $$), '3000/3000');
 SELECT pg_temp.chk('D5 W stats: payments_blocked -> next payout 0', pg_temp.as_sess('authenticated', pg_temp.u(208), 'gh3229-8@example.invalid',
   $$ SELECT next_payout_cents || '/' || accrued_toward_minimum_cents FROM get_partner_dashboard_stats() $$), '0/3000');
-SELECT pg_temp.chk('D6 T stats (is_test partner): test rows excluded', pg_temp.as_sess('authenticated', pg_temp.u(209), 'gh3229-9@example.invalid',
-  $$ SELECT measurements_purchased || '/' || measurement_fees_accrued_cents || '/' || clicks FROM get_partner_dashboard_stats() $$), '0/0/0');
+SELECT pg_temp.chk('D6 T stats (test partner) sees its own test rows: measurements / $5 accrued / clicks', pg_temp.as_sess('authenticated', pg_temp.u(209), 'gh3229-9@example.invalid',
+  $$ SELECT measurements_purchased || '/' || measurement_fees_accrued_cents || '/' || clicks FROM get_partner_dashboard_stats() $$), '1/500/1');
+SELECT pg_temp.chk('D10 ... and not T''s real-flagged event or referral (test caller sees only test rows)', pg_temp.as_sess('authenticated', pg_temp.u(209), 'gh3229-9@example.invalid',
+  $$ SELECT accrued_toward_minimum_cents || '/' || homeowners_signed_up FROM get_partner_dashboard_stats() $$), '500/1');
+SELECT pg_temp.chk('D11 real partner A does not see its test-flagged event or referral (D1-D3 totals unchanged): $5 accrued / clicks', pg_temp.as_sess('authenticated', pg_temp.u(201), 'gh3229-1@example.invalid',
+  $$ SELECT measurement_fees_accrued_cents || '/' || clicks FROM get_partner_dashboard_stats() $$), '1200/2');
 SELECT pg_temp.chk('D7 A recruit earnings: total cents and K''s entry (A sees the bonus ...)', pg_temp.as_sess('authenticated', pg_temp.u(201), 'gh3229-1@example.invalid',
   format($$ SELECT recruit_earnings_cents || '/' || (SELECT e->>'earnings_cents' FROM jsonb_array_elements(recruits) e WHERE e->>'recruit_id' = %L) FROM get_partner_dashboard_stats() $$, pg_temp.u(104))), '5000/5000');
 SELECT pg_temp.chk('D8 ... but nothing of K''s own fees: A''s $5 count excludes K''s order, recruits[] holds only recruit_id and earnings_cents', pg_temp.as_sess('authenticated', pg_temp.u(201), 'gh3229-1@example.invalid',
@@ -256,15 +275,13 @@ SELECT pg_temp.chk('R1 rejected payout: 6 events back to accrued, link cleared',
 SELECT pg_temp.chk('R1 next run re-batches them: payouts created', pg_temp.as_sess('authenticated', pg_temp.u(299), 'dustin@otterquote.com',
   $$ SELECT (r->>'payouts_created') || '/' || (r->>'events_batched') FROM (SELECT create_monthly_fee_batch(current_date) r) x $$), '1/6');
 
--- refund voids -----------------------------------------------------------------------------------------------------------------------------------------
+-- the job-completion rebate (refund) does not touch the fee ------------------------------------------------------------------------------------------------
 UPDATE hover_orders SET rebate_paid_at = now(), rebate_due = false WHERE id = (SELECT id FROM o WHERE k = 'q1');
-SELECT pg_temp.chk('V1 refund of an accrued event: void with voided_at; Q accrued 3', pg_temp.q(format(
-  $$ SELECT (SELECT status || '/' || (voided_at IS NOT NULL) FROM partner_fee_events WHERE hover_order_id = %L) || '/' || (SELECT count(*) FROM partner_fee_events WHERE referral_agent_id = %L AND status = 'accrued') $$,
-  (SELECT id FROM o WHERE k = 'q1'), pg_temp.u(106))), 'void/true/3');
-UPDATE hover_orders SET homeowner_charge_amount = 1500, stripe_payment_id = 'ch_again' WHERE id = (SELECT id FROM o WHERE k = 'q1');
-SELECT pg_temp.chk('V2 a later update does not revive the voided event', pg_temp.q(format($$ SELECT count(*) || '/' || max(status) FROM partner_fee_events WHERE hover_order_id = %L $$, (SELECT id FROM o WHERE k = 'q1'))), '1/void');
-UPDATE hover_orders SET rebate_paid_at = now() WHERE id = (SELECT id FROM o WHERE k = 'p1');
-SELECT pg_temp.chk('V3 refund of an already-paid event leaves it paid (payout already built)', pg_temp.q(format($$ SELECT status FROM partner_fee_events WHERE hover_order_id = %L $$, (SELECT id FROM o WHERE k = 'p1'))), 'paid');
+UPDATE hover_orders SET rebate_paid_at = now(), rebate_due = false WHERE id = (SELECT id FROM o WHERE k = 'p1');
+SELECT pg_temp.chk('V1 rebate_paid_at set on an accrued event: stays accrued, no voided_at; Q accrued still 4', pg_temp.q(format(
+  $$ SELECT (SELECT status || '/' || (voided_at IS NULL) FROM partner_fee_events WHERE hover_order_id = %L) || '/' || (SELECT count(*) FROM partner_fee_events WHERE referral_agent_id = %L AND status = 'accrued') $$,
+  (SELECT id FROM o WHERE k = 'q1'), pg_temp.u(106))), 'accrued/true/4');
+SELECT pg_temp.chk('V2 rebate_paid_at set on a paid event: stays paid', pg_temp.q(format($$ SELECT status FROM partner_fee_events WHERE hover_order_id = %L $$, (SELECT id FROM o WHERE k = 'p1'))), 'paid');
 
 DO $f$
 DECLARE s text; n_ok int; n_diff int;
