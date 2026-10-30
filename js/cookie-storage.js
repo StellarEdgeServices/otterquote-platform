@@ -512,6 +512,27 @@
     return ts && isFinite(ts) ? ts : null;
   }
 
+  // P18: server-set partner cookie (netlify/edge-functions/ref-redirect.ts).
+  // Set by the /ref/<code> redirect RESPONSE, so Safari's 7-day cap on
+  // script-written cookies does not apply. Value: JSON {c: code, t: ISO click}.
+  // Read-only here (the server owns writes; last click wins there).
+  var PARTNER_COOKIE        = 'oq_pc';
+  var PARTNER_COOKIE_MAX_AGE = 60 * 60 * 24 * 90; // 90 days; == REFERRAL_MAX_AGE once #3226 merges
+
+  /** {code, ts} from a well-formed, in-window oq_pc cookie, else null. */
+  function readPartnerClick() {
+    try {
+      var raw = readCookie(PARTNER_COOKIE);
+      if (!raw) return null;
+      var p = JSON.parse(raw);
+      var code = p && typeof p.c === 'string' ? p.c : '';
+      var ts = p ? Date.parse(p.t) : NaN;
+      if (!code || !isFinite(ts)) return null;
+      if ((Date.now() - ts) > PARTNER_COOKIE_MAX_AGE * 1000) return null;
+      return { code: code, ts: ts };
+    } catch (e) { return null; }
+  }
+
   window.OtterQuoteReferral = {
     /** Persist referral ids to localStorage, sessionStorage AND a
      *  .otterquote.com cookie so app.otterquote.com can read them. */
@@ -572,7 +593,9 @@
       // the only bound on the same-origin storage mirrors): nothing to return.
       var clickTs = readReferralTs();
       if (clickTs !== null && (Date.now() - clickTs) > REFERRAL_MAX_AGE * 1000) {
-        this.clear();
+        this._clearOqRef();
+        var pcExp = readPartnerClick(); // a newer server-set click may still be in window
+        if (pcExp) out.oq_referral_code = pcExp.code;
         return out;
       }
       // A claim-scoped id with no click time on record is undated => expired.
@@ -602,8 +625,19 @@
       }
       // Undated id (no click time anywhere): no click, no window => expired.
       if (clickTs === null && Object.keys(out).length) {
-        this.clear();
-        return {};
+        this._clearOqRef();
+        out = {};
+        var pcUndated = readPartnerClick();
+        if (pcUndated) out.oq_referral_code = pcUndated.code;
+        return out;
+      }
+      // P18: oq-ref missing or expired and no ids anywhere => fall back to the
+      // server-set oq_pc cookie (only the partner code is known server-side).
+      var hasIds = false;
+      for (var h = 0; h < REFERRAL_KEYS.length; h++) { if (out[REFERRAL_KEYS[h]]) hasIds = true; }
+      if (!hasIds) {
+        var pc = readPartnerClick();
+        if (pc) out.oq_referral_code = pc.code;
       }
       // In-window claim-scoped id (the windowed fallback for the claim writers).
       if (clickTs !== null) {
@@ -617,6 +651,16 @@
 
     /** Clear attribution once it has been stamped onto a claim. */
     clear: function () {
+      this._clearOqRef();
+      // P18: attribution consumed => the server-set copy must go too, or the
+      // read() fallback would hand the same code back.
+      try { deleteCookie(PARTNER_COOKIE); } catch (e) {}
+    },
+
+    /** Everything clear() removes EXCEPT the server-set oq_pc cookie. read() uses
+     *  this to purge expired/undated oq-ref data without destroying a still-valid
+     *  oq_pc, which is exactly the case the fallback exists for. */
+    _clearOqRef: function () {
       for (var i = 0; i < REFERRAL_KEYS.length; i++) {
         try { window.localStorage.removeItem(REFERRAL_KEYS[i]); } catch (e) {}
         try { window.sessionStorage.removeItem(REFERRAL_KEYS[i]); } catch (e) {}
