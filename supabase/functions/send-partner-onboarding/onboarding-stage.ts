@@ -101,6 +101,50 @@ export interface PartnerRow {
    * specific non-'active' status string, is what makes this robust to
    * whatever exact status P-5 actually uses. */
   partner_agreement_accepted_at: string | null;
+  /** gh-3239 (#3242 REVIEW 6526029821 F2): referral_agents.partner_agreement_attestation, keyed by agreement version,
+   * each value { accepted_ip, accepted_ua, accepted_at[, method] }. Optional so every pre-existing fixture compiles
+   * unchanged. Read by onboardingStartMs(): a Partner Agreement v4 click-to-accept rewrites
+   * partner_agreement_accepted_at to the click time, and Ben ruled (2026-10-30) that accepting v4 is not a new signup. */
+  partner_agreement_attestation?: Record<string, unknown> | null;
+}
+
+/**
+ * gh-3239 (Ben ruling on #3242, REVIEW 6526029821 F2): the moment the onboarding day-count starts. Accepting a later
+ * Partner Agreement version from the dashboard (accept_partner_agreement_v4(), which stamps method 'click_to_accept'
+ * and moves partner_agreement_accepted_at to the click) is NOT a new signup, so it never restarts or opens the sequence.
+ *   1. the earliest accepted_at across the attestation entries recorded at signup or invite acceptance (every entry
+ *      that is not a dashboard click-to-accept);
+ *   2. else, if the only entries are click-to-accept ones (a pre-gh-1059 row with no signup record), created_at:
+ *      the click time is never a signup;
+ *   3. else partner_agreement_accepted_at, then created_at (the gh-2154 P-5 rule, unchanged for rows without an
+ *      attestation, e.g. every existing fixture).
+ * A signup entry always precedes any later click, so for every partner who has one, (1) equals "the earliest accepted_at
+ * across all entries", the reading the ruling names. NaN means malformed data; the caller fails closed on it.
+ */
+export function onboardingStartMs(
+  partner: Pick<PartnerRow, "created_at"> & {
+    partner_agreement_accepted_at?: string | null;
+    partner_agreement_attestation?: Record<string, unknown> | null;
+  },
+): number {
+  const att = partner.partner_agreement_attestation;
+  let earliest = Number.NaN;
+  let sawClick = false;
+  if (att && typeof att === "object") {
+    for (const entry of Object.values(att)) {
+      if (!entry || typeof entry !== "object") continue;
+      const e = entry as { accepted_at?: unknown; method?: unknown };
+      if (e.method === "click_to_accept") {
+        sawClick = true;
+        continue;
+      }
+      const t = typeof e.accepted_at === "string" ? Date.parse(e.accepted_at) : Number.NaN;
+      if (!Number.isNaN(t) && (Number.isNaN(earliest) || t < earliest)) earliest = t;
+    }
+  }
+  if (!Number.isNaN(earliest)) return earliest;
+  if (sawClick) return new Date(partner.created_at).getTime();
+  return new Date(partner.partner_agreement_accepted_at ?? partner.created_at).getTime();
 }
 
 /** Ben, DECIDED (bus 14:11:18Z, P-5 LEGAL ruling): the entry gate for the
@@ -143,6 +187,8 @@ export function selectStage(
     // acceptance keeps compiling unchanged. See the effectiveStartMs note
     // below for why this is COALESCEd with created_at, never used alone.
     partner_agreement_accepted_at?: string | null;
+    // gh-3239: see onboardingStartMs().
+    partner_agreement_attestation?: Record<string, unknown> | null;
   },
   priorRecords: ReadonlyMap<OnboardingStage, LedgerStatus>,
   now: number,
@@ -186,7 +232,10 @@ export function selectStage(
   // AgreementAndIsActive() at the run-sweep.ts call site already means this
   // function is never even reached for a not-yet-accepted P-5 row, but the
   // age math itself must not silently fall back to created_at once it is.)
-  const effectiveStartMs = new Date(partner.partner_agreement_accepted_at ?? partner.created_at).getTime();
+  // gh-3239 (#3242 REVIEW F2, Ben ruling): a dashboard v4 click-to-accept never restarts or opens the sequence; see
+  // onboardingStartMs() for the order (signup/invite attestation, then created_at for a click-only record, then the
+  // P-5 rule above).
+  const effectiveStartMs = onboardingStartMs(partner);
   if (Number.isNaN(effectiveStartMs)) {
     // Fail closed on malformed data — never guess a stage from a NaN age.
     return { stage: null, toMarkSkipped: EMPTY_SKIP, reason: "invalid_created_at" };

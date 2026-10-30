@@ -116,7 +116,7 @@ ALLOWLIST = [
     (
         "partner-dashboard.html",
         "credit for 90 days from your link click, monthly payouts once your balance reaches $25",
-        "agreement-modification notice period",
+        "attribution-window keyword proximity",
         "gh-3239 (#3238): the Partner Agreement v4 notice summary. Category (c) keyword proximity: the only "
         "duration is the 90-day attribution window (Agreement Section 9.3: how long a click earns credit), "
         "which is not a disbursement timeline; the payout clause on the same line states a cadence and a $25 "

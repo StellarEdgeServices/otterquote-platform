@@ -11,12 +11,15 @@ Issue #3239 (P18), refs #3238. Tier 3B (money gate) and Tier C (legal: Partner A
 in the same window as the partner-agreement.html v4 deploy, after REVIEW + LEGAL-READ + R-177 pair.
 
 ## Order
-1. Merge the PR (Netlify deploys partner-agreement.html v4, partner-agreement-v3.html, the dashboard notice, refer-a-friend).
+1. Merge the PR (Netlify deploys partner-agreement.html v4, partner-agreement-v3.html, the dashboard notice, refer-a-friend)
+   and, **in the same window as that Netlify publish**, deploy the `partner-invite-accept` Edge Function. It needs nothing
+   from this migration, and it must not lag the page: otherwise a non-inspector invitee reads the v4 page and is stamped
+   v3-2026-09 (#3242 REVIEW 6526029821 A2). Deploy `send-partner-onboarding` in the same window too (gh-3239 start-clock fix:
+   a v4 click never restarts onboarding), and it must be live before step 3.
    The dashboard and refer-a-friend handle the RPC being absent (they show a retry error and record nothing), so the page deploy may lead by minutes.
-2. Run the read-only checks below. Every one must match.
+2. Run the read-only checks below. Every one must match. Run check F last, **immediately before** step 3.
 3. Apply `gh3239_partner_agreement_v4.sql` (one transaction; it aborts on any drift).
-4. Deploy the `partner-invite-accept` Edge Function (it stamps v4-2026-10 for non-inspector invites).
-5. Re-run the post-apply checks. Then the #3236 accrual gate (see the PR body) may be applied; it calls `partner_v4_accepted_at()`.
+4. Re-run the post-apply checks. Then the #3236 accrual gate (see the PR body) may be applied; it calls `partner_v4_accepted_at()`.
 
 ## Read-only checks before apply (production, SELECT only)
 ```sql
@@ -37,6 +40,14 @@ SELECT count(*) FILTER (WHERE n > 1) AS dup_users FROM (SELECT user_id, count(*)
 -- E. baseline distribution (record it on the issue; 2026-10-30: v3-2026-09 57, v2-2026-08 2, NULL 16, of which is_test=false: v3 1, v2 1)
 SELECT agent_type, is_test, COALESCE(partner_agreement_version, '(null)'), count(*) FROM public.referral_agents GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
 ```
+
+```sql
+-- F. RUN IMMEDIATELY BEFORE APPLY (expect 0). Until the column lock is live a partner can still PATCH their own row, and
+--    partner_v4_accepted_at() trusts the v4 attestation key first; check E counts only the version column (REVIEW A1).
+SELECT count(*) FROM public.referral_agents
+ WHERE partner_agreement_attestation ? 'v4-2026-10' OR partner_agreement_version = 'v4-2026-10';
+```
+If F is not 0, stop: list those rows and treat any v4 stamp as forged (there is no legitimate writer of v4 before apply).
 
 ## Post-apply checks
 ```sql
