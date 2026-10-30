@@ -196,11 +196,12 @@ echo 'STRIPE_PK injected into _site/js/config.js; repo internals excluded from p
   function = "admin-auth-gate"
 
 # First-touch ad attribution — gh-1983 (2026-09-16)
-# On a GET carrying utm_* / fbclid / gclid with no stored first touch, adds
+# On a page GET (utm_*/fbclid/gclid or not, gh-3002) with no stored first touch (never
+# replaced; untagged skipped for Sec-GPC/oq_ad_optout, crawlers, prefetch), adds
 # Set-Cookie oq_ft (Domain=.otterquote.com, 90 d) to the normal response —
 # including the /get-started* 301 to app.otterquote.com — so the attribution
-# reaches the React signup before any JS runs. Untagged requests return
-# immediately. Static asset paths are excluded to keep invocations to pages.
+# reaches the React signup before any JS runs. Untagged non-navigation
+# requests (Accept lacks text/html) return immediately. Static asset paths are excluded to keep invocations to pages.
 # Source: netlify/edge-functions/first-touch-attribution.ts
 [[edge_functions]]
   path = "/*"

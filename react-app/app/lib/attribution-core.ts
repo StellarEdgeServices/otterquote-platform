@@ -7,10 +7,18 @@
  *   - the Netlify edge function on otterquote.com
  *     (netlify/edge-functions/first-touch-attribution.ts, relative `.ts` import)
  *
- * Semantics: FIRST TAGGED TOUCH. A touch is recorded only when the landing URL
- * carries at least one tracked key (utm_source/medium/campaign/content/term,
- * fbclid, gclid). An untagged visit never creates or overwrites the record, and
- * an existing record is never replaced by a later touch (callers check first).
+ * Semantics (gh-3002): FIRST TOUCH, tagged or not. The first landing creates
+ * the record (landing path + referrer host + time) whether or not the URL
+ * carries a tracked key (utm_source/medium/campaign/content/term, fbclid,
+ * gclid); an organic visit therefore still traces to the page it entered on.
+ * Until gh-3002 an untagged visit recorded nothing, which left 24 of 25
+ * post-#1983 signups with no landing path at all. A record is never replaced
+ * by a later touch (callers check first), tagged or not: the stored landing
+ * path and time are the true first page. Consequence: a visitor whose first
+ * page was organic and who later clicks an ad is NOT re-credited to the ad.
+ * UNTAGGED capture (only) is skipped for a visitor who has opted out of ad
+ * sharing (Sec-GPC: 1 or the oq_ad_optout=1 cookie, privacy policy s12, D-336
+ * and D-354); tagged capture is unchanged from #1983.
  *
  * Privacy: only the landing PATH is kept (never the query string or fragment —
  * implicit-flow OAuth puts tokens in the fragment, see gh-1969) and only the
@@ -57,6 +65,13 @@ function maxFor(key: string): number {
   return CLICK_ID_KEYS.has(key) ? CLICK_ID_MAX : VALUE_MAX;
 }
 const PATH_MAX = 200;
+
+const ID_SEGMENT = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d{4,}|[0-9a-f]{16,})$/i;
+
+/** Replace record-id path segments (UUID, long numeric or hex ids, e.g. /contractor/bid/<claimId>) with ':id' so no record id is stored as a landing path. */
+export function normalizeLandingPath(path: string): string {
+  return path.split('/').map((seg) => (ID_SEGMENT.test(seg) ? ':id' : seg)).join('/');
+}
 /** Stay well below the 4096-byte per-cookie browser limit. */
 const COOKIE_VALUE_MAX = 3000;
 
@@ -67,7 +82,7 @@ export function cleanValue(raw: unknown, max: number = VALUE_MAX): string | unde
   return v ? v : undefined;
 }
 
-function hasTrackedKey(ft: Partial<FirstTouch> | null | undefined): boolean {
+export function hasTrackedKey(ft: Partial<FirstTouch> | null | undefined): boolean {
   if (!ft) return false;
   return FT_PARAM_KEYS.some((k) => typeof ft[k] === 'string' && (ft[k] as string).length > 0);
 }
@@ -82,8 +97,9 @@ function referrerHost(referrer: string | null | undefined): string | undefined {
 }
 
 /**
- * Build a FirstTouch from a landing URL, or null when the URL carries no
- * tracked key. `now` is injectable for tests.
+ * Build a FirstTouch from a landing URL (null only when the URL is unparseable
+ * or the page yields no landing path). The result may be untagged (no tracked
+ * key): see hasTrackedKey(). `now` is injectable for tests.
  */
 export function parseFirstTouch(
   url: URL | string,
@@ -101,9 +117,10 @@ export function parseFirstTouch(
     const val = cleanValue(u.searchParams.get(key), maxFor(key));
     if (val) ft[key] = val;
   }
-  if (!hasTrackedKey(ft)) return null;
-  const path = cleanValue(u.pathname, PATH_MAX);
+  const rawPath = cleanValue(u.pathname, PATH_MAX);
+  const path = rawPath ? normalizeLandingPath(rawPath) : undefined;
   if (path) ft.landing_path = path;
+  if (!hasTrackedKey(ft) && !path) return null;
   const ref = referrerHost(referrer);
   if (ref) ft.referrer = ref;
   return ft;
@@ -127,9 +144,11 @@ export function deserializeFirstTouch(raw: string | null | undefined): FirstTouc
     const val = cleanValue(src[key], maxFor(key));
     if (val) ft[key] = val;
   }
-  if (!hasTrackedKey(ft)) return null;
-  const path = cleanValue(src.landing_path, PATH_MAX);
+  const rawPath = cleanValue(src.landing_path, PATH_MAX);
+  const path = rawPath ? normalizeLandingPath(rawPath) : undefined;
   if (path) ft.landing_path = path;
+  // A valid record carries a tracked key (tagged) or a landing path (organic).
+  if (!hasTrackedKey(ft) && !path) return null;
   const ref = cleanValue(src.referrer, 120);
   if (ref) ft.referrer = ref;
   return ft;
@@ -173,16 +192,45 @@ export function readCookieValue(cookieHeader: string | null | undefined, name: s
   return null;
 }
 
+/** Request headers the untagged-capture decision reads (all optional). */
+export interface FirstTouchRequestHints {
+  /** Accept header: an untagged touch needs a page navigation (text/html). */
+  accept?: string | null;
+  /** Sec-GPC header: "1" is a Global Privacy Control opt-out. */
+  gpc?: string | null;
+  /** Sec-Purpose / Purpose header: any prefetch/prerender is not a visit. */
+  purpose?: string | null;
+  /** User-Agent: crawlers and link-preview fetchers never mint a touch. */
+  userAgent?: string | null;
+}
+
+const BOT_UA = /bot|crawl|spider|slurp|preview|facebookexternalhit|headless|lighthouse|monitor|uptime|curl|wget|python-requests/i;
+
+/** True when the request headers say the visitor opted out of ad sharing. */
+export function adOptedOutFromHeaders(
+  cookieHeader: string | null | undefined,
+  gpc: string | null | undefined,
+): boolean {
+  return (gpc || '').trim() === '1' || readCookieValue(cookieHeader, 'oq_ad_optout') === '1';
+}
+
 /**
  * The server-side decision both edge runtimes make: given a request URL,
  * its Cookie and Referer headers, return the Set-Cookie string to add, or
- * null (no tracked key, a valid first touch already stored, or oversized).
+ * null (a first touch is already stored, an untagged request that is not an
+ * eligible page navigation, or oversized). A stored touch is never replaced.
+ *
+ * An UNTAGGED touch (gh-3002) is recorded only for a real page navigation
+ * (Accept names text/html, not a prefetch, not a crawler) by a visitor with no
+ * Sec-GPC: 1 and no oq_ad_optout=1 cookie. Tagged touches are unaffected
+ * (same as gh-1983).
  */
 export function firstTouchSetCookie(
   requestUrl: string,
   cookieHeader: string | null | undefined,
   referer: string | null | undefined,
   now: Date = new Date(),
+  hints: FirstTouchRequestHints = {},
 ): string | null {
   if (deserializeFirstTouch(readCookieValue(cookieHeader, FT_COOKIE))) return null;
   let u: URL;
@@ -193,6 +241,12 @@ export function firstTouchSetCookie(
   }
   const ft = parseFirstTouch(u, referer, now);
   if (!ft) return null;
+  if (!hasTrackedKey(ft)) {
+    if (!/text\/html/i.test(hints.accept || '')) return null;
+    if (/prefetch|prerender/i.test(hints.purpose || '')) return null;
+    if (BOT_UA.test(hints.userAgent || '')) return null;
+    if (adOptedOutFromHeaders(cookieHeader, hints.gpc)) return null;
+  }
   return buildFirstTouchCookie(ft, u.hostname, u.protocol === 'https:');
 }
 
