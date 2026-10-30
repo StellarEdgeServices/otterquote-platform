@@ -19,7 +19,8 @@
 --
 -- Change 1: set_is_test_for_internal_test_domain() decides with is_internal_test_email(NEW.email). Only raises false to true.
 -- Change 2: claims_guard_referral_columns() (the one claims guard trigger; CI test tests/gh2479-static-born-state-guard.mjs pins it)
---   gets one extra INSERT-only block that copies profiles.is_test (id = NEW.user_id) onto the new claim. It sits OUTSIDE the
+--   gets one extra INSERT-only block that sets claims.is_test := true when the owner's profile email satisfies
+--   is_internal_test_email() (via the new SECURITY DEFINER helper is_internal_test_user(uuid)). NOT a copy of profiles.is_test (Ben 6523791817). It sits OUTSIDE the
 --   client-role test so service_role / admin inserts inherit too. Every earlier rule is kept verbatim; no second trigger, no new
 --   function, no new RAISE (the CI test counts exactly three 42501 refusals). Only raises false to true, never lowers a true.
 --   The function stays SECURITY INVOKER: a signed-in owner reads their own profiles row (profiles_user_read), service_role bypasses RLS.
@@ -43,17 +44,38 @@ begin
 end;
 $fn$;
 
+-- Helper for Change 2. The claims guard is SECURITY INVOKER (CI pins that), so for an authenticated insert it can neither read other
+-- rows of profiles under RLS nor EXECUTE is_internal_test_email() (revoked from client roles, gh-1529). A small SECURITY DEFINER
+-- helper takes only a uuid, returns only a boolean, reads the one profiles row, and pins search_path. EXECUTE is granted to
+-- authenticated and service_role only (not PUBLIC, not anon), so it is not a general email oracle for anonymous callers.
+CREATE OR REPLACE FUNCTION public.is_internal_test_user(p_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $fn$
+  SELECT COALESCE((SELECT public.is_internal_test_email(p.email) FROM public.profiles p WHERE p.id = p_user_id), false);
+$fn$;
+
+REVOKE ALL ON FUNCTION public.is_internal_test_user(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.is_internal_test_user(uuid) FROM anon;
+GRANT EXECUTE ON FUNCTION public.is_internal_test_user(uuid) TO authenticated, service_role;
+
 CREATE OR REPLACE FUNCTION public.claims_guard_referral_columns()
  RETURNS trigger
  LANGUAGE plpgsql
  SET search_path TO 'public', 'pg_temp'
 AS $guard$
 BEGIN
-  -- gh-3197: a new claim inherits is_test from its owner's profile (raise only, never lower)
+  -- gh-3197 (narrowed, Ben 6523791817): a new claim is_test := true only when its owner's profile email is an internal test email.
+  -- Not a copy of profiles.is_test: that flag also means "real, keep off product email" and must not reach claims. Raise only.
+  -- anon is skipped: RLS refuses its claim inserts anyway and it has no EXECUTE on the helper.
   IF TG_OP = 'INSERT'
+     AND current_user <> 'anon'
      AND NEW.is_test IS NOT TRUE
      AND NEW.user_id IS NOT NULL
-     AND EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = NEW.user_id AND p.is_test IS TRUE) THEN
+     AND public.is_internal_test_user(NEW.user_id) THEN
     NEW.is_test := true;
   END IF;
   IF current_user IN ('anon', 'authenticated')

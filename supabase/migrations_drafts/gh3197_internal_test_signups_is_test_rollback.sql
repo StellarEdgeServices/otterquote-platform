@@ -3,8 +3,8 @@
 -- EVIDENCE: bodies below are the live definitions read from production 2026-10-30 (pg_get_functiondef, project yeszghaspzwwstvsrioa).
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
--- Rollback: restores set_is_test_for_internal_test_domain() and claims_guard_referral_columns() to their pre-gh-3197 bodies.
--- Drops nothing. Rows already flagged is_test=true by the new rules are NOT reverted (lowering them would re-inflate real-homeowner counts).
+-- Rollback: restores set_is_test_for_internal_test_domain() and claims_guard_referral_columns() to their pre-gh-3197 bodies,
+-- then drops the helper is_internal_test_user(uuid) that this set added (after the guard no longer calls it). Rows already flagged is_test=true by the new rules are NOT reverted (lowering them would re-inflate real-homeowner counts).
 
 BEGIN;
 
@@ -65,5 +65,7 @@ BEGIN
   RETURN NEW;
 END;
 $guard$;
+
+DROP FUNCTION IF EXISTS public.is_internal_test_user(uuid);
 
 COMMIT;
