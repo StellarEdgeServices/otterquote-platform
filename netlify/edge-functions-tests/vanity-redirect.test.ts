@@ -149,3 +149,30 @@ Deno.test("vanity-redirect: non-GET requests are passed through", async () => {
     assertEquals(calls.length, 0);
   });
 });
+
+Deno.test("vanity-redirect: a lookup that never answers times out and falls back to the 404", async () => {
+  const real = globalThis.fetch;
+  globalThis.fetch = ((_input: any, init?: any) =>
+    new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal.reason));
+    })) as unknown as typeof fetch;
+  try {
+    const started = Date.now();
+    const res = await handler(new Request("https://otterquote.com/jane"), fakeContext(404));
+    assertEquals(res.status, 404);
+    assert(Date.now() - started < 5000);
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
+Deno.test("vanity-redirect: HEAD returns 302 with no body and no-store", async () => {
+  await withFetchStub(async (calls) => {
+    const res = await handler(new Request("https://otterquote.com/jane?utm_source=ig", { method: "HEAD" }), fakeContext(404));
+    assertEquals(res.status, 302);
+    assertEquals(res.headers.get("location"), "https://otterquote.com/ref/JANE123?utm_source=ig");
+    assertEquals(res.headers.get("cache-control"), "no-store");
+    assertEquals(res.body, null);
+    assertEquals(calls.length, 1);
+  });
+});

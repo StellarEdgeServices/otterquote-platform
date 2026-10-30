@@ -10,7 +10,8 @@
  *   - only single-segment paths whose segment matches the slug format are considered;
  *   - context.next() runs FIRST; the slug is looked up ONLY when that response is a 404 (so /faq, /login, every file and
  *     folder and every _redirects rule keep winning, and the lookup is never made for them);
- *   - registered LAST in netlify.toml for /*, after every other function.
+ *   - declared last among the netlify.toml functions for /*. Toml functions run before inline-config ones, so this wraps them all;
+ *     safety comes from calling context.next() first and acting only on a final 404, not from position.
  * On a match: 302 to /ref/<code> with the incoming query string kept (utm_* etc.), Cache-Control: no-store (a cached 302 would
  * keep sending visitors to an old partner after a slug changes hands). Anything else: the original 404 is passed through.
  * A lookup failure (network, timeout, bad body) also passes the 404 through; it never produces an error page.
@@ -83,4 +84,4 @@ export default async (req: Request, context: any) => {
   });
 };
 
-// Registered in netlify.toml (last, for /*), not here: inline config would run before the toml-declared functions.
+// Declared in netlify.toml (last, for /*), not inline. Toml functions run before inline-config ones, so this wraps them; safe because next() runs first and only a final 404 is acted on.

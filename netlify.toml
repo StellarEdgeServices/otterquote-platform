@@ -272,9 +272,9 @@ echo 'STRIPE_PK injected into _site/js/config.js; repo internals excluded from p
   path = "/guides/how-to-read-contractor-estimate"
   function = "blog-guides-redirect"
 
-# P18 partner short links -- otterquote.com/<slug> (#3232). Declared AFTER every other edge function on purpose (this file's order
-# is the run order for toml-declared functions; inline `config` functions run before them). It calls context.next() first and only
-# looks a slug up when the site would 404, so it can never shadow a served page. Redirects to /ref/<code>, which does the crediting.
+# P18 partner short links -- otterquote.com/<slug> (#3232). Declared last among toml functions. Toml functions run before inline-config
+# ones, so this wraps them all; safety comes from calling context.next() first and acting only on a final 404, not from position.
+# It only looks a slug up when the site would 404, so it can never shadow a served page. Redirects to /ref/<code>, which does the crediting.
 # excludedPath: static asset paths never carry a slug (a slug has no dot), same list as first-touch-attribution.
 # Source: netlify/edge-functions/vanity-redirect.ts
 [[edge_functions]]
