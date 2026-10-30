@@ -1259,7 +1259,6 @@ Let me know if you have any questions!
                     <th>Client Name</th>
                     <th>Date Referred</th>
                     <th>Status</th>
-                    <th>Job Value</th>
                     <!-- gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515,
                          item 2): default-hidden, fail closed. The existing
                          `referralFeeTh` lookup below (Array.from(...).find on
@@ -2349,11 +2348,10 @@ Let me know if you have any questions!
 
             try {
                 // Use totals from the agent record itself (maintained by DB trigger)
-                // and also pull live referral counts for active/completed breakdown
-                const { data: referrals } = await sb
-                    .from('referrals')
-                    .select('status, job_value, commission_amount')
-                    .eq('referral_agent_id', currentPartner.id);
+                // and the active/completed breakdown from the rows loadReferrals() read via get_my_referrals().
+                // gh-3257 / privacy.html 4.7: no direct referrals read -- it would return the status of homeowners who
+                // declined updates (the RPC returns NULL for them, so they count in neither bucket) and the job's dollar value.
+                const referrals = allReferrals;
 
                 if (referrals) {
                     const total = currentPartner.total_referrals || referrals.length;
@@ -2671,12 +2669,12 @@ Let me know if you have any questions!
             };
 
             allReferrals = [
-                { id: 'ref-001', client_name: 'John Smith', created_at: '2026-03-15', status: 'paid', job_value: 15000, commission_earned: 300 },
-                { id: 'ref-002', client_name: 'Mary Johnson', created_at: '2026-03-10', status: 'completed', job_value: 8500, commission_earned: 170 },
-                { id: 'ref-003', client_name: 'Robert Williams', created_at: '2026-03-05', status: 'in_progress', job_value: 12000, commission_earned: null },
-                { id: 'ref-004', client_name: 'Emily Brown', created_at: '2026-02-28', status: 'submitted', job_value: 9500, commission_earned: null },
-                { id: 'ref-005', client_name: 'David Lee', created_at: '2026-02-20', status: 'registered', job_value: null, commission_earned: null },
-                { id: 'ref-006', client_name: 'Lisa Garcia', created_at: '2026-02-10', status: 'clicked', job_value: null, commission_earned: null }
+                { id: 'ref-001', client_name: 'John Smith', created_at: '2026-03-15', status: 'paid', commission_earned: 300 },
+                { id: 'ref-002', client_name: 'Mary Johnson', created_at: '2026-03-10', status: 'completed', commission_earned: 170 },
+                { id: 'ref-003', client_name: 'Robert Williams', created_at: '2026-03-05', status: 'in_progress', commission_earned: null },
+                { id: 'ref-004', client_name: 'Emily Brown', created_at: '2026-02-28', status: 'submitted', commission_earned: null },
+                { id: 'ref-005', client_name: 'David Lee', created_at: '2026-02-20', status: 'registered', commission_earned: null },
+                { id: 'ref-006', client_name: 'Lisa Garcia', created_at: '2026-02-10', status: 'clicked', commission_earned: null }
             ];
 
             updateUI();
@@ -2767,9 +2765,19 @@ Let me know if you have any questions!
                 const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
                 // gh-3217 / privacy.html 4.7: first name + last initial only (display_name from get_my_referrals())
-                const clientName = escapeHtml(ref.display_name || 'Visitor');
-                const jobValue = ref.job_value ? `$${Number(ref.job_value).toLocaleString()}` : '—';
-                const commissionAmt = ref.commission_amount ? `$${Number(ref.commission_amount).toLocaleString()}` : '—';
+                // gh-3257 / privacy.html 4.7: get_my_referrals() returns status = NULL (referrals.status is NOT NULL) when the
+                // homeowner declined updates to their referrer. Such a row shows no progress status and no name; N is its
+                // position in the partner's full list (newest first, as on the refer page). The job's dollar value is never shown.
+                const updatesDeclined = ref.status == null;
+                const clientName = updatesDeclined
+                    ? escapeHtml('Referral #' + (allReferrals.indexOf(ref) + 1) + ' — updates declined')
+                    : escapeHtml(ref.display_name || 'Visitor');
+                // The partner's own fee appears only once earned (commission_amount set).
+                const commissionAmt = ref.commission_amount != null && Number(ref.commission_amount) > 0
+                    ? `$${Number(ref.commission_amount).toLocaleString()}` : '—';
+                const statusCell = updatesDeclined
+                    ? '—'
+                    : `<span class="status-badge ${statusClass}">${statusLabels[ref.status] || ref.status}</span>`;
 
                 // D-180: Show payout approval status badge alongside commission amount.
                 // Status meanings for partner display (deliberately not showing rejection_reason):
@@ -2788,8 +2796,7 @@ Let me know if you have any questions!
                     <tr>
                         <td>${clientName}</td>
                         <td>${dateStr}</td>
-                        <td><span class="status-badge ${statusClass}">${statusLabels[ref.status] || ref.status}</span></td>
-                        <td>${jobValue}</td>
+                        <td>${statusCell}</td>
                         <td>${commissionAmt}${payoutBadge}</td>
                     </tr>
                 `;

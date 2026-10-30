@@ -1309,13 +1309,19 @@ Best regards`;
       tbody.innerHTML = referrals.map((r, i) => {
         // display_name (first name + last initial, gh-3217) is nullable — fall back to a
         // positional label. Cells match the headers: Name | Date | Status | Commission.
-        const name = r.display_name || ('Referral #' + (i + 1));
+        // gh-3257 / privacy.html 4.7: get_my_referrals() returns status = NULL (referrals.status is NOT NULL) when the
+        // homeowner declined updates to their referrer: no name, no progress status, commission only once earned.
+        const declined = r.status == null;
+        const name = declined ? ('Referral #' + (i + 1) + ' — updates declined') : (r.display_name || ('Referral #' + (i + 1)));
         const date = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
         const label = REFERRAL_STATUS_LABELS[r.status] || 'Pending';
         const cls = REFERRAL_STATUS_CLASSES[r.status] || 'status-clicked';
-        const commission = (r.status === 'job_completed' || r.status === 'commission_paid') ? '$200' : '—';
+        const commission = declined
+          ? (r.commission_amount != null ? '$200' : '—')
+          : ((r.status === 'job_completed' || r.status === 'commission_paid') ? '$200' : '—');
+        const statusCell = declined ? '—' : '<span class="status-badge ' + cls + '">' + label + '</span>';
         return '<tr><td>' + escapeHtml(name) + '</td><td>' + date + '</td>' +
-               '<td><span class="status-badge ' + cls + '">' + label + '</span></td>' +
+               '<td>' + statusCell + '</td>' +
                '<td>' + commission + '</td></tr>';
       }).join('');
     }
@@ -1334,8 +1340,10 @@ Best regards`;
       const total = referrals.length;
       // D-139 (#567): $200 per completed referral. 'job_completed' has accrued
       // but not yet paid out; 'commission_paid' is paid.
-      const paid = referrals.filter(r => r.status === 'commission_paid').length;
-      const completedUnpaid = referrals.filter(r => r.status === 'job_completed').length;
+      // gh-3257: a declined row (status NULL) counts from its fee fields instead of its status.
+      const declinedEarned = r => r.status == null && r.commission_amount != null;
+      const paid = referrals.filter(r => r.status === 'commission_paid' || (declinedEarned(r) && r.commission_paid_at != null)).length;
+      const completedUnpaid = referrals.filter(r => r.status === 'job_completed' || (declinedEarned(r) && r.commission_paid_at == null)).length;
       const completed = paid + completedUnpaid;
       const earnedEl  = document.getElementById('total-earned');
       const pendingEl = document.getElementById('total-pending');
