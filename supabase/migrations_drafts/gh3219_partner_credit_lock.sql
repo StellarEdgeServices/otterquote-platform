@@ -16,7 +16,7 @@
 -- Pre-flight: supabase/migrations_drafts/gh3219_partner_credit_lock_pre-flight.md
 -- Proof: supabase/tests/gh3219_partner_credit_lock_proof.sql (one batch, forced RAISE EXCEPTION rollback)
 --
--- Implements D-40x (D-349 superseded by D-40x, Dustin 2026-10-30; placeholder number, the real one is filed in the D-registry):
+-- Implements D-402 (registered 2026-10-30; supersedes D-349, the 30-day window; Dustin 2026-10-30):
 --   90-day window, last partner click credited, credit locks at account creation, lock lapses at 90 days (Ben, #3219 comment 6523708028).
 --
 -- Rule (Dustin, one plan for every partner, realtor or influencer): a 90-day window from the partner-link click; the LAST partner link

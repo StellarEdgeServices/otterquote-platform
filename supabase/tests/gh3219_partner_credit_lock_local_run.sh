@@ -67,7 +67,7 @@ case "$MODE" in
     $PNS -v ON_ERROR_STOP=1 -f "$FWD" 2>&1 | grep -E "gh3219:|ERROR" | head -3 || true
     echo "== negative control: the same file with the guard removed applies"
     sed '/^DO \$guard\$ BEGIN/,/^END \$guard\$;/d' "$FWD" > "$D/noguard.sql"
-    $PNS -v ON_ERROR_STOP=1 -f "$D/noguard.sql" 2>&1 | grep -E "gh3219:|ERROR" | head -3; echo "(no output above = applied)" ;;
+    $PNS -v ON_ERROR_STOP=1 -f "$D/noguard.sql" 2>&1 | grep -E "gh3219:|ERROR" | head -3 || true; echo "(no output above = applied)" ;;
   rollback)
     $P -f "$FWD"
     echo "== forward applied for real in the throwaway DB; now the rollback"
