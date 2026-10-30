@@ -145,10 +145,12 @@ ok(!/p_funnel_id:\s+'influencer'/.test(re), '(h) control: partner-re.html does n
 // (f) legal pages untouched
 try {
   const changed = execSync('git diff --name-only origin/main...HEAD', { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n');
+  // privacy.html is deliberately NOT asserted here any more: PR #3230 (server-set oq_pc cookie) changes it with
+  // CEO-approved copy and its own LEGAL-READ. This guard exists to keep the influencer-page work from touching legal copy.
   // gh-3239 (#3238): a branch may change partner-agreement.html only as the sanctioned Partner Agreement publish, which also
   // changes its single legal source docs/legal/partner-agreement-*.md (guarded by tests/gh3239-partner-agreement-v4.mjs).
   const sanctionedPublish = changed.some(f => /^docs\/legal\/partner-agreement-.*\.md$/.test(f));
-  ok((sanctionedPublish || !changed.includes('partner-agreement.html')) && !changed.includes('privacy.html'), '(f) partner-agreement.html (outside a sanctioned publish) and privacy.html not changed on this branch');
+  ok(sanctionedPublish || !changed.includes('partner-agreement.html'), '(f) partner-agreement.html not changed on this branch outside a sanctioned publish');
 } catch (e) {
   console.log('SKIP: (f) no origin/main to diff against');
 }

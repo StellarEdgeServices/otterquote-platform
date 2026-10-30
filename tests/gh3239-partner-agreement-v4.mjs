@@ -154,7 +154,7 @@ const initOrder = dashboard.indexOf('refreshSetPasswordCard(currentUser.id);\n\n
 ok(initOrder > 0 && dashboard.indexOf('refreshAgreementV4Notice();', initOrder) < dashboard.indexOf('updateUI();', initOrder), '(n11) notice refreshed right after the partner row resolves, before updateUI()');
 
 // ---------------------------------------------------------------- (r) refer-a-friend (vm)
-ok(/<input type="checkbox" id="agreement-v4-checkbox" required>/.test(raf) && /href="\/partner-agreement\.html"[^>]*>Partner Agreement<\/a> \(v4-2026-10\)/.test(raf), '(r1) checkbox plus link to the Partner Agreement');
+ok(/<input type="checkbox" id="agreement-v4-checkbox" required>/.test(raf) && /I agree to the Otter Quotes <a href="\/partner-agreement\.html"[^>]*>Partner Terms<\/a> \(Partner Agreement v4-2026-10\)\./.test(raf), '(r1) checkbox plus link, labelled "Partner Terms" as Agreement Section 1 names it');
 ok(/id="agreement-v4-accept" type="button" disabled>/.test(raf), '(r2) the accept button starts disabled');
 ok(/\.requires-agreement \{ display: none; \}/.test(raf) && /<!-- Your Referral Link -->\s*<section class="refer-section requires-agreement">/.test(raf)
   && /<!-- Share Options -->\s*<section class="refer-section requires-agreement">/.test(raf), '(r3) link and share tools hidden until acceptance');
@@ -205,6 +205,16 @@ ok(!/referral bonus/i.test(partnerCopy(raf)), '(c4) refer-a-friend.html: no "$20
 ok(/you earn a \$200 referral fee/.test(raf) && /Referral fee payments are subject to Otter Quotes' approval process/.test(raf), '(c5) refer-a-friend.html says "referral fee" (D-301)');
 
 ok(/We'll send payment via Venmo or PayPal, whichever you prefer\./.test(raf) && !/bank transfer|\bcheck, whichever/i.test(raf), '(c6) refer-a-friend FAQ names Venmo or PayPal (Section 5.2, D-401), not bank transfer or check');
+
+// ---------------------------------------------------------------- (i)/(o) cross-system effects (#3242 REVIEW 6526029821)
+const invite = read('partner-invite.html');
+ok(/if \(agentType === 'home_inspector'\) \{\s*return 'partner-agreement-inspector\.html';/.test(invite),
+  '(i1) partner-invite.html: an invited inspector is shown the inspector agreement (v3-2026-09), the version partner-invite-accept records');
+const onbIndex = read('supabase/functions/send-partner-onboarding/index.ts');
+const onbStage = read('supabase/functions/send-partner-onboarding/onboarding-stage.ts');
+ok(/\.select\("[^"]*partner_agreement_attestation[^"]*"\)/.test(onbIndex), '(o1) send-partner-onboarding reads partner_agreement_attestation');
+ok(/const effectiveStartMs = onboardingStartMs\(partner\);/.test(onbStage) && /e\.method === "click_to_accept"/.test(onbStage),
+  '(o2) the onboarding clock comes from onboardingStartMs(), which never starts at a click-to-accept (Deno run-sweep tests cover behaviour)');
 
 // ---------------------------------------------------------------- (m) migration shape
 const acceptFn = fwd.slice(fwd.indexOf('CREATE OR REPLACE FUNCTION public.accept_partner_agreement_v4()'), fwd.indexOf('COMMENT ON FUNCTION public.accept_partner_agreement_v4()'));
