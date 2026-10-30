@@ -17,6 +17,7 @@
 --   S1-S8 partner B cannot read A's rows; no client writes; anon nothing; privileges
 --   B1-B9 the PREVIOUS Eastern month batches (a rerun creates nothing); $20 no batch; payments_blocked no batch; non-admin refused; current and future month refused;
 --         month boundary is America/New_York: an event 30 minutes before Eastern midnight batches, one 30 minutes after stays accrued
+--   F11-F12 (D-402) the window is click -> measurement order created_at (length from referral_attribution_window()): order at w-1 days accrues, at w+1 days does not, even with the claim inside the window
 --   F4b   two orders sharing one PaymentIntent accrue one fee (UNIQUE payment_ref);  F4c an UPDATE on a pre-existing order accrues nothing (AFTER INSERT only)
 --   P3    the payout turning 'paid' flips its events by itself (trigger); the RPC then flips 0, and repairs an event reverted by hand;  N8 deleting a batch payout releases its events
 --   P1-P3 mark paid flips the events (service role only), once; R1 a rejected batch payout releases its events and the next run re-batches them
@@ -95,19 +96,19 @@ BEGIN
 END $f$;
 
 -- a claim credited to partner n through a referral clicked p_age before the claim; returns the claim id
-CREATE FUNCTION pg_temp.mk_claim(n int, p_claim_test boolean DEFAULT false, p_ref_test boolean DEFAULT false, p_age interval DEFAULT interval '1 day') RETURNS uuid LANGUAGE plpgsql AS $f$
+CREATE FUNCTION pg_temp.mk_claim(n int, p_claim_test boolean DEFAULT false, p_ref_test boolean DEFAULT false, p_age interval DEFAULT interval '1 day', p_claim_age interval DEFAULT interval '0') RETURNS uuid LANGUAGE plpgsql AS $f$
 DECLARE v_ref uuid := gen_random_uuid(); v_claim uuid := gen_random_uuid();
 BEGIN
   INSERT INTO referrals(id, referral_agent_id, status, created_at, is_test) VALUES (v_ref, pg_temp.u(100 + n), 'claim_submitted', now() - p_age, p_ref_test);
-  INSERT INTO claims(id, user_id, is_test, referral_id, created_at) VALUES (v_claim, pg_temp.u(300 + n), p_claim_test, v_ref, now());
+  INSERT INTO claims(id, user_id, is_test, referral_id, created_at) VALUES (v_claim, pg_temp.u(300 + n), p_claim_test, v_ref, now() - p_claim_age);
   RETURN v_claim;
 END $f$;
 
-CREATE FUNCTION pg_temp.mk_order(p_claim uuid, p_role text DEFAULT 'homeowner', p_pi text DEFAULT NULL, p_amount int DEFAULT 1500) RETURNS uuid LANGUAGE plpgsql AS $f$
+CREATE FUNCTION pg_temp.mk_order(p_claim uuid, p_role text DEFAULT 'homeowner', p_pi text DEFAULT NULL, p_amount int DEFAULT 1500, p_created timestamptz DEFAULT now()) RETURNS uuid LANGUAGE plpgsql AS $f$
 DECLARE v_id uuid := gen_random_uuid();
 BEGIN
-  INSERT INTO hover_orders(id, claim_id, user_id, requested_by_role, homeowner_stripe_payment_intent_id, homeowner_charge_amount)
-  VALUES (v_id, p_claim, pg_temp.u(399), p_role, coalesce(p_pi, 'pi_' || v_id::text), p_amount);
+  INSERT INTO hover_orders(id, claim_id, user_id, requested_by_role, homeowner_stripe_payment_intent_id, homeowner_charge_amount, created_at)
+  VALUES (v_id, p_claim, pg_temp.u(399), p_role, coalesce(p_pi, 'pi_' || v_id::text), p_amount, p_created);
   RETURN v_id;
 END $f$;
 
@@ -133,9 +134,11 @@ CREATE TEMP TABLE mm ON COMMIT DROP AS SELECT
   (date_trunc('month', now() AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/New_York') AS m0,
   (date_trunc('month', now() AT TIME ZONE 'America/New_York') - interval '1 month')::date AS lm,
   (date_trunc('month', now() AT TIME ZONE 'America/New_York'))::date AS cm,
-  (date_trunc('month', now() AT TIME ZONE 'America/New_York') + interval '2 months')::date AS fm;
+  (date_trunc('month', now() AT TIME ZONE 'America/New_York') + interval '2 months')::date AS fm,
+  (date_trunc('month', now() AT TIME ZONE 'America/New_York') + interval '1 month')::date AS nm;
 SELECT pg_temp.mk_agent(13, 'other');                          -- N, orders this month only
 SELECT pg_temp.mk_agent(14, 'other');                          -- Z, payment reuse / update cases
+SELECT pg_temp.mk_agent(15, 'other');                          -- G, window cases (D-402)
 CREATE TEMP TABLE o(k text PRIMARY KEY, id uuid) ON COMMIT DROP;
 CREATE TEMP TABLE c(k text PRIMARY KEY, id uuid) ON COMMIT DROP;
 
@@ -171,12 +174,19 @@ INSERT INTO hover_orders(id, claim_id, user_id, requested_by_role, homeowner_cha
 UPDATE hover_orders SET stripe_payment_id = 'ch_gh3229_late', homeowner_stripe_payment_intent_id = 'pi_gh3229_late' WHERE id = '3229f000-0000-4000-8000-000000000001';
 SELECT pg_temp.chk('F4c UPDATE on a pre-existing order: rows for that order / for Z', pg_temp.q(
   $$ SELECT (SELECT count(*) FROM partner_fee_events WHERE hover_order_id = '3229f000-0000-4000-8000-000000000001') || '/' || (SELECT count(*) FROM partner_fee_events WHERE referral_agent_id = '3229a000-0000-4000-8000-000000000114') $$), '0/1');
+-- F11/F12 (D-402) the window runs from the partner CLICK to the MEASUREMENT ORDER, length from referral_attribution_window() (w).
+-- Click at day 0; the claim is filed at day w-10 (inside the window); one order at day w-1 (credited), one at day w+1 (not credited, though the claim was inside).
+INSERT INTO c VALUES ('g', pg_temp.mk_claim(15, false, false, public.referral_attribution_window() + interval '30 days', interval '40 days'));
+INSERT INTO o SELECT 'g1', pg_temp.mk_order((SELECT id FROM c WHERE k = 'g'), 'homeowner', NULL, 1500, now() - interval '31 days');
+INSERT INTO o SELECT 'g2', pg_temp.mk_order((SELECT id FROM c WHERE k = 'g'), 'homeowner', NULL, 1500, now() - interval '29 days');
+SELECT pg_temp.chk('F11 order at click + (w - 1 day): accrues', pg_temp.q(format($$ SELECT count(*) FROM partner_fee_events WHERE hover_order_id = %L $$, (SELECT id FROM o WHERE k = 'g1'))), '1');
+SELECT pg_temp.chk('F12 order at click + (w + 1 day), claim filed inside the window: no fee', pg_temp.q(format($$ SELECT count(*) FROM partner_fee_events WHERE hover_order_id = %L $$, (SELECT id FROM o WHERE k = 'g2'))), '0');
 -- F5 inspector (D-333)
 INSERT INTO c VALUES ('i', pg_temp.mk_claim(3));
 INSERT INTO o SELECT 'i', pg_temp.mk_order((SELECT id FROM c WHERE k = 'i'));
 SELECT pg_temp.chk('F5 home inspector: rows', pg_temp.q(format($$ SELECT count(*) FROM partner_fee_events WHERE referral_agent_id = %L $$, pg_temp.u(103))), '0');
--- F6 click outside the window (100 days before the claim; the window is 30 or 90 days)
-INSERT INTO c VALUES ('x', pg_temp.mk_claim(11, false, false, interval '100 days'));
+-- F6 click outside the window (window + 10 days before the claim and the order)
+INSERT INTO c VALUES ('x', pg_temp.mk_claim(11, false, false, public.referral_attribution_window() + interval '10 days'));
 INSERT INTO o SELECT 'x', pg_temp.mk_order((SELECT id FROM c WHERE k = 'x'));
 SELECT pg_temp.chk('F6 click outside window: rows', pg_temp.q(format($$ SELECT count(*) FROM partner_fee_events WHERE referral_agent_id = %L $$, pg_temp.u(111))), '0');
 -- F7 is_test mismatch (test claim, real referral and agent)
@@ -256,6 +266,8 @@ SELECT pg_temp.chk('D2 A stats: $200 accrued/paid, $5 accrued/paid, earnings acc
   '20000/20000/1200/0/21200/20000');
 SELECT pg_temp.chk('D3 A stats: next payout 0 under the minimum, minimum 2500, accrued 1200', pg_temp.as_sess('authenticated', pg_temp.u(201), 'gh3229-1@example.invalid',
   $$ SELECT next_payout_cents || '/' || payout_minimum_cents || '/' || accrued_toward_minimum_cents FROM get_partner_dashboard_stats() $$), '0/2500/1200');
+SELECT pg_temp.chk('D3b next_payout_month is the month after the current Eastern month', pg_temp.as_sess('authenticated', pg_temp.u(201), 'gh3229-1@example.invalid',
+  $$ SELECT next_payout_month::text FROM get_partner_dashboard_stats() $$), (SELECT nm::text FROM mm));
 SELECT pg_temp.chk('D4 P stats: next payout = $30 (accrued, at the minimum), payments_blocked false', pg_temp.as_sess('authenticated', pg_temp.u(205), 'gh3229-5@example.invalid',
   $$ SELECT next_payout_cents || '/' || accrued_toward_minimum_cents || '/' || payments_blocked FROM get_partner_dashboard_stats() $$), '3000/3000/false');
 SELECT pg_temp.chk('D5 W stats: payments_blocked -> next payout 0, payments_blocked true (the card shows the on-hold line)', pg_temp.as_sess('authenticated', pg_temp.u(208), 'gh3229-8@example.invalid',

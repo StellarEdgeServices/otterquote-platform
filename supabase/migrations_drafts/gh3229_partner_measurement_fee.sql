@@ -22,7 +22,7 @@
 --   2. payout_approvals_payout_type_check admits 'measurement_fees_monthly' (the monthly batch row; referral_id stays NULL).
 --   3. partner_fee_events (ledger, one row per paid homeowner measurement) + RLS: a partner reads own rows, admin all, no client writes.
 --   4. AFTER INSERT trigger on hover_orders (insert only, so editing an older order never backfills; create-measurement-order writes role, payment, amount and claim in one INSERT): a homeowner-paid order accrues one row when the claim carries a credited referral
---      inside the attribution window, is_test agrees on claim/referral/agent, and the agent is not a home inspector. UNIQUE(hover_order_id) and UNIQUE(payment_ref) (the PaymentIntent id, else the charge id), so a retried payment that produced a second order row accrues once.
+--      inside the attribution window (D-402: from the partner click to the measurement order's own created_at, length from referral_attribution_window()), is_test agrees on claim/referral/agent, and the agent is not a home inspector. UNIQUE(hover_order_id) and UNIQUE(payment_ref) (the PaymentIntent id, else the charge id), so a retried payment that produced a second order row accrues once.
 --      It never raises: the order is written after the buyer's money moved, so a fee-side failure is logged (WARNING) and the order stands.
 --   5. NO void on refund (CEO ruling, #3236): the fee is earned when the purchase completes. The job-completion rebate (rebate_paid_at) does not touch
 --      it. The status 'void' stays in the table for a manual correction. A refund made by hand in the Stripe dashboard is not detected (no charge.refunded handler).
@@ -103,7 +103,6 @@ CREATE OR REPLACE FUNCTION public.partner_fee_accrue_on_order()
 AS $function$
 DECLARE
   v_claim_test    boolean;
-  v_claim_created timestamptz;
   v_ref_id        uuid;
   v_ref_created   timestamptz;
   v_ref_test      boolean;
@@ -122,8 +121,8 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  SELECT c.is_test, c.created_at, r.id, r.created_at, r.is_test, a.id, a.is_test, a.agent_type
-    INTO v_claim_test, v_claim_created, v_ref_id, v_ref_created, v_ref_test, v_agent_id, v_agent_test, v_agent_type
+  SELECT c.is_test, r.id, r.created_at, r.is_test, a.id, a.is_test, a.agent_type
+    INTO v_claim_test, v_ref_id, v_ref_created, v_ref_test, v_agent_id, v_agent_test, v_agent_type
     FROM public.claims c
     JOIN public.referrals r        ON r.id = c.referral_id
     JOIN public.referral_agents a  ON a.id = r.referral_agent_id
@@ -133,9 +132,10 @@ BEGIN
     RETURN NEW;                                   -- no credited referral on this claim
   END IF;
 
-  -- attribution window, measured as apply_referral_commission measures it: click -> claim creation. A NULL date accrues nothing.
-  IF v_ref_created IS NULL OR v_claim_created IS NULL
-     OR v_ref_created < v_claim_created - public.referral_attribution_window() THEN
+  -- D-402: "Credit lasts 90 days from the partner click. A measurement or project started within that time is credited."
+  -- So the window runs from the partner click to THIS measurement order (not to the claim); referral_attribution_window() is the single source of its length.
+  IF v_ref_created IS NULL
+     OR COALESCE(NEW.created_at, now()) > v_ref_created + public.referral_attribution_window() THEN
     RETURN NEW;
   END IF;
 
@@ -272,7 +272,7 @@ BEGIN
     v_blocked,
     v_min,
     CASE WHEN v_accrued >= v_min AND NOT v_blocked THEN v_accrued ELSE 0 END::bigint,
-    (date_trunc('month', now()) + interval '1 month')::date;
+    (date_trunc('month', now() AT TIME ZONE 'America/New_York') + interval '1 month')::date;   -- the Eastern month, same as the batch
 END;
 $function$;
 

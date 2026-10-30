@@ -50,6 +50,10 @@ ok(loader.includes('$200 referral fee on projects of $10,000 or more'), 'jobs ca
 ok(loader.includes('On hold until your payment details are complete') && /payments_blocked/.test(loader), 'blocked partner sees the on-hold line');
 ok(loader.includes("'expected with the ' + monthName + ' batch, after approval'"), 'next-payout subtext says expected, after approval');
 ok(!/Commission payments/.test(dash) && !/\$600/.test(dash) && /Referral fee payments are held until/.test(dash), 'W-9 card says referral fee payments and states no dollar threshold');
+{
+  const cmo = fs.readFileSync(path.join(ROOT, 'supabase/functions/create-measurement-order/index.ts'), 'utf8');
+  ok(!/body\.buyer_role === "contractor" \? "contractor" : "homeowner"/.test(cmo) && /buyer_role must be 'homeowner' or 'contractor'/.test(cmo), 'create-measurement-order has no silent homeowner default for buyer_role');
+}
 ok(/midnight Eastern time/.test(admin), 'admin confirm text names Eastern time');
 ok(!/test rows excluded/.test(dash), 'stale test-rows-excluded comment removed');
 ok(dash.indexOf('await loadFeeSummary()') > dash.indexOf('await loadStats()') && dash.indexOf('await loadFeeSummary()') < dash.indexOf('await loadRecruits()'),
