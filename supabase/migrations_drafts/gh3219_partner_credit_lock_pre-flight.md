@@ -14,10 +14,10 @@ DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 One plan for every partner: 90-day window from the click, last click wins, credit LOCKS at account creation.
 - `referrals.homeowner_user_id uuid NULL` (FK auth.users, ON DELETE SET NULL) + unique partial index `referrals_homeowner_user_id_locked_key`.
 - `referral_attribution_window()` now reads `platform_settings.partner_attribution_window_days` (seed 90; fallback 90 when absent, non-numeric, <1 or >3650) and is STABLE (was IMMUTABLE 30 days).
-- `advance_referral_registered(uuid)` records the signed-in user on the referral it advances; a user who already has a locked referral gets `false`.
-- `get_locked_referral_id()` (new, authenticated + service_role) returns the caller's locked referral id.
-- `claims_apply_locked_referral()` + trigger `claims_lock_referral` (new, BEFORE INSERT on claims): the locked referral_id and its referral_agent_id replace whatever the browser sent.
-- `claims_advance_referral()` advances only the user's own locked referral, or an unlocked one (which it then locks to the claim's user).
+- `advance_referral_registered(uuid)` records the signed-in user on the referral it advances; a user who already has a LIVE locked referral gets `false`. A lapsed lock (its click older than the window) blocks nobody and is released when a newer in-window click takes the lock.
+- `get_locked_referral_id()` (new, authenticated + service_role) returns the caller's LIVE locked referral id (NULL once the lock has lapsed).
+- `claims_apply_locked_referral()` + trigger `claims_lock_referral` (new, BEFORE INSERT on claims): a live locked referral_id and its referral_agent_id replace whatever the browser sent. LAPSE (Ben's ruling, #3219 comment 6523708028): once the locked click is older than the window the lock is ignored; a newer in-window click on the claim is credited and takes the lock (the lapsed referral's `homeowner_user_id` is cleared), otherwise the claim's `referral_id` is set NULL and nobody is credited.
+- `claims_advance_referral()` advances only the user's own live locked referral, or an unlocked one (which it then locks to the claim's user, releasing a lapsed lock of that user).
 - NOT edited but affected: `apply_referral_commission()` calls `referral_attribution_window()`, so its "referral not older than the window at claim time" check moves from 30 to 90 days with the setting.
 
 ## Read-only checks to run before apply (all SELECT)
@@ -31,8 +31,8 @@ One plan for every partner: 90-day window from the click, last click wins, credi
 - No backfill. Users who already have a claim with a referral_id are NOT locked until their next advance or claim; a backfill from `claims (user_id, referral_id)` is a separate decision.
 - Referral clicks 31-90 days old that were refused under the 30-day rule become creditable again, in `advance_referral_registered`, `claims_advance_referral` and `apply_referral_commission`.
 - Changing `partner_attribution_window_days` later changes all three at once and applies to clicks already on record. The browser cookie lifetime is a fixed 90 days in code; a setting above 90 is not reachable by a cookie that has expired, a setting below 90 is enforced by the database.
-- `referrals` has table-level SELECT for `authenticated` behind the "Agents can read own referrals" policy, so a partner reading their own referrals can read the new `homeowner_user_id` (an auth user uuid) beside the homeowner name/email/phone they can already read.
-- A user whose locked referral is older than the window at claim time gets that referral stamped and not credited (the lock still holds; a fresh click cannot take it). Open question for the CEO, see the PR.
+- `homeowner_user_id` must NOT be partner-readable (Ben, #3219). Live today `authenticated` holds a table-level SELECT on `referrals`, so until PR #3225 (#3217) is applied a partner could read the new column through the "Agents can read own referrals" policy. #3225 revokes the table-level SELECT and re-grants an explicit allow-list (id, created_at, referral_agent_id, status, job_value, commission_amount, recruit_commission_amount) that excludes it; this migration adds no GRANT/REVOKE on `referrals`. Order: apply #3225 first (then the new column is private by default), or apply both in the same window; whichever merges second must keep `homeowner_user_id` off the allow-list. Rolling back #3225 restores the table-level SELECT and would expose the column again. `tests/p18-homeowner-user-id-not-granted.mjs` fails if any referrals GRANT in the repo names it.
+- Lapse is decided at claim time against `now()` and the CURRENT window setting: shortening `partner_attribution_window_days` lapses locks earlier, lengthening it revives locks whose click is still inside the new window. A lapsed lock with no newer click leaves the lapsed referral's `homeowner_user_id` set (it is only cleared when a newer referral takes the lock).
 - Lock timeout: the file sets `lock_timeout = '5s'`; `ALTER TABLE referrals ADD COLUMN` (nullable, no default) is a catalogue-only change. Apply off-peak (R-031).
 
 ## Proof

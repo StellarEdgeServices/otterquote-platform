@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # LOCAL throwaway Postgres 16 run of the gh-3219 (P18) proof. Never touches production.
-# usage: gh3219_partner_credit_lock_local_run.sh [before|after|rollback|mutant-nolock]
+# usage: gh3219_partner_credit_lock_local_run.sh [before|after|rollback|mutant-nolock|mutant-nolapse]
 #   before   : pre-change state (the rollback file's restored functions) + the proof alone  -> the [BUG] rows differ (negative control)
 #   after    : the forward migration body spliced into the proof                           -> every row OK
 #   rollback : after, then the rollback file; prints prosrc md5 of the three restored functions (compare to the live md5 in the rollback header)
 #              and re-runs the proof alone (the [BUG] rows differ again)
+#   mutant-nolapse: after, but the lock never lapses in claims_apply_locked_referral() (LAPSE-CHECK forced true) -> S10/S10b/S11/S11b rows must go DIFF
 #   mutant-nolock : after, but claims_apply_locked_referral() is replaced by a no-op -> S2/S2b/S9 rows must go DIFF (proof is sensitive to the lock)
 # Needs PG16 binaries (PGBIN, default /usr/lib/postgresql/16/bin) and a user that may run initdb (PGRUN_AS, default postgres).
 set -euo pipefail
@@ -38,9 +39,14 @@ case "$MODE" in
   after)   echo "== AFTER the fix"; splice > "$D/after.sql"; run_proof "$D/after.sql" ;;
   mutant-nolock)
     echo "== MUTANT: claims_apply_locked_referral() is a no-op"
-    splice | sed 's#^  NEW.referral_id       := v_ref_id;#  -- MUTANT#; s#^  NEW.referral_agent_id := v_agent;#  -- MUTANT#' > "$D/mut.sql"
+    splice | sed -E 's#^ *NEW\.referral_id +:= v_ref_id;#  -- MUTANT#; s#^ *NEW\.referral_agent_id +:= v_agent;#  -- MUTANT#' > "$D/mut.sql"
     grep -c 'MUTANT' "$D/mut.sql" | sed 's/^/mutated lines: /'
     run_proof "$D/mut.sql" ;;
+  mutant-nolapse)
+    echo "== MUTANT: the lock never lapses at claim time"
+    splice | sed 's#IF v_clicked >= now() - public.referral_attribution_window() THEN   -- LAPSE-CHECK: the lock is live#IF true THEN   -- MUTANT#' > "$D/mutl.sql"
+    grep -c 'MUTANT' "$D/mutl.sql" | sed 's/^/mutated lines: /'
+    run_proof "$D/mutl.sql" ;;
   rollback)
     $P -f "$FWD"
     echo "== forward applied for real in the throwaway DB; now the rollback"

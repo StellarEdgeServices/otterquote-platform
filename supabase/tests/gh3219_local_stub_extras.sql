@@ -9,6 +9,6 @@ CREATE TABLE auth.users (id uuid PRIMARY KEY);
 CREATE FUNCTION public.update_referral_stats() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;
 CREATE TRIGGER referrals_update_stats AFTER UPDATE ON public.referrals FOR EACH ROW EXECUTE FUNCTION public.update_referral_stats();
 -- fixtures: 6+ test users, 2+ test agents (the proof picks the first ones by id)
-INSERT INTO auth.users(id) SELECT gen_random_uuid() FROM generate_series(1,9);
+INSERT INTO auth.users(id) SELECT gen_random_uuid() FROM generate_series(1,14);
 INSERT INTO public.profiles(id, is_test) SELECT id, true FROM auth.users;
 INSERT INTO public.referral_agents(agent_type, is_test, first_name, last_name) VALUES ('realtor', true, 'A', 'Test'), ('influencer', true, 'B', 'Test'), ('realtor', true, 'C', 'Test');

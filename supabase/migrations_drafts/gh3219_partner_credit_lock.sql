@@ -24,12 +24,19 @@
 --   1. referrals.homeowner_user_id uuid NULL + a unique partial index: each user has at most one locked referral.
 --   2. referral_attribution_window() reads platform_settings.partner_attribution_window_days (seeded 90, fallback 90) and is STABLE
 --      (it reads a table, so IMMUTABLE was wrong the moment the value could change).
---   3. advance_referral_registered(uuid) records the signed-in user on the referral it advances, only when that user has no locked
---      referral yet; a user who already has a lock gets false and the other referral is untouched.
---   4. get_locked_referral_id() (new, authenticated only) lets the browser ask which referral is locked to the caller.
---   5. claims_apply_locked_referral() + trigger claims_lock_referral (new, BEFORE INSERT): a claim of a user with a locked referral
+--   3. advance_referral_registered(uuid) records the signed-in user on the referral it advances, only when that user has no LIVE locked
+--      referral yet; a user with a live lock gets false and the other referral is untouched.
+--   4. get_locked_referral_id() (new, authenticated only) lets the browser ask which referral is LIVE-locked to the caller.
+--   5. claims_apply_locked_referral() + trigger claims_lock_referral (new, BEFORE INSERT): a claim of a user with a live locked referral
 --      is stamped with the locked referral_id and its referral_agent_id, whatever the browser sent.
---   6. claims_advance_referral() advances only the user's own locked referral (or an unlocked one, which it then locks to the claim's user).
+--   6. claims_advance_referral() advances only the user's own live locked referral (or an unlocked one, which it then locks to the claim's user).
+-- LAPSE (Ben's ruling on #3219, comment 6523708028): a lock lapses with the window. It is live while its credited click
+--   (referrals.created_at) is not older than referral_attribution_window(). Past that it blocks nobody: if the claim carries a NEWER click
+--   that is itself inside the window, that partner is credited and the lock MOVES to that referral (the lapsed referral's
+--   homeowner_user_id is cleared, so the one-lock-per-user index holds); if it does not, nobody is credited (the claim's referral_id is
+--   NULLed). The rejected alternative was a lock that holds forever but credits nothing.
+-- referrals.homeowner_user_id is NOT added to any grant or allow-list here, and must stay off the partner column allow-list that PR #3225
+--   (#3217) introduces: whichever of the two merges second must keep it excluded. This file contains no GRANT/REVOKE on referrals.
 -- Signatures, return types, SECURITY DEFINER, search_path and ACLs of the three existing functions are unchanged (CREATE OR REPLACE keeps them).
 -- apply_referral_commission() is NOT edited, but it calls referral_attribution_window(), so its commission window follows the setting too.
 -- Idempotent. No existing row is changed except the one platform_settings insert; there is no backfill of homeowner_user_id.
@@ -93,13 +100,15 @@ BEGIN
   v_email := NULLIF(auth.jwt() ->> 'email', '');
   v_uid   := auth.uid();
 
-  -- gh-3219 (P18): the credit locks at account creation. A user who already has a locked
-  -- referral keeps it: a later click on another partner's link advances nothing and
-  -- locks nothing (returns false, the other referral is untouched).
+  -- gh-3219 (P18): the credit locks at account creation. A user who already has a LIVE locked
+  -- referral (its click is inside the window) keeps it: a later click on another partner's link
+  -- advances nothing and locks nothing (returns false, the other referral is untouched).
+  -- A lapsed lock (click older than the window) blocks nobody (Ben's ruling on #3219).
   IF v_uid IS NOT NULL
      AND EXISTS (SELECT 1 FROM referrals
                   WHERE homeowner_user_id = v_uid
-                    AND id <> p_referral_id) THEN
+                    AND id <> p_referral_id
+                    AND created_at >= now() - public.referral_attribution_window()) THEN
     RAISE LOG 'advance_referral_registered: gh-3219 credit already locked for this user - no-op for referral_id=%', p_referral_id;
     RETURN false;
   END IF;
@@ -112,6 +121,19 @@ BEGIN
   -- gh-3219: the same UPDATE records the user on the referral; a referral
   -- already locked to a different user is not advanced.
   BEGIN
+    -- gh-3219 lapse: this click will advance and take the lock, so release the user's lapsed lock first
+    -- (the guard above returned for a live lock, so any other lock left here is lapsed). One subtransaction:
+    -- if the advance below fails, the release is undone with it.
+    IF v_uid IS NOT NULL
+       AND EXISTS (SELECT 1 FROM referrals
+                    WHERE id = p_referral_id
+                      AND status = 'clicked'
+                      AND created_at >= now() - public.referral_attribution_window()
+                      AND (homeowner_user_id IS NULL OR homeowner_user_id = v_uid)) THEN
+      UPDATE referrals SET homeowner_user_id = NULL
+       WHERE homeowner_user_id = v_uid AND id <> p_referral_id;
+    END IF;
+
     UPDATE referrals
        SET status            = 'registered',
            homeowner_email   = COALESCE(v_email, homeowner_email),
@@ -149,11 +171,14 @@ CREATE OR REPLACE FUNCTION public.get_locked_referral_id()
  SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
 AS $function$
-  SELECT r.id FROM public.referrals r WHERE r.homeowner_user_id = auth.uid() LIMIT 1
+  SELECT r.id FROM public.referrals r
+   WHERE r.homeowner_user_id = auth.uid()
+     AND r.created_at >= now() - public.referral_attribution_window()
+   LIMIT 1
 $function$;
 
 COMMENT ON FUNCTION public.get_locked_referral_id() IS
-  'gh-3219 (P18): the referral id locked to the calling user (referrals.homeowner_user_id = auth.uid()), or NULL. Returns only the caller''s own row id.';
+  'gh-3219 (P18): the referral id LIVE-locked to the calling user (referrals.homeowner_user_id = auth.uid() and its click inside the attribution window; a lapsed lock returns NULL), or NULL. Returns only the caller''s own row id.';
 
 REVOKE ALL ON FUNCTION public.get_locked_referral_id() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_locked_referral_id() TO authenticated, service_role;
@@ -166,14 +191,15 @@ CREATE OR REPLACE FUNCTION public.claims_apply_locked_referral()
  SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
-  v_ref_id uuid;
-  v_agent  uuid;
+  v_ref_id  uuid;
+  v_agent   uuid;
+  v_clicked timestamptz;
 BEGIN
   IF NEW.user_id IS NULL THEN
     RETURN NEW;
   END IF;
 
-  SELECT r.id, r.referral_agent_id INTO v_ref_id, v_agent
+  SELECT r.id, r.referral_agent_id, r.created_at INTO v_ref_id, v_agent, v_clicked
     FROM public.referrals r
    WHERE r.homeowner_user_id = NEW.user_id
    LIMIT 1;
@@ -182,11 +208,36 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  IF NEW.referral_id IS DISTINCT FROM v_ref_id THEN
-    RAISE LOG 'claims_apply_locked_referral: gh-3219 locked referral % replaces sent referral % for user_id=%', v_ref_id, NEW.referral_id, NEW.user_id;
+  IF v_clicked >= now() - public.referral_attribution_window() THEN   -- LAPSE-CHECK: the lock is live
+    IF NEW.referral_id IS DISTINCT FROM v_ref_id THEN
+      RAISE LOG 'claims_apply_locked_referral: gh-3219 locked referral % replaces sent referral % for user_id=%', v_ref_id, NEW.referral_id, NEW.user_id;
+    END IF;
+    NEW.referral_id       := v_ref_id;
+    NEW.referral_agent_id := v_agent;
+    RETURN NEW;
   END IF;
-  NEW.referral_id       := v_ref_id;
-  NEW.referral_agent_id := v_agent;
+
+  -- The lock has lapsed (its click is older than the window, or undated): it blocks nobody (Ben's ruling on #3219).
+  IF NEW.referral_id IS NOT NULL
+     AND NEW.referral_id <> v_ref_id
+     AND EXISTS (SELECT 1 FROM public.referrals n
+                  WHERE n.id = NEW.referral_id
+                    AND n.created_at >= now() - public.referral_attribution_window()
+                    AND n.homeowner_user_id IS NULL) THEN
+    -- A newer click inside the window is on the claim: that partner is credited and the lock moves to it.
+    -- Clear the lapsed lock now (one lock per user); claims_advance_referral (AFTER INSERT) advances the new
+    -- referral and records the lock on it.
+    UPDATE public.referrals SET homeowner_user_id = NULL WHERE id = v_ref_id;
+    RAISE LOG 'claims_apply_locked_referral: gh-3219 lock on % lapsed; lock moves to referral % for user_id=%', v_ref_id, NEW.referral_id, NEW.user_id;
+    RETURN NEW;
+  END IF;
+
+  -- No newer click inside the window: nobody is credited.
+  IF NEW.referral_agent_id IS NOT DISTINCT FROM v_agent THEN
+    NEW.referral_agent_id := NULL;
+  END IF;
+  NEW.referral_id := NULL;
+  RAISE LOG 'claims_apply_locked_referral: gh-3219 lock on % lapsed and no newer click inside the window; no partner credited for user_id=%', v_ref_id, NEW.user_id;
   RETURN NEW;
 END;
 $function$;
@@ -215,8 +266,22 @@ BEGIN
     -- advance_referral_registered). An expired/undated referral is left
     -- untouched; v_rows_updated = 0 so no partner-status email fires either.
     -- gh-3219 (P18): a referral locked to someone else, or any referral when this
-    -- claim's user is locked to a different one, is left untouched; an unlocked
-    -- referral that advances is locked to the claim's user.
+    -- claim's user has a LIVE lock on a different one, is left untouched; an unlocked
+    -- referral that advances is locked to the claim's user. A lapsed lock of this user
+    -- (click older than the window) blocks nobody and is released when a newer
+    -- in-window referral takes the lock (Ben's ruling on #3219).
+    IF NEW.user_id IS NOT NULL
+       AND EXISTS (SELECT 1 FROM referrals
+                    WHERE id = NEW.referral_id
+                      AND status IN ('clicked', 'registered')
+                      AND created_at >= now() - public.referral_attribution_window()
+                      AND (homeowner_user_id IS NULL OR homeowner_user_id = NEW.user_id)) THEN
+      UPDATE referrals SET homeowner_user_id = NULL
+       WHERE homeowner_user_id = NEW.user_id
+         AND id <> NEW.referral_id
+         AND created_at < now() - public.referral_attribution_window();
+    END IF;
+
     UPDATE referrals
        SET status            = 'claim_submitted',
            homeowner_user_id = COALESCE(homeowner_user_id, NEW.user_id)
@@ -226,7 +291,8 @@ BEGIN
        AND (homeowner_user_id IS NULL OR homeowner_user_id = NEW.user_id)
        AND NOT EXISTS (SELECT 1 FROM referrals l
                         WHERE l.homeowner_user_id = NEW.user_id
-                          AND l.id <> NEW.referral_id);
+                          AND l.id <> NEW.referral_id
+                          AND l.created_at >= now() - public.referral_attribution_window());
     GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
   EXCEPTION WHEN OTHERS THEN
     v_rows_updated := 0;
