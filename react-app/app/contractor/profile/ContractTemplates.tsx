@@ -119,7 +119,7 @@ export function ContractTemplates({ contractorId, initialTemplates }: {
                     <button type="button" className="oqp-btn-sm oqp-btn-sm-secondary" onClick={() => setMappingSlot({ trade: slot.trade, fundingType: slot.fundingType })}>{T.contractTemplates.reviewMapping}</button>
                     <button type="button" className="oqp-btn-sm oqp-btn-sm-secondary" disabled={busy} onClick={() => pickFile(slot.trade, slot.fundingType)}>{T.contractTemplates.replace}</button>
                   </div>
-                  <D199Validation contractorId={contractorId} trade={slot.trade} fundingType={slot.fundingType} storagePath={String(tpl.file_url)} />
+                  <D199Validation contractorId={contractorId} trade={slot.trade} fundingType={slot.fundingType} storagePath={String(tpl.file_url)} onUploadCorrected={() => pickFile(slot.trade, slot.fundingType)} />
                 </>
               ) : (
                 <>

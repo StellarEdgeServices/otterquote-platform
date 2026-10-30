@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { d199StatusLabel } from './copy';
+import { d199StatusLabel, D199_UPLOAD_CORRECTED_LABEL } from './copy';
 import {
   tradeKey, fundingKey, validationCounts, missingAnchors, D199_FAIL_STATES,
   type D199Row, type D199Anchor,
@@ -75,8 +75,10 @@ async function callValidate(contractorTemplateId: string, manualOverrides?: Reco
   }
 }
 
-export function D199Validation({ contractorId, trade, fundingType, storagePath }: {
+export function D199Validation({ contractorId, trade, fundingType, storagePath, onUploadCorrected }: {
   contractorId: string; trade: string; fundingType: string; storagePath: string;
+  /** Opens the card's existing template upload (same control as "Replace"). Used for `rejected` rows. */
+  onUploadCorrected?: () => void;
 }) {
   const [row, setRow] = useState<D199Row | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -155,7 +157,15 @@ export function D199Validation({ contractorId, trade, fundingType, storagePath }
       {showActions && (
         <div className="oqp-val-actions">
           <button type="button" className="oqp-btn-sm oqp-btn-sm-primary" onClick={() => setMappingOpen(true)}>Map anchors manually</button>
-          <button type="button" className="oqp-btn-sm oqp-btn-sm-amber" onClick={requestAdminReview}>Request admin review</button>
+          {/* gh-3199 (Ben's ruling on #3199): the RPC accepts only pending_validation and manual_mapping_pending.
+              A rejected template needs a new upload (which re-enters at pending_validation), not a resubmit. */}
+          {row.status === 'rejected' ? (
+            onUploadCorrected && (
+              <button type="button" className="oqp-btn-sm oqp-btn-sm-amber" onClick={onUploadCorrected}>{D199_UPLOAD_CORRECTED_LABEL}</button>
+            )
+          ) : (
+            <button type="button" className="oqp-btn-sm oqp-btn-sm-amber" onClick={requestAdminReview}>Request admin review</button>
+          )}
         </div>
       )}
 

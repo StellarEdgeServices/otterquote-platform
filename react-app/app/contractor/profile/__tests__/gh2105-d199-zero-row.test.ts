@@ -66,4 +66,16 @@ describe('d199-validation submit goes through the status RPC (gh-3199)', () => {
     expect(reached(null)).toBe(false);
     expect(reached({ status: 'submitted_for_admin_review' })).toBe(true);
   });
+
+  it('rejected rows show the upload action, not "Request admin review" (source scan)', () => {
+    const act = src.indexOf('{showActions && (');
+    const actEnd = src.indexOf('{mappingOpen && row.id', act);
+    const actions = src.slice(act, actEnd);
+    expect(actions).toMatch(/row\.status === 'rejected' \?/);
+    const rejectedBranch = actions.slice(actions.indexOf("row.status === 'rejected' ?"), actions.indexOf(') : ('));
+    expect(rejectedBranch).toContain('D199_UPLOAD_CORRECTED_LABEL');
+    expect(rejectedBranch).toContain('onUploadCorrected');
+    expect(rejectedBranch).not.toContain('Request admin review');
+    expect(actions.slice(actions.indexOf(') : (')).match(/Request admin review/g)).toHaveLength(1);
+  });
 });
