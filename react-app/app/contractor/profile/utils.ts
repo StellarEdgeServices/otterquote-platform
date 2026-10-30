@@ -188,7 +188,8 @@ export const CONTRACT_TEMPLATE_SLOTS: ContractTemplateSlot[] = [
 export interface ContractTemplate {
   trade: string;
   funding_type: string;
-  file_url: string;
+  file_url?: string;
+  path?: string;
   file_name?: string;
   uploaded_at?: string;
   field_mappings?: Record<string, string>;
@@ -208,6 +209,18 @@ export function contractSlotId(trade: string, fundingType: string): string {
 /** Storage path for a newly uploaded contract template. Ported from uploadTemplateFile. */
 export function contractTemplatePath(contractorId: string, trade: string, fundingType: string, ts: number): string {
   return `${contractorId}/${trade.toLowerCase()}_${safeFundingToken(fundingType)}_${ts}.pdf`;
+}
+
+/**
+ * Storage path of a contract template entry. Entries written by the pre-approval wizard carry `path`,
+ * not `file_url` (8 of 9 live entries), so read `file_url ?? path`. Returns '' when neither is a real
+ * string: callers must skip any reset or validation on '' and never send "undefined".
+ */
+export function contractTemplateStoragePath(tpl: ContractTemplate | null | undefined): string {
+  const raw = tpl ? (tpl.file_url ?? tpl['path']) : '';
+  if (typeof raw !== 'string') return '';
+  const v = raw.trim();
+  return v === '' || v === 'undefined' || v === 'null' ? '' : v;
 }
 
 export function findContractTemplate(

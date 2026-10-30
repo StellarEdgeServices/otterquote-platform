@@ -102,4 +102,40 @@ describe('corrected upload on a rejected template re-enters validation (gh-3199 
     expect(db.updates).toHaveLength(0);
     expect(db.tpl.status).toBe('rejected');
   });
+
+  // REVIEW: FAIL 6523537266 (B1'): wizard-written entries carry `path`, not `file_url`; merely viewing the card must not touch the row.
+  it('a path-only entry on a rejected row, rendered with no click and no upload: NO update, NO validation, still rejected', async () => {
+    db.contractors.contract_templates = [{ trade: 'Roofing', funding_type: 'Insurance (full replacement)', path: 'c1/roofing/insurance/old.pdf', uploaded_at: '2026-01-01T00:00:00Z' }];
+    const initial = db.contractors.contract_templates;
+    render(<ContractTemplates contractorId="c1" initialTemplates={initial as never} />);
+    await waitFor(() => expect(screen.getByText('Upload a corrected template')).toBeTruthy());
+    await new Promise((r) => setTimeout(r, 50)); // let any mount-time effect finish
+    expect(db.updates).toHaveLength(0);
+    expect(db.invokes).toHaveLength(0);
+    expect(db.tpl.status).toBe('rejected');
+    expect(db.tpl.pdf_storage_path).toBe('c1/roofing/insurance/old.pdf');
+  });
+
+  it('an entry with neither file_url nor path: no update, no validation, never the string "undefined"', async () => {
+    db.contractors.contract_templates = [{ trade: 'Roofing', funding_type: 'Insurance (full replacement)', uploaded_at: '2026-01-01T00:00:00Z' }];
+    render(<ContractTemplates contractorId="c1" initialTemplates={db.contractors.contract_templates as never} />);
+    await waitFor(() => expect(screen.getByText('Upload a corrected template')).toBeTruthy());
+    await new Promise((r) => setTimeout(r, 50));
+    expect(db.updates).toHaveLength(0);
+    expect(db.invokes).toHaveLength(0);
+    expect(JSON.stringify(db.tpl)).not.toContain('undefined');
+  });
+
+  it('a path-only entry: the corrected upload still resets the row (upload path, new file)', async () => {
+    db.contractors.contract_templates = [{ trade: 'Roofing', funding_type: 'Insurance (full replacement)', path: 'c1/roofing/insurance/old.pdf' }];
+    const { container } = render(<ContractTemplates contractorId="c1" initialTemplates={db.contractors.contract_templates as never} />);
+    await waitFor(() => expect(screen.getByText('Upload a corrected template')).toBeTruthy());
+    fireEvent.click(screen.getByText('Upload a corrected template'));
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['%PDF-1.4 x'], 'c.pdf', { type: 'application/pdf' })] } });
+    await waitFor(() => expect(db.updates).toHaveLength(1));
+    expect(db.updates[0].status).toBe('pending_validation');
+    expect(String(db.updates[0].pdf_storage_path)).toMatch(/^c1\/roofing_insurance_full_replacement_\d+\.pdf$/);
+    expect(db.tpl.status).not.toBe('rejected');
+  });
 });

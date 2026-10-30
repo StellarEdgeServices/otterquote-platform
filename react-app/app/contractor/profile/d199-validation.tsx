@@ -98,8 +98,26 @@ async function callValidate(contractorTemplateId: string, manualOverrides?: Reco
   }
 }
 
-export function D199Validation({ contractorId, trade, fundingType, storagePath, onUploadCorrected }: {
+/**
+ * gh-3199 (B1): called ONLY from the upload handler, after a corrected file was uploaded successfully,
+ * with the new storage path. If the slot's contractor_templates row is `rejected`, point it at the new file
+ * (the server resets status to pending_validation) and validate. Never called from render/refresh, and a
+ * missing or empty path does nothing. Returns true when a reset was sent.
+ */
+export async function reenterValidationAfterUpload(contractorId: string, trade: string, fundingType: string, newPath: string): Promise<boolean> {
+  if (!contractorId || !newPath || newPath === 'undefined') return false;
+  const r = await findValidationRow(contractorId, trade, fundingType);
+  if (!r || !r.id || r.status !== 'rejected' || r.pdf_storage_path === newPath) return false;
+  const reset = await resubmitCorrectedUpload(r.id, newPath);
+  if (!reset?.id) return false;
+  await callValidate(reset.id);
+  return true;
+}
+
+export function D199Validation({ contractorId, trade, fundingType, storagePath, onUploadCorrected, refreshKey }: {
   contractorId: string; trade: string; fundingType: string; storagePath: string;
+  /** Bumped by the card after a corrected upload re-entered validation, to reload the row. */
+  refreshKey?: number;
   /** Opens the card's existing template upload (same control as "Replace"). Used for `rejected` rows. */
   onUploadCorrected?: () => void;
 }) {
@@ -110,17 +128,6 @@ export function D199Validation({ contractorId, trade, fundingType, storagePath, 
   const refresh = useCallback(async () => {
     if (!contractorId || !trade || !fundingType) return;
     let r = await findValidationRow(contractorId, trade, fundingType);
-    // gh-3199 (B1): a corrected upload on a rejected row re-enters validation (new path, back to pending_validation).
-    if (r && r.id && r.status === 'rejected' && storagePath && r.pdf_storage_path !== storagePath) {
-      const reset = await resubmitCorrectedUpload(r.id, storagePath);
-      if (reset) {
-        r = reset;
-        const result = await callValidate(reset.id!);
-        if (result && result.validation_result) {
-          r = { ...r, validation_result: result.validation_result as D199Row['validation_result'], status: result.status ?? r.status };
-        }
-      }
-    }
     if (!r && storagePath) {
       r = await upsertValidationRow(contractorId, trade, fundingType, storagePath);
       if (r && r.id) {
@@ -131,7 +138,7 @@ export function D199Validation({ contractorId, trade, fundingType, storagePath, 
       }
     }
     setRow(r);
-  }, [contractorId, trade, fundingType, storagePath]);
+  }, [contractorId, trade, fundingType, storagePath, refreshKey]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
