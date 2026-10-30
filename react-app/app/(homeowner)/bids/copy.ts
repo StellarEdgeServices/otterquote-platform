@@ -60,3 +60,11 @@ export const BADGE_APPLICATION_UNDER_REVIEW = 'Application under review';
 
 /** D-217 profile display line for the no-license state. */
 export const LICENSE_NOT_PROVIDED_LINE = 'License: Not provided by contractor.';
+
+/**
+ * D-317 cl. 5 bid-card mark, VERBATIM from otterquote-ref-product.md § D-317
+ * provision 6 (registry cl. 5): the buyer's bid card is marked
+ * "Bid on detailed measurements". Shown on Shape B ('full') claims only.
+ * Needs LEGAL-READ + R-177 pair (gh-3152). Do not reword (Tier C).
+ */
+export const DETAILED_MEASUREMENT_MARK = 'Bid on detailed measurements';

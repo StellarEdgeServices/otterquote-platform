@@ -20,6 +20,8 @@ import {
   netToContractor,
   statusChip,
 } from '../utils';
+import { claimHasFullMeasurements } from '@/lib/measurement-shape';
+import { DETAILED_MEASUREMENT_MARK } from '../copy';
 import type { BidRow, BidsClaim, ContractorProfile, PublicLicense } from '../types';
 
 const JOB_TYPE: Record<string, { label: string; color: string }> = {
@@ -99,6 +101,9 @@ export function BidCard({
         </div>
         <div>
           <div className="oqb-name">{companyName}</div>
+          {claimHasFullMeasurements(claim) ? (
+            <div className="oqb-detailed-mark" data-gh3152-detailed-mark>{DETAILED_MEASUREMENT_MARK}</div>
+          ) : null}
           <div className="oqb-meta">
             {contractor.years_in_business ? <span>{contractor.years_in_business} years in business</span> : null}
             {contractor.rating ? <span>★ {contractor.rating}</span> : null}

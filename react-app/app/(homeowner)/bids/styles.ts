@@ -52,6 +52,7 @@ export const BIDS_STYLES = `
   .oqb-avatar { width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-weight: 800; overflow: hidden; flex-shrink: 0; }
   .oqb-avatar img { width: 100%; height: 100%; object-fit: cover; }
   .oqb-name { font-weight: 700; font-size: 1rem; }
+  .oqb-detailed-mark { display: inline-block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--amber, #E07B00); border: 1px solid var(--amber, #E07B00); padding: 2px 8px; border-radius: 999px; margin-top: 2px; }
   .oqb-meta { display: flex; gap: 0.6rem; flex-wrap: wrap; color: var(--slate, #94a3b8); font-size: 0.8rem; margin-top: 2px; }
   .oqb-verified { color: var(--green, #16A34A); }
 

@@ -536,7 +536,6 @@
     let currentClaim = null;
     let bids = [];
     let contractors = {};  // keyed by contractor_id
-    let detailedBidContractors = new Set();  // gh-1411 / D-317 cl. 5: contractor ids whose bid gets the detailed-measurement bid mark
     let licensesByContractor = {};  // #534: contractor_licenses_public rows keyed by contractor_id (D-218)
 
     // gh-1964 should-fix: owner-photo blob: URLs created by
@@ -643,23 +642,6 @@
               // a bid whose contractor is missing here should be unreachable (GC note).
               if (!row) console.warn('[bids] contractor profile not in contractors_public (not active/approved?) for contractor', bid.contractor_id);
             });
-          }
-
-          // gh-1411 / D-317 cl. 5: which contractors bought the detailed measurement upgrade for this claim.
-          // Homeowner-safe SECURITY DEFINER RPC (the purchase table's SELECT RLS is user_id = auth.uid(), so a
-          // homeowner cannot read a contractor's purchase row directly). Fail-open: any error, or the RPC
-          // not yet applied, shows no mark; nothing else on the card changes.
-          detailedBidContractors = new Set();
-          try {
-            const { data: detRows, error: detErr } = await sb
-              .rpc('get_claim_detailed_measurement_bidders', { p_claim_id: currentClaim.id });
-            if (detErr) {
-              console.error('[bids] detailed-measurement bidders lookup failed:', detErr.message);
-            } else if (Array.isArray(detRows)) {
-              detRows.forEach(row => { if (row && row.contractor_id) detailedBidContractors.add(row.contractor_id); });
-            }
-          } catch (e) {
-            console.error('[bids] detailed-measurement bidders lookup error:', e);
           }
 
           // #534: homeowner-safe license drill-down (D-218). The view only returns
@@ -1168,6 +1150,10 @@
         // (legacy bids may have fee_percentage=10 from before D-159 was locked).
         const feeLabel = bid.fee_percentage ? `${Math.min(Number(bid.fee_percentage), 5)}%` : '5%';
 
+        // gh-3152 / D-317 cl. 5: Shape B ('full' measurement_shape) only. NULL / absent / any other value is
+        // Shape A and shows no mark (same rule as js/measurement-shape.js resolveClaimMeasurementShape).
+        const isShapeBClaim = !!currentClaim && currentClaim.measurement_shape === 'full';
+
         // Action buttons
         const actionBtn = (function() {
           const cs = currentClaim ? currentClaim.status : null;
@@ -1200,7 +1186,7 @@
               <div class="bid-card-avatar">${avatarHTML}</div>
               <div>
                 <div class="bid-card-name">${esc(c.company_name || 'Contractor')}</div>
-                ${detailedBidContractors.has(bid.contractor_id) ? '<div class="bid-detailed-mark" data-gh1411-detailed-mark>Bid on detailed measurements</div>' : ''}
+                ${isShapeBClaim ? '<div class="bid-detailed-mark" data-gh3152-detailed-mark>Bid on detailed measurements</div>' : ''}
                 <div class="bid-card-meta">
                   ${c.years_in_business ? `<span>${c.years_in_business} years in business</span>` : ''}
                   ${c.rating ? `<span>★ ${c.rating}</span>` : ''}
