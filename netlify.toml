@@ -221,7 +221,7 @@ echo 'STRIPE_PK injected into _site/js/config.js; repo internals excluded from p
   path = "/ref/*"
   function = "ref-redirect"
 
-# P18: POST /ref-bind?rid=<uuid>&code=<code> re-issues the server-set oq_pc
+# P18: POST /ref-bind (JSON body {rid, code}) re-issues the server-set oq_pc
 # cookie with the referral id (same function, see ref-redirect.ts).
 [[edge_functions]]
   path = "/ref-bind"

@@ -217,9 +217,10 @@
                         // a no-op unless the visitor arrived through /ref/<code>.
                         try {
                             await Promise.race([
-                                fetch('/ref-bind?rid=' + encodeURIComponent(referralId) + '&code=' + encodeURIComponent(code), {
+                                fetch('/ref-bind', {
                                     method: 'POST',
-                                    headers: { 'x-oq-bind': '1' },
+                                    headers: { 'x-oq-bind': '1', 'content-type': 'application/json' },
+                                    body: JSON.stringify({ rid: referralId, code: code }),
                                     credentials: 'same-origin',
                                     cache: 'no-store'
                                 }),

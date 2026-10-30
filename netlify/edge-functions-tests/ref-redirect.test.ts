@@ -155,14 +155,14 @@ Deno.test("ref-redirect P18 negative control: a non-/ref path sets no cookie", a
 
 const RID = "11111111-1111-4111-8111-111111111111";
 
-function bind(opts: { rid?: string; code?: string; cookie?: string | null; method?: string; header?: boolean } = {}) {
-  const u = new URL("https://otterquote.com/ref-bind");
-  if (opts.rid !== undefined) u.searchParams.set("rid", opts.rid);
-  u.searchParams.set("code", opts.code ?? "ABC123");
-  const headers = new Headers();
+function bind(opts: { rid?: string; code?: string; cookie?: string | null; method?: string; header?: boolean; rawBody?: string } = {}) {
+  // rid and code travel in the POST body, never the URL (access logs, Referer).
+  const headers = new Headers({ "content-type": "application/json" });
   if (opts.header !== false) headers.set("x-oq-bind", "1");
   if (opts.cookie) headers.set("cookie", opts.cookie);
-  return handler(new Request(u, { method: opts.method ?? "POST", headers }), fakeContext());
+  const method = opts.method ?? "POST";
+  const body = opts.rawBody ?? JSON.stringify({ rid: opts.rid ?? "", code: opts.code ?? "ABC123" });
+  return handler(new Request("https://otterquote.com/ref-bind", { method, headers, body: method === "GET" ? undefined : body }), fakeContext());
 }
 
 function pcCookieHeader(code: string, t: Date, extra: Record<string, unknown> = {}) {
@@ -233,4 +233,33 @@ Deno.test("ref-bind negative controls: bad rid, other partner, no cookie, forged
 Deno.test("ref-bind: buildPartnerCookie is unchanged for plain /ref clicks (no rid)", () => {
   const c = buildPartnerCookie("ABC123")!;
   assertEquals(c.includes("%22r%22"), false);
+});
+
+Deno.test("ref-bind: the rid in the URL is ignored; only the POST body counts", async () => {
+  const u = new URL("https://otterquote.com/ref-bind");
+  u.searchParams.set("rid", RID);
+  u.searchParams.set("code", "ABC123");
+  const res = await handler(
+    new Request(u, { method: "POST", headers: { "x-oq-bind": "1", cookie: pcCookieHeader("ABC123", new Date()) } }),
+    fakeContext(),
+  );
+  assertEquals(res.status, 400); // no JSON body => nothing bound
+  assertEquals(res.headers.get("set-cookie"), null);
+});
+
+Deno.test("ref-bind: a malformed or oversized body is rejected without a cookie", async () => {
+  const good = pcCookieHeader("ABC123", new Date());
+  let r = await bind({ cookie: good, rawBody: "not json" });
+  assertEquals(r.status, 400);
+  assertEquals(r.headers.get("set-cookie"), null);
+  r = await bind({ cookie: good, rawBody: JSON.stringify({ rid: RID, code: "ABC123", pad: "x".repeat(2000) }) });
+  assertEquals(r.status, 413);
+  assertEquals(r.headers.get("set-cookie"), null);
+});
+
+Deno.test("ref-bind: Max-Age never exceeds 90 days, even for a click time inside the skew allowance", async () => {
+  const res = await bind({ rid: RID, cookie: pcCookieHeader("ABC123", new Date(Date.now() + 4 * 60 * 1000)) });
+  const maxAge = Number(parseSetCookie(res)!.attrs.find((a) => a.startsWith("Max-Age="))!.split("=")[1]);
+  assert(maxAge <= PARTNER_COOKIE_MAX_AGE, `Max-Age ${maxAge} <= ${PARTNER_COOKIE_MAX_AGE}`);
+  assertEquals(maxAge, PARTNER_COOKIE_MAX_AGE);
 });

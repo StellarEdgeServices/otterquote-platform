@@ -36,8 +36,9 @@
  * redirect, and browsers cache 301s indefinitely, so a returning visitor would
  * skip this function and never get (or refresh) oq_pc.
  *
- * POST /ref-bind?rid=<uuid>&code=<code> (called by ref.html after
- * track_referral_click succeeds): re-issues oq_pc with the referral id added
+ * POST /ref-bind with a JSON body {rid, code} (called by ref.html after
+ * track_referral_click succeeds; the body, not the URL, carries the rid so it
+ * stays out of access logs and Referer headers): re-issues oq_pc with the referral id added
  * ({c, t, r}), keeping the ORIGINAL click time and the REMAINING lifetime, so
  * the Safari 90-day case carries the referral id the crediting path needs
  * (claims.referral_id), not just a code. The rid is NOT trusted for anything
@@ -100,20 +101,34 @@ export function buildBoundPartnerCookie(
   nowMs: number = Date.now(),
 ): string | null {
   if (!UUID_RE.test(rid)) return null;
-  const remaining = PARTNER_COOKIE_MAX_AGE - Math.floor((nowMs - current.ts) / 1000);
+  // Never more than the 90-day cap, even for a click time inside the 5-minute
+  // clock-skew allowance (that would otherwise add up to 300 s).
+  const remaining = Math.min(
+    PARTNER_COOKIE_MAX_AGE,
+    Math.ceil(PARTNER_COOKIE_MAX_AGE - (nowMs - current.ts) / 1000),
+  );
   if (remaining <= 0) return null;
   return cookieString({ c: current.c, t: current.t, r: rid.toLowerCase() }, remaining);
 }
 
-function bindResponse(req: Request, url: URL): Response {
+async function bindResponse(req: Request): Promise<Response> {
   const headers = new Headers({ "cache-control": "no-store" });
   // POST + a custom header: a cross-site page cannot send this without a CORS
   // preflight, which this function never grants.
   if (req.method !== "POST" || req.headers.get("x-oq-bind") !== "1") {
     return new Response(null, { status: 405, headers });
   }
-  const rid = url.searchParams.get("rid") ?? "";
-  const code = url.searchParams.get("code") ?? "";
+  let rid = "";
+  let code = "";
+  try {
+    const raw = await req.text();
+    if (raw.length > 1024) return new Response(null, { status: 413, headers });
+    const body = JSON.parse(raw);
+    rid = typeof body?.rid === "string" ? body.rid : "";
+    code = typeof body?.code === "string" ? body.code : "";
+  } catch {
+    return new Response(null, { status: 400, headers });
+  }
   const current = parseIncomingPartnerCookie(req.headers.get("cookie"));
   // No oq_pc (the visitor did not arrive through /ref/<code>), or it names a
   // different partner than this click: nothing to bind. Still 204, no cookie.
@@ -127,7 +142,7 @@ function bindResponse(req: Request, url: URL): Response {
 export default async (req: Request, context: any) => {
   const url = new URL(req.url);
 
-  if (url.pathname === "/ref-bind") return bindResponse(req, url);
+  if (url.pathname === "/ref-bind") return await bindResponse(req);
 
   // Expect exactly /ref/<code> — one path segment after /ref/
   const match = url.pathname.match(/^\/ref\/([^/]+)\/?$/);
