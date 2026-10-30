@@ -79,6 +79,17 @@ ok(!/\$5(?![\d,])/.test(visible) && !/measurement fee/i.test(visible), '(b7) no 
 ok(!/\$15|\$50|recruit bonus/i.test(visible), '(b8) only the live $200 fee is stated (no $15, $50 or recruit bonus)');
 ok(/Check your employment agreement and your governing licensing agency/.test(visible), '(b9) D-266 disclaimer kept verbatim');
 ok(!/unbiased|independent/i.test(visible), '(b10) no unbiased/independent');
+// (b11) #3220 ruling (Dustin, 2026-10-30): sponsorship sentence immediately after the D-266 sentence
+const D266 = 'Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.';
+const SPONSOR = 'If you have a sponsorship, brand or employment agreement, check that it allows you to accept referral fees.';
+const flat = visible.replace(/\s+/g, ' ');
+ok(flat.includes(D266 + ' ' + SPONSOR), '(b11) sponsorship sentence immediately follows the verbatim D-266 sentence');
+ok(flat.split(SPONSOR).length === 2 && flat.split(D266).length === 2, '(b11b) each sentence appears exactly once');
+// negative control: if the sponsorship sentence preceded D-266 or D-266 were altered, (b11) must fail
+const swapped = flat.replace(D266 + ' ' + SPONSOR, SPONSOR + ' ' + D266);
+const altered = flat.replace('lawful for you to accept referral fees.', 'lawful for you to accept referral fee.');
+ok(!swapped.includes(D266 + ' ' + SPONSOR), '(b11n1) control: reordered sentences are detected');
+ok(!altered.includes(D266 + ' ' + SPONSOR), '(b11n2) control: an altered D-266 sentence is detected');
 
 // (c) partners.html gate tile
 const partners = read('partners.html');
