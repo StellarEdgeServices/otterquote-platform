@@ -1,0 +1,43 @@
+name: Static P18 Vanity Reserved
+
+# P18 (#3232): scripts/vanity-reserved.test.py fails if any served top-level path (repo root files/folders, react-app top-level
+# routes, _redirects and netlify.toml sources) is missing from the reserved_slugs seed, so a partner's /<slug> can never shadow a
+# served page. Reuses the generator from PR #3223 (scripts/p18-reserved-slugs.py). `pull_request` only, no secrets, read-only token.
+# Path filter: '*' = any root file, '*/*' = any file one folder deep (so a NEW root folder with a file in it is seen), plus the route
+# sources and the seed/generator. A folder whose only files are 2+ levels deep is the one shape this filter can miss.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - '*'
+      - '*/*'
+      - '_redirects'
+      - 'netlify.toml'
+      - 'react-app/app/**'
+      - 'supabase/migrations_drafts/p18_vanity_slug_data*.sql'
+      - 'supabase/migrations/*p18_vanity_slug_data*.sql'
+      - 'scripts/p18-reserved-slugs.py'
+      - 'scripts/vanity-reserved.test.py'
+      - '.github/workflows/static-p18-vanity-reserved.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-p18-vanity-reserved-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  p18-vanity-reserved:
+    name: P18 served paths are reserved
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Served top-level paths are all in the reserved seed (with negative controls)
+        run: python3 scripts/vanity-reserved.test.py
