@@ -228,7 +228,9 @@ serve(async (req: Request) => {
     // admin explicitly passed override_incomplete: true — admin-payouts.html
     // shows a warning dialog before sending it. Fail-safe: lookup error with
     // no override = hold.
-    if (!overrideIncomplete) {
+    // gh-3229 (P18): the monthly measurement-fee payout has no referral or job (referral_id is NULL by design), so the
+    // job-completion gate does not apply to it; every other check above (W-9, payments_blocked) still does.
+    if (!overrideIncomplete && approval.payout_type !== "measurement_fees_monthly") {
       let jobComplete = false;
       let completionCheckError: string | null = null;
 

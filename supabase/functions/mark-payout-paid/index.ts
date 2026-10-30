@@ -303,6 +303,24 @@ serve(async (req: Request) => {
       }
     }
 
+    // ── gh-3229 (P18): monthly measurement-fee payout -> its batched fee events become paid ──
+    // The payout has no referral (referral_id NULL), so the block above did nothing for it. The flip is a service-role RPC
+    // (partner_fee_events_mark_paid) that only acts on a payout already in 'paid'. A failure is logged and returned to the
+    // caller (the payout row is already paid and cannot be re-run through this function); re-run the RPC by hand.
+    let feeEventsPaid: number | null = null;
+    let feeEventsError: string | null = null;
+    if (approval.payout_type === "measurement_fees_monthly") {
+      const { data: flipped, error: flipError } = await supabase.rpc("partner_fee_events_mark_paid", {
+        p_payout_approval_id: payoutApprovalId,
+      });
+      if (flipError) {
+        feeEventsError = flipError.message;
+        console.error(`[${FUNCTION_NAME}] Failed to flip fee events to paid for ${payoutApprovalId}:`, flipError.message);
+      } else {
+        feeEventsPaid = Number(flipped ?? 0);
+      }
+    }
+
     // ── Send "marked as paid" confirmation email to partner ─────────────────
     // Reuse the agent row already loaded by the W-9 gate above (same columns).
     const partnerEmail: string | null = agent.email || null;
@@ -326,7 +344,7 @@ serve(async (req: Request) => {
 
     console.log(`[${FUNCTION_NAME}] Marked payout ${payoutApprovalId} paid — partner email ${emailSent ? "sent" : partnerEmail ? "FAILED" : "skipped (no email)"}`);
 
-    return new Response(JSON.stringify({ ok: true, approval_id: payoutApprovalId, partner_email_sent: emailSent }), {
+    return new Response(JSON.stringify({ ok: true, approval_id: payoutApprovalId, partner_email_sent: emailSent, fee_events_paid: feeEventsPaid, fee_events_error: feeEventsError }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 

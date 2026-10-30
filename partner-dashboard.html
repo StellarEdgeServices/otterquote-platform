@@ -259,6 +259,13 @@
             color: #5A6B7B;
         }
 
+        /* gh-3229 (P18): referral fee summary card */
+        .fee-summary { margin-bottom: var(--sp-12); }
+        .fee-summary h3 { font-family: var(--font-heading); color: var(--navy); margin-bottom: var(--sp-4); }
+        .fee-summary .stats-grid { margin-bottom: var(--sp-4); }
+        .fee-summary .stat-card { cursor: default; }
+        .fee-summary-note { font-family: var(--font-body); font-size: 0.875rem; color: #5A6B7B; }
+
         .section-header {
             font-family: var(--font-heading);
             font-size: 1.5rem;
@@ -1124,6 +1131,11 @@
             </div>
         </div>
 
+        <!-- gh-3229 (P18): referral fee summary. Empty placeholder: loadFeeSummary() builds the card from
+             get_partner_dashboard_stats() only for a resolved non-inspector partner, so no fee wording is in the
+             static HTML (gh-2155 HI-0: inspector context and JS-off must render none). -->
+        <div class="fee-summary" id="partnerFeeSummary" style="display:none;"></div>
+
         <!-- W-9 Status Card &mdash; D-172 (rendered by renderW9Card()) -->
         <div id="w9Upload"></div>
         </div>
@@ -1753,6 +1765,7 @@ Let me know if you have any questions!
                     updateUI();
                     await loadReferrals();
                     await loadStats();
+                    await loadFeeSummary();   // gh-3229: before loadRecruits, which reads recruit earnings from it
                     await loadRecruits();
                 } catch (err) {
                     console.error('Error loading partner data:', err);
@@ -2390,6 +2403,52 @@ Let me know if you have any questions!
             }
         }
 
+        // gh-3229 (P18): server-side stats for the signed-in partner (get_partner_dashboard_stats(), SECURITY DEFINER,
+        // caller from the session only, test rows excluded). Also the source of recruit earnings (the row policy hides other
+        // partners' referrals from this client, so recruit earnings cannot be summed here).
+        var feeStats = null;
+        function fmtCents(c) {
+            var n = Number(c || 0) / 100;
+            return '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
+        }
+        async function loadFeeSummary() {
+            if (!currentPartner) return;
+            try {
+                var res = await sb.rpc('get_partner_dashboard_stats');
+                if (res.error) throw res.error;
+                var row = Array.isArray(res.data) ? res.data[0] : res.data;
+                if (!row) return;
+                feeStats = row;
+                if (!window.currentPartnerAgentType || window.currentPartnerAgentType === 'home_inspector') return;  // no fee, no card
+                var min = fmtCents(row.payout_minimum_cents);
+                var next = Number(row.next_payout_cents || 0);
+                var monthName = new Date(row.next_payout_month + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                var nextSub = next > 0
+                    ? 'measurement referral fees, paid with the ' + monthName + ' batch'
+                    : fmtCents(row.accrued_toward_minimum_cents) + ' toward the ' + min + ' minimum';
+                var n = function (v) { return Number(v || 0).toLocaleString('en-US'); };
+                var card = function (id, label, value, sub) {
+                    return '<div class="stat-card"><span class="stat-card-label">' + label + '</span><span class="stat-card-value" id="' + id + '">' +
+                        value + '</span><span class="stat-card-subtext">' + sub + '</span></div>';
+                };
+                // every interpolated value is a number or a formatted money/month string built above (no stored text)
+                document.getElementById('partnerFeeSummary').innerHTML =
+                    '<h3>Your referral fees</h3><div class="stats-grid">' +
+                    card('feeClicks', 'Clicks', n(row.clicks), 'on your link') +
+                    card('feeSignedUp', 'Homeowners signed up', n(row.homeowners_signed_up), 'created an account') +
+                    card('feeMeasurements', 'Measurements purchased', n(row.measurements_purchased), '$5 referral fee each') +
+                    card('feeJobs', 'Jobs completed', n(row.jobs_completed), '$200 referral fee each') +
+                    card('feeAccrued', 'Referral fees accrued', fmtCents(row.earnings_accrued_cents), 'earned, not yet paid') +
+                    card('feePaid', 'Referral fees paid', fmtCents(row.earnings_paid_cents), 'sent to you') +
+                    card('feeNextPayout', 'Next payout', fmtCents(next), nextSub) +
+                    '</div><p class="fee-summary-note" id="feeSummaryNote">Measurement referral fees ($5 each) are totaled monthly and paid once your balance reaches ' +
+                    min + '; a smaller balance rolls over to the next month.</p>';
+                document.getElementById('partnerFeeSummary').style.display = '';
+            } catch (err) {
+                console.error('Error loading referral fee summary:', err);
+            }
+        }
+
         async function loadRecruits() {
             if (!currentPartner) return;
 
@@ -2409,19 +2468,12 @@ Let me know if you have any questions!
                 // authoritative "Recruit Earnings" stat card sourced from
                 // currentPartner.recruit_earnings. We intentionally do NOT compute
                 // count × $50 — that would include sub-$10K jobs that pay nothing.
+                // gh-3229: computed server-side (get_partner_dashboard_stats().recruits). The browser cannot read other
+                // partners' referrals (row policy), so the old client-side sum always came back 0.
                 if (allRecruits.length > 0) {
-                    const recruitIds = allRecruits.map(r => r.id);
-                    const { data: paidRefs } = await sb
-                        .from('referrals')
-                        .select('referral_agent_id, recruit_commission_amount')
-                        .in('referral_agent_id', recruitIds)
-                        .not('recruit_commission_amount', 'is', null);
-
                     const earningsByRecruit = {};
-                    (paidRefs || []).forEach(r => {
-                        earningsByRecruit[r.referral_agent_id] =
-                            (earningsByRecruit[r.referral_agent_id] || 0) +
-                            Number(r.recruit_commission_amount || 0);
+                    ((feeStats && feeStats.recruits) || []).forEach(r => {
+                        earningsByRecruit[r.recruit_id] = Number(r.earnings_cents || 0) / 100;
                     });
 
                     allRecruits.forEach(r => {
@@ -2439,7 +2491,10 @@ Let me know if you have any questions!
 
         function updateRecruitStats() {
             const count = allRecruits.length;
-            const earnings = Number(currentPartner && currentPartner.recruit_earnings || 0);
+            // gh-3229: server-computed recruit bonus total when available; else the agent record's running counter
+            const earnings = feeStats && feeStats.recruit_earnings_cents != null
+                ? Number(feeStats.recruit_earnings_cents) / 100
+                : Number(currentPartner && currentPartner.recruit_earnings || 0);
 
             document.getElementById('partnersRecruited').textContent = count;
             document.getElementById('recruitEarnings').textContent =
