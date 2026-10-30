@@ -21,6 +21,7 @@
 import type { PartnerRecord } from '@/lib/partner-record';
 import { PARTNER_DISPLAY_LABELS } from '@/lib/agent-types';
 import { RECRUIT_LINK_BASE } from './copy';
+import { referralUpdatesDeclined, declinedReferralLabel, referralFeeEarned } from '@/lib/referral-privacy';
 
 // ── Data models ───────────────────────────────────────────────────────────────
 
@@ -29,13 +30,14 @@ import { RECRUIT_LINK_BASE } from './copy';
  * `display_name` is the homeowner's first name + last initial only (privacy.html 4.7). The RPC never
  * returns homeowner email, phone or address, and direct reads of those `referrals` columns are revoked.
  * (`recruit_commission_amount` rows from the direct column-granted recruit-earnings query reuse this shape.)
+ * gh-3257: `status` is NULL when the homeowner declined updates to their referrer. The RPC's dollar-value column is
+ * always NULL and is deliberately not modelled here: no dashboard renders it.
  */
 export interface PartnerReferral {
   id: string;
   display_name?: string | null;
   created_at?: string | null;
   status?: string | null;
-  job_value?: number | null;
   commission_amount?: number | null;
   recruit_commission_amount?: number | null;
   referral_agent_id?: string | null;
@@ -224,6 +226,24 @@ export function referralStatusClass(status: string | null | undefined): string {
 /** Client cell: masked display_name (first name + last initial) || 'Visitor'. Never an email (gh-3217). */
 export function referralClientName(ref: Pick<PartnerReferral, 'display_name'>): string {
   return ref.display_name || 'Visitor';
+}
+
+/**
+ * gh-3257 (privacy.html 4.7): the Client Name cell for row `index` (0-based, in the partner's full newest-first list).
+ * A row whose homeowner declined updates reads "Referral #N — updates declined"; any other row uses referralClientName().
+ */
+export function referralRowName(ref: Pick<PartnerReferral, 'display_name' | 'status'>, index: number): string {
+  return referralUpdatesDeclined(ref) ? declinedReferralLabel(index) : referralClientName(ref);
+}
+
+/** gh-3257: a declined row shows no progress status (the cell renders '—' instead of a badge). */
+export function referralShowsStatus(ref: Pick<PartnerReferral, 'status'>): boolean {
+  return !referralUpdatesDeclined(ref);
+}
+
+/** gh-3257: the Referral Fee cell — the partner's own fee, only once earned (commission_amount set); else '—'. */
+export function referralFeeCell(ref: Pick<PartnerReferral, 'commission_amount'>): string {
+  return referralFeeEarned(ref) ? fmtMoneyCell(ref.commission_amount) : '—';
 }
 
 /**

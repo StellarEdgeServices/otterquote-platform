@@ -703,7 +703,11 @@ function ReferralsDashboard({ referrals }: { referrals: CustomerReferral[] }) {
                 <td>{cells.friend}</td>
                 <td>{cells.date}</td>
                 <td>
-                  <span className={`status-badge ${cells.statusClass}`}>{cells.statusLabel}</span>
+                  {cells.showStatus ? (
+                    <span className={`status-badge ${cells.statusClass}`}>{cells.statusLabel}</span>
+                  ) : (
+                    '—'
+                  )}
                 </td>
                 <td>{cells.commission}</td>
               </tr>

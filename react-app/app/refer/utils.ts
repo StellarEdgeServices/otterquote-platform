@@ -24,6 +24,8 @@
  * inherently escaped (the static page used innerHTML/textContent assignment).
  */
 
+import { referralUpdatesDeclined, declinedReferralLabel, referralFeeEarned } from '@/lib/referral-privacy';
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 /** Public site origin — matches CONFIG.SITE_URL in js/config.js (hardcoded, as
@@ -48,8 +50,11 @@ export interface CustomerReferral {
   id?: string;
   display_name?: string | null;
   referral_agent_id?: string | null;
+  /** gh-3257: NULL when the homeowner declined updates to their referrer (privacy.html 4.7). */
   status?: string | null;
   created_at?: string | null;
+  commission_amount?: number | null;
+  commission_paid_at?: string | null;
   [key: string]: unknown;
 }
 
@@ -136,14 +141,29 @@ export function referralCommissionCell(status: string | null | undefined): strin
 /** All four table cells in header order [Friend, Date, Status, Commission]. */
 export interface ReferralRowCells {
   friend: string;
+  /** gh-3257: false for a row whose homeowner declined updates — render '—' instead of the status badge. */
+  showStatus: boolean;
   date: string;
   statusLabel: string;
   statusClass: string;
   commission: string;
 }
 export function referralRowCells(ref: CustomerReferral, index: number): ReferralRowCells {
+  // gh-3257 / privacy.html 4.7: "Referral #N — updates declined", no progress status, and the
+  // commission only once earned (commission_amount set) for a row whose homeowner declined updates.
+  if (referralUpdatesDeclined(ref)) {
+    return {
+      friend: declinedReferralLabel(index),
+      showStatus: false,
+      date: referralDate(ref.created_at),
+      statusLabel: '',
+      statusClass: '',
+      commission: referralFeeEarned(ref) ? `$${REFERRAL_COMMISSION_USD}` : '—',
+    };
+  }
   return {
     friend: referralFriendName(ref, index),
+    showStatus: true,
     date: referralDate(ref.created_at),
     statusLabel: referralStatusLabel(ref.status),
     statusClass: referralStatusClass(ref.status),
@@ -170,8 +190,12 @@ export interface ReferralSummary {
  */
 export function summarizeReferrals(referrals: CustomerReferral[]): ReferralSummary {
   const total = referrals.length;
-  const paid = referrals.filter((r) => r.status === 'commission_paid').length;
-  const completedUnpaid = referrals.filter((r) => r.status === 'job_completed').length;
+  // gh-3257: a row whose homeowner declined updates has no status; its commission counts from the
+  // fee fields instead (paid once commission_paid_at is set, pending once commission_amount is set).
+  const declinedPaid = (r: CustomerReferral) => referralUpdatesDeclined(r) && referralFeeEarned(r) && r.commission_paid_at != null;
+  const declinedPending = (r: CustomerReferral) => referralUpdatesDeclined(r) && referralFeeEarned(r) && r.commission_paid_at == null;
+  const paid = referrals.filter((r) => r.status === 'commission_paid' || declinedPaid(r)).length;
+  const completedUnpaid = referrals.filter((r) => r.status === 'job_completed' || declinedPending(r)).length;
   const completed = paid + completedUnpaid;
   const earned = paid * REFERRAL_COMMISSION_USD;
   const pending = completedUnpaid * REFERRAL_COMMISSION_USD;
