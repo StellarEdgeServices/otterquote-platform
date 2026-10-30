@@ -1407,49 +1407,116 @@ export default function GetStartedPage() {
         }
         .gs-left {
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: center;
-          padding: var(--sp-12, 3rem) var(--sp-8, 2rem);
+          padding: 20px var(--sp-8, 2rem) 40px;
+        }
+        /* gh-3266: one contained card, one (left) alignment, tighter rhythm.
+           Colours/radii follow the approved homepage reskin tokens
+           (css/home-reskin.css, #2598 / D-377) adapted to this navy page. */
+        .gs-layout {
+          --gs-card-bg: #142844;      /* --navy-2 */
+          --gs-card-line: #2A3C54;    /* --hr-line-navy */
+          --gs-ink-2: #C7D2DE;        /* --hr-on-navy-2 */
+          --gs-btn-amber: #F08C00;    /* --hr-amber (primary button only) */
         }
         .gs-form-wrap {
           width: 100%;
-          max-width: 440px;
+          max-width: 500px;
+          background: var(--gs-card-bg);
+          border: 1px solid var(--gs-card-line);
+          border-radius: 10px;
+          padding: 20px 28px 20px;
         }
         .gs-form-wrap h1 {
-          font-size: 2rem;
-          margin-bottom: var(--sp-2, 0.5rem);
+          font-size: 1.75rem;
+          line-height: 1.2;
+          margin: 0 0 6px;
           color: var(--white, #fff);
         }
         .gs-subtitle {
-          color: var(--slate, #94a3b8);
-          font-size: 1rem;
-          margin-bottom: var(--sp-8, 2rem);
-          line-height: 1.6;
+          color: var(--gs-ink-2);
+          font-size: 0.95rem;
+          margin: 0 0 var(--sp-5, 1.25rem);
+          line-height: 1.5;
         }
-        /* gh-1901: two-step layout — step indicator + back link */
+        /* gh-1901: two-step layout — step indicator + back link.
+           gh-3266: Back and the indicator share one row. */
+        .gs-topline {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 10px;
+        }
         .gs-step-indicator {
           display: flex;
           align-items: center;
           gap: 8px;
-          font-size: 0.8rem;
+          font-size: 0.75rem;
           font-weight: 600;
-          color: var(--slate, #94a3b8);
-          margin-bottom: var(--sp-4, 1rem);
-          letter-spacing: 0.02em;
+          color: var(--gs-ink-2);
+          margin: 0;
+          letter-spacing: 0.04em;
           text-transform: uppercase;
         }
         .gs-step-indicator .gs-step-current { color: var(--amber, #E07B00); }
         .gs-back-link {
           background: none;
           border: none;
-          color: var(--slate, #94a3b8);
+          color: var(--gs-ink-2);
           font-size: 0.85rem;
           font-family: inherit;
           cursor: pointer;
-          padding: 0;
-          margin-bottom: var(--sp-4, 1rem);
+          padding: 4px 0;
+          margin: 0;
         }
         .gs-back-link:hover { color: var(--amber, #E07B00); }
+        /* gh-3266: "Signing up as" as one tidy block — identity on the left,
+           Edit on the right; the email wraps as a unit, never mid-address. */
+        .form-group.gs-signing-as {
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 10px 14px;
+          background: rgba(255,255,255,0.04);
+          border: 1px solid var(--gs-card-line);
+          border-radius: 8px;
+          font-size: 0.9rem;
+          line-height: 1.45;
+          color: var(--gs-ink-2);
+        }
+        .gs-signing-as strong { color: var(--white, #fff); font-weight: 600; }
+        .gs-signing-as-text { min-width: 0; }
+        .gs-signing-as-email { display: inline-block; max-width: 100%; overflow-wrap: anywhere; color: var(--white, #fff); }
+        .gs-edit-link {
+          flex-shrink: 0;
+          background: none;
+          border: none;
+          padding: 4px 0;
+          color: var(--amber, #E07B00);
+          text-decoration: underline;
+          cursor: pointer;
+          font: inherit;
+          font-weight: 600;
+        }
+        /* gh-3266: legal line sits directly under the submit button; the
+           sign-in / contractor links move to the card's footer row. */
+        .gs-form-wrap .gs-legal { margin-top: -6px; }
+        .gs-card-foot {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px 20px;
+          margin-top: 16px;
+          padding-top: 14px;
+          border-top: 1px solid var(--gs-card-line);
+        }
+        .gs-form-wrap .gs-card-foot .text-sm-center { margin: 0; }
+        .gs-form-wrap .text-sm-center { text-align: left; color: var(--gs-ink-2); }
+        .gs-form-wrap .gs-confirm-sent .text-sm-center { text-align: center; }
+        .gs-form-wrap .gs-oauth-hint { text-align: left; color: var(--gs-ink-2); }
         .project-type-options {
           display: flex;
           gap: var(--sp-3, 0.75rem);
@@ -1477,7 +1544,7 @@ export default function GetStartedPage() {
         .gs-form {
           display: flex;
           flex-direction: column;
-          gap: var(--sp-5, 1.25rem);
+          gap: 14px;
         }
         .form-row {
           display: grid;
@@ -1548,8 +1615,8 @@ export default function GetStartedPage() {
           display: flex;
           align-items: center;
           gap: 12px;
-          margin: 20px 0;
-          color: var(--gray, #64748b);
+          margin: 14px 0 10px;
+          color: var(--gs-ink-2);
           font-size: 13px;
         }
         .oauth-divider::before, .oauth-divider::after {
@@ -1648,7 +1715,7 @@ export default function GetStartedPage() {
           font-size: 0.9rem;
         }
         .btn-primary-full {
-          background: var(--amber, #E07B00);
+          background: var(--gs-btn-amber);
           color: var(--navy, #0B1929);
           border: none;
           border-radius: 8px;
@@ -1716,9 +1783,9 @@ export default function GetStartedPage() {
         .gs-right {
           background: var(--navy-2, #0f2036);
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: center;
-          padding: var(--sp-12, 3rem) var(--sp-8, 2rem);
+          padding: 56px var(--sp-8, 2rem) var(--sp-12, 3rem);
           border-left: 1px solid rgba(255,255,255,0.06);
         }
         .gs-benefits { max-width: 380px; }
@@ -1770,7 +1837,14 @@ export default function GetStartedPage() {
                source order (form, then benefits) now applies at this
                breakpoint too. */
           }
-          .gs-left { padding: 2rem 1.5rem; }
+          .gs-left { padding: 12px 12px 24px; }
+          .gs-form-wrap { padding: 16px 16px 18px; }
+          .gs-form-wrap h1 { font-size: 1.5rem; }
+          .gs-subtitle { margin-bottom: var(--sp-4, 1rem); }
+          /* Phones: Edit drops under the identity so a long email keeps the
+             full width and wraps as a unit instead of mid-address. */
+          .form-group.gs-signing-as { padding: 10px 12px; flex-direction: column; align-items: flex-start; gap: 2px; }
+          .gs-signing-as-email { font-size: 0.85rem; }
           .form-row { grid-template-columns: 1fr; }
           .referral-name-row { grid-template-columns: 1fr; }
         }
@@ -1917,6 +1991,8 @@ export default function GetStartedPage() {
               </form>
             ) : (
               <>
+                {/* gh-3266: Back + step indicator on one row (layout only). */}
+                <div className="gs-topline">
                 <button
                   type="button"
                   className="gs-back-link"
@@ -1929,6 +2005,7 @@ export default function GetStartedPage() {
                   <span>&rarr;</span>
                   <span className="gs-step-current">Your Account</span>
                 </div>
+                </div>
                 <h1>Create Your Account</h1>
                 <p className="gs-subtitle">
                   Takes under a minute. We&apos;ll match {street ? 'your home' : 'you'} with contractors next.
@@ -1940,13 +2017,15 @@ export default function GetStartedPage() {
                     same inputs (state, validation and signUp payload unchanged). */}
                 {identityPrefilled && !editingIdentity && (
                   <div className="form-group gs-signing-as" data-testid="signing-up-as">
-                    <span>
-                      Signing up as <strong>{`${firstName.trim()} ${lastName.trim()}`.trim()}</strong> · {email.trim()}
+                    {/* gh-3266: same text as before ("Signing up as <name> · <email>");
+                        the email is its own span only so it wraps as one unit. */}
+                    <span className="gs-signing-as-text">
+                      Signing up as <strong>{`${firstName.trim()} ${lastName.trim()}`.trim()}</strong> ·{' '}
+                      <span className="gs-signing-as-email">{email.trim()}</span>
                     </span>{' '}
                     <button
                       type="button"
                       className="gs-edit-link"
-                      style={{ background: 'none', border: 'none', padding: 0, color: 'var(--amber, #E07B00)', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}
                       onClick={() => setEditingIdentity(true)}
                     >
                       Edit
@@ -2081,7 +2160,7 @@ export default function GetStartedPage() {
                       onChange={e => { setSmsConsent(e.target.checked); markFieldTouched('sms_consent'); }}
                       onFocus={() => markFieldTouched('sms_consent')}
                     />
-                    <span style={{ fontSize: '0.9rem', lineHeight: 1.5, color: 'var(--slate, #94a3b8)' }}>
+                    <span style={{ fontSize: '0.85rem', lineHeight: 1.45, color: 'var(--gs-ink-2)' }}>
                       {/* gh-1954 (Dustin: ALIGN, comment 5682310604): rendered from
                           legal.ts's SMS_CONSENT_LABEL, not an inline copy, so the two
                           cannot drift apart again. Privacy/Terms links below are
@@ -2115,7 +2194,7 @@ export default function GetStartedPage() {
                       onChange={e => { setReferrerOptOut(e.target.checked); markFieldTouched('referrer_opt_out'); }}
                       onFocus={() => markFieldTouched('referrer_opt_out')}
                     />
-                    <span style={{ fontSize: '0.9rem', lineHeight: 1.5, color: 'var(--slate, #94a3b8)' }}>
+                    <span style={{ fontSize: '0.85rem', lineHeight: 1.45, color: 'var(--gs-ink-2)' }}>
                       <strong style={{ color: 'inherit' }}>Don&apos;t send project updates to the person who referred me</strong>
                       <br />
                       If someone referred you to Otter Quotes, we send them short updates as your project moves —
@@ -2150,21 +2229,16 @@ export default function GetStartedPage() {
                   )}
                 </button>
 
-                <p className="text-sm-center">
+                <p className="text-sm-center gs-legal">
                   By creating an account, you agree to our{' '}
                   <a href="https://otterquote.com/terms.html">Terms of Service</a> and{' '}
                   <a href="https://otterquote.com/privacy.html">Privacy Policy</a>.
                 </p>
 
-                <p className="text-sm-center">
-                  Already have an account?{' '}
-                  <a href={LOGIN_URL}>Sign in here</a>
-                </p>
-
-                <p className="text-sm-center">
-                  Are you a contractor?{' '}
-                  <a href="https://otterquote.com/contractor-join.html">Apply to join here</a>
-                </p>
+                {/* gh-3266: "Already have an account?" / "Are you a contractor?"
+                    moved to the card footer below Google (text unchanged), so
+                    the Terms/Privacy line stays directly under Create My Account
+                    and Google sits right after it, above the fold. */}
                 </form>
 
                 <div className="oauth-divider"><span>or continue with Google</span></div>
@@ -2207,6 +2281,18 @@ export default function GetStartedPage() {
                 <p className="gs-oauth-hint">
                   We&apos;ll carry the details above into your new account.
                 </p>
+
+                <div className="gs-card-foot">
+                <p className="text-sm-center">
+                  Already have an account?{' '}
+                  <a href={LOGIN_URL}>Sign in here</a>
+                </p>
+
+                <p className="text-sm-center">
+                  Are you a contractor?{' '}
+                  <a href="https://otterquote.com/contractor-join.html">Apply to join here</a>
+                </p>
+                </div>
               </>
             )}
           </div>
