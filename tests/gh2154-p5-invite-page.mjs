@@ -230,12 +230,13 @@ async function settle() {
   await new Promise((r) => setTimeout(r, 0));
 }
 
-// ── (8) agreementLinkFor(): home_inspector carries ?track=home_inspector + #track-home-inspector, same as gh-2166 ──
+// ── (8) agreementLinkFor(): home_inspector gets the inspector agreement (gh-3239; was the gh-2166 track-safe link) ──
 {
   try {
     const { api } = runPageScript({ search: '', fetchImpl: async () => { throw new Error('not used'); } });
-    ok(api.agreementLinkFor('home_inspector') === 'partner-agreement.html?track=home_inspector#track-home-inspector',
-      '(8a) agreementLinkFor("home_inspector") === "partner-agreement.html?track=home_inspector#track-home-inspector" (gh-2166 convention)');
+    // gh-3239 (#3242 REVIEW F1): an inspector accepts the inspector agreement (v3-2026-09), which is what partner-invite-accept records.
+    ok(api.agreementLinkFor('home_inspector') === 'partner-agreement-inspector.html',
+      '(8a) agreementLinkFor("home_inspector") === "partner-agreement-inspector.html" (the inspector agreement, v3-2026-09, gh-3239)');
     ok(api.agreementLinkFor('re_agent') === 'partner-agreement.html',
       '(8b) agreementLinkFor("re_agent") === "partner-agreement.html" (no track param for a non-inspector track)');
   } catch (e) {
@@ -266,8 +267,8 @@ async function settle() {
     ok(els.get('inviteForm').style.display === '', '(9d) the accept form is shown after a successful prefill');
     ok(els.get('inviteLoading').style.display === 'none', '(9e) the loading state is hidden after a successful prefill');
     ok(els.get('prefillName').textContent === 'Jamie Rivera', '(9f) prefill populates the name from the EF response');
-    ok(els.get('agreementLink').getAttribute('href') === 'partner-agreement.html?track=home_inspector#track-home-inspector',
-      '(9g) a home_inspector prefill wires the agreement link to the track-safe URL, so an inspector never sees fee terms');
+    ok(els.get('agreementLink').getAttribute('href') === 'partner-agreement-inspector.html',
+      '(9g) a home_inspector prefill wires the agreement link to the inspector agreement, so an inspector sees the text recorded (v3-2026-09) and no fee terms');
   } catch (e) {
     failWithReason('(9) loadInvite() happy path', e.message);
   }

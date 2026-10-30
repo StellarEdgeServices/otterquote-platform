@@ -139,6 +139,12 @@
             margin-top: var(--sp-4);
         }
 
+        /* gh-3239: Partner Agreement v4 notice */
+        .agreement-v4-notice h3 { font-family: var(--font-heading); color: var(--navy); margin: 0 0 var(--sp-2); font-size: 1.1rem; }
+        .agreement-v4-notice p { margin: 0 0 var(--sp-2); }
+        .agreement-v4-notice .agreement-v4-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; margin-top: var(--sp-2); }
+        .agreement-v4-notice .agreement-v4-status { font-size: 0.85rem; margin-top: var(--sp-2); }
+
         .referral-link-label {
             font-family: var(--font-body);
             font-size: 0.85rem;
@@ -921,6 +927,13 @@
             </div>
         </div>
         <div id="partnerDashboardContent">
+        <!-- gh-3239 (#3238): Partner Agreement v4 notice. Empty, hidden placeholder: refreshAgreementV4Notice() (bottom script)
+             builds it only for a resolved partner who has not accepted v4-2026-10 and is not a home inspector (the inspector track
+             accepts partner-agreement-inspector.html, which Amendment No. 1 does not amend yet), so no fee wording is in the static
+             HTML (gh-2155 HI-0). "I accept" calls accept_partner_agreement_v4() (SECURITY DEFINER, caller from auth.uid() only),
+             which records the version, timestamp and IP/UA. Until then the partner stays on v3 and earns no $5 measurement fee. -->
+        <div class="referral-link-section agreement-v4-notice" id="agreementV4Notice" style="display:none;" role="region" aria-label="Updated Partner Agreement"></div>
+
         <!-- gh-2154 P-1: one-time "Set your password" card. Shown when this
              signed-in partner's account was created via the passwordless
              short-signup flow and hasn't set a real password yet
@@ -1750,6 +1763,9 @@ Let me know if you have any questions!
                     // now that currentUser/currentPartner are both resolved.
                     refreshSetPasswordCard(currentUser.id);
 
+                    // gh-3239: Partner Agreement v4 notice + window.partnerAcceptedV4 (read by the #3236 fee card)
+                    refreshAgreementV4Notice();
+
                     updateUI();
                     await loadReferrals();
                     await loadStats();
@@ -2209,7 +2225,7 @@ Let me know if you have any questions!
                             <span style="font-size:1.5rem;">✅</span>
                             <div>
                                 <div style="font-weight:700;color:#15803d;font-size:1rem;">W-9 Verified</div>
-                                <div style="color:#166534;font-size:0.875rem;margin-top:2px;">Verified on ${new Date(w9_verified_at).toLocaleDateString()}. Commission payments are enabled.</div>
+                                <div style="color:#166534;font-size:0.875rem;margin-top:2px;">Verified on ${new Date(w9_verified_at).toLocaleDateString()}. Referral fee payments are enabled.</div>
                             </div>
                         </div>
                     </div>`;
@@ -2238,7 +2254,7 @@ Let me know if you have any questions!
                             <span style="font-size:1.5rem;">⚠️</span>
                             <div style="flex:1;">
                                 <div style="font-weight:700;color:#92400e;font-size:1rem;">Action Required: Submit Your W-9</div>
-                                <div style="color:#78350f;font-size:0.875rem;margin-top:4px;line-height:1.5;">Commission payments are held until we have a completed IRS Form W-9 on file. This is required by the IRS for any partner receiving $600 or more in referral payments per year.</div>
+                                <div style="color:#78350f;font-size:0.875rem;margin-top:4px;line-height:1.5;">Referral fee payments are held until we have a completed IRS Form W-9 on file. This is required by the IRS for any partner receiving $600 or more in referral payments per year.</div>
                                 <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
                                     <button class="btn" onclick="document.getElementById('w9FileInput').click()" style="background:#d97706;border-color:#d97706;font-size:0.9rem;padding:10px 20px;">Upload W-9 PDF</button>
                                     <a href="https://www.irs.gov/pub/irs-pdf/fw9.pdf" target="_blank" style="font-size:0.85rem;color:#92400e;">Download blank W-9 from IRS →</a>
@@ -2519,6 +2535,82 @@ Let me know if you have any questions!
             return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
         }
 
+        // gh-3239 (#3238): Partner Agreement v4 acceptance state.
+        // window.partnerAcceptedV4 is the single client-side flag for "this partner is on v4-2026-10": true only when the row carries the
+        // v4 attestation key or version. The #3236 fee card reads it: v4 partners see the $5 card, everyone else sees
+        // AGREEMENT_V4_FEE_PROMPT. The server is the authority for money (partner_v4_accepted_at() gates accrual); this flag only drives display.
+        var PARTNER_AGREEMENT_CURRENT_VERSION = 'v4-2026-10';
+        var AGREEMENT_V4_FEE_PROMPT = 'Accept the updated agreement to earn the $5 measurement referral fee';
+        window.PARTNER_AGREEMENT_CURRENT_VERSION = PARTNER_AGREEMENT_CURRENT_VERSION;
+        window.AGREEMENT_V4_FEE_PROMPT = AGREEMENT_V4_FEE_PROMPT;
+        window.partnerAcceptedV4 = false;
+        function partnerHasAcceptedV4(p) {
+            if (!p) return false;
+            var att = p.partner_agreement_attestation;
+            if (att && typeof att === 'object' && Object.prototype.hasOwnProperty.call(att, PARTNER_AGREEMENT_CURRENT_VERSION)) return true;
+            return p.partner_agreement_version === PARTNER_AGREEMENT_CURRENT_VERSION;
+        }
+        window.partnerHasAcceptedV4 = partnerHasAcceptedV4;
+
+        function refreshAgreementV4Notice() {
+            var box = document.getElementById('agreementV4Notice');
+            if (!box) return;
+            window.partnerAcceptedV4 = partnerHasAcceptedV4(currentPartner);
+            var isInspector = !currentPartner || currentPartner.agent_type === 'home_inspector';
+            if (!currentPartner || window.partnerAcceptedV4 || isInspector || CONFIG.DEMO_MODE) {
+                box.style.display = 'none';
+                box.innerHTML = '';
+                return;
+            }
+            // static strings only; nothing stored is interpolated
+            box.innerHTML =
+                '<h3>We updated the Partner Agreement</h3>' +
+                '<p>Version v4-2026-10 adds a $5 referral fee for each paid roof measurement by a homeowner you refer, credit for 90 days from your link click, monthly payouts once your balance reaches $25, and rules on telling people you are paid and on your content and messages. Until you accept, your current agreement stays in place.</p>' +
+                '<p><strong id="agreementV4FeePrompt"></strong></p>' +
+                '<div class="agreement-v4-actions">' +
+                    '<a href="/partner-agreement.html" id="agreementV4Link" target="_blank" rel="noopener">Read the updated Partner Agreement (v4-2026-10)</a>' +
+                    '<button type="button" class="btn" id="agreementV4Accept">I accept</button>' +
+                '</div>' +
+                '<div class="agreement-v4-status" id="agreementV4Status" role="status" aria-live="polite"></div>';
+            document.getElementById('agreementV4FeePrompt').textContent = AGREEMENT_V4_FEE_PROMPT + '.';
+            document.getElementById('agreementV4Accept').addEventListener('click', acceptAgreementV4);
+            box.style.display = '';
+        }
+
+        async function acceptAgreementV4() {
+            var btn = document.getElementById('agreementV4Accept');
+            var status = document.getElementById('agreementV4Status');
+            if (!btn || btn.disabled) return;
+            btn.disabled = true;
+            status.style.color = '';
+            status.textContent = 'Saving your acceptance…';
+            try {
+                var res = await sb.rpc('accept_partner_agreement_v4');
+                if (res.error) throw res.error;
+                var row = res.data || {};
+                if (row.agreement_version !== PARTNER_AGREEMENT_CURRENT_VERSION || !row.accepted_at) {
+                    throw new Error('unexpected response');
+                }
+                // reflect the server's record locally; the next page load reads it back from referral_agents
+                var att = Object.assign({}, (currentPartner && currentPartner.partner_agreement_attestation) || {});
+                att[PARTNER_AGREEMENT_CURRENT_VERSION] = { accepted_at: row.accepted_at };
+                currentPartner = Object.assign({}, currentPartner, {
+                    partner_agreement_version: PARTNER_AGREEMENT_CURRENT_VERSION,
+                    partner_agreement_accepted_at: row.accepted_at,
+                    partner_agreement_attestation: att
+                });
+                refreshAgreementV4Notice();
+                try { window.dispatchEvent(new CustomEvent('oq:partner-agreement-v4-accepted', { detail: { accepted_at: row.accepted_at } })); } catch (e) { /* old browser */ }
+                if (typeof window.loadFeeSummary === 'function') { window.loadFeeSummary(); }
+                else if (typeof loadFeeSummary === 'function') { loadFeeSummary(); }
+            } catch (err) {
+                console.error('Partner Agreement v4 acceptance failed:', err);
+                status.style.color = 'var(--red, #B91C1C)';
+                status.textContent = 'We could not record your acceptance. Please try again, or contact support@otterquote.com.';
+                btn.disabled = false;
+            }
+        }
+
         function escapeHtml(s) {
             return String(s).replace(/[&<>"']/g, c => (
                 {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
@@ -2779,9 +2871,9 @@ Let me know if you have any questions!
                 const payoutStatus = payoutStatusByReferral[ref.id] || null;
                 let payoutBadge = '';
                 if (payoutStatus === 'pending_approval') {
-                    payoutBadge = '<span class="payout-badge payout-badge-pending" title="Commissions are paid after job completion and approval.">Pending approval</span>';
+                    payoutBadge = '<span class="payout-badge payout-badge-pending" title="Referral fees are paid after job completion and approval.">Pending approval</span>';
                 } else if (payoutStatus === 'rejected') {
-                    payoutBadge = '<span class="payout-badge payout-badge-rejected" title="Your commission is under review — our team will be in touch">Under Review — our team will be in touch</span>';
+                    payoutBadge = '<span class="payout-badge payout-badge-rejected" title="Your referral fee is under review — our team will be in touch">Under Review — our team will be in touch</span>';
                 }
 
                 return `

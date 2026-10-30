@@ -2,6 +2,7 @@
 // deno test --allow-read=supabase/functions supabase/functions/partner-invite-accept/
 import { assertEquals, assertMatch, assertNotEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import {
+  agreementVersionFor,
   ensurePartnerAuthAccount,
   generateSecurePartnerPassword,
   isInviteEligible,
@@ -138,4 +139,16 @@ Deno.test("ensurePartnerAuthAccount: any other admin API error is fatal -- an ac
   }));
   const result = await ensurePartnerAuthAccount(client, "lead@example.com");
   assertEquals(result.ok, false);
+});
+
+// gh-3239 (#3238): an invite acceptance records the current Partner Agreement, v4-2026-10; a home inspector accepts the
+// inspector agreement, still v3-2026-09 (D-278 exception), the same rule register_partner() applies.
+Deno.test("agreementVersionFor: every fee-bearing type records v4-2026-10", () => {
+  for (const t of ["re_agent", "insurance_agent", "adjuster", "other", "customer"]) {
+    assertEquals(agreementVersionFor(t), "v4-2026-10");
+  }
+});
+
+Deno.test("agreementVersionFor: home_inspector stays on the inspector agreement v3-2026-09", () => {
+  assertEquals(agreementVersionFor("home_inspector"), "v3-2026-09");
 });

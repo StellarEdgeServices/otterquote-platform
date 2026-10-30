@@ -7,7 +7,7 @@
  * NO agreement stamp (see the P-5 migration's LEGAL-READ note) because the
  * lead never saw OtterQuote's Partner Terms checkbox — only Meta's own
  * lead-ad consent. This function is how that partner actually accepts
- * v3-2026-09 and gets activated, the same two facts P-1's own signup forms
+ * the current Partner Agreement (v4-2026-10; v3-2026-09 for a home inspector, gh-3239) and gets activated, the same two facts P-1's own signup forms
  * record on submit (partner_agreement_version/accepted_at/attestation,
  * status='active') — just reached through an invite link instead of a cold
  * signup.
@@ -26,9 +26,9 @@
  *
  * POST { t, agreement_accepted:true } — re-verifies the token, then, only
  *   if agreement_accepted is exactly boolean true, activates the row:
- *   status -> 'active', partner_agreement_version -> 'v3-2026-09',
+ *   status -> 'active', partner_agreement_version -> 'v4-2026-10' (home_inspector: 'v3-2026-09', gh-3239),
  *   partner_agreement_accepted_at -> now(), partner_agreement_attestation ->
- *   { 'v3-2026-09': { accepted_ip, accepted_ua, accepted_at } } — same
+ *   { '<that version>': { accepted_ip, accepted_ua, accepted_at } } — same
  *   shape register_partner() writes for every other partner, so this row
  *   ends up indistinguishable from one that accepted at signup. Idempotent:
  *   a second POST (double-click, retry) with the same token is a no-op
@@ -70,7 +70,14 @@ import {
 } from "./invite-token.ts";
 
 const FUNCTION_NAME = "partner-invite-accept";
-const AGREEMENT_VERSION = "v3-2026-09";
+// gh-3239 (#3238, Partner Agreement Amendment No. 1): new acceptances record v4-2026-10. A home inspector still
+// accepts the inspector agreement (partner-agreement-inspector.html, D-278 exception), which is v3-2026-09 until
+// that variant is amended, so the version stamped follows the row's agent_type. Same rule as register_partner().
+const AGREEMENT_VERSION = "v4-2026-10";
+const INSPECTOR_AGREEMENT_VERSION = "v3-2026-09";
+export function agreementVersionFor(agentType: unknown): string {
+  return agentType === "home_inspector" ? INSPECTOR_AGREEMENT_VERSION : AGREEMENT_VERSION;
+}
 
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
@@ -277,7 +284,7 @@ serve(async (req: Request) => {
     // ruling, so a hard account-creation failure aborts before any write.
     const { data: preRow, error: preRowErr } = await supabase
       .from("referral_agents")
-      .select("email, status, meta_lead_id")
+      .select("email, status, meta_lead_id, agent_type")
       .eq("id", referralAgentId)
       .limit(1)
       .maybeSingle();
@@ -301,15 +308,16 @@ serve(async (req: Request) => {
       (headers.get("x-forwarded-for") || "").split(",")[0].trim() ||
       headers.get("x-real-ip") || null;
     const ua = headers.get("user-agent");
+    const acceptedVersion = agreementVersionFor((preRow as { agent_type?: unknown }).agent_type);  // gh-3239
 
     const { data: updated, error: updateErr } = await supabase
       .from("referral_agents")
       .update({
         status: "active",
-        partner_agreement_version: AGREEMENT_VERSION,
+        partner_agreement_version: acceptedVersion,
         partner_agreement_accepted_at: new Date().toISOString(),
         partner_agreement_attestation: {
-          [AGREEMENT_VERSION]: { accepted_ip: ip, accepted_ua: ua, accepted_at: new Date().toISOString() },
+          [acceptedVersion]: { accepted_ip: ip, accepted_ua: ua, accepted_at: new Date().toISOString() },
         },
       })
       .eq("id", referralAgentId)

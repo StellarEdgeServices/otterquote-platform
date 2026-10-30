@@ -6,7 +6,9 @@ A partner's /<slug> must never shadow a path the site already serves. Sources (a
   2. every top-level route folder under react-app/app: a folder with a page.*/route.* file somewhere beneath it, descending
      through route groups "(group)" (they add no URL segment), skipping "_"- and "["-prefixed segments;
   3. the first path segment of every source path in _redirects and every `from = "/..."` in netlify.toml;
-  4. EXTRA, the fixed list the CEO named.
+  4. the first path segment of every exact `[[edge_functions]] path = "/..."` in netlify.toml (gh-3237: `/ref-bind` is served
+     by an edge function and has no file or redirect; wildcard-only paths such as "/*" reserve nothing);
+  5. EXTRA, the fixed list the CEO named.
 Names starting with `home-` are NOT written to the seed: a pattern rule in the database (reserved_slug_pattern_hit) refuses the whole
 `home-` prefix, because a literal staging-page name in a tracked file trips the static pixel gate (T5 in the gh2598 staging-page test).
 
@@ -113,6 +115,19 @@ def redirect_sources(root):
     return found
 
 
+def edge_function_paths(root):
+    """gh-3237: first segment of every netlify.toml `path = "/..."` (edge-function routes). `pattern = '...'` regex routes are
+    prefix routes, handled by p18_slug_is_reserved's LIKE rules (PREFIX_RULES), not by seed rows."""
+    found = set()
+    nt = Path(root) / "netlify.toml"
+    if nt.is_file():
+        for m in re.finditer(r'^\s*path\s*=\s*"([^"]+)"', nt.read_text(encoding="utf-8", errors="replace"), re.MULTILINE):
+            seg = first_segment(m.group(1))
+            if seg:
+                found.add(seg)
+    return found
+
+
 def collect(root=".", names=None):
     """Return the sorted seed list for the tree at `root`."""
     out = set()
@@ -122,6 +137,7 @@ def collect(root=".", names=None):
             out.add(n)
     out |= react_routes(root)
     out |= redirect_sources(root)
+    out |= edge_function_paths(root)
     out.update(EXTRA)
     return sorted(s for s in out if not s.startswith(PATTERN_PREFIXES))
 
