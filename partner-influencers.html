@@ -910,8 +910,8 @@
     <div class="feature-item">
       <div class="feature-check">✓</div>
       <div class="feature-content">
-        <h4>Unique referral link with your name</h4>
-        <p>Your link identifies your referrals, and your audience sees who sent them.</p>
+        <h4>Your own referral link</h4>
+        <p>Your link identifies your referrals, so each one is credited to you.</p>
       </div>
     </div>
 
@@ -942,8 +942,8 @@
     <div class="feature-item">
       <div class="feature-check">✓</div>
       <div class="feature-content">
-        <h4>Monthly portfolio report</h4>
-        <p>Track your referral activity and earnings trends over time.</p>
+        <h4>Referral history by month</h4>
+        <p>Filter your referrals by month and see each one's status and referral fee.</p>
       </div>
     </div>
   </div>
@@ -1572,7 +1572,7 @@
           p_utm_content:      utmContext.content  || null,
           p_fbclid:           utmContext.fbclid   || null,
           p_li_fat_id:        utmContext.liFatId  || null,
-          p_funnel_id:        'influencer', // P18: no-schema marker (agent_type stays 'other'); always tagged so influencer signups are identifiable
+          p_funnel_id:        (agentType === 'other') ? 'influencer' : (utmContext.funnelId || null), // P18: no-schema marker; follows the type confirmed in the dialog -- 'influencer' only when the visitor confirms 'other', otherwise the normal utm/funnel_id behaviour
           // gh-2162 review fix (1): same E2E-test predicate as
           // trade-selector.html:1466 / dashboard.html:1812. Guarded so a
           // missing Auth.isTestEmail falls back to the RPC's own default

@@ -61,7 +61,8 @@ ok((page.match(/\.rpc\('register_partner'/g) || []).length === 1, "(a1) calls re
 ok(/<a href="partner-agreement\.html">Partner Terms<\/a>/.test(page), '(a2) links the same partner-agreement.html');
 ok(/id="terms"[^>]*required/.test(page) && /termsChecked/.test(page), '(a3) same agreement checkbox gate');
 ok(/confirmAgentType\('other'\)/.test(page) && !/confirmAgentType\('re_agent'\)/.test(page), "(a4) confirm step defaults to agent_type 'other'");
-ok(/p_funnel_id:\s+'influencer'/.test(page), "(a5) register_partner called with p_funnel_id 'influencer'");
+ok(/p_funnel_id:\s+\(agentType === 'other'\) \? 'influencer' : \(utmContext\.funnelId \|\| null\)/.test(page), "(a5) p_funnel_id is 'influencer' only when the confirmed type is 'other', else the normal funnel");
+ok(!/p_funnel_id:\s+'influencer'/.test(page), '(a5b) funnel is not hard-coded to influencer');
 ok(!/'influencer'[^;\n]*p_agent_type|p_agent_type:\s+'influencer'/.test(page), "(a6) never sends agent_type 'influencer' (not in the live CHECK constraint)");
 ok(/source:\s*'influencer'/.test(page) && !/source:\s*'re_agent'/.test(page), '(a7) leads row is labelled influencer, not re_agent');
 ok(!/\/ref-re\.html/.test(page), '(a8) no link to the realtor landing page');
@@ -121,6 +122,25 @@ const toRe = await route('re_agent');
 ok(toRe === '/ref-re.html?code=ABC123', "(e2) NEGATIVE CONTROL: re_agent still lands on ref-re.html (got " + toRe + ')');
 const toIns = await route('insurance_agent');
 ok(toIns === '/ref-insurance.html?code=ABC123', '(e3) control: insurance_agent unchanged (got ' + toIns + ')');
+
+const toInsp = await route('home_inspector');
+ok(toInsp === '/ref-inspector.html?code=ABC123', '(e4) control: home_inspector unchanged (got ' + toInsp + ')');
+const toAdj = await route('adjuster');
+ok(toAdj === '/ref-insurance.html?code=ABC123', '(e5) control: adjuster unchanged (got ' + toAdj + ')');
+const toCust = await route('customer');
+ok(toCust === '/ref-re.html?code=ABC123', '(e6) control: customer unchanged (got ' + toCust + ')');
+
+// (g) features claimed on partner pages must exist: no co-branding or monthly-report claims
+const partnerPages = fs.readdirSync(repoRoot).filter((f) => /^partner-.*\.html$/.test(f));
+ok(partnerPages.includes('partner-influencers.html') && partnerPages.includes('partner-re.html'), '(g0) scan covers the influencer and realtor pages (' + partnerPages.length + ' partner pages)');
+for (const f of partnerPages) {
+  const h = read(f);
+  ok(!/your audience sees who sent them/i.test(h), '(g1) ' + f + ': no "your audience sees who sent them" claim');
+  ok(!/Monthly portfolio report/i.test(h), '(g2) ' + f + ': no "Monthly portfolio report" claim');
+}
+ok(/Referral history by month/.test(page) && /Filter your referrals by month and see each one's status and referral fee\./.test(page), '(g3) influencer page uses the corrected report line');
+ok(/Your link identifies your referrals, so each one is credited to you\./.test(page), '(g4) influencer page uses the corrected link line');
+ok(!/p_funnel_id:\s+'influencer'/.test(re), '(h) control: partner-re.html does not tag influencer');
 
 // (f) legal pages untouched
 try {
