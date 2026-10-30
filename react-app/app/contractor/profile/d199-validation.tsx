@@ -110,16 +110,21 @@ export function D199Validation({ contractorId, trade, fundingType, storagePath }
     if (!row?.id) return;
     if (!window.confirm('Submit this template for admin review? You will be notified once Otter Quotes has reviewed it.')) return;
     try {
-      const { data, error } = await supabase
-        .from('contractor_templates')
-        .update({ status: 'submitted_for_admin_review' })
-        .eq('id', row.id)
-        .select('*')
-        .single();
+      // gh-3199: the status transition is server-side only (contractor_templates_freeze_verdict
+      // rewrites any client-written status); the RPC owns it and returns the row.
+      const { data, error } = await supabase.rpc('submit_template_for_admin_review', {
+        p_template_id: row.id,
+        p_overrides: null,
+        p_missing_fields: null,
+      });
       if (error) throw error;
-      if (data) setRow(data as D199Row);
+      if (!data || (data as D199Row).status !== 'submitted_for_admin_review') throw new Error('status_not_reached: submit_template_for_admin_review');
+      setRow(data as D199Row);
     } catch (e) {
-      alert('Could not submit for admin review: ' + (e instanceof Error ? e.message : String(e)));
+      const msg = e instanceof Error ? e.message : String(e);
+      // The internal token goes to the console, not to the contractor (existing prefix, no new copy).
+      if (msg.startsWith('status_not_reached')) { console.error('[D-199] admin review submit did not reach the status:', msg); alert('Could not submit for admin review.'); return; }
+      alert('Could not submit for admin review: ' + msg);
     }
   }
 
@@ -205,19 +210,17 @@ function ManualMappingModal({ row, onClose, onResolved }: {
     }
     try {
       if (missingFields.length > 0) {
-        // gh-2105 batch 3 (legal: D-199 template verdict path). Chain .select('id') and
-        // fail loudly on a zero-row match (RLS-denied or wrong id resolves error:null with
-        // no row written, so the contractor saw "Submitted for admin review" for nothing).
-        // This proves the row matched, not the final `status` value: the
-        // contractor_templates_freeze_verdict trigger always rewrites status for a regular
-        // contractor; the success alert is not yet true (#2717 Q2, server-side RPC).
-        const { data: persistedRows, error: persistErr } = await supabase
-          .from('contractor_templates')
-          .update({ manual_overrides: { ...overrides, _missing_fields: missingFields }, status: 'submitted_for_admin_review' })
-          .eq('id', row.id!)
-          .select('id');
+        // gh-3199 (#2717 Q2, Ben's ruling on #3199): overrides and status land in one server-side
+        // transaction through submit_template_for_admin_review. A direct client update cannot reach
+        // 'submitted_for_admin_review' because contractor_templates_freeze_verdict rewrites status.
+        // The success alert below is only shown once the RPC returns the row in that status.
+        const { data: submitted, error: persistErr } = await supabase.rpc('submit_template_for_admin_review', {
+          p_template_id: row.id!,
+          p_overrides: overrides,
+          p_missing_fields: missingFields,
+        });
         if (persistErr) throw persistErr;
-        if (!Array.isArray(persistedRows) || persistedRows.length === 0) throw new Error('update_zero_rows: contractor_templates (manual mapping submit)');
+        if (!submitted || (submitted as D199Row).status !== 'submitted_for_admin_review') throw new Error('update_zero_rows: contractor_templates (manual mapping submit)');
         const { data: refreshed } = await supabase.from('contractor_templates').select('*').eq('id', row.id!).single();
         alert('Submitted for admin review. We will notify you once a member of the Otter Quotes team has looked at your template.');
         onResolved((refreshed as D199Row) ?? row);
