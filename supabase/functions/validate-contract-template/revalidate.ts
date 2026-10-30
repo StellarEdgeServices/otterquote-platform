@@ -30,6 +30,7 @@ import {
   foundFieldIds,
   isTemplateUsable,
 } from "./template-validity.ts";
+import { applyRejectionHold, skipForAdminVerdict } from "./admin-verdict-hold.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 export interface RevalidateOptions {
@@ -37,6 +38,8 @@ export interface RevalidateOptions {
   dryRun: boolean;
   /** Re-run even rows whose stored manifestVersion already equals current. Default false. */
   force?: boolean;
+  /** [gh-3224] Also re-scan `rejected` / `admin_validated` rows. Admin-only at the HTTP layer. Default false. */
+  forceAdminVerdicts?: boolean;
   /** Restrict to these template ids (optional). */
   templateIds?: string[];
   extractPdfText: (bytes: Uint8Array) => Promise<string>;
@@ -72,6 +75,8 @@ export interface RevalidateReport {
   dryRun: boolean;
   currentManifestVersion: string;
   scanned: number;
+  /** [gh-3224] rows left alone because an admin's verdict (`rejected` / `admin_validated`) is on them. */
+  skippedAdminVerdict: number;
   stale: number;
   written: number;
   wouldPass: number;
@@ -111,6 +116,7 @@ export async function revalidateTemplates(opts: RevalidateOptions): Promise<Reva
     dryRun,
     currentManifestVersion: current,
     scanned: 0,
+    skippedAdminVerdict: 0,
     stale: 0,
     written: 0,
     wouldPass: 0,
@@ -121,6 +127,11 @@ export async function revalidateTemplates(opts: RevalidateOptions): Promise<Reva
 
   for (const tmpl of rows ?? []) {
     report.scanned++;
+    // [gh-3224] An admin's verdict is not automation's to rewrite.
+    if (skipForAdminVerdict(tmpl.status, opts.forceAdminVerdicts === true)) {
+      report.skippedAdminVerdict++;
+      continue;
+    }
     if (!opts.force && !isStale(tmpl, current)) continue;
     report.stale++;
 
@@ -205,7 +216,15 @@ export async function revalidateTemplates(opts: RevalidateOptions): Promise<Reva
       // Provenance: this result came from the revalidation pass, not an upload.
       revalidated: { from: rowReport.before.manifestVersion, at: now().toISOString() },
     };
-    const newStatus = nextStatus(allRequiredFound, manualOverrides);
+    // [gh-3224] a previously rejected template goes to an admin, never to a validated status; fail closed.
+    const held = await applyRejectionHold(supabase, tmpl.id, nextStatus(allRequiredFound, manualOverrides));
+    if (!held.ok) {
+      rowReport.error = `Admin verdict lookup failed, nothing written: ${held.error}`;
+      report.errors++;
+      continue;
+    }
+    const newStatus = held.status;
+    if (held.held) (validationResult as any).heldForAdminReview = true;
     const afterU = isTemplateUsable(
       { ...tmpl, status: newStatus, validation_result: validationResult },
       current,
@@ -232,6 +251,10 @@ export async function revalidateTemplates(opts: RevalidateOptions): Promise<Reva
       .from("contractor_templates")
       .update({ validation_result: validationResult, status: newStatus })
       .eq("id", tmpl.id)
+      // [gh-3224] Conditional on the status read at the start of this pass (mirrors gh-3216 / ruling 5 in
+      // index.ts): if an admin verdict (rejected / admin_validated) landed while the pass ran, this matches
+      // zero rows and the gh2105 branch below reports an error without writing over the verdict.
+      .eq("status", tmpl.status)
       .select("id");
     if (updateErr) {
       rowReport.error = `Failed to update template: ${updateErr.message}`;
@@ -241,7 +264,7 @@ export async function revalidateTemplates(opts: RevalidateOptions): Promise<Reva
     // gh-2105 (decision a, legal): `tmpl` was already read from this same
     // table earlier in this pass, so a zero-row match here means the row
     // changed out from under the sweep (deleted, RLS) between that read and
-    // this write -- without this check `report.written` would count a
+    // this write (gh-3224: including a status change, e.g. an admin verdict) -- without this check `report.written` would count a
     // revalidation that never actually persisted the new verdict.
     if (!checkRowsWritten(updateRows).wroteRows) {
       rowReport.error = zeroRowWriteMessage("validate-contract-template/revalidate", `contractor_templates.status=${newStatus} for template ${tmpl.id}`);

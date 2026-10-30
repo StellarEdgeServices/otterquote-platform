@@ -211,6 +211,22 @@
                             oq_referral_agent_id: agent.id,
                             oq_referral_code: code
                         }, { click: true });
+                        // P18: add the referral id to the server-set oq_pc cookie so the
+                        // 90-day Safari case carries the id the crediting path needs, not
+                        // only the code. Best effort (bounded wait, never blocks the hop);
+                        // a no-op unless the visitor arrived through /ref/<code>.
+                        try {
+                            await Promise.race([
+                                fetch('/ref-bind', {
+                                    method: 'POST',
+                                    headers: { 'x-oq-bind': '1', 'content-type': 'application/json' },
+                                    body: JSON.stringify({ rid: referralId, code: code }),
+                                    credentials: 'same-origin',
+                                    cache: 'no-store'
+                                }),
+                                new Promise(function (resolve) { setTimeout(resolve, 1500); })
+                            ]);
+                        } catch (bindErr) { /* non-fatal */ }
                     } else {
                         sessionStorage.setItem('oq_referral_agent_id', agent.id);
                         sessionStorage.setItem('oq_referral_id', referralId);
