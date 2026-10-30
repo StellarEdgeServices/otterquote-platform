@@ -9,12 +9,18 @@ DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 
 Issue #3217 (P18). R-134 protective-only (removes partner access to homeowner contact data). Needs REVIEW + LEGAL-READ + R-177 pair; CTO applies.
 
-## What it changes
-1. Adds `public.get_my_referrals()` (SECURITY DEFINER, `search_path = public, pg_temp`, EXECUTE to authenticated and service_role only). Returns id, status, created_at, display_name (first name + last initial), job_value, commission_amount, commission_paid_at, recruit_commission_amount, recruit_paid_at, is_test, referral_agent_id. No email, phone, address or city.
-2. Revokes table-level SELECT on `public.referrals` from `anon` and `authenticated`; re-grants column SELECT to `authenticated` on id, created_at, referral_agent_id, status, job_value, commission_amount, recruit_commission_amount only. homeowner_name, homeowner_email, homeowner_phone and metadata are no longer readable by client roles.
+## What it changes (two draft files)
+**Part A, `gh3217a_get_my_referrals.sql` (additive).** Adds `public.get_my_referrals()` (SECURITY DEFINER, `search_path = public, pg_temp`, EXECUTE to authenticated and service_role only; PUBLIC and anon revoked). Returns id, status, created_at, display_name (first name + last initial), job_value, commission_amount, commission_paid_at, recruit_commission_amount, recruit_paid_at, is_test, referral_agent_id. No email, phone, address or city. Removes nothing; the live pages keep working.
 
-## Deploy order (important)
-The old dashboards run `select('*')` on referrals; once the migration lands that query fails with permission denied. The new dashboards (this PR) call `get_my_referrals()`, which does not exist until the migration lands. There is no ordering with zero gap, so: apply the migration, then let the Netlify deploy of this PR finish immediately after (or merge first and apply as soon as the deploy is live; a partner dashboard that cannot load the referral list for a few minutes is the failure mode, no data is exposed or lost). Smoke-test /partner-dashboard.html and /refer-a-friend.html straight after. Today there are 2 non-test partners.
+**Part B, `gh3217b_referrals_column_allowlist.sql` (the lockdown).** Revokes table-level SELECT on `public.referrals` from `anon` and `authenticated`; re-grants column SELECT to `authenticated` on id, created_at, referral_agent_id, status, job_value, commission_amount, recruit_commission_amount only. homeowner_name, homeowner_email, homeowner_phone and metadata are no longer readable by client roles.
+
+## Apply order (zero outage)
+1. Apply Part A. Nothing is removed, so the old dashboards keep working.
+2. Merge and deploy the frontend of PR #3225 (it calls `get_my_referrals()`, which now exists).
+3. Smoke-test as a partner: /partner-dashboard.html, /refer-a-friend.html, React /partner/dashboard, React /refer. Each must list referrals with masked names and no console error.
+4. Apply Part B. Re-run the smoke test and the proof.
+
+Do not apply B before step 3 passes: until the frontend is live the old `select('*')` calls would fail with permission denied.
 
 ## Live state read (2026-10-30, read-only)
 - Policies on referrals: "Agents can read own referrals" (SELECT, public, EXISTS referral_agents.user_id = auth.uid()); "Service role full access" (ALL). Left unchanged.
@@ -25,5 +31,9 @@ The old dashboards run `select('*')` on referrals; once the migration lands that
 ## Verify
 Run `supabase/tests/gh3217_mask_referral_homeowner_proof.sql` (single rolled-back batch; the result is in the final exception message). Spot check as a partner: `select homeowner_email from referrals` -> permission denied; `select * from get_my_referrals()` -> own rows, masked names.
 
-## Rollback
-`gh3217_mask_referral_homeowner_rollback.sql` restores table-level SELECT for anon and authenticated and drops the function. It re-opens the breach.
+## Rollback (one file per part)
+- `gh3217b_referrals_column_allowlist_rollback.sql`: restores table-level SELECT for anon and authenticated exactly as read live (relacl authenticated=rwdDxtm, anon=rwdDxtm, no column ACLs) and KEEPS the function, so the deployed frontend keeps working. It re-opens the breach.
+- `gh3217a_get_my_referrals_rollback.sql`: drops the function. Use only BEFORE the frontend deploys (or after it is reverted); otherwise the live pages lose their referral lists. Roll B back first if B is applied.
+
+## Verify
+Run `supabase/tests/gh3217_mask_referral_homeowner_proof.sql` in a single rolled-back batch: after A alone (nothing removed: direct reads still work, RPC masked), after A+B (locked), and after B's rollback (restored). Spot check as a partner: `select homeowner_email from referrals` -> permission denied after B; `select * from get_my_referrals()` -> own rows, masked names.

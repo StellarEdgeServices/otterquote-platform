@@ -1,11 +1,14 @@
 -- gh-3217 proof: partners can no longer read referred homeowners' email/phone; get_my_referrals() returns masked names only
--- (draft migration supabase/migrations_drafts/gh3217_mask_referral_homeowner.sql).
+-- (draft migrations supabase/migrations_drafts/gh3217a_get_my_referrals.sql = Part A, additive, and gh3217b_referrals_column_allowlist.sql = Part B, the lockdown).
 -- Run against production (yeszghaspzwwstvsrioa) as ONE statement batch that is forced to roll back: every row below is a fixture
 -- created inside the transaction (auth users, referral agents, referrals, all is_test=true unless a step says otherwise), no real
 -- row is read or written, and the last statement is a deliberate RAISE EXCEPTION, so nothing commits (same pattern as
 -- gh2997_inherit_is_test_proof.sql).
 --   BEFORE the fix : run this file alone.  -> the defect: A1-A4 return data instead of ERR 42501; F1 'ERR 42883' (no function).
---   AFTER the fix  : replace the @@MIGRATION@@ line with the migration body (its own BEGIN;/COMMIT; lines removed), same batch.
+--   A ONLY         : replace the @@MIGRATION@@ line with Part A's body (nothing removed: direct reads still work, the RPC is masked).
+--   A + B          : replace it with Part A then Part B (BEGIN;/COMMIT; lines removed), same batch  -> the 'Expected AFTER' list below.
+--   B ROLLED BACK  : A, B, then B's rollback body (grants restored, function kept)  -> as A ONLY.
+--   A ROLLED BACK  : A then A's rollback (function dropped; only valid before the frontend deploys)  -> as BEFORE.
 -- Sessions are simulated with SET LOCAL ROLE + request.jwt.claims; a failed statement reports 'ERR <sqlstate>'.
 -- Fixture data: partner A owns referrals 'Jane Q Public' (email/phone set), one with a NULL name, one whose name field holds an
 --   email address; partner B owns 'Bob Builder'; H is a homeowner (auth user, no referral_agents row).
