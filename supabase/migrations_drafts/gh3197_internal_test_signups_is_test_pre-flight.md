@@ -41,43 +41,45 @@ SELECT tgname FROM pg_trigger WHERE tgrelid='public.claims'::regclass AND NOT tg
 
 ### Behavioural proof (one batch; ends with a deliberate RAISE EXCEPTION so nothing commits)
 Profiles are created the way production creates them: INSERT into `auth.users` fires `on_auth_user_created` -> `handle_new_user()` (SECURITY DEFINER) -> profile row. `profiles.id` and `claims.user_id` both have FKs to `auth.users(id)`, so a direct profile insert would fail 23503. `auth.users` needs only `id` (is_sso_user and is_anonymous default false); set `email`.
+Like supabase/tests/gh2997_inherit_is_test_proof.sql, every result is accumulated into one labelled text variable and returned in the final exception message, so the output survives the rollback.
 ```sql
 DO $t$
 DECLARE
-  u_int uuid := gen_random_uuid();   -- internal: proof+gh3197@otterquote.com
-  u_ext uuid := gen_random_uuid();   -- negative control: proof+gh3197@example.com
-  u_srv uuid := gen_random_uuid();   -- internal, claim inserted as service_role
-  r text;
+  u_int uuid := gen_random_uuid();   -- INT : proof+gh3197@otterquote.com (internal, claim inserted as authenticated)
+  u_ext uuid := gen_random_uuid();   -- EXT : proof+gh3197@example.com (negative control, claims inserted as authenticated)
+  u_srv uuid := gen_random_uuid();   -- SRV : proof+gh3197-srv@otterquote.com (internal, claim inserted as postgres)
+  r text := '';
+  v text;
 BEGIN
   INSERT INTO auth.users(id, email) VALUES (u_int, 'proof+gh3197@otterquote.com'), (u_ext, 'proof+gh3197@example.com'), (u_srv, 'proof+gh3197-srv@otterquote.com');
 
-  -- S1 profiles via the real sign-up path. BEFORE: internal=false. AFTER: internal=true. Control: false both times.
-  SELECT string_agg(email || '=' || is_test, ', ' ORDER BY email) INTO r FROM profiles WHERE id IN (u_int, u_ext, u_srv);
-  RAISE NOTICE 'S1 %', r;
+  -- S1 profiles via the real sign-up path. BEFORE: INT=false SRV=false. AFTER: INT=true SRV=true. EXT=false both times.
+  SELECT string_agg(CASE id WHEN u_int THEN 'INT' WHEN u_ext THEN 'EXT' ELSE 'SRV' END || '=' || is_test, ' ' ORDER BY email) INTO v FROM profiles WHERE id IN (u_int, u_ext, u_srv);
+  r := r || E'\nS1 profiles.is_test [' || v || ']';
 
-  -- S2 claim as the browser does it: authenticated role, JWT of that user, status documents_needed (the RLS-filtered EXISTS runs here)
+  -- S2 claims as the browser inserts them: role authenticated, JWT of that user, status documents_needed (the RLS-filtered EXISTS runs here)
   SET LOCAL ROLE authenticated;
   PERFORM set_config('request.jwt.claims', json_build_object('sub', u_int, 'email', 'proof+gh3197@otterquote.com', 'role', 'authenticated')::text, true);
   INSERT INTO claims(user_id, status) VALUES (u_int, 'documents_needed');
   PERFORM set_config('request.jwt.claims', json_build_object('sub', u_ext, 'email', 'proof+gh3197@example.com', 'role', 'authenticated')::text, true);
   INSERT INTO claims(user_id, status) VALUES (u_ext, 'documents_needed');
+  -- S4 never-lower, through the INSERT block: a second EXT claim inserted as authenticated with explicit is_test = true
+  INSERT INTO claims(user_id, status, is_test) VALUES (u_ext, 'documents_needed', true);
   RESET ROLE;
-  SELECT string_agg(user_id::text || '=' || is_test, ', ' ORDER BY is_test) INTO r FROM claims WHERE user_id IN (u_int, u_ext);
-  RAISE NOTICE 'S2 internal claim must be true, example.com claim must be false: %', r;
+  SELECT string_agg('INT claim=' || is_test, ' ') INTO v FROM claims WHERE user_id = u_int;
+  r := r || E'\nS2 authenticated insert, internal user [' || v || '] (BEFORE false, AFTER true)';
+  SELECT string_agg('EXT claim=' || is_test, ' ' ORDER BY is_test) INTO v FROM claims WHERE user_id = u_ext;
+  r := r || E'\nS2/S4 authenticated inserts, example.com user, default flag and explicit true [' || v || '] (want: one false = negative control, one true = never lowered, both BEFORE and AFTER)';
 
-  -- S3 claim as service_role / postgres (no RLS) for the third user. AFTER: true
+  -- S3 claim inserted as postgres (current_user postgres, no RLS; stands in for service_role). BEFORE false, AFTER true
   INSERT INTO claims(user_id, status) VALUES (u_srv, 'documents_needed');
-  SELECT is_test::text INTO r FROM claims WHERE user_id = u_srv;
-  RAISE NOTICE 'S3 %', r;
+  SELECT 'SRV claim=' || is_test INTO v FROM claims WHERE user_id = u_srv;
+  r := r || E'\nS3 postgres insert, internal user [' || v || ']';
 
-  -- S4 never-lower: explicit is_test=true on the example.com user's claim stays true
-  UPDATE claims SET is_test = true WHERE user_id = u_ext;
-  RAISE NOTICE 'S4 stays true: %', (SELECT is_test FROM claims WHERE user_id = u_ext);
-
-  RAISE EXCEPTION 'gh3197 proof: forced rollback';
+  RAISE EXCEPTION E'gh3197 proof (forced rollback)%', r;
 END $t$;
 ```
-Expected BEFORE the migration: S1 internal rows false, S2 internal claim false, S3 false. Expected AFTER: S1 internal true / example.com false; S2 internal true / example.com false (negative control); S3 true; S4 true. If `set_config` for the JWT or the `authenticated` insert policy rejects the shape, adjust the claim columns to what the trader-selector insert sends; the status must stay `documents_needed` so the born-state refusal does not fire.
+Read the results from the exception text. Expected BEFORE the migration: S1 INT=false SRV=false EXT=false; S2 INT claim=false; S2/S4 EXT claims `false true`; S3 SRV claim=false. Expected AFTER: S1 INT=true SRV=true EXT=false; S2 INT claim=true; S2/S4 EXT claims still `false true` (negative control false, explicit true not lowered); S3 SRV claim=true. If `set_config` for the JWT or the `authenticated` insert policy rejects the shape, adjust the claim columns to what the trade-selector insert sends; the status must stay `documents_needed` so the born-state refusal does not fire.
 
 ## Backfill (decided)
 Ben ruled YES on #3197 (comments 6522509807, amended by 6522674646): a separate, raise-only draft applied in the same R-097 window, with its own rollback listing the ids it changed. Files: `gh3197_backfill_internal_test_is_test.sql` and `gh3197_backfill_internal_test_is_test_rollback.sql`. Ben dropped the row-paste precondition after the live `is_internal_test_email()` rule was read (no real homeowner can match). It must run as service_role / postgres (profiles_freeze_privileged_columns). Apply the migration first, then the backfill.

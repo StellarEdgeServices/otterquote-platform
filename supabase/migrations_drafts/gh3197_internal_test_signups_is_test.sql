@@ -23,7 +23,7 @@
 --   client-role test so service_role / admin inserts inherit too. Every earlier rule is kept verbatim; no second trigger, no new
 --   function, no new RAISE (the CI test counts exactly three 42501 refusals). Only raises false to true, never lowers a true.
 --   The function stays SECURITY INVOKER: a signed-in owner reads their own profiles row (profiles_user_read), service_role bypasses RLS.
--- Not in this file: a backfill UPDATE of the 38 profiles / 3 claims (see the pre-flight, open question).
+-- Not in this file: a backfill UPDATE of the 38 profiles / 3 claims (see the pre-flight and the sibling gh3197_backfill_internal_test_is_test.sql).
 
 BEGIN;
 

@@ -15,18 +15,29 @@
 
 BEGIN;
 
-UPDATE public.profiles
-   SET is_test = true
- WHERE public.is_internal_test_email(email)
-   AND is_test IS NOT TRUE;
--- expected: 38 rows
+DO $bf$
+DECLARE n_profiles int; n_claims int;
+BEGIN
+  UPDATE public.profiles
+     SET is_test = true
+   WHERE public.is_internal_test_email(email)
+     AND is_test IS NOT TRUE;
+  GET DIAGNOSTICS n_profiles = ROW_COUNT;
+  IF n_profiles <> 38 THEN
+    RAISE EXCEPTION 'gh-3197 backfill: expected 38 profiles updated, got % (rows changed since 2026-10-30; re-read and re-ledger before applying)', n_profiles;
+  END IF;
 
-UPDATE public.claims c
-   SET is_test = true
-  FROM public.profiles p
- WHERE p.id = c.user_id
-   AND public.is_internal_test_email(p.email)
-   AND c.is_test IS NOT TRUE;
--- expected: 3 rows
+  UPDATE public.claims c
+     SET is_test = true
+    FROM public.profiles p
+   WHERE p.id = c.user_id
+     AND public.is_internal_test_email(p.email)
+     AND c.is_test IS NOT TRUE;
+  GET DIAGNOSTICS n_claims = ROW_COUNT;
+  IF n_claims <> 3 THEN
+    RAISE EXCEPTION 'gh-3197 backfill: expected 3 claims updated, got % (rows changed since 2026-10-30; re-read and re-ledger before applying)', n_claims;
+  END IF;
+END
+$bf$;
 
 COMMIT;
