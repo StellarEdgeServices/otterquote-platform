@@ -87,8 +87,8 @@ ok(mdLines.length === pageLines.length && firstDiff === -1,
   `(s2) page text equals the source clause by clause (${mdLines.length} lines)` + (firstDiff >= 0 ? ` -- first diff at ${firstDiff}: ${JSON.stringify(mdLines[firstDiff])} vs ${JSON.stringify(pageLines[firstDiff])}` : ''));
 const tampered = agreement.replace('earns no Measurement Referral Fee', 'earns no Measurement Fee');
 ok(htmlBlockText(tampered).join('\n') !== mdLines.join('\n'), '(s3) NEGATIVE CONTROL: a one-word edit to the page is caught by (s2)');
-ok(/Effective Date:<\/strong> <span id="agreementEffectiveDate">\[publication date\]<\/span>/.test(agreement),
-  '(s4) the Effective Date is still the source placeholder "[publication date]" (set it in docs/legal at Dustin\'s publish OK)');
+ok(/Effective Date:<\/strong> <span id="agreementEffectiveDate">October 30, 2026<\/span>/.test(agreement) && !/\[publication date\]/.test(agreement.replace(/<!--[\s\S]*?-->/g, "") + legalMd.replace(/^<!--[\s\S]*?-->/, "")),
+  '(s4) Effective Date is October 30, 2026 (Dustin "PUBLISH V4", 2026-10-30) and no placeholder remains');
 ok(/<a href="#creator-guide-pending" data-placeholder="creator-guide-v2-2026-10">Otter Quotes Creator Guide<\/a>, version v2-2026-10/.test(agreement),
   '(s5) Section 8.2 Creator Guide link is the marked placeholder');
 

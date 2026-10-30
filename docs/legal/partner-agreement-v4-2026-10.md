@@ -1,12 +1,14 @@
 <!-- Partner Referral Agreement v4-2026-10: the single source of the legal text on partner-agreement.html.
      VERBATIM copy (everything after its sentinel line) of In Flight/reports/ceo138-partner-agreement-v4-publishable-20261030.md,
      sha256 of that file: e68918dfd658e79c1b35a85ce8f86a1a687d872a76e6b602164e910a9139fc2e. Wording is LEGAL-READ owned: change it here only with a LEGAL-READ, then run
-     python3 scripts/render-partner-agreement.py; tests/gh3239-partner-agreement-v4.mjs fails if the page and this file disagree. -->
+     python3 scripts/render-partner-agreement.py; tests/gh3239-partner-agreement-v4.mjs fails if the page and this file disagree.
+     One change from that file, by Dustin's ruling "PUBLISH V4" (chat 2026-10-30 10:45 ET, #3238): the Effective Date placeholder
+     "[publication date]" reads "October 30, 2026". -->
 # Partner Referral Agreement
 
 Terms governing your participation in the Otter Quotes Partner Referral Program
 
-**Effective Date:** [publication date]
+**Effective Date:** October 30, 2026
 
 **Version:** v4-2026-10
 
