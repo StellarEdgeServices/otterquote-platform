@@ -345,6 +345,33 @@ describe('OAuth browser-switch carry (?ft= on redirectTo)', () => {
     expect(adoptFirstTouchFromParam(encodeFirstTouchParam(ft))?.utm_source).toBe('youtube');
   });
 
+  it('gh-3002 REAL ORDER: layout capture runs BEFORE the callback adopts ?ft=; the carried touch (tagged or organic) wins', () => {
+    Object.defineProperty(document, 'referrer', { value: 'https://accounts.google.com/', configurable: true });
+    try {
+      for (const carried of [ft, parseFirstTouch('https://otterquote.com/faq', 'https://www.google.com/', NOW)!]) {
+        clearFirstTouch();
+        const enc = encodeFirstTouchParam(carried);
+        window.history.replaceState({}, '', `/auth-callback?code=abc&intent=homeowner&ft=${encodeURIComponent(enc)}`);
+        captureFirstTouch(); // AttributionCapture (layout.tsx) mount effect
+        expect(localStorage.getItem('oq_ft')).toBeNull(); // no /auth-callback touch stored
+        const adopted = adoptFirstTouchFromParam(enc); // auth-callback/page.tsx
+        expect(adopted?.landing_path).toBe(carried.landing_path);
+        expect(adopted?.utm_source).toBe(carried.utm_source);
+        expect(readFirstTouch()?.landing_path).not.toBe('/auth-callback');
+      }
+    } finally {
+      delete (document as unknown as Record<string, unknown>).referrer;
+    }
+  });
+
+  it('gh-3002: /auth-callback with no carried touch stores nothing (no junk landing path); tagged is unchanged', () => {
+    window.history.replaceState({}, '', '/auth-callback?code=abc');
+    expect(captureFirstTouch()).toBeNull();
+    expect(readFirstTouch()).toBeNull();
+    window.history.replaceState({}, '', '/auth-callback?utm_source=fb');
+    expect(captureFirstTouch()?.utm_source).toBe('fb');
+  });
+
   it('gh-3002: an UNTAGGED ?ft= is not adopted when this browser has GPC or oq_ad_optout=1; a tagged one still is', () => {
     const organic = parseFirstTouch('https://otterquote.com/faq', 'https://www.google.com/', NOW)!;
     const enc = encodeFirstTouchParam(organic);

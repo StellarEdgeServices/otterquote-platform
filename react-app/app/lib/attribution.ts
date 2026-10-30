@@ -101,6 +101,11 @@ export function adoptFirstTouchFromParam(raw: string | null | undefined): FirstT
   }
 }
 
+/** Routes Supabase auth returns to; an untagged touch is never captured there (gh-3002). */
+function isAuthReturnPath(pathname: string): boolean {
+  return pathname === '/auth-callback' || pathname.startsWith('/auth-callback/');
+}
+
 /** Store this page's first touch (tagged or not) if none is stored; heal a half-missing store. */
 export function captureFirstTouch(): FirstTouch | null {
   if (!isBrowser()) return null;
@@ -115,6 +120,11 @@ export function captureFirstTouch(): FirstTouch | null {
     }
     const ft = parseFirstTouch(window.location.href, document.referrer);
     if (!ft) return null;
+    // gh-3002: /auth-callback is where every OAuth / email-confirmation round trip lands, never a
+    // visitor's first page. Layout capture runs before the page adopts a carried `?ft=` hand-off,
+    // so an untagged touch stored here would shadow the real one (adopt returns early when a touch
+    // exists). Tagged capture is unchanged.
+    if (!hasTrackedKey(ft) && isAuthReturnPath(window.location.pathname)) return null;
     // Untagged capture honours the ad-sharing opt-out (GPC or oq_ad_optout=1);
     // tagged capture is unchanged from gh-1983.
     if (!hasTrackedKey(ft) && (gpcOptOut() || hasAdOptOutCookie())) return null;

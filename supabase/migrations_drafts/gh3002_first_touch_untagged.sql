@@ -16,6 +16,7 @@
 -- for tagged touches and nothing else was ever attempted.
 --
 -- Semantics after this migration:
+--   * (gh-3002 review) When both client and user_metadata are untagged, the earlier ts wins.
 --   * A payload is usable if it is TAGGED (any tracked key) or carries a
 --     landing_path. Tagged payloads are preferred (client, then user_metadata),
 --     then untagged ones.
@@ -27,6 +28,8 @@
 -- Additive: CREATE OR REPLACE of one function, two new helpers. No column,
 -- policy or trigger is touched. claims_copy_first_touch already copies any row
 -- whose profile first_touch_at IS NOT NULL, so untagged touches flow to claims.
+
+BEGIN;
 
 CREATE OR REPLACE FUNCTION public.gh3002_attr_is_tagged(p jsonb)
 RETURNS boolean
@@ -56,9 +59,25 @@ AS $$
      AND public.gh1983_attr_clean(p->>'landing_path') IS NOT NULL;
 $$;
 
+-- Touch time of a payload for precedence only; NULL/unparseable sorts last.
+CREATE OR REPLACE FUNCTION public.gh3002_attr_ts(p jsonb)
+RETURNS timestamptz
+LANGUAGE plpgsql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path TO 'public', 'pg_temp'
+AS $$
+BEGIN
+  RETURN COALESCE((p->>'ts')::timestamptz, 'infinity'::timestamptz);
+EXCEPTION WHEN OTHERS THEN
+  RETURN 'infinity'::timestamptz;
+END;
+$$;
+
 -- Default privileges grant EXECUTE to anon/authenticated explicitly.
 REVOKE ALL ON FUNCTION public.gh3002_attr_is_tagged(jsonb) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.gh3002_attr_has_path(jsonb)  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.gh3002_attr_ts(jsonb)        FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.record_first_touch_attribution(p_attr jsonb DEFAULT NULL)
 RETURNS jsonb
@@ -92,6 +111,16 @@ BEGIN
     v_attr := p_attr; v_source := 'client'; v_tagged := true;
   ELSIF public.gh3002_attr_is_tagged(v_meta) THEN
     v_attr := v_meta; v_source := 'user_metadata'; v_tagged := true;
+  ELSIF public.gh3002_attr_has_path(p_attr) AND public.gh3002_attr_has_path(v_meta) THEN
+    -- Both untagged: the EARLIEST real landing wins. A sign-up-time user_metadata path is the
+    -- original landing; a later client path (e.g. after a cross-browser confirmation link) must
+    -- not override it. Missing/unparseable ts sorts last.
+    IF public.gh3002_attr_ts(v_meta) <= public.gh3002_attr_ts(p_attr) THEN
+      v_attr := v_meta; v_source := 'user_metadata';
+    ELSE
+      v_attr := p_attr; v_source := 'client';
+    END IF;
+    v_tagged := false;
   ELSIF public.gh3002_attr_has_path(p_attr) THEN
     v_attr := p_attr; v_source := 'client'; v_tagged := false;
   ELSIF public.gh3002_attr_has_path(v_meta) THEN
@@ -163,3 +192,5 @@ $$;
 -- No GRANT/REVOKE is restated for record_first_touch_attribution: CREATE OR REPLACE keeps
 -- its existing privileges (prod 2026-10-23: proacl postgres, authenticated, service_role;
 -- anon has no EXECUTE), and permissions-ratchet gh-1767 forbids a new grant to authenticated.
+
+COMMIT;

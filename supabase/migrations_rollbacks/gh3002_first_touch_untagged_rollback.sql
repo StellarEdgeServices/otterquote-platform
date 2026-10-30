@@ -114,4 +114,5 @@ $$;
 
 DROP FUNCTION IF EXISTS public.gh3002_attr_is_tagged(jsonb);
 DROP FUNCTION IF EXISTS public.gh3002_attr_has_path(jsonb);
+DROP FUNCTION IF EXISTS public.gh3002_attr_ts(jsonb);
 COMMIT;
