@@ -18,5 +18,9 @@ CREATE FUNCTION public.is_admin_email() RETURNS boolean LANGUAGE sql STABLE SET 
   $$ SELECT (auth.jwt() ->> 'email') IN ('dustinstohler1@gmail.com', 'dustin@otterquote.com') $$;
 CREATE FUNCTION public.referral_attribution_window() RETURNS interval LANGUAGE sql IMMUTABLE SET search_path TO 'public', 'pg_temp' AS
   $$ SELECT interval '30 days' $$;
+-- stand-in for #3242's partner_v4_accepted_at(agent): reads a stub table the proof fills (the real function reads referral_agents' agreement columns)
+CREATE TABLE public.gh3229_stub_v4 (agent_id uuid PRIMARY KEY, accepted_at timestamptz);
+CREATE FUNCTION public.partner_v4_accepted_at(p_agent uuid) RETURNS timestamptz LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS
+  $$ SELECT s.accepted_at FROM public.gh3229_stub_v4 s WHERE s.agent_id = p_agent $$;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;

@@ -30,6 +30,9 @@ Issue #3229 (P18). Money: Tier 3B. Needs REVIEW + LEGAL-READ + R-177 pair; CTO a
 - gh3217 (#3225) revokes table SELECT on `referrals` from `authenticated`. `get_partner_dashboard_stats()` is SECURITY DEFINER and does not need that grant; apply in either order.
 - gh3219 (#3226) adds `claims_lock_referral`; the accrual reads `claims.referral_id` after it, so the locked partner is the one paid.
 
+## Apply order (hard prerequisite)
+`gh3239_partner_agreement_v4.sql` (#3242) must be applied BEFORE this migration: the accrual trigger calls `public.partner_v4_accepted_at(uuid)`, and the forward migration refuses (SQLSTATE 55000, nothing changed) if that function does not exist. Accrual rule: `partner_v4_accepted_at(agent) IS NOT NULL AND <= hover_orders.created_at`; a v3 partner earns nothing, now or later, and nothing is held for them. Roll back in reverse order (this set first).
+
 ## Verify
 Run `supabase/tests/gh3229_partner_measurement_fee_proof.sql` (single rolled-back batch; result in the final exception). Local: `supabase/tests/gh3229_partner_measurement_fee_local_run.sh after|before|mutant|rollback`.
 

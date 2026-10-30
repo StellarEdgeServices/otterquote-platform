@@ -18,6 +18,7 @@
 --   B1-B9 the PREVIOUS Eastern month batches (a rerun creates nothing); $20 no batch; payments_blocked no batch; non-admin refused; current and future month refused;
 --         month boundary is America/New_York: an event 30 minutes before Eastern midnight batches, one 30 minutes after stays accrued
 --   F11-F12 (D-402) the window is click -> measurement order created_at (length from referral_attribution_window()): order at w-1 days accrues, at w+1 days does not, even with the claim inside the window
+--   F13-F15 (#3242) v4 gate: partner_v4_accepted_at (stubbed by gh3229_local_stub_extras.sql) set and <= the order's created_at accrues; accepted later or never does not
 --   F4b   two orders sharing one PaymentIntent accrue one fee (UNIQUE payment_ref);  F4c an UPDATE on a pre-existing order accrues nothing (AFTER INSERT only)
 --   P3    the payout turning 'paid' flips its events by itself (trigger); the RPC then flips 0, and repairs an event reverted by hand;  N8 deleting a batch payout releases its events
 --   P1-P3 mark paid flips the events (service role only), once; R1 a rejected batch payout releases its events and the next run re-batches them
@@ -93,6 +94,7 @@ BEGIN
   VALUES (pg_temp.u(100 + n), p_type, 'Proof', 'P' || n, 'gh3229-' || n || '@example.invalid', 'GH3229' || n, pg_temp.u(200 + n), p_test, p_blocked,
           CASE WHEN p_recruiter IS NULL THEN NULL ELSE pg_temp.u(100 + p_recruiter) END,
           CASE WHEN p_recruiter IS NULL THEN NULL ELSE now() - interval '400 days' END);
+  INSERT INTO public.gh3229_stub_v4(agent_id, accepted_at) VALUES (pg_temp.u(100 + n), now() - interval '300 days');   -- default: accepted v4 long ago (stub of #3242's partner_v4_accepted_at)
 END $f$;
 
 -- a claim credited to partner n through a referral clicked p_age before the claim; returns the claim id
@@ -139,6 +141,12 @@ CREATE TEMP TABLE mm ON COMMIT DROP AS SELECT
 SELECT pg_temp.mk_agent(13, 'other');                          -- N, orders this month only
 SELECT pg_temp.mk_agent(14, 'other');                          -- Z, payment reuse / update cases
 SELECT pg_temp.mk_agent(15, 'other');                          -- G, window cases (D-402)
+SELECT pg_temp.mk_agent(16, 'other');                          -- never accepted v4
+SELECT pg_temp.mk_agent(17, 'other');                          -- accepts v4 after the order
+SELECT pg_temp.mk_agent(18, 'other');                          -- accepted v4 an hour before the order
+DELETE FROM public.gh3229_stub_v4 WHERE agent_id = pg_temp.u(116);
+UPDATE public.gh3229_stub_v4 SET accepted_at = now() + interval '1 hour' WHERE agent_id = pg_temp.u(117);
+UPDATE public.gh3229_stub_v4 SET accepted_at = now() - interval '1 hour' WHERE agent_id = pg_temp.u(118);
 CREATE TEMP TABLE o(k text PRIMARY KEY, id uuid) ON COMMIT DROP;
 CREATE TEMP TABLE c(k text PRIMARY KEY, id uuid) ON COMMIT DROP;
 
@@ -181,6 +189,13 @@ INSERT INTO o SELECT 'g1', pg_temp.mk_order((SELECT id FROM c WHERE k = 'g'), 'h
 INSERT INTO o SELECT 'g2', pg_temp.mk_order((SELECT id FROM c WHERE k = 'g'), 'homeowner', NULL, 1500, now() - interval '29 days');
 SELECT pg_temp.chk('F11 order at click + (w - 1 day): accrues', pg_temp.q(format($$ SELECT count(*) FROM partner_fee_events WHERE hover_order_id = %L $$, (SELECT id FROM o WHERE k = 'g1'))), '1');
 SELECT pg_temp.chk('F12 order at click + (w + 1 day), claim filed inside the window: no fee', pg_temp.q(format($$ SELECT count(*) FROM partner_fee_events WHERE hover_order_id = %L $$, (SELECT id FROM o WHERE k = 'g2'))), '0');
+-- F13-F15 v4 gate (#3242): accepted before the order accrues; accepted after the order does not; never accepted does not
+INSERT INTO c VALUES ('v18', pg_temp.mk_claim(18)); INSERT INTO o SELECT 'v18', pg_temp.mk_order((SELECT id FROM c WHERE k = 'v18'));
+INSERT INTO c VALUES ('v17', pg_temp.mk_claim(17)); INSERT INTO o SELECT 'v17', pg_temp.mk_order((SELECT id FROM c WHERE k = 'v17'));
+INSERT INTO c VALUES ('v16', pg_temp.mk_claim(16)); INSERT INTO o SELECT 'v16', pg_temp.mk_order((SELECT id FROM c WHERE k = 'v16'));
+SELECT pg_temp.chk('F13 v4 accepted before the order: accrues', pg_temp.q(format($$ SELECT count(*) FROM partner_fee_events WHERE hover_order_id = %L $$, (SELECT id FROM o WHERE k = 'v18'))), '1');
+SELECT pg_temp.chk('F14 v4 accepted after the order: no fee (and none later)', pg_temp.q(format($$ SELECT count(*) FROM partner_fee_events WHERE hover_order_id = %L $$, (SELECT id FROM o WHERE k = 'v17'))), '0');
+SELECT pg_temp.chk('F15 never accepted v4: no fee', pg_temp.q(format($$ SELECT count(*) FROM partner_fee_events WHERE hover_order_id = %L $$, (SELECT id FROM o WHERE k = 'v16'))), '0');
 -- F5 inspector (D-333)
 INSERT INTO c VALUES ('i', pg_temp.mk_claim(3));
 INSERT INTO o SELECT 'i', pg_temp.mk_order((SELECT id FROM c WHERE k = 'i'));

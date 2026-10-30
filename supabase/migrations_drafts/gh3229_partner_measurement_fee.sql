@@ -33,10 +33,21 @@
 --      partner_fee_events_mark_paid(payout id), service-role only, stays as an idempotent repair tool and is still called by mark-payout-paid.
 --   9. Rejecting a batch payout, or deleting it, releases its events back to accrued (so the money is not stranded as batched).
 --  Month boundaries are America/New_York (the business day), not UTC; only past months can be batched.
+--  10. Agreement gate (v4, #3242): the accrual trigger credits a partner only if partner_v4_accepted_at(agent) is set and not later than the order's created_at.
+--      REFUSES to run unless public.partner_v4_accepted_at(uuid) exists (apply #3242's gh3239_partner_agreement_v4.sql first).
 
 BEGIN;
 
 SET LOCAL lock_timeout = '5s';
+
+-- 0. prerequisite: Partner Agreement v4 (#3242, gh3239_partner_agreement_v4.sql) must already be applied -------------------------------------------------------
+DO $guard$
+BEGIN
+  IF to_regprocedure('public.partner_v4_accepted_at(uuid)') IS NULL THEN
+    RAISE EXCEPTION 'gh3229: public.partner_v4_accepted_at(uuid) does not exist; apply #3242 (gh3239_partner_agreement_v4.sql) first' USING ERRCODE = '55000';
+  END IF;
+END
+$guard$;
 
 -- 1. settings -------------------------------------------------------------------------------------------------------------------------
 INSERT INTO public.platform_settings (key, value) VALUES
@@ -112,6 +123,7 @@ DECLARE
   v_setting       text;
   v_cents         integer;
   v_ref           text;
+  v_v4_at         timestamptz;
 BEGIN
   -- homeowner-paid order: requested by the homeowner, a Stripe payment id on it, and a positive charge
   v_ref := COALESCE(NULLIF(btrim(NEW.homeowner_stripe_payment_intent_id), ''), NULLIF(btrim(NEW.stripe_payment_id), ''));
@@ -147,6 +159,12 @@ BEGIN
 
   -- D-333: no fee to a home inspector
   IF v_agent_type IS NOT DISTINCT FROM 'home_inspector' THEN
+    RETURN NEW;
+  END IF;
+
+  -- Partner Agreement v4 Section 1 (#3242): a partner who had not accepted v4 when the measurement order was created earns no Measurement Referral Fee, now or later
+  v_v4_at := public.partner_v4_accepted_at(v_agent_id);
+  IF v_v4_at IS NULL OR v_v4_at > COALESCE(NEW.created_at, now()) THEN
     RETURN NEW;
   END IF;
 

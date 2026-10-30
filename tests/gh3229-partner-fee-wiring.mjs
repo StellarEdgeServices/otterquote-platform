@@ -54,6 +54,7 @@ ok(!/Commission payments/.test(dash) && !/\$600/.test(dash) && /Referral fee pay
   const cmo = fs.readFileSync(path.join(ROOT, 'supabase/functions/create-measurement-order/index.ts'), 'utf8');
   ok(!/body\.buyer_role === "contractor" \? "contractor" : "homeowner"/.test(cmo) && /buyer_role must be 'homeowner' or 'contractor'/.test(cmo), 'create-measurement-order has no silent homeowner default for buyer_role');
 }
+ok(/if \(!window\.partnerAcceptedV4\)/.test(loader) && /AGREEMENT_V4_FEE_PROMPT/.test(loader), 'fee card only when window.partnerAcceptedV4; otherwise the v4 prompt');
 ok(/midnight Eastern time/.test(admin), 'admin confirm text names Eastern time');
 ok(!/test rows excluded/.test(dash), 'stale test-rows-excluded comment removed');
 ok(dash.indexOf('await loadFeeSummary()') > dash.indexOf('await loadStats()') && dash.indexOf('await loadFeeSummary()') < dash.indexOf('await loadRecruits()'),

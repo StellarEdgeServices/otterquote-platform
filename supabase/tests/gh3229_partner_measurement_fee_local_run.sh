@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # LOCAL throwaway Postgres 16 run of the gh-3229 (P18) proof. Never touches production.
-# usage: gh3229_partner_measurement_fee_local_run.sh [before|after|rollback|mutant-inspector|mutant-minimum|mutant-rls|mutant-void|mutant-testmatch|mutant-payref|mutant-updatearm|mutant-month|mutant-utc|mutant-paidtrigger|mutant-deletetrigger|mutant-claimwindow]
+# usage: gh3229_partner_measurement_fee_local_run.sh [before|after|rollback|mutant-inspector|mutant-minimum|mutant-rls|mutant-void|mutant-testmatch|mutant-payref|mutant-updatearm|mutant-month|mutant-utc|mutant-paidtrigger|mutant-deletetrigger|mutant-claimwindow|mutant-v4gate]
 #   before           : stub only (no migration) + the proof alone -> every row DIFF (negative control)
 #   after            : the forward migration body spliced into the proof -> every row OK
 #   rollback         : forward applied for real, then the rollback; prints leftovers (want 0) and the restored CHECK, then the proof alone (DIFF again)
@@ -14,6 +14,7 @@
 #   mutant-month     : after, but the current Eastern month may be batched  -> B3 (current month) must go DIFF
 #   mutant-utc       : after, but the month boundary is UTC, not Eastern    -> B4/B5/B6/R1/N8 and the rows that count R's 30-minutes-before-midnight event go DIFF
 #   mutant-paidtrigger  : after, but the payout-paid trigger arm is off     -> P3 must go DIFF
+#   mutant-v4gate       : after, but the v4 acceptance gate is off              -> F14, F15 must go DIFF
 #   mutant-claimwindow  : after, but the window is click -> claim (the pre-D-402 rule) -> F12 must go DIFF
 #   mutant-deletetrigger: after, but the payout-delete release is off       -> N8 must go DIFF
 # Needs PG16 binaries (PGBIN, default /usr/lib/postgresql/16/bin) and a user that may run initdb (PGRUN_AS, default postgres).
@@ -51,6 +52,7 @@ case "$MODE" in
   mutant-updatearm) mutate "s/^  AFTER INSERT\$/  AFTER INSERT OR UPDATE OF stripe_payment_id, homeowner_stripe_payment_intent_id/" "accrual trigger also fires on UPDATE" ;;
   mutant-month)     mutate "s/IF v_month >= date_trunc('month', now() AT TIME ZONE 'America\/New_York')::date THEN/IF v_month > date_trunc('month', now() AT TIME ZONE 'America\/New_York')::date THEN/" "current month may be batched" ;;
   mutant-utc)       mutate "s/AT TIME ZONE 'America\/New_York');\$/AT TIME ZONE 'UTC');/" "month boundary is UTC" ;;
+  mutant-v4gate)    mutate "s/IF v_v4_at IS NULL OR v_v4_at > COALESCE(NEW.created_at, now()) THEN/IF false THEN/" "v4 acceptance gate off" ;;
   mutant-claimwindow) splice > "$D/orig.sql"
     sed "s/OR COALESCE(NEW.created_at, now()) > v_ref_created + public.referral_attribution_window() THEN/OR (SELECT cl.created_at FROM public.claims cl WHERE cl.id = NEW.claim_id) > v_ref_created + public.referral_attribution_window() THEN/" "$D/orig.sql" > "$D/mut.sql"
     cmp -s "$D/orig.sql" "$D/mut.sql" && { echo "mutant did not change the SQL" >&2; exit 1; }

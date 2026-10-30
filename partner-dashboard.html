@@ -2420,6 +2420,13 @@ Let me know if you have any questions!
                 if (!row) return;
                 feeStats = row;
                 if (!window.currentPartnerAgentType || window.currentPartnerAgentType === 'home_inspector') return;  // no fee, no card
+                if (!window.partnerAcceptedV4) {   // #3242 / Partner Agreement v4: a partner who has not accepted v4 sees the prompt, not the fee card
+                    var promptEl = document.getElementById('partnerFeeSummary');
+                    promptEl.innerHTML = '<h3>Your referral fees</h3><p class="fee-summary-note">' +
+                        (window.AGREEMENT_V4_FEE_PROMPT || 'Accept the updated agreement to earn the $5 measurement referral fee') + '.</p>';
+                    promptEl.style.display = '';
+                    return;
+                }
                 var min = fmtCents(row.payout_minimum_cents);
                 var next = Number(row.next_payout_cents || 0);
                 var monthName = new Date(row.next_payout_month + 'T00:00:00').toLocaleDateString('en-US', { month: 'long' });
