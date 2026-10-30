@@ -3,15 +3,20 @@
 -- (that chain provides referral_agents, auth.*, roles and partner_v4_accepted_at()). This file adds what
 -- apply_referral_commission() touches, with production's column names (information_schema read 2026-10-30):
 --   claims (only the columns the function reads), quotes (same), referrals, payout_approvals, platform_settings,
---   referral_attribution_window() (production body), vault.decrypted_secrets (empty, as gh2519's proof stubs it: the function
---   then logs "secret not found" and calls no edge function) and net.http_post (a stub that is never reached).
+--   referral_attribution_window() (production body), vault.decrypted_secrets (one placeholder secret, so the edge-function calls are
+--   reached) and net.http_post (records each call in net.proof_calls; nothing is sent).
 -- apply_referral_commission() itself is NOT here: the runner extracts it from
 -- supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql lines 399-658 (md5 7f7d0419..., equal to production).
 \set ON_ERROR_STOP on
 CREATE SCHEMA IF NOT EXISTS vault;
-CREATE VIEW vault.decrypted_secrets AS SELECT NULL::text AS name, NULL::text AS decrypted_secret WHERE false;
+-- vault holds a placeholder cron_service_role_key so the function's edge-function calls are REACHED, and net.http_post records
+-- each call in net.proof_calls instead of sending it (the proof asserts which referrals trigger send-partner-status-email).
+CREATE VIEW vault.decrypted_secrets AS SELECT 'cron_service_role_key'::text AS name, 'proof-placeholder'::text AS decrypted_secret;
 CREATE SCHEMA IF NOT EXISTS net;
-CREATE FUNCTION net.http_post(url text, headers jsonb, body jsonb) RETURNS bigint LANGUAGE sql AS $f$ SELECT 1::bigint $f$;
+CREATE TABLE net.proof_calls (n serial, url text, body jsonb);
+CREATE FUNCTION net.http_post(url text, headers jsonb, body jsonb) RETURNS bigint LANGUAGE sql AS $f$
+  INSERT INTO net.proof_calls (url, body) VALUES (url, body) RETURNING n::bigint
+$f$;
 
 CREATE TABLE public.platform_settings (key text PRIMARY KEY, value jsonb NOT NULL, updated_at timestamptz DEFAULT now());
 

@@ -28,12 +28,13 @@ INSERT INTO public.referral_agents (id, agent_type, first_name, last_name, email
   ('cccccccc-0000-0000-0000-0000000000c3', 'customer', 'C', 'Three', 'c3@proof.invalid', 'v4-2026-10', '2026-11-05T00:00:00Z', '{"v4-2026-10": {"accepted_at": "2026-11-05T00:00:00+00:00"}}', NULL, NULL),
   ('cccccccc-0000-0000-0000-0000000000a1', 're_agent', 'R', 'Agent', 'ra@proof.invalid', 'v3-2026-09', '2026-09-26T12:00:00Z', '{"v3-2026-09": {}}', NULL, NULL);
 
--- one referral -> claim -> selected $15,000 bid per case; completing the claim fires after_claim_completed
-CREATE FUNCTION pg_temp.mk(p_case text, p_agent uuid, p_ref_at timestamptz) RETURNS uuid LANGUAGE plpgsql AS $f$
+-- one referral -> claim -> selected $15,000 bid per case; completing the claim fires after_claim_completed.
+-- p_ref_at = the click (referrals.created_at), p_claim_at = the claim filing (claims.created_at, the gate's reference time).
+CREATE FUNCTION pg_temp.mk(p_case text, p_agent uuid, p_ref_at timestamptz, p_claim_at timestamptz) RETURNS uuid LANGUAGE plpgsql AS $f$
 DECLARE v_ref uuid; v_claim uuid; v_ctr uuid := gen_random_uuid();
 BEGIN
   INSERT INTO public.referrals (referral_agent_id, status, created_at) VALUES (p_agent, 'claim_submitted', p_ref_at) RETURNING id INTO v_ref;
-  INSERT INTO public.claims (referral_id, selected_contractor_id, created_at) VALUES (v_ref, v_ctr, p_ref_at + interval '1 day') RETURNING id INTO v_claim;
+  INSERT INTO public.claims (referral_id, selected_contractor_id, created_at) VALUES (v_ref, v_ctr, p_claim_at) RETURNING id INTO v_claim;
   INSERT INTO public.quotes (claim_id, contractor_id, status, total_price) VALUES (v_claim, v_ctr, 'selected', 15000);
   UPDATE public.claims SET completion_date = now() WHERE id = v_claim;
   PERFORM set_config('proof.ref_' || p_case, v_ref::text, true);
@@ -44,37 +45,47 @@ CREATE FUNCTION pg_temp.outcome(p_case text) RETURNS text LANGUAGE sql AS $f$
       || (SELECT count(*) FROM public.payout_approvals p WHERE p.referral_id = r.id AND p.payout_type = 'commission_referral')::text
     FROM public.referrals r WHERE r.id = current_setting('proof.ref_' || p_case)::uuid
 $f$;
+CREATE FUNCTION pg_temp.fee_emails(p_case text) RETURNS text LANGUAGE sql AS $f$
+  SELECT count(*)::text FROM net.proof_calls c
+   WHERE c.url LIKE '%/send-partner-status-email' AND c.body ->> 'referral_id' = current_setting('proof.ref_' || p_case)
+$f$;
 
-SELECT pg_temp.mk('a', 'cccccccc-0000-0000-0000-0000000000c2', '2026-10-29T12:00:00Z');   -- C2, before the cutoff
-SELECT pg_temp.mk('b', 'cccccccc-0000-0000-0000-0000000000c2', '2026-11-01T12:00:00Z');   -- C2, after the cutoff, never accepted
-SELECT pg_temp.mk('c', 'cccccccc-0000-0000-0000-0000000000c1', '2026-11-01T12:00:00Z');   -- C1, accepted before the referral
-SELECT pg_temp.mk('d', 'cccccccc-0000-0000-0000-0000000000c3', '2026-11-01T12:00:00Z');   -- C3, accepted after the referral
-SELECT pg_temp.mk('e', 'cccccccc-0000-0000-0000-0000000000a1', '2026-11-01T12:00:00Z');   -- re_agent on v3 (not a customer)
-SELECT pg_temp.mk('f', 'cccccccc-0000-0000-0000-0000000000c1', '2026-10-30T15:00:00Z');   -- C1, referral at the exact acceptance instant
+-- cutoff 2026-10-30T14:00Z; C1 accepted 10-30T15:00Z; C3 accepted 11-05; C2 never
+SELECT pg_temp.mk('a',  'cccccccc-0000-0000-0000-0000000000c2', '2026-10-29T12:00:00Z', '2026-10-30T12:00:00Z');  -- C2, click before the cutoff
+SELECT pg_temp.mk('b',  'cccccccc-0000-0000-0000-0000000000c2', '2026-11-01T12:00:00Z', '2026-11-02T12:00:00Z');  -- C2, never accepted
+SELECT pg_temp.mk('c',  'cccccccc-0000-0000-0000-0000000000c1', '2026-11-01T12:00:00Z', '2026-11-02T12:00:00Z');  -- C1, accepted before click and claim
+SELECT pg_temp.mk('d',  'cccccccc-0000-0000-0000-0000000000c3', '2026-11-01T12:00:00Z', '2026-11-06T12:00:00Z');  -- C3, accepted after the click, before the claim
+SELECT pg_temp.mk('d2', 'cccccccc-0000-0000-0000-0000000000c3', '2026-11-01T12:00:00Z', '2026-11-02T12:00:00Z');  -- C3, accepted after the claim
+SELECT pg_temp.mk('e',  'cccccccc-0000-0000-0000-0000000000a1', '2026-11-01T12:00:00Z', '2026-11-02T12:00:00Z');  -- re_agent on v3 (not a customer)
+SELECT pg_temp.mk('f',  'cccccccc-0000-0000-0000-0000000000c1', '2026-10-30T14:30:00Z', '2026-10-30T15:00:00Z');  -- C1, claim at the acceptance instant
+SELECT pg_temp.mk('k',  'cccccccc-0000-0000-0000-0000000000c2', '2026-10-30T14:00:00Z', '2026-10-31T12:00:00Z');  -- C2, click exactly at the cutoff
 
-SELECT pg_temp.chk('A customer referral before the cutoff is honoured under the old program', '200|job_completed|1', '200|job_completed|1', pg_temp.outcome('a'));
-SELECT pg_temp.chk('B customer never accepted v4, referral after the cutoff: no fee, ledgered job_completed', '200|job_completed|1', 'none|job_completed|0', pg_temp.outcome('b'));
+SELECT pg_temp.chk('A customer click before the cutoff is honoured under the old program', '200|job_completed|1', '200|job_completed|1', pg_temp.outcome('a'));
+SELECT pg_temp.chk('B customer never accepted v4, click after the cutoff: no fee, ledgered job_completed', '200|job_completed|1', 'none|job_completed|0', pg_temp.outcome('b'));
 SELECT pg_temp.chk('B2 no recruit bonus to C2''s recruiter on the gated referral', '50', '0',
   (SELECT COALESCE(recruit_commission_amount, 0)::int::text FROM public.referrals WHERE id = current_setting('proof.ref_b')::uuid));
-SELECT pg_temp.chk('C customer accepted v4 before the referral: $200', '200|job_completed|1', '200|job_completed|1', pg_temp.outcome('c'));
-SELECT pg_temp.chk('D customer accepted v4 only after the referral: no fee', '200|job_completed|1', 'none|job_completed|0', pg_temp.outcome('d'));
+SELECT pg_temp.chk('B3 fee email (send-partner-status-email): none for the gated referral B, one for the paid referral C', '1|1', '0|1',
+  pg_temp.fee_emails('b') || '|' || pg_temp.fee_emails('c'));
+SELECT pg_temp.chk('C customer accepted v4 before the click and the claim: $200', '200|job_completed|1', '200|job_completed|1', pg_temp.outcome('c'));
+SELECT pg_temp.chk('D accepted after the click but before the claim was filed: $200 (reading (b))', '200|job_completed|1', '200|job_completed|1', pg_temp.outcome('d'));
+SELECT pg_temp.chk('D2 accepted only after the claim was filed: no fee', '200|job_completed|1', 'none|job_completed|0', pg_temp.outcome('d2'));
 SELECT pg_temp.chk('E non-customer (re_agent, v3) is untouched by the customer gate', '200|job_completed|1', '200|job_completed|1', pg_temp.outcome('e'));
-SELECT pg_temp.chk('F acceptance at the same instant as the referral counts (<=)', '200|job_completed|1', '200|job_completed|1', pg_temp.outcome('f'));
+SELECT pg_temp.chk('F claim filed at the exact acceptance instant counts (<=)', '200|job_completed|1', '200|job_completed|1', pg_temp.outcome('f'));
+SELECT pg_temp.chk('K click exactly at the cutoff instant is post-cutoff (>=): never-accepted customer gated', '200|job_completed|1', 'none|job_completed|0', pg_temp.outcome('k'));
 
--- G: the cutoff key missing fails closed for customers (even a pre-cutoff referral), never for others
+-- G: the cutoff key missing fails closed for customers (even a pre-cutoff click), never for others
 DELETE FROM public.platform_settings WHERE key = 'partner_agreement_v4_published_at';
-SELECT pg_temp.mk('g', 'cccccccc-0000-0000-0000-0000000000c2', '2026-10-29T12:00:00Z');
-SELECT pg_temp.mk('h', 'cccccccc-0000-0000-0000-0000000000a1', '2026-10-29T12:00:00Z');
+SELECT pg_temp.mk('g', 'cccccccc-0000-0000-0000-0000000000c2', '2026-10-29T12:00:00Z', '2026-10-30T12:00:00Z');
+SELECT pg_temp.mk('h', 'cccccccc-0000-0000-0000-0000000000a1', '2026-10-29T12:00:00Z', '2026-10-30T12:00:00Z');
 SELECT pg_temp.chk('G cutoff missing: customer referral gated (fails closed)', '200|job_completed|1', 'none|job_completed|0', pg_temp.outcome('g'));
 SELECT pg_temp.chk('H cutoff missing: non-customer still paid', '200|job_completed|1', '200|job_completed|1', pg_temp.outcome('h'));
 -- I: an unreadable cutoff also fails closed
 INSERT INTO public.platform_settings (key, value) VALUES ('partner_agreement_v4_published_at', to_jsonb('not a date'::text));
-SELECT pg_temp.mk('i', 'cccccccc-0000-0000-0000-0000000000c2', '2026-10-29T12:00:00Z');
-SELECT pg_temp.chk('I cutoff unreadable: customer referral gated (fails closed), trigger did not error', 'none-or-200', 'none|job_completed|0',
-  CASE WHEN current_setting('proof.after') = 'true' THEN pg_temp.outcome('i') ELSE 'none-or-200' END);
+SELECT pg_temp.mk('i', 'cccccccc-0000-0000-0000-0000000000c2', '2026-10-29T12:00:00Z', '2026-10-30T12:00:00Z');
+SELECT pg_temp.chk('I cutoff unreadable: customer referral gated (fails closed), trigger did not error', '200|job_completed|1', 'none|job_completed|0', pg_temp.outcome('i'));
 
 -- J/K: function shape
-SELECT pg_temp.chk('J apply_referral_commission body md5', '7f7d0419c59b9853d4082a713258ddd6', '5bf776f5add118541a8a26200b313444',
+SELECT pg_temp.chk('J apply_referral_commission body md5', '7f7d0419c59b9853d4082a713258ddd6', '2eba9b9601c731cb20f45ef5a18c742b',
   (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure));
 SELECT pg_temp.chk('K still SECURITY DEFINER with search_path public, pg_temp', 'true|search_path=public, pg_temp', 'true|search_path=public, pg_temp',
   (SELECT prosecdef::text || '|' || array_to_string(proconfig, ',') FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure));

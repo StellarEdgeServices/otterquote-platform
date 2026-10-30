@@ -6,7 +6,7 @@
 --
 -- Exact rollback of gh3245_customer_fee_v4_gate.sql: apply_referral_commission() is restated as the audited body
 -- (supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql lines 399-658) and checked against md5 7f7d0419..., and the
--- platform_settings key the forward seeded is deleted. Referrals already ledgered by the gated branch (job_completed, no fee) are NOT
+-- platform_settings key the forward seeded is deleted, after a NOTICE that prints its value (record it: pre-flight "Rollback"). Referrals already ledgered by the gated branch (job_completed, no fee) are NOT
 -- re-accrued by a rollback: after_claim_completed fires only on completion_date NULL -> NOT NULL. List them with the pre-flight query G.
 -- Roll this back BEFORE gh3239 (it calls partner_v4_accepted_at()).
 
@@ -19,7 +19,7 @@ DECLARE
   v_md5 text;
 BEGIN
   SELECT md5(prosrc) INTO v_md5 FROM pg_proc WHERE oid = to_regprocedure('public.apply_referral_commission()');
-  IF v_md5 IS NULL OR v_md5 NOT IN ('5bf776f5add118541a8a26200b313444', '7f7d0419c59b9853d4082a713258ddd6') THEN
+  IF v_md5 IS NULL OR v_md5 NOT IN ('2eba9b9601c731cb20f45ef5a18c742b', '7f7d0419c59b9853d4082a713258ddd6') THEN
     RAISE EXCEPTION 'gh3245 rollback: apply_referral_commission() is neither the gh3245 body nor the audited body (md5 %); restore by hand', v_md5;
   END IF;
 END
@@ -293,6 +293,17 @@ BEGIN
   END IF;
 END
 $check$;
+
+-- Record the cutoff before it goes (a hand-set v4 publish time would otherwise be lost; the pre-flight says to copy this
+-- NOTICE onto the issue so a re-apply can restore it).
+DO $notice$
+DECLARE
+  v_value jsonb;
+BEGIN
+  SELECT value INTO v_value FROM public.platform_settings WHERE key = 'partner_agreement_v4_published_at';
+  RAISE NOTICE 'gh3245 rollback: deleting platform_settings.partner_agreement_v4_published_at = %', COALESCE(v_value::text, '(absent)');
+END
+$notice$;
 
 DELETE FROM public.platform_settings WHERE key = 'partner_agreement_v4_published_at';
 

@@ -37,7 +37,7 @@ SELECT r.id, r.status, r.created_at, a.id AS agent, a.partner_agreement_version
 
 ## Post-apply checks
 ```sql
--- expect 5bf776f5add118541a8a26200b313444, true, {search_path=public, pg_temp}
+-- expect 2eba9b9601c731cb20f45ef5a18c742b, true, {search_path=public, pg_temp}
 SELECT md5(prosrc), prosecdef, proconfig FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure;
 -- expect the cutoff
 SELECT value FROM public.platform_settings WHERE key = 'partner_agreement_v4_published_at';
@@ -53,18 +53,20 @@ SELECT r.id, r.created_at, r.job_value, a.id AS agent
 One platform_settings row. No referral, payout or agent row is touched; the gate acts only when a claim is completed afterwards.
 
 ## Behaviour (customer referrers only; every other agent_type is unchanged)
-| referral created | customer accepted v4 | result |
+| referral created (click) | customer accepted v4 | result |
 |---|---|---|
 | before the cutoff | any | $200 as today (old program) |
-| on/after the cutoff | at or before the referral | $200 |
-| on/after the cutoff | never, or after the referral | no fee, no recruit bonus, no fee email; referral marked job_completed |
+| on/after the cutoff | at or before the claim carrying the referral was filed (claims.created_at; Ben, reading (b), Agreement §9.3) | $200 |
+| on/after the cutoff | never, or after the claim was filed | no fee, no recruit bonus, no fee email; referral marked job_completed |
 | any (cutoff key missing or unreadable) | any | gated, logged (fails closed) |
 
 ## Rollback
-`gh3245_customer_fee_v4_gate_rollback.sql`: restores the audited body (md5 checked) and deletes the cutoff key. Withheld referrals are not
+`gh3245_customer_fee_v4_gate_rollback.sql`: restores the audited body (md5 checked) and deletes the cutoff key. Before the delete it prints
+`NOTICE: gh3245 rollback: deleting platform_settings.partner_agreement_v4_published_at = <value>`. **Copy that value onto #3245** (or read it
+first with query C) so a re-apply can restore the same cutoff with the step 2 INSERT. Withheld referrals are not
 re-accrued (the trigger fires only on completion_date NULL -> NOT NULL); list them with query G and decide by hand. Roll back before gh3239.
 
 ## Proof
 `PGHOST=... PGPORT=... PGUSER=postgres bash supabase/tests/gh3245_customer_fee_v4_gate_proof_run.sh` on a throwaway Postgres 16:
-BASELINE / AFTER / ROLLBACK / REAPPLIED, 12 checks each; a mutant that drops the "at or before the referral" comparison is killed by
-check D; the forward refuses without gh3239.
+BASELINE / AFTER / ROLLBACK / REAPPLIED, 16 checks each, and four mutants, each killed by a named check: acceptance compared with the click
+(D), acceptance timing dropped (D2), `> cutoff` for `>= cutoff` (K), fee email left ungated (B3). The forward refuses without gh3239.

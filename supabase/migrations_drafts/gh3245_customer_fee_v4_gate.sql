@@ -20,7 +20,7 @@
 --      Apply it in the #3242 publish window; if it is applied later, set the key to the v4 publish time first (pre-flight step 2), or every
 --      customer referral between publication and apply is honoured under the old program.
 --   2. apply_referral_commission(): for agent_type 'customer' only, a referral created on or after that cutoff accrues the $200 only when
---      partner_v4_accepted_at(customer) IS NOT NULL AND <= referrals.created_at. Otherwise the referral is ledgered as job_completed with no
+--      partner_v4_accepted_at(customer) IS NOT NULL AND <= claims.created_at of the claim carrying it (Ben, reading (b), Agreement Section 9.3). Otherwise the referral is ledgered as job_completed with no
 --      fee, no recruit bonus and no fee email (the D-333 branch). A missing/unreadable cutoff gates customer referrals (fails closed) and logs it.
 --      Non-customer referrers and the rest of the body are unchanged (the full body is restated below; the diff is the gh-3245 lines).
 
@@ -37,7 +37,7 @@ BEGIN
   END IF;
   SELECT md5(prosrc) INTO v_md5 FROM pg_proc WHERE oid = to_regprocedure('public.apply_referral_commission()');
   IF v_md5 IS NULL OR v_md5 NOT IN ('7f7d0419c59b9853d4082a713258ddd6',    -- audited body (production 2026-10-30)
-                                    '5bf776f5add118541a8a26200b313444') THEN -- this file's body (re-run)
+                                    '2eba9b9601c731cb20f45ef5a18c742b') THEN -- this file's body (re-run)
     RAISE EXCEPTION 'gh3245 guard: apply_referral_commission() body drifted (md5 %); re-audit before applying', v_md5;
   END IF;
 END
@@ -142,9 +142,10 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- ── gh-3245 (#3243, Dustin "YES" 2026-10-30): a refer-a-friend customer earns the $200 on a referral created on or
-  -- after the Partner Agreement v4 publication cutoff only if the customer had accepted v4 at or before that referral was
-  -- created (Agreement: "A customer becomes a Partner only by accepting this Agreement"). A referral created before the
+  -- ── gh-3245 (#3243, Dustin "YES" 2026-10-30; Ben ruling on PR #3249, reading (b)): a refer-a-friend customer earns the
+  -- $200 on a referral created on or after the Partner Agreement v4 publication cutoff only if the customer had accepted v4
+  -- at or before the claim carrying the referral was filed (NEW.created_at: Agreement Section 9.3, "A project starts when the
+  -- homeowner's claim is filed on Otter Quotes"). A referral created before the
   -- cutoff is honoured under the old program. Every other agent_type is untouched. A missing or unreadable cutoff gates
   -- (fails closed) and says so in the log. A gated referral is ledgered like the D-333 branch: job_completed, no fee,
   -- no recruit bonus, no "your fee is on its way" email.
@@ -161,10 +162,10 @@ BEGIN
       RAISE LOG 'apply_referral_commission: gh-3245 partner_agreement_v4_published_at missing or invalid, customer referral gated for referral_id=%', v_referral.id;
     ELSIF v_referral.created_at >= v_v4_cutoff THEN
       v_v4_at := public.partner_v4_accepted_at(v_referrer.id);
-      IF v_v4_at IS NULL OR v_v4_at > v_referral.created_at THEN
+      IF v_v4_at IS NULL OR v_v4_at > NEW.created_at THEN
         v_v4_gated := true;
-        RAISE LOG 'apply_referral_commission: gh-3245 customer % had not accepted Partner Agreement v4 when referral % was created (accepted_at=%), no referral fee accrued',
-          v_referrer.id, v_referral.id, v_v4_at;
+        RAISE LOG 'apply_referral_commission: gh-3245 customer % had not accepted Partner Agreement v4 when claim % (referral %) was filed (accepted_at=% claim.created_at=%), no referral fee accrued',
+          v_referrer.id, NEW.id, v_referral.id, v_v4_at, NEW.created_at;
       END IF;
     END IF;
   END IF;
@@ -212,8 +213,8 @@ BEGIN
                         END
      WHERE id = v_referral.id;
 
-    RAISE LOG 'apply_referral_commission: D-333 no-fee — referrer % is agent_type=home_inspector, no referral fee accrued for referral_id=%',
-      v_referrer.id, v_referral.id;
+    RAISE LOG 'apply_referral_commission: D-333/gh-3245 no-fee — referrer % (agent_type=%, v4 gate=%), no referral fee accrued for referral_id=%',
+      v_referrer.id, v_referrer.agent_type, v_v4_gated, v_referral.id;
   END IF;
 
   -- Recruit bonus: gated on the RECRUITER's own agent_type (D-333), not the
@@ -325,8 +326,8 @@ BEGIN
           v_referral.id, SQLSTATE, SQLERRM;
     END;
   ELSE
-    RAISE LOG 'apply_referral_commission: D-333 no-fee — referrer % is agent_type=home_inspector, skipping send-partner-status-email for referral_id=%',
-      v_referrer.id, v_referral.id;
+    RAISE LOG 'apply_referral_commission: D-333/gh-3245 no-fee — referrer % (agent_type=%, v4 gate=%), skipping send-partner-status-email for referral_id=%',
+      v_referrer.id, v_referrer.agent_type, v_v4_gated, v_referral.id;
   END IF;
 
   RETURN NEW;
