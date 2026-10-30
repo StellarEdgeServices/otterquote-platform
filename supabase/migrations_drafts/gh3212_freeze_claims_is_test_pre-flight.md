@@ -1,5 +1,6 @@
 <!--
-STATUS (as of 2026-10-30): NOT APPLIED -- DRAFT
+STATUS (gh-1438, as of 2026-10-30T12:50:00Z): NOT APPLIED -- DRAFT
+REPO COPY: none
 FILE ROLE: pre-flight file of set gh3212_freeze_claims_is_test
 EVIDENCE: production read-only 2026-10-30 (project yeszghaspzwwstvsrioa); nothing was written.
 DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md

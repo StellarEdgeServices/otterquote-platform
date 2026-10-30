@@ -1,5 +1,6 @@
--- STATUS (as of 2026-10-30): NOT APPLIED -- DRAFT
+-- STATUS (gh-1438, as of 2026-10-30T12:50:00Z): NOT APPLIED -- DRAFT
 -- FILE ROLE: forward file of set gh3212_freeze_claims_is_test (rollback and pre-flight are siblings in this directory; proof in supabase/tests/)
+-- REPO COPY: none
 -- EVIDENCE: production read-only 2026-10-30 (project yeszghaspzwwstvsrioa), SELECT / pg_get_functiondef only:
 --   has_column_privilege(role, 'public.claims', 'is_test', 'UPDATE') is true for anon, authenticated and service_role (INSERT also true for all three);
 --   none of the 18 non-internal triggers on public.claims touches is_test on UPDATE (claims_guard_referral_columns freezes referral_id,
