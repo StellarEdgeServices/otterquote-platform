@@ -105,6 +105,24 @@ ALLOWLIST = [
         "reason: a 30-day notice-of-change period, not a disbursement claim.",
     ),
     (
+        "partner-agreement-v3.html",
+        "notify Partner of material changes by email or through Partner",
+        "agreement-modification notice period",
+        "gh-3239 (#3238): partner-agreement-v3.html is the v3-2026-09 Partner Agreement archived byte-for-byte "
+        "when v4-2026-10 was published, so existing v3 acceptances resolve to the text accepted. Same Section 17 "
+        "sentence and same reason as the partner-agreement.html entry above: a 30-day notice-of-change period, "
+        "not a disbursement claim. The archive must not be edited, so it is allowlisted rather than reworded.",
+    ),
+    (
+        "partner-dashboard.html",
+        "credit for 90 days from your link click, monthly payouts once your balance reaches $25",
+        "agreement-modification notice period",
+        "gh-3239 (#3238): the Partner Agreement v4 notice summary. Category (c) keyword proximity: the only "
+        "duration is the 90-day attribution window (Agreement Section 9.3: how long a click earns credit), "
+        "which is not a disbursement timeline; the payout clause on the same line states a cadence and a $25 "
+        "minimum (Section 5.1), no number of days. Nothing here promises when money moves.",
+    ),
+    (
         "contractor-agreement.html",
         "typically approved and processed within five (5) business days",
         "approval-step timing",

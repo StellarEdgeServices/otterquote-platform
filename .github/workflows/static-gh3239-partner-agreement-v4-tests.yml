@@ -14,6 +14,7 @@ on:
       - 'refer-a-friend.html'
       - 'docs/legal/partner-agreement-*.md'
       - 'scripts/render-partner-agreement.py'
+      - 'scripts/render-partner-agreement.test.py'
       - 'supabase/migrations_drafts/gh3239_*'
       - 'supabase/functions/partner-invite-accept/**'
       - 'tests/gh3239-partner-agreement-v4.mjs'
@@ -27,6 +28,7 @@ on:
       - 'refer-a-friend.html'
       - 'docs/legal/partner-agreement-*.md'
       - 'scripts/render-partner-agreement.py'
+      - 'scripts/render-partner-agreement.test.py'
       - 'supabase/migrations_drafts/gh3239_*'
       - 'supabase/functions/partner-invite-accept/**'
       - 'tests/gh3239-partner-agreement-v4.mjs'
@@ -58,3 +60,5 @@ jobs:
           node-version: '22.x'
       - name: gh3239 Partner Agreement v4 tests
         run: node tests/gh3239-partner-agreement-v4.mjs
+      - name: Renderer self-test (negative controls)
+        run: python3 scripts/render-partner-agreement.test.py
