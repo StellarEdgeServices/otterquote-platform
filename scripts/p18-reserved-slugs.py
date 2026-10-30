@@ -104,7 +104,9 @@ def redirect_sources(root):
                 found.add(seg)
     nt = Path(root) / "netlify.toml"
     if nt.is_file():
-        for m in re.finditer(r'^\s*from\s*=\s*"([^"]+)"', nt.read_text(encoding="utf-8", errors="replace"), re.MULTILINE):
+        # `from = "/..."` redirect sources, and `path = "/..."` of [[edge_functions]] routes (e.g. /ref-bind, gh-3237: an exact edge route
+        # is served at its first segment even though no file or redirect names it).
+        for m in re.finditer(r'^\s*(?:from|path)\s*=\s*"([^"]+)"', nt.read_text(encoding="utf-8", errors="replace"), re.MULTILINE):
             seg = first_segment(m.group(1))
             if seg:
                 found.add(seg)

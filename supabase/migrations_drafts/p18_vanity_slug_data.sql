@@ -9,7 +9,7 @@
 --
 -- Objects (all new; nothing existing is altered except one new nullable column):
 --   referral_agents.vanity_slug text NULL + CHECK + unique index on lower(vanity_slug)
---   reserved_slugs(slug pk)                    -- 169 rows (scripts/p18-reserved-slugs.py)
+--   reserved_slugs(slug pk)                    -- 170 rows (scripts/p18-reserved-slugs.py)
 --   p18_slug_is_reserved(text)                 -- reserved_slugs row OR a pattern rule (the `home-`, `admin-`, `get-started`, `the-ashes` prefixes)
 --   referral_agent_slug_history                -- a retired slug keeps crediting for the attribution window
 --   referral_agents_guard_vanity_slug()        -- BEFORE INSERT OR UPDATE trigger
@@ -208,6 +208,7 @@ INSERT INTO public.reserved_slugs (slug) VALUES
   ('readme.md'),
   ('recruit'),
   ('ref'),
+  ('ref-bind'),
   ('ref-inspector'),
   ('ref-insurance'),
   ('ref-re'),
