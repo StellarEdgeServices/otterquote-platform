@@ -1,0 +1,80 @@
+name: New-Table Client TRUNCATE Revoke
+
+# gh-3256 -- production's default ACL gives every new public table arwdDxtm to anon and authenticated, for both default-ACL
+# owners postgres and supabase_admin. The draft migration supabase/migrations_drafts/gh3256_default_privs_no_client_truncate.sql
+# fixes postgres's defaults; supabase_admin's cannot be altered by the migration role (postgres is neither a superuser nor a
+# member of supabase_admin -- see that draft's pre-flight and its throwaway-PG proof). This gate is the fallback #3256
+# describes: a migration that CREATEs a public table must REVOKE TRUNCATE on it from anon and authenticated in the same file.
+#
+# Diff-scoped exactly like new-table-service-role-grant.yml (it imports the same parser): only CREATE TABLE statements a PR's
+# own diff adds to supabase/migrations/**/*.sql are checked, so it starts green on every PR that adds no table. Same trigger
+# shape as that workflow (merge_group + no paths filter), so it can be made a required check without freezing the queue.
+# THIS FILE DOES NOT MAKE THE CHECK REQUIRED (a repository-settings change owned by Dustin/exec:cto).
+on:
+  merge_group:
+    types: [checks_requested]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: new-table-truncate-revoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  new-table-truncate-revoke:
+    name: New public tables must REVOKE TRUNCATE from anon and authenticated
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history -- the script diffs base...head itself
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      # BUILD-FAILING. The detector must be observed rejecting its own bad fixtures (gh-1738) before its verdict is trusted.
+      - name: Self-test the detector's own rules
+        run: python scripts/new-table-truncate-revoke-check.py --self-test
+
+      - name: Run the detector's own test.py
+        run: python scripts/new-table-truncate-revoke-check.test.py
+
+      # Same base resolution as new-table-service-role-grant.yml (gh-1438 stale-base trap fix).
+      - name: Resolve base sha from the checked-out merge ref
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MERGE_GROUP_BASE: ${{ github.event.merge_group.base_sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "merge_group" ]; then
+            base="$MERGE_GROUP_BASE"
+          elif [ "$EVENT_NAME" = "pull_request" ] \
+               && [ "$(git rev-parse --verify -q 'HEAD^2' || true)" = "$PR_HEAD" ]; then
+            base="$(git rev-parse HEAD^1)"
+          else
+            base="$(git rev-parse --verify -q "origin/${BASE_REF}" || true)"
+          fi
+          if [ -z "$base" ]; then
+            echo "::error::could not resolve a base sha (event=$EVENT_NAME)" >&2
+            exit 1
+          fi
+          echo "Resolved base: $base"
+          echo "RESOLVED_BASE_SHA=$base" >> "$GITHUB_ENV"
+
+      - name: Run the check against this PR's diff
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          python scripts/new-table-truncate-revoke-check.py \
+            --root . \
+            --base "$RESOLVED_BASE_SHA" \
+            --head "$HEAD_SHA"

@@ -211,6 +211,16 @@ grant select, insert, update, delete on public.your_table to service_role;
   ratchet's job, so the two gates can never disagree about the same
   statement.
 
+  `.github/workflows/new-table-truncate-revoke.yml`
+  (`scripts/new-table-truncate-revoke-check.py`, gh-3256) is the companion
+  gate for client TRUNCATE: a migration that adds a public `CREATE TABLE`
+  must, later in the same file, `REVOKE TRUNCATE` (or `REVOKE ALL`) on that
+  table (or `ON ALL TABLES IN SCHEMA public`) from **both** `anon` and
+  `authenticated`, and not grant it back. Production's default ACL hands
+  every new public table `arwdDxtm` to both roles, and `supabase_admin`'s
+  defaults cannot be changed by the migration role, so the per-table REVOKE
+  is the only fence that covers every creator. RLS does not police TRUNCATE.
+
 **Premise correction (read-only prod check, 2026-09-25; re-verified 2026-09-25
 against PR #2201 review 5839752411, exact queries + raw counts below):**
 gh-2145's own issue body cites `partner_onboarding_sends` as an example of a
