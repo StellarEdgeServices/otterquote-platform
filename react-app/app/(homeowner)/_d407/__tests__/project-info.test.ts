@@ -66,3 +66,26 @@ describe('project info write', () => {
     expect(flex.policy_type).toBeNull();
   });
 });
+
+describe('OOP write never reclassifies a stored answer (D-079 / D-073)', () => {
+  it('NEGATIVE CONTROL: stored acv stays insurance_acv / insurance, policy_type untouched', () => {
+    const u = buildOopClaimUpdate(info, 'J', done, 'acv', 'insurance');
+    expect(u.job_type).toBe('insurance_acv');
+    expect(u.funding_type).toBe('insurance');
+    expect('policy_type' in u).toBe(false);
+  });
+  it('genuine out-of-pocket (no stored policy, cash funding) stays cash / retail', () => {
+    for (const [pol, fund] of [[null, 'cash'], [undefined, null], [null, undefined]] as const) {
+      const u = buildOopClaimUpdate(info, 'J', done, pol, fund);
+      expect(u.job_type).toBe('retail');
+      expect(u.funding_type).toBe('cash');
+      expect(u.policy_type).toBeNull();
+    }
+  });
+  it('other stored answers (rcv, idk, insurance with no policy) get no classification keys', () => {
+    for (const [pol, fund] of [['rcv', 'insurance'], ['idk', 'insurance'], [null, 'insurance']] as const) {
+      const u = buildOopClaimUpdate(info, 'J', done, pol, fund);
+      for (const k of ['job_type', 'funding_type', 'policy_type']) expect(k in u).toBe(false);
+    }
+  });
+});
