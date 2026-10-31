@@ -30,7 +30,7 @@
  *  in the Phase-12 referralLinkFor precedent). */
 export const PUBLIC_SITE_URL = 'https://otterquote.com';
 
-/** Customer referral bonus, USD (D-139 / #567). */
+/** Customer referral fee, USD (D-139 / #567). */
 export const REFERRAL_COMMISSION_USD = 200;
 
 /** referral_agents.agent_type for this (customer/homeowner) referral program. */
@@ -65,6 +65,77 @@ export interface CustomerReferralAgent {
   [key: string]: unknown;
 }
 
+// ── Partner Agreement v4 acceptance (gh-3244, follows gh-3239 / PR #3242) ──────
+
+/** The agreement version a customer must have accepted before a referral link is issued. */
+export const PARTNER_AGREEMENT_CURRENT_VERSION = 'v4-2026-10';
+
+/** The referral_agents columns that record acceptance (read through RLS: user_id = auth.uid()). */
+export interface AgreementRow {
+  partner_agreement_version?: string | null;
+  partner_agreement_attestation?: Record<string, unknown> | null;
+}
+
+/** True only when the row carries a v4-2026-10 acceptance (the v4 attestation key, else the version column) —
+ *  same test as hasAcceptedAgreementV4() in refer-a-friend.html. No row = not accepted. */
+export function hasAcceptedAgreementV4(row: AgreementRow | null | undefined): boolean {
+  if (!row) return false;
+  const att = row.partner_agreement_attestation || {};
+  return (
+    Object.prototype.hasOwnProperty.call(att, PARTNER_AGREEMENT_CURRENT_VERSION) ||
+    row.partner_agreement_version === PARTNER_AGREEMENT_CURRENT_VERSION
+  );
+}
+
+/** What accept_partner_agreement_v4() returns. */
+export interface AcceptanceResult {
+  agreement_version?: string | null;
+  accepted_at?: string | null;
+  already_accepted?: boolean;
+}
+
+export type ReferLinkState =
+  | { state: 'needs_agreement' }
+  | { state: 'link'; code: string }
+  | { state: 'error' };
+
+/**
+ * Initial load: a link is issued ONLY for a customer who has already accepted v4. Otherwise the agreement gate shows and
+ * `getOrCreateCode` is never called (no referral code is created or shown before acceptance).
+ */
+export async function loadReferLink(deps: {
+  readAgreementRow: () => Promise<AgreementRow | null>;
+  getOrCreateCode: () => Promise<string | null>;
+}): Promise<ReferLinkState> {
+  let row: AgreementRow | null = null;
+  try {
+    row = await deps.readAgreementRow();
+  } catch {
+    row = null;
+  }
+  if (!hasAcceptedAgreementV4(row)) return { state: 'needs_agreement' };
+  const code = await deps.getOrCreateCode();
+  return code ? { state: 'link', code } : { state: 'error' };
+}
+
+/**
+ * Gate submit: get_or_create_customer_referral_code() first (the customer's referral_agents row must exist to carry the
+ * acceptance), then accept_partner_agreement_v4(). The code is returned for display only when the acceptance response
+ * confirms v4-2026-10 with a timestamp; any failure throws and the caller keeps the gate up with no link.
+ */
+export async function acceptAgreementAndIssueLink(deps: {
+  getOrCreateCode: () => Promise<string | null>;
+  acceptAgreement: () => Promise<AcceptanceResult | null>;
+}): Promise<string> {
+  const code = await deps.getOrCreateCode();
+  if (!code) throw new Error('no referral code');
+  const res = await deps.acceptAgreement();
+  if (!res || res.agreement_version !== PARTNER_AGREEMENT_CURRENT_VERSION || !res.accepted_at) {
+    throw new Error('unexpected acceptance response');
+  }
+  return code;
+}
+
 // ── Referral link + code ──────────────────────────────────────────────────────
 
 /** Referral URL: `${siteUrl}/ref/${code}` — byte-for-byte from getReferralUrl(). */
@@ -82,7 +153,7 @@ export const REFERRAL_STATUS_LABELS: Record<string, string> = {
   bid_received: 'Bids In',
   contract_signed: 'Contract Signed',
   job_completed: 'Job Completed',
-  commission_paid: 'Commission Paid',
+  commission_paid: 'Referral Fee Paid',
 };
 
 /** Same 7 statuses -> badge CSS classes (static, verbatim). */
@@ -123,9 +194,9 @@ export function referralStatusClass(status: string | null | undefined): string {
 }
 
 /**
- * "Commission" cell — a referral earns the $200 bonus once its job has
+ * "Referral Fee" cell — a referral earns the $200 referral fee once its job has
  * completed (accrued, `job_completed`) or been paid out (`commission_paid`);
- * otherwise no commission yet (static).
+ * otherwise no referral fee yet (static).
  */
 export function referralCommissionCell(status: string | null | undefined): string {
   return status === 'job_completed' || status === 'commission_paid'
