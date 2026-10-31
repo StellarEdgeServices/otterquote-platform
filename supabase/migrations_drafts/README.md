@@ -119,3 +119,22 @@ Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630)
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2997_inherit_is_test` | forward, rollback, pre-flight (all three here) | NOT APPLIED | drafted 2026-10-23 under #2997; production read-only 2026-10-23 (project yeszghaspzwwstvsrioa): no trigger on `quotes` or `activity_log` sets `is_test` from the claim; 2 quotes on `is_test` claims read `is_test=false` and 6 `activity_log` rows keyed to an `is_test` claim via `metadata.claim_id` read false. Two BEFORE INSERT triggers (`quotes_inherit_is_test`, `activity_log_inherit_is_test`) raise false to true only, plus a one-off data correction. CTO ruling 6366805193 on #2997: include quote 403940dc in the correction, apply with `SET lock_timeout = '5s'`, add this row in the same PR. Tier 3B, applied only under the R-097 notice path. No database was written | none |
+
+## Added 2026-10-30 (gh-3224, durable log of the last admin verdict on a contractor template): 3 files here (forward, rollback, pre-flight), proof in `supabase/tests/gh3224_template_verdict_log_proof.sql` (+ `_scratch_setup.sql`, `_proof_run.sh`)
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh3224_template_verdict_log` | forward, rollback, pre-flight (all three here) | NOT APPLIED | drafted 2026-10-30 under #3224; production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): no `contractor_template_verdicts` table, no `log_template_admin_verdict` trigger; 13 `contractor_templates` rows (0 rejected, 1 admin_validated). Append-only log (row trigger refuses UPDATE/DELETE, statement trigger refuses TRUNCATE; all privileges revoked from PUBLIC, anon, authenticated and service_role, then SELECT granted to service_role only, because production's default ACL grants every new public table to all three API roles) written by a SECURITY DEFINER AFTER trigger when a template reaches `rejected` / `admin_validated`, read by `template_admin_verdict_blocks_auto_validation(uuid)` (service_role only). Does not change `contractor_templates_freeze_verdict` or `enforce_template_privileged_columns`. Tier 3B (D-199 legal gate), applied only under the R-097 notice path, before the Edge Function deploy. No database was written | none |
+
+## Added 2026-10-30 (P18 partner vanity slug, data layer, #3218): forward and rollback here, the proof in `supabase/tests/`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `p18_vanity_slug_data` | forward, rollback | NOT APPLIED | drafted 2026-10-30 under #3218; read-only production reads the same day: no `referral_agents.vanity_slug`, no `reserved_slugs`, no `referral_agent_slug_history`; "Agents can update own profile" lets a partner PATCH any column of their own row, hence the new guard trigger. Proof: `bash supabase/tests/p18_vanity_slug_proof_run.sh` on a throwaway Postgres (before / after / rollback), and `supabase/tests/p18_vanity_slug_proof.sql` as a rolled-back batch. Reserved names enforced for every writer in the trigger; 90-day release of retired slugs (setting `partner_attribution_window_days`, fallback 90); rollback gated on existing slugs/history. Tier 3B (adds a trigger on `referral_agents`), R-097 24-hour notice before apply | none |
+
+
+## Added 2026-10-30 (gh-3212, freeze `claims.is_test` against client UPDATE): 3 files here (forward, rollback, pre-flight), the proof in `supabase/tests/gh3212_freeze_claims_is_test_proof.sql`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh3212_freeze_claims_is_test` | forward, rollback, pre-flight (all three here) | NOT APPLIED (DRAFT, Tier 3B) | drafted 2026-10-30 under #3212; production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): `has_column_privilege` UPDATE on `claims.is_test` is true for anon and authenticated, and no claims trigger freezes it on UPDATE (the 18 triggers read). One new BEFORE UPDATE OF is_test trigger `claims_freeze_is_test` raises 42501 for a changed value from client roles (mirrors `profiles_freeze_privileged_columns`, gh-2785); service_role and postgres unaffected; separate function so it does not conflict with PR #3209, which replaces `claims_guard_referral_columns()`. No client or Edge Function UPDATEs `claims.is_test`. No database was written | none |

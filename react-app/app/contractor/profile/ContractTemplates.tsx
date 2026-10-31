@@ -17,9 +17,9 @@ import { PROFILE_COPY as T, AUTOFILL_FIELDS, DEFAULT_FIELD_MAPPINGS } from './co
 import {
   CONTRACT_TEMPLATE_SLOTS, contractTemplatePath, findContractTemplate, upsertContractTemplate,
   setContractFieldMappings, storagePathFromValue, validatePdfUpload, initialFieldMappingValues,
-  collectFieldMappings, type ContractTemplate,
+  collectFieldMappings, contractTemplateStoragePath, type ContractTemplate,
 } from './utils';
-import { D199Validation } from './d199-validation';
+import { D199Validation, reenterValidationAfterUpload } from './d199-validation';
 
 export function ContractTemplates({ contractorId, initialTemplates }: {
   contractorId: string; initialTemplates: ContractTemplate[];
@@ -27,6 +27,7 @@ export function ContractTemplates({ contractorId, initialTemplates }: {
   const [templates, setTemplates] = useState<ContractTemplate[]>(initialTemplates ?? []);
   const [mappingSlot, setMappingSlot] = useState<{ trade: string; fundingType: string } | null>(null);
   const [busySlot, setBusySlot] = useState<string | null>(null);
+  const [d199Refresh, setD199Refresh] = useState(0);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const pending = useRef<{ trade: string; fundingType: string } | null>(null);
 
@@ -60,6 +61,8 @@ export function ContractTemplates({ contractorId, initialTemplates }: {
       if (dbErr) throw dbErr;
       if (!Array.isArray(upRows) || upRows.length === 0) throw new Error('update_zero_rows: contractors (contract template upload)');
       setTemplates(updated);
+      // gh-3199 B1: only here, after a successful upload, a rejected template re-enters validation with the new file.
+      if (await reenterValidationAfterUpload(contractorId, slot.trade, slot.fundingType, filePath)) setD199Refresh((n) => n + 1);
       setMappingSlot({ trade: slot.trade, fundingType: slot.fundingType });
     } catch (err2) {
       console.error('Error uploading template:', err2);
@@ -115,11 +118,11 @@ export function ContractTemplates({ contractorId, initialTemplates }: {
                     <div className="oqp-slot-file-date">{T.contractTemplates.uploadedPrefix}{tpl.uploaded_at ? new Date(tpl.uploaded_at).toLocaleDateString() : 'Unknown date'}</div>
                   </div>
                   <div className="oqp-slot-btns">
-                    <button type="button" className="oqp-btn-sm oqp-btn-sm-primary" onClick={() => view(String(tpl.file_url))}>{T.contractTemplates.view}</button>
+                    <button type="button" className="oqp-btn-sm oqp-btn-sm-primary" onClick={() => view(contractTemplateStoragePath(tpl))}>{T.contractTemplates.view}</button>
                     <button type="button" className="oqp-btn-sm oqp-btn-sm-secondary" onClick={() => setMappingSlot({ trade: slot.trade, fundingType: slot.fundingType })}>{T.contractTemplates.reviewMapping}</button>
                     <button type="button" className="oqp-btn-sm oqp-btn-sm-secondary" disabled={busy} onClick={() => pickFile(slot.trade, slot.fundingType)}>{T.contractTemplates.replace}</button>
                   </div>
-                  <D199Validation contractorId={contractorId} trade={slot.trade} fundingType={slot.fundingType} storagePath={String(tpl.file_url)} />
+                  <D199Validation contractorId={contractorId} trade={slot.trade} fundingType={slot.fundingType} storagePath={contractTemplateStoragePath(tpl)} refreshKey={d199Refresh} onUploadCorrected={() => pickFile(slot.trade, slot.fundingType)} />
                 </>
               ) : (
                 <>
