@@ -1,0 +1,2 @@
+-- TRUNCATE-CHECK-FIXTURE: EXPECT=PASS
+CREATE TABLE private.gh3256_internal (id int);
