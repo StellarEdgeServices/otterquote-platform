@@ -18,6 +18,8 @@ on:
       - 'tests/cro47-trust-start-playwright.mjs'
       - 'tests/gh1980-landing-fragment-playwright.mjs'
       - 'tests/gh-dashboard-customer-referral-reload.mjs'
+      - 'tests/gh3267-dashboard-contrast.mjs'
+      - 'css/design-system.css'
       - 'tests/e2e/package.json'
       - 'tests/e2e/package-lock.json'
       - 'js/auth.js'
@@ -89,3 +91,6 @@ jobs:
       # Customer-type referral homeowner: dashboard.html must not reload-loop (found in the #2478 walk).
       - name: dashboard.html no-reload for a homeowner who is also a customer-type referral partner (gh-dashboard-customer-referral-reload)
         run: node tests/gh-dashboard-customer-referral-reload.mjs
+      # gh-3267: Upload buttons (and the rest of the Project Information / checklist cards) >= 4.5:1, with a negative control.
+      - name: dashboard.html button and label contrast, real Chromium (gh3267-dashboard-contrast)
+        run: node tests/gh3267-dashboard-contrast.mjs
