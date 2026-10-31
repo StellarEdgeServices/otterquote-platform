@@ -72,7 +72,7 @@ const notOwed = /<strong>When the Rebate Is Not Owed\.<\/strong>[\s\S]*?<\/p>/.e
 ok(!!notOwed && !/\$\d/.test(notOwed[0]) && /the Measurement Fee compensates Otter Quotes for the cost of ordering the report on your behalf/.test(notOwed[0]), 'S2b: Terms 8.5 "When the Rebate Is Not Owed" states no figure and says "the Measurement Fee compensates"');
 ok(/Payment processing and billing services, including processing of the Measurement Fee and any associated rebate/.test(privacy), 'S2b: privacy.html Stripe line names the Measurement Fee with no figure');
 ok(!/Stripe:<\/strong>[^<]*\$\d/.test(privacy), 'S2b: negative control -- no dollar figure on the privacy.html Stripe line');
-ok(/<strong>Effective Date:<\/strong> October 30, 2026/.test(terms) && /Effective Date: October 30, 2026/.test(privacy), 'S2b: terms.html and privacy.html Effective Date is October 30, 2026');
+ok(/<strong>Effective Date:<\/strong> October 31, 2026/.test(terms) && /Effective Date: October 31, 2026/.test(privacy), 'S2b: terms.html and privacy.html Effective Date is October 31, 2026');
 const faq = read('faq.html');
 ok(faq.includes('The fee pays for ordering the report for you.') && !/covers (Otter Quotes\'|our) cost/.test(faq), 'S2b: FAQ says "The fee pays for ordering the report for you." (no "covers ... cost")');
 const hpf = read('react-app/app/(homeowner)/help-measurements/HoverPaymentForm.tsx');
