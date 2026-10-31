@@ -9,7 +9,7 @@
  *
  * Deferred to Phase 2 (post-launch):
  *   B5: Full claim creation flow (loss sheet upload, trade selection, D-178 state gate)
- *   B6: Measurements step (Hover $15 payment, D-291 — requires Stripe test mode)
+ *   B6: Measurements step (Hover $22.63 payment, D-291 — requires Stripe test mode)
  *   B7: Material selection (shingle type, impact class)
  *   B8: Bid review and contractor selection
  *   B9: Contract signing (DocuSign — requires sandbox credentials)
@@ -234,7 +234,7 @@ test.describe('Flow B — Homeowner Journey (Phase 1 Stub)', () => {
 
   // TODO: B6 — Measurements step
   // Verify help-measurements.html renders Hover purchase UI.
-  // Skip actual Stripe charge — assert form renders with $15 price.
+  // Skip actual Stripe charge — assert form renders with $22.63 price.
   // Deferred: Stripe test mode required for payment step.
 
   // TODO: B7 — Material selection

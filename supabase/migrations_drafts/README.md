@@ -144,3 +144,9 @@ Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630)
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh3212_freeze_claims_is_test` | forward, rollback, pre-flight (all three here) | NOT APPLIED (DRAFT, Tier 3B) | drafted 2026-10-30 under #3212; production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): `has_column_privilege` UPDATE on `claims.is_test` is true for anon and authenticated, and no claims trigger freezes it on UPDATE (the 18 triggers read). One new BEFORE UPDATE OF is_test trigger `claims_freeze_is_test` raises 42501 for a changed value from client roles (mirrors `profiles_freeze_privileged_columns`, gh-2785); service_role and postgres unaffected; separate function so it does not conflict with PR #3209, which replaces `claims_guard_referral_columns()`. No client or Edge Function UPDATEs `claims.is_test`. No database was written | none |
+
+## Added 2026-10-30 (gh-3228, P18, homeowner measurement fee $15 -> $22.63): 3 files here (forward, rollback, pre-flight), not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh3228_measurement_price_2263` | forward, rollback, pre-flight (runbook, mid-checkout sweep, post-apply checks) | NOT APPLIED | drafted 2026-10-30 under #3228 on Dustin's word (chat 2026-10-30 09:17 ET); production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): `hover_measurement_price` = 1500 and `measurement_products.roof_basic.homeowner_price_cents` = 1500. Tier 3B money: CTO applies after the 24-hour R-097 notice and the D-291 amendment; both keys change in one transaction | none |

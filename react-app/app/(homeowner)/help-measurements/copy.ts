@@ -6,7 +6,7 @@
  *
  * VERBATIM-LOCKED. Every user-facing string below is ported BYTE-FOR-BYTE (rendered text
  * content) from help-measurements.html and asserted by ./__tests__/copy.test.ts — any reword
- * trips the lock. These include the D-291 financial terms ($15 price line + rebate callout,
+ * trips the lock. These include the D-291 financial terms ($22.63 price line + rebate callout,
  * repricing D-205's now-superseded $150) and the Stripe security line, which must be exact.
  *
  * Faithful-port notes (same idiom as the H5 color-selection copy.ts):
@@ -14,8 +14,8 @@
  *     not HTML. Em-dashes in the static are literal U+2014 (—); all apostrophes are straight
  *     ASCII ('); the "Sending…" label uses a literal U+2026 ellipsis (…).
  *   • Inline <strong> markup is presentation-only and flattened to plain text (the words are
- *     what is locked). e.g. "<strong>How the $15 works:</strong> You pay…" →
- *     "How the $15 works: You pay…".
+ *     what is locked). e.g. "<strong>How the $22.63 works:</strong> You pay…" →
+ *     "How the $22.63 works: You pay…".
  *   • Icon glyphs (📐 📬 ✓ ← 💳 🔒) are kept as the literal emoji/symbol the static renders.
  *   • There are NO interpolated copy strings to lock: the only runtime-text element is the
  *     #emailPreview div, whose updater (updateEmailPreview) is CALLED-BUT-NEVER-DEFINED in the
@@ -52,7 +52,7 @@ export const MEASUREMENTS_COPY = {
   hoverIcon: '📐',
   hoverCardTitle: 'Complete Property Report',
   // D-291 price line (repriced from D-205's $150) — LOCKED, exact.
-  hoverCardPrice: '$15 (rebated if you complete a job on the platform)',
+  hoverCardPrice: '$22.63 (rebated if you complete a job on the platform)',
   hoverCardDescription:
     "We order an aerial roof measurement report of your roof — squares, pitch, facets, ridge, hip, valley and eave lengths. Nothing for you to do: no photos, no ladder, no appointment. It is enough for a contractor to bid most roofing jobs.",
   hoverCardFeatures: [
@@ -85,14 +85,14 @@ export const MEASUREMENTS_COPY = {
     'An aerial roof measurement report — squares, pitch, facets, and the ridge, hip, valley and eave lengths a contractor needs to bid accurately. We order it for you; there is nothing for you to photograph.',
 
   // Rebate callout (help-measurements.html:611) — D-291 financial terms (repriced from D-205's $150), LOCKED.
-  // "<strong>How the $15 works:</strong> …" flattened.
+  // "<strong>How the $22.63 works:</strong> …" flattened.
   rebateCallout:
-    "How the $15 works: You pay $15 now for an aerial roof measurement report. When your project is completed with an Otter Quotes contractor, the full $15 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
+    "How the $22.63 works: You pay $22.63 now for an aerial roof measurement report. When your project is completed with an Otter Quotes contractor, the full $22.63 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
 
   // Hover steps (help-measurements.html:614-636).
   hoverStep1Title: 'Purchase Your Report',
   hoverStep1Text:
-    'Pay the $15 fee securely through Stripe. This covers your Complete Property Report.',
+    'Pay the $22.63 fee securely through Stripe. This covers your Complete Property Report.',
   hoverStep2Title: 'We Order It',
   hoverStep2Text:
     "We place the order with our measurement service using your property address. Nothing is required from you at this step.",
@@ -105,13 +105,13 @@ export const MEASUREMENTS_COPY = {
     "What you'll need: Nothing. Your property address is already on file — that is all the report is built from.",
 
   // Hover purchase button (help-measurements.html:644).
-  hoverPurchaseButton: 'Purchase Property Data File — $15',
+  hoverPurchaseButton: 'Purchase Property Data File — $22.63',
   // Shared "go back" button (help-measurements.html:646/724).
   chooseDifferentButton: '← Choose Different Option',
 
   // ── Stripe card form (help-measurements.html:649-659) ──
-  hoverCardFormLead: '💳 Enter your card details to complete the $15 purchase:',
-  hoverPayButton: 'Pay $15 Securely',
+  hoverCardFormLead: '💳 Enter your card details to complete the $22.63 purchase:',
+  hoverPayButton: 'Pay $22.63 Securely',
   hoverCancelButton: 'Cancel',
   // Stripe security line (help-measurements.html:658) — LOCKED, exact.
   stripeSecurityLine:

@@ -46,7 +46,16 @@ export function buildStandardCreateForm(i: StandardCreateInput): URLSearchParams
   return form;
 }
 
-/** One key per claim and request type: reused on every retry, which is why nothing per-request may be in the body. */
-export function standardIdempotencyKey(metadata: { type: string; claim_id: string }): string {
-  return `${metadata.type}-${metadata.claim_id}`;
+/**
+ * One key per claim, request type AND amount (in cents): reused on every retry of the same charge, which is why nothing
+ * per-request may be in the body.
+ *
+ * gh-3228: the amount is part of the key because the body carries it and Stripe pins a key to its first body for 24 hours.
+ * With a per-claim key only, a homeowner who loaded the form at the old price and reloads after a price change was handed the
+ * stale intent (or, with the new amount in the body, a 400 idempotency_error and a 500 from this function for 24 hours).
+ * With the amount in the key, a reload after a price change creates a fresh intent at the new price, and the same amount still
+ * reuses the same intent. The key is therefore a function of exactly the body's own inputs.
+ */
+export function standardIdempotencyKey(metadata: { type: string; claim_id: string }, amount: unknown): string {
+  return `${metadata.type}-${metadata.claim_id}-${String(amount)}`;
 }

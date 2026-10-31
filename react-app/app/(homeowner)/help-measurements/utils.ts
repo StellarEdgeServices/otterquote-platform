@@ -17,7 +17,7 @@
  *       – Adjuster email (help-measurements.html:1064) → the SIMPLER full_name || 'Homeowner'
  *         (no first/last fallback). buildAdjusterEmailParams deliberately does NOT call
  *         resolveHomeownerName. Do not unify them.
- *   • amount (1500 cents) on the payment-intent params and amount_charged (15.00) on the
+ *   • amount (2263 cents) on the payment-intent params and amount_charged (22.63) on the
  *     order params are INFORMATIONAL — the create-hover-* Edge Functions enforce the price
  *     server-side (D-291, repricing D-205 / D-181's now-superseded $150). They are kept
  *     verbatim for parity, not as the source of truth. Tier-3 charge/price logic is untouched
@@ -53,12 +53,12 @@ import type {
 } from '../../lib/services';
 
 // ── D-291 / D-181 constants (informational — EF enforces server-side) ──────────────
-// D-291 (2026-08-17) repriced the RoofScope/Hover measurement fee from D-205's $150 to $15.
+// D-291 (2026-08-17) repriced the RoofScope/Hover measurement fee from D-205's $150 to the D-291 price; Dustin set it to $22.63 on 2026-10-30 (gh-3228).
 
 /** Hover fee in cents, sent on the PaymentIntent params (help-measurements.html:897). */
-export const HOVER_AMOUNT_CENTS = 1500 as const;
+export const HOVER_AMOUNT_CENTS = 2263 as const;
 /** Hover fee in dollars, sent as amount_charged on the order (help-measurements.html:987). */
-export const HOVER_AMOUNT_DOLLARS = 15.0 as const;
+export const HOVER_AMOUNT_DOLLARS = 22.63 as const;
 /** D-205 deliverable: 3 = Complete (universal for full-replacement). help-measurements.html:988. */
 export const HOVER_DELIVERABLE_TYPE_ID = 3 as const;
 /** PaymentIntent description (help-measurements.html:898). */
@@ -129,7 +129,7 @@ export function resolveAddressLine1(
 
 /**
  * Build the createHoverPaymentIntent params. amount is informational (the EF enforces the
- * $15 price server-side); kept at 1500 cents for parity. No charge is made here — this only
+ * $22.63 price server-side); kept at 2263 cents for parity. No charge is made here — this only
  * shapes the request the PR-2 page sends to create the PaymentIntent.
  *
  * gh-2078c / D-330 reconciliation (Q: on #2078, comment 5780969290): `variant`

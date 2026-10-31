@@ -84,7 +84,7 @@ export interface WelcomeEmailContent {
  * DRAFT COPY — Tier C, Dustin approves before `homeowner_welcome_enabled` is
  * ever flipped to true. Deliberately narrow per #2069's own instruction:
  * thanks the homeowner, names the two things they can do right now (upload
- * their loss sheet, or order the $15 measurement report), one link to the
+ * their loss sheet, or order the $22.63 measurement report), one link to the
  * dashboard, and NO promises about coverage, bids, savings, or timelines.
  */
 export function buildWelcomeEmailContent(homeownerName: string, dashboardUrl: string): WelcomeEmailContent {
@@ -100,7 +100,7 @@ export function buildWelcomeEmailContent(homeownerName: string, dashboardUrl: st
     "There are two things you can do right now to get your project moving:",
     "",
     "  1. Upload your loss sheet, if you have one.",
-    "  2. Order a $15 measurement report — an aerial report of your property that most contractors need to put together a bid.",
+    "  2. Order a $22.63 measurement report — an aerial report of your property that most contractors need to put together a bid.",
     "",
     "Either one can be done from your dashboard:",
     dashboardUrl,
@@ -133,7 +133,7 @@ export function buildWelcomeEmailContent(homeownerName: string, dashboardUrl: st
               <p style="margin:0 0 0.75rem;line-height:1.6;">There are two things you can do right now to get your project moving:</p>
               <ol style="margin:0 0 1.25rem;padding-left:1.25rem;line-height:1.6;">
                 <li>Upload your loss sheet, if you have one.</li>
-                <li>Order a $15 measurement report — an aerial report of your property that most contractors need to put together a bid.</li>
+                <li>Order a $22.63 measurement report — an aerial report of your property that most contractors need to put together a bid.</li>
               </ol>
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 1.5rem;">
                 <tr>
