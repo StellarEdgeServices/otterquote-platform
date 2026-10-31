@@ -21,6 +21,19 @@ import { assert, assertEquals, assertNotEquals } from "https://deno.land/std@0.2
 const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
 const guardSrc = await Deno.readTextFile(new URL("../_shared/zero-row-update-guard.ts", import.meta.url));
 
+// gh-3110 / D-393 amended: new colour envelopes are retired (410 color_envelope_retired).
+// The mint path below the retirement guard is kept in index.ts, unreachable for new mints, so
+// that reverting the guard restores it intact. The D / E / selected-contractor / gh-3093
+// guarantees are therefore still exercised, against `mintSrc` = index.ts with ONLY the
+// handleLegacyFlow retirement guard removed. The retirement itself is covered in
+// gh3110-colour-envelope-retired.test.ts against the real source.
+const RETIRE_GUARD = `  if (document_type === "color_confirmation") {
+    return colorRefusal(410, "color_envelope_retired", corsHeaders);
+  }
+`;
+const mintSrc = src.replace(RETIRE_GUARD, "");
+if (mintSrc === src) throw new Error("gh-3110 retirement guard not found in handleLegacyFlow");
+
 function grabFrom(text: string, name: string, isAsync = false): string {
   const decl = `${isAsync ? "async " : ""}function ${name}(`;
   const start = text.indexOf(decl);
@@ -209,7 +222,7 @@ async function run<T>(w: World, text: string, fn: (m: Awaited<ReturnType<typeof 
 
 Deno.test("D: a repeat submit mints once, then resumes the same document for free", async () => {
   const w = newWorld();
-  await run(w, src, async (m) => {
+  await run(w, mintSrc, async (m) => {
     const first = await submit(m, w);
     assertEquals(first.status, 200);
     assertEquals((await first.json()).envelope_id, "doc-1");
@@ -226,7 +239,7 @@ Deno.test("D: a repeat submit mints once, then resumes the same document for fre
 
 Deno.test("D: two simultaneous first clicks mint once (conditional slot claim)", async () => {
   const w = newWorld();
-  const statuses = await run(w, src, async (m) => {
+  const statuses = await run(w, mintSrc, async (m) => {
     const res = await Promise.all([submit(m, w), submit(m, w)]);
     return res.map((r) => r.status).sort();
   });
@@ -235,8 +248,8 @@ Deno.test("D: two simultaneous first clicks mint once (conditional slot claim)",
 });
 
 Deno.test("D negative control: without the conditional update, simultaneous clicks mint twice", async () => {
-  const mutated = src.replace('.eq("id", claimId).is("color_confirmation_envelope_id", null).select("id")', '.eq("id", claimId).select("id")');
-  assertNotEquals(mutated, src, "mutation must apply");
+  const mutated = mintSrc.replace('.eq("id", claimId).is("color_confirmation_envelope_id", null).select("id")', '.eq("id", claimId).select("id")');
+  assertNotEquals(mutated, mintSrc, "mutation must apply");
   const w = newWorld();
   await run(w, mutated, async (m) => {
     await Promise.all([submit(m, w), submit(m, w)]);
@@ -246,7 +259,7 @@ Deno.test("D negative control: without the conditional update, simultaneous clic
 
 Deno.test("D: a failed send releases the slot so the next click can mint", async () => {
   const w = newWorld({ failSend: true });
-  await run(w, src, async (m) => {
+  await run(w, mintSrc, async (m) => {
     let threw = false;
     try { await submit(m, w); } catch (_e) { threw = true; }
     assert(threw);
@@ -260,7 +273,7 @@ Deno.test("D: a failed send releases the slot so the next click can mint", async
 
 Deno.test("D: a sign-link failure after the mint keeps the real id, so a retry resumes", async () => {
   const w = newWorld({ failSignLink: true });
-  await run(w, src, async (m) => {
+  await run(w, mintSrc, async (m) => {
     let threw = false;
     try { await submit(m, w); } catch (_e) { threw = true; }
     assert(threw);
@@ -274,7 +287,7 @@ Deno.test("D: a sign-link failure after the mint keeps the real id, so a retry r
 
 Deno.test("D: slot states -- fresh placeholder is in flight, stale one is taken over, missing claim is not_found", async () => {
   const now = Date.now();
-  await run(newWorld(), src, async (m) => {
+  await run(newWorld(), mintSrc, async (m) => {
     const fresh = newWorld({ row: { id: "claim-1", color_confirmation_envelope_id: `pending:${now - 1000}:u` } });
     assertEquals((await m.claimColorEnvelopeSlot(fakeSupabase(fresh), "claim-1", now, "n")).outcome, "in_flight");
     const stale = newWorld({ row: { id: "claim-1", color_confirmation_envelope_id: `pending:${now - 10 * 60 * 1000}:u` } });
@@ -290,7 +303,7 @@ Deno.test("D: slot states -- fresh placeholder is in flight, stale one is taken 
 
 Deno.test("D: releasing only clears our own token, never a real id", async () => {
   const w = newWorld({ row: { id: "claim-1", color_confirmation_envelope_id: "real-id" } });
-  await run(w, src, async (m) => {
+  await run(w, mintSrc, async (m) => {
     await m.releaseColorEnvelopeSlot(fakeSupabase(w), "claim-1", "pending:1:other");
   });
   assertEquals(w.row!.color_confirmation_envelope_id, "real-id");
@@ -298,7 +311,7 @@ Deno.test("D: releasing only clears our own token, never a real id", async () =>
 
 Deno.test("D: a claim row that does not exist mints nothing and answers 404 (zero-row surfaces)", async () => {
   const w = newWorld({ row: null });
-  await run(w, src, async (m) => {
+  await run(w, mintSrc, async (m) => {
     const res = await submit(m, w);
     assertEquals(res.status, 404);
     assertEquals((await res.json()).error, "color_claim_not_found");
@@ -307,7 +320,7 @@ Deno.test("D: a claim row that does not exist mints nothing and answers 404 (zer
 });
 
 Deno.test("D: resolveOperation sends a recorded colour envelope to the free resume budget", async () => {
-  await run(newWorld(), src, (m) => {
+  await run(newWorld(), mintSrc, (m) => {
     assertEquals(m.resolveOperation("color_confirmation", "doc-1"), "resume");
     assertEquals(m.resolveOperation("color_confirmation", null), "mint");
     return Promise.resolve();
@@ -320,7 +333,7 @@ for (const missing of ["contractor_email", "contractor_name"]) {
   Deno.test(`E: missing ${missing} refuses with 422 and mints zero`, async () => {
     const w = newWorld();
     delete w.fields[missing];
-    await run(w, src, async (m) => {
+    await run(w, mintSrc, async (m) => {
       const res = await submit(m, w);
       assertEquals(res.status, 422);
       assertEquals((await res.json()).error, "color_contractor_identity_missing");
@@ -331,8 +344,8 @@ for (const missing of ["contractor_email", "contractor_name"]) {
 }
 
 Deno.test("E negative control: with the guard removed the same input mints (to contractor@example.com)", async () => {
-  const mutated = src.replace('document_type === "color_confirmation" && (!autoFields?.contractor_email || !autoFields?.contractor_name)', "false");
-  assertNotEquals(mutated, src, "mutation must apply");
+  const mutated = mintSrc.replace('document_type === "color_confirmation" && (!autoFields?.contractor_email || !autoFields?.contractor_name)', "false");
+  assertNotEquals(mutated, mintSrc, "mutation must apply");
   const w = newWorld();
   delete w.fields.contractor_email;
   await run(w, mutated, async (m) => {
@@ -370,7 +383,7 @@ Deno.test("wiring: the resume path never reaches /v1/document/send", () => {
 
 Deno.test("selected contractor: a caller-named contractor_id that is not claims.selected_contractor_id is refused 403 and mints zero", async () => {
   const w = newWorld();
-  await run(w, src, async (m) => {
+  await run(w, mintSrc, async (m) => {
     const res = await submit(m, w, { contractor_id: "ctr-OTHER" });
     assertEquals(res.status, 403);
     assertEquals((await res.json()).error, "color_contractor_not_selected");
@@ -382,7 +395,7 @@ Deno.test("selected contractor: a caller-named contractor_id that is not claims.
 Deno.test("selected contractor: a claim with no selected contractor is refused 403 and mints zero", async () => {
   const w = newWorld();
   w.row!.selected_contractor_id = null;
-  await run(w, src, async (m) => {
+  await run(w, mintSrc, async (m) => {
     assertEquals((await submit(m, w)).status, 403);
   });
   assertEquals(w.sends, 0);
@@ -390,7 +403,7 @@ Deno.test("selected contractor: a claim with no selected contractor is refused 4
 
 Deno.test("selected contractor: a failed lookup fails closed (503), mints zero", async () => {
   const w = newWorld({ selectLookupError: true });
-  await run(w, src, async (m) => {
+  await run(w, mintSrc, async (m) => {
     const res = await submit(m, w);
     assertEquals(res.status, 503);
     assertEquals((await res.json()).error, "color_contractor_lookup_failed");
@@ -400,15 +413,15 @@ Deno.test("selected contractor: a failed lookup fails closed (503), mints zero",
 
 Deno.test("selected contractor: the matching contractor still mints once (positive control)", async () => {
   const w = newWorld();
-  await run(w, src, async (m) => {
+  await run(w, mintSrc, async (m) => {
     assertEquals((await submit(m, w)).status, 200);
   });
   assertEquals(w.sends, 1);
 });
 
 Deno.test("selected contractor negative control: with the check removed a wrong contractor mints", async () => {
-  const mutated = src.replace('selRow.selected_contractor_id !== contractor_id', "false").replace("!selRow.selected_contractor_id ||", "");
-  assertNotEquals(mutated, src, "mutation must apply");
+  const mutated = mintSrc.replace('selRow.selected_contractor_id !== contractor_id', "false").replace("!selRow.selected_contractor_id ||", "");
+  assertNotEquals(mutated, mintSrc, "mutation must apply");
   const w = newWorld();
   await run(w, mutated, async (m) => {
     await submit(m, w, { contractor_id: "ctr-OTHER" });
@@ -419,7 +432,7 @@ Deno.test("selected contractor negative control: with the check removed a wrong 
 Deno.test("caller fields: a body naming the contractor email/name is ignored, the server-built fields are used", async () => {
   const w = newWorld();
   delete w.fields.contractor_email; // server side has no email on file
-  await run(w, src, async (m) => {
+  await run(w, mintSrc, async (m) => {
     const res = await submit(m, w, { fields: { contractor_email: "attacker@evil.test", contractor_name: "Evil Co" } });
     assertEquals(res.status, 422, "the caller's email must not satisfy the identity guard");
   });
@@ -428,8 +441,8 @@ Deno.test("caller fields: a body naming the contractor email/name is ignored, th
 });
 
 Deno.test("caller fields negative control: with the always-auto-populate condition removed the attacker email mints", async () => {
-  const mutated = src.replace('document_type === "color_confirmation" || !providedFields', "!providedFields");
-  assertNotEquals(mutated, src, "mutation must apply");
+  const mutated = mintSrc.replace('document_type === "color_confirmation" || !providedFields', "!providedFields");
+  assertNotEquals(mutated, mintSrc, "mutation must apply");
   const w = newWorld();
   delete w.fields.contractor_email;
   await run(w, mutated, async (m) => {
@@ -446,7 +459,7 @@ Deno.test("gh-3093: slot present -> that slot's template is used, once, and the 
     "roofing/insurance": { file_url: "ctr-1/pc_roofing_insurance_222.pdf" },
   } }, claimExtra: { trades: ["Roofing"], funding_type: "insurance" } });
   (globalThis as any).__tplReads = []; (globalThis as any).__legacyPathReads = 0;
-  await run(w, src, async (m) => {
+  await run(w, mintSrc, async (m) => {
     assertEquals((await submit(m, w)).status, 200);
   });
   assertEquals((globalThis as any).__tplReads, ["ctr-1/pc_roofing_insurance_222.pdf"]);
@@ -457,7 +470,7 @@ Deno.test("gh-3093: slot present -> that slot's template is used, once, and the 
 Deno.test("gh-3093: slot absent -> 422 color_template_missing, nothing claimed, nothing sent (fail closed)", async () => {
   const w = newWorld({ contractor: { color_confirmation_template: {} } });
   (globalThis as any).__tplReads = []; (globalThis as any).__legacyPathReads = 0;
-  await run(w, src, async (m) => {
+  await run(w, mintSrc, async (m) => {
     const res = await submit(m, w);
     assertEquals(res.status, 422);
     assertEquals((await res.json()).error, "color_template_missing");
@@ -471,7 +484,7 @@ Deno.test("gh-3093: slot absent -> 422 color_template_missing, nothing claimed, 
 Deno.test("gh-3093: null template column and missing contractor row also refuse", async () => {
   for (const contractor of [{ color_confirmation_template: null }, null]) {
     const w = newWorld({ contractor });
-    await run(w, src, async (m) => {
+    await run(w, mintSrc, async (m) => {
       const res = await submit(m, w);
       assertEquals(res.status, 422);
       assertEquals((await res.json()).error, "color_template_missing");
@@ -488,7 +501,7 @@ Deno.test("gh-3093: exact key only -- a roofing/insurance slot does NOT serve a 
   ] as const) {
     const w = newWorld({ contractor: { color_confirmation_template: tpl }, claimExtra: extra });
     (globalThis as any).__tplReads = [];
-    await run(w, src, async (m) => {
+    await run(w, mintSrc, async (m) => {
       const res = await submit(m, w);
       assertEquals(res.status, 422);
     });
@@ -498,8 +511,8 @@ Deno.test("gh-3093: exact key only -- a roofing/insurance slot does NOT serve a 
 });
 
 Deno.test("gh-3093 negative control: with the guard removed a slot-less contractor mints", async () => {
-  const mutated = src.replace("const colorSlot =", "let colorSlot =").replace("if (!colorSlot?.file_url) {", 'colorSlot = colorSlot || { file_url: "platform-default.pdf" }; if (false) {');
-  assertNotEquals(mutated, src, "mutation must apply");
+  const mutated = mintSrc.replace("const colorSlot =", "let colorSlot =").replace("if (!colorSlot?.file_url) {", 'colorSlot = colorSlot || { file_url: "platform-default.pdf" }; if (false) {');
+  assertNotEquals(mutated, mintSrc, "mutation must apply");
   const w = newWorld({ contractor: { color_confirmation_template: {} } });
   await run(w, mutated, async (m) => {
     await submit(m, w);

@@ -43,13 +43,11 @@ import {
   isLinkOutBrand,
   getVisualizerDescription,
   resolveLinkOut,
-  canCreateAddendum,
   jobNumberFromClaimId,
 } from './utils';
 import {
   useColorSelectionData,
   saveColorSelection,
-  createColorAddendumEnvelope,
   requestColorBoardVisit,
 } from './use-color-selection-data';
 
@@ -164,7 +162,7 @@ function PageBody({
   userId: string;
   signedReturn: boolean;
 }) {
-  const { brand, contractorName, contractorPhone, contractorId, signerEmail, zipCode } = data;
+  const { brand, contractorName, contractorPhone, zipCode } = data;
 
   // ── Phase ──
   const [phase, setPhase] = useState<'page' | 'done'>('page');
@@ -228,23 +226,11 @@ function PageBody({
     setConfirmed(true);
     setSaving(false);
 
-    // c. THEN attempt the DocuSign addendum
-    if (!canCreateAddendum({ claimId, contractorId, signerEmail })) {
-      setAddendum('fallback');
-      return;
-    }
-    try {
-      const { signingUrl: url } = await createColorAddendumEnvelope({
-        claimId,
-        contractorId: contractorId!,
-        origin: window.location.origin,
-      });
-      setSigningUrl(url);
-      setAddendum('signing');
-    } catch {
-      setAddendum('fallback');
-    }
-  }, [colorInput, claimId, userId, brand, contractorId, signerEmail]);
+    // c. gh-3110 / D-393 (amended 2026-10-30): the separate colour envelope is retired. The
+    // colour is signed on the Project Confirmation (its shingle colour field is prefilled from
+    // this saved colour), so no envelope is requested; the saved-colour note is shown instead.
+    setAddendum('fallback');
+  }, [colorInput, claimId, userId, brand]);
 
   // ── In-person color board request ──
   const handleInPerson = useCallback(async () => {
@@ -447,7 +433,6 @@ function PageBody({
             </div>
           </div>
 
-          <div className="oqcs-note">{C.confirmationNote}</div>
 
           {saveError && <div className="oqcs-submit-error">{saveError}</div>}
 

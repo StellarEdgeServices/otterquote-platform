@@ -517,17 +517,13 @@
               </div>
             </div>
 
-            <div class="confirmation-note">
-              <strong>Note:</strong> Your color selection will be added to your contract as a separate addendum for signature.
-            </div>
-
             <div style="display: flex; gap: var(--sp-4);">
               <button type="submit" class="btn btn-primary btn-lg">Confirm My Color</button>
               <a href="/dashboard.html" class="btn btn-secondary btn-lg">Back to Dashboard</a>
             </div>
 
             <div class="success-state" id="color-success">
-              <strong>✓ Color confirmed!</strong> We've saved your selection. You'll see the addendum on your next contract review.
+              <strong>✓ Color confirmed!</strong> We've saved your selection.
             </div>
           </form>
         </div>
@@ -1125,9 +1121,11 @@
             color: colorName
           });
 
-          // Attempt to create DocuSign color addendum (D-058)
-          // Graceful fallback if contractor has no color_confirmation.pdf template
-          await this.createColorAddendum(colorName);
+          // gh-3110 / D-393 (amended 2026-10-30): the separate colour envelope is retired.
+          // The colour is signed on the Project Confirmation (shingle colour field, which is
+          // prefilled from this saved colour), so no envelope is requested here. The existing
+          // saved-colour note is shown instead.
+          this.showAddendumFallback();
 
           button.disabled = false;
           button.textContent = 'Confirm My Color';
@@ -1141,82 +1139,7 @@
       },
 
       /**
-       * Create DocuSign color confirmation addendum (D-058)
-       * Called after color is saved to the claims table.
-       * Gracefully handles missing contractor template.
-       */
-      async createColorAddendum(colorName) {
-        if (!this.claimId || !this.contractorId || !this.signerEmail) {
-          console.warn('[ColorAddendum] Missing claimId, contractorId, or signerEmail — skipping');
-          return;
-        }
-
-        try {
-          const response = await sb.functions.invoke('create-docusign-envelope', {
-            body: {
-              claim_id: this.claimId,
-              contractor_id: this.contractorId,
-              document_type: 'color_confirmation',
-              signer: {
-                email: this.signerEmail,
-                name: this.signerName || 'Homeowner',
-              },
-            },
-          });
-
-          const data = response.data;
-          const fnError = response.error;
-
-          if (fnError || !data?.signing_url) {
-            // Graceful fallback — template may not exist yet
-            console.warn('[ColorAddendum] DocuSign addendum unavailable:', fnError || 'No signing_url returned');
-            this.showAddendumFallback();
-            return;
-          }
-
-          // Success — show embedded signing iframe
-          // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id removed —
-          // a per-homeowner database identifier must not reach GA4.
-          gtag('event', 'color_addendum_created', {});
-          this.showAddendumSigningIframe(data.signing_url);
-        } catch (err) {
-          console.warn('[ColorAddendum] Error creating addendum:', err);
-          this.showAddendumFallback();
-        }
-      },
-
-      /**
-       * Show embedded DocuSign iframe for color addendum signing
-       */
-      showAddendumSigningIframe(signingUrl) {
-        // Inject signing section below the success state
-        const form = document.getElementById('color-form');
-        if (!form) return;
-
-        // Remove existing addendum section if present
-        const existing = document.getElementById('color-addendum-section');
-        if (existing) existing.remove();
-
-        const section = document.createElement('div');
-        section.id = 'color-addendum-section';
-        section.style.cssText = 'margin-top:2rem; padding:1.5rem; background:rgba(224,123,0,0.08); border:1px solid rgba(224,123,0,0.3); border-left:4px solid var(--teal,#E07B00); border-radius:0.75rem;';
-        section.innerHTML = `
-          <h3 style="color:var(--white,#fff); margin:0 0 0.75rem;">Sign Color Addendum</h3>
-          <p style="color:var(--slate,#94A3B8); margin:0 0 1rem;">
-            Almost done! Please sign the color addendum below to add your selected color to your contract.
-          </p>
-          <iframe
-            src="${signingUrl}"
-            style="width:100%; height:500px; border-radius:0.5rem; border:1px solid rgba(255,255,255,0.1);"
-            title="Color Addendum — E-Sign"
-          ></iframe>
-        `;
-        form.parentNode.insertBefore(section, form.nextSibling);
-        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      },
-
-      /**
-       * Fallback when no contractor color_confirmation.pdf template exists
+       * Saved-colour note (gh-3110: shown after every save; the colour is signed on the Project Confirmation)
        */
       showAddendumFallback() {
         const form = document.getElementById('color-form');

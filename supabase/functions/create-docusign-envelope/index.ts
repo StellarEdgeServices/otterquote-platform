@@ -2499,6 +2499,10 @@ async function handleHomeownerSign(supabase, requestBody, corsHeaders) {
   });
 }
 // ========== gh-2105 (checklist D/E): ONE colour envelope per claim ==========
+// gh-3110 / D-393 amended: new colour envelopes are no longer minted (refused 410
+// color_envelope_retired in the serve handler and in handleLegacyFlow). The slot helpers and
+// the mint branch below are kept, unreachable for new mints, so a one-line revert of the two
+// refusals restores the old behaviour; removing them is a follow-up once the change has soaked.
 // color_confirmation used to mint a new BoldSign document on every call, so
 // every repeat submit cost another envelope. claims.color_confirmation_envelope_id
 // already exists (text), so no migration is needed: a real id there means
@@ -2626,6 +2630,14 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   // gh-2105 (D): a colour envelope already on the claim is resumed, never re-minted.
   if (document_type === "color_confirmation" && requestBody.resolved_envelope_id) {
     return await resumeColorConfirmation(requestBody.resolved_envelope_id, requestBody, corsHeaders);
+  }
+  // gh-3110 / D-393 (amended 2026-10-30, Dustin on #3145: "(a) Retire it (Recommended)"): the
+  // separate colour envelope is RETIRED. The colour is signed on the Project Confirmation only
+  // (shingle_color / drip_edge_color, D-058/D-155), so a claim produces one envelope that carries
+  // the colour, not two built from the same contractor template slot. A colour envelope minted
+  // before this change still resumes above; nothing new is ever minted, claimed or sent.
+  if (document_type === "color_confirmation") {
+    return colorRefusal(410, "color_envelope_retired", corsHeaders);
   }
   let autoFields = stripHomeownerPhone(providedFields);
   let claimData = null;
@@ -3230,6 +3242,9 @@ serve(async (req)=>{
       }
       const recordedColorId = colorRow?.color_confirmation_envelope_id ?? null;
       resolvedEnvelopeId = recordedColorId && !isColorSlotPlaceholder(recordedColorId) ? recordedColorId : null;
+      // gh-3110 / D-393 amended: no colour envelope is minted any more. Refuse here, before the
+      // rate-limit RPC, so a retired request spends no mint budget. handleLegacyFlow refuses too.
+      if (!resolvedEnvelopeId) return colorRefusal(410, "color_envelope_retired", corsHeaders);
     }
     const operation = resolveOperation(document_type, resolvedEnvelopeId);
     // Server-derived, overwritten unconditionally -- never caller-supplied.
