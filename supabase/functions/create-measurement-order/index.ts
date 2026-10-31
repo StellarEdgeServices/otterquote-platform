@@ -415,7 +415,13 @@ serve(async (req) => {
     const claimId: string | null = body.claim_id ?? null;
     const productCode: string = body.product_code ?? "";
     const paymentIntentId: string | undefined = body.payment_intent_id;
-    const buyerRole: string = body.buyer_role === "contractor" ? "contractor" : "homeowner";
+    // gh-3229 (P18): no silent default. A missing/unknown buyer_role used to become "homeowner", which would let a contractor
+    // purchase that omitted the field be recorded as homeowner-paid (and earn a referrer's $5). Both callers (js/services.js,
+    // contractor-opportunities.html) already send it explicitly.
+    if (body.buyer_role !== "homeowner" && body.buyer_role !== "contractor") {
+      return json({ error: "buyer_role must be 'homeowner' or 'contractor'." }, 400, corsHeaders);
+    }
+    const buyerRole: string = body.buyer_role;
     const contractorId: string | null = body.contractor_id ?? null;
     const note: string | null = typeof body.note === "string" ? body.note.slice(0, 2000) : null;
 

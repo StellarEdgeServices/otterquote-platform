@@ -299,6 +299,12 @@
         .trigger-text { font-size: 0.75rem; color: var(--slate); margin-top: 2px; }
         .amount-cell  { font-weight: 700; color: var(--navy); }
 
+        /* gh-3229 (P18): monthly batch bar */
+        .batch-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; padding: 1rem 1.25rem; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 0.75rem; }
+        .batch-bar label { font-weight: 600; color: var(--navy); }
+        .batch-bar select { padding: 0.45rem 0.6rem; border: 1px solid #CBD5E1; border-radius: 0.5rem; font: inherit; }
+        .batch-result { font-size: 0.9rem; color: #475569; }
+
         /* ── Auth error ─────────────────────────────────────── */
         #authError {
             display: none;
@@ -338,6 +344,14 @@
         <a href="admin-contractors.html">Contractors</a>
         <a href="admin-referrals.html">Referrals</a>
         <a href="admin-payouts.html" class="active">Payouts</a>
+    </div>
+
+    <!-- gh-3229 (P18): monthly measurement referral fee batch ($5 per paid homeowner measurement, $25 minimum) -->
+    <div class="batch-bar" id="batchBar">
+        <label for="batchMonth">Measurement referral fees through the end of</label>
+        <select id="batchMonth"></select>
+        <button class="action-btn btn-approve" id="runBatchBtn" onclick="runMonthlyBatch(this)">Run monthly batch</button>
+        <span class="batch-result" id="batchResult" role="status"></span>
     </div>
 
     <div id="authError">You must be signed in as an administrator to view this page.</div>
@@ -443,6 +457,7 @@
         }
 
         currentUser = session.user;
+        fillBatchMonths();
         await loadPayouts();
     }
 
@@ -569,11 +584,14 @@
                 pre_approved:     '<span class="badge badge-pre">Pre-Approved</span>',
             }[p.status] || `<span class="badge badge-pre">${p.status}</span>`;
 
-            const payoutTypeLabel = p.payout_type === 'commission_referral' ? 'Referral' : 'Recruit Bonus';
+            const payoutTypeLabel = p.payout_type === 'commission_referral' ? 'Referral'
+                : p.payout_type === 'measurement_fees_monthly' ? 'Measurement fees (monthly)' : 'Recruit Bonus';
             const amount = '$' + Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const created = new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             const trigger = (p.trigger_event || '—').substring(0, 60);
-            const jobBadge = p._job_complete === true
+            const jobBadge = p.payout_type === 'measurement_fees_monthly'
+                ? '<span class="badge badge-pre">n/a</span>'
+                : p._job_complete === true
                 ? '<span class="badge badge-approved">Job complete ✓</span>'
                 : '<span class="badge badge-pending">In progress ⏳</span>';
 
@@ -609,13 +627,56 @@
         }).join('');
     }
 
+    // ── Monthly measurement-fee batch (gh-3229, P18) ───────────────────────────
+    // create_monthly_fee_batch(p_month) is admin/service-role only (checked in the database). It creates one pending payout per
+    // partner whose accrued $5 fees through the end of the chosen month reach the minimum and who is not payments-blocked.
+    // Running it twice creates nothing new. Approve and Mark Paid then work as for any payout.
+    function fillBatchMonths() {
+        const sel = document.getElementById('batchMonth');
+        if (!sel || sel.options.length) return;
+        const now = new Date();
+        for (let i = 1; i <= 6; i++) {             // last month first: the usual run is for the month just ended
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-01';
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            sel.appendChild(opt);
+        }
+    }
+
+    async function runMonthlyBatch(btn) {
+        const month = document.getElementById('batchMonth').value;
+        const out = document.getElementById('batchResult');
+        if (!month) return;
+        if (!confirm('Create the monthly measurement referral fee payouts through the end of ' +
+            document.getElementById('batchMonth').selectedOptions[0].textContent + ' (month boundaries are midnight Eastern time)?\n\nPartners under the minimum roll over to next month. Running it again creates nothing new.')) return;
+        btn.disabled = true;
+        out.textContent = 'Running…';
+        try {
+            const { data, error } = await sb.rpc('create_monthly_fee_batch', { p_month: month });
+            if (error) throw error;
+            const dollars = (Number(data.total_cents || 0) / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+            out.textContent = data.payouts_created + ' payout(s) created (' + data.events_batched + ' measurements, ' + dollars + '); ' +
+                data.under_minimum_partners + ' under the minimum roll over; ' + data.payments_blocked_partners + ' held for blocked payments.';
+            await loadPayouts();
+        } catch (err) {
+            console.error('Monthly batch error:', err);
+            out.textContent = 'Batch failed: ' + (err.message || err);
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
     // ── Approve ───────────────────────────────────────────────────────────────
     async function handleApprove(approvalId, btn) {
         // D-139 (#567): warn before releasing a commission whose job is not
         // marked complete — the EF holds it unless override_incomplete is sent.
         const approvalRow = allPayouts.find(p => p.id === approvalId);
         let overrideIncomplete = false;
-        if (!approvalRow || approvalRow._job_complete !== true) {
+        // gh-3229: a monthly measurement-fee payout has no job; the completion warning does not apply to it.
+        const isMonthlyFees = approvalRow && approvalRow.payout_type === 'measurement_fees_monthly';
+        if (!isMonthlyFees && (!approvalRow || approvalRow._job_complete !== true)) {
             const proceed = confirm(
                 '⚠️ The job linked to this referral fee is NOT marked complete.\n\n' +
                 'D-139: referral fees are paid after job completion. Approving now releases the payout early.\n\n' +
