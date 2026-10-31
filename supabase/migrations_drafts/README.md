@@ -138,3 +138,10 @@ Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630)
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh3212_freeze_claims_is_test` | forward, rollback, pre-flight (all three here) | NOT APPLIED (DRAFT, Tier 3B) | drafted 2026-10-30 under #3212; production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): `has_column_privilege` UPDATE on `claims.is_test` is true for anon and authenticated, and no claims trigger freezes it on UPDATE (the 18 triggers read). One new BEFORE UPDATE OF is_test trigger `claims_freeze_is_test` raises 42501 for a changed value from client roles (mirrors `profiles_freeze_privileged_columns`, gh-2785); service_role and postgres unaffected; separate function so it does not conflict with PR #3209, which replaces `claims_guard_referral_columns()`. No client or Edge Function UPDATEs `claims.is_test`. No database was written | none |
+
+## Added 2026-10-30 (gh-3197, internal test sign-ups flagged is_test): 3 files here (forward, rollback, pre-flight); not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh3197_internal_test_signups_is_test` | forward, rollback, pre-flight (all three here) | NOT APPLIED (DRAFT, Tier 3B) | drafted 2026-10-30 under #3197; production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): `set_is_test_for_internal_test_domain()` matches only `@otterquote-internal.test`; 38 internal-email profiles and 3 of their claims read `is_test<>true`. | none |
+| `gh3197_backfill_internal_test_is_test` | forward, rollback (both here) | NOT APPLIED (DRAFT, Tier 3B, apply after `gh3197_internal_test_signups_is_test`) | drafted 2026-10-30 under #3197 per Ben's rulings 6522509807 / 6522674646; raise-only UPDATE of the 38 internal-email profiles and 3 claims read 2026-10-30; rollback hard-codes those ids. Run as service_role/postgres. | none |
