@@ -168,7 +168,7 @@ await mustFail('consent guard removed from sendCode', SRC.replace("if (state.con
 await mustFail('box pre-ticked', SRC.replace('consentChecked: false, // never pre-ticked', 'consentChecked: true,'), 'unticked');
 await mustFail('failure treated as verified', SRC.replace("state.verified = true; state.verifiedPhone = phone;", "state.verified = true; state.verifiedPhone = phone; /*always*/").replace("if (!res.error && res.data && res.data.success === true) {\n          state.verified", "if (true) {\n          state.verified"), 'must not verify');
 await mustFail('disclosure written with innerHTML-style parsing', SRC.replace("ctl.state.disclosure.disclosure_text); // verbatim, as text", "ctl.state.disclosure.disclosure_text.replace(/<[^>]*>/g, '')); // verbatim, as text"), 'verbatim');
-await mustFail('START step dropped from opted-out message', SRC.replace('requires texting START first', 'is not possible'), 'texting START first');
+await mustFail('START step dropped from opted-out message', SRC.replaceAll('requires texting START first', 'is not possible'), 'texting START first');
 await mustFail('success line promises alerts', SRC.replace("'Number verified and saved.'", "'Number verified. You will get text alerts at this number.'"), 'promise alerts');
 await mustFail('no-disclosure still offered', SRC.replace("if (d && typeof d.id === 'string' && d.id && typeof d.disclosure_text === 'string' && d.disclosure_text.trim() !== '') {", "if (d) {"), 'blank disclosure');
 
