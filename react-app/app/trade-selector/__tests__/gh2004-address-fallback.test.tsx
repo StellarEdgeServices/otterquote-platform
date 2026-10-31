@@ -135,7 +135,7 @@ describe('TradeSelectorPage — gh-2004 no-cs_signup address fallback', () => {
 
     // Resolves via the profile fallback before any step renders — lands
     // straight on 'funding', no address step shown.
-    await waitFor(() => expect(screen.getByText('How is this job being funded?')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('How is this being paid for?')).toBeInTheDocument());
     expect(screen.queryByText("What's the property address?")).not.toBeInTheDocument();
 
     const payload = await goFundingToRepairAndComplete();
@@ -163,7 +163,7 @@ describe('TradeSelectorPage — gh-2004 no-cs_signup address fallback', () => {
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Please enter your street address.'));
     expect(screen.getByText("What's the property address?")).toBeInTheDocument();
-    expect(screen.queryByText('How is this job being funded?')).not.toBeInTheDocument();
+    expect(screen.queryByText('How is this being paid for?')).not.toBeInTheDocument();
     expect(profilesUpsertMock).not.toHaveBeenCalled();
 
     // Fill in a valid address -> Continue now advances to funding and
@@ -174,7 +174,7 @@ describe('TradeSelectorPage — gh-2004 no-cs_signup address fallback', () => {
     fireEvent.change(screen.getByLabelText('ZIP Code'), { target: { value: '46060' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
-    await waitFor(() => expect(screen.getByText('How is this job being funded?')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('How is this being paid for?')).toBeInTheDocument());
     expect(profilesUpsertMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'u1',
       address_street: '12345 North Meridian Street',
@@ -195,7 +195,7 @@ describe('TradeSelectorPage — gh-2004 no-cs_signup address fallback', () => {
     fireEvent.change(screen.getByLabelText('State'), { target: { value: 'IN' } });
     fireEvent.change(screen.getByLabelText('ZIP Code'), { target: { value: '46077' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
-    await waitFor(() => expect(screen.getByText('How is this job being funded?')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('How is this being paid for?')).toBeInTheDocument());
 
     const payload = await goFundingToRepairAndComplete();
     expect(payload.property_address).toBe('9000 Windpointe Pass, Zionsville, IN 46077');

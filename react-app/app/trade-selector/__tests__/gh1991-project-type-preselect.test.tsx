@@ -96,7 +96,7 @@ describe('TradeSelectorPage — gh-1991 project_type pre-select', () => {
     // gh-2004: wait for the address-resolution effect to settle (profile
     // fallback mocked with a full address, so this always lands on
     // 'funding' directly — see the shared mock above).
-    await waitFor(() => expect(screen.getByText('How is this job being funded?')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('How is this being paid for?')).toBeInTheDocument());
 
     // Cash path: Funding -> Trades directly (no Policy step).
     fireEvent.click(screen.getByText("I'm paying for this myself (retail/cash)"));
@@ -118,7 +118,7 @@ describe('TradeSelectorPage — gh-1991 project_type pre-select', () => {
     render(<TradeSelectorPage />);
 
     // gh-2004: wait for the address-resolution effect to settle.
-    await waitFor(() => expect(screen.getByText('How is this job being funded?')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('How is this being paid for?')).toBeInTheDocument());
 
     fireEvent.click(screen.getByText("I'm paying for this myself (retail/cash)"));
 
@@ -135,7 +135,7 @@ describe('TradeSelectorPage — gh-1991 project_type pre-select', () => {
     render(<TradeSelectorPage />);
 
     // gh-2004: wait for the address-resolution effect to settle.
-    await waitFor(() => expect(screen.getByText('How is this job being funded?')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('How is this being paid for?')).toBeInTheDocument());
 
     fireEvent.click(screen.getByText("I'm paying for this myself (retail/cash)"));
 
