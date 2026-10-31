@@ -26,22 +26,31 @@
 // TS module (one is a static page, the other a Deno function); grepping the
 // repo for the literal found no existing shared constant to import instead.
 import { type ContractorSmsGateOptions, contractorSmsReleaseGate } from "../_shared/contractor-sms-release.ts"; // D-391 / #2875 TCR release gate
+import { resolveContractorTextableNumbers, type TextableClient } from "../_shared/contractor-textable.ts"; // D-391 / #2875 layer 4
 
-export const CURRENT_CONTRACTOR_SMS_CONSENT_VERSION = "contractor-v2-2026-09-15";
+// D-391 / #2875 layer 4 SUPERSEDES the D-328 gate described above: the sms_opt_in + consent-text-version test
+// (isSmsConsented, CURRENT_CONTRACTOR_SMS_CONSENT_VERSION) is gone. The unit of consent is now the one-time-code-
+// verified NUMBER, so the nudge texts only the numbers returned by contractor_textable_numbers() and never
+// contractors.phone / notification_phones / sms_opt_in. A contractor with no verified number is not texted and the
+// skip is logged as `unverified_number`.
 
 /**
- * The send-path gate itself: true only when consent is really, strictly
- * `true` AND the stored consent was captured under the CURRENT text version.
- * NULL/undefined `smsOptIn` (never asked — the v115 default for every
- * pre-migration row) and `false` (opted out) both refuse, as do a missing or
- * superseded `smsConsentTextVersion` even when `smsOptIn` is `true` — the
- * contractor agreed to a sentence Otter Quotes no longer sends under.
+ * The numbers the nudge may text for this contractor. The is_test / TCR release gate sits IN FRONT of the lookup (a
+ * contractor who may not be texted at all costs no query); then only contractor_textable_numbers() rows are returned.
+ * Empty = send nothing (a refusal has been logged).
  */
-export function isSmsConsented(
-  smsOptIn: boolean | null | undefined,
-  smsConsentTextVersion: string | null | undefined,
-): boolean {
-  return smsOptIn === true && smsConsentTextVersion === CURRENT_CONTRACTOR_SMS_CONSENT_VERSION;
+export async function resolveNudgeRecipients(
+  sb: TextableClient,
+  contractorId: string,
+  isTest: boolean | null | undefined,
+  gateOpts?: Pick<ContractorSmsGateOptions, "getEnv" | "log">,
+): Promise<string[]> {
+  const site = "send-contractor-nudge/consent-gate";
+  if (!contractorSmsReleaseGate({ id: contractorId, is_test: isTest }, { site, ...gateOpts }).allowed) {
+    return [];
+  }
+  const recipients = await resolveContractorTextableNumbers(sb, contractorId, { site, log: gateOpts?.log });
+  return recipients.map((r) => r.phone);
 }
 
 export interface SendResult {
@@ -54,14 +63,11 @@ export interface SendResult {
 /**
  * Attempt a single contractor SMS via the send-sms Edge Function, using the
  * service-role bearer (send-sms's own auth gate trusts the service-role key
- * as an internal caller — see send-sms/index.ts). Refuses BEFORE any network
- * call unless `smsOptIn` is strictly `true` AND `smsConsentTextVersion`
- * equals `CURRENT_CONTRACTOR_SMS_CONSENT_VERSION`, and (D-391 / #2875) unless the contractor is_test or the
- * CONTRACTOR_SMS_TCR_RELEASED switch is "true". `fetchImpl` is injected so
- * this is unit-testable without a live network call or a real Supabase
- * project — the test asserts fetchImpl is never called for a non-consenting
- * (or stale-version) contractor and IS called for a genuinely, currently
- * consenting one.
+ * as an internal caller — see send-sms/index.ts). `to` must be a number from
+ * resolveNudgeRecipients(). Refuses BEFORE any network call unless (D-391 /
+ * #2875) the contractor is_test or the CONTRACTOR_SMS_TCR_RELEASED switch is
+ * "true". `fetchImpl` is injected so this is unit-testable without a live
+ * network call or a real Supabase project.
  */
 export async function attemptContractorSms(
   fetchImpl: typeof fetch,
@@ -70,20 +76,11 @@ export async function attemptContractorSms(
   to: string,
   message: string,
   contractorId: string,
-  smsOptIn: boolean | null | undefined,
-  smsConsentTextVersion: string | null | undefined,
   // D-391 / #2875: contractors.is_test. Required (no default) so a caller that forgets it fails closed:
   // undefined/null is "not a test contractor", refused until CONTRACTOR_SMS_TCR_RELEASED === "true".
   isTest: boolean | null | undefined,
   gateOpts?: Pick<ContractorSmsGateOptions, "getEnv" | "log">,
 ): Promise<SendResult> {
-  if (!isSmsConsented(smsOptIn, smsConsentTextVersion)) {
-    console.warn(
-      `[send-contractor-nudge] SMS refused (gh-1916 R-134 / D-328 gate) — sms_opt_in/sms_consent_text_version do not satisfy the gate for contractor ${contractorId} (sms_opt_in=${String(smsOptIn)}, sms_consent_text_version=${String(smsConsentTextVersion)}, required=${CURRENT_CONTRACTOR_SMS_CONSENT_VERSION}). No Twilio call attempted.`,
-    );
-    return { attempted: false, ok: false };
-  }
-
   // D-391 / #2875: until the TCR message_flow read-back is pasted, only is_test contractors are texted.
   if (
     !contractorSmsReleaseGate(
