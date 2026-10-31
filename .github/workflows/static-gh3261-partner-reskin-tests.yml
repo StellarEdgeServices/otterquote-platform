@@ -1,0 +1,52 @@
+name: Static gh-3261 Partner Reskin Copy Tests
+
+# gh-3261: the partner landing pages wear the approved homepage reskin as a DESIGN-ONLY change. This proves a pull request that touches the reskin
+# stylesheets (or this test) changes no visible string, form, tracking script, JSON-LD, canonical or noindex on the ten partner landing pages:
+# each page at the PR's merge base vs the PR, statically and rendered in Chromium (innerText after JS at 1440 and 390), with negative controls.
+# Path-filtered to the reskin files on purpose: a pull request that deliberately edits partner copy is not a reskin change and must not be blocked here.
+# `pull_request` (never `pull_request_target`), no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'css/partner-reskin.css'
+      - 'css/home-reskin.css'
+      - 'tests/gh3261-partner-reskin-copy.mjs'
+      - '.github/workflows/static-gh3261-partner-reskin-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3261-partner-reskin-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-gh3261-partner-reskin-tests:
+    name: Partner reskin changes no copy, forms, tracking or SEO tags
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code (full history, for the merge base)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Base for the comparison
+        run: echo "GH3261_BASE=$(git merge-base HEAD origin/${{ github.base_ref }})" >> "$GITHUB_ENV"
+      - name: Static copy / form / tracking / SEO identity, negative controls (gh3261-partner-reskin-copy)
+        run: node tests/gh3261-partner-reskin-copy.mjs
+      - name: Install Playwright + Chromium from the tests/e2e lockfile
+        working-directory: tests/e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Rendered innerText and attribute identity at 1440 and 390, negative controls (gh3261-partner-reskin-copy --render)
+        run: node tests/gh3261-partner-reskin-copy.mjs --render

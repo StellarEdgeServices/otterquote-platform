@@ -157,13 +157,31 @@ const own = new Set([...NEW_FILES, 'tests/gh2598-home-next-staging.mjs', 'tests/
 const ls = spawnSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' });
 const files = ls.status === 0 ? ls.stdout.split('\n').filter(Boolean) : [];
 ok(files.length > 100, 'T5 git ls-files lists the tree (' + files.length + ' files)');
-const refs = [];
-for (const f of files) {
-  if (own.has(f) || /\.(png|jpe?g|webp|gif|ico|woff2?|pdf|mp4|zip|lock)$/i.test(f)) continue;
-  let s; try { s = fs.readFileSync(path.join(ROOT, f), 'utf8'); } catch (e) { continue; }
-  if (/home-next|home-reskin/.test(s)) refs.push(f);
+/* gh-3261: the partner landing pages reuse the SHIPPED reskin (css/home-reskin.css, live on index.html since slice 5) for its tokens, through
+   css/partner-reskin.css. Those files may mention home-reskin; nothing outside `own` may mention home-next (the unreleased staging page) — the
+   allowlist below does not relax that. A new file that wants home-reskin must be added here by name, with its issue. */
+const RESKIN_REUSE = new Set(['css/partner-reskin.css', 'tests/gh3261-partner-reskin-copy.mjs', '.github/workflows/static-gh3261-partner-reskin-tests.yml',
+  'partners.html', 'partner-re.html', 'partner-influencers.html', 'partner-insurance.html', 'partner-insurance-fees.html', 'partner-insurance-how-it-works.html',
+  'partner-insurance-why.html', 'partner-inspectors.html', 'partner-adjusters.html', 'partner-other.html']);
+function t5Offenders(entries) {   /* entries: [path, text] */
+  const out = [];
+  for (const [f, s] of entries) {
+    if (own.has(f)) continue;
+    if (/home-next/.test(s) || (/home-reskin/.test(s) && !RESKIN_REUSE.has(f))) out.push(f);
+  }
+  return out;
 }
-ok(refs.length === 0, 'T5 no other tracked file mentions home-next or home-reskin' + (refs.length ? ': ' + refs.join(', ') : ''));
+const entries = [];
+for (const f of files) {
+  if (/\.(png|jpe?g|webp|gif|ico|woff2?|pdf|mp4|zip|lock)$/i.test(f)) continue;
+  let s; try { s = fs.readFileSync(path.join(ROOT, f), 'utf8'); } catch (e) { continue; }
+  entries.push([f, s]);
+}
+const refs = t5Offenders(entries);
+ok(refs.length === 0, 'T5 no other tracked file mentions home-next, and only the gh-3261 partner reskin files mention home-reskin' + (refs.length ? ': ' + refs.join(', ') : ''));
+control('T5 (an unlisted file mentioning home-reskin)', t5Offenders(entries.concat([['about.html', '<link rel="stylesheet" href="/css/home-reskin.css">']])).includes('about.html'));
+control('T5 (an allowlisted partner file mentioning home-next)', t5Offenders(entries.map(([f, s]) => [f, f === 'partner-re.html' ? s + '\n<a href="/home-next">x</a>' : s])).includes('partner-re.html'));
+control('T5 (any other file mentioning home-next)', t5Offenders(entries.concat([['blog/x.html', '<a href="/home-next.html">x</a>']])).includes('blog/x.html'));
 const listed = (sm, llms) => /home-next/.test(sm) || /home-next/.test(llms);
 ok(!listed(read('sitemap.xml'), read('llms.txt')), 'T5 not in sitemap.xml or llms.txt');
 control('T5', listed(read('sitemap.xml') + '\n<loc>https://otterquote.com/home-next</loc>', read('llms.txt')) && listed(read('sitemap.xml'), read('llms.txt') + '\nhttps://otterquote.com/home-next'));
