@@ -6,7 +6,7 @@
  * The authenticated HOMEOWNER / CUSTOMER referral page: a customer's unique
  * referral link + QR, share tools (Facebook + before/after share card, SMS,
  * Nextdoor, email, email-signature badge), their referrals table, the D-172 W-9
- * banner, and the verbatim 1099 tax notice + D-180 commission disclosure +
+ * banner, and the verbatim 1099 tax notice + D-180 referral-fee disclosure +
  * D-266 referral-fee legality disclaimer.
  *
  * GATING (matches the static init() order):
@@ -17,8 +17,10 @@
  *   2. settled-gate (the #294/#296 hardened pattern via useAuthReady): never act
  *      on the transient blank screen.
  *   3. settled & no user -> router.replace('/login') (Auth.requireAuth parity).
- *   4. settled & user -> fetch-or-CREATE the customer referral_agents row
- *      (agent_type='customer'); then load this user's referrals.
+ *   4. settled & user -> read the customer referral_agents row's Partner Agreement
+ *      acceptance (gh-3244). v4-2026-10 accepted -> fetch-or-CREATE the code and show
+ *      the link; NOT accepted -> the acceptance gate shows and NO link is issued until
+ *      accept_partner_agreement_v4() confirms. Then load this user's referrals.
  *   NOTE: this is the customer model (referral_agents.agent_type='customer',
  *   create-on-missing), NOT the partner-record resolver (which is partner-table-
  *   first and bounces to /partner-re.html). Force-fitting that resolver here
@@ -31,13 +33,13 @@
  * (v100/#624; unique_code is trigger-generated, never client-supplied), and
  * referrals resolve via the two-step referral_agents.id -> referrals.
  * referral_agent_id path (#567). See utils.ts for the full 7-status model and
- * the D-139 paid/pending commission split this now carries.
+ * the D-139 paid/pending referral-fee split this now carries.
  *
  * §XSS: every DB/user value renders as JSX text (no innerHTML /
  * dangerouslySetInnerHTML). The email-signature badge HTML is shown as TEXT in a
  * code box for the user to copy — never injected.
  *
- * ⚠️ Tier-3 copy (1099 tax notice, FAQ tax answer, D-180 disclosure, D-266
+ * ⚠️ Tier-3 copy (1099 tax notice, FAQ tax answer, D-180 referral-fee disclosure, D-266
  * referral-fee legality disclaimer, W-9 banner) is ported VERBATIM (copy.ts)
  * and pinned in refer.test.ts.
  */
@@ -49,8 +51,12 @@ import { supabase } from '@/lib/supabase';
 import {
   type CustomerReferral,
   type CustomerReferralAgent,
+  type AgreementRow,
+  type AcceptanceResult,
   REFERRAL_AGENT_TYPE,
   COMING_SOON_REDIRECT,
+  loadReferLink,
+  acceptAgreementAndIssueLink,
   referralUrl,
   referralRowCells,
   summarizeReferrals,
@@ -68,6 +74,7 @@ import {
   LOGIN_ROUTE,
   REFERRAL_CODE_ERROR_TEXT,
   HERO,
+  AGREEMENT_GATE,
   REFERRAL_LINK_LABEL,
   QR_HEADING,
   COPY_LINK_LABEL,
@@ -110,6 +117,16 @@ function isMobileUA(): boolean {
   return typeof navigator !== 'undefined' && /iPhone|iPad|Android|mobile/i.test(navigator.userAgent);
 }
 
+// v100/#624: get_or_create_customer_referral_code() — SECURITY DEFINER, keyed on auth.uid() only. Returns the code, or
+// null on a genuine failure (RPC error, expired session, no verified email) — never a fabricated code.
+async function fetchOrCreateCode(): Promise<string | null> {
+  const { data, error } = await supabase.rpc('get_or_create_customer_referral_code');
+  const unique = data ? (data as CustomerReferralAgent).unique_code : null;
+  if (unique) return unique;
+  console.error('Error fetching/creating referral code:', error);
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ReferAFriendPage() {
   const { user, settled } = useAuthReady();
@@ -119,6 +136,7 @@ export default function ReferAFriendPage() {
   const [gated, setGated] = useState(false);
   const [ready, setReady] = useState(false);
   const [code, setCode] = useState<string | null>(null);
+  const [needsAgreement, setNeedsAgreement] = useState(false);
   const [, setAgent] = useState<CustomerReferralAgent | null>(null);
   const [referrals, setReferrals] = useState<CustomerReferral[]>([]);
 
@@ -148,29 +166,31 @@ export default function ReferAFriendPage() {
         // made non-functional (same write-then-read gap #571's register_partner
         // fixed for the partner-signup pages). Idempotent get-or-create;
         // unique_code is trigger-generated and never supplied here.
-        const { data, error } = await supabase.rpc('get_or_create_customer_referral_code');
-
-        if (data && (data as CustomerReferralAgent).unique_code) {
-          const a = data as CustomerReferralAgent;
-          setCode(a.unique_code ?? null);
-          setAgent(a);
-        } else {
-          // Genuine failure (RPC error, expired session, no verified email,
-          // etc.) — do NOT fabricate a fake code; render an honest error
-          // instead of a broken /ref/<falsy> link.
-          console.error('Error fetching/creating referral code:', error);
-          setCode(null);
-          setAgent(null);
-        }
-
+        //
+        // gh-3244: no link until the customer has accepted Partner Agreement
+        // v4-2026-10 (Agreement Section 1) — loadReferLink() only calls the
+        // get-or-create RPC for an already-accepted customer.
+        //
         // Two-step (#567): referrals has no referrer_id column — resolve our
         // own agent row first, then match referrals.referral_agent_id.
         const { data: agentRow, error: agentError } = await supabase
           .from('referral_agents')
-          .select('id')
+          .select('id, partner_agreement_version, partner_agreement_attestation')
           .eq('user_id', user.id)
           .eq('agent_type', REFERRAL_AGENT_TYPE)
           .maybeSingle();
+
+        const link = await loadReferLink({
+          readAgreementRow: async () => (agentError ? null : ((agentRow as AgreementRow | null) ?? null)),
+          getOrCreateCode: fetchOrCreateCode,
+        });
+        if (link.state === 'link') {
+          setCode(link.code);
+        } else {
+          setCode(null);
+          setAgent(null);
+          setNeedsAgreement(link.state === 'needs_agreement');
+        }
 
         if (agentError) {
           console.error('Failed to resolve referral agent:', agentError);
@@ -192,6 +212,21 @@ export default function ReferAFriendPage() {
     })();
   }, [gated, settled, user, router]);
 
+  // gh-3244: get_or_create_customer_referral_code() then accept_partner_agreement_v4(); the link shows only once the
+  // acceptance response confirms v4-2026-10. A failure throws to the gate, which keeps the link hidden.
+  const acceptAgreement = async () => {
+    const issued = await acceptAgreementAndIssueLink({
+      getOrCreateCode: fetchOrCreateCode,
+      acceptAgreement: async () => {
+        const { data, error } = await supabase.rpc('accept_partner_agreement_v4');
+        if (error) throw error;
+        return (data as AcceptanceResult | null) ?? null;
+      },
+    });
+    setNeedsAgreement(false);
+    setCode(issued);
+  };
+
   if (gated) return null;
 
   if (!settled || !user || !ready) {
@@ -206,7 +241,7 @@ export default function ReferAFriendPage() {
     );
   }
 
-  if (!code) {
+  if (!code && !needsAgreement) {
     return (
       <div className="orf-root">
         <style>{STYLES}</style>
@@ -220,7 +255,11 @@ export default function ReferAFriendPage() {
   return (
     <div className="orf-root">
       <style>{STYLES}</style>
-      <ReferView code={code} referrals={referrals} />
+      <ReferView
+        code={code}
+        referrals={referrals}
+        onAccept={needsAgreement ? acceptAgreement : null}
+      />
     </div>
   );
 }
@@ -229,36 +268,49 @@ export default function ReferAFriendPage() {
 function ReferView({
   code,
   referrals,
+  onAccept,
 }: {
-  code: string;
+  code: string | null;
   referrals: CustomerReferral[];
+  onAccept: (() => Promise<void>) | null;
 }) {
-  const link = referralUrl(code);
+  const link = code ? referralUrl(code) : null;
 
   return (
     <main className="orf-main">
       {/* Hero */}
       <section className="hero-section">
         <h1>{HERO.heading}</h1>
-        <p className="subtitle">{HERO.subtitle}</p>
+        <p className="subtitle">{link ? HERO.subtitle : HERO.subtitlePreAcceptance}</p>
       </section>
 
-      {/* Referral link */}
-      <section className="refer-section">
-        <ReferralLinkCard link={link} />
-      </section>
+      {/* gh-3244: Partner Agreement v4 acceptance — the link and share tools below render only after it */}
+      {!link && onAccept && (
+        <section className="refer-section">
+          <AgreementGate onAccept={onAccept} />
+        </section>
+      )}
 
-      {/* Share options */}
-      <section className="refer-section">
-        <h2 className="section-h2">{SHARE_HEADING}</h2>
-        <div className="share-grid">
-          <FacebookCard link={link} />
-          <SmsCard link={link} />
-          <NextdoorCard link={link} />
-          <EmailCard link={link} />
-          <BadgeCard link={link} />
-        </div>
-      </section>
+      {link && (
+        <>
+          {/* Referral link */}
+          <section className="refer-section">
+            <ReferralLinkCard link={link} />
+          </section>
+
+          {/* Share options */}
+          <section className="refer-section">
+            <h2 className="section-h2">{SHARE_HEADING}</h2>
+            <div className="share-grid">
+              <FacebookCard link={link} />
+              <SmsCard link={link} />
+              <NextdoorCard link={link} />
+              <EmailCard link={link} />
+              <BadgeCard link={link} />
+            </div>
+          </section>
+        </>
+      )}
 
       {/* Referrals dashboard */}
       <section className="refer-section">
@@ -297,7 +349,7 @@ function ReferView({
         </div>
       </section>
 
-      {/* D-180 commission approval disclosure (verbatim) */}
+      {/* D-180 referral-fee approval disclosure (verbatim) */}
       <section className="refer-section">
         <p className="commission-disclosure">{COMMISSION_APPROVAL_DISCLOSURE}</p>
       </section>
@@ -307,6 +359,60 @@ function ReferView({
         <p className="referral-fee-disclaimer">{REFERRAL_FEE_DISCLAIMER}</p>
       </section>
     </main>
+  );
+}
+
+// ── Partner Agreement v4 acceptance gate (gh-3244) ────────────────────────────
+function AgreementGate({ onAccept }: { onAccept: () => Promise<void> }) {
+  const [checked, setChecked] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<{ text: string; error: boolean }>({ text: '', error: false });
+
+  const submit = async () => {
+    if (!checked || busy) return; // the checkbox is a hard gate: no RPC unless it is ticked
+    setBusy(true);
+    setStatus({ text: AGREEMENT_GATE.saving, error: false });
+    try {
+      await onAccept();
+    } catch (err) {
+      console.error('Partner Agreement v4 acceptance failed:', err);
+      setStatus({ text: AGREEMENT_GATE.error, error: true });
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="agreement-card">
+      <h2 className="section-h2">{AGREEMENT_GATE.heading}</h2>
+      <p>{AGREEMENT_GATE.intro}</p>
+      <p>{AGREEMENT_GATE.timing}</p>
+      <label className="agreement-check">
+        <input
+          type="checkbox"
+          id="agreement-v4-checkbox"
+          checked={checked}
+          onChange={(e) => setChecked(e.target.checked)}
+        />
+        <span>
+          {AGREEMENT_GATE.checkboxPrefix}
+          <a href={AGREEMENT_GATE.linkHref} target="_blank" rel="noopener noreferrer">
+            {AGREEMENT_GATE.linkText}
+          </a>
+          {AGREEMENT_GATE.checkboxSuffix}
+        </span>
+      </label>
+      <button type="button" className="btn btn-primary" disabled={!checked || busy} onClick={submit}>
+        {AGREEMENT_GATE.button}
+      </button>
+      <div
+        role="status"
+        aria-live="polite"
+        className="agreement-status"
+        style={status.error ? { color: 'var(--red)' } : undefined}
+      >
+        {status.text}
+      </div>
+    </div>
   );
 }
 
@@ -895,6 +1001,10 @@ const STYLES = `
   .tax-notice { background: rgba(11,25,41,0.6); border:1px solid rgba(224,123,0,0.2); border-radius: var(--radius-md); padding: var(--sp-8); }
   .tax-notice-label { font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--amber);margin-bottom:var(--sp-3); }
   .tax-notice-body { color: var(--slate); font-size:0.9rem; line-height:1.7; margin:0; }
+  .agreement-card { background: var(--card, rgba(255,255,255,0.04)); border:1px solid rgba(224,123,0,0.2); border-radius: var(--radius-md); padding: var(--sp-8); display:flex; flex-direction:column; gap: var(--sp-4); }
+  .agreement-check { display:flex; gap: var(--sp-3); align-items:flex-start; line-height:1.5; }
+  .agreement-check input { margin-top: 4px; }
+  .agreement-status { min-height: 1.2em; font-size:0.9rem; }
   .commission-disclosure { color: var(--slate); font-size:0.85rem; line-height:1.6; text-align:center; margin:0; }
   .referral-fee-disclaimer { color: var(--slate); font-size:0.85rem; line-height:1.6; text-align:center; margin:0; }
 

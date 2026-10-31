@@ -109,7 +109,7 @@ Deno.test("draft copy: thanks the homeowner, names both actions, one dashboard l
   assert(subject.length > 0);
   assert(textBody.toLowerCase().includes("thanks"));
   assert(textBody.toLowerCase().includes("loss sheet"));
-  assert(textBody.includes("$15"));
+  assert(textBody.includes("$22.63"));
   assert(textBody.includes(DASHBOARD_URL));
   assert(textBody.includes("The OtterQuote team"));
   assert(htmlBody.includes(DASHBOARD_URL));

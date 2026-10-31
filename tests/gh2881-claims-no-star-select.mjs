@@ -106,7 +106,7 @@ if (fs.existsSync(tsPath)) {
   ok(cols.length > 100 && PRIVATE.every((p) => !cols.includes(p)), `the shared column list has ${cols.length} columns and none of the three private ones`);
   ok(new Set(cols).size === cols.length, 'the shared column list has no duplicates');
   const other = literals.filter(([f]) => f !== 'react-app/app/lib/claim-columns.ts');
-  ok(other.length >= 7, `the static pages inline the list (${other.length} literals)`);
+  ok(other.length >= 6, /* gh-3286: 7 -> 6, project-confirmation.html (one literal) was deleted */  `the static pages inline the list (${other.length} literals)`);
   const diff = other.filter(([, l]) => l !== canon);
   ok(diff.length === 0, `every inlined list equals react-app/app/lib/claim-columns.ts (${diff.map(([f]) => f).join(', ') || 'all identical'})`);
 } else {
