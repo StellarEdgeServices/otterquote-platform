@@ -30,6 +30,7 @@ import { parseAddress, fullAddress, isValidZip, hasFullAddress, type ParsedAddre
 import { gtagEventBeforeNavigation } from '@/lib/ga-events';
 import { isAdSharingOptedOut } from '@/lib/ad-optout';
 import { readFreshSignupRaw } from '@/lib/signup-storage';
+import { CLAIM_INTAKE_COLUMNS, claimFinishedIntake } from '@/lib/claim-intake';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -515,17 +516,20 @@ export default function TradeSelectorPage() {
       return;
     }
 
-    // Returning-user guard: if user already has a claim, skip intake
+    // Returning-user guard: skip intake only when the user's latest claim has
+    // FINISHED intake (gh-3270: property_address set). An address-less draft
+    // stays here so handleComplete can UPDATE it with the address, phone,
+    // funding and trades instead of those answers being lost.
     const checkExistingClaim = async () => {
       try {
         const { data: existingClaim } = await supabase
           .from('claims')
-          .select('id')
+          .select(CLAIM_INTAKE_COLUMNS)
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
-        if (existingClaim) {
+        if (claimFinishedIntake(existingClaim)) {
           window.location.href = DASHBOARD_URL;
         }
       } catch (e) {
