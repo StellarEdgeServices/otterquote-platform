@@ -78,7 +78,9 @@ import { createClient } from "npm:@supabase/supabase-js@2.104.0";
 import { extractPdfText } from "./pdf-text.ts";
 import { MANIFEST, scanRequiredAnchors, scanOptionalAnchors, scanLabeledSignTags } from "./manifest.ts";
 import { revalidateTemplates } from "./revalidate.ts";
+import { applyRejectionHold, HELD_FOR_ADMIN_NOTICE } from "./admin-verdict-hold.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { checkAdminVerdictGuard } from "./verdict-guard.ts";
 import {
   describeMissingMarkers,
   describeLabeledTagMarkers,
@@ -201,9 +203,22 @@ Deno.serve(async (req: Request) => {
         return jsonResponse({ error: "Forbidden: service role or admin role required for revalidate_all" }, 403, corsHeaders);
       }
       const dryRun = body.dry_run !== false;
+      // [gh-3224] force_admin_verdicts: admin JWT only (the service-role key is not an admin) and logged.
+      let forceAdminVerdicts = false;
+      if (body.force_admin_verdicts === true) {
+        const { data: { user: fvUser } } = bearerToken === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+          ? { data: { user: null } }
+          : await supabase.auth.getUser(bearerToken);
+        if ((fvUser?.app_metadata as any)?.role !== "admin") {
+          return jsonResponse({ error: "Forbidden: force_admin_verdicts requires an admin JWT" }, 403, corsHeaders);
+        }
+        forceAdminVerdicts = true;
+        console.warn(`validate-contract-template revalidate_all force_admin_verdicts by ${fvUser!.id} dry_run=${dryRun} template_ids=${JSON.stringify(body.template_ids ?? null)}`);
+      }
       const report = await revalidateTemplates({
         supabase,
         dryRun,
+        forceAdminVerdicts,
         force: body.force === true,
         templateIds: Array.isArray(body.template_ids) ? body.template_ids.map(String) : undefined,
         extractPdfText,
@@ -290,6 +305,15 @@ Deno.serve(async (req: Request) => {
       if (tmpl.contractor_id !== contractorRec.id) {
         return jsonResponse({ error: "Forbidden: you do not own this template" }, 403, corsHeaders);
       }
+    }
+
+    // [gh-3216] An admin verdict (`rejected` / `admin_validated`) is not the contractor's to overwrite.
+    // Runs after the ownership check (a non-owner still gets the 403 above, not a status leak) and
+    // BEFORE the assisted path's storage writes, the scan and the status update, so a refusal writes
+    // nothing at all. Admin callers and every other status fall through unchanged.
+    const verdictGuard = await checkAdminVerdictGuard({ req, currentStatus: tmpl.status, isAdminPath });
+    if (!verdictGuard.ok) {
+      return jsonResponse(verdictGuard.body, verdictGuard.httpStatus, corsHeaders);
     }
 
     // Manifest lookup
@@ -457,6 +481,17 @@ Deno.serve(async (req: Request) => {
       newStatus = "manual_mapping_pending";
     }
 
+    // [gh-3224] A template an admin rejected never validates on a scan alone: it goes back to an admin.
+    // Fails closed: if the verdict lookup errors, nothing is written.
+    const hold = await applyRejectionHold(supabase, contractor_template_id, newStatus);
+    if (!hold.ok) {
+      console.error("validate-contract-template: admin verdict lookup failed:", hold.error);
+      return jsonResponse({ error: "Could not confirm this template's review history; nothing was changed.", code: "verdict_lookup_failed" }, 500, corsHeaders);
+    }
+    newStatus = hold.status;
+    const heldForAdmin = hold.held;
+    if (heldForAdmin) (validationResult as any).heldForAdminReview = true;
+
     const { error: updateErr, data: updateRows } = await supabase
       .from("contractor_templates")
       .update({
@@ -465,6 +500,9 @@ Deno.serve(async (req: Request) => {
         status: newStatus,
       })
       .eq("id", contractor_template_id)
+      // [gh-3216] Conditional on the status read at load time: if an admin verdict landed while the
+      // scan ran, this matches zero rows and the gh2105 branch below fails closed without writing.
+      .eq("status", tmpl.status)
       .select("id");
 
     if (updateErr) {
@@ -489,6 +527,7 @@ Deno.serve(async (req: Request) => {
       ok: true,
       status: newStatus,
       validation_result: validationResult,
+      ...(heldForAdmin ? { held_for_admin_review: true, notice: HELD_FOR_ADMIN_NOTICE } : {}),
     }, 200, corsHeaders);
   } catch (e: any) {
     console.error("validate-contract-template error:", e);

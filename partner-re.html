@@ -781,8 +781,13 @@
 /* #589: D-266 disclaimer sits on the dark signup panel here — was 3.64:1. */
 .referral-fee-disclaimer { color: #94A3B8 !important; }
 </style>
+<!-- gh-3261: the approved homepage reskin (gh-2598) on the partner landing pages. Design only: tokens from /css/home-reskin.css, rules in /css/partner-reskin.css (scoped to body.pr). -->
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/home-reskin.css">
+<link rel="stylesheet" href="/css/partner-reskin.css">
 </head>
-<body>
+<body class="pr">
 
 <header id="site-header" data-active=""></header>
 
@@ -957,8 +962,8 @@
     <div class="feature-item">
       <div class="feature-check">✓</div>
       <div class="feature-content">
-        <h4>Monthly portfolio report</h4>
-        <p>Track your referral activity, earnings trends, and partner performance over time.</p>
+        <h4>Referral history by month</h4>
+        <p>Filter your referrals by month and see each one's status and referral fee.</p>
       </div>
     </div>
   </div>
@@ -1244,12 +1249,12 @@
   // so unlike the React app (app.otterquote.com -- see
   // react-app/app/lib/variant.ts for why that origin needed a different
   // mechanism), the SAME localStorage key/cookie start.html itself writes
-  // (KEY = 'oq_variant_v3') is directly readable here too -- used as a
+  // (KEY = 'oq_variant_v4') is directly readable here too -- used as a
   // fallback for a visitor who bounced off this page and returned without
   // the query param. Priority: URL param, then localStorage, then cookie,
   // then 'unknown'.
   function getOqVariant() {
-    var VARIANT_KEY = 'oq_variant_v3';
+    var VARIANT_KEY = 'oq_variant_v4';
     var VARIANT_RE = /^[a-z0-9]{1,8}$/;
     function clean(v) {
       if (typeof v !== 'string') return null;

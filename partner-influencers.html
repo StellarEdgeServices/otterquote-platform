@@ -1,0 +1,1814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- gh-1994 fix round 1 (REVIEW): capture ?lead=<uuid> and strip it from the
+     visible URL via history.replaceState BEFORE any analytics loader below
+     (js/ga-gate.js, js/meta-pixel-gate.js -- and any third-party script they
+     load, e.g. gtag.js/fbevents.js/clarity.js) executes, so no GA4, Meta
+     Pixel or Clarity beacon -- including each library's own automatic
+     page_view/pageview call, which reads the CURRENT URL at the moment that
+     library's script runs -- can ever record `lead=<uuid>`. This must stay
+     the first script in <head>, above Sentry and everything else -- if any
+     loader executes first and fires its own automatic page_view/pageview
+     call before this strip runs, that beacon would still capture
+     `?lead=<uuid>` even though every later beacon on the same page load
+     would not (fix round 3: fixed this comment's own garbled sentence,
+     which previously described neither of these things clearly). The
+     bottom-of-page prefill script below reads
+     window.__oqRouterLeadId instead of re-parsing location.search, since by
+     the time it runs the URL no longer carries `lead`. -->
+<script>
+(function () {
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var lead = params.get('lead');
+    if (lead) {
+      window.__oqRouterLeadId = lead;
+      params.delete('lead');
+      var qs = params.toString();
+      var newUrl = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+      history.replaceState(history.state, '', newUrl);
+    }
+  } catch (e) { /* URL API unavailable: prefill simply won't run this load */ }
+})();
+</script>
+<!-- Sentry Error Monitoring -->
+<!-- gh-2043: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready (pattern from gh-2010, PR #2023). -->
+<script>
+  window.sentryOnLoad = function () {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  };
+</script>
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
+<script src="js/cookie-storage.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
+<script src="js/config.js"></script>
+<script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=partner-influencers&persona=partner');}})()</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Become a Creator Partner — Otter Quotes</title>
+<meta name="description" content="Sign up as an Otter Quotes creator partner. $200 referral fee when a homeowner you refer completes a project of $10,000 or more. Get your unique referral link in minutes.">
+<link rel="canonical" href="https://otterquote.com/partner-influencers.html">
+<meta property="og:title" content="Become a Creator Partner — Otter Quotes">
+<meta property="og:description" content="Sign up as an Otter Quotes creator partner. $200 referral fee when a homeowner you refer completes a project of $10,000 or more. Get your unique referral link in minutes.">
+<meta property="og:url" content="https://otterquote.com/partner-influencers.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Otter Quotes logo">
+
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script src="/js/linkedin-insight-gate.js"></script>
+<script src="/js/reddit-pixel-gate.js"></script>
+<script>gtag('config','G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+/* ── Hero Section ── */
+.hero {
+  padding: var(--sp-20) var(--sp-8);
+  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%); background-image: radial-gradient(ellipse at 30% 50%, rgba(224,123,0,0.08) 0%, transparent 60%);
+  text-align: center;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.hero-content {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.hero h1 {
+  font-size: clamp(2.2rem, 5vw, 3.5rem);
+  margin-bottom: var(--sp-4);
+  color: var(--navy);
+}
+
+.hero .subtitle {
+  font-size: 1.1rem;
+  color: #5A6B7B;
+  line-height: 1.8;
+  margin-bottom: var(--sp-8);
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero .btn {
+  margin-top: var(--sp-2);
+}
+
+/* ── How It Works Section ── */
+.how-it-works {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy);
+}
+
+.section-header {
+  text-align: center;
+  margin-bottom: var(--sp-12);
+}
+
+.section-header h2 {
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+  color: var(--white);
+  margin-bottom: var(--sp-3);
+}
+
+.section-header p {
+  font-size: 1.05rem;
+  color: var(--slate);
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--sp-8);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.step-card {
+  padding: var(--sp-8);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-lg);
+  transition: all var(--duration) var(--ease);
+}
+
+.step-card:hover {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(224, 123, 0, 0.2);
+}
+
+.step-number {
+  display: inline-block;
+  width: 48px;
+  height: 48px;
+  background: var(--amber-glow);
+  border: 2px solid var(--amber);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--amber);
+  margin-bottom: var(--sp-4);
+}
+
+.step-card h3 {
+  font-size: 1.25rem;
+  color: var(--white);
+  margin-bottom: var(--sp-3);
+}
+
+.step-card p {
+  color: var(--slate);
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* ── Value Props Section ── */
+.value-props {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy-2);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.props-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--sp-6);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.prop-card {
+  padding: var(--sp-6);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  border-radius: var(--radius-md);
+  transition: all var(--duration) var(--ease);
+}
+
+.prop-card:hover {
+  background: rgba(224, 123, 0, 0.08);
+  border-color: var(--amber);
+  transform: translateY(-2px);
+}
+
+.prop-icon {
+  font-size: 2.5rem;
+  margin-bottom: var(--sp-3);
+}
+
+.prop-card h3 {
+  font-size: 1.1rem;
+  color: var(--white);
+  margin-bottom: var(--sp-2);
+}
+
+.prop-card p {
+  font-size: 0.95rem;
+  color: var(--slate);
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* ── Commission Details Section ── */
+.commission-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.commission-card {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: var(--sp-10);
+  background: linear-gradient(135deg, rgba(224, 123, 0, 0.1) 0%, rgba(224, 123, 0, 0.05) 100%);
+  border: 2px solid var(--amber);
+  border-radius: var(--radius-lg);
+}
+
+.commission-card h3 {
+  color: var(--amber);
+  font-size: 1.5rem;
+  margin-bottom: var(--sp-4);
+}
+
+.commission-detail {
+  display: flex;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+
+.detail-check {
+  color: var(--amber);
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+
+.detail-text {
+  color: var(--white);
+  line-height: 1.6;
+}
+
+.detail-text p {
+  color: var(--slate);
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+/* ── Features Section ── */
+.features-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy-2);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.features-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-6);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.feature-item {
+  display: flex;
+  gap: var(--sp-4);
+}
+
+.feature-check {
+  color: var(--amber);
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.feature-content h4 {
+  font-family: var(--font-body);
+  color: var(--white);
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-1);
+}
+
+.feature-content p {
+  color: var(--slate);
+  font-size: 0.9rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Signup Form Section ── */
+.signup-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.signup-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-12);
+  max-width: 1300px;
+  margin: 0 auto;
+  align-items: start;
+}
+
+.signup-form-wrap {
+  max-width: 500px;
+}
+
+.signup-form-wrap h2 {
+  font-size: clamp(1.8rem, 3vw, 2.2rem);
+  color: var(--white);
+  margin-bottom: var(--sp-3);
+}
+
+.signup-form-wrap .subtitle {
+  color: var(--slate);
+  font-size: 1rem;
+  margin-bottom: var(--sp-8);
+  line-height: 1.6;
+}
+
+.partner-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.form-label {
+  font-family: var(--font-body);
+  color: var(--white);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.form-input {
+  padding: var(--sp-3) var(--sp-4);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-md);
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  transition: all var(--duration) var(--ease);
+}
+
+.form-input::placeholder {
+  color: rgba(255,255,255,0.4);
+}
+
+.form-input:focus {
+  outline: none;
+  background: rgba(255,255,255,0.06);
+  border-color: var(--amber);
+  box-shadow: 0 0 0 3px rgba(224, 123, 0, 0.1);
+}
+
+.form-hint {
+  font-size: 0.8rem;
+  color: var(--slate);
+  margin-top: 2px;
+}
+
+.form-input[type="file"] {
+  padding: var(--sp-3);
+  cursor: pointer;
+}
+
+.form-checkbox-group {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  margin: var(--sp-4) 0;
+}
+
+.form-checkbox {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  margin-top: 2px;
+  accent-color: var(--amber);
+  cursor: pointer;
+}
+
+.checkbox-label {
+  font-size: 0.9rem;
+  color: var(--slate);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.checkbox-label a {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.form-error {
+  padding: var(--sp-4);
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  color: #FECACA;
+  font-size: 0.9rem;
+  margin: var(--sp-3) 0;
+}
+
+.signup-benefits {
+  padding: var(--sp-8);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  border-radius: var(--radius-lg);
+  max-width: 500px;
+}
+
+.signup-benefits h3 {
+  color: var(--white);
+  font-size: 1.2rem;
+  margin-bottom: var(--sp-6);
+  font-family: var(--font-body);
+  font-weight: 600;
+}
+
+.benefit-item {
+  display: flex;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-5);
+}
+
+.benefit-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--amber-glow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  color: var(--amber);
+}
+
+.benefit-text h4 {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: var(--sp-1);
+}
+
+.benefit-text p {
+  font-size: 0.85rem;
+  color: var(--slate);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Button styles ── */
+/* Bridge 2026-08-26: see partner-insurance.html — `border: none` stripped
+   .btn-ghost's border on the nav-injected "Partner Login" button. */
+.btn:not(.btn-ghost):not(.btn-secondary):not(.btn-outline) {
+  border: none;
+}
+.btn {
+  padding: var(--sp-3) var(--sp-6);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+  text-decoration: none;
+  display: inline-block;
+  text-align: center;
+}
+
+.btn-primary {
+  background: var(--amber);
+  color: var(--navy);
+}
+
+.btn-primary:hover {
+  background: var(--amber-2);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(224, 123, 0, 0.3);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-lg {
+  padding: var(--sp-4) var(--sp-8);
+  font-size: 1rem;
+}
+
+.btn-full {
+  width: 100%;
+}
+
+.btn-loading {
+  position: relative;
+  color: transparent !important;
+}
+
+.btn-loading::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(10, 30, 44, 0.3);
+  border-top-color: var(--navy);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+/* ── Success State ── */
+.success-message {
+  display: none;
+  text-align: center;
+  padding: var(--sp-12) var(--sp-8);
+}
+
+.success-message.active { display: block; }
+.partner-form.hidden { display: none; }
+
+.success-icon {
+  font-size: 3.5rem;
+  margin-bottom: var(--sp-4);
+  color: var(--amber);
+}
+
+.success-message h2 {
+  font-size: 1.8rem;
+  color: var(--white);
+  margin-bottom: var(--sp-3);
+}
+
+.success-message p {
+  font-size: 1rem;
+  color: var(--slate);
+  margin-bottom: var(--sp-2);
+  line-height: 1.6;
+}
+
+.referral-link-box {
+  background: rgba(224, 123, 0, 0.15);
+  border: 2px solid var(--amber);
+  border-radius: var(--radius-md);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+}
+
+.referral-code {
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  color: var(--amber);
+  font-weight: 600;
+  word-break: break-all;
+  margin: var(--sp-2) 0;
+}
+
+.copy-btn {
+  display: inline-block;
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--amber);
+  color: var(--navy);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: var(--sp-3);
+  transition: all var(--duration) var(--ease);
+}
+
+.copy-btn:hover {
+  background: var(--amber-2);
+}
+
+/* ── FAQ Section ── */
+.faq-section {
+  padding: var(--sp-16) var(--sp-8);
+  background: var(--navy-2);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.faq-container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.faq-item {
+  margin-bottom: var(--sp-4);
+}
+
+.faq-question {
+  padding: var(--sp-5) var(--sp-6);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all var(--duration) var(--ease);
+  user-select: none;
+}
+
+.faq-question:hover {
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(224, 123, 0, 0.2);
+}
+
+.faq-question.active {
+  background: rgba(224, 123, 0, 0.1);
+  border-color: var(--amber);
+}
+
+.faq-text {
+  color: var(--white);
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.faq-toggle {
+  color: var(--amber);
+  font-size: 1.3rem;
+  flex-shrink: 0;
+  transition: transform var(--duration) var(--ease);
+}
+
+.faq-question.active .faq-toggle {
+  transform: rotate(180deg);
+}
+
+.faq-answer {
+  display: none;
+  padding: var(--sp-6);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  color: var(--slate);
+  line-height: 1.7;
+  animation: slideDown var(--duration) var(--ease);
+}
+
+.faq-question.active + .faq-answer {
+  display: block;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .hero {
+    padding: var(--sp-12) var(--sp-6);
+  }
+
+  .hero h1 {
+    font-size: 1.8rem;
+  }
+
+  .hero .subtitle {
+    font-size: 0.95rem;
+  }
+
+  .steps-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .props-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .features-list {
+    grid-template-columns: 1fr;
+  }
+
+  .signup-layout {
+    grid-template-columns: 1fr;
+    gap: var(--sp-8);
+  }
+
+  .signup-benefits {
+    max-width: 100%;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .section-header h2 {
+    font-size: 1.5rem;
+  }
+
+  .how-it-works,
+  .value-props,
+  .commission-section,
+  .features-section,
+  .signup-section,
+  .faq-section {
+    padding: var(--sp-10) var(--sp-6);
+  }
+
+  .step-card,
+  .prop-card {
+    padding: var(--sp-5);
+  }
+
+  .commission-card {
+    padding: var(--sp-6);
+  }
+}
+
+/* #589: D-266 disclaimer sits on the dark signup panel here — was 3.64:1. */
+.referral-fee-disclaimer { color: #94A3B8 !important; }
+</style>
+<!-- gh-3261: the approved homepage reskin (gh-2598) on the partner landing pages. Design only: tokens from /css/home-reskin.css, rules in /css/partner-reskin.css (scoped to body.pr). -->
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/home-reskin.css">
+<link rel="stylesheet" href="/css/partner-reskin.css">
+</head>
+<body class="pr">
+
+<header id="site-header" data-active=""></header>
+
+<!-- Hero Section -->
+<section class="hero">
+  <div class="hero-content">
+    <h1>Contractors Compete. Homeowners Win.</h1>
+    <p class="subtitle">Your audience asks who to call after a storm. Share one link, and homeowners can put their roof or exterior project in front of multiple contractors who compete for the job. You earn a referral fee when a homeowner you referred completes a project.</p>
+    <button class="btn btn-primary btn-lg" id="hero-cta">Become a Partner</button>
+  </div>
+</section>
+
+<!-- How It Works -->
+<section class="how-it-works">
+  <div class="section-header">
+    <h2>How It Works for Creators</h2>
+  </div>
+
+  <div class="steps-grid">
+    <div class="step-card">
+      <div class="step-number">1</div>
+      <h3>Sign Up & Get Your Link</h3>
+      <p>Create your partner account. Your unique referral link is ready in seconds.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-number">2</div>
+      <h3>Share Your Link</h3>
+      <p>Put it in a post, a video description, a newsletter, or your link-in-bio page. Homeowners who click it can start a project and get bids from contractors who compete for the job. If you share your link in a post or video, say that you're paid for referrals.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-number">3</div>
+      <h3>Earn $200 Per Referred Homeowner</h3>
+      <p>When a homeowner you referred completes a project of $10,000 or more, you earn a $200 referral fee. Track every referral in your partner dashboard.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Value Props -->
+<section class="value-props">
+  <div class="section-header">
+    <h2>Why Creators Use Otter Quotes</h2>
+  </div>
+
+  <div class="props-grid">
+    <div class="prop-card">
+      <div class="prop-icon">🎯</div>
+      <h3>An Answer to "Who Should I Call?"</h3>
+      <p>When followers ask who to call after hail or wind damage, send them one link instead of a list of names. Contractors compete for their business.</p>
+    </div>
+
+    <div class="prop-card">
+      <div class="prop-icon">🔒</div>
+      <h3>Your Audience's Privacy Comes First</h3>
+      <p>Contractors don't see a homeowner's name, phone number or street address until the homeowner chooses one.</p>
+    </div>
+
+    <div class="prop-card">
+      <div class="prop-icon">🏠</div>
+      <h3>One Link for Any Exterior Project</h3>
+      <p>Roof and exterior projects, including storm damage repairs and projects paid out of pocket. The same link works for each.</p>
+    </div>
+
+    <div class="prop-card">
+      <div class="prop-icon">📊</div>
+      <h3>Clear Tracking</h3>
+      <p>Your dashboard shows every referral, its status, and your referral fees, so you always know where things stand.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Referral Fee Details -->
+<section class="commission-section">
+  <div class="section-header">
+    <h2>Referral Fee Details</h2>
+  </div>
+
+  <div class="commission-card">
+    <h3>Simple, Transparent Payouts</h3>
+
+    <div class="commission-detail">
+      <div class="detail-check">✓</div>
+      <div class="detail-text">
+        <strong>$200 per completed job of $10,000+ — referral fee</strong>
+        <p>Earned when a homeowner you referred completes a project of $10,000 or more.</p>
+      </div>
+    </div>
+
+    <div class="commission-detail">
+      <div class="detail-check">✓</div>
+      <div class="detail-text">
+        <strong>Paid after job completion</strong>
+        <p>Referral fees are paid after job completion and approval.</p>
+      </div>
+    </div>
+
+    <div class="commission-detail">
+      <div class="detail-check">✓</div>
+      <div class="detail-text">
+        <strong>Say that you're paid</strong>
+        <p>If you share your link in a post or video, say that you're paid for referrals.</p>
+      </div>
+    </div>
+
+    <div class="commission-detail">
+      <div class="detail-check">✓</div>
+      <div class="detail-text">
+        <strong>Track all referrals and referral fees in real time</strong>
+        <p>Your partner dashboard shows every referral status, earnings, and payout history.</p>
+      </div>
+    </div>
+    <p style="margin-top: 1.25rem; font-size: 0.85rem; color: var(--slate); opacity: 0.8;">Payouts are made through our payment processor; tax reporting is handled under its terms.</p>
+    <!-- D-180: Approval process disclosure -->
+    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--slate); opacity: 0.8;">Referral fees are paid after job completion and approval.</p>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="features-section">
+  <div class="section-header">
+    <h2>What You Get</h2>
+    <p>Everything you need to start sharing right away</p>
+  </div>
+
+  <div class="features-list">
+    <div class="feature-item">
+      <div class="feature-check">✓</div>
+      <div class="feature-content">
+        <h4>Your own referral link</h4>
+        <p>Your link identifies your referrals, so each one is credited to you.</p>
+      </div>
+    </div>
+
+    <div class="feature-item">
+      <div class="feature-check">✓</div>
+      <div class="feature-content">
+        <h4>Partner dashboard with real-time tracking</h4>
+        <p>See every referral, its status, and your earned referral fees at a glance.</p>
+      </div>
+    </div>
+
+    <div class="feature-item">
+      <div class="feature-check">✓</div>
+      <div class="feature-content">
+        <h4>Send your link by text or email</h4>
+        <p>Send your referral link straight from the dashboard to anyone who asks.</p>
+      </div>
+    </div>
+
+    <div class="feature-item">
+      <div class="feature-check">✓</div>
+      <div class="feature-content">
+        <h4>Embeddable "Get a Quote" widget</h4>
+        <p>Add Otter Quotes to your website or blog with minimal setup.</p>
+      </div>
+    </div>
+
+    <div class="feature-item">
+      <div class="feature-check">✓</div>
+      <div class="feature-content">
+        <h4>Referral history by month</h4>
+        <p>Filter your referrals by month and see each one's status and referral fee.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Signup Form -->
+<section class="signup-section" id="signup-section">
+  <div class="section-header">
+    <h2>Join Our Partner Network</h2>
+  </div>
+
+  <div class="signup-layout">
+    <!-- Form Side -->
+    <div class="signup-form-wrap">
+      <h2>Create Your Partner Account</h2>
+      <p class="subtitle">Create your account and get your referral link in minutes.</p>
+
+      <form class="partner-form" id="partner-form" novalidate>
+        <!-- Name Row -->
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="first-name">First Name</label>
+            <input type="text" id="first-name" class="form-input" required autocomplete="given-name" placeholder="Jane">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="last-name">Last Name</label>
+            <input type="text" id="last-name" class="form-input" required autocomplete="family-name" placeholder="Smith">
+          </div>
+        </div>
+
+        <!-- Email -->
+        <div class="form-group">
+          <label class="form-label" for="email">Email</label>
+          <input type="email" id="email" class="form-input" required autocomplete="email" placeholder="jane@example.com">
+        </div>
+
+        <!-- Phone -->
+        <div class="form-group">
+          <label class="form-label" for="phone">Phone</label>
+          <input type="tel" id="phone" class="form-input" required autocomplete="tel" placeholder="(317) 555-1234">
+          <span class="form-hint">For important partner updates and referral fee notifications.</span>
+        </div>
+
+        <!-- Brokerage -->
+        <div class="form-group">
+          <label class="form-label" for="brokerage">Channel, Brand or Company Name</label>
+          <input type="text" id="brokerage" class="form-input" required placeholder="Your channel or brand">
+        </div>
+
+        <!-- Terms Checkbox -->
+        <div class="form-checkbox-group">
+          <input type="checkbox" id="terms" class="form-checkbox" required>
+          <label for="terms" class="checkbox-label">
+            I agree to Otter Quotes's <a href="partner-agreement.html">Partner Terms</a>
+          </label>
+        </div>
+
+        <div id="form-error" class="form-error" style="display:none;"></div>
+
+        <button type="submit" class="btn btn-primary btn-lg btn-full" id="submit-btn">
+          Create My Partner Account
+        </button>
+
+        <p class="text-sm text-center referral-fee-disclaimer" style="color: var(--gray); margin-top: var(--sp-4); font-size: 0.85rem;">
+          Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees. If you have a sponsorship, brand or employment agreement, check that it allows you to accept referral fees.
+        </p>
+
+        <p class="text-sm text-center" style="color: #94A3B8; margin-top: var(--sp-4); font-size: 0.85rem;">
+          Already a partner? <a href="partner-login.html" style="color: var(--amber); font-weight: 600;">Sign in to your dashboard</a>
+        </p>
+      </form>
+
+      <!-- Success State -->
+      <div class="success-message" id="success-message">
+        <div class="success-icon">🎉</div>
+        <h2>Welcome to Otter Quotes!</h2>
+        <p>Your partner account has been created. Check your email for login details.</p>
+
+        <div class="referral-link-box">
+          <p style="color: var(--slate); margin: 0 0 var(--sp-2) 0;">Your Referral Link:</p>
+          <div class="referral-code" id="referral-code"></div>
+          <button type="button" class="copy-btn" id="copy-btn">Copy Link</button>
+        </div>
+
+        <p style="margin-top: var(--sp-6); color: var(--slate);">
+          You can start sharing this link right away. If you share it in a post or video, say that you're paid for referrals. Visit your partner dashboard to customize your settings and track referrals.
+        </p>
+
+        <div style="margin-top: var(--sp-6);">
+          <button class="btn btn-primary" id="dashboard-btn">Go to Partner Dashboard</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Benefits Side -->
+    <div class="signup-benefits">
+      <h3>What Your Audience Gets</h3>
+
+      <div class="benefit-item">
+        <div class="benefit-icon">💰</div>
+        <div class="benefit-text">
+          <h4>Competing bids</h4>
+          <p>Homeowners who use your link get bids from multiple contractors who compete for the job.</p>
+        </div>
+      </div>
+
+      <div class="benefit-item">
+        <div class="benefit-icon">🔒</div>
+        <div class="benefit-text">
+          <h4>Privacy until they choose</h4>
+          <p>Contractors don't see a homeowner's name, phone number or street address until the homeowner chooses one.</p>
+        </div>
+      </div>
+
+      <div class="benefit-item">
+        <div class="benefit-icon">⏱️</div>
+        <div class="benefit-text">
+          <h4>Takes 2 minutes to sign up</h4>
+          <p>Share your link, and homeowners can start the bidding process in minutes.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="faq-section">
+  <div class="section-header">
+    <h2>Frequently Asked Questions</h2>
+  </div>
+
+  <div class="faq-container">
+    <div class="faq-item">
+      <div class="faq-question" data-faq="1">
+        <span class="faq-text">How does a homeowner get started?</span>
+        <span class="faq-toggle">▼</span>
+      </div>
+      <div class="faq-answer">
+        <p>They click your referral link, create an account, and describe their project. Otter Quotes sends the project to contractors, who compete for the job. The homeowner compares the bids and chooses.</p>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-question" data-faq="2">
+        <span class="faq-text">Do I have to say that I'm paid?</span>
+        <span class="faq-toggle">▼</span>
+      </div>
+      <div class="faq-answer">
+        <p>Yes. If you share your link in a post or video, say that you're paid for referrals. Being upfront keeps your audience's trust.</p>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-question" data-faq="3">
+        <span class="faq-text">How do I track my referrals?</span>
+        <span class="faq-toggle">▼</span>
+      </div>
+      <div class="faq-answer">
+        <p>Your partner dashboard shows every referral, its status, and your earned referral fees. You'll also get email notifications when key milestones happen.</p>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-question" data-faq="4">
+        <span class="faq-text">When do I earn a referral fee?</span>
+        <span class="faq-toggle">▼</span>
+      </div>
+      <div class="faq-answer">
+        <p>You earn a $200 referral fee when a homeowner you referred completes a project of $10,000 or more. Referral fees are paid after job completion and approval.</p>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-question" data-faq="5">
+        <span class="faq-text">Where can I share my link?</span>
+        <span class="faq-toggle">▼</span>
+      </div>
+      <div class="faq-answer">
+        <p>Anywhere your audience will see it: posts, video descriptions, newsletters, your link-in-bio page, or your website. You can also send it by text or email from your dashboard.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<footer id="site-footer"></footer>
+
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/agent-types.js"></script>
+
+<script>
+(function() {
+  const form = document.getElementById('partner-form');
+  const submitBtn = document.getElementById('submit-btn');
+  const errorEl = document.getElementById('form-error');
+  const successMsg = document.getElementById('success-message');
+  const referralCode = document.getElementById('referral-code');
+  const copyBtn = document.getElementById('copy-btn');
+  const dashboardBtn = document.getElementById('dashboard-btn');
+  const heroCta = document.getElementById('hero-cta');
+  const signupSection = document.getElementById('signup-section');
+
+  // gh-2068 (cto38-b2068r fix pass): leads_force_safe_insert_defaults()
+  // (the BEFORE INSERT trigger on public.leads, see that migration) forces
+  // is_synthetic=true whenever a leads insert request carries an
+  // X-OQ-Internal: 1 header. This page's leads insert (below) previously
+  // sent no such header at all -- fresh-context review Must-fix 2, comment
+  // 5824273357 -- so internal/QA traffic through this page's signup flow
+  // was never flagged synthetic server-side. Computes the header from the
+  // same query-param/cookie contract js/ga-gate.js's oqInternal() uses
+  // (self-contained, same convention as start.html's oqInternalHeader() --
+  // this page cannot assume ga-gate.js's own window.OQ_INTERNAL ran first
+  // either). Attached to THIS insert only via postgrest-js's per-request
+  // `.setHeader('x-oq-internal', '1')`, never to `sb`'s client-wide
+  // `global.headers` -- `sb` here is js/config.js's shared global client,
+  // used by many other pages, and a client-wide header would attach
+  // x-oq-internal to every request any of them makes, including any
+  // supabase.functions.invoke(...) call whose Edge Function CORS
+  // allow-list doesn't list x-oq-internal.
+  function oqInternalHeader() {
+    try {
+      let params = null;
+      try {
+        params = new URLSearchParams(window.location.search);
+      } catch (e) {
+        params = null;
+      }
+      const queryFlag = !!(params && params.get('oq_internal') === '1');
+
+      const cookieMatch = document.cookie.match(/(?:^|; )oq_internal=([^;]*)/);
+      const cookieFlag = !!(cookieMatch && decodeURIComponent(cookieMatch[1]) === '1');
+
+      if (queryFlag && !cookieFlag) {
+        const oneYear = 60 * 60 * 24 * 365;
+        let domainAttr = '';
+        if (/(^|\.)otterquote\.com$/.test(window.location.hostname)) {
+          domainAttr = '; Domain=.otterquote.com';
+        }
+        document.cookie = 'oq_internal=1; Max-Age=' + oneYear + '; Path=/' +
+          domainAttr + '; SameSite=Lax';
+      }
+
+      const isInternal = queryFlag || cookieFlag || !!window.OQ_INTERNAL;
+      return isInternal ? { 'x-oq-internal': '1' } : {};
+    } catch (e) {
+      return window.OQ_INTERNAL ? { 'x-oq-internal': '1' } : {};
+    }
+  }
+
+  // Recruit context populated by detectRecruitCode() and consumed on submit.
+  let recruitContext = { recruitCode: null, recruiterId: null };
+
+  // gh-846: UTM context populated by captureUtmContext() and consumed on
+  // submit. Persisted to localStorage so it survives a page bounce mid
+  // signup — same pattern as cs_recruit_code above.
+  // gh-2154 P-1: extended with fbclid/li_fat_id/funnel_id (P-2 added the
+  // matching register_partner params) alongside the existing utm_* set.
+  let utmContext = { source: null, medium: null, campaign: null, content: null, fbclid: null, liFatId: null, funnelId: null };
+
+  // gh-2078: read the router-arm variant start.html's redirectTo() forwards
+  // as `?v=<arm>` on the link to this page (collectAttribution/appendParams
+  // -- see start.html), so `partner_signup_complete` can attribute D/E/C.
+  // partner-influencers.html is same-origin as start.html (both on otterquote.com),
+  // so unlike the React app (app.otterquote.com -- see
+  // react-app/app/lib/variant.ts for why that origin needed a different
+  // mechanism), the SAME localStorage key/cookie start.html itself writes
+  // (KEY = 'oq_variant_v4') is directly readable here too -- used as a
+  // fallback for a visitor who bounced off this page and returned without
+  // the query param. Priority: URL param, then localStorage, then cookie,
+  // then 'unknown'.
+  function getOqVariant() {
+    var VARIANT_KEY = 'oq_variant_v4';
+    var VARIANT_RE = /^[a-z0-9]{1,8}$/;
+    function clean(v) {
+      if (typeof v !== 'string') return null;
+      v = v.trim().toLowerCase();
+      return VARIANT_RE.test(v) ? v : null;
+    }
+    try {
+      var fromUrl = clean(new URLSearchParams(window.location.search).get('v'));
+      if (fromUrl) return fromUrl;
+    } catch (e) {}
+    try {
+      var fromStorage = clean(window.localStorage.getItem(VARIANT_KEY));
+      if (fromStorage) return fromStorage;
+    } catch (e) {}
+    try {
+      var m = document.cookie.match(new RegExp('(?:^|; )' + VARIANT_KEY + '=([^;]*)'));
+      var fromCookie = m ? clean(decodeURIComponent(m[1])) : null;
+      if (fromCookie) return fromCookie;
+    } catch (e) {}
+    return 'unknown';
+  }
+
+  // gh-2078: once-per-signup guard for partner_signup_complete. A single
+  // signup writes exactly one referral_agents row (register_partner throws
+  // partner_exists on a repeat), so a plain in-memory boolean, scoped to
+  // this page load, is sufficient -- there is no reload-then-resubmit path
+  // on the (already-shown, static) success screen for it to need to
+  // survive, unlike the persisted paymentIntent-keyed marker on the
+  // homeowner measurement checkout.
+  var partnerSignupCompleteFired = false;
+  function firePartnerSignupComplete(variant) {
+    if (partnerSignupCompleteFired) return;
+    partnerSignupCompleteFired = true;
+    try { gtag('event', 'partner_signup_complete', { variant: variant }); } catch (e) {}
+    try { fbq('track', 'CompleteRegistration'); } catch (e) {}
+  }
+
+  /**
+   * gh-2154 P-1 (CSPRNG fix): the hidden signup password must not be
+   * predictable — a previous build derived it from Date.now()/Math.random(),
+   * which is guessable. Uses crypto.getRandomValues (32 bytes),
+   * base64url-encoded, plus a fixed suffix so the generated string still
+   * satisfies any character-class password-policy rule. Refuses (throws)
+   * rather than ever falling back to Math.random when a CSPRNG isn't
+   * available — callers must run this before any register_partner /
+   * signUp call so a refusal here makes zero network calls.
+   */
+  function generateSecurePartnerPassword() {
+    if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
+      throw new Error('Secure random number generator is unavailable.');
+    }
+    const bytes = new Uint8Array(32);
+    window.crypto.getRandomValues(bytes);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const base64url = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return base64url + 'Aa1!';
+  }
+
+  /**
+   * gh-865: the visitor must see and explicitly confirm their partner type
+   * before the account is created — the page they landed on (and therefore
+   * this page's default) may not silently decide agent_type. Recruiter
+   * attribution (referredBy / recruit code) stays separate from this value.
+   * Scoped to only the p_agent_type write path in this file (gh-865 file
+   * whitelist) — placed here, alongside the other module-scoped helpers
+   * used by the submit handler, not in the form markup above.
+   */
+  function confirmAgentType(defaultType) {
+    return new Promise((resolve) => {
+      const AGENT_TYPE_LABELS = AgentTypes.CHOOSER_LABELS; // gh-914 single source (js/agent-types.js)
+      const overlay = document.createElement('div');
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(13,27,46,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+      const box = document.createElement('div');
+      box.style.cssText = 'background:#0D1B2E;border:1px solid rgba(224,123,0,0.4);border-radius:12px;padding:28px;max-width:380px;width:100%;text-align:left;font-family:inherit;';
+      const heading = document.createElement('p');
+      heading.textContent = 'Confirm your partner type';
+      heading.style.cssText = 'color:#FFFFFF;font-size:17px;font-weight:600;margin:0 0 8px;';
+      const sub = document.createElement('p');
+      sub.textContent = "This determines what you can do on Otter Quotes. Change it if it isn't right.";
+      sub.style.cssText = 'color:#94A3B8;font-size:14px;margin:0 0 16px;line-height:1.5;';
+      const select = document.createElement('select');
+      select.id = 'gh865AgentTypeConfirm';
+      select.style.cssText = 'width:100%;padding:10px;border-radius:8px;border:1px solid rgba(148,163,184,0.35);font-size:15px;margin-bottom:16px;background:#0D1B2E;color:#FFFFFF;';
+      Object.keys(AGENT_TYPE_LABELS).forEach((value) => {
+        const o = document.createElement('option');
+        o.value = value;
+        o.textContent = AGENT_TYPE_LABELS[value];
+        if (value === defaultType) o.selected = true;
+        select.appendChild(o);
+      });
+      const confirmBtn = document.createElement('button');
+      confirmBtn.type = 'button';
+      confirmBtn.textContent = 'Confirm & Continue';
+      confirmBtn.className = 'btn btn-primary';
+      confirmBtn.style.cssText = 'width:100%;cursor:pointer;';
+      confirmBtn.addEventListener('click', () => {
+        document.body.removeChild(overlay);
+        resolve(select.value);
+      });
+      box.appendChild(heading);
+      box.appendChild(sub);
+      box.appendChild(select);
+      box.appendChild(confirmBtn);
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+      select.focus();
+    });
+  }
+
+  /**
+   * Capture utm_source/medium/campaign/content from the URL on first landing
+   * and persist them so they survive a bounce (e.g. leaving to check email,
+   * or a multi-tab flow) before the form is actually submitted. Falls back
+   * to a previously-stored value when this load has no UTM params of its
+   * own, so a later page in the flow doesn't clobber an earlier capture.
+   */
+  function captureUtmContext() {
+    const params = new URLSearchParams(window.location.search);
+    const fresh = {
+      source:   params.get('utm_source'),
+      medium:   params.get('utm_medium'),
+      campaign: params.get('utm_campaign'),
+      content:  params.get('utm_content'),
+      fbclid:   params.get('fbclid'),
+      liFatId:  params.get('li_fat_id'),
+      funnelId: params.get('funnel_id'),
+    };
+    // gh-2162 review fix (2): an explicit ?funnel_id= always wins. Absent
+    // that, fall back to utm_campaign ONLY when it matches the S14
+    // <line>-<funnel> convention (e.g. "re-1", "ins-3", "hi-2") — anything
+    // else (e.g. "spring_sale") means no fallback, funnel_id stays null.
+    if (!fresh.funnelId && fresh.campaign && /^[a-z]{2,4}-\d{1,3}$/.test(fresh.campaign)) {
+      fresh.funnelId = fresh.campaign;
+    }
+    // gh-2162 review fix (2): cheap length cap on values that come straight
+    // from the URL (ad-platform click ids / funnel id) before they're
+    // persisted or sent to register_partner.
+    if (fresh.fbclid)   fresh.fbclid   = fresh.fbclid.slice(0, 500);
+    if (fresh.liFatId)  fresh.liFatId  = fresh.liFatId.slice(0, 500);
+    if (fresh.funnelId) fresh.funnelId = fresh.funnelId.slice(0, 64);
+    if (fresh.source || fresh.medium || fresh.campaign || fresh.content || fresh.fbclid || fresh.liFatId || fresh.funnelId) {
+      utmContext = fresh;
+      localStorage.setItem('cs_utm_context', JSON.stringify(utmContext));
+      return;
+    }
+    try {
+      const stored = JSON.parse(localStorage.getItem('cs_utm_context') || 'null');
+      if (stored) utmContext = stored;
+    } catch (e) { /* malformed stored value — ignore, keep default */ }
+  }
+
+  // Smooth scroll to signup
+  heroCta.addEventListener('click', () => {
+    signupSection.scrollIntoView({ behavior: 'smooth' });
+  });
+
+  /**
+   * Detect whether this visitor arrived via a recruit link.
+   * Checks localStorage (set by recruit.html) first, then falls back to the
+   * ?recruit= URL param. If a valid active recruiter is found, pre-fills and
+   * locks the "Who Told You About Us?" field.
+   */
+  async function detectRecruitCode() {
+    const urlParams = new URLSearchParams(window.location.search);
+    // gh-2471: the URL code and the stored code are normalised (trim, upper-case, R- -> r-) and looked up in ONE shared place,
+    // CONFIG.lookupRecruiter (js/config.js). gh-2060 item 4 still holds: a ?recruit= on THIS load is tried first; a URL code that
+    // resolves to no active recruiter falls back to the stored code instead of recording no recruiter.
+
+    try {
+      const { data: recruiter, error, recruitCode, candidateCode } = await CONFIG.lookupRecruiter(sb, urlParams.get('recruit'), localStorage.getItem('cs_recruit_code'));
+
+      if (error) {
+        console.warn('Recruit code lookup failed:', error.message);
+        // gh-2471 (ruling 5973362277): an ERRORED lookup keeps a canonical URL code as the candidate; it never falls back to the stored one.
+        if (candidateCode) recruitContext = { recruitCode: candidateCode, recruiterId: null };
+        return;
+      }
+      if (!recruiter) return;
+
+      recruitContext = { recruitCode, recruiterId: recruiter.id };
+
+      const referredByInput = document.getElementById('referredBy');
+      if (referredByInput) {
+        const displayName = `${recruiter.first_name || ''} ${recruiter.last_name || ''}`.trim()
+          || recruiter.company
+          || 'Otter Quotes Partner';
+        referredByInput.value = displayName;
+        referredByInput.readOnly = true;
+        referredByInput.style.background = 'rgba(224, 123, 0, 0.08)';
+        referredByInput.style.borderColor = 'var(--amber)';
+        referredByInput.style.color = 'var(--amber)';
+        referredByInput.style.cursor = 'not-allowed';
+        referredByInput.title = 'You arrived via a recruit link — this field is locked.';
+      }
+    } catch (err) {
+      console.warn('Recruit code lookup threw:', err);
+    }
+  }
+
+  // gh-1292: the comment this replaces was the bug — an end-of-body
+  // <script> tag does NOT run after DOMContentLoaded; it runs at PARSE TIME,
+  // in document order, same as any other synchronous script. detectRecruitCode()
+  // called `sb.rpc(...)` here before js/config.js's client existed, threw a
+  // TypeError swallowed by the try/catch above, and register_partner received
+  // p_recruit_code: null for every recruit-attributed signup. CONFIG.whenReady()
+  // runs it as soon as the client actually exists.
+  CONFIG.whenReady(function (sb) {
+    if (sb) detectRecruitCode();
+  });
+  captureUtmContext();
+
+  // #632: signed-in partners land straight on their dashboard instead of
+  // re-seeing the signup form - same loop-guard shape as partner-login.html.
+  // ?stay=1 opts out; anon/homeowner/contractor visitors and referral/recruit
+  // attribution for anon visitors are untouched (load-time only, so it never
+  // interrupts the in-session post-signup success block above).
+  (async function redirectSignedInPartner() {
+    if (new URLSearchParams(window.location.search).get('stay') === '1') return;
+    if ((document.referrer || '').includes('/partner-dashboard.html')) return;
+    // gh-880 Half A: shared Auth.hasPartnerSession() helper instead of a
+    // locally-declared partnerRoles array (same consolidation gh-851 did
+    // for PARTNER_ROLES itself).
+    if (await Auth.hasPartnerSession()) {
+      window.location.replace('/partner-dashboard.html');
+    }
+  })();
+
+  // Phone formatting
+  const phoneInput = document.getElementById('phone');
+  phoneInput.addEventListener('input', () => {
+    let v = phoneInput.value.replace(/\D/g, '');
+    if (v.length > 0) {
+      if (v.length <= 3) v = `(${v}`;
+      else if (v.length <= 6) v = `(${v.slice(0,3)}) ${v.slice(3)}`;
+      else v = `(${v.slice(0,3)}) ${v.slice(3,6)}-${v.slice(6,10)}`;
+    }
+    phoneInput.value = v;
+  });
+
+  // FAQ accordion
+  document.querySelectorAll('.faq-question').forEach(question => {
+    question.addEventListener('click', () => {
+      // Close other open items
+      document.querySelectorAll('.faq-question.active').forEach(other => {
+        if (other !== question) {
+          other.classList.remove('active');
+        }
+      });
+      // Toggle current
+      question.classList.toggle('active');
+    });
+  });
+
+  // Form submission
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorEl.style.display = 'none';
+
+    // gh-865: explicit user confirmation — this, not the page default, is
+    // what gets written to referral_agents.agent_type.
+    const agentType = await confirmAgentType('other');
+
+    const firstName = document.getElementById('first-name').value.trim();
+    const lastName = document.getElementById('last-name').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const brokerage = document.getElementById('brokerage').value.trim();
+    const termsChecked = document.getElementById('terms').checked;
+
+    // Validation
+    if (!firstName || !lastName || !email || !phone || !brokerage) {
+      errorEl.textContent = 'Please fill in all required fields.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errorEl.textContent = 'Please enter a valid email address.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    // gh-2154 P-1: the agreement checkbox is a hard gate — no
+    // register_partner call at all when it isn't ticked.
+    if (!termsChecked) {
+      errorEl.textContent = 'Please agree to the Partner Terms to continue.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    // Loading state
+    submitBtn.classList.add('btn-loading');
+    submitBtn.disabled = true;
+
+    try {
+      // gh-2154 P-1 (CSPRNG fix): generate the hidden signup password first,
+      // before any network call. If a CSPRNG isn't available, this throws
+      // and the catch block below shows the page's existing generic error
+      // with zero register_partner / signUp calls made.
+      const generatedPassword = generateSecurePartnerPassword();
+
+      // gh-2084: one signup = one leads row. The router (start.html) already
+      // inserted this visitor's row (variant carried) and handed it over as
+      // ?lead=<uuid> (window.__oqRouterLeadId); inserting here as well made
+      // a second, variant-less row. leads.variant is write-once and
+      // get_lead_prefill() has already stamped the row, so no write is needed
+      // once that row is confirmed (see the guard below).
+      // gh-2084 (REVIEW FAIL fix): skip only when the router row is CONFIRMED
+      // (get_lead_prefill returned a row). A garbage, unknown, expired or
+      // redeemed id is unconfirmed and falls through to the normal insert.
+      // If the prefill lookup is still in flight, wait for it (bounded, so a
+      // stalled network can never block signup; a timeout means unconfirmed).
+      if (window.__oqRouterLeadId && window.__oqRouterPrefillPromise) {
+        let prefillTimer;
+        try {
+          await Promise.race([
+            window.__oqRouterPrefillPromise,
+            new Promise((resolve) => { prefillTimer = setTimeout(resolve, 3000); }),
+          ]);
+        } catch (e) { /* unconfirmed: fall through to the insert */ }
+        clearTimeout(prefillTimer);
+      }
+      // Save lead to database
+      // gh-2068 (cto38-b2068r fix pass): X-OQ-Internal header attached to
+      // THIS insert only -- see oqInternalHeader() above.
+      if (!window.__oqRouterLeadConfirmed) {
+        const leadRow = { name: `${firstName} ${lastName}`, email: email, source: 'influencer', created_at: new Date().toISOString() };
+        const knownVariant = getOqVariant();
+        if (knownVariant !== 'unknown') leadRow.variant = knownVariant;
+        const leadInsert = sb.from('leads').insert(leadRow);
+        const oqHeader = oqInternalHeader();
+        if (oqHeader['x-oq-internal']) {
+          leadInsert.setHeader('x-oq-internal', oqHeader['x-oq-internal']);
+        }
+        await leadInsert;
+      }
+
+      // gh-2282: the exact register_partner arguments, built once so the pending marker (dashboard completion) and the RPC below can never drift apart.
+      const partnerRpcArgs = {
+          p_agent_type:       agentType,
+          p_first_name:       firstName,
+          p_last_name:        lastName,
+          p_email:            email,
+          p_phone:            phone,
+          p_company:          brokerage,     // schema column is 'company', not 'brokerage'
+          p_recruit_code:     recruitContext.recruitCode || null,
+          p_utm_source:       utmContext.source   || null,
+          p_utm_medium:       utmContext.medium   || null,
+          p_utm_campaign:     utmContext.campaign || null,
+          p_utm_content:      utmContext.content  || null,
+          p_fbclid:           utmContext.fbclid   || null,
+          p_li_fat_id:        utmContext.liFatId  || null,
+          p_funnel_id:        (agentType === 'other') ? 'influencer' : (utmContext.funnelId || null), // P18: no-schema marker; follows the type confirmed in the dialog -- 'influencer' only when the visitor confirms 'other', otherwise the normal utm/funnel_id behaviour
+          // gh-2162 review fix (1): same E2E-test predicate as
+          // trade-selector.html:1466 / dashboard.html:1812. Guarded so a
+          // missing Auth.isTestEmail falls back to the RPC's own default
+          // (false) instead of throwing before register_partner ever runs.
+          p_is_test:          (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(email) : false,
+      };
+      // gh-2154 P-1: the short signup step never asks for a password (D-333
+      // build order). This still creates the exact same Auth credential
+      // Auth.signUpWithPassword() always has (js/auth.js is unchanged, so
+      // partner-login.html and every other partner surface keep working
+      // exactly as before) — the password itself is just a random value the
+      // visitor never sees or types. Setting a password they'll actually use
+      // stays where it already lives: the existing "Forgot password?" /
+      // Auth.sendPasswordReset() + Auth.updatePassword() flow on
+      // partner-login.html. signUpResult.session is null when the Supabase
+      // project requires email confirmation before first sign-in — handled
+      // the same way as before, just via an alert instead of a dedicated
+      // screen. generatedPassword was already computed above (CSPRNG fix).
+      // gh-2282: sign up FIRST, register_partner second. auth.users is checked here
+      // (Auth.signUpWithPassword rejects an already-registered email), so a
+      // duplicate-email attempt returns before register_partner runs and can never
+      // leave an orphaned referral_agents row (user_id NULL, unique on email) behind.
+      // gh-2274 / gh-2281: the duplicate is matched on Supabase's structured
+      // error.code ('user_already_exists') with the message text as a fallback, and
+      // routed to the designed already-a-partner state instead of the generic catch.
+      const oqTermsAcceptedAt = Date.now(); // gh-2282: the submit (terms checkbox already verified above) -- recorded in the pending marker
+      let signUpResult;
+      try {
+        signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
+      } catch (signUpError) {
+        // gh-2281: match Supabase's structured error code first; the English message text is kept only as a fallback for SDK versions that don't set .code.
+        const isDuplicate = (signUpError && signUpError.code === 'user_already_exists') || (signUpError.message || '').toLowerCase().includes('already registered');
+        // gh-2282: a duplicate is only "already a partner" when nothing is left to finish. If THIS browser already created the
+        // auth account (pending marker written below) or is signed in as this exact email, a previous attempt got past signUp but
+        // register_partner failed (rate limit, network, rejected email) -- complete register_partner instead of dead-ending.
+        let canFinishRegistration = false;
+        if (isDuplicate) {
+          try {
+            const pendingMarker = JSON.parse(sessionStorage.getItem('oq_partner_pending_registration') || 'null');
+            const emailKey = String(email || '').trim().toLowerCase();
+            canFinishRegistration = !!(pendingMarker && pendingMarker.email === emailKey && typeof pendingMarker.ts === 'number' && Date.now() - pendingMarker.ts < 24 * 60 * 60 * 1000);
+            if (!canFinishRegistration && window.Auth && typeof Auth.getUser === 'function') {
+              const sessionUser = await Auth.getUser();
+              canFinishRegistration = !!(sessionUser && sessionUser.email && String(sessionUser.email).toLowerCase() === emailKey);
+            }
+          } catch (e) { canFinishRegistration = false; }
+        }
+        if (isDuplicate && !canFinishRegistration) {
+          errorEl.innerHTML = "This email is already registered — <a href=\"/partner-login.html\">sign in here</a>, or email support@otterquote.com if you need help.";
+          errorEl.style.display = 'block';
+          return;
+        }
+        if (!isDuplicate) throw signUpError;
+      }
+      if (signUpResult) {
+        // gh-2282: auth account created here; remember it (no password) until register_partner reaches a definitive outcome.
+        try { localStorage.removeItem('oq_partner_pending_registration'); sessionStorage.setItem('oq_partner_pending_registration', JSON.stringify({ email: String(email || '').trim().toLowerCase(), ts: Date.now(), termsAcceptedAt: oqTermsAcceptedAt, rpcArgs: partnerRpcArgs })); } catch (e) { /* non-fatal */ } var oqCtxOwner = ''; try { oqCtxOwner = Auth.ownerTag(email); } catch (e) { /* non-fatal */ } try { localStorage.setItem('oq_partner_signup_ctx', JSON.stringify({ ts: Date.now(), owner: oqCtxOwner, agentType: partnerRpcArgs.p_agent_type, attribution: { p_recruit_code: partnerRpcArgs.p_recruit_code || null, p_utm_source: partnerRpcArgs.p_utm_source || null, p_utm_medium: partnerRpcArgs.p_utm_medium || null, p_utm_campaign: partnerRpcArgs.p_utm_campaign || null, p_utm_content: partnerRpcArgs.p_utm_content || null, p_fbclid: partnerRpcArgs.p_fbclid || null, p_li_fat_id: partnerRpcArgs.p_li_fat_id || null, p_funnel_id: partnerRpcArgs.p_funnel_id || null } })); } catch (e) { /* non-fatal */ } // gh-2355: NON-PII signup context (agent type + attribution) so the dashboard re-collect recovery can attribute a new-tab return
+      }
+
+      // #571 / v95: server-side register_partner RPC. referral_agents has no
+      // anon SELECT policy, so a direct .insert().select() can never read the
+      // trigger-generated code back. The SECURITY DEFINER RPC inserts
+      // (user_id NULL — linked after magic-link click by auth.js), resolves
+      // the recruit code server-side (D-143), and returns
+      // {id, unique_code, recruit_code}.
+      const { data: agentData, error: agentError } = await sb
+        .rpc('register_partner', partnerRpcArgs);
+      // gh-2282: definitive outcome (row created, or it already exists) -- the pending marker has done its job.
+      if (!agentError || (agentError.message || '').includes('partner_exists')) { try { sessionStorage.removeItem('oq_partner_pending_registration'); localStorage.removeItem('oq_partner_pending_registration'); localStorage.removeItem('oq_partner_signup_ctx'); } catch (e) { /* non-fatal */ } }
+
+      if (agentError) {
+        if ((agentError.message || '').includes('partner_exists')) {
+          // Already registered. gh-880 Half A: do NOT attempt any sign-in
+          // with the password just typed on this signup form — it may not
+          // belong to whoever owns that account. Point them to the login
+          // page instead.
+          errorEl.innerHTML = "You're already a partner — <a href=\"/partner-login.html\">sign in here</a>.";
+          errorEl.style.display = 'block';
+          return;
+        }
+        throw agentError;
+      }
+
+      // Codes are server-generated — read the code back from the RPC response.
+      const finalCode = agentData?.unique_code;
+      const finalLink = `https://otterquote.com/ref.html?code=${finalCode}`;
+
+      // #801: the SEO footer link is bare by default (no code — nothing to
+      // attribute for a first-time visitor). Once we have this partner's own
+      // code, carry it so a copied footer link still attributes correctly.
+      const seoRefLink = document.getElementById('seoRefLink');
+      if (seoRefLink && finalCode) {
+        seoRefLink.href = `/?code=${finalCode}`;
+      }
+
+      localStorage.setItem('cs_auth_role', agentType);
+      localStorage.setItem('cs_auth_role_at', String(Date.now()));
+      try { Auth.stampRoleOwner(email); } catch (e) { /* non-fatal: reader fails closed */ } // gh-2344: bind the breadcrumb to its signer
+
+      // Recruit code consumed — clear so a future signup on this device
+      // doesn't accidentally attribute to the same recruiter.
+      localStorage.removeItem('cs_recruit_code');
+      localStorage.removeItem('cs_utm_context');
+
+
+      // gh-2154 P-1: this partner has no real password yet — flag it so
+      // partner-dashboard.html shows the one-time "Set your password" card
+      // on first landing. Scoped per user id so it never applies to anyone
+      // else's flag on a shared device/browser.
+      if (signUpResult && signUpResult.user && signUpResult.user.id) {
+        try { localStorage.setItem(('oq_partner_needs_' + 'password') + ':' + signUpResult.user.id, '1'); } catch (e) { /* non-fatal */ }
+      }
+
+      // gh-2162 review fix (3): the localStorage flag above is browser-local
+      // and never shows the card on a first dashboard landing in a
+      // different browser or the installed PWA. Mirror the flag onto
+      // user_metadata (server-visible) right after signUp returns a
+      // session, using this page's existing client — non-fatal on failure
+      // since the localStorage flag/forgot-password fallback still cover
+      // this device.
+      if (signUpResult && signUpResult.session) {
+        try { await sb.auth.updateUser({ data: { needs_password: true } }); } catch (e) { console.warn('needs_password metadata write failed:', e); }
+      }
+
+      if (!signUpResult || !signUpResult.session) {
+        alert('Account created! Check your email to confirm your address, then sign in at the Partner Login page.');
+      }
+
+      // Show success state with real referral link
+      form.classList.add('hidden');
+      referralCode.textContent = finalLink;
+      successMsg.classList.add('active');
+
+      // GA4 conversion event — partner funnel. gh-846: previously read
+      // utm_source inline from the current URL (lost on a page bounce) and
+      // always dropped utm_content — the one field that identifies which
+      // warm-outreach contact converted. Now sourced from the persisted
+      // utmContext, same data that just went into register_partner().
+      gtag('event', 'partner_signup', {
+        partner_type: agentType,
+        source:   utmContext.source   || 'direct',
+        medium:   utmContext.medium   || undefined,
+        campaign: utmContext.campaign || undefined,
+        content:  utmContext.content  || undefined,
+      });
+
+      // gh-2006: Meta Lead — literal event name (not a custom event) so the
+      // ad set's Lead-optimized creatives get credit; same bare, guarded
+      // call as start.html's router_contact_submitted precedent.
+      try { fbq('track', 'Lead'); } catch (e) {}
+
+      // gh-2078: partner_signup_complete -- fires once the referral_agents
+      // row exists (register_partner above has already returned
+      // successfully) AND the confirmation screen has just been shown
+      // (successMsg.classList.add('active') a few lines up). GA4
+      // `partner_signup_complete` + Meta `CompleteRegistration`, both
+      // carrying/attributed to the persisted router arm.
+      firePartnerSignupComplete(getOqVariant());
+
+    } catch (err) {
+      console.error('Signup error:', err);
+      errorEl.textContent = 'Something went wrong. Please try again or email us at ' + CONFIG.SUPPORT_EMAIL;
+      errorEl.style.display = 'block';
+    } finally {
+      submitBtn.classList.remove('btn-loading');
+      submitBtn.disabled = false;
+    }
+  });
+
+  // Copy referral link
+  copyBtn.addEventListener('click', () => {
+    const link = referralCode.textContent;
+    navigator.clipboard.writeText(link).then(() => {
+      const originalText = copyBtn.textContent;
+      copyBtn.textContent = '✓ Copied!';
+      setTimeout(() => { copyBtn.textContent = originalText; }, 2000);
+    }).catch(() => {});
+  });
+
+  // Go to Partner Dashboard (post-signup)
+  if (dashboardBtn) {
+    dashboardBtn.addEventListener('click', () => { window.location.href = '/partner-dashboard.html'; });
+  }
+})();
+</script>
+
+<!-- Referral landing page link for SEO crawlability -->
+<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/" id="seoRefLink" style="color:var(--amber-2);">Homeowner referral landing page</a></p>
+<!-- gh-1994: router prefill -- reads ?lead=<uuid> (no PII in the URL) set by
+     otterquote.com/start.html and fills name/email/phone via the
+     get_lead_prefill() SECURITY DEFINER RPC (see
+     supabase/migrations/20260916132127_gh1994_router_leads_columns.sql,
+     not applied by that PR). Prefers a page-level `window.sb` if one is already declared,
+     otherwise falls back to its own local anon client, since not every
+     destination page reliably has `window.sb` set by the time this script
+     runs (js/supabase-client.js is not included here). Silent no-op when
+     the param is absent, the migration is not yet applied, or the lookup
+     returns no row (expired >30 min -- fix round 3: corrected from a stale
+     >60 min, tightened in fix round 1 -- already redeemed once, or unknown
+     id) -- never blocks manual entry, per #1994 item 3 ("prefill without
+     PII in URLs"). -->
+<script>
+(function () {
+  try {
+    var leadId = window.__oqRouterLeadId;
+    if (!leadId) return;
+    if (typeof supabase === 'undefined' || typeof CONFIG === 'undefined' ||
+        !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) return;
+    var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } }); // gh-1980 PR2: converge fallback client onto canonical key too
+    // gh-2084: the promise is kept on window so the submit handler can wait for it.
+    window.__oqRouterPrefillPromise = _sb.rpc('get_lead_prefill', { p_lead_id: leadId }).then(function (res) {
+      var row = res && res.data && res.data[0];
+      if (!row) return; // expired, unknown id, or migration not applied yet
+      window.__oqRouterLeadConfirmed = true; // gh-2084: router row exists; submit skips its own leads insert
+      var setVal = function (id, val) {
+        if (!val) return;
+        var el = document.getElementById(id);
+        if (el && !el.value) el.value = val;
+      };
+      var full = (row.name || '').trim();
+      var sp = full.indexOf(' ');
+      var firstName = sp === -1 ? full : full.slice(0, sp);
+      var lastName = sp === -1 ? '' : full.slice(sp + 1);
+      setVal('first-name', firstName);
+      setVal('last-name', lastName);
+      setVal('email', row.email);
+      setVal('phone', row.phone);
+    }).catch(function () { /* gh-1994 prefill is a nicety, never block signup */ });
+  } catch (e) { /* gh-1994 prefill is a nicety, never block signup */ }
+})();
+</script>
+
+</body>
+</html>

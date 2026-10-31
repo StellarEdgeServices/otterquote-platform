@@ -170,8 +170,13 @@
 }
 .gate-existing a { color: var(--amber); }
 </style>
+<!-- gh-3261: the approved homepage reskin (gh-2598) on the partner landing pages. Design only: tokens from /css/home-reskin.css, rules in /css/partner-reskin.css (scoped to body.pr). -->
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/home-reskin.css">
+<link rel="stylesheet" href="/css/partner-reskin.css">
 </head>
-<body>
+<body class="pr">
 
 <header id="site-header" data-role="partner" data-active="partners"></header>
 
@@ -260,6 +265,7 @@ const DESTINATIONS = {
     home_inspector:  'partner-inspectors.html',
     adjuster:        'partner-adjusters.html',
     customer:        'index.html',
+    influencer:      'partner-influencers.html',
     other:           'partner-other.html',
 };
 
@@ -292,6 +298,7 @@ const ICON_SHIELD    = '<svg xmlns="http://www.w3.org/2000/svg" width="22" heigh
 const ICON_MAGNIFIER = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
 const ICON_CLIPBOARD = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>';
 const ICON_HEART     = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21.2l7.8-7.7 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>';
+const ICON_SPARK     = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
 const ICON_QUESTION  = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
 
 /**
@@ -313,6 +320,9 @@ const GATE_OPTIONS = [
     ['customer',        "I'm a homeowner",
      "You used Otter Quotes yourself and want to send a friend our way.",
      ICON_HEART],
+    ['influencer',      "Content Creator",
+     "Your audience asks who to call after a storm. Share one link and earn a referral fee.",
+     ICON_SPARK],
     ['other',           AgentTypes.CHOOSER_LABELS.other,
      "Property manager, lender, contractor in another trade, anything else &mdash; if you talk to homeowners, this works.",
      ICON_QUESTION],

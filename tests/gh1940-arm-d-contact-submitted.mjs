@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(__dirname, '..');
 const variantDSrcReal = fs.readFileSync(path.join(repoRoot, 'js', 'router-variant-d.js'), 'utf8');
+const discoverySrc = fs.readFileSync(path.join(repoRoot, 'js', 'router-discovery.js'), 'utf8'); // gh-3136: d-contact lazy-loads router-discovery.js (C4 text)
 // Negative control: the shipped source with the GA4 call neutralised.
 const variantDSrcMutant = variantDSrcReal.replace(
   "bridge.trackRouter('router_contact_submitted'", "void ('router_contact_submitted'");

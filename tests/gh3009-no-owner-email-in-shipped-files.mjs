@@ -20,7 +20,7 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const EMAIL = 'dustinstohler1' + '@gmail.com'; // split so this file does not match itself
 const KNOWN_OWED = process.argv.includes('--no-exemptions')
   ? []
-  : ['react-app/middleware.ts']; // PR #3062 (gh-3048) owns this file; owed after it merges
+  : []; // gh-3077: react-app/middleware.ts now asks is_admin_email(); the exemption is gone
 
 const read = (rel) => { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch { return ''; } };
 let passed = 0, failed = 0;

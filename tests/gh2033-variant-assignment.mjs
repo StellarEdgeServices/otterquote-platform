@@ -365,17 +365,23 @@ ok(explicitC.arm !== 'c' && LIVE_VARIANTS.indexOf(explicitC.arm) !== -1,
 // roughly half of returning D/E visitors to the other arm. Runs 20 fresh
 // sessions per arm so a coincidental 50/50 match on a single run can't
 // hide a real bug (P(all 20 land on the same arm by chance) < 1e-6). ──
-console.log('\n=== Check 3c (M1): a persisted D/E under literal "oq_variant_v3" survives unchanged (no key bump on arm removal) ===');
-['d', 'e'].forEach((persistedArm) => {
-  let matches = 0;
+console.log('\n=== Check 3c (gh-3136, P14): LIVE_VARIANTS is [d] and KEY is oq_variant_v4 -- the flip and the bump are one change ===');
+{
+  // gh-3136: arm E left the live split; KEY was bumped in the same change, so
+  // a visitor persisted under the OLD literal key oq_variant_v3 (d or e) is
+  // simply re-bucketed (to 'd', the only live arm), and one persisted under v4
+  // keeps 'd'. A stray persisted 'e' under v4 is remapped to 'd' (E is direct-only).
+  ok(/var KEY = 'oq_variant_v4'/.test(html) && /var LIVE_VARIANTS = \['d'\]/.test(html), "start.html has KEY 'oq_variant_v4' AND LIVE_VARIANTS ['d'] together");
+  let dKeep = 0, eRemap = 0, oldKey = 0;
   for (let i = 0; i < 20; i++) {
-    const store = new Map([['oq_variant_v3', persistedArm]]);
-    const r = runAssignment({ search: '', store: { localStorage: store, cookieJar: 'oq_variant_v3=' + persistedArm } });
-    if (r.arm === persistedArm) matches++;
+    if (runAssignment({ search: '', store: { localStorage: new Map([['oq_variant_v4', 'd']]), cookieJar: 'oq_variant_v4=d' } }).arm === 'd') dKeep++;
+    if (runAssignment({ search: '', store: { localStorage: new Map([['oq_variant_v4', 'e']]), cookieJar: 'oq_variant_v4=e' } }).arm === 'd') eRemap++;
+    if (runAssignment({ search: '', store: { localStorage: new Map([['oq_variant_v3', 'e']]), cookieJar: 'oq_variant_v3=e' } }).arm === 'd') oldKey++;
   }
-  ok(matches === 20,
-    `persisted '${persistedArm}' under literal oq_variant_v3 stays '${persistedArm}' across 20/20 fresh reads (got ${matches}/20 -- KEY must not be bumped when only removing an arm)`);
-});
+  ok(dKeep === 20, `persisted 'd' under oq_variant_v4 stays 'd' (${dKeep}/20)`);
+  ok(eRemap === 20, `a persisted 'e' under oq_variant_v4 is remapped to 'd' (${eRemap}/20)`);
+  ok(oldKey === 20, `a visitor persisted 'e' under the old oq_variant_v3 key is re-bucketed to 'd' (${oldKey}/20)`);
+}
 
 // ── Check 3d (review S3): SAFE_DEFAULT_ARM must itself be a live arm --
 // it is the fallback effectiveLiveVariants() uses if LIVE_VARIANTS is
@@ -540,7 +546,8 @@ console.log('\n=== Check 9: ?v=f is direct-only -- reachable by URL, never persi
   const a = runAssignment({ search: '?v=a' });
   ok(a.arm !== 'a' && LIVE_VARIANTS.indexOf(a.arm) !== -1, "NEGATIVE CONTROL: ?v=a (non-live, NOT direct-only) is still remapped to a live arm -- the direct-only rule did not widen");
   const e = runAssignment({ search: '?v=e' });
-  ok(LIVE_VARIANTS.indexOf('e') !== -1 ? e.arm === 'e' : e.arm !== 'e', '?v=e without oq_internal behaves exactly as before Arm F');
+  // gh-3136 (P14): E is out of the live split but direct-only, so an explicit ?v=e serves E.
+  ok(LIVE_VARIANTS.indexOf('e') === -1 && e.arm === 'e', '?v=e without oq_internal serves arm E directly (gh-3136: out of the live split, direct-only)');
 }
 
 console.log('\n=== Summary ===');

@@ -133,7 +133,9 @@ function stripComments(html) {
 }
 
 // ── Load partner-agreement.html and the extracted hiding script once. ───
-const agreementSrc = fs.readFileSync(path.join(repoRoot, 'partner-agreement.html'), 'utf8');
+// gh-3239 (#3238): these checks pin the v3-2026-09 agreement, now frozen byte-for-byte at partner-agreement-v3.html (the source
+// of partner-agreement-inspector.html). partner-agreement.html is v4-2026-10, guarded by tests/gh3239-partner-agreement-v4.mjs.
+const agreementSrc = fs.readFileSync(path.join(repoRoot, 'partner-agreement-v3.html'), 'utf8');
 
 // The round-2 script hides by class (`.inspector-hide`), not by id -- four
 // elements carry that class: the fee table block, the Section 4.1 wrapper,

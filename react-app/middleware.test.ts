@@ -19,11 +19,21 @@ function req(token?: string, cookie = 'sb-otterquote-at') {
     headers: token ? { cookie: `${cookie}=${token}` } : {},
   });
 }
-// verifiedAs: email Supabase returns; null = 401 (forged); 'throw' = unreachable
-function stubAuth(verifiedAs: string | null) {
-  const calls: { url: string; auth: string | null }[] = [];
+// verifiedAs: email Supabase Auth returns; null = 401 (forged); 'throw' = unreachable.
+// rpc: what POST /rest/v1/rpc/is_admin_email answers (gh-3077): true/false = body,
+// 'error' = HTTP 500, 'throw' = network failure, 'garbage' = 200 with a non-boolean body.
+function stubAuth(verifiedAs: string | null, rpc: boolean | 'error' | 'throw' | 'garbage' = true) {
+  const calls: { url: string; auth: string | null; method: string; apikey: string | null }[] = [];
   vi.stubGlobal('fetch', async (input: any, init?: any) => {
-    calls.push({ url: String(input), auth: new Headers(init?.headers).get('authorization') });
+    const h = new Headers(init?.headers);
+    const url = String(input);
+    calls.push({ url, auth: h.get('authorization'), method: init?.method ?? 'GET', apikey: h.get('apikey') });
+    if (url.endsWith('/rest/v1/rpc/is_admin_email')) {
+      if (rpc === 'throw') throw new Error('network down');
+      if (rpc === 'error') return new Response('{}', { status: 500 });
+      if (rpc === 'garbage') return new Response('"true"', { status: 200 });
+      return new Response(JSON.stringify(rpc), { status: 200 });
+    }
     if (verifiedAs === 'throw') throw new Error('network down');
     if (verifiedAs === null) return new Response('{"msg":"invalid JWT"}', { status: 401 });
     return new Response(JSON.stringify({ email: verifiedAs }), { status: 200 });
@@ -41,9 +51,30 @@ describe('middleware admin gate (gh-3048)', () => {
     const token = makeToken({ email: ADMIN, exp: future() }, 'HS256');
     const res = await middleware(req(token));
     expect(admitted(res)).toBe(true);
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
     expect(calls[0].url).toMatch(/\/auth\/v1\/user$/);
     expect(calls[0].auth).toBe(`Bearer ${token}`);
+    // gh-3077: the admin decision is the database's, asked with the caller's own JWT.
+    expect(calls[1].url).toMatch(/\/rest\/v1\/rpc\/is_admin_email$/);
+    expect(calls[1].method).toBe('POST');
+    expect(calls[1].auth).toBe(`Bearer ${token}`);
+  });
+
+  it('gh-3077: any address is admitted when is_admin_email() says true (no list in middleware)', async () => {
+    stubAuth('newadmin@example.com', true);
+    expect(admitted(await middleware(req(makeToken({ email: 'newadmin@example.com', exp: future() }))))).toBe(true);
+  });
+
+  it('gh-3077 NEGATIVE CONTROL: verified token but is_admin_email() false -> redirected', async () => {
+    stubAuth(ADMIN, false);
+    expect(redirected(await middleware(req(makeToken({ email: ADMIN, exp: future() }))))).toBe(true);
+  });
+
+  it('gh-3077: RPC error / network failure / non-boolean body -> fail closed', async () => {
+    for (const rpc of ['error', 'throw', 'garbage'] as const) {
+      stubAuth(ADMIN, rpc);
+      expect(redirected(await middleware(req(makeToken({ email: ADMIN, exp: future() }))))).toBe(true);
+    }
   });
 
   it('legacy sb_at cookie still works when verified', async () => {
@@ -71,13 +102,13 @@ describe('middleware admin gate (gh-3048)', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('payload email is ignored; the verified email decides', async () => {
-    stubAuth('attacker@example.com');
+  it('payload email is ignored; the database decides for the real caller', async () => {
+    stubAuth('attacker@example.com', false);
     expect(redirected(await middleware(req(makeToken({ email: ADMIN, exp: future() }))))).toBe(true);
   });
 
   it('verified but non-admin email -> redirected', async () => {
-    stubAuth('someone@example.com');
+    stubAuth('someone@example.com', false);
     expect(redirected(await middleware(req(makeToken({ email: 'someone@example.com', exp: future() }))))).toBe(true);
   });
 

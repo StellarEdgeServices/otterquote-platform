@@ -97,20 +97,19 @@ describe('GetStartedPage — gh-1993 Street/City/State/ZIP', () => {
   });
 });
 
-describe('GetStartedPage — gh-1991 "what do you need help with?" options', () => {
+describe('GetStartedPage — gh-3136 (P14) "what do you need help with?" chips are cut', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAuth({ user: null, role: null, loading: false });
   });
 
-  it('offers exactly Roof / Siding / Gutters / Windows / Other — no Water Damage, no Doors', () => {
+  it('Step 1 keeps street/city/state/ZIP and no longer offers the project-type chips', () => {
     render(<GetStartedPage />);
+    expect(screen.getByLabelText('Street Address')).toBeInTheDocument();
+    expect(screen.getByLabelText('ZIP Code')).toBeInTheDocument();
+    expect(screen.queryByText('What do you need help with?')).not.toBeInTheDocument();
     const chips = screen.getAllByRole('button').filter(btn =>
       ['Roof', 'Siding', 'Gutters', 'Windows', 'Other'].includes(btn.textContent || ''));
-    expect(chips.map(c => c.textContent)).toEqual(['Roof', 'Siding', 'Gutters', 'Windows', 'Other']);
-
-    // Negative control: the two removed options from before this change.
-    expect(screen.queryByText('Water Damage')).not.toBeInTheDocument();
-    expect(screen.queryByText('Windows/Doors')).not.toBeInTheDocument();
+    expect(chips).toHaveLength(0);
   });
 });

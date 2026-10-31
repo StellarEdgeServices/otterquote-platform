@@ -53,8 +53,7 @@ const SITES: Site[] = [
   { file: 'react-app/app/lib/services.ts', what: 'notifications.twilio_sid/delivered', trigger: /\.update\(\{ twilio_sid: data\.sid, delivered: true \}\)/, reason: /AFTER the SMS was already sent/ },
   { file: 'js/services.js', what: 'adjusters enrichment', trigger: /from\('adjusters'\)\.update\(updates\)/, reason: /enrichment of an adjuster knowledge-base row/ },
   { file: 'react-app/app/lib/services.ts', what: 'adjusters enrichment', trigger: /from\('adjusters'\)\.update\(updates\)/, reason: /enrichment of an adjuster knowledge-base row/ },
-  { file: 'project-info-acv.html', what: 'claims.adjuster_id link-back', trigger: /update\(\{ adjuster_id: adjData \}\)/, reason: /just written and row-checked/ },
-  { file: 'project-info-rcv.html', what: 'claims.adjuster_id link-back', trigger: /update\(\{ adjuster_id: adjData \}\)/, reason: /just written and row-checked/ },
+  // gh-3136 (P14): the project-info-acv/rcv adjuster_id link-back was removed (adjuster details moved to the dashboard); see the dedicated case below.
 ];
 
 describe('gh-2105 batch 14: class-(b) zero-row sites are annotated with a reason', () => {
@@ -77,6 +76,18 @@ describe('gh-2105 batch 14: class-(b) zero-row sites are annotated with a reason
       expect(violations(stripped), 'stripped source must be flagged by the ratchet rule').toContain(idx);
     });
   }
+
+  it('gh-3136 (P14): project-info-acv/rcv no longer upsert an adjuster or link adjuster_id back; the dashboard keeps the zero-row-checked link-back', () => {
+    for (const f of ['project-info-acv.html', 'project-info-rcv.html']) {
+      const src = read(f);
+      expect(src, f).not.toContain('upsert_adjuster_from_claim');
+      expect(src, f).not.toMatch(/update\(\{ adjuster_id: adjData \}\)/);
+    }
+    const dash = read('dashboard.html');
+    expect(dash).toContain("sb.rpc('upsert_adjuster_from_claim'");
+    expect(dash).toMatch(/update\(\{ adjuster_id: adjData \}\)\.eq\('id', currentClaim\.id\)\.select\('id'\)/);
+    expect(dash).toContain('gh-2105: zero-row update -- claims.adjuster_id matched no rows');
+  });
 
   it('NEGATIVE CONTROL: the port flags a bare un-annotated update and honours the marker', () => {
     expect(violations("await sb.from('claims').update({ updated_at: 'x' }).eq('id', 1);")).toEqual([1]);

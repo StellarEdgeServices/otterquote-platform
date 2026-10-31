@@ -886,7 +886,7 @@ a:hover { color: var(--amber-2); }
   }
 
   function getOqVariant() {
-    var VARIANT_KEY = 'oq_variant_v3';
+    var VARIANT_KEY = 'oq_variant_v4';
     var VARIANT_RE = /^[a-z0-9]{1,8}$/;
     function clean(v) {
       if (typeof v !== 'string') return null;
@@ -907,7 +907,7 @@ a:hover { color: var(--amber-2); }
       if (fromCookie) return fromCookie;
     } catch (e) {}
     // gh-2150 round 3 (REVIEW PASS 5836698881, should-fix 3): no partner
-    // page ever sets the oq_variant_v3 cookie, so this always fell through
+    // page ever sets the oq_variant_v4 cookie, so this always fell through
     // to 'unknown' on RE-5. This page has exactly one variant of itself
     // (it isn't an Arm-style router test), so the page's own funnel id is
     // the correct fixed value here, not 'unknown'.

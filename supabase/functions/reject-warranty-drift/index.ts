@@ -10,16 +10,11 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.104.0";
+import { authorizeWarrantyDriftCaller } from "../_shared/warranty-drift-gate.ts"; // gh-3115
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-// gh-1534: kept in sync with supabase/functions/_shared/admin.ts PRIMARY_ADMIN_EMAIL —
-// do not edit without updating that file too (deploy path does not resolve imports).
-// checkAdminRole()'s email fast-path has only ever gated on this single primary
-// email (the DB template_review_role fallback below it is untouched by gh-1534) —
-// do not widen the fast-path without an explicit decision (see gh-1534).
-const PRIMARY_ADMIN_EMAIL = "dustinstohler1@gmail.com";
 
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
@@ -50,23 +45,14 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
-  // Verify caller is an admin
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  // Verify caller is an admin (gh-3115: _shared/warranty-drift-gate.ts; the old token-only
+  // token-only client getUser() always returned AuthSessionMissingError and refused everyone)
+  const gate = await authorizeWarrantyDriftCaller(req, hasTemplateReviewAdminRole);
+  if (!gate.ok) {
+    const msg = gate.status === 401 ? "Unauthorized" : "Forbidden: admin role required";
+    return new Response(JSON.stringify({ error: msg }), { status: gate.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
-  const callerToken = authHeader.slice(7);
-
-  const sbCaller = createClient(SUPABASE_URL, callerToken);
-  const { data: { user }, error: authErr } = await sbCaller.auth.getUser();
-  if (authErr || !user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
-
-  const isAdmin = await checkAdminRole(user.id, user.email ?? "");
-  if (!isAdmin) {
-    return new Response(JSON.stringify({ error: "Forbidden: admin role required" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
+  const user = gate.user;
 
   const adminEmail = user.email ?? "unknown";
 
@@ -161,8 +147,8 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-async function checkAdminRole(userId: string, email: string): Promise<boolean> {
-  if (email === PRIMARY_ADMIN_EMAIL) return true;
+// DB fallback only: the primary-email check now lives in requirePrimaryAdmin (_shared/admin-gate.ts).
+async function hasTemplateReviewAdminRole(userId: string): Promise<boolean> {
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   const { data } = await sb
     .from("contractors")
