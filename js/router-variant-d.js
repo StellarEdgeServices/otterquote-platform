@@ -19,10 +19,9 @@
 //                   fields the router already captures) and emits Meta Lead.
 //                   Contractor branches straight to the existing
 //                   contractor-join path from here.
-//   3. d-contact -- name (required) + phone (optional) on ONE screen. For
-//                   homeowners it also shows RouterDiscovery.COPY.home8Text
-//                   verbatim (C4, Tier C legal/fee text, relocated from the
-//                   cut d-summary screen). Continue hands off to get-started.
+//   3. d-contact -- name (required) + phone (optional) on ONE screen, no
+//                   body paragraph (gh-3265 removed the C4 home8Text).
+//                   Continue hands off to get-started.
 //   Professionals: d-professional-industry (real estate or insurance), then
 //      arm C's realtor or insurance question set verbatim, then arm C's own
 //      close paragraphs. Every heading/option/close string for those
@@ -66,7 +65,7 @@
 //   the same as arm C's single-file load.
 //   window.RouterVariantD.init() below.
 // - js/router-discovery.js -- the file this module reuses COPY/rendering
-//   from for every screen AFTER d-contact (and the home8Text on d-contact itself) -- is fetched lazily, on demand,
+//   from for every screen AFTER d-contact -- is fetched lazily, on demand,
 //   only when a visitor actually reaches the first reused question screen
 //   (loadDiscoveryModule() below), never at d-role's paint. A visitor who
 //   never gets that far (drops at d-role/d-email, or is
@@ -427,15 +426,14 @@
   // gh-3136 (P14): d-name and d-phone merged into one screen. Both
   // update_lead_contact writes are kept, in the same order as before (name
   // first with p_phone null, then name+phone), with the same validation.
-  // C4 (Tier C, legal/fee text): RD.COPY.home8Text, byte-identical, moved
-  // here from the cut d-summary screen. Homeowners only (as d-summary was);
-  // professionals never saw it and still do not.
+  // gh-3265 (Dustin, 2026-10-30): the C4 home8Text paragraph that used to
+  // render here for homeowners is removed. The screen is the heading, the
+  // two fields, Back, the progress bar and Continue for every role. The
+  // measurement-fee/rebate disclosure is on /get-started (the next page) and
+  // on help-measurements.html (the payment page) -- see PR for the trace.
   RENDERERS['d-contact'] = function () {
     root.appendChild(backButton(goBack));
     root.appendChild(heading('What is your name?'));
-    if (role === 'homeowner') {
-      root.appendChild(bodyText(window.RouterDiscovery.COPY.home8Text));
-    }
     var nameF = field('dName', 'Full Name', 'text', { autocomplete: 'name', maxlength: '200' });
     var phoneF = field('dPhone', 'Phone Number', 'tel', { autocomplete: 'tel', inputmode: 'tel', maxlength: '20' }, true);
     var submitBtn = continueButton('Continue', onSubmit, true);
@@ -522,7 +520,7 @@
 
   // gh-3136 (P14): d-trades, d-payer, d-hidden-costs, d-time, d-criteria, d-online,
   // the four d-dq-* interstitials and d-summary are removed (screening cut; the
-  // C4 paragraph now renders on d-contact).
+  // C4 paragraph moved to d-contact, then was removed by gh-3265).
   // gh-2078 HOOK POINT (not implemented here, on purpose): a homeowner's
   // real conversion event -- measurement_purchase -- fires downstream, in
   // the React app's measurement-checkout success callback, once #2078
