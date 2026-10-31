@@ -11,7 +11,8 @@ Drafted under #1916 / #2875. Nothing here is applied.
 2. The brand spelling, program name and version tag are decided (the `Q:` on #1916 asks Ben) and edited into the three constants. The guard in the file refuses a `DRAFT` / `UNSIGNED` id.
 3. The `/sms-terms` page is published (wording pack piece 2, approved on #3065). The screen links to it.
 4. The R-097 notice for this Tier 3B change has run its window (this is the switch that turns the contractor opt-in on).
-5. The Twilio Verify code template is registered (wording pack piece 3), or Dustin accepts the default Verify text in the meantime.
+5. The verified-list send path is live (notify-contractors, process-dunning, send-contractor-nudge read only `contractor_textable_numbers()`) and the TCR release is decided; until then a verified number is saved but not yet texted.
+6. The Twilio Verify code template is registered (wording pack piece 3), or Dustin accepts the default Verify text in the meantime.
 
 ## Read-only checks before the apply
 ```sql

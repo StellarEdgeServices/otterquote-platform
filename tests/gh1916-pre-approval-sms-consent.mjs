@@ -136,6 +136,20 @@ export async function runChecks(src) {
     await V.mount(m2, sbN, '11111111-1111-4111-8111-111111111111');
     ok(m2.find((n) => n.attrs.type === 'checkbox') === null && m2.find((n) => n.attrs['data-oq-sms'] === 'unavailable'), 'no disclosure row: no checkbox, one unavailable line');
   }
+  // 7. LEGAL-READ 6545940873 F1/F2: opted-out message names START; success line promises nothing.
+  {
+    const m = V.errorText('number_suppressed');
+    ok(/texting START first/.test(m), 'number_suppressed message must say re-adding requires texting START first');
+    const sb = fakeSb(); const doc = fakeDoc(); const mountEl = new FakeNode('div', doc);
+    await V.mount(mountEl, sb, '11111111-1111-4111-8111-111111111111');
+    const box = mountEl.find((n) => n.attrs.id === 'smsVerifyConsent');
+    box.checked = true; await box.fire('change');
+    await mountEl.find((n) => n.attrs.id === 'smsVerifySend').fire('click');
+    await mountEl.find((n) => n.attrs.id === 'smsVerifyCheck').fire('click');
+    const st = mountEl.find((n) => n.attrs.id === 'smsVerifyStatus').textContent;
+    ok(st === 'Number verified and saved.', 'success line must be exactly the true statement, got ' + JSON.stringify(st));
+    ok(!/will get|alerts at/i.test(st), 'success line must not promise alerts');
+  }
   return fails;
 }
 
@@ -154,6 +168,8 @@ await mustFail('consent guard removed from sendCode', SRC.replace("if (state.con
 await mustFail('box pre-ticked', SRC.replace('consentChecked: false, // never pre-ticked', 'consentChecked: true,'), 'unticked');
 await mustFail('failure treated as verified', SRC.replace("state.verified = true; state.verifiedPhone = phone;", "state.verified = true; state.verifiedPhone = phone; /*always*/").replace("if (!res.error && res.data && res.data.success === true) {\n          state.verified", "if (true) {\n          state.verified"), 'must not verify');
 await mustFail('disclosure written with innerHTML-style parsing', SRC.replace("ctl.state.disclosure.disclosure_text); // verbatim, as text", "ctl.state.disclosure.disclosure_text.replace(/<[^>]*>/g, '')); // verbatim, as text"), 'verbatim');
+await mustFail('START step dropped from opted-out message', SRC.replace('requires texting START first', 'is not possible'), 'texting START first');
+await mustFail('success line promises alerts', SRC.replace("'Number verified and saved.'", "'Number verified. You will get text alerts at this number.'"), 'promise alerts');
 await mustFail('no-disclosure still offered', SRC.replace("if (d && typeof d.id === 'string' && d.id && typeof d.disclosure_text === 'string' && d.disclosure_text.trim() !== '') {", "if (d) {"), 'blank disclosure');
 
 // ---------------------------------------------------------------- the pages

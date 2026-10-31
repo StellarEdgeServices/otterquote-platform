@@ -36,7 +36,8 @@
     no_pending_code: 'That code has expired. Send a new code.',
     too_many_attempts: 'Too many tries. Wait a few minutes, then send a new code.',
     rate_limited: 'Too many requests. Wait a few minutes and try again.',
-    number_suppressed: 'This number has opted out of texts, so we cannot send it a code.',
+    // Wording from the D-391 spec rule 5: "Re-adding an opted-out number requires texting START first." The code cannot reach an opted-out number.
+    number_suppressed: "This number has opted out of texts. Re-adding an opted-out number requires texting START first, because the code can't reach an opted-out number.",
     number_paused: 'This number is under review, so we cannot send it a code right now.',
     disclosure_stale: 'The text-alerts terms changed. Reload the page and try again.',
     disclosure_unavailable: 'Text alerts are not available yet. We will use email.',
@@ -236,7 +237,7 @@
     verify.addEventListener('click', async function () {
       status.textContent = 'Checking…';
       var r = await ctl.checkCode(phone.value, codeIn.value);
-      status.textContent = r.ok ? 'Number verified. You will get text alerts at this number.' : r.message;
+      status.textContent = r.ok ? 'Number verified and saved.' : r.message;
       sync();
     });
     return ctl;
