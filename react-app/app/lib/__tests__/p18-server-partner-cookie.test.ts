@@ -197,14 +197,14 @@ describe('P18 REVIEW 6524205688: last click wins in both directions; forged valu
     writeReferralIds(A, { click: true });
     vi.setSystemTime(new Date(NOW.getTime() + 10 * DAY_MS));
     setPc('PARTNERB', new Date());
-    vi.setSystemTime(new Date(NOW.getTime() + 35 * DAY_MS));
+    vi.setSystemTime(new Date(NOW.getTime() + 95 * DAY_MS)); // A 95d (> 90d window, P18 #3219), B 85d
     expect(readReferralIds().oq_referral_code).toBe('PARTNERB');
     wipe();
     vi.setSystemTime(NOW);
     writeReferralIds(A, { click: true });
     vi.setSystemTime(new Date(NOW.getTime() + DAY_MS));
     setPc('PARTNERB', new Date(NOW.getTime() - 5 * DAY_MS));
-    vi.setSystemTime(new Date(NOW.getTime() + 32 * DAY_MS));
+    vi.setSystemTime(new Date(NOW.getTime() + 92 * DAY_MS)); // A 92d (> 90d window), B 97d
     expect(readReferralIds()).toEqual({});
     expect(hasPc()).toBe(false);
   });
