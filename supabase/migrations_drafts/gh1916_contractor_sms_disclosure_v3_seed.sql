@@ -23,8 +23,9 @@
 --     (1) BRAND SPELLING: the registered 10DLC campaign says "OtterQuote"; D-175 and every live surface say "Otter Quotes". Ben's recommendation
 --         (#2875 comment 6388108919) is "Otter Quotes" with the campaign text corrected in the same Twilio edit. This draft uses "Otter Quotes".
 --     (2) VERSION TAG: the wording pack says contractor-v3-[date it is signed]. The id below is a placeholder that the guard refuses.
---   The "SMS Terms" and "Privacy Policy" links are NOT stored in the text; the screen appends them as anchors (sms-terms is the #3065 page, still to
---   be published; the disclosure must not go live before that page does).
+--   The "SMS Terms" and "Privacy Policy" link URLs ARE stored in the text (LEGAL-READ 6545940873 note: the record must hold the consent language
+--   as rendered, links included); the screen also renders them as anchors (sms-terms is the #3065 page, still to be published; the disclosure
+--   must not go live before that page does).
 --
 -- EDIT BEFORE APPLYING (the DO block below refuses to run until you do): replace v_id with contractor-v3-YYYY-MM-DD (the signing date), confirm
 --   v_brand, v_program and v_text against the signed wording, and change nothing else.
@@ -38,7 +39,7 @@ DECLARE
   v_program text := 'Otter Quotes Contractor Alerts';
   v_text    text := 'Text me at this number. I agree to receive automated texts from Otter Quotes (Otter Quotes Contractor Alerts) about my contractor account, '
                     'new job opportunities, bids, contracts, and payments. Msg frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help. '
-                    'Consent is not a condition of purchase.';
+                    'Consent is not a condition of purchase. SMS Terms: https://otterquote.com/sms-terms Privacy Policy: https://otterquote.com/privacy.html';
 BEGIN
   IF to_regclass('public.sms_disclosure_versions') IS NULL THEN
     RAISE EXCEPTION 'gh1916 gate: public.sms_disclosure_versions is missing (layer 1 gh2875_d391_contractor_sms_numbers not applied)';
