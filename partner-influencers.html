@@ -781,8 +781,13 @@
 /* #589: D-266 disclaimer sits on the dark signup panel here — was 3.64:1. */
 .referral-fee-disclaimer { color: #94A3B8 !important; }
 </style>
+<!-- gh-3261: the approved homepage reskin (gh-2598) on the partner landing pages. Design only: tokens from /css/home-reskin.css, rules in /css/partner-reskin.css (scoped to body.pr). -->
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/home-reskin.css">
+<link rel="stylesheet" href="/css/partner-reskin.css">
 </head>
-<body>
+<body class="pr">
 
 <header id="site-header" data-active=""></header>
 
@@ -911,7 +916,7 @@
       <div class="feature-check">✓</div>
       <div class="feature-content">
         <h4>Your own referral link</h4>
-        <p>Your link identifies your referrals, so each one is credited to you.</p>
+        <p>Your link identifies your referrals. A homeowner is credited to the partner whose link they clicked most recently, within 90 days, before creating their Otter Quotes account. That credit stays with that partner until 90 days after that click. After that, it can go to a partner whose link the homeowner clicked more recently, within the previous 90 days.</p>
       </div>
     </div>
 
@@ -1008,7 +1013,7 @@
         </button>
 
         <p class="text-sm text-center referral-fee-disclaimer" style="color: var(--gray); margin-top: var(--sp-4); font-size: 0.85rem;">
-          Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
+          Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees. If you have a sponsorship, brand or employment agreement, check that it allows you to accept referral fees.
         </p>
 
         <p class="text-sm text-center" style="color: #94A3B8; margin-top: var(--sp-4); font-size: 0.85rem;">

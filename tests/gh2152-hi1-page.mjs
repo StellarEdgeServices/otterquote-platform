@@ -349,7 +349,7 @@ ok(/<footer id="site-footer"[^>]*\bdata-skip-nav="true"/.test(html), 'hi-1.html 
   // assertion only scanned the hand-coded legal paragraph, so it missed
   // the "Homeowner referral landing page" -> /ref-inspector.html escape
   // hatch that rendered elsewhere on the page (an unapproved off-page
-  // link whose target shows a $15 figure). Now count EVERY <a href> that
+  // link whose target shows a $22.63 figure). Now count EVERY <a href> that
   // leaves the page anywhere before conversion, plus any JS-built link
   // assignment (a `.href = ` write to an element other than the
   // post-conversion install-the-app buttons), not just the legal

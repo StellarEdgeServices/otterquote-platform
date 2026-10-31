@@ -10,7 +10,7 @@
 //   CLICKUP_API_KEY                — ClickUp personal API token (set before staging test)
 //
 // gh-2078b / D-330: server-side Meta Conversions API (CAPI) `Purchase` event,
-// sent when a measurement-order ($15 Hover report) PaymentIntent succeeds.
+// sent when a measurement-order ($22.63 Hover report) PaymentIntent succeeds.
 // Additive and orthogonal to the gh-948 platform-fee handlers below -- scoped
 // by metadata.type, touches no platform_fee code path, isolated so a CAPI
 // failure/timeout can NEVER fail this webhook or block an order. See
@@ -1151,8 +1151,8 @@ async function handleMeasurementOrderCapiPurchase(
   }
 
   try {
-    // gh-2107 (Ben's DECIDED (a) on #2078; REVIEW B1 / LEGAL-READ L1): the Purchase is reported as 15 USD, so it is sent only for a
-    // PaymentIntent that is exactly 1500 cents in USD. Decided first: before the token, any lookup, the hash or the send. The log
+    // gh-2107 (Ben's DECIDED (a) on #2078; REVIEW B1 / LEGAL-READ L1): the Purchase is reported as 22.63 USD, so it is sent only for a
+    // PaymentIntent that is exactly 2263 cents in USD. Decided first: before the token, any lookup, the hash or the send. The log
     // carries the PaymentIntent id and a fixed reason only (not the currency or amount).
     const nonUsd = shouldSkipForNonUsdMeasurement(paymentIntent);
     if (nonUsd.skip) {

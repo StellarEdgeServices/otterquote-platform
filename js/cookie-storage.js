@@ -450,7 +450,7 @@
    * attribution just never got the same treatment.
    *
    * gh-2062 (CEO ruling, issue comment 5874597169): the attribution window
-   * is 30 days FROM THE PARTNER-LINK CLICK. The cookie carries the click time
+   * is 90 days FROM THE PARTNER-LINK CLICK (P18: one plan for every partner; was 30 under gh-2062). The cookie carries the click time
    * (oq_referral_ts); write() only starts that clock when called with
    * { click: true } (ref*.html, on a fresh ?ref= visit, last click wins). Any
    * other write - the auth advance block, get-started - keeps the original
@@ -468,7 +468,7 @@
   var REFERRAL_KEYS      = ['oq_referral_id', 'oq_referral_agent_id', 'oq_referral_code'];
   var REFERRAL_COOKIE    = 'oq-ref';           // one cookie, JSON payload — all three ids are short
   var REFERRAL_TS_KEY    = 'oq_referral_ts';   // epoch-ms of the partner-link click
-  var REFERRAL_MAX_AGE   = 60 * 60 * 24 * 30;  // 30 days, from the click
+  var REFERRAL_MAX_AGE   = 60 * 60 * 24 * 90;  // 90 days, from the click (P18). The ONE window constant in this file.
   // gh-2062 (REVIEW: FAIL 5881363760): the claim-scoped copy the auth advance
   // re-keys the id into. It has no clock of its own - it lives under the SAME
   // click clock: written only with a click on record, returned by read() only
@@ -480,7 +480,7 @@
    *  this tab's older ids look in-window. Every mirror write therefore stamps
    *  the click time NEXT TO the ids in this tab's sessionStorage (same key
    *  name, different store); the ids are only trusted while that stamp is
-   *  present, inside the 30 days, and equal to the click time now on record. */
+   *  present, inside the 90 days, and equal to the click time now on record. */
   function sessionIdsTrusted(clickTs) {
     if (clickTs === null) return false;
     var stamp = null;
@@ -616,7 +616,7 @@
      *  Returns an object with whichever of the three keys are available. */
     read: function () {
       var out = {};
-      // Past the 30-day window (belt and braces over the cookie Max-Age, and
+      // Past the 90-day window (belt and braces over the cookie Max-Age, and
       // the only bound on the same-origin storage mirrors): nothing to return.
       var clickTs = readReferralTs();
       if (clickTs !== null && (Date.now() - clickTs) > REFERRAL_MAX_AGE * 1000) {
@@ -691,6 +691,22 @@
         } catch (e) {}
       }
       return out;
+    },
+
+    /** P18 credit lock: `lockedId` is get_locked_referral_id() for the signed-in
+     *  user (the partner who got credit when the account was created). When a
+     *  LATER click left a different partner's id in the cookie, put the locked
+     *  id there instead (non-click write: the click clock is kept, the other
+     *  partner's agent id and code are dropped). The database stamps the locked
+     *  referral on the claim whatever this does; this only keeps the browser
+     *  from carrying a stranger's id. Returns true when it replaced an id. */
+    adoptLocked: function (lockedId) {
+      if (!lockedId || typeof lockedId !== 'string') return false;
+      var cur = this.read();
+      if (!cur.oq_referral_id || cur.oq_referral_id === lockedId) return false;
+      this.write({ oq_referral_id: lockedId });
+      this.writeClaimId(lockedId);
+      return true;
     },
 
     /** Clear attribution once it has been stamped onto a claim. */

@@ -662,9 +662,14 @@
   }
 }
 </style>
+<!-- gh-3261: the approved homepage reskin (gh-2598) on the partner landing pages. Design only: tokens from /css/home-reskin.css, rules in /css/partner-reskin.css (scoped to body.pr). -->
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/home-reskin.css">
+<link rel="stylesheet" href="/css/partner-reskin.css">
 </head>
 
-<body>
+<body class="pr">
 
 <!-- ── Header ── -->
 <header id="site-header" data-active=""></header>
@@ -877,7 +882,7 @@
             <span class="toolkit-card-icon">🔗</span>
             <h4>Your Referral Link</h4>
           </div>
-          <p class="toolkit-hint">Every homeowner you send through this link is tracked back to you.</p>
+          <p class="toolkit-hint">Your link identifies your referrals. A homeowner is credited to the partner whose link they clicked most recently, within 90 days, before creating their Otter Quotes account. That credit stays with that partner until 90 days after that click. After that, it can go to a partner whose link the homeowner clicked more recently, within the previous 90 days.</p>
           <div class="ref-link-display" id="refLinkDisplay"></div>
           <button class="copy-btn" onclick="copyItem('link')">Copy Link</button>
         </div>
@@ -1006,7 +1011,7 @@
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
-          They pay $15 upfront for an aerial roof measurement report. If they complete a job on the platform, that cost is rebated in full. There is no fee to use Otter Quotes for bidding, comparison, contract management, or payment processing.
+          They pay $22.63 upfront for an aerial roof measurement report. If they complete a job on the platform, that cost is rebated in full. There is no fee to use Otter Quotes for bidding, comparison, contract management, or payment processing.
         </div>
       </div>
 

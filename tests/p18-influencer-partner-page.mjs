@@ -79,6 +79,17 @@ ok(!/\$5(?![\d,])/.test(visible) && !/measurement fee/i.test(visible), '(b7) no 
 ok(!/\$15|\$50|recruit bonus/i.test(visible), '(b8) only the live $200 fee is stated (no $15, $50 or recruit bonus)');
 ok(/Check your employment agreement and your governing licensing agency/.test(visible), '(b9) D-266 disclaimer kept verbatim');
 ok(!/unbiased|independent/i.test(visible), '(b10) no unbiased/independent');
+// (b11) #3220 ruling (Dustin, 2026-10-30): sponsorship sentence immediately after the D-266 sentence
+const D266 = 'Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.';
+const SPONSOR = 'If you have a sponsorship, brand or employment agreement, check that it allows you to accept referral fees.';
+const flat = visible.replace(/\s+/g, ' ');
+ok(flat.includes(D266 + ' ' + SPONSOR), '(b11) sponsorship sentence immediately follows the verbatim D-266 sentence');
+ok(flat.split(SPONSOR).length === 2 && flat.split(D266).length === 2, '(b11b) each sentence appears exactly once');
+// negative control: if the sponsorship sentence preceded D-266 or D-266 were altered, (b11) must fail
+const swapped = flat.replace(D266 + ' ' + SPONSOR, SPONSOR + ' ' + D266);
+const altered = flat.replace('lawful for you to accept referral fees.', 'lawful for you to accept referral fee.');
+ok(!swapped.includes(D266 + ' ' + SPONSOR), '(b11n1) control: reordered sentences are detected');
+ok(!altered.includes(D266 + ' ' + SPONSOR), '(b11n2) control: an altered D-266 sentence is detected');
 
 // (c) partners.html gate tile
 const partners = read('partners.html');
@@ -139,7 +150,12 @@ for (const f of partnerPages) {
   ok(!/Monthly portfolio report/i.test(h), '(g2) ' + f + ': no "Monthly portfolio report" claim');
 }
 ok(/Referral history by month/.test(page) && /Filter your referrals by month and see each one's status and referral fee\./.test(page), '(g3) influencer page uses the corrected report line');
-ok(/Your link identifies your referrals, so each one is credited to you\./.test(page), '(g4) influencer page uses the corrected link line');
+ok(/Your link identifies your referrals\. A homeowner is credited to the partner whose link they clicked most recently, within 90 days, before creating their Otter Quotes account\. That credit stays with that partner until 90 days after that click\. After that, it can go to a partner whose link the homeowner clicked more recently, within the previous 90 days\./.test(page), '(g4) influencer page uses the corrected link line (P18 credit-lock copy, #3226)');
+{
+  const all = fs.readdirSync(repoRoot).filter(n => /^partner-.*\.html$/.test(n));
+  for (const f of all) ok(!/tracked back to you/i.test(read(f)), '(g5) ' + f + ': no unconditional "tracked back to you" promise (LEGAL-READ 6524846666)');
+  for (const f of ['partner-inspectors.html', 'partner-other.html', 'partner-adjusters.html']) ok(/until 90 days after that click/.test(read(f)), '(g6) ' + f + ': carries the credit-lock copy');
+}
 ok(!/p_funnel_id:\s+'influencer'/.test(re), '(h) control: partner-re.html does not tag influencer');
 
 // (f) legal pages untouched
@@ -147,7 +163,10 @@ try {
   const changed = execSync('git diff --name-only origin/main...HEAD', { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n');
   // privacy.html is deliberately NOT asserted here any more: PR #3230 (server-set oq_pc cookie) changes it with
   // CEO-approved copy and its own LEGAL-READ. This guard exists to keep the influencer-page work from touching legal copy.
-  ok(!changed.includes('partner-agreement.html'), '(f) partner-agreement.html not changed on this branch');
+  // gh-3239 (#3238): a branch may change partner-agreement.html only as the sanctioned Partner Agreement publish, which also
+  // changes its single legal source docs/legal/partner-agreement-*.md (guarded by tests/gh3239-partner-agreement-v4.mjs).
+  const sanctionedPublish = changed.some(f => /^docs\/legal\/partner-agreement-.*\.md$/.test(f));
+  ok(sanctionedPublish || !changed.includes('partner-agreement.html'), '(f) partner-agreement.html not changed on this branch outside a sanctioned publish');
 } catch (e) {
   console.log('SKIP: (f) no origin/main to diff against');
 }

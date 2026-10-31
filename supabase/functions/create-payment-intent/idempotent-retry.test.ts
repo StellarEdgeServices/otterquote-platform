@@ -57,7 +57,7 @@ async function createAndAttach(fetchFn: typeof fetch, variant: unknown, logs: st
   const form = buildStandardCreateForm({ amount: 1500, currency: "usd", description: "Complete Property Report", metadata });
   const res = await fetchFn(`${API}/payment_intents`, {
     method: "POST",
-    headers: { Authorization: "Basic QUJD", "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": standardIdempotencyKey(metadata) },
+    headers: { Authorization: "Basic QUJD", "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": standardIdempotencyKey(metadata, 1500) },
     body: form.toString(),
   });
   if (!res.ok) return { status: res.status, piId: null, attach: null };
@@ -91,7 +91,7 @@ Deno.test("NEGATIVE CONTROL: put the variant inside the keyed create (the pre-fi
     form.append("metadata[variant]", variant); // what #2110 did before this fix
     return await fetchFn(`${API}/payment_intents`, {
       method: "POST",
-      headers: { Authorization: "Basic QUJD", "Idempotency-Key": standardIdempotencyKey(metadata) },
+      headers: { Authorization: "Basic QUJD", "Idempotency-Key": standardIdempotencyKey(metadata, 1500) },
       body: form.toString(),
     });
   }
@@ -105,7 +105,7 @@ Deno.test("the deploy scenario: a claim whose PaymentIntent was created BEFORE t
   const { fetchFn } = fakeStripe();
   const metadata = { claim_id: CLAIM, type: "hover_measurement" };
   const old = buildStandardCreateForm({ amount: 1500, currency: "usd", description: "Complete Property Report", metadata });
-  const headers = { Authorization: "Basic QUJD", "Idempotency-Key": standardIdempotencyKey(metadata) };
+  const headers = { Authorization: "Basic QUJD", "Idempotency-Key": standardIdempotencyKey(metadata, 1500) };
   const createdBefore = await fetchFn(`${API}/payment_intents`, { method: "POST", headers, body: old.toString() });
   assertEquals(createdBefore.status, 200);
   const after = await createAndAttach(fetchFn, "e"); // the first retry after the deploy

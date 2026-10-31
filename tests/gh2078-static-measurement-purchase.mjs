@@ -1,5 +1,5 @@
 /**
- * gh-2078 (CLOSE-REVIEW FAIL 5972838358) -- the STATIC $15 measurement checkout (help-measurements.html) fires GA4 `measurement_purchase`
+ * gh-2078 (CLOSE-REVIEW FAIL 5972838358) -- the STATIC $22.63 measurement checkout (help-measurements.html) fires GA4 `measurement_purchase`
  * and the Meta pixel `Purchase` exactly like the React page (PR #2092 / #2107), on the confirmed-success path only, with the SAME
  * Meta eventID the server-side CAPI Purchase uses (`measurement_purchase:<paymentIntentId>`), once per PaymentIntent.
  *
@@ -97,12 +97,12 @@ async function runCheckout({ stripeResult, orderThrows = false, store = new Map(
 }
 const vendorCalls = (r) => r.calls.filter((c) => c[0] === 'gtag' || c[0] === 'fbq');
 if (confirmSrc && fireSrc && variantSrc && amountSrc) {
-  const success = (id, amount = 1500, currency = 'usd') => ({ paymentIntent: { id, status: 'succeeded', amount, currency }, error: null });
+  const success = (id, amount = 2263, currency = 'usd') => ({ paymentIntent: { id, status: 'succeeded', amount, currency }, error: null });
   const successWithout = (id, field) => { const r = success(id); delete r.paymentIntent[field]; return r; }; // the field is absent, not undefined-by-default
   const r1 = await runCheckout({ stripeResult: success });
   const ga = r1.calls.filter((c) => c[0] === 'gtag'), fb = r1.calls.filter((c) => c[0] === 'fbq');
-  ok(ga.length === 1 && ga[0][1] === 'event' && ga[0][2] === 'measurement_purchase' && ga[0][3].value === 15 && ga[0][3].currency === 'USD' && ga[0][3].variant === 'e', 'success: exactly one GA4 measurement_purchase (value 15, USD, variant e)');
-  ok(fb.length === 1 && fb[0][1] === 'track' && fb[0][2] === 'Purchase' && fb[0][3].value === 15 && fb[0][4].eventID === 'measurement_purchase:pi_TEST123', 'success: exactly one Meta Purchase carrying eventID measurement_purchase:pi_TEST123');
+  ok(ga.length === 1 && ga[0][1] === 'event' && ga[0][2] === 'measurement_purchase' && ga[0][3].value === 22.63 && ga[0][3].currency === 'USD' && ga[0][3].variant === 'e', 'success: exactly one GA4 measurement_purchase (value 22.63, USD, variant e)');
+  ok(fb.length === 1 && fb[0][1] === 'track' && fb[0][2] === 'Purchase' && fb[0][3].value === 22.63 && fb[0][4].eventID === 'measurement_purchase:pi_TEST123', 'success: exactly one Meta Purchase carrying eventID measurement_purchase:pi_TEST123');
   ok(r1.calls.findIndex((c) => c[0] === 'order') < r1.calls.findIndex((c) => c[0] === 'gtag'), 'success: the order call resolved before the event fired');
   const r2 = await runCheckout({ stripeResult: success, store: r1.store });
   ok(r2.calls.filter((c) => c[0] === 'gtag' || c[0] === 'fbq').length === 0, 'repeat for the same PaymentIntent (retry/refresh): no second GA4 or Meta event');
@@ -139,8 +139,10 @@ if (confirmSrc && fireSrc && variantSrc && amountSrc) {
   ok(ga25.length === 1 && ga25[0][3].value === 25 && ga25[0][3].currency === 'USD', 'confirmed payment of 2500 cents ($25.00): GA4 measurement_purchase carries value 25, USD');
   ok(fb25.length === 1 && fb25[0][3].value === 25 && fb25[0][3].currency === 'USD' && fb25[0][4].eventID === 'measurement_purchase:pi_25', 'confirmed payment of 2500 cents ($25.00): Meta Purchase carries value 25, USD, eventID measurement_purchase:pi_25');
   ok(ga25.length === 1 && fb25.length === 1 && ga25[0][3].value === fb25[0][3].value && ga25[0][3].currency === fb25[0][3].currency, 'GA4 and Meta carry the identical value and currency');
+  const r2263 = await runCheckout({ stripeResult: (id) => success(id, 2263, 'usd'), piId: 'pi_2263' });
+  ok(r2263.calls.filter((c) => c[0] === 'gtag')[0][3].value === 22.63 && r2263.calls.filter((c) => c[0] === 'fbq')[0][3].value === 22.63, 'confirmed payment of 2263 cents ($22.63, gh-3228 price): value 22.63 on both events');
   const r1500 = await runCheckout({ stripeResult: (id) => success(id, 1500, 'usd'), piId: 'pi_15' });
-  ok(r1500.calls.filter((c) => c[0] === 'gtag')[0][3].value === 15 && r1500.calls.filter((c) => c[0] === 'fbq')[0][3].value === 15, 'confirmed payment of 1500 cents: value 15 (the server-side Purchase value for the same PaymentIntent)');
+  ok(r1500.calls.filter((c) => c[0] === 'gtag')[0][3].value === 15 && r1500.calls.filter((c) => c[0] === 'fbq')[0][3].value === 15, 'negative control: a confirmed payment of 1500 cents (the retired $15 price) reports value 15 -- the value is what Stripe confirmed, never a $22.63 constant');
   const rEur = await runCheckout({ stripeResult: (id) => success(id, 1500, 'eur'), piId: 'pi_eur' });
   ok(rEur.calls.filter((c) => c[0] === 'gtag')[0][3].currency === 'EUR', 'currency is paymentIntent.currency upper-cased (eur -> EUR), not a constant');
   for (const [label, amt] of [['zero', 0], ['negative', -1500], ['a string', '2500'], ['not an integer number of cents', 1500.5], ['NaN', NaN]]) {

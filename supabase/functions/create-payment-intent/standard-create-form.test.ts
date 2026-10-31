@@ -49,7 +49,7 @@ Deno.test("nothing per-request reaches the create: variant, gpc and any other me
   for (const extra of [{ variant: "e" }, { variant: "unknown" }, { variant: "f" }, { variant: "<script>" }, { gpc: true }, { variant: "e", gpc: true, anything: "else" }]) {
     const md = { ...base, ...extra };
     assertEquals(buildStandardCreateForm({ amount: 1500, currency: "usd", description: "Complete Property Report", metadata: md }).toString(), ref, JSON.stringify(extra));
-    assertEquals(standardIdempotencyKey(md), standardIdempotencyKey(base), JSON.stringify(extra));
+    assertEquals(standardIdempotencyKey(md, 1500), standardIdempotencyKey(base, 1500), JSON.stringify(extra));
   }
 });
 
@@ -60,8 +60,31 @@ Deno.test("the create's parameter set is exactly main's", () => {
   assertEquals(keys("measurement_upgrade"), ["amount", "currency", "description", "metadata[claim_id]", "metadata[type]", "metadata[contractor_id]", "metadata[vendor_credit_expected_cents]", "automatic_payment_methods[enabled]"]);
 });
 
-Deno.test("the idempotency key is one key per claim and type", () => {
-  assertEquals(standardIdempotencyKey({ type: "hover_measurement", claim_id: "abc" }), "hover_measurement-abc");
+Deno.test("the idempotency key is one key per claim, type and amount", () => {
+  assertEquals(standardIdempotencyKey({ type: "hover_measurement", claim_id: "abc" }, 2263), "hover_measurement-abc-2263");
+});
+
+// gh-3228: Stripe pins an Idempotency-Key to its first body for 24 hours. The key must change with the amount (a reload after the
+// price change creates a fresh $22.63 intent, not the stale $15 one and not a 400/500 lockout) and be stable for the same amount.
+Deno.test("gh-3228: the key changes with the amount", () => {
+  const md = { type: "hover_measurement", claim_id: "c0ffee00-0000-4000-8000-000000000001" };
+  assert(standardIdempotencyKey(md, 1500) !== standardIdempotencyKey(md, 2263));
+  assertEquals(standardIdempotencyKey(md, 2263), "hover_measurement-c0ffee00-0000-4000-8000-000000000001-2263");
+});
+
+Deno.test("gh-3228: NEGATIVE CONTROL -- the key is stable for the same amount (a retry still reuses the same intent), and still differs by claim and type", () => {
+  const md = { type: "hover_measurement", claim_id: "c1" };
+  assertEquals(standardIdempotencyKey(md, 2263), standardIdempotencyKey({ ...md }, 2263));
+  assertEquals(standardIdempotencyKey(md, 2263), standardIdempotencyKey(md, "2263"));
+  assert(standardIdempotencyKey(md, 2263) !== standardIdempotencyKey({ ...md, claim_id: "c2" }, 2263));
+  assert(standardIdempotencyKey(md, 2263) !== standardIdempotencyKey({ ...md, type: "deductible_escrow" }, 2263));
+});
+
+Deno.test("gh-3228: the key is a function of the body's own inputs: same key implies same amount in the create body", () => {
+  const md = { type: "hover_measurement", claim_id: "c1" };
+  const body = (a: number) => buildStandardCreateForm({ amount: a, currency: "usd", description: "Complete Property Report", metadata: md }).toString();
+  for (const a of [1500, 2263]) assertEquals(body(a).includes(`amount=${a}&`), true);
+  assert(body(1500) !== body(2263) && standardIdempotencyKey(md, 1500) !== standardIdempotencyKey(md, 2263));
 });
 
 // -- index.ts uses them, and only them -------------------------------------------------------------
