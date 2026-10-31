@@ -33,7 +33,7 @@ import {
   REFUSAL_CODE,
 } from "./live-charge-guard.ts";
 import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-setting.ts";
-import { selectStripeKey } from "./stripe-key-select.ts";
+import { keyRefusalResponse, selectStripeKey } from "../_shared/stripe-key-select.ts";
 import { attachVariantMetadata } from "./variant-metadata.ts";
 import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
 import {
@@ -561,9 +561,11 @@ serve(async (req) => {
     });
     if (!keyChoice.ok) {
       console.error(`[${FUNCTION_NAME}] gh-3293 Stripe key refused: ${keyChoice.reason} claim=${metadata.claim_id}`);
+      // gh-3293 REVIEW B: a test-claim key refusal carries REFUSAL_CODE so docusign-webhook never routes it to dunning.
+      const refusal = keyRefusalResponse(keyChoice.reason, REFUSAL_CODE);
       return new Response(
-        JSON.stringify({ error: "Stripe key not available for this claim.", reason: keyChoice.reason }),
-        { status: keyChoice.reason === "test_key_missing_for_test_claim" ? 422 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        JSON.stringify(refusal.body),
+        { status: refusal.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
     const stripeSecretKey = keyChoice.key;

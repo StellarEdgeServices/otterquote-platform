@@ -55,6 +55,7 @@ import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-updat
 // gh-2442: contractor-requested retry pass (CRON mode). Off unless DUNNING_RETRY_PASS_ENABLED=true.
 import { runRetryPass, gateTrigger, triggerSystemRetryFields, PAYMENT_HOLD_STATUSES, selectRetryStripeKey } from "./retry-pass.ts";
 import { buildRetryPassDeps, buildTriggerGateDeps } from "./retry-pass-supabase.ts";
+import { selectStripeKey } from "../_shared/stripe-key-select.ts";
 import { dropHeld, heldQuoteIds } from "./payment-hold.ts"; // gh-2442 B4
 // gh-2309: inbound caller gate (service-role bearer on TRIGGER + CRON).
 import { acceptedServiceKeys, classifyRequest, gateResponse, validateHomeownerChoice } from "./caller-gate.ts";
@@ -805,12 +806,16 @@ export async function handler(
       // So the #1467 defect on this path needs nobody to fire it, which is
       // a strictly worse shape than the ceremony path it was found on.
       // Fails CLOSED: an unreadable claim refuses the charge AND the dunning setup (nothing is created for it).
+      // gh-3293 (REVIEW 6548365782 A): the claim's is_test, read here SERVER-SIDE, picks the Stripe key below. Defaults to
+      // true (fail closed: TEST key only) and is set from the guard's own read, so a request body or Origin cannot change it.
+      let triggerClaimIsTest = true;
       {
         const { data: guardClaim } = await supabase
           .from("claims")
           .select(GUARD_SELECT)
           .eq("id", claim_id ?? "")
           .maybeSingle();
+        triggerClaimIsTest = guardClaim?.is_test === true;
         const chargeGuard = evaluateLiveChargeGuard(guardClaim);
         if (!chargeGuard.allow) {
           const guardMessage = describeGuardVerdict(
@@ -904,9 +909,14 @@ export async function handler(
       const _reqOrigin = req.headers.get("Origin") || "";
       const isStaging = _reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
         _reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
-      const stripeSecretKey = isStaging
-        ? (getEnv("STRIPE_SECRET_KEY_TEST") || getEnv("STRIPE_SECRET_KEY"))
-        : getEnv("STRIPE_SECRET_KEY");
+      // gh-3293: an is_test claim never gets the LIVE key, whatever the Origin (the callers, docusign-webhook and
+      // stripe-webhook, send none). No usable TEST key => no key => no Stripe call; dunning is still set up as for any
+      // charge skipped without a key (same as a missing key before).
+      const keyChoice = selectStripeKey({ isStaging, claimIsTest: triggerClaimIsTest, env: getEnv });
+      if (!keyChoice.ok) {
+        console.error(`[process-dunning] gh-3293 Stripe key refused: ${keyChoice.reason} claim=${claim_id}; no charge attempted.`);
+      }
+      const stripeSecretKey = keyChoice.ok ? keyChoice.key : undefined;
       if (stripeSecretKey && triggerGate.proceed && !quoteStatusUnreadable && !quoteSettledBeforeCharge) {
         const basicAuth = btoa(`${stripeSecretKey}:`);
 

@@ -146,7 +146,12 @@ export interface RetryPassDeps {
   countOpenRows: (rowIds: string[]) => Promise<number>;
   getQuotePaymentStatus: (quoteId: string) => Promise<string | null>;
   /** Live-charge guard (#1467): fails closed. */
-  chargeGuard: (claimId: string | null) => Promise<{ allow: boolean; message: string; reason?: string }>;
+  chargeGuard: (claimId: string | null) => Promise<{ allow: boolean; message: string; reason?: string; isTest?: boolean }>;
+  /**
+   * gh-3293: the mode of the single Stripe key this pass was built with (derived from the key prefix, never from config).
+   * In "live" mode a claim whose is_test is not provably false is refused: an is_test claim never reaches the live key.
+   */
+  keyMode?: "test" | "live";
   getChargeMethods: (contractorId: string) => Promise<{ customerId: string; methods: ChargeMethod[] } | null>;
   charge: (req: ChargeRequest) => Promise<ChargeResult>;
   recordQuoteResult: (
@@ -348,6 +353,11 @@ async function reconcile(deps: RetryPassDeps, g: Group, quoteId: string): Promis
     await deps.alert(guardAlertType(guard), `${guard.message} Replay of in-doubt attempt refused for quote ${quoteId}; marker kept.`);
     return { quoteKey: g.key, outcome: "skipped", reason: "unknown_replay_guard_refused" };
   }
+  // gh-3293: the replay is a Stripe charge call too; same rule as the main path (never the live key for an is_test claim).
+  if (deps.keyMode === "live" && guard.isTest !== false) {
+    await deps.alert("dunning_retry_refused_test_claim_live_key", `Retry pass: claim ${req.claimId} is a test claim (or its is_test is unknown); the LIVE Stripe key is never used for it. Replay of in-doubt attempt refused for quote ${quoteId}; marker kept.`);
+    return { quoteKey: g.key, outcome: "skipped", reason: "unknown_replay_test_claim_live_key" };
+  }
   let res = await deps.charge(req); // IDENTICAL request, SAME idempotency key: Stripe returns the original result
   if (res.status === "unknown") return { quoteKey: g.key, outcome: "skipped", reason: "unknown_still_unknown" };
   if ((res.status === "succeeded" || res.status === "processing") && res.paymentIntentId) {
@@ -453,6 +463,13 @@ async function runRetryPassLocked(deps: RetryPassDeps): Promise<GroupOutcome[]> 
     const guard = await deps.chargeGuard(claimId);
     if (!guard.allow) {
       await refuse("live_charge_guard", guardAlertType(guard), `${guard.message} Retry-pass charge refused for quote ${quoteId}.`);
+      continue;
+    }
+    // gh-3293 (REVIEW 6548365782 A): the pass holds ONE key. If that is the LIVE key, an is_test claim (or one whose
+    // is_test could not be established: isTest !== false) is refused before any Stripe call, even when authorised.
+    if (deps.keyMode === "live" && guard.isTest !== false) {
+      await refuse("is_test_claim_live_key", "dunning_retry_refused_test_claim_live_key",
+        `Retry pass: claim ${claimId} is a test claim (or its is_test is unknown); the LIVE Stripe key is never used for it. No charge for quote ${quoteId}.`);
       continue;
     }
 
