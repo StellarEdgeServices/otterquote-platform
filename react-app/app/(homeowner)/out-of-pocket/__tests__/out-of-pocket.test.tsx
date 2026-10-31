@@ -109,7 +109,21 @@ describe('Out-of-pocket page', () => {
     expect(claimId).toBe('c1');
     expect(update.job_type).toBe('retail');
     expect(update.funding_type).toBe('cash');
+    expect(update.policy_type).toBeNull();
     expect(update.has_material_selection).toBe(true);
+  });
+
+  it('NEGATIVE CONTROL: a stored ACV homeowner stays ACV (insurance_acv / insurance, policy_type untouched)', async () => {
+    wire({ policy_type: 'acv', funding_type: 'insurance', has_measurements: true });
+    render(<Page />);
+    await pickShingle3Tab();
+    fireEvent.click(screen.getByTestId('d407-continue'));
+    await waitFor(() => expect(saveClaim).toHaveBeenCalledTimes(1));
+    const update = (saveClaim as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(update.job_type).toBe('insurance_acv');
+    expect(update.funding_type).toBe('insurance');
+    expect('policy_type' in update).toBe(false);
+    expect(update.job_type).not.toBe('retail');
   });
 
   it('purchase path: links to the existing help-measurements flow with the claim id', async () => {

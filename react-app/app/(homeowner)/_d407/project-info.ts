@@ -127,17 +127,35 @@ export function buildRcvClaimUpdate(
   return update;
 }
 
-/** Out-of-pocket: D-073 job type retail (same values project-info-cash.html writes). */
+/**
+ * Out-of-pocket page write (D-079 / D-073). The homeowner's stored answer is never
+ * overwritten:
+ *   - stored policy 'acv'  -> job_type insurance_acv, funding_type insurance (what
+ *     main's project-info-acv.html writes; ACV is TREATED as cash by D-346, not
+ *     reclassified); policy_type is left as stored.
+ *   - no stored policy and funding not insurance (a genuine out-of-pocket homeowner)
+ *     -> job_type retail, funding_type cash, policy_type null (project-info-cash.html).
+ *   - anything else (stored rcv/idk, or insurance funding with no policy answer)
+ *     -> no classification keys at all; only project info and materials are written.
+ */
 export function buildOopClaimUpdate(
   input: ProjectInfoInput,
   fullName: string,
   material: MaterialSelectionState,
+  storedPolicyType?: string | null,
+  storedFundingType?: string | null,
 ): Record<string, unknown> {
-  return {
+  const update: Record<string, unknown> = {
     ...buildProjectInfoUpdate(input, fullName),
-    job_type: 'retail',
-    funding_type: 'cash',
-    policy_type: null,
     ...buildClaimMaterialUpdate(material),
   };
+  if (storedPolicyType === 'acv') {
+    update.job_type = 'insurance_acv';
+    update.funding_type = 'insurance';
+  } else if (!storedPolicyType && storedFundingType !== 'insurance') {
+    update.job_type = 'retail';
+    update.funding_type = 'cash';
+    update.policy_type = null;
+  }
+  return update;
 }

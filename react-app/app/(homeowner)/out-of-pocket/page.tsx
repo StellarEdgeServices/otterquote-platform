@@ -15,8 +15,10 @@
  * claim's has_measurements flag, the same gate the dashboard checklist uses for
  * cash jobs.
  *
- * The write sets funding_type 'cash' and job_type 'retail' (D-073 retail, as
- * project-info-cash.html does). It does NOT assert anything about insurance.
+ * Classification (D-079 / D-073): a stored ACV answer stays insurance_acv /
+ * insurance (D-346 treats ACV as cash, it does not reclassify); retail / cash /
+ * null is written only for a homeowner with no stored policy answer. See
+ * buildOopClaimUpdate. The page asserts nothing about insurance.
  * New file; the PAYMENT_DESTINATIONS 'oop' row in trade-selector/payment-route.ts
  * switches to this route in a follow-up.
  */
@@ -152,7 +154,7 @@ function OopForm({
     setSaving(true);
     try {
       await saveContact(userId, contact.fullName, contact.phone);
-      await saveClaim(claim.id, buildOopClaimUpdate(info, contact.fullName, material));
+      await saveClaim(claim.id, buildOopClaimUpdate(info, contact.fullName, material, claim.policy_type, claim.funding_type));
       window.location.assign(new URL('/dashboard', window.location.origin).href);
     } catch (err) {
       console.error('[out-of-pocket] save failed:', err);
