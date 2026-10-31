@@ -32,7 +32,6 @@ import { enforceCpaRedirect } from '../_shell/cpa-guard';
 import { ServiceAreaEditor } from './ServiceAreaEditor';
 import { ManufacturerCerts } from './ManufacturerCerts';
 import { ContractTemplates } from './ContractTemplates';
-import { PcTemplates } from './PcTemplates';
 import { PROFILE_COPY as T } from './copy';
 import {
   formatPhone, tradesDisplay, brandsDisplay, normalizeWebsiteHref, serviceAreaSummary,
@@ -117,7 +116,6 @@ function ProfileView({ record, setRecord, userId }: {
       <ServiceAreaCard record={record} onUpdate={updateContractor} />
       <ManufacturerCerts contractorId={record.id} userId={userId} />
       <ContractTemplates contractorId={record.id} initialTemplates={asArray(record.contract_templates) as unknown as ContractTemplate[]} />
-      <PcTemplates contractorId={record.id} />
       <StatsCard contractorId={record.id} />
     </div>
   );

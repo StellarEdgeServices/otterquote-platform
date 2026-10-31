@@ -7,7 +7,7 @@
  *     the (PR1, tested) pure buildHomeownerEnvelopeRequest — INCLUDING the React-
  *     route return_url — and returns its signing_url.
  *   • (gh-2864) no recordHomeownerSigned: the stamp is written only by the docusign-webhook.
- *   • buildProjectConfirmationUrl targets the static project-confirmation page.
+ *   • buildPostSignUrl targets the dashboard (D-407: no Project Confirmation step).
  *   • sendContractorNudge asks the send-contractor-nudge EF to text the
  *     contractor (server-side consent lookup) and Dustin's alert line.
  *     gh-1916 RETURNED 5856782745 (Marty, CTO RUN 44) / D-328.
@@ -27,7 +27,7 @@ vi.mock('@/lib/supabase', () => ({
 import { supabase } from '@/lib/supabase';
 import { buildHomeownerEnvelopeRequest } from '../utils';
 import {
-  buildProjectConfirmationUrl,
+  buildPostSignUrl,
   createHomeownerEnvelope,
   requestBidRenewal,
   sendContractorNudge,
@@ -89,11 +89,10 @@ describe('use-contract-signing-data exports (gh-2864)', () => {
   });
 });
 
-describe('buildProjectConfirmationUrl', () => {
-  it('targets the static project-confirmation page (coexistence — React route is Phase 26)', () => {
-    expect(buildProjectConfirmationUrl('abc-123')).toBe(
-      'https://otterquote.com/project-confirmation.html?claim_id=abc-123',
-    );
+describe('buildPostSignUrl', () => {
+  it('targets the dashboard, never a Project Confirmation page (D-407)', () => {
+    expect(buildPostSignUrl()).toBe('https://otterquote.com/dashboard.html');
+    expect(buildPostSignUrl()).not.toMatch(/project-confirmation/);
   });
 });
 

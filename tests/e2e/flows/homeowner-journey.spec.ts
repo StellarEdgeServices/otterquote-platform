@@ -252,10 +252,7 @@ test.describe('Flow B — Homeowner Journey (Phase 1 Stub)', () => {
   // Skip signing — requires DocuSign sandbox credentials.
   // See CI_INTEGRATION.md → DocuSign Sandbox Setup.
 
-  // TODO: B10 — Project confirmation
-  // Navigate to project-confirmation.html (color-selection.html).
-  // Assert trade-specific form fields render (roofing: shingle color, drip edge, etc.)
-  // Verify project_confirmation JSONB persists on submit.
+  // B10 (Project confirmation) retired: D-407 eliminates the PC step (gh-3286).
 });
 
 // ─── AuthProvider warm-reload regression (86e1nbud6) ─────────────────────────

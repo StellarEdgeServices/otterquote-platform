@@ -1092,12 +1092,6 @@
               <div class="next-steps-grid">
                 <div class="next-step-card">
                   <div class="next-step-number">1</div>
-                  <div class="next-step-title">Project Confirmation</div>
-                  <div class="next-step-description">Confirm project scope, materials, and color selections with your contractor.</div>
-                  <a href="#" id="colorSelectionLink" class="next-step-link">Project Confirmation &rarr;</a>
-                </div>
-                <div class="next-step-card">
-                  <div class="next-step-number">2</div>
                   <div class="next-step-title">Contractor Outreach</div>
                   <div class="next-step-description"><span id="confirmContractorName2">Your contractor</span> will reach out <span id="contactDeadlineText2">within 48 hours</span> to introduce themselves and confirm scheduling.</div>
                 </div>
@@ -1494,7 +1488,6 @@
       // Confirmation section
       document.getElementById('confirmContractorName').textContent = c.company_name || c.name || 'your contractor';
       document.getElementById('confirmContractorName2').textContent = c.company_name || c.name || 'Your contractor';
-      document.getElementById('colorSelectionLink').href = `/project-confirmation.html?claim_id=${state.claimId}`;
 
       // D-123: Set contractor name in acknowledgment checkbox
       const ackNameEl = document.getElementById('ackContractorName');
@@ -2030,7 +2023,7 @@
       // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id and
       // envelope_id removed — this is the LIVE contract_signed emission
       // (contract-signing.html is where signing actually happens in
-      // production; bids.html, contractor-about.html, project-confirmation.html,
+      // production; bids.html, contractor-about.html,
       // contractor-dashboard.html and the React bids page all redirect here).
       // contractor_id kept (not a homeowner identifier; matches #1988's
       // bid_accepted).
@@ -2040,11 +2033,11 @@
 
       // Redirect after a brief pause. The contractor (first signer) returns to
       // their dashboard to await the homeowner's signature; the homeowner (second
-      // signer) proceeds to project confirmation (two-document flow, D-110).
+      // signer) goes to the dashboard (D-407: one signed document per job, no extra signing step).
       setTimeout(() => {
         window.location.href = state.signRole === 'contractor'
           ? `/contractor-dashboard.html?signed=1`
-          : `/project-confirmation.html?claim_id=${state.claimId}`;
+          : `/dashboard.html`;
       }, 1500);
     }
 
