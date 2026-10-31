@@ -120,7 +120,7 @@ describe('MetaPixelGate ALLOWED_PATHS guard (D-330 / gh-2078, R-147 literal enum
     // updating this number (and the header comment's list) fails here
     // instead of silently narrowing what this test actually proves -- see
     // this file's header for the intended update procedure.
-    const EXPECTED_ROUTE_COUNT = 32;
+    const EXPECTED_ROUTE_COUNT = 33; // 32 + /insurance-rcv (gh-3283); three D-407 PRs each add one route: the merged total is 35, reconcile on rebase
     expect(REAL_ROUTES.length).toBe(EXPECTED_ROUTE_COUNT);
   });
 
