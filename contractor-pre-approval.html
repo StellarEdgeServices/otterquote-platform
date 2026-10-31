@@ -416,14 +416,13 @@
                         <label for="agreeToAttestation">I am authorized to bind the business. I attest to the licensing, insurance, IC 24-5-11 compliance, and joint-and-several indemnity obligations above. I intend this electronic acceptance to be my signature.</label>
                     </div>
 
-                    <!-- TCPA SMS -->
-                    <div class="info-box">
-                        <strong>SMS Notifications</strong>
-                        <p style="margin-top: var(--sp-2);">Otter Quotes uses SMS to notify you of new project opportunities, bid updates, and important platform communications.</p>
-                    </div>
-                    <div class="check-group" style="margin-bottom: var(--sp-8);">
-                        <input type="checkbox" id="agreeTcpaSms">
-                        <label for="agreeTcpaSms">I agree to receive SMS from Otter Quotes about my contractor account and new job opportunities. Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help. See our <a href="privacy.html" style="color: var(--amber); text-decoration: underline;">Privacy Policy</a> and <a href="terms.html" style="color: var(--amber); text-decoration: underline;">Terms of Service</a>.</label>
+                    <!-- gh-1916 / D-391 (#2875): optional text alerts. The old unchecked D-328 SMS
+                         box is gone: consent is now a ticked box PLUS a one-time code sent to the number,
+                         built by js/contractor-sms-verify.js. The consent sentence is read from the current
+                         sms_disclosure_versions row, not written in this page. Skipping costs nothing. -->
+                    <div class="info-box" id="smsVerifyMount" data-oq-sms-mount="1">
+                        <strong>Text alerts (optional)</strong>
+                        <p style="margin-top: var(--sp-2);">Loading&hellip;</p>
                     </div>
 
                     <button class="btn-primary" onclick="submitStep3()">Continue to Contract Template →</button>
@@ -511,6 +510,7 @@
     <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
+    <script src="js/contractor-sms-verify.js"></script>
 
     <script>
     // D-190: Contractor pre-approval wizard — Steps 2, 3, 4
@@ -601,7 +601,16 @@
             document.getElementById(id).style.display = (id === 'step' + n) ? '' : 'none';
         });
         showPanel('wizard');
+        if (n === 3) mountSmsVerify();
         window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // gh-1916 / D-391: build the verify-a-number screen once the contractor row is known. Never throws into the wizard.
+    function mountSmsVerify() {
+        try {
+            if (!window.OQSmsVerify || !contractor || !contractor.id) return;
+            window.OQSmsVerify.mount(document.getElementById('smsVerifyMount'), sb, contractor.id);
+        } catch (e) { console.warn('[sms-verify] mount failed (step is optional):', e); }
     }
 
     function toggleTradeCard(cb) {
@@ -1169,7 +1178,7 @@
     }
 
     async function submitStep3() {
-        const checks = ['agreeToPartnerAgreement','agreeToCancellationPolicy','agreeToAttestation']; // agreeTcpaSms is optional (CTIA — must not be condition of service); 1099-NEC ack removed May 4, 2026 — contractors pay OtterQuote, they do not receive 1099-NEC.
+        const checks = ['agreeToPartnerAgreement','agreeToCancellationPolicy','agreeToAttestation']; // SMS verify (gh-1916 / D-391) is optional (CTIA — must not be condition of service) and is not a checkbox in this list; 1099-NEC ack removed May 4, 2026 — contractors pay OtterQuote, they do not receive 1099-NEC.
         for (const id of checks) {
             if (!document.getElementById(id).checked) {
                 alert('Please review and accept all agreements before continuing.');
@@ -1179,21 +1188,6 @@
         }
 
         const now = new Date().toISOString();
-        // gh-1916 / D-328: the SMS box is the SAME sentence as contractor-join.html's #smsConsent and
-        // writes the SAME evidence columns (sms_opt_in true-or-omitted, never a bare false;
-        // sms_opt_in_at; sms_opt_in_source; sms_consent_text_version). Unchecked writes nothing, so
-        // it can never erase an opt-in captured at signup. sms_consent_ts is the legacy field.
-        // Consent text version must match contractor-join.html / js/auth.js (pinned by
-        // tests/gh1916-pre-approval-sms-consent.mjs).
-        const smsChecked = document.getElementById('agreeTcpaSms').checked;
-        const alreadyOptedIn = contractor && contractor.sms_opt_in === true && !!contractor.sms_opt_in_at;
-        const smsConsentFields = (smsChecked && !alreadyOptedIn) ? {
-            sms_consent_ts:           now,
-            sms_opt_in:               true,
-            sms_opt_in_at:            now,
-            sms_opt_in_source:        'contractor-onboarding',
-            sms_consent_text_version: 'contractor-v2-2026-09-15',
-        } : {};
         const attestation = {
             text_version:           'ic-24511-v1-2026-04',
             accepted:               true,
@@ -1218,7 +1212,6 @@
                     attestation_text_version: 'ic-24511-v1-2026-04',
                     attestation_accepted_at:  now,
                     ic_24511_attestation:     attestation,
-                    ...smsConsentFields,
                     onboarding_step:          3,
                     updated_at:               now,
                 })
