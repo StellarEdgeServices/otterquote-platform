@@ -265,22 +265,10 @@
                         <input type="tel" id="phone" name="phone" class="form-input" placeholder="(555) 123-4567" required>
                     </div>
 
-                    <!-- Bridge 2026-08-26: this block was the single biggest
-                         contributor to the card overflowing an 800px viewport
-                         (~105px incl. its sp-8 bottom margin). Tightened rather
-                         than removed — the TCPA consent copy has to stay whole. -->
-                    <!-- gh-1916 (R-177 LEGAL-READ pending before merge): copy mirrors
-                         the homeowner SMS-consent checkbox on react-app/app/get-started
-                         (page.tsx) — same wording pattern, "contractor" substituted for
-                         the homeowner context, plus "HELP for help" per this issue's
-                         closes-on. This checkbox is UNCHECKED by default (no `checked`
-                         attribute) — the required negative-control state. -->
-                    <div class="form-group" style="margin-bottom: var(--sp-3);">
-                        <label style="display: flex; align-items: flex-start; gap: var(--sp-3); font-weight: 400; color: var(--white); font-size: 0.85rem; line-height: 1.35;">
-                            <input type="checkbox" id="smsConsent" name="smsConsent" style="margin-top: 0.35rem; cursor: pointer; width: 18px; height: 18px; flex-shrink: 0;">
-                            <span>I agree to receive SMS from Otter Quotes about my contractor account and new job opportunities. Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help. See our <a href="privacy.html" style="color: var(--amber); text-decoration: underline;">Privacy Policy</a> and <a href="terms.html" style="color: var(--amber); text-decoration: underline;">Terms of Service</a>.</span>
-                        </label>
-                    </div>
+                    <!-- gh-1916 / D-391 (#2875): no SMS checkbox on this form. A text-alert opt-in is a ticked box
+                         PLUS a one-time code sent to the number, which needs a signed-in account, so it is offered
+                         on contractor-pre-approval.html step 3 (js/contractor-sms-verify.js). This form still
+                         collects the business phone for the profile; giving it here is NOT consent to texts. -->
 
                     <div class="form-row">
                         <div class="form-group">
@@ -355,7 +343,6 @@
             const firstName   = document.getElementById('ownerFirstName').value.trim();
             const lastName    = document.getElementById('ownerLastName').value.trim();
             const phone       = document.getElementById('phone').value.trim();
-            const smsConsent  = document.getElementById('smsConsent').checked;
 
             if (!email) { alert('Please enter your business email address.'); return; }
             if (!bizName || !firstName || !lastName || !phone) {
@@ -382,11 +369,7 @@
                 }
 
                 // Store signup data for auth.js handleAuthCallback to persist
-                // gh-1916 / R-134: sms_opt_in / sms_opt_in_at / sms_opt_in_source
-                // are the real TCPA opt-in fields (contractors.sms_opt_in, new
-                // nullable boolean column, default NULL). The pre-existing
-                // sms_consent boolean is left in place for back-compat but is no
-                // longer what the send-side gate reads.
+                // gh-1916 / D-391: no sms_* fields are stored from this form any more (see the note above the phone field).
                 localStorage.setItem('cs_contractor_signup', JSON.stringify({
                     email,
                     company_name:       bizName,
@@ -394,14 +377,6 @@
                     signer_first_name:  firstName,
                     signer_last_name:   lastName,
                     phone:              phone,
-                    sms_consent:        smsConsent,
-                    sms_opt_in:         smsConsent,
-                    sms_opt_in_at:      smsConsent ? new Date().toISOString() : null,
-                    sms_opt_in_source:  smsConsent ? 'contractor-signup' : null,
-                    // R-177 rework: version tag for the exact sentence in the
-                    // <span> above this script (NOT the wording itself — do not
-                    // reword the checkbox copy without also bumping this tag).
-                    sms_consent_text_version: smsConsent ? 'contractor-v2-2026-09-15' : null,
                     role:               'contractor',
                     onboarding_step:    1,
                     // gh-2340: freshness stamp; readers honour the blob only for
