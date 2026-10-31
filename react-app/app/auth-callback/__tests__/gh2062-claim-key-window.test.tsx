@@ -1,9 +1,9 @@
 /**
  * gh-2062 (REVIEW: FAIL 5881363760 / RETURNED 5881780522) - React auth-callback.
  *
- * Must-fix 1: `oq_referral_id_for_claim` rides the same 30-day click clock as
+ * Must-fix 1: `oq_referral_id_for_claim` rides the same 90-day click clock as
  * the `oq-ref` cookie. Advance at day 0 with no claim; nothing attributes at
- * day 31 (positive control: day 29 still does).
+ * day 91 (positive control: day 89 still does).
  * Must-fix 2: auth-callback calls the windowed reader FIRST, so an expired or
  * undated app-origin mirror neither advances nor sets `_for_claim`.
  *
@@ -76,7 +76,7 @@ async function signIn() {
   await new Promise((r) => setTimeout(r, 50));
 }
 
-describe('gh-2062: auth-callback referral advance under the 30-day click clock', () => {
+describe('gh-2062: auth-callback referral advance under the 90-day click clock', () => {
   let originalLocation: PropertyDescriptor | undefined;
 
   beforeEach(() => {
@@ -106,17 +106,17 @@ describe('gh-2062: auth-callback referral advance under the 30-day click clock',
     expect(localStorage.getItem(CLAIM)).toBe('ref-A');
   });
 
-  it('POSITIVE CONTROL day 29: the claim-scoped id is still returned by the windowed reader', async () => {
+  it('POSITIVE CONTROL day 89: the claim-scoped id is still returned by the windowed reader', async () => {
     writeReferralIds(A, { click: true });
     await signIn();
-    vi.setSystemTime(Date.now() + 29 * DAY_MS);
+    vi.setSystemTime(Date.now() + 89 * DAY_MS);
     expect(readReferralIds()[CLAIM]).toBe('ref-A');
   });
 
-  it('day 31, no claim filed: the windowed reader returns NO claim-scoped id and purges it', async () => {
+  it('day 91, no claim filed: the windowed reader returns NO claim-scoped id and purges it', async () => {
     writeReferralIds(A, { click: true });
     await signIn();
-    vi.setSystemTime(Date.now() + 31 * DAY_MS);
+    vi.setSystemTime(Date.now() + 91 * DAY_MS);
     const ids = readReferralIds();
     expect(ids[CLAIM]).toBeUndefined();
     expect(ids.oq_referral_id).toBeUndefined();
@@ -137,10 +137,10 @@ describe('gh-2062: auth-callback referral advance under the 30-day click clock',
     expect(localStorage.getItem('oq_referral_id')).toBeNull();
   });
 
-  it('must-fix 2: an EXPIRED app-origin mirror (click 31 days ago) does not advance and does not set _for_claim', async () => {
+  it('must-fix 2: an EXPIRED app-origin mirror (click 91 days ago) does not advance and does not set _for_claim', async () => {
     localStorage.setItem('oq_referral_id', 'ref-stale');
     sessionStorage.setItem('oq_referral_id', 'ref-stale');
-    localStorage.setItem('oq_referral_ts', String(Date.now() - 31 * DAY_MS));
+    localStorage.setItem('oq_referral_ts', String(Date.now() - 91 * DAY_MS));
     await signIn();
     expect(advanceCalls()).toEqual([]);
     expect(localStorage.getItem(CLAIM)).toBeNull();

@@ -338,9 +338,9 @@ describe('TradeSelectorPage referral cookie — gh-2062 (money-path: both direct
   });
   // ── REVIEW: FAIL 5881363760 / RETURNED 5881780522, must-fix 1 ────────────
   // `oq_referral_id_for_claim` (written by the auth advance) must ride the same
-  // 30-day click clock. Advance at day 0, no claim; the claim writer at day 31
+  // 90-day click clock. Advance at day 0, no claim; the claim writer at day 91
   // must NOT stamp claims.referral_id from it.
-  describe('gh-2062 claim-scoped id (oq_referral_id_for_claim) rides the 30-day click clock', () => {
+  describe('gh-2062 claim-scoped id (oq_referral_id_for_claim) rides the 90-day click clock', () => {
     const DAY_MS = 24 * 3600 * 1000;
     const seedAdvancedNoClaim = () => {
       // State after: click at day 0 -> email verified -> auth advance ran
@@ -364,16 +364,16 @@ describe('TradeSelectorPage referral cookie — gh-2062 (money-path: both direct
       vi.useRealTimers();
     });
 
-    it('POSITIVE CONTROL day 29: the claim writer still stamps the claim-scoped id', async () => {
+    it('POSITIVE CONTROL day 89: the claim writer still stamps the claim-scoped id', async () => {
       seedAdvancedNoClaim();
-      vi.setSystemTime(Date.now() + 29 * DAY_MS);
+      vi.setSystemTime(Date.now() + 89 * DAY_MS);
       const payload = await completeCashSingleTradeWalk();
       expect(payload.referral_id).toBe(PARTNER_A_REFERRAL.oq_referral_id);
     });
 
-    it('day 31, no claim filed at day 0: the claim writer gets NO referral id', async () => {
+    it('day 91, no claim filed at day 0: the claim writer gets NO referral id', async () => {
       seedAdvancedNoClaim();
-      vi.setSystemTime(Date.now() + 31 * DAY_MS);
+      vi.setSystemTime(Date.now() + 91 * DAY_MS);
       const payload = await completeCashSingleTradeWalk();
       expect(payload.referral_id).toBeUndefined();
       expect(localStorage.getItem('oq_referral_id_for_claim')).toBeNull();
