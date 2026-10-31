@@ -39,6 +39,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 const SERVER_CLIENT_OPTS = { auth: { autoRefreshToken: false, persistSession: false } } as const;
 import { isSmsPaused } from "../_shared/sms-pause.ts";
 import { contractorSmsReleaseGate } from "../_shared/contractor-sms-release.ts"; // D-391 / #2875 TCR release gate
+import { resolveContractorTextableNumbers } from "../_shared/contractor-textable.ts"; // D-391 / #2875 layer 4: verified numbers only
 import { appendPostalFooterHtml, appendPostalFooterText } from "./footer-append.ts"; // gh-1824 D-237
 import {
   describeGuardVerdict,
@@ -432,7 +433,7 @@ interface ContactInfo {
 
 async function getContractorContacts(contractor: Record<string, any>, supabase: any): Promise<ContactInfo> {
   const emails: string[] = [];
-  const phones: string[] = [];
+  let phones: string[] = [];
 
   // Primary email from contractors table
   if (contractor.email) emails.push(contractor.email);
@@ -442,46 +443,27 @@ async function getContractorContacts(contractor: Record<string, any>, supabase: 
     emails.push(...contractor.notification_emails.filter(Boolean));
   }
 
-  // notification_phones array
-  if (Array.isArray(contractor.notification_phones)) {
-    phones.push(...contractor.notification_phones.filter(Boolean));
-  }
-
   // Profile email + phone (primary account)
   if (contractor.user_id) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("email, phone")
+      .select("email")
       .eq("id", contractor.user_id)
       .single();
 
     if (profile?.email) emails.push(profile.email);
-    if (profile?.phone) phones.push(profile.phone);
   }
 
-  // gh-1916 / R-134 protective gate: this function bypasses send-sms's own
-  // service-role/JWT auth gate entirely — process-dunning calls Twilio
-  // directly (sendSMS() below), and every one of its 4 sendSMSToAll() call
-  // sites (TRIGGER immediate, CRON hourly, CRON 8am warning, and both
-  // homeowner-choice GET branches) funnels through this one function. So the
-  // opt-in check goes here, once, rather than at each call site: a contractor
-  // without a real, stored `sms_opt_in = true` gets phones: [] — NULL (never
-  // asked — the default for every pre-migration row) and false (declined)
-  // both refuse. Email is unaffected; only the phones list is suppressed.
-  if (contractor.sms_opt_in !== true) {
-    if (phones.length > 0) {
-      console.warn(
-        `[process-dunning] SMS refused (gh-1916 R-134 gate) — sms_opt_in is not true for contractor ${contractor.id ?? "(unknown)"} (value=${String(contractor.sms_opt_in)}). ${phones.length} phone(s) suppressed. No Twilio call attempted.`
-      );
-    }
+  // D-391 / #2875 layer 4 (supersedes the gh-1916 / R-134 sms_opt_in gate and the notification_phones / profile-phone
+  // sourcing): this function bypasses send-sms entirely (process-dunning calls Twilio directly via sendSMS()), and every
+  // sendSMSToAll() call site funnels through it, so the recipient list is decided here, once. The is_test / TCR release
+  // gate stays IN FRONT; then the ONLY phones are the numbers returned by contractor_textable_numbers() (one-time-code
+  // verified, not suppressed, not paused). A contractor with no verified number gets phones: [] and a logged
+  // `unverified_number` refusal. Email is unaffected.
+  if (!contractorSmsReleaseGate(contractor, { site: "process-dunning/getContractorContacts" }).allowed) {
     return { emails, phones: [] };
   }
-
-  // D-391 / #2875: until the TCR message_flow read-back is pasted, only is_test contractors are texted.
-  // Same single choke point as the opt-in gate above. Email is unaffected.
-  if (phones.length > 0 && !contractorSmsReleaseGate(contractor, { site: "process-dunning/getContractorContacts", phones }).allowed) {
-    return { emails, phones: [] };
-  }
+  phones = (await resolveContractorTextableNumbers(supabase, contractor.id, { site: "process-dunning/getContractorContacts" })).map((r) => r.phone);
 
   return { emails, phones };
 }
@@ -606,7 +588,7 @@ export async function handler(
         .from("payment_failures")
         .select(`
           *,
-          contractors:contractor_id (id, company_name, email, notification_emails, notification_phones, user_id, sms_opt_in, is_test),
+          contractors:contractor_id (id, company_name, email, notification_emails, user_id, is_test),
           claims:claim_id (id, property_address, status, color_confirmation_envelope_id, color_confirmed_at)
         `)
         .eq("id", failId)
@@ -1128,7 +1110,7 @@ export async function handler(
       // Look up contractor (including timezone + address_state for derivation)
       const { data: contractor } = await supabase
         .from("contractors")
-        .select("id, company_name, email, notification_emails, notification_phones, user_id, timezone, address_state, sms_opt_in, is_test")
+        .select("id, company_name, email, notification_emails, user_id, timezone, address_state, is_test")
         .eq("id", contractor_id)
         .single();
 
@@ -1309,8 +1291,8 @@ export async function handler(
       .select(`
         *,
         contractors:contractor_id (
-          id, company_name, email, notification_emails, notification_phones,
-          user_id, timezone, address_state, sms_opt_in, is_test
+          id, company_name, email, notification_emails,
+          user_id, timezone, address_state, is_test
         ),
         claims:claim_id (id, property_address, status)
       `)
