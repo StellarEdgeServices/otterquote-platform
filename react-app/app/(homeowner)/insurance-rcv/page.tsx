@@ -21,14 +21,14 @@
  * switches to this route in a follow-up.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { HomeownerShell } from '../_shell/HomeownerShell';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { uploadClaimDocument } from '../dashboard/actions';
 import { ContactProjectCard } from '../_d407/ContactProjectCard';
 import { MaterialPicker } from '../_d407/MaterialPicker';
 import { D407_CSS } from '../_d407/styles';
-import { saveClaim, saveContact, useD407Data } from '../_d407/use-d407-claim';
+import { saveClaim, saveContact, useD407Data, type D407Claim, type D407Profile } from '../_d407/use-d407-claim';
 import {
   buildRcvClaimUpdate,
   missingForRcv,
@@ -63,17 +63,55 @@ function addressLine(c: {
 function InsuranceRcvContent() {
   const { user } = useAuthReady();
   const data = useD407Data(user?.id);
-  const { claim, profile } = data;
 
-  const [contact, setContact] = useState<ContactInfo>({ fullName: '', phone: '', email: '', address: '' });
-  const [info, setInfo] = useState<ProjectInfoInput>({
-    urgency: 'flexible',
+  if (data.loading) {
+    return (
+      <div className="d407-page" role="status" aria-label="Loading">
+        <style>{D407_CSS}</style>
+      </div>
+    );
+  }
+
+  if (data.error || !data.claim || !user) {
+    return (
+      <div className="d407-page">
+        <style>{D407_CSS}</style>
+        <p className="d407-error" role="alert">{C.NO_CLAIM_MESSAGE}</p>
+      </div>
+    );
+  }
+
+  return <RcvForm key={data.claim.id} claim={data.claim} profile={data.profile} userId={user.id} email={user.email ?? ''} />;
+}
+
+function RcvForm({
+  claim,
+  profile,
+  userId,
+  email,
+}: {
+  claim: D407Claim;
+  profile: D407Profile | null;
+  userId: string;
+  email: string;
+}) {
+  const [contact, setContact] = useState<ContactInfo>(() => ({
+    fullName: (profile?.full_name ?? claim.homeowner_name ?? '').trim(),
+    phone: (profile?.phone ?? '').trim(),
+    email,
+    address: addressLine(claim),
+  }));
+  const [info, setInfo] = useState<ProjectInfoInput>(() => ({
+    urgency:
+      claim.urgency === 'flexible' || claim.urgency === '30_days' || claim.urgency === '2_weeks' || claim.urgency === 'asap'
+        ? claim.urgency
+        : 'flexible',
     urgencyDeadline: '',
     urgencyReason: '',
     notes: '',
-  });
+  }));
   const [material, setMaterial] = useState<MaterialSelectionState>(initialSelectionState);
-  const [hasEstimate, setHasEstimate] = useState(false);
+  const [hasEstimate, setHasEstimate] = useState(!!claim.has_estimate);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -81,29 +119,14 @@ function InsuranceRcvContent() {
   const [missing, setMissing] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (data.loading || !claim) return;
-    setContact({
-      fullName: (profile?.full_name ?? claim.homeowner_name ?? '').trim(),
-      phone: (profile?.phone ?? '').trim(),
-      email: user?.email ?? '',
-      address: addressLine(claim),
-    });
-    setHasEstimate(!!claim.has_estimate);
-    const u = claim.urgency;
-    if (u === 'flexible' || u === '30_days' || u === '2_weeks' || u === 'asap') {
-      setInfo((i) => ({ ...i, urgency: u }));
-    }
-  }, [data.loading, claim, profile, user?.email]);
-
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !claim || !user) return;
+    if (!file) return;
     setUploadError(null);
     setUploading(true);
     try {
       const res = await uploadClaimDocument({
-        userId: user.id,
+        userId,
         claimId: claim.id,
         file,
         timestamp: Date.now(),
@@ -120,11 +143,7 @@ function InsuranceRcvContent() {
 
   async function onContinue() {
     setError(null);
-    if (!claim || !user) {
-      setError(C.NO_CLAIM_MESSAGE);
-      return;
-    }
-    const gaps = missingForRcv({ contact, hasEstimate, material });
+        const gaps = missingForRcv({ contact, hasEstimate, material });
     if (gaps.length > 0) {
       setMissing(gaps.map((g) => C.MISSING_LABELS[g]));
       return;
@@ -132,31 +151,14 @@ function InsuranceRcvContent() {
     setMissing([]);
     setSaving(true);
     try {
-      await saveContact(user.id, contact.fullName, contact.phone);
+      await saveContact(userId, contact.fullName, contact.phone);
       await saveClaim(claim.id, buildRcvClaimUpdate(info, contact.fullName, material, claim.policy_type));
-      window.location.href = '/dashboard';
+      window.location.assign(new URL('/dashboard', window.location.origin).href);
     } catch (err) {
       console.error('[insurance-rcv] save failed:', err);
       setError(C.RCV_SAVE_FAILED);
       setSaving(false);
     }
-  }
-
-  if (data.loading) {
-    return (
-      <div className="d407-page" role="status" aria-label="Loading">
-        <style>{D407_CSS}</style>
-      </div>
-    );
-  }
-
-  if (data.error || !claim) {
-    return (
-      <div className="d407-page">
-        <style>{D407_CSS}</style>
-        <p className="d407-error" role="alert">{C.NO_CLAIM_MESSAGE}</p>
-      </div>
-    );
   }
 
   const storedRcv = claim.policy_type === 'rcv';
