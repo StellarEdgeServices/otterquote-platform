@@ -189,14 +189,14 @@ const EXCLUSION_PAGES = {
   // partner-agreement-inspector.html), so the link is removed outright.
   'faq.html': 'general FAQ answers "What\'s the recruit bonus?" / "When do I get paid?" with "$50 for every job of $10,000 or more" and "Referral fees are paid for completed jobs" -- fee promises for other partner types, the literal leak this round fixes',
   // gh-2155 HI-05c must-fix 2: NOT a referral-fee leak (its one dollar
-  // mention -- the $15 homeowner measurement fee -- is unrelated
+  // mention -- the $22.63 homeowner measurement fee -- is unrelated
   // boilerplate, same class as terms.html/privacy.html's). Excluded
   // anyway because Ben's ruling this round limits text-EXEMPTION to
   // terms.html/privacy.html specifically; every other reachable
   // dollar-bearing page goes here instead. partner-inspectors.html's own
   // SEO link to it is now hidden (data-hide-when-inspector) as the actual
   // fix; this entry is the safety net.
-  'ref-inspector.html': 'the $15 homeowner measurement-fee mention is unrelated to a referral fee, but only terms.html/privacy.html keep a text exemption this round -- excluded rather than exempted',
+  'ref-inspector.html': 'the $22.63 homeowner measurement-fee mention is unrelated to a referral fee, but only terms.html/privacy.html keep a text exemption this round -- excluded rather than exempted',
 };
 
 /**
@@ -219,10 +219,10 @@ const EXCLUSION_PAGES = {
  * gh-2155 HI-05c) -- traversal-blocking, not merely text-exempt, since an
  * inspector-context page must not link there AT ALL, per Ben's ruling.
  */
-const homepageMeasurementCharge = [];   // gh-2598 slice 5: $15 hits on index.html that were let through (see the crawl loop)
+const homepageMeasurementCharge = [];   // gh-2598 slice 5: $22.63 hits on index.html that were let through (see the crawl loop)
 const TEXT_EXEMPT_PAGES = {
-  'terms.html': 'sitewide Terms of Service, linked from every footer regardless of partner type; its only dollar mentions are the unrelated $15 homeowner measurement-fee clause and a $100 liability-cap clause -- no referral fee or recruit bonus of any kind, to any partner type',
-  'privacy.html': 'sitewide Privacy Policy, same footer link as terms.html; its only dollar mention is the same unrelated $15 homeowner measurement-fee clause -- no referral fee or recruit bonus of any kind',
+  'terms.html': 'sitewide Terms of Service, linked from every footer regardless of partner type; its only dollar mentions are the unrelated $22.63 homeowner measurement-fee clause and a $100 liability-cap clause -- no referral fee or recruit bonus of any kind, to any partner type',
+  'privacy.html': 'sitewide Privacy Policy, same footer link as terms.html; its only dollar mention is the same unrelated $22.63 homeowner measurement-fee clause -- no referral fee or recruit bonus of any kind',
 };
 
 function textExemptReason(file) {
@@ -404,11 +404,11 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspector
       const forText = respectInspectorHiding ? stripInspectorHiddenElements(html) : html;
       const text = staticRenderedText(forText);
       for (const h of findFeeHits(text)) {
-        // gh-2598 slice 5: the new homepage states the $15 homeowner measurement charge in #paid (legal-read copy). That is the same unrelated homeowner
-        // charge terms.html / privacy.html are exempt for, never a referral fee or recruit bonus. Narrow on purpose: ONLY the "$15" term, ONLY on index.html;
+        // gh-2598 slice 5: the new homepage states the $22.63 homeowner measurement charge in #paid (legal-read copy). That is the same unrelated homeowner
+        // charge terms.html / privacy.html are exempt for, never a referral fee or recruit bonus. Narrow on purpose: ONLY the "$22" term (FEE_TERM_RE stops at the decimal point; the context check pins it to "$22.63 up front"), ONLY on index.html;
         // any other dollar amount, "referral fee" or "recruit bonus" on the homepage still fails. Needs Ben's ruling (QUESTION on the slice-5 PR): the alternative is
         // data-hide-when-inspector on that paragraph, which would make the homepage differ from the page the legal read covered.
-        if (file === 'index.html' && h.term === '$15') { homepageMeasurementCharge.push(h); continue; }
+        if (file === 'index.html' && h.term === '$22' && /^\$22\.63 up front/.test(h.context.slice(h.context.indexOf('$22')))) { homepageMeasurementCharge.push(h); continue; }
         hits.push({ file, term: h.term, context: h.context });
       }
     }
@@ -514,9 +514,9 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspector
     }
   }
 
-  // gh-2598 slice 5: the exemption above is exercised and is exactly the $15 homeowner charge, nothing else.
-  ok(visited.includes('index.html') && homepageMeasurementCharge.length >= 1 && homepageMeasurementCharge.every((h) => h.term === '$15' && /\$15 up front for professional measurements/.test(h.context)),
-    'JS-ON crawler: index.html is reached and its only let-through fee-pattern hit is the "$15" homeowner measurement charge (' + homepageMeasurementCharge.length + ' hit(s)); nothing else on the homepage matches');
+  // gh-2598 slice 5: the exemption above is exercised and is exactly the $22.63 homeowner charge, nothing else.
+  ok(visited.includes('index.html') && homepageMeasurementCharge.length >= 1 && homepageMeasurementCharge.every((h) => h.term === '$22' && /\$22\.63 up front for professio/.test(h.context)),
+    'JS-ON crawler: index.html is reached and its only let-through fee-pattern hit is the "$22.63" homeowner measurement charge (' + homepageMeasurementCharge.length + ' hit(s)); nothing else on the homepage matches');
   // The three leaks named in #2152 comment 5839667108, confirmed FIXED
   // (also exercised in isolation by tests/gh2155-hi0c-inspector-sweep.mjs,
   // but pinned here directly against the crawl's own findings).

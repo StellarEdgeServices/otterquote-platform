@@ -1,53 +1,53 @@
 // gh-2107 / D-330 -- Ben's DECIDED (a) on #2078 (5806894411), and REVIEW B1 / LEGAL-READ L1 on #2138: the CAPI Purchase is sent to Meta as
-// 15 USD, so it must be skipped for any measurement PaymentIntent that is not EXACTLY 1500 cents in USD. create-measurement-order now
+// 22.63 USD, so it must be skipped for any measurement PaymentIntent that is not EXACTLY 2263 cents in USD. create-measurement-order now
 // refuses a non-USD PaymentIntent, but the webhook sees the PaymentIntent first and independently; it must not report a charge in another
 // currency (or at another amount) to Meta as a USD Purchase. Protective, fail closed: a missing or malformed currency/amount is skipped.
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { MEASUREMENT_PURCHASE_AMOUNT_CENTS, shouldSkipForNonUsdMeasurement } from "./meta-capi.ts";
 
-const pi = (over: Record<string, unknown> = {}) => ({ currency: "usd", amount: 1500, amount_received: 1500, ...over });
+const pi = (over: Record<string, unknown> = {}) => ({ currency: "usd", amount: 2263, amount_received: 2263, ...over });
 
 // -- the decision -----------------------------------------------------------------------------
-Deno.test("usd: the price constant is 1500 cents", () => {
-  assertEquals(MEASUREMENT_PURCHASE_AMOUNT_CENTS, 1500);
+Deno.test("usd: the price constant is 2263 cents", () => {
+  assertEquals(MEASUREMENT_PURCHASE_AMOUNT_CENTS, 2263);
 });
 
-Deno.test("usd: NEGATIVE CONTROL -- usd / 1500 / 1500 is sent (not skipped)", () => {
+Deno.test("usd: NEGATIVE CONTROL -- usd / 2263 / 2263 is sent (not skipped)", () => {
   assertEquals(shouldSkipForNonUsdMeasurement(pi()), { skip: false, reason: null });
 });
 
-Deno.test("usd: amount_received absent falls back to amount 1500 in usd and is sent", () => {
+Deno.test("usd: amount_received absent falls back to amount 2263 in usd and is sent", () => {
   assertEquals(shouldSkipForNonUsdMeasurement(pi({ amount_received: undefined })), { skip: false, reason: null });
 });
 
-Deno.test("usd: a non-USD currency at 1500 is skipped (the reported jpy case)", () => {
-  for (const currency of ["jpy", "eur", "cad", "gbp", "USD", "usd ", "", null, undefined, 1500]) {
+Deno.test("usd: a non-USD currency at 2263 is skipped (the reported jpy case)", () => {
+  for (const currency of ["jpy", "eur", "cad", "gbp", "USD", "usd ", "", null, undefined, 2263]) {
     assertEquals(
       shouldSkipForNonUsdMeasurement(pi({ currency })),
-      { skip: true, reason: "not_usd_1500" },
+      { skip: true, reason: "not_usd_2263" },
       `currency ${JSON.stringify(currency)} must be skipped`,
     );
   }
 });
 
 Deno.test("usd: a USD charge at any other amount is skipped", () => {
-  for (const amount of [1499, 1501, 100, 15, 0, 2500, -1500, 1500.5, NaN, "1500", null, undefined]) {
+  for (const amount of [1499, 1500 /* the pre-2026-10-30 price: a stale $15 PaymentIntent is no longer the price */, 1501, 100, 15, 0, 2500, -2263, 2263.5, NaN, "2263", null, undefined]) {
     assertEquals(
       shouldSkipForNonUsdMeasurement(pi({ amount, amount_received: amount })),
-      { skip: true, reason: "not_usd_1500" },
+      { skip: true, reason: "not_usd_2263" },
       `amount ${JSON.stringify(amount)} must be skipped`,
     );
   }
 });
 
 Deno.test("usd: amount_received wins over amount when present (what was actually charged)", () => {
-  assertEquals(shouldSkipForNonUsdMeasurement(pi({ amount: 1500, amount_received: 1000 })), { skip: true, reason: "not_usd_1500" });
-  assertEquals(shouldSkipForNonUsdMeasurement(pi({ amount: 1000, amount_received: 1500 })), { skip: false, reason: null });
+  assertEquals(shouldSkipForNonUsdMeasurement(pi({ amount: 2263, amount_received: 1000 })), { skip: true, reason: "not_usd_2263" });
+  assertEquals(shouldSkipForNonUsdMeasurement(pi({ amount: 1000, amount_received: 2263 })), { skip: false, reason: null });
 });
 
 Deno.test("usd: a missing / non-object PaymentIntent is skipped (fail closed)", () => {
-  for (const v of [null, undefined, {}, "usd", 1500]) {
-    assertEquals(shouldSkipForNonUsdMeasurement(v as never), { skip: true, reason: "not_usd_1500" });
+  for (const v of [null, undefined, {}, "usd", 2263]) {
+    assertEquals(shouldSkipForNonUsdMeasurement(v as never), { skip: true, reason: "not_usd_2263" });
   }
 });
 

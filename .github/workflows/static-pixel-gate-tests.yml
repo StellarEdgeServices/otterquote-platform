@@ -96,6 +96,7 @@ on:
       - 'index.html'
       - 'help-measurements.html'
       - 'tests/gh2078-static-measurement-purchase.mjs'
+      - 'tests/gh3228-measurement-price-2263.mjs'
       - 'partner-other.html'
       - 'partners.html'
       - 'partner-profile.html'
@@ -210,6 +211,7 @@ on:
       - 'index.html'
       - 'help-measurements.html'
       - 'tests/gh2078-static-measurement-purchase.mjs'
+      - 'tests/gh3228-measurement-price-2263.mjs'
       - 'partner-other.html'
       - 'partners.html'
       - 'partner-profile.html'
@@ -273,6 +275,8 @@ jobs:
         run: node tests/gh1925-clarity-ga4-stored-flag.mjs
       - name: Static measurement checkout fires measurement_purchase + Purchase once, deduped, suppression honoured (gh2078-static-measurement-purchase)
         run: node tests/gh2078-static-measurement-purchase.mjs
+      - name: Homeowner measurement fee is $22.63 (2263 cents) on every served page, email and constant; draft settings migration moves both keys; negative controls (gh3228-measurement-price-2263)
+        run: node tests/gh3228-measurement-price-2263.mjs
       - name: GPC capture on the create-payment-intent call (gh2107-gpc-client)
         run: node tests/gh2107-gpc-client.mjs
       - name: Partner dashboard activation RPC, per-user flag (gh2154-p2-app-activation)

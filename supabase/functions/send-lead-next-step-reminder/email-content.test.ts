@@ -187,7 +187,7 @@ Deno.test("ho6: never promises a call, whatever the phone flag; no CTA links, no
     const email = buildLeadReminderEmail("lead-1", "Jane", OPT, hasPhone, "ho6");
     for (const part of [email.textBody, email.htmlBody]) {
       const lower = part.toLowerCase();
-      for (const banned of ["call you", "dustin", "$15", "help-measurements", "help-estimate", "vetted", "endorsed"]) {
+      for (const banned of ["call you", "dustin", "$15", "$22.63", "help-measurements", "help-estimate", "vetted", "endorsed"]) {
         if (lower.includes(banned)) throw new Error(`ho6 copy contains "${banned}"`);
       }
     }

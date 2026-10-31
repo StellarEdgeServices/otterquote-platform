@@ -47,22 +47,6 @@ const SITES = [
     generic: "'Something went wrong. Please try again.'",
     log: /Sentry\.captureException\(err\)/,
   },
-  {
-    file: 'project-confirmation.html',
-    start: "console.error('[Otter Quotes] Project confirmation submit error:', err);",
-    end: 'Initialization',
-    sink: 'alert',
-    generic: "'There was an error submitting your confirmation.\\n\\nPlease try again or contact support.'",
-    log: /Sentry\.captureException\(err\)/,
-  },
-  {
-    file: 'react-app/app/(homeowner)/project-confirmation/page.tsx',
-    start: 'await saveProjectConfirmation(',
-    end: '// b. Create envelope',
-    sink: 'setSubmitError',
-    generic: "'Failed to save project confirmation.'",
-    log: /console\.error\([^)]*saveErr\)/,
-  },
 ];
 
 describe('update_zero_rows is never passed to a user-visible sink (gh-2105)', () => {
@@ -84,7 +68,5 @@ describe('update_zero_rows is never passed to a user-visible sink (gh-2105)', ()
 
   it('the throw sites still carry the token (it stays diagnosable in logs)', () => {
     expect(read('repair-intake.html')).toContain('update_zero_rows: claims (repair intake)');
-    expect(read('project-confirmation.html')).toContain('update_zero_rows');
-    expect(read('react-app/app/(homeowner)/project-confirmation/use-project-confirmation-data.ts')).toContain('update_zero_rows');
   });
 });

@@ -30,7 +30,7 @@ import { HomeownerShell } from '../_shell/HomeownerShell';
 import { SIGN_COPY as C } from './copy';
 import { resolveClaimId } from './utils';
 import {
-  buildProjectConfirmationUrl,
+  buildPostSignUrl,
   createHomeownerEnvelope,
   requestBidRenewal,
   sendContractorNudge,
@@ -119,8 +119,8 @@ function SignContent() {
     '';
   const signerEmail = user?.email ?? '';
 
-  // ── onComplete: fire the funnel event, then redirect to the static
-  //    project-confirmation (coexistence — React route lands Phase 26). Held in a
+  // ── onComplete: fire the funnel event, then redirect to the dashboard
+  //    (D-407: no Project Confirmation step). Held in a
   //    ref so the DocuSignEmbed listener always calls the latest closure. ──
   //
   // gh-1940 fix2 (cto32-review-pr1979-20260915.md, finding B3): DocuSignEmbed's
@@ -148,7 +148,7 @@ function SignContent() {
     // the funnel step.
     track('contract_signed', {});
     if (cid) {
-      window.location.href = buildProjectConfirmationUrl(cid);
+      window.location.href = buildPostSignUrl();
     }
   };
   const handleComplete = useCallback(() => onCompleteRef.current(), []);

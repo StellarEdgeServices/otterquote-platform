@@ -144,7 +144,7 @@ async function loadProduct(supabase: any, productCode: string): Promise<Product 
  *
  * create-payment-intent prices the charge from
  * platform_settings.hover_measurement_price (D-181). This function prices the
- * ORDER from platform_settings.measurement_products. Today both say 1500. If
+ * ORDER from platform_settings.measurement_products. Today both say 2263 (gh-3228; was 1500). If
  * an operator edits one and not the other, every purchase would fail with the
  * generic "amount does not match" 402 and nobody would know why.
  *
