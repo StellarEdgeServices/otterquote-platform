@@ -120,7 +120,8 @@ describe('MetaPixelGate ALLOWED_PATHS guard (D-330 / gh-2078, R-147 literal enum
     // updating this number (and the header comment's list) fails here
     // instead of silently narrowing what this test actually proves -- see
     // this file's header for the intended update procedure.
-    const EXPECTED_ROUTE_COUNT = 32;
+    // gh-3286 (D-407): (homeowner)/project-confirmation was removed, 32 -> 31.
+    const EXPECTED_ROUTE_COUNT = 31;
     expect(REAL_ROUTES.length).toBe(EXPECTED_ROUTE_COUNT);
   });
 

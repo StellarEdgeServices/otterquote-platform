@@ -151,23 +151,6 @@ export const PROFILE_COPY = {
     viewError: 'Unable to open template. Please try uploading again or contact support.',
   },
 
-  pcTemplates: {
-    title: 'Project Confirmation Templates',
-    intro:
-      'Upload a project confirmation PDF template for each trade and funding type. After a homeowner signs the main contract, Otter Quotes selects the matching template and sends it to capture full scope details — structures, colors, materials, skylights, and work authorizations. Otter Quotes auto-fills homeowner name and property address before sending for e-signature.',
-    warning:
-      '⚠️ Templates are per-trade and per-funding type — your confirmation docs differ by trade and by insurance vs. retail, just like your contracts. Upload the right template into each slot you use.',
-    loading: 'Loading templates…',
-    noTemplate: 'No template uploaded',
-    uploadTemplate: 'Upload Template',
-    uploadHint: 'PDF format, max 10MB',
-    view: 'View',
-    replace: 'Replace',
-    uploadedPrefix: 'Uploaded: ',
-    uploadFailed: 'Failed to upload template. Please try again.',
-    viewError: 'Unable to open template. Please try again.',
-  },
-
   fieldMapping: {
     title: 'Review Field Mapping',
     intro:

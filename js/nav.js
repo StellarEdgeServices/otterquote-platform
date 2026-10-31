@@ -432,7 +432,7 @@ const Nav = {
     // right login page. Confirmed live in the owner's browser 2026-08-25.
     // partner-login.html and contractor-login.html are unaffected: the partner
     // and contractor URL checks above run first and claim them.
-    if (/^(index|login|how-it-works|faq|dashboard|landing|help-|ref\.|ref-|refer-a-friend|repair-intake|color-selection|project-confirmation|contract-signing|bids|trade-selector|onboarding-demo)/.test(file)) {
+    if (/^(index|login|how-it-works|faq|dashboard|landing|help-|ref\.|ref-|refer-a-friend|repair-intake|color-selection|contract-signing|bids|trade-selector|onboarding-demo)/.test(file)) {
       return 'homeowner';
     }
     // The tools-* family and the standalone product pages sell software TO
