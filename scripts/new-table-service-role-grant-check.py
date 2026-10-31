@@ -266,10 +266,35 @@ def _target_matches_table(target_text: str, table: str) -> bool:
     return False
 
 
+# gh-3137 (Ben's ruling 6522540140, decision (a)): history-only allowlist of
+# EXACT applied-migration basenames that this gate must not flag. The listed
+# file is byte-identical to the statement production already ran (ledger
+# version 20261028152549), so editing it to add a GRANT would break identity
+# with the production migration ledger. Production already holds the grant
+# (read-only check 2026-10-30: has_table_privilege('service_role',
+# 'public.contractor_cpa_acceptances','SELECT,INSERT') = true; the table
+# predates Supabase's 2026-10-30 auto-grant cutover). ONE entry, matched on the
+# full basename (version AND slug) so no other file can ride on it. Do not add
+# entries without an executive ruling.
+ALLOWLISTED_APPLIED_MIGRATIONS = {
+    "20261028152549_gh2995_accept_cpa_append_only.sql":
+        "gh-3137: applied to production 2026-10-28; table predates the 2026-10-30 "
+        "auto-grant cutover and production already grants service_role (Ben 6522540140)",
+}
+
+
 def find_new_tables_missing_service_role_grant(file_rel: str, old_text: str, new_text: str):
     """Returns (findings: list[str], pass_notes: list[str])."""
     findings = []
     pass_notes = []
+
+    allow_reason = ALLOWLISTED_APPLIED_MIGRATIONS.get(Path(file_rel).name)
+    if allow_reason is not None:
+        pass_notes.append(
+            "PASS  [new-table-service-role-grant] %s -- ALLOWLISTED applied "
+            "migration, not inspected (%s)" % (file_rel, allow_reason)
+        )
+        return findings, pass_notes
 
     added_lines = pr.diff_added_line_numbers(old_text or "", new_text)
     if not added_lines:
