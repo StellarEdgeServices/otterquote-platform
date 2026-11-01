@@ -9,8 +9,8 @@
  *
  *   contractor record found        → otterquote.com/contractor-dashboard.html
  *   intent=contractor, no record   → otterquote.com/contractor-pre-approval.html
- *   homeowner with existing claim  → otterquote.com/dashboard.html
- *   homeowner, no claim yet        → /trade-selector  (React route)
+ *   homeowner, claim finished intake → otterquote.com/dashboard.html
+ *   homeowner, no claim / draft claim with no address → /trade-selector  (gh-3270)
  *
  * Error handling: expired / invalid links show a friendly retry UI
  * that sends users back to /get-started.
@@ -48,7 +48,7 @@ import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
-import { readReferralIds, writeReferralIds, writeClaimReferralId } from '@/lib/cookie-storage';
+import { readReferralIds, writeReferralIds, writeClaimReferralId, adoptLockedReferral } from '@/lib/cookie-storage';
 import { linkPendingLeadOnce } from '@/lib/lead-capture';
 import { readOwnedContractorSignup } from '@/lib/contractor-signup-owner';
 import { clearRoleBreadcrumb, roleOwnerMatches } from '@/lib/role-breadcrumb-owner';
@@ -56,6 +56,7 @@ import { maybeFireGoogleSignUp, readReferralSourceFromCsSignup } from './signup-
 import { rescueImplicitFragment } from './implicit-fragment';
 import { readFreshSignupRaw } from '@/lib/signup-storage';
 import { adoptFirstTouchFromParam, recordFirstTouch } from '@/lib/attribution';
+import { CLAIM_INTAKE_COLUMNS, claimFinishedIntake, signupEmailMismatch } from '@/lib/claim-intake';
 
 // ─── Name recovery for the Google path (gh-1901 Option 2) ────────────────────
 
@@ -112,6 +113,30 @@ function backfillNameFromGoogleIdentity(user: Session['user'] | null | undefined
   }
 }
 
+// ─── Typed-email vs Google-email check (gh-3270) ─────────────────────────────
+
+/**
+ * gh-3270 (also in scope): Google sign-in ignores the email typed on
+ * get-started. When the Google account's email differs from the one stored in
+ * cs_signup.email, the visitor sees a short notice before continuing, so a
+ * sign-in that lands on a different (possibly older) account is not silent.
+ * Google path only. Returns the typed email when it differs, otherwise null.
+ */
+function readMismatchedTypedEmail(user: Session['user'] | null | undefined): string | null {
+  if (!user) return null;
+  if ((user.app_metadata as Record<string, unknown> | undefined)?.provider !== 'google') return null;
+  let typed: unknown;
+  try {
+    const raw = readFreshSignupRaw();
+    if (!raw) return null;
+    typed = (JSON.parse(raw) as Record<string, unknown>).email;
+  } catch {
+    return null;
+  }
+  if (!signupEmailMismatch(typed, user.email)) return null;
+  return (typed as string).trim();
+}
+
 // ─── Destinations ─────────────────────────────────────────────────────────────
 const CONTRACTOR_DASHBOARD_URL = 'https://otterquote.com/contractor-dashboard.html';
 const CONTRACTOR_SIGNUP_URL    = 'https://otterquote.com/contractor-pre-approval.html';
@@ -141,10 +166,13 @@ function urlHasAuthTokens(): boolean {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-type PageState = 'loading' | 'error';
+type PageState = 'loading' | 'error' | 'email-mismatch';
+
+type EmailMismatch = { typedEmail: string; accountEmail: string; destination: string };
 
 export default function AuthCallbackPage() {
   const [pageState, setPageState] = useState<PageState>('loading');
+  const [mismatch, setMismatch] = useState<EmailMismatch | null>(null);
 
   useEffect(() => {
     // Capture hash state before Supabase's onAuthStateChange processes and clears it
@@ -214,12 +242,12 @@ export default function AuthCallbackPage() {
               advanceError
             );
           }
-          // gh-2062: claim-scoped copy under the same 30-day click clock.
+          // gh-2062: claim-scoped copy under the same 90-day click clock.
           writeClaimReferralId(referralId);
           if (typeof localStorage !== 'undefined') {
             localStorage.removeItem('oq_referral_id');
           }
-          // gh-2062: only re-arm the cookie's 30-day clock on a successful
+          // gh-2062: only re-arm the cookie's 90-day clock on a successful
           // advance (mirrors js/auth.js). A failed RPC call is not a reason
           // to extend the life of an id we were just told is not
           // advanceable — the cookie keeps whatever TTL it already had
@@ -231,6 +259,17 @@ export default function AuthCallbackPage() {
               oq_referral_agent_id: kept.oq_referral_agent_id,
               oq_referral_code: kept.oq_referral_code,
             });
+          }
+          // P18 credit lock: the credit locks to the first partner recorded at
+          // account creation. If a later click put another partner's id in the
+          // cookie, swap it back for the locked one. The database overrides the
+          // claim's referral_id with the locked one regardless (BEFORE INSERT
+          // trigger); this keeps the browser state honest. Non-fatal.
+          try {
+            const { data: lockedId } = await supabase.rpc('get_locked_referral_id');
+            adoptLockedReferral(lockedId);
+          } catch {
+            /* non-fatal */
           }
           if (typeof sessionStorage !== 'undefined') {
             sessionStorage.removeItem('oq_referral_id');
@@ -379,24 +418,37 @@ export default function AuthCallbackPage() {
       // for why this is awaited before the redirect below.
       await maybeFireGoogleSignUp(session.user, readReferralSourceFromCsSignup());
 
-      // Homeowner: returning (has claim) → dashboard, new → trade-selector
+      // Homeowner: claim that FINISHED intake → dashboard; no claim, or a
+      // draft claim with no address yet → trade-selector (gh-3270). A draft
+      // sent to the dashboard never had its address, phone, funding and
+      // trades saved: trade-selector is the only page that writes them, and
+      // its save UPDATEs the existing claim rather than inserting another.
+      let destination = TRADE_SELECTOR_PATH;
       try {
         const { data: claim } = await supabase
           .from('claims')
-          .select('id')
+          .select(CLAIM_INTAKE_COLUMNS)
           .eq('user_id', session.user.id)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
-        if (claim) {
-          window.location.href = HOMEOWNER_DASHBOARD_URL;
-          return;
+        if (claimFinishedIntake(claim)) {
+          destination = HOMEOWNER_DASHBOARD_URL;
         }
       } catch {
         // No claim found — fall through to trade-selector
       }
 
-      window.location.href = TRADE_SELECTOR_PATH;
+      // gh-3270: Google returned a different email than the one typed on
+      // get-started — pause on a short notice; Continue goes to `destination`.
+      const typedEmail = readMismatchedTypedEmail(session.user);
+      if (typedEmail) {
+        setMismatch({ typedEmail, accountEmail: session.user.email || '', destination });
+        setPageState('email-mismatch');
+        return;
+      }
+
+      window.location.href = destination;
     }
 
     const {
@@ -441,6 +493,18 @@ export default function AuthCallbackPage() {
 
   if (pageState === 'error') {
     return <ErrorCard />;
+  }
+
+  if (pageState === 'email-mismatch' && mismatch) {
+    return (
+      <EmailMismatchCard
+        typedEmail={mismatch.typedEmail}
+        accountEmail={mismatch.accountEmail}
+        onContinue={() => {
+          window.location.href = mismatch.destination;
+        }}
+      />
+    );
   }
 
   return <LoadingCard />;
@@ -490,6 +554,35 @@ function ErrorCard() {
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * gh-3270: TIER C PLACEHOLDER COPY. Neutral wording pending Dustin's approved
+ * text (no existing string covered this case). Do not edit without his sign-off.
+ */
+function EmailMismatchCard({
+  typedEmail,
+  accountEmail,
+  onContinue,
+}: {
+  typedEmail: string;
+  accountEmail: string;
+  onContinue: () => void;
+}) {
+  return (
+    <div style={S.page}>
+      <div style={S.card} role="status" data-testid="email-mismatch-notice">
+        <h1 style={S.h1}>Different email</h1>
+        <p style={{ ...S.sub, marginBottom: 24 }}>
+          You entered {typedEmail}, but Google signed you in as {accountEmail}. You will continue
+          as {accountEmail}.
+        </p>
+        <button type="button" onClick={onContinue} style={{ ...S.btn, border: 'none', cursor: 'pointer' }}>
+          Continue
+        </button>
+      </div>
+    </div>
   );
 }
 

@@ -1035,6 +1035,10 @@ export default function GetStartedPage() {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         phone: phone.trim(),
+        // gh-3270: the email typed here (null when blank/invalid on the Google
+        // path). auth-callback compares it to the Google account's email and
+        // shows a notice when they differ.
+        email: emailForLead || null,
         // gh-1993: combined line kept for existing readers (read as one
         // string by trade-selector; the auth-callback HubSpot send was removed in PR #2624) alongside the four
         // split fields trade-selector's claim/profile writers now read

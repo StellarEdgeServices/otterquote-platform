@@ -76,7 +76,9 @@ ok(!/vetted|certified|endorsed/i.test(visible), '(b4) no vetted/certified/endors
 ok(!/commission/i.test(visible), '(b5) no "commission" in visible text');
 ok(!/free roof|deductible|insurance|claim/i.test(visible), '(b6) no free-roof, deductible or insurance-payout talk');
 ok(!/\$5(?![\d,])/.test(visible) && !/measurement fee/i.test(visible), '(b7) no mention of the planned $5 measurement fee');
-ok(!/\$15|\$50|recruit bonus/i.test(visible), '(b8) only the live $200 fee is stated (no $15, $50 or recruit bonus)');
+ok(!/\$15(?![\d,])/.test(visible), '(b8) no $15 (retired measurement price) on the page');
+// (b8b) gh-3278: the $50 recruit bonus is stated in Message #2's terms (D-301, Agreement v4 A4.3, D-405)
+ok(/\$50 each time a creator you recruit refers a homeowner who completes a project of \$10,000 or more, on top of the \$200 for your own referrals/.test(visible), '(b8b) $50 recruit bonus stated in Message #2 terms');
 ok(/Check your employment agreement and your governing licensing agency/.test(visible), '(b9) D-266 disclaimer kept verbatim');
 ok(!/unbiased|independent/i.test(visible), '(b10) no unbiased/independent');
 // (b11) #3220 ruling (Dustin, 2026-10-30): sponsorship sentence immediately after the D-266 sentence
@@ -150,7 +152,12 @@ for (const f of partnerPages) {
   ok(!/Monthly portfolio report/i.test(h), '(g2) ' + f + ': no "Monthly portfolio report" claim');
 }
 ok(/Referral history by month/.test(page) && /Filter your referrals by month and see each one's status and referral fee\./.test(page), '(g3) influencer page uses the corrected report line');
-ok(/Your link identifies your referrals, so each one is credited to you\./.test(page), '(g4) influencer page uses the corrected link line');
+ok(/Your link identifies your referrals\. A homeowner is credited to the partner whose link they clicked most recently, within 90 days, before creating their Otter Quotes account\. That credit stays with that partner until 90 days after that click\. After that, it can go to a partner whose link the homeowner clicked more recently, within the previous 90 days\./.test(page), '(g4) influencer page uses the corrected link line (P18 credit-lock copy, #3226)');
+{
+  const all = fs.readdirSync(repoRoot).filter(n => /^partner-.*\.html$/.test(n));
+  for (const f of all) ok(!/tracked back to you/i.test(read(f)), '(g5) ' + f + ': no unconditional "tracked back to you" promise (LEGAL-READ 6524846666)');
+  for (const f of ['partner-inspectors.html', 'partner-other.html', 'partner-adjusters.html']) ok(/until 90 days after that click/.test(read(f)), '(g6) ' + f + ': carries the credit-lock copy');
+}
 ok(!/p_funnel_id:\s+'influencer'/.test(re), '(h) control: partner-re.html does not tag influencer');
 
 // (f) legal pages untouched

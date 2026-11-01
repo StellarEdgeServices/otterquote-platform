@@ -1,6 +1,6 @@
 /**
  * gh-2062 (CEO ruling, issue comment 5874597169) — React twin of
- * tests/gh2062-ref-30d-window.mjs. The `oq-ref` attribution window is 30 days
+ * tests/gh2062-ref-window.mjs. The `oq-ref` attribution window is 30 days
  * from the partner-link click, re-armed only by a fresh click
  * (`writeReferralIds(ids, { click: true })`), never by the auth-callback
  * advance write (`writeReferralIds(ids)`).
@@ -34,7 +34,7 @@ const lastOqRefMaxAge = (): number | null => {
 };
 const cookieJarHasOqRef = () => document.cookie.split('; ').some((p) => p.startsWith('oq-ref='));
 
-describe('gh-2062: 30-day, click-anchored oq-ref window (real cookie)', () => {
+describe('gh-2062 / P18: 90-day, click-anchored oq-ref window (real cookie)', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-09-01T00:00:00Z'));
@@ -49,33 +49,33 @@ describe('gh-2062: 30-day, click-anchored oq-ref window (real cookie)', () => {
     vi.useRealTimers();
   });
 
-  it('the window constant is 30 days', () => {
-    expect(REFERRAL_MAX_AGE_SECONDS).toBe(30 * 24 * 3600);
+  it('the window constant is 90 days (P18: one plan for every partner)', () => {
+    expect(REFERRAL_MAX_AGE_SECONDS).toBe(90 * 24 * 3600);
   });
 
-  it('a click arms exactly 30 days and attributes (positive control)', () => {
+  it('a click arms exactly 90 days and attributes (positive control)', () => {
     writeReferralIds(A, { click: true });
-    expect(lastOqRefMaxAge()).toBe(30 * 24 * 3600);
+    expect(lastOqRefMaxAge()).toBe(90 * 24 * 3600);
     expect(readReferralIds().oq_referral_id).toBe('ref-A');
     expect(Object.keys(readReferralIds())).not.toContain('oq_referral_ts');
   });
 
   it('advance-block writes (no click) never re-arm: Max-Age is the time remaining', () => {
     writeReferralIds(A, { click: true });
-    vi.setSystemTime(Date.now() + 10 * DAY_MS);
+    vi.setSystemTime(Date.now() + 30 * DAY_MS);
     writeReferralIds(A); // what auth-callback does on success / no-op / error
-    expect(lastOqRefMaxAge()).toBe(20 * 24 * 3600);
-    vi.setSystemTime(Date.now() + 19 * DAY_MS);
+    expect(lastOqRefMaxAge()).toBe(60 * 24 * 3600);
+    vi.setSystemTime(Date.now() + 59 * DAY_MS);
     writeReferralIds(A);
     expect(lastOqRefMaxAge()).toBe(1 * 24 * 3600);
-    expect(readReferralIds().oq_referral_id).toBe('ref-A'); // day 29: still inside the window
+    expect(readReferralIds().oq_referral_id).toBe('ref-A'); // day 89: still inside the window
   });
 
-  it('day 31: cookie expired AND the storage mirror does not resurrect the id', () => {
+  it('day 91: cookie expired AND the storage mirror does not resurrect the id', () => {
     writeReferralIds(A, { click: true });
-    vi.setSystemTime(Date.now() + 10 * DAY_MS);
+    vi.setSystemTime(Date.now() + 30 * DAY_MS);
     writeReferralIds(A);
-    vi.setSystemTime(Date.now() + 21 * DAY_MS);
+    vi.setSystemTime(Date.now() + 61 * DAY_MS);
     expect(cookieJarHasOqRef()).toBe(false);
     expect(readReferralIds()).toEqual({});
     expect(localStorage.getItem('oq_referral_id')).toBeNull();
@@ -86,11 +86,11 @@ describe('gh-2062: 30-day, click-anchored oq-ref window (real cookie)', () => {
     expect(cookieJarHasOqRef()).toBe(false);
   });
 
-  it('a fresh click re-arms a full 30 days and the last click wins', () => {
+  it('a fresh click re-arms a full 90 days and the last click wins', () => {
     writeReferralIds(A, { click: true });
-    vi.setSystemTime(Date.now() + 20 * DAY_MS);
+    vi.setSystemTime(Date.now() + 60 * DAY_MS);
     writeReferralIds(B, { click: true });
-    expect(lastOqRefMaxAge()).toBe(30 * 24 * 3600);
+    expect(lastOqRefMaxAge()).toBe(90 * 24 * 3600);
     expect(readReferralIds().oq_referral_id).toBe('ref-B');
     expect(readReferralIds().oq_referral_agent_id).toBe('agent-B');
   });
@@ -148,7 +148,7 @@ describe('gh-2062: 30-day, click-anchored oq-ref window (real cookie)', () => {
       expect(readReferralIds()).toEqual({});
       writeReferralIds(B, { click: true });
       expect(readReferralIds().oq_referral_id).toBe('ref-B');
-      expect(lastOqRefMaxAge()).toBe(30 * 24 * 3600);
+      expect(lastOqRefMaxAge()).toBe(90 * 24 * 3600);
     });
   });
 });
