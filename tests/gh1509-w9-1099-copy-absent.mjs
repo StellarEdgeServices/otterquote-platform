@@ -55,12 +55,12 @@ const kept = [
 const html = read('refer-a-friend.html');
 const copy = read('react-app/app/refer/copy.ts');
 // gh-3239 (#3238, D-301): refer-a-friend.html says "referral fee" where it said "referral bonus" / "bonus payments"; the
-// sentences are otherwise unchanged. react-app/app/refer/copy.ts is not part of gh-3239 and keeps its pinned wording.
+// sentences are otherwise unchanged. gh-3244: react-app/app/refer/copy.ts now carries the same wording.
 const keptHtml = kept.map(k => k.replace('Your $200 referral bonus is taxable income.', 'Your $200 referral fee is taxable income.')
   .replace('does not withhold taxes from bonus payments.', 'does not withhold taxes from referral fee payments.'));
 for (const [i, k] of kept.entries()) {
   check(`refer-a-friend.html still says: ${keptHtml[i]}`, html.includes(keptHtml[i]));
-  check(`react-app refer/copy.ts TAX_NOTICE still says: ${k}`, copy.includes(k));
+  check(`react-app refer/copy.ts TAX_NOTICE still says: ${keptHtml[i]}`, copy.includes(keptHtml[i]));
 }
 check('refer-a-friend.html: the Tax Reporting Notice block still renders', html.includes('Tax Reporting Notice'));
 check('react-app refer/copy.ts: TAX_NOTICE label kept', copy.includes("label: 'Tax Reporting Notice'"));

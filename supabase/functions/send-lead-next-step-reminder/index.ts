@@ -3,7 +3,7 @@
  *
  * gh-2121 (LRS HO-1 S21) — ONE next-step reminder email, sent the day after
  * a router lead is captured, only if no goal event has been recorded for it
- * (a $15 measurement purchase or a loss-sheet upload — the PR #2163
+ * (a $22.63 measurement purchase or a loss-sheet upload — the PR #2163
  * write-back), only to leads with an email. Sits on top of the human
  * callback; never duplicates it. Scope and copy source are the module
  * header comments in ./select-candidates.ts and ./email-content.ts.

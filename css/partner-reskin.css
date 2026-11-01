@@ -1,0 +1,272 @@
+/* gh-3261: the approved homepage reskin (gh-2598, design approved 2026-10-07, D-377) applied to the partner landing pages. DESIGN ONLY: no markup text changes.
+   How it is wired: each in-scope page keeps css/design-system.css, css/nav.css and its own inline <style>, then loads /css/home-reskin.css (for the --hr-* tokens; every class
+   in that file is hr- prefixed and its body rule needs body.hr, so nothing else in it applies here) and this file, and gets class="pr" on <body>. Every rule below is scoped
+   to body.pr, so a page without that class is untouched.
+   Spec: Marketing/site-reskin-2026-10/README.md. Tokens, type and values are the homepage's (css/home-reskin.css): navy hero and bands, white / tint reading sections,
+   white cards with the #DCE2E8 border, navy 800-weight headings, slate body text, dark amber for small labels and icons on white, amber ONLY on the primary button
+   (never amber text on white), Libre Franklin 400/600/800, no gradients, no glow, 48 px tap targets.
+   Deliberately NOT restyled: the shared header (js/nav.js + css/nav.css). It is the site-wide header for every non-home page and tests/gh2598-nav-header-width.mjs pins its
+   rendered width with real Rubik on partner-re.html; it keeps its type and layout here (it is already navy). The footer takes Libre Franklin, as on the homepage.
+   Inline style attributes in the pages use var(--slate), var(--amber), var(--amber-2), var(--gray), var(--dark-gray): those tokens are re-pointed per surface below
+   (light reading sections vs navy bands), which is how inline colours follow the reskin without touching the markup. */
+
+/* ---------- page base ---------- */
+body.pr {
+  --font-body: var(--hr-font); --font-heading: var(--hr-font);
+  font-family: var(--hr-font); color: var(--hr-ink); background: var(--hr-white); line-height: 1.5;
+}
+/* light surfaces: re-point the design-system tokens that inline styles and page CSS use for text */
+:is(body.pr, body.pr > main) > :is(section, p):not(.hero):not(.page-hero):not(.gate-hero):not(.no-fee-section):not(.cta-bottom) {
+  --slate: var(--hr-slate); --gray: var(--hr-slate); --dark-gray: var(--hr-slate);
+  --amber: var(--hr-amber-dark); --amber-2: var(--hr-navy); --amber-glow: transparent;
+  --link-on-light: var(--hr-navy); --link-on-light-deep: var(--hr-navy);
+}
+/* navy surfaces */
+body.pr :is(.hero, .page-hero, .gate-hero, .no-fee-section, .cta-bottom) {
+  --slate: var(--hr-on-navy-2); --gray: var(--hr-on-navy-2); --dark-gray: var(--hr-on-navy-2);
+  --amber-2: var(--hr-on-navy); --link-on-light: var(--hr-on-navy); --link-on-light-deep: var(--hr-on-navy);
+}
+/* shared header: unchanged type and layout (see top). Its font is put back to the design-system stack this page loaded. */
+body.pr #site-header { --font-body: 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; --font-heading: var(--font-body); font-family: var(--font-body); }
+/* footer: same surface colour as the homepage footer (partner-insurance.html re-defines --navy-2 on :root) */
+body.pr #site-footer { --navy-2: #162338; --slate: #8A9BAB; --amber: #E07B00; --amber-2: #A85C00; font-family: var(--hr-font); }
+
+body.pr :is(h1, h2, h3, h4, h5, h6) { font-family: var(--hr-font); }
+:is(body.pr, body.pr > main) > section:not(.hero):not(.page-hero):not(.gate-hero):not(.no-fee-section):not(.cta-bottom) a:not(.btn):not(.gate-card):not(.copy-btn) { color: var(--hr-navy); text-decoration: underline; text-underline-offset: 2px; }
+body.pr a:focus-visible, body.pr button:focus-visible, body.pr input:focus-visible, body.pr select:focus-visible, body.pr .gate-card:focus-visible { outline: 3px solid var(--hr-amber-dark); outline-offset: 2px; }
+
+/* ---------- reading sections: full-bleed bands, content held to the homepage's 1160 px wrap, white / tint alternating ---------- */
+body.pr :is(.how-it-works, .value-props, .value-section, .commission-section, .features-section, .signup-section, .form-section, .faq-section, .quick-links-row, section.section, .gate-section) {
+  padding: 72px max(24px, calc((100% - 1112px) / 2)); border: 0; text-align: left;
+  background: var(--hr-white) !important;   /* !important: section.section carries an inline navy background */
+}
+:is(body.pr, body.pr > main) > section:nth-of-type(even):is(.how-it-works, .value-props, .value-section, .commission-section, .features-section, .signup-section, .form-section, .faq-section, .quick-links-row, .section, .gate-section) { background: var(--hr-tint) !important; }
+:is(body.pr, body.pr > main) > section:not(.hero):not(.page-hero):not(.gate-hero) + section:not(.no-fee-section):not(.cta-bottom) { border-top: 1px solid var(--hr-border); }
+body.pr :is(.how-it-works, .value-props, .value-section, .commission-section, .features-section, .signup-section, .form-section, .faq-section, .quick-links-row, section.section, .gate-section) > .container { max-width: none; padding: 0; }
+body.pr :is(.steps-grid, .props-grid, .value-grid, .value-cards, .features-list, .signup-layout, .form-wrapper, .gate-grid, .commission-grid) { max-width: none; margin-left: 0; margin-right: 0; }
+
+body.pr .section-header { text-align: left; margin: 0 0 32px; }
+body.pr :is(.section-header h2, .features-section h2, .form-section .container > h2, .faq-section h2, .signup-form-wrap h2, .form-container > h2, .commission-section h2) {
+  margin: 0 0 10px; font-size: 36px; line-height: 1.15; font-weight: 800; color: var(--hr-navy); text-align: left;
+}
+body.pr :is(.section-header p, .form-subtitle, .signup-form-wrap .subtitle) { margin: 0; max-width: 640px; font-size: 17px; line-height: 1.5; color: var(--hr-slate); text-align: left; }
+:is(body.pr, body.pr > main) > section:not(.hero):not(.page-hero):not(.gate-hero):not(.no-fee-section):not(.cta-bottom) p { color: var(--hr-slate); }
+body.pr :is(.features-section h2, .form-section .container > h2) { margin-bottom: 32px; }
+
+/* ---------- hero: navy, left-aligned on the 1160 px wrap, homepage type scale ---------- */
+body.pr :is(.hero, .page-hero, .gate-hero) {
+  background: var(--hr-navy) !important; background-image: none !important; color: var(--hr-on-navy);
+  padding: 72px max(24px, calc((100% - 1112px) / 2)) 80px; text-align: left; border-bottom: 0;
+}
+body.pr :is(.hero .hero-content, .hero > .container, .page-hero > .container, .gate-hero > .container) { max-width: none; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 22px; }
+body.pr :is(.hero, .page-hero, .gate-hero) h1 { margin: 0; max-width: 820px; font-size: 58px; line-height: 1.05; font-weight: 800; color: var(--hr-on-navy); }
+body.pr :is(.hero .subtitle, .hero p, .page-hero p, .gate-hero .gate-sub) { margin: 0; max-width: 620px; font-size: 20px; line-height: 1.5; color: var(--hr-on-navy-2); }
+body.pr .hero p strong { color: var(--hr-on-navy); }
+body.pr :is(.hero-badge, .gate-eyebrow) { /* the homepage's category line */
+  display: block; margin: 0; padding: 0; background: none; border: 0; border-radius: 0;
+  font-size: 15px; font-weight: 600; letter-spacing: .1em; color: var(--hr-on-navy-2);
+}
+body.pr .hero-notice { margin: 0; max-width: 620px; padding: 14px 18px; background: transparent; border: 1px solid var(--hr-line-navy); border-radius: 6px; font-size: 16px; line-height: 1.5; color: var(--hr-on-navy-2); }
+body.pr .hero-cta-group { justify-content: flex-start; gap: 12px; }
+body.pr .hero .btn { margin: 0; }
+body.pr .cta-disclaimer { margin: 0; max-width: 620px; font-size: 15px; color: var(--hr-on-navy-2); text-align: left; }
+
+/* ---------- buttons: amber only on the primary action, navy text, 800; outline on navy; no lift, no glow ---------- */
+:is(body.pr, body.pr > main) > :is(section, div) :is(.btn-primary, .form-submit) {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 12px 24px;
+  background: var(--hr-amber); color: var(--hr-navy); border: 0; border-radius: 6px;
+  font-family: var(--hr-font); font-size: 17px; font-weight: 800; text-decoration: none; box-shadow: none; transform: none;
+}
+:is(body.pr, body.pr > main) > :is(section, div) .btn-primary.btn-lg, body.pr .hero .btn-primary { min-height: 58px; padding: 0 30px; font-size: 19px; }
+:is(body.pr, body.pr > main) > :is(section, div) :is(.btn-primary, .form-submit):hover:not(:disabled) { background: var(--hr-amber); color: var(--hr-navy); filter: brightness(1.06); transform: none; box-shadow: none; }
+:is(body.pr, body.pr > main) > :is(section, div) .btn-full { display: flex; width: 100%; }
+body.pr .hero .btn-secondary {
+  display: inline-flex; align-items: center; min-height: 58px; padding: 0 22px; background: transparent; color: var(--hr-on-navy);
+  border: 2px solid var(--hr-on-navy); border-radius: 6px; font-family: var(--hr-font); font-size: 17px; font-weight: 800; text-decoration: none; box-shadow: none; transform: none;
+}
+body.pr .hero .btn-secondary:hover { background: rgba(255, 255, 255, .14); color: var(--hr-on-navy); transform: none; }
+body.pr .copy-btn { min-height: 44px; padding: 10px 18px; background: var(--hr-white); color: var(--hr-navy); border: 2px solid var(--hr-navy); border-radius: 6px; font-family: var(--hr-font); font-size: 15px; font-weight: 800; transform: none; }
+body.pr .copy-btn:hover { background: var(--hr-tint); color: var(--hr-navy); transform: none; }
+
+/* ---------- cards (steps, reasons, value, gate): white, #DCE2E8 border, radius 10, no hover lift ---------- */
+body.pr :is(.step-card, .prop-card, .value-card, .gate-card, .toolkit-card) {
+  background: var(--hr-white) !important; border: 1px solid var(--hr-border); border-radius: 10px; padding: 28px; box-shadow: none; transform: none; text-align: left;
+  display: flex; flex-direction: column; gap: 10px;
+}
+body.pr :is(.step-card, .prop-card, .value-card, .toolkit-card):hover { background: var(--hr-white); border-color: var(--hr-border); transform: none; box-shadow: none; }
+body.pr :is(.steps-grid, .props-grid, .value-grid, .value-cards) { gap: 24px; }
+body.pr :is(.step-card, .prop-card, .value-card) h3 { margin: 0; font-size: 22px; line-height: 1.25; font-weight: 800; color: var(--hr-navy); }
+body.pr :is(.step-card, .prop-card, .value-card) p { margin: 0; font-size: 17px; line-height: 1.5; color: var(--hr-slate); }
+body.pr .step-number {   /* the homepage's step label colour, as a numbered ring */
+  display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; margin: 0 0 4px; line-height: 1;
+  background: transparent; border: 2px solid var(--hr-amber-dark); border-radius: 50%; color: var(--hr-amber-dark); font-size: 18px; font-weight: 800;
+}
+body.pr .prop-icon { margin: 0; font-size: 28px; line-height: 1; }
+
+/* ---------- referral fee (re / influencers / adjusters / other / fees page): white card on the band, amounts in navy ---------- */
+body.pr :is(.commission-card, .commission-box) {
+  max-width: 760px; margin: 0; padding: 32px; text-align: left; background: var(--hr-white); border: 1px solid var(--hr-border); border-radius: 10px; box-shadow: none;
+}
+body.pr .commission-card h3 { margin: 0 0 20px; font-size: 30px; font-weight: 800; color: var(--hr-navy); }
+body.pr .commission-detail { gap: 14px; margin-bottom: 18px; }
+body.pr :is(.detail-check, .feature-check) { color: var(--hr-amber-dark); font-weight: 800; }
+body.pr .detail-text { color: var(--hr-ink); font-size: 18px; line-height: 1.5; }
+body.pr .detail-text strong { font-weight: 800; color: var(--hr-ink); }
+body.pr .detail-text p { margin-top: 4px; font-size: 16px; color: var(--hr-slate); }
+body.pr .commission-amount { font-family: var(--hr-font); font-weight: 800; color: var(--hr-navy); }
+body.pr .commission-box .commission-amount { font-size: 64px; }
+body.pr .commission-box [style*="--amber"] { color: var(--hr-navy) !important; border-top-color: var(--hr-border) !important; }
+body.pr .commission-label { font-size: 19px; font-weight: 800; color: var(--hr-ink); }
+body.pr .commission-note { font-size: 16px; color: var(--hr-slate); }
+/* the fees page: its stat grid sits in the white card */
+body.pr section.section > .container > .commission-section { background: var(--hr-white); border: 1px solid var(--hr-border); border-radius: 10px; padding: 32px; margin-bottom: 32px; }
+body.pr section.section > .container > .commission-section h2 { margin: 0 0 24px; font-size: 30px; }
+body.pr .commission-grid { gap: 24px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+body.pr .commission-item { text-align: left; border-top: 2px solid var(--hr-navy); padding-top: 16px; }
+body.pr section.section > .container > .commission-section .commission-amount { font-size: 36px; margin-bottom: 6px; }
+body.pr .commission-item p { margin: 0; font-size: 17px; color: var(--hr-slate); }
+body.pr .fee-note { text-align: left; margin-left: 0; margin-right: 0; max-width: 760px; font-size: 16px; color: var(--hr-slate); }
+
+/* ---------- features / what you get: the homepage's three-facts row ---------- */
+body.pr :is(.features-list) { gap: 28px 32px; }
+body.pr .feature-item { gap: 14px; }
+body.pr :is(.feature-content h4, .feature-item h4) { margin: 0 0 4px; font-family: var(--hr-font); font-size: 17px; font-weight: 800; color: var(--hr-ink); }
+body.pr :is(.feature-content p, .feature-item p) { font-size: 16px; line-height: 1.5; color: var(--hr-slate); }
+body.pr :is(.feature-icon, .benefit-check) {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; flex: 0 0 26px; margin-top: 1px;
+  background: var(--hr-white); border: 2px solid var(--hr-amber-dark); border-radius: 50%; color: var(--hr-amber-dark); font-size: 14px; font-weight: 800;
+}
+body.pr .feature-check { font-size: 20px; line-height: 1.2; }
+
+/* quick links row (partner-insurance): plain navy links on the band */
+body.pr .quick-links-row .container { justify-content: flex-start; gap: 8px 32px; padding: 0; border: 0; }
+body.pr .quick-links-row a { color: var(--hr-navy); font-size: 17px; font-weight: 600; display: inline-flex; align-items: center; min-height: 48px; }
+
+/* ---------- sign-up: the form is a white card; the benefits panel is the homepage's tint split panel ---------- */
+body.pr :is(.signup-form-wrap, .form-section .form-container) {
+  max-width: 560px; background: var(--hr-white); border: 1px solid var(--hr-border); border-radius: 10px; padding: 32px;
+}
+body.pr .form-section .form-wrapper .form-container { max-width: none; }
+body.pr .form-section > .form-container { margin: 0; }
+body.pr .signup-layout { gap: 32px; }
+body.pr :is(.signup-benefits, .benefits-sidebar) {
+  max-width: 560px; background: var(--hr-white); border: 1px solid var(--hr-border); border-radius: 10px; padding: 32px; box-shadow: none;
+}
+body.pr :is(.signup-benefits, .benefits-sidebar) h3 { margin: 0 0 20px; font-size: 22px; font-weight: 800; color: var(--hr-navy); }
+body.pr :is(.benefit-text h4) { font-family: var(--hr-font); font-size: 17px; font-weight: 800; color: var(--hr-ink); }
+body.pr :is(.benefit-text p, .benefit-item p) { font-size: 16px; color: var(--hr-slate); }
+body.pr .benefit-icon { background: var(--hr-tint); border-radius: 8px; }
+
+body.pr :is(.form-label, .form-group label) { font-family: var(--hr-font); font-size: 15px; font-weight: 600; color: var(--hr-ink); }
+body.pr :is(.form-input, .form-group input, .form-group select) {
+  min-height: 52px; padding: 12px 14px; background: var(--hr-white); color: var(--hr-ink); border: 2px solid var(--hr-border); border-radius: 6px;
+  font-family: var(--hr-font); font-size: 17px; box-shadow: none;
+}
+body.pr :is(.form-input, .form-group input, .form-group select)::placeholder { color: #6B7A89; }
+body.pr :is(.form-input, .form-group input, .form-group select):focus { background: var(--hr-white); border-color: var(--hr-navy); box-shadow: none; outline: 3px solid var(--hr-amber-dark); outline-offset: 2px; }
+body.pr .form-group select option { background: var(--hr-white); color: var(--hr-ink); }
+body.pr .form-group input[type="checkbox"], body.pr input.form-checkbox, body.pr .checkbox-group input[type="checkbox"] { min-height: 0; width: 22px; height: 22px; padding: 0; accent-color: var(--hr-navy); }
+body.pr :is(.checkbox-label, .checkbox-group label) { font-size: 16px; color: var(--hr-slate); }
+body.pr .form-input::-webkit-autofill { -webkit-box-shadow: 0 0 0 1000px var(--hr-white) inset; -webkit-text-fill-color: var(--hr-ink); }
+body.pr :is(.form-hint, .form-note, .optional-label) { color: var(--hr-slate); font-size: 14px; }
+body.pr .referral-fee-disclaimer { color: var(--hr-slate) !important; }
+body.pr .cta-bottom .referral-fee-disclaimer { color: var(--hr-on-navy-2) !important; }
+body.pr .signup-section form p[style*="#94A3B8"] { color: var(--hr-slate) !important; }
+body.pr .form-error, body.pr .form-alert { background: #FEF2F2; border: 1px solid #FCA5A5; color: #991B1B; }
+body.pr .field-error { color: #B91C1C; }
+body.pr .form-label.required::after { color: #B91C1C; }
+body.pr .btn-google { min-height: 48px; border: 2px solid var(--hr-border); border-radius: 6px; font-family: var(--hr-font); }
+body.pr .oauth-divider { color: var(--hr-slate); }
+body.pr .oauth-divider::before, body.pr .oauth-divider::after { background: var(--hr-border); }
+
+/* post-signup states (hidden until a sign-up succeeds) */
+body.pr :is(.success-message h2, .success-message h3, .toolkit-header h3) { color: var(--hr-navy); font-weight: 800; }
+body.pr .success-message { color: var(--hr-ink); }
+body.pr :is(.referral-link-box) { background: var(--hr-tint); border: 1px solid var(--hr-border); }
+body.pr :is(.referral-code, .referral-link-text, .ref-link-display) { color: var(--hr-navy); background: var(--hr-white); border-color: var(--hr-border); }
+body.pr .template-box { background: var(--hr-tint); border-color: var(--hr-border); color: var(--hr-ink); }
+body.pr .toolkit-card h4 { color: var(--hr-navy); }
+body.pr .stat-box { background: var(--hr-tint); border-color: var(--hr-border); }
+body.pr .stat-number { color: var(--hr-navy); font-family: var(--hr-font); font-weight: 800; }
+
+/* ---------- questions: the homepage's question rows (navy rule above each), kept as the pages' own open/close accordions ---------- */
+body.pr .faq-container { max-width: 860px; margin: 0; }
+body.pr .faq-item { margin: 0; border: 0; border-top: 2px solid var(--hr-navy); border-radius: 0; background: transparent; overflow: visible; }
+body.pr .faq-item:last-child { border-bottom: 1px solid var(--hr-border); }
+body.pr :is(.faq-question, .faq-header) {
+  min-height: 56px; padding: 16px 0; background: transparent !important; border: 0; border-radius: 0; box-shadow: none;
+  font-family: var(--hr-font); font-size: 19px; font-weight: 800; color: var(--hr-ink);
+}
+body.pr .faq-text { color: var(--hr-ink); font-size: 19px; font-weight: 800; }
+body.pr .faq-toggle { color: var(--hr-amber-dark); font-size: 15px; }
+body.pr :is(.faq-answer, .faq-content) { padding: 0 0 20px; background: transparent; border: 0; font-size: 17px; line-height: 1.55; color: var(--hr-slate); animation: none; }
+
+/* ---------- navy bands: the inspectors' no-fee statement (homepage "promise" band) and the bottom call to action (homepage closing band) ---------- */
+body.pr :is(.no-fee-section, .cta-bottom) { background: var(--hr-navy); color: var(--hr-on-navy); padding: 64px max(24px, calc((100% - 1112px) / 2)); border: 0; }
+body.pr .no-fee-section { text-align: left; }
+body.pr .no-fee-box { max-width: 720px; margin: 0; padding: 0 0 0 28px; background: transparent; border: 0; border-left: 2px solid var(--hr-line-navy); border-radius: 0; }
+body.pr .no-fee-label { font-family: var(--hr-font) !important; font-size: 36px !important; color: var(--hr-on-navy) !important; }
+body.pr .no-fee-note { font-size: 19px; color: var(--hr-on-navy-2); }
+body.pr .cta-bottom > .container { max-width: none; padding: 0; }
+body.pr .cta-bottom h2 { margin: 0 0 14px; font-size: 44px; line-height: 1.1; font-weight: 800; color: var(--hr-on-navy); }
+body.pr .cta-bottom p { color: var(--hr-on-navy-2); font-size: 19px; }
+body.pr .cta-bottom-links { gap: 14px; }
+body.pr .cta-bottom-links a.secondary-link { color: var(--hr-on-navy); text-decoration: underline; font-size: 17px; display: inline-flex; align-items: center; min-height: 48px; }
+
+/* ---------- the profession chooser (partners.html) ---------- */
+body.pr .gate-card { color: var(--hr-ink); gap: 8px; }
+body.pr .gate-card:hover { border-color: var(--hr-navy); background: var(--hr-white) !important; transform: none; }
+body.pr .gate-card-icon { width: 44px; height: 44px; margin: 0 0 4px; background: var(--hr-tint); border: 0; color: var(--hr-amber-dark); }
+body.pr .gate-card-title { font-size: 20px; font-weight: 800; color: var(--hr-navy); }
+body.pr .gate-card-desc { font-size: 16px; line-height: 1.5; color: var(--hr-slate); }
+body.pr .gate-card-go { padding-top: 10px; font-size: 15px; font-weight: 800; color: var(--hr-navy); text-decoration: underline; }
+body.pr .gate-grid { gap: 24px; }
+body.pr .gate-existing { text-align: left; margin-top: 32px; font-size: 17px; color: var(--hr-slate); }
+body.pr .gate-reassure { max-width: none; margin: 48px 0 0; padding-top: 40px; border-top: 2px solid var(--hr-navy); gap: 32px; }
+body.pr .gate-reassure h3 { margin: 0 0 6px; font-size: 20px; font-weight: 800; color: var(--hr-navy); }
+body.pr .gate-reassure p { font-size: 17px; line-height: 1.55; color: var(--hr-slate); }
+body.pr .gate-disclaimer { max-width: 760px; margin: 40px 0 0; text-align: left; font-size: 15px; color: var(--hr-slate); }
+
+/* ---------- phones: the homepage's phone values ---------- */
+@media (max-width: 767px) {
+  body.pr :is(.how-it-works, .value-props, .value-section, .commission-section, .features-section, .signup-section, .form-section, .faq-section, .quick-links-row, section.section, .gate-section) { padding: 40px 20px; }
+  body.pr :is(.hero, .page-hero, .gate-hero) { padding: 28px 20px 32px; }
+  body.pr :is(.hero .hero-content, .hero > .container, .page-hero > .container, .gate-hero > .container) { gap: 16px; }
+  body.pr :is(.hero, .page-hero, .gate-hero) h1 { font-size: 36px; line-height: 1.08; }
+  body.pr :is(.hero .subtitle, .hero p, .page-hero p, .gate-hero .gate-sub) { font-size: 17px; line-height: 1.45; }
+  body.pr :is(.hero-badge, .gate-eyebrow) { font-size: 13px; }
+  body.pr .hero-cta-group { flex-direction: column; align-items: stretch; width: 100%; }
+  body.pr .hero .btn, body.pr .hero .btn-secondary { width: 100%; justify-content: center; }
+  body.pr :is(.section-header h2, .features-section h2, .form-section .container > h2, .faq-section h2, .signup-form-wrap h2, .form-container > h2, .commission-section h2) { font-size: 28px; }
+  body.pr .section-header { margin-bottom: 20px; }
+  body.pr :is(.section-header p, .form-subtitle, .signup-form-wrap .subtitle) { font-size: 16px; }
+  body.pr :is(.steps-grid, .props-grid, .value-grid, .value-cards, .gate-grid) { grid-template-columns: 1fr; gap: 18px; }
+  body.pr :is(.step-card, .prop-card, .value-card, .gate-card, .toolkit-card) { padding: 22px; gap: 8px; }
+  body.pr :is(.step-card, .prop-card, .value-card) h3 { font-size: 20px; }
+  body.pr :is(.step-card, .prop-card, .value-card) p { font-size: 16px; }
+  body.pr :is(.commission-card, .commission-box, section.section > .container > .commission-section) { padding: 22px; }
+  body.pr .commission-card h3 { font-size: 24px; }
+  body.pr .commission-box .commission-amount { font-size: 48px; }
+  body.pr .detail-text { font-size: 16px; }
+  body.pr :is(.signup-form-wrap, .form-section .form-container, .signup-benefits, .benefits-sidebar) { padding: 22px 18px; }
+  body.pr .quick-links-row .container { flex-direction: column; align-items: flex-start; gap: 0; }
+  body.pr :is(.faq-question, .faq-header), body.pr .faq-text { font-size: 17px; }
+  body.pr :is(.faq-answer, .faq-content) { font-size: 16px; }
+  body.pr :is(.no-fee-section, .cta-bottom) { padding: 40px 20px; }
+  body.pr .no-fee-label { font-size: 28px !important; }
+  body.pr .cta-bottom h2 { font-size: 32px; }
+  body.pr .cta-bottom p { font-size: 17px; }
+  body.pr .gate-reassure { margin-top: 32px; padding-top: 28px; gap: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.pr * { transition: none !important; animation: none !important; }
+}
+
+/* ---------- review pass (gh-3261 renders) ---------- */
+body.pr :is(.signup-form-wrap .subtitle, .form-subtitle) { margin-bottom: 24px; }
+body.pr .step-number { box-shadow: none; }
+/* inline style="color:var(--amber)" links on light surfaces: navy, underlined (amber text on white is 2.48:1; the homepage puts navy links on white) */
+:is(body.pr, body.pr > main) > section:not(.hero):not(.page-hero):not(.gate-hero):not(.no-fee-section):not(.cta-bottom) a[style*="--amber"]:not(.btn), body.pr > p a[style*="--amber"] { color: var(--hr-navy) !important; text-decoration: underline; }
+/* the referral-fee disclaimer when it sits on a navy surface (the adjusters / other hero) */
+body.pr :is(.hero, .page-hero, .cta-bottom) .referral-fee-disclaimer { color: var(--hr-on-navy-2) !important; }
+body.pr .quick-links-row { padding-top: 32px; padding-bottom: 32px; }

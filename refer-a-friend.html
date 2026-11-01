@@ -594,7 +594,9 @@
       <!-- Hero Section -->
       <section class="hero-section">
         <h1>Love Your Project Results? Share the Love &mdash; and Earn $200</h1>
-        <p class="subtitle">For every friend you refer who completes a project of $10,000 or more through Otter Quotes, you earn $200. Share your unique link and we'll handle the rest.</p>
+        <!-- gh-3245 (Ben, PR #3249 LEGAL-READ 6525943244): fail closed. The static line is the conditional one; init() swaps in the
+             unconditional line only after hasAcceptedAgreementV4() confirms this customer accepted Partner Agreement v4. -->
+        <p class="subtitle" id="hero-subtitle">Once you accept the Partner Agreement, you earn $200 for every friend you refer who completes a project of $10,000 or more through Otter Quotes. Share your unique link and we'll handle the rest.</p>
       </section>
 
       <!-- gh-3239 (#3238, Amendment No. 1 Section A2.1): a customer becomes a Partner only by accepting the Partner Agreement.
@@ -604,6 +606,7 @@
         <div class="agreement-card">
           <h2>Accept the Partner Agreement to start earning</h2>
           <p>Customers who refer friends join the Otter Quotes partner program and earn referral fees under the same Partner Agreement as every other partner.</p>
+          <p>Referral fees apply to friends whose projects start after you accept.</p>
           <label class="agreement-check" for="agreement-v4-checkbox">
             <input type="checkbox" id="agreement-v4-checkbox" required>
             <span>I agree to the Otter Quotes <a href="/partner-agreement.html" target="_blank" rel="noopener">Partner Terms</a> (Partner Agreement v4-2026-10).</span>
@@ -925,6 +928,7 @@
         return;
       }
       document.body.classList.add('agreement-v4-ok');
+      showAcceptedHero();
       await startReferring();
 
       // Load referrals if dashboard needed
@@ -950,6 +954,12 @@
       } catch (e) {
         return false;
       }
+    }
+
+    const HERO_ACCEPTED = "For every friend you refer who completes a project of $10,000 or more through Otter Quotes, you earn $200. Share your unique link and we'll handle the rest.";
+    function showAcceptedHero() {
+      const el = document.getElementById('hero-subtitle');
+      if (el) el.textContent = HERO_ACCEPTED;
     }
 
     function showAgreementGate() {
@@ -978,6 +988,7 @@
         if (!data || data.agreement_version !== PARTNER_AGREEMENT_CURRENT_VERSION || !data.accepted_at) throw new Error('unexpected response');
         document.getElementById('agreement-accept-section').style.display = 'none';
         document.body.classList.add('agreement-v4-ok');
+        showAcceptedHero();
         await startReferring();
       } catch (err) {
         console.error('Partner Agreement v4 acceptance failed:', err);
@@ -1405,7 +1416,10 @@ Best regards`;
         const date = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
         const label = REFERRAL_STATUS_LABELS[r.status] || 'Pending';
         const cls = REFERRAL_STATUS_CLASSES[r.status] || 'status-clicked';
-        const fee = (r.status === 'job_completed' || r.status === 'commission_paid') ? '$200' : '—';
+        // gh-3245 (#3243, LEGAL-READ 6525943244): the fee cell shows what actually accrued (commission_amount from
+        // get_my_referrals()), never a $200 inferred from the status. A completed referral the Partner Agreement v4 gate
+        // withheld is job_completed with no commission_amount and shows "No fee".
+        const fee = referralFeeCell(r);
         return '<tr><td>' + escapeHtml(name) + '</td><td>' + date + '</td>' +
                '<td><span class="status-badge ' + cls + '">' + label + '</span></td>' +
                '<td>' + fee + '</td></tr>';
@@ -1422,20 +1436,32 @@ Best regards`;
         .replace(/'/g, '&#039;');
     }
 
+    // gh-3245: money shown on this page is the accrued commission_amount (get_my_referrals()), not count x $200.
+    function referralFeeAmount(r) {
+      const n = Number(r && r.commission_amount);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    }
+    function referralFeeCell(r) {
+      const amt = referralFeeAmount(r);
+      if (amt > 0) return '$' + amt.toLocaleString('en-US');
+      if (r.status === 'job_completed' || r.status === 'commission_paid') return 'No fee';
+      return '—';
+    }
+
     function calculateSummary(referrals) {
       const total = referrals.length;
-      // D-139 (#567): $200 per completed referral. 'job_completed' has accrued
-      // but not yet paid out; 'commission_paid' is paid.
-      const paid = referrals.filter(r => r.status === 'commission_paid').length;
-      const completedUnpaid = referrals.filter(r => r.status === 'job_completed').length;
-      const completed = paid + completedUnpaid;
+      // D-139 (#567): 'job_completed' has accrued but not yet paid out; 'commission_paid' is paid. gh-3245: the totals sum
+      // the accrued commission_amount, so a completed referral with no fee (Partner Agreement v4 gate) adds $0.
+      const paidAmt = referrals.filter(r => r.status === 'commission_paid').reduce((t, r) => t + referralFeeAmount(r), 0);
+      const pendingAmt = referrals.filter(r => r.status === 'job_completed').reduce((t, r) => t + referralFeeAmount(r), 0);
+      const completed = referrals.filter(r => r.status === 'job_completed' || r.status === 'commission_paid').length;
       const earnedEl  = document.getElementById('total-earned');
       const pendingEl = document.getElementById('total-pending');
-      if (earnedEl)  earnedEl.textContent  = '$' + (paid * 200).toLocaleString('en-US');
-      if (pendingEl) pendingEl.textContent = '$' + (completedUnpaid * 200).toLocaleString('en-US');
+      if (earnedEl)  earnedEl.textContent  = '$' + paidAmt.toLocaleString('en-US');
+      if (pendingEl) pendingEl.textContent = '$' + pendingAmt.toLocaleString('en-US');
       const el = document.getElementById('referral-summary');
       if (el) {
-        el.textContent = total + ' referral' + (total !== 1 ? 's' : '') + ' · ' + completed + ' completed · $' + (paid * 200).toLocaleString('en-US') + ' earned';
+        el.textContent = total + ' referral' + (total !== 1 ? 's' : '') + ' · ' + completed + ' completed · $' + paidAmt.toLocaleString('en-US') + ' earned';
       }
     }
 
