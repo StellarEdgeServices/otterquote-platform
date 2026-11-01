@@ -1,5 +1,5 @@
 -- gh-3229 PRODUCTION-SAFE proof (P18): $5 measurement referral fee, monthly batch ($25 minimum), partner dashboard stats.
--- Tests only. NOT RUN IN PRODUCTION by its author; Marty runs it. Refs #3229, #3236 (the draft migration under test lives on PR #3236, head 11943b7a68f99b4fd4bd2127ede1763b943bbc27).
+-- Tests only. NOT RUN IN PRODUCTION by its author; Marty runs it. Refs #3229, #3236 (the draft migration under test lives on PR #3236, head 11943b7a68f9).
 --
 -- WHAT IT IS
 --   supabase/tests/gh3229_partner_measurement_fee_proof.sql (PR #3236) was written against a throwaway LOCAL database (gh3229_local_stub_extras.sql) that lacks several
@@ -10,8 +10,14 @@
 --   Management API : POST https://api.supabase.com/v1/projects/yeszghaspzwwstvsrioa/database/query   body {"query": "<this whole file>"}
 --   or psql        : psql -X -v ON_ERROR_STOP=1 -f supabase/tests/gh3229_partner_measurement_fee_prod_proof.sql
 --   or SQL editor  : paste the whole file, run once.
---   Run it in a quiet window: the inlined migration takes SHARE ROW EXCLUSIVE / ACCESS EXCLUSIVE locks on hover_orders, payout_approvals (and a CHECK re-validation scan of
---   payout_approvals) until the rollback, a few seconds. SET LOCAL lock_timeout = '5s' makes it give up instead of queueing behind a long transaction.
+--   RUN THE WHOLE FILE AS ONE SCRIPT IN A SINGLE SESSION (SQL editor "Run" on the full text, or the Mgmt API /database/query with the full file).
+--   NEVER "run selected" and NEVER statement-by-statement (a runner that sends each statement on its own autocommit connection): the migration DDL would then commit piecemeal.
+--   BEFORE-APPLY PROOF ONLY: once #3236's migration is applied, the pre-flight guards below raise P0U04 and nothing runs. The post-apply paid-measurement artifact that #3229 requires is separate.
+--   Run it in a quiet window. Locks held until the abort (SET LOCAL lock_timeout = '5s' makes it give up instead of queueing behind a long transaction):
+--     payout_approvals  ACCESS EXCLUSIVE  (DROP/ADD CHECK; includes a CHECK re-validation scan)
+--     hover_orders      ACCESS EXCLUSIVE  (DROP TRIGGER IF EXISTS takes it even when the trigger is absent, so reads block too)
+--     claims, referrals, referral_agents  SHARE ROW EXCLUSIVE  (from the new table's foreign keys, so writes block)
+--     partner_fee_events (new, uncommitted) and platform_settings (row inserts) are not visible to other sessions.
 --
 -- EXPECTED RESULT  (the run ALWAYS ends in an error; that is the design, it is what keeps the file from committing)
 --   PASS : ERROR P0U01  'GH3229 PROD PROOF PASSED (forced rollback, nothing was committed)' + one line per assertion ending OK, last line 'TALLY: 75 OK, 0 DIFF'
@@ -43,11 +49,11 @@
 --   The admin used for the admin-gated cases is read from public.admin_emails at run time (is_admin_email() reads that table in production); only a JWT claim is simulated, nothing is written for it.
 --
 -- THE INLINED MIGRATION  (verify it is unchanged)
---   Source : supabase/migrations_drafts/gh3229_partner_measurement_fee.sql at PR #3236 head 11943b7a68f99b4fd4bd2127ede1763b943bbc27 (git blob f61394cb435d981a0e54f3c1c6800ee439f3e661).
+--   Source : supabase/migrations_drafts/gh3229_partner_measurement_fee.sql at PR #3236 head 11943b7a68f9 (git blob f61394cb435d).
 --   sha256 of that whole draft file                                   : b0363712f53670e0a96d8b4fa915d54ea7fec1bd782027d4d5f2988fb74f3355
 --   sha256 of the inlined block (the draft minus its two lines 'BEGIN;' and 'COMMIT;') : eb46100c3b13921ee7a74a1b38ad58012af8a4facee1cc24b161b33c74134751
 --   Check the block :  sed -n '/^-- >>> BEGIN INLINED MIGRATION/,/^-- <<< END INLINED MIGRATION/p' <this file> | sed '1d;$d' | sha256sum
---   Check the draft :  git show 11943b7a68f99b4fd4bd2127ede1763b943bbc27:supabase/migrations_drafts/gh3229_partner_measurement_fee.sql | grep -v -E '^(BEGIN|COMMIT);$' | sha256sum   (same value)
+--   Check the draft :  git show 11943b7a68f9:supabase/migrations_drafts/gh3229_partner_measurement_fee.sql | grep -v -E '^(BEGIN|COMMIT);$' | sha256sum   (same value)
 --
 -- CASES (key prefix = case id; same ids as the local proof, plus F0*, S9, S10, X0, D11b and the negative controls NC1-NC3)
 --   F0 fixture integrity under production guards.  F1-F4 credited paid order -> one 500 row; setting 700 -> next row 700; no credited partner -> none; duplicate update -> no second row.
