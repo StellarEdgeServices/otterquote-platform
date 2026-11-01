@@ -9,7 +9,7 @@
  * phase 1" (supabase/migrations/20260916132127_gh1994_router_leads_columns.sql,
  * COMMENT ON COLUMN) and nothing in the repo ever set it. This is the fix:
  * a successful password sign-up now calls the new set_lead_converted RPC
- * (this PR's migration) with the captured leadId, so a later $15 measurement
+ * (this PR's migration) with the captured leadId, so a later $22.63 measurement
  * purchase or loss-sheet upload — which already join to `claims` by
  * `user_id` — can be traced back to the originating `leads` row via
  * `leads.converted_user_id = claims.user_id`.

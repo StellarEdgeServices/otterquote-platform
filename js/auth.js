@@ -1677,10 +1677,10 @@ Log in to the admin panel to review and approve this contractor.`;
         // #567: keep the id under a claim-scoped key so the claim writer
         // (trade-selector) can stamp claims.referral_id, then clear the
         // advance-scoped keys so this block never re-runs.
-        // gh-2062: the claim-scoped copy lives under the same 30-day click
+        // gh-2062: the claim-scoped copy lives under the same 90-day click
         // clock as the cookie (no click time on record => nothing written).
         if (window.OtterQuoteReferral) window.OtterQuoteReferral.writeClaimId(referralId);
-        // gh-2062: only re-arm the cookie's 30-day clock on a successful
+        // gh-2062: only re-arm the cookie's 90-day clock on a successful
         // advance. A failed RPC call is not a reason to extend the life of
         // an id we were just told is not advanceable — the cookie keeps
         // whatever TTL it already had instead of restarting the clock.
@@ -1692,6 +1692,17 @@ Log in to the admin panel to review and approve this contractor.`;
             oq_referral_code: kept.oq_referral_code
           });
         }
+        // P18 credit lock: the credit locks to the first partner recorded at
+        // account creation. If a later click put another partner's id in the
+        // cookie, swap it back for the locked one. The database overrides the
+        // claim's referral_id with the locked one regardless (BEFORE INSERT
+        // trigger); this keeps the browser state honest. Non-fatal.
+        try {
+          const lockRes = await sb.rpc('get_locked_referral_id');
+          if (window.OtterQuoteReferral && window.OtterQuoteReferral.adoptLocked) {
+            window.OtterQuoteReferral.adoptLocked(lockRes && lockRes.data);
+          }
+        } catch (lockErr) { /* non-fatal */ }
         localStorage.removeItem('oq_referral_id');
         sessionStorage.removeItem('oq_referral_id');
       } catch (err) {

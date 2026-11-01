@@ -33,6 +33,7 @@ import {
   REFUSAL_CODE,
 } from "./live-charge-guard.ts";
 import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-setting.ts";
+import { keyRefusalResponse, selectStripeKey } from "../_shared/stripe-key-select.ts";
 import { attachVariantMetadata } from "./variant-metadata.ts";
 import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
 import {
@@ -552,10 +553,22 @@ serve(async (req) => {
     const _reqOrigin = req.headers.get("Origin") || "";
     const isStaging = _reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
       _reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
-    const stripeSecretKey = isStaging
-      ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
-      : Deno.env.get("STRIPE_SECRET_KEY");
-    if (!stripeSecretKey) throw new Error("Stripe secret key not configured.");
+    // gh-3293: an is_test claim never gets the LIVE key (see stripe-key-select.ts).
+    const keyChoice = selectStripeKey({
+      isStaging,
+      claimIsTest: unconditionalGuardClaim?.is_test === true,
+      env: (n) => Deno.env.get(n),
+    });
+    if (!keyChoice.ok) {
+      console.error(`[${FUNCTION_NAME}] gh-3293 Stripe key refused: ${keyChoice.reason} claim=${metadata.claim_id}`);
+      // gh-3293 REVIEW B: a test-claim key refusal carries REFUSAL_CODE so docusign-webhook never routes it to dunning.
+      const refusal = keyRefusalResponse(keyChoice.reason, REFUSAL_CODE);
+      return new Response(
+        JSON.stringify(refusal.body),
+        { status: refusal.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    const stripeSecretKey = keyChoice.key;
     const basicAuth = btoa(`${stripeSecretKey}:`);
 
     let paymentIntentData: any;
@@ -696,11 +709,11 @@ serve(async (req) => {
       }
     } else {
       // ===== Standard flow (hover_measurement, deductible_escrow, measurement_upgrade) =====
-      // The create body and its idempotency key are functions of the claim and the request type ONLY (see
+      // The create body and its idempotency key are functions of the claim, the request type and the amount ONLY (see
       // standard-create-form.ts): Stripe refuses a reused key with a different body, so nothing per-request may ever be in
       // this create. The router variant is attached AFTER it, below.
       const form = buildStandardCreateForm({ amount, currency, description, metadata, contractor_id });
-      const idempotencyKey = standardIdempotencyKey(metadata);
+      const idempotencyKey = standardIdempotencyKey(metadata, amount);
       // gh-1886: bounded timeout. This call has no surrounding try/catch, so a timeout (like any
       // other thrown error here) propagates to the handler's outer catch(error) below, which already
       // maps it to the existing 500 JSON error-response path -- no new response shape, no change to

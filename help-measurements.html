@@ -581,7 +581,7 @@
                     <div class="path-card-badge">Recommended for Most</div>
                     <div class="path-card-icon">📐</div>
                     <h3>Roof Measurement Report</h3>
-                    <div class="path-card-price">$15 (rebated if you complete a job on the platform)</div>
+                    <div class="path-card-price">$22.63 (rebated if you complete a job on the platform)</div>
                     <p>We order a professional aerial measurement report of your roof &mdash; squares, pitch, facets, ridge, hip, valley and eave lengths. Nothing for you to do: no photos, no ladder, no appointment. It is enough for a contractor to bid most roofing jobs.</p>
                     <ul class="path-card-features">
                         <li>Professional-grade roof measurements</li>
@@ -617,7 +617,7 @@
                 <p>A professional aerial measurement report of your roof &mdash; squares, pitch, facets, and the ridge, hip, valley and eave lengths a contractor needs to bid accurately. We order it for you; there is nothing for you to photograph.</p>
 
                 <div class="rebate-callout">
-                    <strong>How the $15 works:</strong> You pay $15 now and we order the report. When your project is completed with an Otter Quotes contractor, the full $15 is rebated to your original payment method. Either way, the report stays with you &mdash; it is yours to keep and reuse on any future project.
+                    <strong>How the $22.63 works:</strong> You pay $22.63 now and we order the report. When your project is completed with an Otter Quotes contractor, the full $22.63 is rebated to your original payment method. Either way, the report stays with you &mdash; it is yours to keep and reuse on any future project.
                 </div>
 
                 <div class="hover-steps">
@@ -625,7 +625,7 @@
                         <div class="hover-step-number">1</div>
                         <div class="hover-step-content">
                             <h4>Purchase Your Report</h4>
-                            <p>Pay the $15 fee securely through Stripe. This covers your Complete Property Report.</p>
+                            <p>Pay the $22.63 fee securely through Stripe. This covers your Complete Property Report.</p>
                         </div>
                     </div>
                     <div class="hover-step">
@@ -650,18 +650,18 @@
 
                 <div class="button-row">
                     <button class="action-btn btn-green" id="purchaseHoverBtn" onclick="purchaseHover()">
-                        Purchase Roof Measurement Report — $15
+                        Purchase Roof Measurement Report — $22.63
                     </button>
                     <button class="action-btn btn-outline" onclick="goBack()">← Choose Different Option</button>
                 </div>
 
                 <!-- Stripe card form — shown after clicking Purchase, hidden by default -->
                 <div id="hoverPaymentForm" style="display:none; margin-top:1.5rem; padding:1.5rem; background:#F8F9FC; border:1.5px solid #D0D9E3; border-radius:8px;">
-                    <p style="font-size:0.875rem; color:#3D4F60; margin:0 0 1rem; font-weight:500;">💳 Enter your card details to complete the $15 purchase:</p>
+                    <p style="font-size:0.875rem; color:#3D4F60; margin:0 0 1rem; font-weight:500;">💳 Enter your card details to complete the $22.63 purchase:</p>
                     <div id="hoverCardElement" style="padding:0.75rem; border:1.5px solid #CBD5E1; border-radius:6px; background:white;"></div>
                     <div id="hoverCardErrors" style="color:#DC2626; font-size:0.8rem; margin-top:0.4rem; min-height:1.1rem;"></div>
                     <div class="button-row" style="margin-top:1.25rem;">
-                        <button class="action-btn btn-green" id="payHoverBtn" onclick="confirmHoverPayment()">Pay $15 Securely</button>
+                        <button class="action-btn btn-green" id="payHoverBtn" onclick="confirmHoverPayment()">Pay $22.63 Securely</button>
                         <button class="action-btn btn-outline" onclick="cancelHoverPayment()">Cancel</button>
                     </div>
                     <p style="font-size:0.75rem; color:#64748B; margin:0.75rem 0 0; text-align:center;">🔒 Payment secured by Stripe. Your card info is never stored on our servers.</p>
@@ -932,7 +932,7 @@
                 // Create the PaymentIntent server-side — returns client_secret
                 const paymentResult = await Services.createHoverPaymentIntent({
                     claim_id: currentClaim?.id,
-                    amount: 1500, // gh-1063: $15 in cents, matches D-291 (measurement repricing, supersedes D-205's $150). Cosmetic — create-payment-intent enforces the real amount server-side from platform_settings.hover_measurement_price (see gh-1077 for that value's own drift).
+                    amount: 2263, // gh-1063: $22.63 in cents (D-291 rebated price; set by Dustin 2026-10-30, gh-3228). Cosmetic — create-payment-intent enforces the real amount server-side from platform_settings.hover_measurement_price (see gh-1077 for that value's own drift).
                     description: 'Complete Property Report',
                 });
 

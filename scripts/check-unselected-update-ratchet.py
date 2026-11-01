@@ -103,7 +103,6 @@ BASELINE: dict[str, int] = {
     "js/contract-template-validation.js": 0,  # gh-2105 batch 7: fixed (see PR body)
     "js/services.js": 0,  # gh-2105 batch 14: Twilio-SID log + adjuster enrichment annotated (b)
     "js/video-upload-handler.js": 0,  # gh-2105 batch 15: claims.video_url fixed (a), warning return
-    "project-confirmation.html": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "project-info-acv.html": 0,  # gh-2105 batch 4: claims money write fixed (a); batch 14: adjuster_id link annotated (b)
     "project-info-cash.html": 0,  # gh-2105 batch 4: fixed (a), money
     "project-info-rcv.html": 0,  # gh-2105 batch 4: claims money write fixed (a); batch 14: adjuster_id link annotated (b)
@@ -121,7 +120,6 @@ BASELINE: dict[str, int] = {
     "react-app/app/(homeowner)/help-estimate/actions.ts": 0,  # gh-2105 batch 4: (a, report-only): Sentry event, flow unchanged
     "react-app/app/(homeowner)/help-materials/use-help-materials-data.ts": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/(homeowner)/help-measurements/use-help-measurements-data.ts": 0,  # gh-2105 batch 4: (a, report-only): Sentry event, flow unchanged
-    "react-app/app/(homeowner)/project-confirmation/use-project-confirmation-data.ts": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/(homeowner)/repair-intake/use-repair-intake-data.ts": 0,  # gh-2105 batch 4: status=submitted write fixed (a, THROW + Sentry)
     "react-app/app/admin/contractors/page.tsx": 0,  # gh-2105 batch 13: annotated (b)
     "react-app/app/admin/fee-config/page.tsx": 0,
@@ -133,7 +131,6 @@ BASELINE: dict[str, int] = {
     "react-app/app/contractor/dashboard/page.tsx": 0,  # gh-2105 batch 13: fixed (see PR body)
     "react-app/app/contractor/pre-approval/page.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/profile/ContractTemplates.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
-    "react-app/app/contractor/profile/PcTemplates.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)
     "react-app/app/contractor/profile/d199-validation.tsx": 0,  # gh-2105 batch 3 zero-row hole closed; gh-3199: status now set by the submit_template_for_admin_review RPC (draft migration, #2717 Q2)
     "react-app/app/contractor/settings/StripePaymentMethods.tsx": 0,  # gh-2105 batch 13: annotated (b)
     "react-app/app/contractor/settings/page.tsx": 0,  # gh-2105 batch 13: page/JS fixed (a)

@@ -45,7 +45,7 @@ Two quick options:
 Already have your insurance loss sheet? Upload it now and we'll start
 sending your scope of work to local contractors.
 
-Want bids ready sooner? Get a $15 measurement report ($15, rebated if
+Want bids ready sooner? Get a $22.63 measurement report ($22.63, rebated if
 you complete a job on the platform) -- no ladder, no appointment,
 nothing to photograph.
 
@@ -69,7 +69,7 @@ Two quick options:
 Already have your insurance loss sheet? Upload it now and we'll start
 sending your scope of work to local contractors.
 
-Want bids ready sooner? Get a $15 measurement report ($15, rebated if
+Want bids ready sooner? Get a $22.63 measurement report ($22.63, rebated if
 you complete a job on the platform) -- no ladder, no appointment,
 nothing to photograph.
 
@@ -103,7 +103,7 @@ export function replyToForVariant(variant: string | null | undefined): string | 
 }
 
 export const LOSS_SHEET_CTA_LABEL = "Upload your loss sheet";
-export const MEASUREMENT_CTA_LABEL = "Get the $15 measurement report";
+export const MEASUREMENT_CTA_LABEL = "Get the $22.63 measurement report";
 
 /** The D-237 postal address, same resolved value used by
  * send-homeowner-next-steps/email-footer.ts and this repo's other homeowner
