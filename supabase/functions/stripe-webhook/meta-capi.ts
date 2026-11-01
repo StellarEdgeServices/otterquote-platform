@@ -1,6 +1,6 @@
 /**
  * [gh-2078b / D-330] Server-side Meta Conversions API (CAPI) `Purchase` event
- * for measurement-order ($15 Hover report) payments, sent from stripe-webhook.
+ * for measurement-order ($22.63 Hover report) payments, sent from stripe-webhook.
  *
  * WHY THIS EXISTS. #2078 / D-330: Dustin approved server-side `Purchase`
  * events so Meta's homeowner ad set can optimise toward a real outcome
@@ -56,10 +56,10 @@ export const META_CAPI_API_VERSION = "v21.0";
  */
 export const META_CAPI_PIXEL_ID = "800470107451795";
 
-/** The $15 RoofScope / Hover measurement report price (D-291). */
-export const MEASUREMENT_PURCHASE_VALUE_USD = 15.0;
+/** The $22.63 RoofScope / Hover measurement report price (D-291). */
+export const MEASUREMENT_PURCHASE_VALUE_USD = 22.63;
 /** The measurement report price in US cents: the only charge reported to Meta (see shouldSkipForNonUsdMeasurement). */
-export const MEASUREMENT_PURCHASE_AMOUNT_CENTS = 1500;
+export const MEASUREMENT_PURCHASE_AMOUNT_CENTS = 2263;
 
 const VARIANT_SHAPE_RE = /^[a-z0-9]{1,8}$/;
 
@@ -250,20 +250,20 @@ export function safeMetaErrorSummary(body: string): string {
 }
 
 /**
- * [gh-2107, Ben's DECIDED (a) on #2078, 5806894411] The CAPI Purchase is reported to Meta as 15 USD, so it is sent ONLY for a
- * measurement PaymentIntent that is exactly 1500 cents in USD. The webhook sees the PaymentIntent independently of
+ * [gh-2107, Ben's DECIDED (a) on #2078, 5806894411] The CAPI Purchase is reported to Meta as 22.63 USD, so it is sent ONLY for a
+ * measurement PaymentIntent that is exactly 2263 cents in USD. The webhook sees the PaymentIntent independently of
  * create-measurement-order's own USD guard, so it must not report a charge in another currency, or at another amount, as a USD
  * Purchase. The amount is what was actually received (amount_received, else amount). FAILS CLOSED: a missing, non-object or
  * malformed PaymentIntent, currency or amount is skipped. The reason is a fixed token: the currency and amount are never logged.
  */
 export function shouldSkipForNonUsdMeasurement(
   pi: { currency?: unknown; amount?: unknown; amount_received?: unknown } | null | undefined,
-): { skip: boolean; reason: "not_usd_1500" | null } {
+): { skip: boolean; reason: "not_usd_2263" | null } {
   if (pi && typeof pi === "object") {
     const charged = pi.amount_received ?? pi.amount;
     if (pi.currency === "usd" && charged === MEASUREMENT_PURCHASE_AMOUNT_CENTS) return { skip: false, reason: null };
   }
-  return { skip: true, reason: "not_usd_1500" };
+  return { skip: true, reason: "not_usd_2263" };
 }
 
 /**

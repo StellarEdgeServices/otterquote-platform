@@ -55,7 +55,9 @@ function ok(cond, label) {
   else { console.log('FAIL: ' + label); fail++; }
 }
 
-const SOURCE_PATH = path.join(repoRoot, 'partner-agreement.html');
+// gh-3239 (#3238): the inspector build's source is the frozen v3-2026-09 text (partner-agreement-v3.html, byte-identical to the
+// partner-agreement.html this test pinned); partner-agreement.html is now v4-2026-10 and is guarded by tests/gh3239-partner-agreement-v4.mjs.
+const SOURCE_PATH = path.join(repoRoot, 'partner-agreement-v3.html');
 // INSPECTOR_HTML_PATH is overridable only for negative controls (gh-2354).
 const OUTPUT_PATH = process.env.INSPECTOR_HTML_PATH || path.join(repoRoot, 'partner-agreement-inspector.html');
 const BUILD_SCRIPT = process.env.INSPECTOR_BUILD_SCRIPT || path.join(repoRoot, 'tools', 'build_inspector_agreement.py');

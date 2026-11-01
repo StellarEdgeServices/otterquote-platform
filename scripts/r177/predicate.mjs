@@ -106,6 +106,7 @@ export const COPY_GUARD_FILES = new Set([
   'scripts/check-sentry-onload-order.py',
   'scripts/credential-sweep.py',
   'scripts/find-legal-surface-links.py',
+  'scripts/render-partner-agreement.py',   // gh-3239: renders the Partner Agreement v4 legal text into partner-agreement.html
   'scripts/smoke-test.sh',
   'tools/build_inspector_agreement.py',
   'tools/generate_contractor_pages.py',

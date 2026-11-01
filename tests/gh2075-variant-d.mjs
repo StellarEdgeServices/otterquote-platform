@@ -455,20 +455,38 @@ function fillAndSubmit(root, inputId, value) {
   }).catch((e) => { console.error('scenario4 error:', e); fail++; });
 })();
 
-// ═══════════════════════ Scenario 5 (gh-3136, P14): homeowner reaches ONE
-// contact screen (name required + phone optional) carrying the C4 paragraph
-// byte-identical; submitting writes BOTH update_lead_contact calls and
-// redirects to get-started with the lead id. No screening screens. ═══════
+// gh-3265: the C4 (home8Text) paragraph is removed from d-contact. This
+// predicate looks for it by two distinctive fragments, so a partial revert
+// (either half of the old paragraph) is still caught.
+const C4_FRAGMENTS = ['From our stand point', 'tech savvy homeowner', 'aerial roof report, rebated in full'];
+function hasC4Paragraph(nodes) {
+  return nodes.some((c) => c.tagName === 'P' && C4_FRAGMENTS.some((f) => (c.textContent || '').indexOf(f) !== -1));
+}
+// Negative control: the predicate DOES fire on the old paragraph, so its
+// "absent" verdict below is meaningful, not vacuous.
+ok(hasC4Paragraph([{ tagName: 'P', textContent: 'From our stand point, it seems like you would be a good fit.' }]),
+  'negative control: hasC4Paragraph detects the old C4 paragraph when it is present');
+ok(hasC4Paragraph([{ tagName: 'P', textContent: 'Homeowners pay a small upfront fee for an aerial roof report, rebated in full when they complete a job.' }]),
+  'negative control: hasC4Paragraph detects the fee half of the old paragraph on its own');
+ok(!hasC4Paragraph([{ tagName: 'H2', textContent: 'What is your name?' }]),
+  'negative control: hasC4Paragraph does not fire on the heading');
+
+// ═══════════════════════ Scenario 5 (gh-3136, P14; gh-3265): homeowner
+// reaches ONE contact screen (name required + phone optional) with NO body
+// paragraph; submitting writes BOTH update_lead_contact calls and redirects
+// to get-started with the lead id. No screening screens. ═══════
 (function scenario5() {
   const { routerDRoot, bridge, RouterVariantD, rpcCalls, trackedEvents, redirects } = buildScenario();
   RouterVariantD.init(bridge, routerDRoot);
   findRoleButtons(routerDRoot)[0].dispatchClick(); // Homeowner
   fillAndSubmit(routerDRoot, 'dEmail', 'jane@example.com');
   return tick(8).then(() => {
-    // One screen: both inputs present, plus the C4 paragraph.
-    ok(!!flatten(routerDRoot).find((c) => c.id === 'dName') && !!flatten(routerDRoot).find((c) => c.id === 'dPhone'), 'd-contact renders the name input AND the phone input on ONE screen');
-    const C4 = 'From our stand point, it seems like you would be a good fit. You are a tech savvy homeowner who wants to save time and money. The next steps are: 1. We will get additional information about your job; 2. We will create a scope of work and submit it to multiple contractors for bids. 3. Their bids will appear here on the site. 4. If one of the bids suits your needs, you select your contractor on the site and schedule your job. There is no obligation to work with us or our contractors. They don\'t get your information unless you select them. There is no fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when they complete a job. To get started we need the following information:';
-    ok(flatten(routerDRoot).some((c) => c.tagName === 'P' && c.textContent === C4), 'C4 (COPY.home8Text) renders on d-contact byte-identical');
+    // One screen: both inputs present, and NO C4 paragraph (gh-3265).
+    const nodes = flatten(routerDRoot);
+    ok(!!nodes.find((c) => c.id === 'dName') && !!nodes.find((c) => c.id === 'dPhone'), 'd-contact renders the name input AND the phone input on ONE screen');
+    ok(nodes.some((c) => /^H\d$/.test(c.tagName) && c.textContent === 'What is your name?'), 'd-contact keeps the "What is your name?" heading');
+    ok(!hasC4Paragraph(nodes), 'gh-3265: the C4 (home8Text) paragraph is ABSENT from the homeowner d-contact screen');
+    ok(!nodes.some((c) => c.tagName === 'P'), 'gh-3265: d-contact renders no <p> at all (no empty leftover paragraph)');
     fillAndSubmit(routerDRoot, 'dName', 'Jane Smith');
     return tick(10);
   }).then(() => {
@@ -587,7 +605,7 @@ function tick(n) {
   fillAndSubmit(routerDRoot, 'dEmail', 'agent@example.com');
   await tick(4);
   await tick(4);
-  ok(!flatten(routerDRoot).some((c) => c.tagName === 'P' && /good fit/.test(c.textContent || '')), 'professionals do not see the C4 homeowner paragraph');
+  ok(!hasC4Paragraph(flatten(routerDRoot)), 'professionals do not see the C4 homeowner paragraph');
   fillAndSubmit(routerDRoot, 'dName', 'Pat Realtor'); // blank phone
   await tick(10); // settle into d-professional-industry (discovery lazy-load)
 

@@ -67,7 +67,7 @@ import { isAdSharingOptedOut, readStoredOptOut, type ProfileReader } from "../li
  *
  * D-330 (amends D-322 for exactly one path, 2026-09-22, gh-2078 comment
  * 5780257974; Dustin's ruling comment 5777193662 "Yes to both."): the
- * measurement-checkout success path (`/help-measurements`, the $15 Hover
+ * measurement-checkout success path (`/help-measurements`, the $22.63 Hover
  * purchase -- see that page's handlePaid and its gh-951 resume effect) is
  * added to ALLOWED_PATHS below despite being an authenticated route, so
  * `fbqTrack('Purchase', ...)` (lib/track.ts) is a real event instead of the

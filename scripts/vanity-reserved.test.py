@@ -32,6 +32,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 GEN = ROOT / "scripts" / "p18-reserved-slugs.py"
 SEED_GLOBS = ("supabase/migrations_drafts/p18_vanity_slug_data.sql", "supabase/migrations/*p18_vanity_slug_data*.sql")
+# gh-3237: reserved_slugs is append-only; names added after p18_vanity_slug_data was applied arrive in their own data migration named
+# *reserved_slugs_add*.sql (draft or filed). Their INSERT rows count as seed rows too. Rollback files are never read.
+SUPPLEMENT_GLOBS = ("supabase/migrations_drafts/*reserved_slugs_add*.sql", "supabase/migrations/*reserved_slugs_add*.sql")
+
+
+def find_supplements():
+    out = []
+    for g in SUPPLEMENT_GLOBS:
+        out += [Path(h) for h in sorted(glob.glob(str(ROOT / g))) if not h.endswith("_rollback.sql")]
+    return out
 
 
 def load_generator():
@@ -128,6 +138,13 @@ def main():
     seed = parse_seed(seed_file.read_text(encoding="utf-8"))
     if len(seed) < 50:
         sys.exit("FAIL: parsed only %d seed rows from %s; the parser or the file is broken." % (len(seed), seed_file))
+    base_seed = set(seed)
+    supplements = find_supplements()
+    for f in supplements:
+        rows = parse_seed(f.read_text(encoding="utf-8"))
+        if not rows:
+            sys.exit("FAIL: %s has no INSERT INTO public.reserved_slugs rows; the parser or the file is broken." % f.relative_to(ROOT))
+        seed |= rows
 
     served = gen.collect(str(ROOT))
     if len(served) < 50:
@@ -139,6 +156,11 @@ def main():
         extra = gen.collect(td, names=["brand-new-page.html"])
         if missing_from_seed(extra, seed) != ["brand-new-page"]:
             sys.exit("FAIL (negative control): an unseeded served path was not detected.")
+    # gh-3237 negative control: the supplement rows are load-bearing -- without them those served paths are flagged.
+    if supplements:
+        supp_only = seed - base_seed
+        if supp_only and not set(missing_from_seed(served, base_seed)) & supp_only:
+            sys.exit("FAIL (negative control): dropping the *reserved_slugs_add* rows was not detected.")
     # Negative control 2: removing a seed row must be flagged.
     victim = "faq" if "faq" in seed else sorted(seed)[0]
     if victim not in missing_from_seed(served, seed - {victim}):
@@ -181,7 +203,9 @@ def main():
         sys.exit(1)
     if bad_prefix:
         sys.exit(1)
-    print("OK: all %d served top-level paths are reserved plus %d prefix routes (seed has %d rows, from %s); negative controls detected." % (len(served), len(required), len(seed), seed_file.relative_to(ROOT)))
+    print("OK: all %d served top-level paths are reserved plus %d prefix routes (seed has %d rows, from %s%s); negative controls detected." % (
+        len(served), len(required), len(seed), seed_file.relative_to(ROOT),
+        "".join(" + " + str(f.relative_to(ROOT)) for f in supplements)))
 
 
 if __name__ == "__main__":

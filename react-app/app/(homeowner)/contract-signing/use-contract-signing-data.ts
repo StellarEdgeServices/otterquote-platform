@@ -303,12 +303,11 @@ export async function createHomeownerEnvelope(args: {
 // (service_role) is its only writer. The page redirects on completion and reads the stamp later.
 
 /**
- * The post-sign redirect target. Coexistence: the React /project-confirmation route
- * lands in Phase 26 — until then the signed homeowner returns to the STATIC
- * project-confirmation page (brief item 7).
+ * The post-sign redirect target. D-407 (gh-3286): there is one signed document per
+ * job and no Project Confirmation step, so the signed homeowner returns to the dashboard.
  */
-export function buildProjectConfirmationUrl(claimId: string): string {
-  return `https://otterquote.com/project-confirmation.html?claim_id=${claimId}`;
+export function buildPostSignUrl(): string {
+  return 'https://otterquote.com/dashboard.html';
 }
 
 /**

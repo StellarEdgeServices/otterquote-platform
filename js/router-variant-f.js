@@ -15,7 +15,7 @@
 // (record_lead_details() is first-write-wins per column, so property_address is
 // written from NULL; the consent row is ON CONFLICT DO NOTHING, so the evidence is
 // not duplicated). No migration: leads.zip stays NULL for Arm F (no consumer reads it). Nothing on screens 1-3 touches auth; the
-// $15 measurement and the loss-sheet upload are deep links on the thank-you
+// $22.63 measurement and the loss-sheet upload are deep links on the thank-you
 // screen into the EXISTING app paths (the no-account version is #2121 row
 // 3.2 and is NOT part of this issue).
 //
@@ -100,7 +100,7 @@
     arm_f_s4_headline: "You're all set.",
     arm_f_s4_body_in_window: "Dustin will call you within 5 minutes to talk through next steps.",
     arm_f_s4_body_after_hours: "Dustin will call you first thing, between 8 a.m. and 8 p.m.",
-    arm_f_s4_button_measure: "Get my roof measured, $15",
+    arm_f_s4_button_measure: "Get my roof measured, $22.63",
     arm_f_s4_button_losssheet: "Upload my insurance loss sheet",
     // ARM F COPY -- APPROVED (no-call variant), #2122 comment 5804614805 (Dustin's ruling). Shown instead of the two call
     // variants above to a lead that gave NO phone number (LEGAL-READ B1: there is no number to call).
