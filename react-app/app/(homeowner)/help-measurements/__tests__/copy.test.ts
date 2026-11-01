@@ -4,7 +4,7 @@
  *
  * Every user-facing string in ../copy.ts is asserted BYTE-FOR-BYTE against an independently
  * re-typed snapshot of help-measurements.html (the live homeowner reference). Any reword of
- * copy.ts trips this lock. The D-291 financial terms ($15 price line + rebate callout,
+ * copy.ts trips this lock. The D-291 financial terms ($22.63 price line + rebate callout,
  * repricing D-205's now-superseded $150) and the Stripe security line are the highest-value
  * locks.
  *
@@ -30,7 +30,7 @@ const STATIC = {
   hoverBadge: 'Recommended for Most',
   hoverIcon: '📐',
   hoverCardTitle: 'Complete Property Report',
-  hoverCardPrice: '$15 (rebated if you complete a job on the platform)',
+  hoverCardPrice: '$22.63 (rebated if you complete a job on the platform)',
   hoverCardDescription:
     "We order an aerial roof measurement report of your roof — squares, pitch, facets, ridge, hip, valley and eave lengths. Nothing for you to do: no photos, no ladder, no appointment. It is enough for a contractor to bid most roofing jobs.",
   hoverCardFeatures: [
@@ -58,10 +58,10 @@ const STATIC = {
   hoverSectionIntro:
     'An aerial roof measurement report — squares, pitch, facets, and the ridge, hip, valley and eave lengths a contractor needs to bid accurately. We order it for you; there is nothing for you to photograph.',
   rebateCallout:
-    "How the $15 works: You pay $15 now for an aerial roof measurement report. When your project is completed with an Otter Quotes contractor, the full $15 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
+    "How the $22.63 works: You pay $22.63 now for an aerial roof measurement report. When your project is completed with an Otter Quotes contractor, the full $22.63 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
   hoverStep1Title: 'Purchase Your Report',
   hoverStep1Text:
-    'Pay the $15 fee securely through Stripe. This covers your Complete Property Report.',
+    'Pay the $22.63 fee securely through Stripe. This covers your Complete Property Report.',
   hoverStep2Title: 'We Order It',
   hoverStep2Text:
     "We place the order with our measurement service using your property address. Nothing is required from you at this step.",
@@ -70,11 +70,11 @@ const STATIC = {
     "Our measurement service creates a detailed measurement report (usually 24-48 hours). We'll save it in your account — you'll get a notification when it's ready.",
   hoverWhatYouNeed:
     "What you'll need: Nothing. Your property address is already on file — that is all the report is built from.",
-  hoverPurchaseButton: 'Purchase Property Data File — $15',
+  hoverPurchaseButton: 'Purchase Property Data File — $22.63',
   chooseDifferentButton: '← Choose Different Option',
   // Stripe form (649-659)
-  hoverCardFormLead: '💳 Enter your card details to complete the $15 purchase:',
-  hoverPayButton: 'Pay $15 Securely',
+  hoverCardFormLead: '💳 Enter your card details to complete the $22.63 purchase:',
+  hoverPayButton: 'Pay $22.63 Securely',
   hoverCancelButton: 'Cancel',
   stripeSecurityLine:
     '🔒 Payment secured by Stripe. Your card info is never stored on our servers.',
@@ -142,19 +142,19 @@ describe('MEASUREMENTS_COPY — header & path intro', () => {
 });
 
 describe('MEASUREMENTS_COPY — D-291 financial terms (highest-value locks)', () => {
-  it('locks the $15 price line exactly', () => {
+  it('locks the $22.63 price line exactly', () => {
     expect(MEASUREMENTS_COPY.hoverCardPrice).toBe(STATIC.hoverCardPrice);
     expect(MEASUREMENTS_COPY.hoverCardPrice).toBe(
-      '$15 (rebated if you complete a job on the platform)',
+      '$22.63 (rebated if you complete a job on the platform)',
     );
   });
 
   it('locks the full rebate callout (every clause, exact)', () => {
     expect(MEASUREMENTS_COPY.rebateCallout).toBe(STATIC.rebateCallout);
     // spot-check the load-bearing clauses survive verbatim
-    expect(MEASUREMENTS_COPY.rebateCallout).toContain('You pay $15 now');
+    expect(MEASUREMENTS_COPY.rebateCallout).toContain('You pay $22.63 now');
     expect(MEASUREMENTS_COPY.rebateCallout).toContain(
-      'the full $15 is rebated to your original payment method',
+      'the full $22.63 is rebated to your original payment method',
     );
     expect(MEASUREMENTS_COPY.rebateCallout).toContain('the file stays with you');
   });
