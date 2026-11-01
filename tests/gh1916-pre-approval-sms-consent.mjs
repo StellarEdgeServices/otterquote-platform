@@ -26,7 +26,7 @@ const SRC = read('js/contractor-sms-verify.js');
 
 function load(src) {
   const module = { exports: {} };
-  vm.runInNewContext(src, { module, console, Date, Promise, String, Object, Error, Array }, { filename: 'contractor-sms-verify.js' });
+  vm.runInNewContext(src, { module, console, Date, Promise, String, Object, Error, Array, RegExp, URL }, { filename: 'contractor-sms-verify.js' });
   return module.exports;
 }
 
@@ -174,6 +174,51 @@ export async function runChecks(src) {
     ok(mountEl.find((n) => n.attrs.type === 'checkbox') === null, 'null contractor: no consent box may render');
     ok(sb.invokes.length === 0, 'null contractor: no request may be made');
   }
+  // 10. D-391 links (LEGAL-READ 6563105231 L1): the URLs inside the stored wording are working links; no wording added.
+  {
+    const SMS = 'https://otterquote.com/sms-terms', PRIV = 'https://otterquote.com/privacy.html';
+    const mountWith = async (text) => {
+      const doc = fakeDoc(); const mountEl = new FakeNode('div', doc);
+      await V.mount(mountEl, fakeSb({ disclosure: { id: 'v-link', disclosure_text: text } }), '11111111-1111-4111-8111-111111111111');
+      const label = mountEl.find((n) => n.tagName === 'label');
+      const anchors = []; const walk = (n) => { for (const c of n.children) { if (c.tagName === 'a') anchors.push(c); walk(c); } };
+      if (label) walk(label);
+      return { mountEl, label, anchors };
+    };
+    const real = 'Consent is not a condition of purchase. SMS Terms: ' + SMS + ' Privacy Policy: ' + PRIV;
+    const r = await mountWith(real);
+    ok(r.label && r.label.textContent === real, 'link render: label text must equal disclosure_text exactly, got ' + JSON.stringify(r.label && r.label.textContent));
+    ok(r.anchors.length === 2, 'link render: expected 2 anchors, got ' + r.anchors.length);
+    const [a1, a2] = r.anchors;
+    ok(a1 && a1.attrs.href === SMS && a1.textContent === SMS && a1.attrs.target === '_blank' && a1.attrs.rel === 'noopener noreferrer', 'link render: SMS Terms anchor wrong: ' + JSON.stringify(a1 && a1.attrs));
+    ok(a2 && a2.attrs.href === PRIV && a2.textContent === PRIV && a2.attrs.rel === 'noopener noreferrer', 'link render: Privacy anchor wrong: ' + JSON.stringify(a2 && a2.attrs));
+    // trailing sentence punctuation stays text, outside the link
+    const t = await mountWith('See ' + SMS + '. Also (' + PRIV + '), thanks');
+    ok(t.label.textContent === 'See ' + SMS + '. Also (' + PRIV + '), thanks' && t.anchors.length === 2 && t.anchors[0].textContent === SMS && t.anchors[1].textContent === PRIV, 'link render: trailing punctuation must stay outside the link');
+    // bare domain: displayed text unchanged, https:// only in href
+    const b = await mountWith('Terms at otterquote.com/sms-terms today');
+    ok(b.label.textContent === 'Terms at otterquote.com/sms-terms today' && b.anchors.length === 1 && b.anchors[0].attrs.href === 'https://otterquote.com/sms-terms' && b.anchors[0].textContent === 'otterquote.com/sms-terms', 'link render: bare-domain form must link with https:// in href only');
+    // non-allow-listed, non-https and javascript: stay plain text
+    const bad = 'http://otterquote.com/x https://evil.example.com/otterquote.com/sms-terms https://otterquote.com.evil.com/a javascript:alert(1) https://user@otterquote.com/a nototterquote.com/x https://evil.com/?r=otterquote.com/sms-terms';
+    const n = await mountWith(bad);
+    ok(n.label.textContent === bad && n.anchors.length === 0, 'link render: unsafe URLs must stay plain text, got ' + n.anchors.length + ' anchor(s)');
+    // markup in the wording is text, never an element
+    const evil = '<script>alert(1)</script><img src=x onerror=alert(1)> ' + SMS;
+    const e = await mountWith(evil);
+    const tags = []; const walkT = (x) => { for (const c of x.children) { tags.push(c.tagName); walkT(c); } }; walkT(e.label);
+    ok(e.label.textContent === evil, 'link render: markup must display as text verbatim');
+    ok(!tags.includes('script') && !tags.includes('img') && e.anchors.length === 1, 'link render: markup created elements: ' + tags.join(','));
+    // clicking a link does not change the checkbox
+    const k = await mountWith(real);
+    const kbox = k.mountEl.find((n) => n.attrs.id === 'smsVerifyConsent');
+    let changes = 0; kbox.addEventListener('change', () => { changes++; });
+    if (k.anchors.length < 2) { ok(false, 'link click: anchors missing, cannot test'); return fails; }
+    await k.anchors[0].fire('click');
+    ok(kbox.checked === false && changes === 0, 'link click toggled the consent box (unticked case)');
+    kbox.checked = true; await kbox.fire('change'); changes = 0;
+    await k.anchors[1].fire('click');
+    ok(kbox.checked === true && changes === 0 && !kbox.disabled === true, 'link click changed the consent box (ticked case)');
+  }
   return fails;
 }
 
@@ -191,12 +236,14 @@ async function mustFail(name, src, needle) {
 await mustFail('consent guard removed from sendCode', SRC.replace("if (state.consentChecked !== true) return { ok: false, error_code: 'consent_required', message: errorText('consent_required') };\n      if (state.busy) return { ok: false, error_code: 'busy', message: GENERIC_ERROR };\n      state.busy = true;\n      try {\n        var res = await deps.invoke(body('start'", "if (state.busy) return { ok: false, error_code: 'busy', message: GENERIC_ERROR };\n      state.busy = true;\n      try {\n        var res = await deps.invoke(body('start'"), 'unticked made');
 await mustFail('box pre-ticked', SRC.replace('consentChecked: false, // never pre-ticked', 'consentChecked: true,'), 'unticked');
 await mustFail('failure treated as verified', SRC.replace("state.verified = true; state.verifiedPhone = phone;", "state.verified = true; state.verifiedPhone = phone; /*always*/").replace("if (!res.error && res.data && res.data.success === true) {\n          state.verified", "if (true) {\n          state.verified"), 'must not verify');
-await mustFail('disclosure written with innerHTML-style parsing', SRC.replace("ctl.state.disclosure.disclosure_text); // verbatim, as text", "ctl.state.disclosure.disclosure_text.replace(/<[^>]*>/g, '')); // verbatim, as text"), 'verbatim');
+await mustFail('disclosure written with innerHTML-style parsing', SRC.replace("renderDisclosure(doc, label, ctl.state.disclosure.disclosure_text);", "renderDisclosure(doc, label, ctl.state.disclosure.disclosure_text.replace(/<[^>]*>/g, ''));"), 'verbatim');
 await mustFail('START step dropped from opted-out message', SRC.replaceAll('requires texting START first', 'is not possible'), 'texting START first');
 await mustFail('success line promises alerts', SRC.replace("'Number verified and saved.'", "'Number verified. You will get text alerts at this number.'"), 'promise alerts');
 await mustFail('no-disclosure still offered', SRC.replace("if (d && typeof d.id === 'string' && d.id && typeof d.disclosure_text === 'string' && d.disclosure_text.trim() !== '') {", "if (d) {"), 'blank disclosure');
 await mustFail('N1: box not locked after verify', SRC.replace("box.disabled = ctl.state.verified === true;", "box.disabled = false;"), 'consent box must be disabled');
 await mustFail('N4: null contractor still offered the box', SRC.replace("contractorId ? await ctl.init() : false", "await ctl.init()"), 'null contractor');
+await mustFail('L1: links reverted to textContent-only', SRC.replace("renderDisclosure(doc, label, ctl.state.disclosure.disclosure_text);", "label.textContent = ctl.state.disclosure.disclosure_text;"), 'expected 2 anchors');
+await mustFail('L1: host allow-list removed', SRC.replace("if (!Object.prototype.hasOwnProperty.call(LINK_HOSTS, u.hostname.toLowerCase())) return null;", ""), 'unsafe URLs must stay plain text');
 
 // ---------------------------------------------------------------- the pages
 const pre = read('contractor-pre-approval.html');
@@ -213,6 +260,7 @@ chk(!/sms_opt_in\s*:/.test(join), 'contractor-join still stores sms_opt_in');
 const HARD_CODED_CONSENT = /I agree to receive|Text me at this number|Msg & data rates|Reply STOP/i;
 chk(!HARD_CODED_CONSENT.test(pre + join + SRC), 'a hard-coded consent sentence is still in a page or script');
 chk(!/SMS Terms|Privacy Policy/.test(SRC), 'the script hard-codes disclosure links; the signed row text carries them');
+chk(!/innerHTML|insertAdjacentHTML|outerHTML|document\.write/.test(SRC), 'the script must never parse the disclosure as HTML');
 chk(!/!contractor\s*\|\|/.test(pre), 'mountSmsVerify returns silently when the contractor is missing');
 chk(/function mountSmsVerify/.test(pre) && /if \(n === 3\) mountSmsVerify\(\)/.test(pre), 'step 3 does not mount the screen');
 chk(!/'agreeTcpaSms'/.test(pre) && /'agreeToPartnerAgreement','agreeToCancellationPolicy','agreeToAttestation'\]/.test(pre), 'submitStep3 required list changed unexpectedly');

@@ -3,8 +3,7 @@
  * "verify a number for text alerts" step at signup (contractor-pre-approval.html, step 3).
  *
  * THIS FILE CONTAINS NO CONSENT OR LEGAL WORDING. The consent sentence the contractor sees is the
- * `disclosure_text` of the current row in public.sms_disclosure_versions, rendered verbatim with
- * textContent. The same row is what contractor-sms-verify (the Edge Function) copies onto the
+ * `disclosure_text` of the current row in public.sms_disclosure_versions, rendered verbatim (text nodes; its otterquote.com URLs become links, no wording added). The same row is what contractor-sms-verify (the Edge Function) copies onto the
  * per-number consent record, so the words on the screen and the words on the record cannot drift.
  * If no current row exists the screen offers nothing (fails closed): no box, no field, no text.
  *
@@ -171,6 +170,53 @@
     return n;
   }
 
+  // ---- Disclosure rendering: the row's text, verbatim, with otterquote.com URLs made clickable. ----
+  // No wording is added or changed: every character of disclosure_text is shown exactly as stored.
+  // URL segments become <a> (textContent = the URL as written); everything else is a text node.
+  // Never parsed as markup. Only https:// (or a bare otterquote.com/... path, linked with https:// prepended
+  // to href only) on the allow-listed hosts is linked; anything else stays plain text.
+  var LINK_HOSTS = { 'otterquote.com': 1, 'www.otterquote.com': 1, 'app.otterquote.com': 1 };
+  var URL_RE = /(https?:\/\/[^\s<>"']+|(?:www\.|app\.)?otterquote\.com\/[^\s<>"']*)/gi;
+  var TRAIL_RE = /[.,;:!?)\]]+$/;
+
+  function safeHref(candidate) {
+    var href = /^https?:\/\//i.test(candidate) ? candidate : 'https://' + candidate;
+    try {
+      var u = new URL(href);
+      if (u.protocol !== 'https:') return null;
+      if (u.username || u.password) return null;
+      if (!Object.prototype.hasOwnProperty.call(LINK_HOSTS, u.hostname.toLowerCase())) return null;
+      return href;
+    } catch (e) { return null; }
+  }
+
+  function renderDisclosure(doc, container, text) {
+    var last = 0, m;
+    URL_RE.lastIndex = 0;
+    function addText(t) { if (t) container.appendChild(doc.createTextNode(t)); }
+    while ((m = URL_RE.exec(text)) !== null) {
+      var raw = m[0];
+      var trail = TRAIL_RE.exec(raw);
+      var url = trail ? raw.slice(0, raw.length - trail[0].length) : raw;
+      var href = url ? safeHref(url) : null;
+      // a bare-domain match glued to a preceding word/dot/@/slash char is part of some other string
+      if (href && !/^https?:/i.test(url) && m.index > 0 && /[\w.@\/-]/.test(text.charAt(m.index - 1))) href = null;
+      addText(text.slice(last, m.index));
+      if (href) {
+        var a = el(doc, 'a', { href: href, target: '_blank', rel: 'noopener noreferrer' }, url);
+        // A link click must never toggle the consent box. Browsers already skip label activation for
+        // interactive content inside a label; stopping propagation keeps any wrapper handler out too.
+        a.addEventListener('click', function (ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); });
+        container.appendChild(a);
+        addText(raw.slice(url.length));
+      } else {
+        addText(raw);
+      }
+      last = m.index + raw.length;
+    }
+    addText(text.slice(last));
+  }
+
   /**
    * Build the screen inside `mountEl`. Returns the controller. Idempotent per element.
    * With no current disclosure row the mount shows one plain line and no controls.
@@ -197,7 +243,8 @@
     var row = el(doc, 'div', { 'class': 'check-group' });
     var box = el(doc, 'input', { type: 'checkbox', id: 'smsVerifyConsent' }); // no `checked`: never pre-ticked
     box.checked = false;
-    var label = el(doc, 'label', { 'for': 'smsVerifyConsent' }, ctl.state.disclosure.disclosure_text); // verbatim, as text
+    var label = el(doc, 'label', { 'for': 'smsVerifyConsent' }); // visible text is the row's disclosure_text, byte for byte
+    renderDisclosure(doc, label, ctl.state.disclosure.disclosure_text);
     row.appendChild(box); row.appendChild(label);
     mountEl.appendChild(row);
 
