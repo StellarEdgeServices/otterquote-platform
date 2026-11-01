@@ -18,7 +18,7 @@ No backfill is in the file. Rollback restores both bodies exactly and drops only
 ## Measured 2026-10-30 (SELECT only)
 | What | Value |
 |---|---|
-| profiles with internal-test email and is_test<>true | 38 (gmail 18, stellaredgeservices 13, otterquote 4, stohlerroof 2, tryotterquote 1) |
+| profiles with internal-test email and is_test<>true | 40 on 2026-11-01 (38 on 2026-10-30; +2 @otterquote.com sign-ups of 2026-10-31): gmail 18, stellaredgeservices 13, otterquote 6, stohlerroof 2, tryotterquote 1 |
 | claims owned by those profiles with is_test<>true | 3 |
 | claims on is_test profiles with is_test<>true | 0 |
 | non-internal profiles is_test<>true / is_test=true | 10 / 1 |
@@ -26,9 +26,9 @@ No backfill is in the file. Rollback restores both bodies exactly and drops only
 ## Proof plan (run by the CTO; BEFORE now, AFTER once applied)
 Replace `<apply_ts>` with the time the migration is applied.
 ```sql
--- P1 defect, profiles. BEFORE: 38. AFTER (new sign-ups only; old rows change only via the backfill): 0
+-- P1 defect, profiles. BEFORE: 40 (38 on 2026-10-30; re-read 2026-11-01). AFTER (new sign-ups only; old rows change only via the backfill): 0
 SELECT count(*) FROM profiles WHERE public.is_internal_test_email(email) AND is_test IS NOT TRUE AND created_at > '<apply_ts>';
--- (BEFORE reading, whole table, no created_at filter: 38. AFTER the backfill, whole table: 0)
+-- (BEFORE reading, whole table, no created_at filter: 40. AFTER the backfill, whole table: 0)
 SELECT count(*) FROM profiles WHERE public.is_internal_test_email(email) AND is_test IS NOT TRUE;
 -- P2 defect, claims. BEFORE: 3. AFTER the backfill: 0
 SELECT count(*) FROM claims c JOIN profiles p ON p.id = c.user_id WHERE public.is_internal_test_email(p.email) AND c.is_test IS NOT TRUE;
@@ -90,6 +90,25 @@ BEGIN
 END $t$;
 ```
 Read the results from the exception text. Expected BEFORE the migration: S1 INT=false SRV=false EXT=false FLG=true; S2 INT claim=false; S2/S4 EXT claims `false true`; S3 SRV claim=false; S5 FLG claim=false. Expected AFTER: S1 INT=true SRV=true EXT=false FLG=true; S2 INT claim=true; S2/S4 EXT claims still `false true` (negative control false, explicit true not lowered); S3 SRV claim=true; S5 FLG claim=false (narrowed inheritance: a manual flag on a non-internal profile does not reach its claims). If `set_config` for the JWT or the `authenticated` insert policy rejects the shape, adjust the claim columns to what the trade-selector insert sends; the status must stay `documents_needed` so the born-state refusal does not fire.
+
+## Staff sign-ups on the company domain (scope addition, Marty 6561809126 on Ben's instruction, 2026-11-01)
+Three @otterquote.com staff sign-ups (created 2026-10-28, 2026-10-31 x2) had `is_test = false` and inflate sign-up counts. **The existing predicate already covers them**: the live `is_internal_test_email(text)` lists `otterquote.com` in its domain set, so no predicate or function change, no hard-coded-id rule, and the domain rule catches future staff sign-ups through the `set_is_test_for_internal_test_domain()` trigger change and the backfill. A real customer cannot hold an @otterquote.com address (company domain). Of the three, the 2026-10-28 row was already in the 38; the two 2026-10-31 rows (one contractor, one homeowner) are new, so the backfill expected count moved 38 -> 40 and the rollback lists 40 ids. No claims are owned by the three (claims count stays 3). No service or system account was found on the domain (6 rows with `is_test=false` pre-apply: 5 homeowners + 1 contractor; none is a service account). Other callers of `is_internal_test_email` in prod: `is_internal_test_user`, `set_is_test_for_internal_test_domain`, `referral_agents_flag_internal_test`; the function is unchanged, so none of them changes behaviour.
+Note (not in scope, not changed): the 2026-10-31 contractor sign-up also has a `contractors` row (status `pending_approval`, `contractors.is_test = false`). This draft touches `profiles` and `claims` only; whether `contractors.is_test` should follow is a question for Ben.
+
+Pre-apply SELECTs (read 2026-11-01, project yeszghaspzwwstvsrioa, SELECT only):
+```sql
+-- S-A the staff set. Pre-apply expected: 6 rows on the domain with is_test false; 3 of them created on/after 2026-10-28 (the three named in the scope addition)
+SELECT count(*) FROM profiles WHERE lower(split_part(btrim(email),'@',2)) = 'otterquote.com' AND is_test IS NOT TRUE;                          -- live 2026-11-01: 6
+SELECT count(*) FROM profiles WHERE lower(split_part(btrim(email),'@',2)) = 'otterquote.com' AND is_test IS NOT TRUE AND created_at >= '2026-10-28'; -- live: 3
+-- S-B the backfill predicate itself. Pre-apply expected 40; AFTER the backfill 0
+SELECT count(*) FROM profiles WHERE public.is_internal_test_email(email) AND is_test IS NOT TRUE;                                              -- live: 40
+```
+**NEGATIVE CONTROL** (non-internal real rows stay `is_test = false`; the backfill is raise-only and predicate-scoped, so this set must be byte-identical before and after):
+```sql
+SELECT count(*), md5(string_agg(id::text, ',' ORDER BY id)) FROM profiles WHERE NOT public.is_internal_test_email(email) AND is_test IS NOT TRUE;
+-- live 2026-11-01 BEFORE: count 10, md5 64f8f4a1eebd6512e926f0f00c138b0c. AFTER must be the same count and md5 (none of the 10 matches the predicate, none contains "otterquote" in the email).
+SELECT count(*) FROM profiles WHERE NOT public.is_internal_test_email(email) AND is_test IS TRUE;   -- live BEFORE: 1; AFTER: 1 (untouched manual flag)
+```
 
 ## Backfill (decided)
 Ben ruled YES on #3197 (comments 6522509807, amended by 6522674646): a separate, raise-only draft applied in the same R-097 window, with its own rollback listing the ids it changed. Files: `gh3197_backfill_internal_test_is_test.sql` and `gh3197_backfill_internal_test_is_test_rollback.sql`. Ben dropped the row-paste precondition after the live `is_internal_test_email()` rule was read (no real homeowner can match). It must run as service_role / postgres (profiles_freeze_privileged_columns). Apply the migration first, then the backfill.

@@ -1,13 +1,13 @@
 -- STATUS (as of 2026-10-30): NOT APPLIED -- DRAFT
 -- FILE ROLE: rollback file of set gh3197_backfill_internal_test_is_test
--- EVIDENCE: production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): 38 profiles with is_internal_test_email(email) and is_test<>true
---   (gmail dustinstohler1 base 18, stellaredgeservices 13, otterquote 4, stohlerroof 2, tryotterquote 1) and 3 claims owned by them
+-- EVIDENCE: production read-only 2026-11-01 (project yeszghaspzwwstvsrioa; 38 on 2026-10-30, +2 @otterquote.com sign-ups of 2026-10-31): 40 profiles with is_internal_test_email(email) and is_test<>true
+--   (gmail dustinstohler1 base 18, stellaredgeservices 13, otterquote 6, stohlerroof 2, tryotterquote 1) and 3 claims owned by them
 --   (gmail 1, otterquote 1, tryotterquote 1). No database was written to produce this file.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 -- MUST RUN AS service_role / postgres: profiles_freeze_privileged_columns refuses is_test changes from client roles (gh-2785).
 --
--- Rollback: sets is_test back to false on exactly the rows the backfill changed (ids read 2026-10-30, hard-coded).
--- Rows that were created or flagged after 2026-10-30 are not touched. Run only if the backfill must be undone: it re-inflates real counts.
+-- Rollback: sets is_test back to false on exactly the rows the backfill changed (ids read 2026-10-30, plus the two 2026-10-31 @otterquote.com sign-ups read 2026-11-01; hard-coded).
+-- Rows that were created or flagged after 2026-11-01 are not touched. Run only if the backfill must be undone: it re-inflates real counts.
 
 BEGIN;
 
@@ -56,8 +56,10 @@ UPDATE public.profiles SET is_test = false WHERE id IN (
   '1e886b0c-d179-46c9-bb59-2abc3ce79691',
   '77d07836-ddc2-4bd3-8b0a-4de2a1353c4b',
   'b3ea9fca-a336-46e8-b98f-a8f73084372d',
-  '16a39dc8-5040-4ef5-8fc4-d4e3c0758a30'
+  '16a39dc8-5040-4ef5-8fc4-d4e3c0758a30',
+  'cf12a80d-24fd-4efb-b4a3-ca36f215dd95',
+  'ac869f4e-9afe-4244-a390-0fff42cdc6e9'
 );
--- expected: 38 rows
+-- expected: 40 rows
 
 COMMIT;

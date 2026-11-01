@@ -3,7 +3,7 @@
 -- EVIDENCE: production read-only 2026-10-30 (project yeszghaspzwwstvsrioa), pg_get_functiondef / pg_trigger / SELECT only:
 --   set_is_test_for_internal_test_domain() matches only '%@otterquote-internal.test'; is_internal_test_email() also accepts
 --   stellaredgeservices.com, tryotterquote.com, stohlerroof.com, otterquote.com and gmail dustinstohler1 / stacymortonfitfan (+tags).
---   38 profiles with an internal-test email have is_test<>true (gmail 18, stellaredgeservices 13, otterquote 4, stohlerroof 2,
+--   40 profiles with an internal-test email (re-read 2026-11-01; 38 on 2026-10-30) have is_test<>true (gmail 18, stellaredgeservices 13, otterquote 6, stohlerroof 2,
 --   tryotterquote 1); 3 claims owned by those profiles have is_test<>true. No claims trigger inherits profiles.is_test.
 --   No database was written to produce this file.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
