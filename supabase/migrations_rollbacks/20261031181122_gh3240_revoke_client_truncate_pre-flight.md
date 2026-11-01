@@ -1,9 +1,9 @@
 <!--
-STATUS (gh-1438, as of 2026-10-30T16:00:00Z): NOT APPLIED
+STATUS (gh-1438, as of 2026-11-01): APPLIED to production as ledger version 20261031181122 (issue #3240 comment 6547259462) ; this file is not run
 FILE ROLE: pre-flight file of set gh3240_revoke_client_truncate (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: drafted 2026-10-30 under #3240; production read-only queries the same day (project yeszghaspzwwstvsrioa, PostgreSQL 17.6). No database was written to produce this file.
-REPO COPY: none. When applied, move to supabase/migrations_rollbacks/.
-DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+REPO COPY: forward supabase/migrations/20261031181122_gh3240_revoke_client_truncate.sql; rollback and pre-flight in supabase/migrations_rollbacks/20261031181122_gh3240_revoke_client_truncate_*. The ledger row stores the same statements without the comment header and BEGIN/COMMIT (whitespace-normalised md5 equal); SQL here is unchanged from the draft.
+Pre-flight record; the forward migration is already applied.
 -->
 # Pre-flight: gh3240_revoke_client_truncate
 

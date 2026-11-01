@@ -1,8 +1,8 @@
--- STATUS (gh-1438, as of 2026-10-30T16:00:00Z): NOT APPLIED
--- FILE ROLE: forward file of set gh3240_revoke_client_truncate (pre-flight is gh3240_revoke_client_truncate_pre-flight.md)
+-- STATUS (gh-1438, as of 2026-11-01): APPLIED to production as ledger version 20261031181122 (issue #3240 comment 6547259462)
+-- FILE ROLE: forward file of set gh3240_revoke_client_truncate (rollback and pre-flight: supabase/migrations_rollbacks/20261031181122_gh3240_revoke_client_truncate_rollback.sql and ..._pre-flight.md)
 -- EVIDENCE: drafted 2026-10-30 under #3240. Production read-only 2026-10-30 (project yeszghaspzwwstvsrioa, PostgreSQL 17.6): 74 relations in schema public; anon holds TRUNCATE on 48 and authenticated on 50 (43 tables, 7 views), all granted by postgres, all owned by postgres; public.referrals relacl = {postgres=arwdDxtm/postgres,anon=wdDxtm/postgres,authenticated=wdDxtm/postgres,service_role=arwdDxtm/postgres}. No function in a non-system schema except storage.list_objects_with_delimiter (no TRUNCATE statement, a column name) mentions TRUNCATE; no cron.job command does (18 jobs). pg_default_acl for postgres and supabase_admin in public still grants arwdDxtm to anon and authenticated on new tables (out of scope, see the pre-flight). No database was written to produce this file.
--- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- REPO COPY: forward supabase/migrations/20261031181122_gh3240_revoke_client_truncate.sql; rollback and pre-flight in supabase/migrations_rollbacks/20261031181122_gh3240_revoke_client_truncate_*. The ledger row stores the same statements without the comment header and BEGIN/COMMIT (whitespace-normalised md5 equal); SQL here is unchanged from the draft.
+-- Already applied; do not run again.
 --
 -- Migration: gh3240_revoke_client_truncate
 -- GitHub: #3240 (follow-up (a) of Ben's R-177 SIGNED on #3225, 6524259012). Project P18. Tier 3B (grant change). R-134 protective-only.

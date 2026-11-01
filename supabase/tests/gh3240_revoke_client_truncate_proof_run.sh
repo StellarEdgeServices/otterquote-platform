@@ -14,8 +14,8 @@ cd "$(dirname "$0")/../.."
 MUT=0
 if [ "${1:-}" = "--mutations" ]; then MUT=1; shift; fi
 OUT="${1:-$(mktemp -d)}"; mkdir -p "$OUT"
-D=supabase/migrations_drafts; T=supabase/tests
-FWD="$D/gh3240_revoke_client_truncate.sql"; RBK="$D/gh3240_revoke_client_truncate_rollback.sql"
+T=supabase/tests
+FWD="supabase/migrations/20261031181122_gh3240_revoke_client_truncate.sql"; RBK="supabase/migrations_rollbacks/20261031181122_gh3240_revoke_client_truncate_rollback.sql"
 SETUP="$T/gh3240_revoke_client_truncate_scratch_setup.sql"; PROOF="$T/gh3240_revoke_client_truncate_proof.sql"
 DB=gh3240_proof; rc=0
 NCHECKS=10
