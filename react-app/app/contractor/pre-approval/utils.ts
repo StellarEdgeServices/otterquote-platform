@@ -385,14 +385,14 @@ export function buildAttestationPayload(userAgent: string, nowIso: string): PreA
   };
 }
 
-/** The 3 REQUIRED agreement checkboxes (agreeTcpaSms is optional). Port of :1021. */
+/** The 3 REQUIRED agreement checkboxes. Port of :1021. */
 export const REQUIRED_AGREEMENT_CHECKS = [
   'agreeToPartnerAgreement',
   'agreeToCancellationPolicy',
   'agreeToAttestation',
 ] as const;
 
-/** Step-3 gate. Port of the required-check loop at :1022-1028 (TCPA optional). */
+/** Step-3 gate. Port of the required-check loop at :1022-1028 (no SMS box; D-391 layer 4b). */
 export function step3Complete(partner: boolean, cancellation: boolean, attestation: boolean): boolean {
   return partner && cancellation && attestation;
 }
@@ -413,13 +413,13 @@ export async function acceptCpa(
 
 /**
  * contractors UPDATE at Step-3 submit. VERBATIM port of :1041-1055 — the cpa/attestation/
- * agreement version stamps, the ic_24511_attestation JSONB, sms_consent_ts gated on the
- * optional TCPA box, and onboarding_step=3.
+ * agreement version stamps, the ic_24511_attestation JSONB, and onboarding_step=3.
+ * D-391 layer 4b (gh-2875 N6): this page no longer captures SMS consent, so the update carries
+ * no sms_consent_ts / sms_opt_in column (an unchecked box used to write a null consent timestamp).
  */
 export function buildStep3ContractorUpdate(
   contractor: { contact_name?: unknown; attestation_signer_title?: unknown; [key: string]: unknown },
   attestation: PreApprovalAttestation,
-  tcpaChecked: boolean,
   nowIso: string,
 ): Record<string, unknown> {
   return {
@@ -430,7 +430,6 @@ export function buildStep3ContractorUpdate(
     attestation_text_version: ATTESTATION_TEXT_VERSION,
     attestation_accepted_at: nowIso,
     ic_24511_attestation: attestation,
-    sms_consent_ts: tcpaChecked ? nowIso : null,
     onboarding_step: 3,
     updated_at: nowIso,
   };
