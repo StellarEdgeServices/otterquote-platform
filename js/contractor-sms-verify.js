@@ -184,7 +184,7 @@
       loadDisclosure: makeLoadDisclosure(sb),
       invoke: function (b) { return sb.functions.invoke(FUNCTION_NAME, { body: b }); }
     });
-    var available = await ctl.init();
+    var available = contractorId ? await ctl.init() : false; // no contractor record => same unavailable line, never a stuck 'Loading'
 
     mountEl.textContent = '';
     mountEl.appendChild(el(doc, 'strong', null, 'Text alerts (optional)'));
@@ -201,12 +201,6 @@
     row.appendChild(box); row.appendChild(label);
     mountEl.appendChild(row);
 
-    var links = el(doc, 'p', { 'data-oq-sms': 'links' });
-    var a1 = el(doc, 'a', { href: 'sms-terms', target: '_blank', rel: 'noopener' }, 'SMS Terms');
-    var a2 = el(doc, 'a', { href: 'privacy.html', target: '_blank', rel: 'noopener' }, 'Privacy Policy');
-    links.appendChild(a1); links.appendChild(doc.createTextNode(' · ')); links.appendChild(a2);
-    mountEl.appendChild(links);
-
     var phone = el(doc, 'input', { type: 'tel', id: 'smsVerifyPhone', placeholder: '(555) 123-4567', autocomplete: 'tel', 'aria-label': 'Mobile number for text alerts' });
     var send = el(doc, 'button', { type: 'button', id: 'smsVerifySend' }, 'Send code');
     var codeIn = el(doc, 'input', { type: 'text', id: 'smsVerifyCode', inputmode: 'numeric', maxlength: '6', placeholder: '6-digit code', autocomplete: 'one-time-code', 'aria-label': 'Verification code' });
@@ -221,6 +215,7 @@
 
     function sync() {
       var on = ctl.state.consentChecked === true;
+      box.disabled = ctl.state.verified === true; // once verified, the box is locked: nothing here withdraws consent
       send.disabled = !on || ctl.state.verified;
       verify.disabled = !on || ctl.state.verified;
       phone.disabled = !on || ctl.state.verified;

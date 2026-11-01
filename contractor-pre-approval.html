@@ -608,8 +608,8 @@
     // gh-1916 / D-391: build the verify-a-number screen once the contractor row is known. Never throws into the wizard.
     function mountSmsVerify() {
         try {
-            if (!window.OQSmsVerify || !contractor || !contractor.id) return;
-            window.OQSmsVerify.mount(document.getElementById('smsVerifyMount'), sb, contractor.id);
+            if (!window.OQSmsVerify) return;
+            window.OQSmsVerify.mount(document.getElementById('smsVerifyMount'), sb, contractor && contractor.id ? contractor.id : null);
         } catch (e) { console.warn('[sms-verify] mount failed (step is optional):', e); }
     }
 
