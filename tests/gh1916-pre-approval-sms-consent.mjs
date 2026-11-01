@@ -150,6 +150,30 @@ export async function runChecks(src) {
     ok(st === 'Number verified and saved.', 'success line must be exactly the true statement, got ' + JSON.stringify(st));
     ok(!/will get|alerts at/i.test(st), 'success line must not promise alerts');
   }
+  // 8. N1 (REVIEW: FAIL 6546076270): once verified the box is locked; an untick attempt cannot look like withdrawn consent.
+  {
+    const sb = fakeSb(); const doc = fakeDoc(); const mountEl = new FakeNode('div', doc);
+    await V.mount(mountEl, sb, '11111111-1111-4111-8111-111111111111');
+    const box = mountEl.find((n) => n.attrs.id === 'smsVerifyConsent');
+    const status = mountEl.find((n) => n.attrs.id === 'smsVerifyStatus');
+    box.checked = true; await box.fire('change');
+    await mountEl.find((n) => n.attrs.id === 'smsVerifySend').fire('click');
+    await mountEl.find((n) => n.attrs.id === 'smsVerifyCheck').fire('click');
+    ok(status.textContent === 'Number verified and saved.', 'precondition: number should be verified');
+    // A browser does not let the user untick a disabled box, so the attempt only lands if the box is still enabled.
+    if (!box.disabled) { box.checked = false; await box.fire('change'); }
+    ok(box.disabled === true, 'after verifying, the consent box must be disabled');
+    ok(box.checked === true, 'after verifying, the consent box must stay ticked');
+    ok(status.textContent === 'Number verified and saved.', 'after an untick attempt the success line must still show, got ' + JSON.stringify(status.textContent));
+  }
+  // 9. N4: no contractor record => the same unavailable line, no box, no request (never a stuck "Loading").
+  {
+    const sb = fakeSb(); const doc = fakeDoc(); const mountEl = new FakeNode('div', doc);
+    await V.mount(mountEl, sb, null);
+    ok(!!mountEl.find((n) => n.attrs['data-oq-sms'] === 'unavailable'), 'null contractor: the unavailable line must render');
+    ok(mountEl.find((n) => n.attrs.type === 'checkbox') === null, 'null contractor: no consent box may render');
+    ok(sb.invokes.length === 0, 'null contractor: no request may be made');
+  }
   return fails;
 }
 
@@ -171,6 +195,8 @@ await mustFail('disclosure written with innerHTML-style parsing', SRC.replace("c
 await mustFail('START step dropped from opted-out message', SRC.replaceAll('requires texting START first', 'is not possible'), 'texting START first');
 await mustFail('success line promises alerts', SRC.replace("'Number verified and saved.'", "'Number verified. You will get text alerts at this number.'"), 'promise alerts');
 await mustFail('no-disclosure still offered', SRC.replace("if (d && typeof d.id === 'string' && d.id && typeof d.disclosure_text === 'string' && d.disclosure_text.trim() !== '') {", "if (d) {"), 'blank disclosure');
+await mustFail('N1: box not locked after verify', SRC.replace("box.disabled = ctl.state.verified === true;", "box.disabled = false;"), 'consent box must be disabled');
+await mustFail('N4: null contractor still offered the box', SRC.replace("contractorId ? await ctl.init() : false", "await ctl.init()"), 'null contractor');
 
 // ---------------------------------------------------------------- the pages
 const pre = read('contractor-pre-approval.html');
@@ -184,7 +210,10 @@ chk(!/<input[^>]*type="checkbox"[^>]*\bchecked\b[^>]*>/i.test(pre.slice(pre.inde
 chk(!/sms_opt_in\s*:/.test(pre) && !/sms_consent_ts\s*:\s*now/.test(pre), 'pre-approval still writes legacy sms_opt_in / sms_consent_ts');
 chk(!/id="smsConsent"/.test(join) && !/smsConsent/.test(join), 'contractor-join still has the D-328 smsConsent box');
 chk(!/sms_opt_in\s*:/.test(join), 'contractor-join still stores sms_opt_in');
-chk(!/I agree to receive/i.test(pre + join + SRC), 'a hard-coded consent sentence is still in a page or script');
+const HARD_CODED_CONSENT = /I agree to receive|Text me at this number|Msg & data rates|Reply STOP/i;
+chk(!HARD_CODED_CONSENT.test(pre + join + SRC), 'a hard-coded consent sentence is still in a page or script');
+chk(!/SMS Terms|Privacy Policy/.test(SRC), 'the script hard-codes disclosure links; the signed row text carries them');
+chk(!/!contractor\s*\|\|/.test(pre), 'mountSmsVerify returns silently when the contractor is missing');
 chk(/function mountSmsVerify/.test(pre) && /if \(n === 3\) mountSmsVerify\(\)/.test(pre), 'step 3 does not mount the screen');
 chk(!/'agreeTcpaSms'/.test(pre) && /'agreeToPartnerAgreement','agreeToCancellationPolicy','agreeToAttestation'\]/.test(pre), 'submitStep3 required list changed unexpectedly');
 assert.deepEqual(page, [], 'pages: ' + page.join(' | '));
@@ -194,9 +223,11 @@ const pageMut = (name, mutated, needle) => {
   const out = [];
   const c2 = (c, m) => { if (!c) out.push(m); };
   c2(!/agreeTcpaSms/.test(mutated), 'pre-approval still has the D-328 #agreeTcpaSms box');
-  c2(!/I agree to receive/i.test(mutated), 'a hard-coded consent sentence is still in a page or script');
+  c2(!HARD_CODED_CONSENT.test(mutated), 'a hard-coded consent sentence is still in a page or script');
   assert.ok(out.some((s) => s.includes(needle)), `${name}: not caught: ${JSON.stringify(out)}`);
   console.log('PASS (negative control): ' + name);
 };
 pageMut('old checkbox restored', pre.replace('id="smsVerifyMount"', 'id="smsVerifyMount"><input type="checkbox" id="agreeTcpaSms"><i'), 'D-328');
 pageMut('hard-coded sentence restored', pre.replace('Text alerts (optional)', 'I agree to receive SMS from Otter Quotes'), 'hard-coded');
+pageMut('seed sentence inserted', pre.replace('Text alerts (optional)', 'Text me at this number about my account'), 'hard-coded');
+pageMut('rates wording inserted', pre.replace('Text alerts (optional)', 'Msg & data rates may apply'), 'hard-coded');
