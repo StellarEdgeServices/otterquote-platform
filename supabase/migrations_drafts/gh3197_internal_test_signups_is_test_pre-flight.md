@@ -106,7 +106,7 @@ SELECT count(*) FROM profiles WHERE public.is_internal_test_email(email) AND is_
 **NEGATIVE CONTROL** (non-internal real rows stay `is_test = false`; the backfill is raise-only and predicate-scoped, so this set must be byte-identical before and after):
 ```sql
 SELECT count(*), md5(string_agg(id::text, ',' ORDER BY id)) FROM profiles WHERE NOT public.is_internal_test_email(email) AND is_test IS NOT TRUE;
--- live 2026-11-01 BEFORE: count 10, md5 64f8f4a1eebd6512e926f0f00c138b0c. AFTER must be the same count and md5 (none of the 10 matches the predicate, none contains "otterquote" in the email).
+-- live 2026-11-01 BEFORE: count 10, md5 prefix 64f8f4a1eebd (first 12 hex of the md5 this query returns; compare the leading 12 characters). AFTER must be the same count and md5 prefix (none of the 10 matches the predicate, none contains "otterquote" in the email).
 SELECT count(*) FROM profiles WHERE NOT public.is_internal_test_email(email) AND is_test IS TRUE;   -- live BEFORE: 1; AFTER: 1 (untouched manual flag)
 ```
 
