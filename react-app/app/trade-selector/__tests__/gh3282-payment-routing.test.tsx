@@ -78,8 +78,9 @@ describe('payment-route.ts -- routing table', () => {
     expect(paymentDestination('cash', null)).toBe(OOP);
     expect(PAYMENT_DESTINATIONS).toEqual({ rcv: RCV, acv: ACV, oop: OOP });
   });
-  it('"I\'m not sure" keeps the existing behaviour (RCV)', () => {
+  it('"I\'m not sure" routes to the RCV destination but is not an RCV answer', () => {
     expect(resolvePaymentRoute('insurance', 'idk')).toBe('rcv');
+    expect(paymentDestination('insurance', 'idk')).toBe(RCV);
   });
   it('negative control: unanswered never resolves', () => {
     expect(resolvePaymentRoute(null, null)).toBeNull();
@@ -160,6 +161,21 @@ describe('TradeSelectorPage -- D-407 payment routing walk', () => {
     await waitFor(() => expect(hrefSets.length).toBeGreaterThan(0));
     expect(hrefSets.at(-1)).toBe(`${RCV}?claim_id=new-claim-id`);
     expect((claimsInsertMock.mock.calls[0][0] as Record<string, unknown>).job_type).toBe('insurance_rcv');
+  });
+
+  it('"I\'m not sure": routes to the RCV page, stores policy_type idk, never rcv', async () => {
+    render(<TradeSelectorPage />);
+    fireEvent.click(await screen.findByText('Insurance Claim'));
+    await waitFor(() => expect(screen.getByText('What type of insurance policy do you have?')).toBeInTheDocument());
+    fireEvent.click(screen.getByText("I'm Not Sure"));
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    await finishFromTrades();
+    await waitFor(() => expect(hrefSets.length).toBeGreaterThan(0));
+    expect(hrefSets.at(-1)).toBe(`${RCV}?claim_id=new-claim-id`);
+    const payload = claimsInsertMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.funding_type).toBe('insurance');
+    expect(payload.policy_type).toBe('idk');
+    expect(payload.policy_type).not.toBe('rcv');
   });
 
   it('answer 4: Insurance then ACV lands on the ACV page', async () => {

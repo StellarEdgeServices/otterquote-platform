@@ -46,7 +46,12 @@ export function needsPolicyQuestion(funding: FundingAnswer | null): boolean {
 /**
  * The route a completed answer set resolves to, or null while unanswered.
  * No answer (or Insurance without Q2) never resolves, so nothing advances.
- * 'idk' resolves to RCV, the wizard's existing behaviour (job type insurance_rcv).
+ * 'idk' ("I'm not sure") routes to the RCV destination for now, but it stays its own
+ * answer: the wizard stores policy_type 'idk' (the existing value, allowed by
+ * claims_policy_type_check) and nothing may rewrite it to 'rcv' (D-079: the
+ * homeowner's answer is the source of truth; Ben's ruling on #3282). The RCV
+ * page reads the stored policy_type to hide its RCV assertion and skip its own
+ * policy write (#3283 / #3296 code, not this file).
  */
 export function resolvePaymentRoute(
   funding: FundingAnswer | null,
