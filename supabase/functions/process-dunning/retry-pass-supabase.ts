@@ -172,6 +172,8 @@ export function buildRetryPassDeps(
 ): RetryPassDeps {
   return {
     now: nowFn,
+    // gh-3293: derived from the key itself, so the live-key rule in retry-pass.ts cannot be skipped by a mis-set flag.
+    keyMode: stripeSecretKey.startsWith("sk_test_") || stripeSecretKey.startsWith("rk_test_") ? "test" : "live",
     async listCandidateRows(sinceIso: string): Promise<FailureRow[]> {
       const cols = "id, quote_id, contractor_id, claim_id, amount_cents, dunning_status, resolved_at, homeowner_notify_at, retry_requested_at, retry_request_count, retry_handled_at, retry_unknown_at, retry_unknown_attempt";
       const { data: req, error } = await supabase
@@ -280,7 +282,7 @@ export function buildRetryPassDeps(
     async chargeGuard(claimId: string | null) {
       const { data: claim } = await supabase.from("claims").select(guard.GUARD_SELECT).eq("id", claimId ?? "").maybeSingle();
       const verdict = guard.evaluateLiveChargeGuard(claim);
-      return { allow: verdict.allow, reason: verdict.reason, message: verdict.allow ? "" : guard.describeGuardVerdict(verdict, claimId, 0) };
+      return { allow: verdict.allow, reason: verdict.reason, isTest: claim?.is_test === true ? true : claim?.is_test === false ? false : undefined, message: verdict.allow ? "" : guard.describeGuardVerdict(verdict, claimId, 0) };
     },
     async getChargeMethods(contractorId: string) {
       const { data: c } = await supabase.from("contractors").select("stripe_customer_id, stripe_payment_method_id").eq("id", contractorId).single();
