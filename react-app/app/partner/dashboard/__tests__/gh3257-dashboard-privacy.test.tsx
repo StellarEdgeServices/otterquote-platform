@@ -122,6 +122,8 @@ describe('pure helpers', () => {
   it('the fee shows only once earned (commission_amount set)', () => {
     expect(referralFeeEarned({ commission_amount: null })).toBe(false);
     expect(referralFeeEarned({ commission_amount: 201 })).toBe(true);
+    expect(referralFeeEarned({ commission_amount: 0 })).toBe(false); // a reversal sets 0
+    expect(referralFeeCell({ commission_amount: 0 })).toBe('—');
     expect(referralFeeCell({ commission_amount: null })).toBe('—');
     expect(referralFeeCell({ commission_amount: 201 })).toBe('$201');
   });
@@ -171,6 +173,8 @@ describe('React refer page cells', () => {
     expect(declinedPaid).toMatchObject({ friend: 'Referral #1 — updates declined', showStatus: false, commission: '$200' });
     const declinedNotEarned = referralRowCells({ status: null, display_name: null, commission_amount: null }, 1);
     expect(declinedNotEarned).toMatchObject({ friend: 'Referral #2 — updates declined', showStatus: false, commission: '—' });
+    const declinedReversed = referralRowCells({ status: null, display_name: null, commission_amount: 0 }, 3);
+    expect(declinedReversed).toMatchObject({ showStatus: false, commission: '—' });
     const optedIn = referralRowCells({ status: 'job_completed', display_name: 'Bea K.' }, 2);
     expect(optedIn).toMatchObject({ friend: 'Bea K.', showStatus: true, statusLabel: 'Job Completed', commission: '$200' });
   });
@@ -182,6 +186,10 @@ describe('React refer page cells', () => {
       { status: 'commission_paid' },
     ]);
     expect(s).toEqual({ total: 4, completed: 3, earned: 400, pending: 200 });
+  });
+  it('summary does not count a reversed (commission_amount 0) declined row', () => {
+    const s = summarizeReferrals([{ status: null, commission_amount: 0, commission_paid_at: null }]);
+    expect(s).toEqual({ total: 1, completed: 0, earned: 0, pending: 0 });
   });
 });
 
@@ -275,7 +283,9 @@ describe('static refer-a-friend.html', () => {
       { status: null, display_name: null, commission_amount: 200, commission_paid_at: '2026-10-06T00:00:00Z', created_at: '2026-10-05T00:00:00Z' },
       { status: 'job_completed', display_name: 'Bea K.', commission_amount: 200, created_at: '2026-10-04T00:00:00Z' },
       { status: null, display_name: null, commission_amount: null, created_at: '2026-10-03T00:00:00Z' },
+      { status: null, display_name: null, commission_amount: 0, created_at: '2026-10-02T00:00:00Z' },
     ]);
+    expect(out[3]).toEqual(['Referral #4 — updates declined', expect.any(String), '—', '—']); // reversed fee: not shown as earned
     expect(out[0]).toEqual(['Referral #1 — updates declined', expect.any(String), '—', '$200']);
     expect(out[1]).toEqual(['Bea K.', expect.any(String), 'Job Completed', '$200']);
     expect(out[2]).toEqual(['Referral #3 — updates declined', expect.any(String), '—', '—']);
@@ -290,6 +300,13 @@ describe('static refer-a-friend.html', () => {
         { status: 'commission_paid', commission_amount: 200 },
       ]),
     ).toEqual({ 'total-earned': '$400', 'total-pending': '$200', 'referral-summary': '4 referrals · 3 completed · $400 earned' });
+  });
+  it('summary does not count a reversed (commission_amount 0) declined row', () => {
+    expect(staticReferSummary([{ status: null, commission_amount: 0, commission_paid_at: null }])).toEqual({
+      'total-earned': '$0',
+      'total-pending': '$0',
+      'referral-summary': '1 referral · 0 completed · $0 earned',
+    });
   });
 });
 

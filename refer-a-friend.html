@@ -1460,7 +1460,7 @@ Best regards`;
       // D-139 (#567): 'job_completed' has accrued but not yet paid out; 'commission_paid' is paid. gh-3245: the totals sum
       // the accrued commission_amount, so a completed referral with no fee (Partner Agreement v4 gate) adds $0.
       // gh-3257: a declined row (status NULL) counts from its fee fields instead of its status.
-      const declinedEarned = r => r.status == null && r.commission_amount != null;
+      const declinedEarned = r => r.status == null && referralFeeAmount(r) > 0;
       const isPaid = r => r.status === 'commission_paid' || (declinedEarned(r) && r.commission_paid_at != null);
       const isPending = r => r.status === 'job_completed' || (declinedEarned(r) && r.commission_paid_at == null);
       const paidAmt = referrals.filter(isPaid).reduce((t, r) => t + referralFeeAmount(r), 0);

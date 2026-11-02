@@ -22,7 +22,7 @@ export function declinedReferralLabel(index: number): string {
   return `Referral #${index + 1} — ${REFERRAL_UPDATES_DECLINED}`;
 }
 
-/** The referrer's own fee counts as earned once `commission_amount` is set (non-null). */
+/** The referrer's own fee counts as earned once `commission_amount` is above 0 (a reversal sets it to 0). */
 export function referralFeeEarned(ref: { commission_amount?: unknown } | null | undefined): boolean {
-  return !!ref && ref.commission_amount != null;
+  return !!ref && Number(ref.commission_amount) > 0;
 }
