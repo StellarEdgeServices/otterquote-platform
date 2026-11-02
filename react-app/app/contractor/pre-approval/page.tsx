@@ -638,7 +638,6 @@ function Step3Card({ contractor, onAdvance }: { contractor: ContractorRecord; on
   const [partner, setPartner] = useState(false);
   const [cancellation, setCancellation] = useState(false);
   const [attestation, setAttestation] = useState(false);
-  const [tcpa, setTcpa] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function submitStep3() {
@@ -654,7 +653,7 @@ function Step3Card({ contractor, onAdvance }: { contractor: ContractorRecord; on
     try {
       await acceptCpa((fn, args) => supabase.rpc(fn, args));
       const { data: upRows, error } = await supabase.from('contractors')
-        .update(buildStep3ContractorUpdate(contractor, payload, tcpa, nowIso))
+        .update(buildStep3ContractorUpdate(contractor, payload, nowIso))
         .eq('user_id', contractor.user_id)
         .select('id');
       if (error) throw error;
@@ -712,15 +711,6 @@ function Step3Card({ contractor, onAdvance }: { contractor: ContractorRecord; on
       <label className="oqp-check">
         <input type="checkbox" checked={attestation} onChange={(e) => setAttestation(e.target.checked)} />
         <span>{T.step3.attestation.checkLabel}</span>
-      </label>
-
-      <div className="oqp-info-box">
-        <strong>{T.step3.tcpa.heading}</strong>
-        <p>{T.step3.tcpa.body}</p>
-      </div>
-      <label className="oqp-check">
-        <input type="checkbox" checked={tcpa} onChange={(e) => setTcpa(e.target.checked)} />
-        <span>{T.step3.tcpa.checkLabel}</span>
       </label>
 
       <button type="button" className="oqp-btn-primary" disabled={busy} onClick={submitStep3}>{T.step3.advance}</button>
