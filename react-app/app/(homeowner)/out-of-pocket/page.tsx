@@ -114,6 +114,10 @@ function OopForm({
   }));
   const [material, setMaterial] = useState<MaterialSelectionState>(initialSelectionState);
   const [hasMeasurement, setHasMeasurement] = useState(!!claim.has_measurements);
+  // gh-3284: a stored ACV answer may use an insurance estimate in place of a measurement. Any other claim is unchanged.
+  const acceptEstimate = claim.policy_type === 'acv';
+  const [hasEstimate, setHasEstimate] = useState(!!claim.has_estimate);
+  const estimateRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -143,9 +147,31 @@ function OopForm({
     }
   }
 
+  async function onEstimateFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadError(null);
+    setUploading(true);
+    try {
+      const res = await uploadClaimDocument({
+        userId,
+        claimId: claim.id,
+        file,
+        timestamp: Date.now(),
+        kind: 'estimate',
+      });
+      if (res.ok) setHasEstimate(true);
+      else setUploadError(C.OOP_UPLOAD_FAILED);
+    } catch {
+      setUploadError(C.OOP_UPLOAD_FAILED);
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function onContinue() {
     setError(null);
-        const gaps = missingForOop({ contact, hasMeasurement, material });
+    const gaps = missingForOop({ contact, hasMeasurement, material, hasEstimate, acceptEstimate });
     if (gaps.length > 0) {
       setMissing(gaps.map((g) => C.MISSING_LABELS[g]));
       return;
@@ -174,7 +200,10 @@ function OopForm({
 
       <div className="d407-card">
         <h2>{C.OOP_MEASUREMENTS_HEADING}</h2>
-        <p className="d407-note">{C.OOP_MEASUREMENT_PROMPT}</p>
+        <p className="d407-note">{acceptEstimate ? C.OOP_ACV_MEASUREMENT_PROMPT : C.OOP_MEASUREMENT_PROMPT}</p>
+        {acceptEstimate && hasEstimate && (
+          <p className="d407-done" data-testid="d407-estimate-done">{C.OOP_ESTIMATE_DONE}</p>
+        )}
         {hasMeasurement ? (
           <p className="d407-done" data-testid="d407-measurement-done">{C.OOP_MEASUREMENT_DONE}</p>
         ) : (
@@ -184,6 +213,15 @@ function OopForm({
             </button>
             <input ref={fileRef} data-testid="d407-measurement-input" type="file" hidden onChange={onFile} />
             {' '}
+            {acceptEstimate && !hasEstimate && (
+              <>
+                <button type="button" className="d407-btn" data-testid="d407-estimate-button" disabled={uploading} onClick={() => estimateRef.current?.click()}>
+                  {uploading ? C.OOP_UPLOADING : C.OOP_ESTIMATE_UPLOAD_BUTTON}
+                </button>
+                <input ref={estimateRef} data-testid="d407-estimate-input" type="file" hidden onChange={onEstimateFile} />
+                {' '}
+              </>
+            )}
             <a className="d407-btn d407-btn-link" data-testid="d407-purchase-link" href={purchaseHref}>
               {C.OOP_PURCHASE_LINK}
             </a>
