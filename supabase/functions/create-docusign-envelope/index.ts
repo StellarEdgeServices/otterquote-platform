@@ -2604,9 +2604,29 @@ function colorRefusal(status: any, code: any, corsHeaders: any) {
     }
   });
 }
+// ========== D-407 (#3287): PROJECT CONFIRMATION AND COLOUR ENVELOPES ARE RETIRED ==========
+// D-407 (Dustin, 2026-10-30): ONE signed document per job; Project Confirmations are eliminated and
+// the separate colour envelope goes with them (D-393 amended, #3145). Both document types are still
+// ACCEPTED by the document_type validator so a stale client gets a clear 410 instead of a 400, but
+// nothing is read, claimed, rate-limited, minted or sent for them. The 410 for colour carries the
+// code `color_envelope_retired` (carried over from #3253, #3110). Columns stay for history
+// (claims.color_confirmation_envelope_id, project_confirmation_envelope_id); docusign-webhook still
+// recognises envelopes that were minted before this change.
+const RETIRED_ENVELOPE_CODES = {
+  color_confirmation: "color_envelope_retired",
+  project_confirmation: "project_confirmation_retired"
+};
+function retiredEnvelopeRefusal(documentType: any, corsHeaders: any) {
+  if (typeof documentType !== "string" || !Object.prototype.hasOwnProperty.call(RETIRED_ENVELOPE_CODES, documentType)) return null;
+  return colorRefusal(410, RETIRED_ENVELOPE_CODES[documentType as keyof typeof RETIRED_ENVELOPE_CODES], corsHeaders);
+}
 // ========== HANDLER: LEGACY CONTRACT / COLOR / PROJECT CONFIRMATION ==========
 async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   const { claim_id, document_type, contractor_id, signer, fields: providedFields, return_url } = requestBody;
+  // D-407 (#3287): defence in depth. serve() refuses these first; this keeps the mint code below
+  // unreachable for a retired type even if a future caller reaches handleLegacyFlow directly.
+  const retiredLegacy = retiredEnvelopeRefusal(document_type, corsHeaders);
+  if (retiredLegacy) return retiredLegacy;
   // gh-2105 (review 6325420063 item 2): the colour addendum is signed by the contractor the
   // homeowner SELECTED, never one the caller names. With one document per claim a wrong
   // counter-signer would stay on that claim for good, so the check runs before the resume and
@@ -3135,6 +3155,14 @@ serve(async (req)=>{
           "Content-Type": "application/json"
         }
       });
+    }
+    // ===== D-407 (#3287): retired document types are refused before ANY read or write =====
+    // No claim lookup, no ownership check, no rate-limit RPC, no BoldSign call: a PC or colour
+    // request creates nothing and spends nothing.
+    const retiredResponse = retiredEnvelopeRefusal(document_type, corsHeaders);
+    if (retiredResponse) {
+      console.warn(`[${FN_NAME}] refused retired document_type=${document_type} (D-407, 410)`);
+      return retiredResponse;
     }
     // ===== CALLER AUTHORIZATION + SERVER-SIDE SIGNER IDENTITY (86e1v6nnh) =====
     // Derive signer name/email from authenticated identity — never trust the request body.

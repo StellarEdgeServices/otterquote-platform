@@ -98,9 +98,6 @@ export const COLOR_COPY = {
   // signer-name fallback (static:639) — retained for parity; NOT sent in the addendum
   // payload (the EF derives the signer server-side; see utils.buildColorAddendumPayload).
   signerNameFallback: 'Homeowner',
-  // Confirmation note (static:516) — "<strong>Note:</strong> …" flattened.
-  confirmationNote:
-    'Note: Your color selection will be added to your contract as a separate addendum for signature.',
   confirmButton: 'Confirm My Color',
   confirmButtonSaving: 'Saving...',
   confirmButtonConfirmed: 'Color Confirmed ✓',
@@ -108,7 +105,7 @@ export const COLOR_COPY = {
 
   // ── Success state (color-selection.html:525) — "<strong>✓ Color confirmed!</strong> …" ──
   successText:
-    "✓ Color confirmed! We've saved your selection. You'll see the addendum on your next contract review.",
+    "✓ Color confirmed! We've saved your selection.",
 
   // ── Addendum signing (color-selection.html:1177-1185) — note literal em-dash in title ──
   addendumHeading: 'Sign Color Addendum',

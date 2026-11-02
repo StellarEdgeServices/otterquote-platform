@@ -78,5 +78,11 @@ const rb = stripComments(read('supabase/migrations_drafts/gh2105_color_contracto
 check('rollback: drops the function and nothing else', /DROP FUNCTION IF EXISTS public\.get_claim_color_contractor\(uuid\);/.test(rb) && !/DROP (TABLE|POLICY|VIEW)/i.test(rb));
 check('draft: not under supabase/migrations/ (never applied by this PR)', !fwdPath.startsWith('supabase/migrations/'));
 
+// D-407 / D-393 amended (#3287): the separate colour addendum is gone, so the page may not tell the
+// homeowner they will sign one. Dustin approved deleting these two statements (#3253, 6527199786).
+const addendumStatements = (html) => /separate addendum|addendum on your next contract review/.test(html);
+check('page: no "separate addendum" / "addendum on your next contract review" copy (D-407)', !addendumStatements(stripComments(read('color-selection.html'))));
+check('control: the addendum-copy guard detects the deleted sentence', addendumStatements('Your color selection will be added to your contract as a separate addendum for signature.'));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
