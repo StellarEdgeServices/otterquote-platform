@@ -35,6 +35,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { type GetEnv, serviceGate } from "./caller-gate.ts"; // gh-2462
+import { selectRefundKey, selectStripeKey } from "../_shared/stripe-key-select.ts"; // gh-3323
 
 const FUNCTION_NAME = "process-hover-rebate";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -73,7 +74,8 @@ interface RebateResult {
  */
 async function rebateOne(
   supabase: any,
-  stripeSecretKey: string,
+  // gh-3323: the key is chosen PER CLAIM below (Ben's ruling 6578880344), not once per request from the Origin.
+  keyCtx: { isStaging: boolean; getEnv: GetEnv },
   order: any,
 ): Promise<RebateResult> {
   const base: RebateResult = {
@@ -102,7 +104,7 @@ async function rebateOne(
   // mark-job-complete when the contractor finishes the job.
   const { data: claimRow, error: cErr } = await supabase
     .from("claims")
-    .select("user_id, is_test, completion_date")
+    .select("user_id, is_test, completion_date, live_charge_authorized_at")
     .eq("id", order.claim_id)
     .maybeSingle();
   if (cErr) {
@@ -113,6 +115,24 @@ async function rebateOne(
   }
   const claimUserId = claimRow.user_id ?? null;
   const claimIsTest = claimRow.is_test ?? false;
+
+  // gh-3323: key by the claim's is_test (read server-side just above). An is_test claim never gets the live key; one
+  // that may hold a live charge gets no automatic refund at all (manual only, Tier C). Refusal is a skip, not a
+  // failure: nothing is attempted, rebate_due stays true, and no Stripe call is made.
+  const keyChoice = selectRefundKey({
+    isStaging: keyCtx.isStaging,
+    claimIsTest,
+    liveChargeAuthorizedAt: claimRow.live_charge_authorized_at ?? null,
+    env: keyCtx.getEnv,
+  });
+  if (!keyChoice.ok) {
+    const manual = keyChoice.reason === "live_charge_on_test_claim_manual_refund_only";
+    console.error(manual
+      ? `[rebate] OPS: automatic refund REFUSED (${keyChoice.reason}) -- order ${order.id}, claim ${order.claim_id}. Manual-only (Tier C, entry 7).`
+      : `[rebate] OPS: refund NOT attempted, no usable Stripe key (${keyChoice.reason}) -- order ${order.id}, claim ${order.claim_id}.`);
+    return { ...base, detail: manual ? `Automatic refund refused (${keyChoice.reason}); manual only.` : `Refund not attempted, no usable Stripe key (${keyChoice.reason}).` };
+  }
+  const stripeSecretKey = keyChoice.key;
 
   // Stripe refund — idempotency key prevents double refund on retry.
   const basicAuth = btoa(`${stripeSecretKey}:`);
@@ -278,10 +298,10 @@ export async function handler(
   const _reqOrigin = req.headers.get("Origin") || "";
   const isStaging = _reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
     _reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
-  const stripeSecretKey = isStaging
-    ? (getEnv("STRIPE_SECRET_KEY_TEST") || getEnv("STRIPE_SECRET_KEY"))
-    : getEnv("STRIPE_SECRET_KEY");
-  if (!stripeSecretKey) {
+  // gh-3323: this is only the "is Stripe configured at all" gate, unchanged for real claims; the key a refund really
+  // uses is chosen per claim in rebateOne.
+  const keyCtx = { isStaging, getEnv };
+  if (!selectStripeKey({ isStaging, claimIsTest: false, env: getEnv }).ok) {
     return new Response(JSON.stringify({ error: "Stripe secret key not configured." }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -316,7 +336,7 @@ export async function handler(
 
       const results: RebateResult[] = [];
       for (const order of orders ?? []) {
-        results.push(await rebateOne(supabase, stripeSecretKey, order));
+        results.push(await rebateOne(supabase, keyCtx, order));
       }
       return new Response(JSON.stringify({ mode: "single", claim_id, processed: results.length, results }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -335,7 +355,7 @@ export async function handler(
 
     const results: RebateResult[] = [];
     for (const order of pending ?? []) {
-      results.push(await rebateOne(supabase, stripeSecretKey, order));
+      results.push(await rebateOne(supabase, keyCtx, order));
     }
     const rebated = results.filter(r => r.status === "rebated").length;
     const failed = results.filter(r => r.status === "failed").length;

@@ -65,3 +65,26 @@ export function selectStripeKey(args: {
   }
   return liveKey ? { ok: true, key: liveKey, mode: "live" } : { ok: false, reason: "key_not_configured" };
 }
+
+// gh-3323 (Ben's ruling 6578880344 on #3323) -- REFUNDS. A refund must reach the charge it refunds, and a refund of a
+// charge that really was live needs the live key. So for an is_test claim:
+//   * live_charge_authorized_at set  -> the claim may hold a LIVE charge (#1467: a human authorised one on purpose, and
+//     Dustin ruled "Keep it"). REFUSE the automatic refund; it happens only by hand, with Dustin's word (Tier C, entry 7).
+//     The marker over-approximates (it does not prove a live charge was made), and refusing is the safe direction.
+//   * otherwise -> the TEST key, exactly as selectStripeKey (never the live key, never a fallback to it).
+// Real claims (claimIsTest false) are unchanged: selectStripeKey's Origin-based pick.
+export type RefundKeyChoice =
+  | StripeKeyChoice
+  | { ok: false; reason: "live_charge_on_test_claim_manual_refund_only" };
+
+export function selectRefundKey(args: {
+  isStaging: boolean;
+  claimIsTest: boolean;
+  liveChargeAuthorizedAt?: string | null;
+  env: (name: string) => string | undefined;
+}): RefundKeyChoice {
+  if (args.claimIsTest && args.liveChargeAuthorizedAt) {
+    return { ok: false, reason: "live_charge_on_test_claim_manual_refund_only" };
+  }
+  return selectStripeKey({ isStaging: args.isStaging, claimIsTest: args.claimIsTest, env: args.env });
+}
