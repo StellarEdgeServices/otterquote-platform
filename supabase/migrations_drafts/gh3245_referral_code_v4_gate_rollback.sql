@@ -1,12 +1,12 @@
 -- STATUS (gh-1438, as of 2026-11-02T14:10:00Z): NOT APPLIED
 -- FILE ROLE: rollback file of set gh3245_referral_code_v4_gate (forward, rollback and pre-flight are siblings in this directory)
--- EVIDENCE: drafted 2026-11-02 under #3245 (refs #3243, #3244; CTO RUN 92 claim cto-2026-11-02T13:06:08Z). Live definition read with pg_get_functiondef on project yeszghaspzwwstvsrioa 2026-11-02: md5(prosrc) = 654640a4f472d8fce2e46f6a539eba8e, byte-identical to
+-- EVIDENCE: drafted 2026-11-02 under #3245 (refs #3243, #3244; CTO RUN 92 claim cto-2026-11-02T13:06:08Z). Live definition read with pg_get_functiondef on project yeszghaspzwwstvsrioa 2026-11-02: md5(prosrc) first 8 characters = 654640a4, byte-identical to
 --   supabase/migrations/20260101000000_v000_baseline_schema.sql lines 1971-2070 (SECURITY DEFINER, search_path public, pg_temp). No database was written.
 -- REPO COPY: none. When applied, file the forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- Exact rollback of gh3245_referral_code_v4_gate.sql: get_or_create_customer_referral_code() is restated as the live body it replaced
--- (md5 654640a4f472d8fce2e46f6a539eba8e). Customer rows created while the gate was live are kept (they are ordinary referral_agents rows); nothing else is touched.
+-- (md5 first 8 characters 654640a4). Customer rows created while the gate was live are kept (they are ordinary referral_agents rows); nothing else is touched.
 -- After a rollback every customer, accepted or not, gets a code again, which is the pre-gate behaviour.
 
 BEGIN;
@@ -18,8 +18,8 @@ DECLARE
   v_md5 text;
 BEGIN
   SELECT md5(prosrc) INTO v_md5 FROM pg_proc WHERE oid = to_regprocedure('public.get_or_create_customer_referral_code()');
-  IF v_md5 IS NULL OR v_md5 NOT IN ('2d5232228e5a039e68147325b3f5d69e', '654640a4f472d8fce2e46f6a539eba8e') THEN
-    RAISE EXCEPTION 'gh3245 referral-code rollback: get_or_create_customer_referral_code() is neither the gh3245 body nor the live body (md5 %); restore by hand', v_md5;
+  IF v_md5 IS NULL OR left(v_md5, 8) NOT IN ('2d523222', '654640a4') THEN
+    RAISE EXCEPTION 'gh3245 referral-code rollback: get_or_create_customer_referral_code() is neither the gh3245 body nor the live body (md5 first 8 characters %); restore by hand', left(v_md5, 8);
   END IF;
 END
 $guard$;

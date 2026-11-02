@@ -20,8 +20,8 @@ is expected) -> `accept_partner_agreement_v4()` -> get-or-create again (returns 
 
 ## Read-only checks before apply
 ```sql
--- A. the live body (expect 654640a4f472d8fce2e46f6a539eba8e, true, {search_path=public, pg_temp})
-SELECT md5(prosrc), prosecdef, proconfig FROM pg_proc WHERE oid = 'public.get_or_create_customer_referral_code()'::regprocedure;
+-- A. the live body (expect 654640a4, true, {search_path=public, pg_temp})
+SELECT left(md5(prosrc), 8), prosecdef, proconfig FROM pg_proc WHERE oid = 'public.get_or_create_customer_referral_code()'::regprocedure;
 -- B. gh3239 is applied (expect one row)
 SELECT to_regprocedure('public.partner_v4_accepted_at(uuid)');
 -- C. customer rows that would be refused a code today (record on the issue)
@@ -42,8 +42,8 @@ SELECT 'partner_row_accepted_no_customer_row', count(*) FROM public.referral_age
 
 ## Post-apply checks
 ```sql
--- expect 2d5232228e5a039e68147325b3f5d69e, true, {search_path=public, pg_temp}
-SELECT md5(prosrc), prosecdef, proconfig FROM pg_proc WHERE oid = 'public.get_or_create_customer_referral_code()'::regprocedure;
+-- expect 2d523222, true, {search_path=public, pg_temp}
+SELECT left(md5(prosrc), 8), prosecdef, proconfig FROM pg_proc WHERE oid = 'public.get_or_create_customer_referral_code()'::regprocedure;
 ```
 Behaviour probe: sign in as a test customer who has not accepted; `rpc('get_or_create_customer_referral_code')` returns `unique_code: null, v4_acceptance_required: true`; after
 `accept_partner_agreement_v4()` the same call returns the code.

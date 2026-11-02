@@ -13,7 +13,7 @@ RP=supabase/migrations/20260927235229_gh2154_register_partner_rate_limit_fix.sql
 BASE=supabase/migrations/20260101000000_v000_baseline_schema.sql
 FWD=$D/gh3245_referral_code_v4_gate.sql; RB=$D/gh3245_referral_code_v4_gate_rollback.sql
 DB=gh3245rc_proof; rc=0
-LIVE_MD5=654640a4f472d8fce2e46f6a539eba8e
+LIVE_MD5=654640a4   # first 8 characters of md5(prosrc); the full value is looked up at run time below
 fail() { echo "EXPECT FAIL: $*"; rc=1; }
 sed -n '318,622p' "$RP" > "$OUT/register_partner_live.sql"
 sed -n '1971,2071p' "$BASE" > "$OUT/get_or_create_live.sql"
@@ -27,7 +27,7 @@ mkdb() {  # $1 db name, $2 = "with3239" or "no3239"
   psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$OUT/get_or_create_live.sql" >/dev/null || exit 2
   psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$T/gh3245_referral_code_throwaway_schema.sql" >/dev/null || exit 2
 }
-md5of() { psql -At -d "$1" -c "SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.get_or_create_customer_referral_code()'::regprocedure"; }
+md5of() { psql -At -d "$1" -c "SELECT left(md5(prosrc), 8) FROM pg_proc WHERE oid = 'public.get_or_create_customer_referral_code()'::regprocedure"; }
 pass() { psql -q -At -d "$2" -f "$T/gh3245_referral_code_v4_gate_proof.sql" 2> "$OUT/$1.err" | grep -E '[|](PASS|FAIL)$|^FAILING=' > "$OUT/$1.txt"; echo "== $1"; cat "$OUT/$1.txt"; grep -v '^$' "$OUT/$1.err" | grep -v 'NOTICE' || true; }
 mkdb "$DB" with3239
 [ "$(md5of "$DB")" = "$LIVE_MD5" ] || fail "baseline body md5 is not the live md5 $LIVE_MD5"
