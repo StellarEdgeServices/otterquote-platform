@@ -499,6 +499,30 @@ def test_brand_new_ungranted_table_no_rename_still_flagged():
         return ok
 
 
+def test_allowlisted_applied_migration_not_flagged_but_lookalikes_are():
+    """gh-3137: the one allowlisted applied migration passes; a different
+    version, or the same slug under another version, with the same
+    ungranted table still FAILS (negative control)."""
+    new_text = (
+        "BEGIN;\n\n"
+        "CREATE TABLE contractor_cpa_acceptances (\n"
+        "  id UUID PRIMARY KEY DEFAULT gen_random_uuid()\n"
+        ");\n\n"
+        "COMMIT;\n"
+    )
+    allowed = "supabase/migrations/20261028152549_gh2995_accept_cpa_append_only.sql"
+    f_ok, n_ok = check.evaluate_file(allowed, "", new_text)
+    f_other, _ = check.evaluate_file(
+        "supabase/migrations/20261028152550_gh2995_accept_cpa_append_only.sql", "", new_text)
+    f_new, _ = check.evaluate_file(
+        "supabase/migrations/20261101000000_some_new_table.sql", "", new_text)
+    ok = (len(check.ALLOWLISTED_APPLIED_MIGRATIONS) == 1 and f_ok == [] and len(n_ok) == 1
+          and len(f_other) == 1 and len(f_new) == 1)
+    print("PASS  allowlist: only the exact applied migration is exempt; same table in any other file still fails"
+          if ok else "FAIL  allowlist case: ok=%r other=%r new=%r" % (f_ok, f_other, f_new))
+    return ok
+
+
 def main():
     results = [
         test_self_test_passes(),
@@ -520,6 +544,7 @@ def main():
         test_partition_parent_only_grant_fails(),
         test_partition_own_grant_passes(),
         test_existing_table_untouched_never_flagged(),
+        test_allowlisted_applied_migration_not_flagged_but_lookalikes_are(),
     ]
     ok = all(results)
     print("-" * 78)

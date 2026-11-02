@@ -140,6 +140,72 @@ describe('Out-of-pocket page', () => {
     expect(screen.queryByTestId('d407-purchase-link')).toBeNull();
   });
 
+  // gh-3284 (Ben, #3284 6578290796): a stored ACV answer may use an insurance estimate instead of a measurement.
+  it('ACV with an estimate on file and no measurement: Continue saves (one claims write, still insurance_acv)', async () => {
+    wire({ policy_type: 'acv', funding_type: 'insurance', has_measurements: false, has_estimate: true });
+    render(<Page />);
+    expect(await screen.findByTestId('d407-estimate-done')).toBeTruthy();
+    await pickShingle3Tab();
+    fireEvent.click(screen.getByTestId('d407-continue'));
+    await waitFor(() => expect(saveClaim).toHaveBeenCalledTimes(1));
+    const update = (saveClaim as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(update.job_type).toBe('insurance_acv');
+    expect(update.funding_type).toBe('insurance');
+    expect('policy_type' in update).toBe(false);
+  });
+
+  it('ACV with neither an estimate nor a measurement: blocked, and the list names both', async () => {
+    wire({ policy_type: 'acv', funding_type: 'insurance', has_measurements: false, has_estimate: false });
+    render(<Page />);
+    await pickShingle3Tab();
+    fireEvent.click(screen.getByTestId('d407-continue'));
+    expect((await screen.findByTestId('d407-missing')).textContent).toContain('Insurance estimate or measurement report');
+    expect(saveClaim).not.toHaveBeenCalled();
+  });
+
+  it('ACV estimate upload: uploadClaimDocument kind estimate, then the page can finish', async () => {
+    wire({ policy_type: 'acv', funding_type: 'insurance', has_measurements: false, has_estimate: false });
+    render(<Page />);
+    const input = await screen.findByTestId('d407-estimate-input');
+    fireEvent.change(input, { target: { files: [new File(['x'], 'estimate.pdf', { type: 'application/pdf' })] } });
+    await waitFor(() => expect(screen.getByTestId('d407-estimate-done')).toBeTruthy());
+    expect((uploadClaimDocument as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
+      kind: 'estimate',
+      claimId: 'c1',
+      userId: 'u1',
+    });
+    await pickShingle3Tab();
+    fireEvent.click(screen.getByTestId('d407-continue'));
+    await waitFor(() => expect(saveClaim).toHaveBeenCalledTimes(1));
+  });
+
+  it('ACV: the purchase link and the measurement upload are still offered', async () => {
+    wire({ policy_type: 'acv', funding_type: 'insurance', has_measurements: false, has_estimate: false });
+    render(<Page />);
+    expect(await screen.findByTestId('d407-purchase-link')).toBeTruthy();
+    expect(screen.getByTestId('d407-measurement-input')).toBeTruthy();
+  });
+
+  it('NEGATIVE CONTROL: a cash claim with an estimate on file and no measurement stays blocked, with no estimate upload offered', async () => {
+    wire({ funding_type: 'cash', has_measurements: false, has_estimate: true });
+    render(<Page />);
+    await pickShingle3Tab();
+    expect(screen.queryByTestId('d407-estimate-button')).toBeNull();
+    expect(screen.queryByTestId('d407-estimate-done')).toBeNull();
+    fireEvent.click(screen.getByTestId('d407-continue'));
+    expect((await screen.findByTestId('d407-missing')).textContent).toContain('Measurement report');
+    expect(saveClaim).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE CONTROL: a stored RCV answer with an estimate on file and no measurement stays blocked', async () => {
+    wire({ policy_type: 'rcv', funding_type: 'insurance', has_measurements: false, has_estimate: true });
+    render(<Page />);
+    await pickShingle3Tab();
+    fireEvent.click(screen.getByTestId('d407-continue'));
+    expect((await screen.findByTestId('d407-missing')).textContent).toContain('Measurement report');
+    expect(saveClaim).not.toHaveBeenCalled();
+  });
+
   it('MONEY: no price is typed in this route (no dollar amount in copy.ts or page.tsx)', () => {
     for (const f of ['copy.ts', 'page.tsx']) {
       const src = readFileSync(join(__dirname, '..', f), 'utf-8');

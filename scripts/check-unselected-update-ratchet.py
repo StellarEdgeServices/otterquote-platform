@@ -142,7 +142,6 @@ BASELINE: dict[str, int] = {
     "repair-intake.html": 0,  # gh-2105 batch 4: status=submitted write fixed (a, THROW + Sentry)
     "supabase/functions/admin-contractor-action/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     "supabase/functions/approve-warranty-drift/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
-    "supabase/functions/check-siding-design-completion/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     # gh-2105 batch 5: fixed all 4 remaining sites (gh-1400/gh-1842 envelope
     # pointer writes in handleContractorSign + the getEmbeddedSignLink resume
     # path). All 4 stay fire-and-forget by design (a paid-for BoldSign
@@ -151,7 +150,6 @@ BASELINE: dict[str, int] = {
     # zero-row match, no throw added, matching stripe-webhook/docusign-webhook's
     # batch 2/3 precedent for money/legal-critical fire-and-forget writes.
     "supabase/functions/create-docusign-envelope/index.ts": 0,
-    "supabase/functions/create-hover-order/index.ts": 0,  # gh-2105 batch 11: 1 fixed money, 1 log-only
     "supabase/functions/create-payment-intent/index.ts": 0,  # gh-2105 batch 7: ad-sharing opt-out site fixed (see PR body)
     "supabase/functions/create-setup-intent/index.ts": 0,
     # gh-2105 batch 3: fixed all 13 real call sites (see the batch-3 PR body
@@ -165,9 +163,6 @@ BASELINE: dict[str, int] = {
     # baseline capture appears to have missed or hand-adjusted for; that
     # comment is reworded in this same PR to stop tripping the scanner.
     "supabase/functions/docusign-webhook/index.ts": 0,
-    "supabase/functions/get-hover-pdf/index.ts": 0,  # gh-1873: stub, no .update() site
-    "supabase/functions/get-hover-siding-data/index.ts": 0,  # gh-1873: stub, no .update() site
-    "supabase/functions/hover-webhook/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     "supabase/functions/lead-next-step-optout/index.ts": 0,  # gh-2105 batch 7: decision-b annotated (see PR body)
     "supabase/functions/mark-job-complete/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     "supabase/functions/mark-loss-sheet-reviewed/index.ts": 0,  # gh-2105 batch 11: annotated (already selects)

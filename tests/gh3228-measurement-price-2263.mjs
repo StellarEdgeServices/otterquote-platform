@@ -77,7 +77,7 @@ const faq = read('faq.html');
 ok(faq.includes('The fee pays for ordering the report for you.') && !/covers (Otter Quotes\'|our) cost/.test(faq), 'S2b: FAQ says "The fee pays for ordering the report for you." (no "covers ... cost")');
 const hpf = read('react-app/app/(homeowner)/help-measurements/HoverPaymentForm.tsx');
 ok(/'Your payment went through and is confirmed\./.test(hpf) && !/Your \$\d[\d.]* payment went through/.test(hpf), 'S2b: the order-failed "payment went through" message carries no amount (a customer caught across the apply was charged the old price)');
-ok(/fallback of 1500 cents \(\$15\)/.test(read('supabase/functions/create-hover-order/price-setting.ts')), 'S2b: create-hover-order/price-setting.ts comment still reads "1500 cents ($15)" (historical)');
+ok(!fs.existsSync(path.join(repoRoot, 'supabase/functions/create-hover-order')), 'S2b: create-hover-order is deleted (gh-1873), so its price-setting.ts no longer carries a price');
 
 // ── S3: the draft settings migration ─────────────────────────────────────────
 const fwd = read('supabase/migrations_drafts/gh3228_measurement_price_2263.sql');

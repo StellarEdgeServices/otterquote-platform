@@ -60,10 +60,11 @@ import {
   w9CardDate,
   referralStatusLabel,
   referralStatusClass,
-  referralClientName,
+  referralRowName,
+  referralShowsStatus,
+  referralFeeCell,
   ownReferralsFromRpc,
   referralDate,
-  fmtMoneyCell,
   payoutBadge,
   referralIdsForPayout,
   payoutStatusByReferral,
@@ -322,13 +323,12 @@ function DashboardView({
               <th>Client Name</th>
               <th>Date Referred</th>
               <th>Status</th>
-              <th>Job Value</th>
               <th>Referral Fee</th>
             </tr>
           </thead>
           <tbody>
-            {referrals.map((ref) => (
-              <ReferralRow key={ref.id} referral={ref} payoutStatus={payoutByReferral[ref.id] ?? null} />
+            {referrals.map((ref, i) => (
+              <ReferralRow key={ref.id} referral={ref} index={i} payoutStatus={payoutByReferral[ref.id] ?? null} />
             ))}
           </tbody>
         </table>
@@ -414,20 +414,33 @@ function StatCard({ label, value, subtext }: { label: string; value: string; sub
 }
 
 // ── Referral row ──────────────────────────────────────────────────────────────
-function ReferralRow({ referral, payoutStatus }: { referral: PartnerReferral; payoutStatus: string | null }) {
+// gh-3257 (privacy.html 4.7): no column for the job's dollar value; a row whose homeowner declined updates shows
+// "Referral #N — updates declined" and no progress status; the fee shows only once earned.
+function ReferralRow({
+  referral,
+  index,
+  payoutStatus,
+}: {
+  referral: PartnerReferral;
+  index: number;
+  payoutStatus: string | null;
+}) {
   const badge = payoutBadge(payoutStatus, PAYOUT_COPY);
   return (
     <tr>
-      <td>{referralClientName(referral)}</td>
+      <td>{referralRowName(referral, index)}</td>
       <td>{referralDate(referral.created_at)}</td>
       <td>
-        <span className={`status-badge ${referralStatusClass(referral.status)}`}>
-          {referralStatusLabel(referral.status)}
-        </span>
+        {referralShowsStatus(referral) ? (
+          <span className={`status-badge ${referralStatusClass(referral.status)}`}>
+            {referralStatusLabel(referral.status)}
+          </span>
+        ) : (
+          '—'
+        )}
       </td>
-      <td>{fmtMoneyCell(referral.job_value)}</td>
       <td>
-        {fmtMoneyCell(referral.commission_amount)}
+        {referralFeeCell(referral)}
         {badge && (
           <span className={`payout-badge ${badge.className}`} title={badge.title}>
             {badge.label}
