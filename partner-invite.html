@@ -354,9 +354,13 @@ main.invite-main {
   // partner-inspectors.html's own agreement link uses exactly this same
   // pair. Reused here verbatim so an inspector who accepts through this
   // invite page never sees fee terms either.
+  // gh-3239 (#3242 REVIEW F1 / LEGAL-READ 1, Ben ruling): partner-agreement.html is now v4-2026-10, while an inspector
+  // stays on the inspector agreement v3-2026-09 (partner-invite-accept stamps v3-2026-09 for home_inspector). The link
+  // must show the text that is recorded, so an inspector gets partner-agreement-inspector.html -- the same page hi-1,
+  // hi-5 and partner-inspectors.html link (D-278 exception, check-partner-consent-link.py).
   function agreementLinkFor(agentType) {
     if (agentType === 'home_inspector') {
-      return 'partner-agreement.html?track=home_inspector#track-home-inspector';
+      return 'partner-agreement-inspector.html';
     }
     return 'partner-agreement.html';
   }

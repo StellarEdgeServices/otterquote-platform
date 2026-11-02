@@ -532,7 +532,7 @@ export { getCookieMaxAge as _getCookieMaxAge }; // gh-867 test hook
 export const REFERRAL_COOKIE = 'oq-ref';
 const REFERRAL_KEYS = ['oq_referral_id', 'oq_referral_agent_id', 'oq_referral_code'] as const;
 const REFERRAL_TS_KEY = 'oq_referral_ts'; // epoch-ms of the partner-link click
-// gh-2062 (CEO ruling, issue comment 5874597169): 30 days FROM THE CLICK.
+// gh-2062 (CEO ruling, issue comment 5874597169): the window runs FROM THE CLICK. P18: 90 days (was 30), one plan for every partner.
 // Only writeReferralIds(ids, { click: true }) starts the clock; every other
 // write keeps the recorded click time and sets Max-Age to the time remaining.
 // UNDATED IDS (REVIEW: FAIL on PR #2321; CEO ruling, comment 5880667348 - undated ids expire):
@@ -540,7 +540,7 @@ const REFERRAL_TS_KEY = 'oq_referral_ts'; // epoch-ms of the partner-link click
 // copy left by an undated write) has no click, so no window - it is EXPIRED.
 // readReferralIds() purges it; a non-click write with no click on record writes
 // NOTHING (no cookie, no storage mirror). Never backfilled.
-const REFERRAL_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+const REFERRAL_MAX_AGE = 60 * 60 * 24 * 90; // 90 days, from the click (P18). The ONE window constant in this file.
 export const REFERRAL_MAX_AGE_SECONDS = REFERRAL_MAX_AGE;
 // gh-2062 (REVIEW: FAIL 5881363760): the claim-scoped copy the auth advance
 // re-keys the id into. No clock of its own - it lives under the SAME click
@@ -567,7 +567,7 @@ function readReferralTs(): number | null {
  *  localStorage) is ONE per browser, so a newer click in another tab made this
  *  tab's older ids look in-window. Every mirror write stamps the click time
  *  NEXT TO the ids in this tab's sessionStorage (same key name, different
- *  store); the ids are only trusted while that stamp is present, inside the 30
+ *  store); the ids are only trusted while that stamp is present, inside the 90
  *  days, and equal to the click time now on record. */
 function sessionIdsTrusted(clickTs: number | null): boolean {
   if (clickTs === null) return false;
@@ -643,7 +643,7 @@ export function writeClaimReferralId(id: string): void {
 export function readReferralIds(): ReferralIds {
   const out: ReferralIds = {};
   if (typeof document === 'undefined') return out;
-  // Past the 30-day window (belt and braces over the cookie Max-Age, and the
+  // Past the 90-day window (belt and braces over the cookie Max-Age, and the
   // only bound on the same-origin storage mirrors): nothing to return.
   const clickTs = readReferralTs();
   if (clickTs !== null && Date.now() - clickTs > REFERRAL_MAX_AGE * 1000) {
@@ -725,7 +725,7 @@ export function readReferralIds(): ReferralIds {
  * so post-write state always matches `ids` exactly, mirroring the cookie.
  *
  * gh-2062: `{ click: true }` (a fresh partner-link click) is the ONLY thing
- * that starts the 30-day clock. Any other write keeps the click time already
+ * that starts the 90-day clock. Any other write keeps the click time already
  * on record and sets Max-Age to the time remaining, so it can never re-arm the
  * window; with no click time on record NOTHING is written (undated = expired).
  */
@@ -767,6 +767,24 @@ export function writeReferralIds(ids: ReferralIds, opts?: { click?: boolean }): 
   // gh-2346: this tab's own stamp, next to its ids.
   try { sessionStorage.setItem(REFERRAL_TS_KEY, String(ts)); } catch { /* storage blocked */ }
   try { writeCookie(REFERRAL_COOKIE, JSON.stringify(payload), remaining); } catch { /* cookie blocked */ }
+}
+
+/**
+ * P18 credit lock: `lockedId` is get_locked_referral_id() for the signed-in
+ * user (the partner credited when the account was created). When a LATER click
+ * left a different partner's id in the cookie, put the locked id there instead
+ * (non-click write: the click clock is kept, the other partner's agent id and
+ * code are dropped). The database stamps the locked referral on the claim
+ * whatever this does; this only keeps the browser from carrying a stranger's
+ * id. Returns true when it replaced an id.
+ */
+export function adoptLockedReferral(lockedId: unknown): boolean {
+  if (typeof document === 'undefined' || typeof lockedId !== 'string' || !lockedId) return false;
+  const cur = readReferralIds();
+  if (!cur.oq_referral_id || cur.oq_referral_id === lockedId) return false;
+  writeReferralIds({ oq_referral_id: lockedId });
+  writeClaimReferralId(lockedId);
+  return true;
 }
 
 /** Clear attribution once it has been stamped onto a claim. */

@@ -947,3 +947,108 @@ Deno.test("alertAdminUncertain failing (e.g. MAILGUN_API_KEY unset) does not thr
   }
   assertEquals(rec.markedAlerted.length, 0, "must not mark alerted when the alert send itself failed");
 });
+
+// ── gh-3239 (#3242 REVIEW 6526029821 F2; Ben ruling 2026-10-30: accepting Partner Agreement v4 is not a new signup) ──
+// accept_partner_agreement_v4() moves partner_agreement_accepted_at to the click and adds a v4 attestation entry with
+// method 'click_to_accept'. The onboarding clock must not move. Switch on 30 days before NOW (the 2026-09-26 shape).
+const SWITCH_30D = { enabled: true, enabled_since: new Date(NOW - 30 * DAY_MS).toISOString() };
+const V4_CLICK = { "v4-2026-10": { accepted_at: agedIso(0), accepted_ip: null, accepted_ua: null, method: "click_to_accept" } };
+
+Deno.test("gh-3239: a pre-switch v3 partner who clicks v4 stays before_switch_enabled (no day0, no ledger writes)", async () => {
+  const p = partner({
+    created_at: agedIso(40 * DAY_MS),
+    partner_agreement_accepted_at: agedIso(0),                       // moved by the v4 click
+    partner_agreement_attestation: { "v3-2026-09": { accepted_at: agedIso(40 * DAY_MS) }, ...V4_CLICK },
+  });
+  const { deps, rec } = buildDeps({ settingValue: SWITCH_30D, partners: [p] });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) assertEquals(outcome.results[0].skipped_reason, "before_switch_enabled");
+  assertEquals(rec.sends.length, 0);
+  assertEquals(rec.claims.length, 0);
+  assertEquals(rec.skipped.length, 0);
+});
+
+Deno.test("gh-3239: a v2 partner who clicks v4 stays before_switch_enabled", async () => {
+  const p = partner({
+    created_at: agedIso(70 * DAY_MS),
+    partner_agreement_accepted_at: agedIso(0),
+    partner_agreement_attestation: { "v2-2026-08": { accepted_at: agedIso(70 * DAY_MS) }, ...V4_CLICK },
+  });
+  const { deps, rec } = buildDeps({ settingValue: SWITCH_30D, partners: [p] });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) assertEquals(outcome.results[0].skipped_reason, "before_switch_enabled");
+  assertEquals(rec.sends.length, 0);
+});
+
+Deno.test("gh-3239: a partner with no signup acceptance on record (pre-gh-1059) who clicks v4 is judged by created_at, not the click", async () => {
+  const p = partner({
+    created_at: agedIso(80 * DAY_MS),
+    partner_agreement_accepted_at: agedIso(0),
+    partner_agreement_attestation: { ...V4_CLICK },
+  });
+  const { deps, rec } = buildDeps({ settingValue: SWITCH_30D, partners: [p] });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) assertEquals(outcome.results[0].skipped_reason, "before_switch_enabled");
+  assertEquals(rec.sends.length, 0);
+});
+
+Deno.test("gh-3239: a mid-sequence partner (day0/1/3 sent) who clicks v4 gets no new email and no reset", async () => {
+  const run = async (attestation: Record<string, unknown>) => {
+    const store = new FakeLedgerStore();
+    for (const s of ["day0", "day1", "day3"]) store.rows.set(`p1::${s}`, { status: "sent", created_at: agedIso(1 * DAY_MS) });
+    const p = partner({
+      created_at: agedIso(4 * DAY_MS),
+      partner_agreement_accepted_at: agedIso(0),                     // the v4 click
+      partner_agreement_attestation: attestation,
+    });
+    const { deps, rec } = buildDeps({ settingValue: SWITCH_30D, partners: [p], store });
+    withRealCopy(deps);
+    const outcome = await runOnboardingSweep(deps);
+    return { outcome, rec, store };
+  };
+  const withClick = await run({ "v3-2026-09": { accepted_at: agedIso(4 * DAY_MS) }, ...V4_CLICK });
+  assertEquals(withClick.rec.sends.length, 0, "day7 is not due until day 7 of the ORIGINAL clock; nothing earlier is re-sent");
+  assertEquals(withClick.rec.claims.length, 0);
+  assertEquals(withClick.store.rows.get("p1::day0")?.status, "sent");
+  if (withClick.outcome.ok && "results" in withClick.outcome) {
+    assertEquals(withClick.outcome.results[0].sent ?? null, null);
+  }
+  // after day 7 of the original clock, day7 (and only day7) sends: the sequence continues where it was
+  const store = new FakeLedgerStore();
+  for (const s of ["day0", "day1", "day3"]) store.rows.set(`p1::${s}`, { status: "sent", created_at: agedIso(5 * DAY_MS) });
+  const later = partner({
+    created_at: agedIso(8 * DAY_MS),
+    partner_agreement_accepted_at: agedIso(0),
+    partner_agreement_attestation: { "v3-2026-09": { accepted_at: agedIso(8 * DAY_MS) }, ...V4_CLICK },
+  });
+  const b = buildDeps({ settingValue: SWITCH_30D, partners: [later], store });
+  withRealCopy(b.deps);
+  await runOnboardingSweep(b.deps);
+  assertEquals(b.rec.sent.map((x) => x.stage), ["day7"]);
+});
+
+Deno.test("gh-3239 NEGATIVE CONTROL: without the attestation the same v4 click looks like a brand-new signup (day0 would send)", async () => {
+  // Same pre-switch v3 partner as the first gh-3239 test, but the row read omits partner_agreement_attestation (the
+  // pre-fix select): the clock falls back to the moved partner_agreement_accepted_at and day0 goes out. This is the
+  // defect the attestation read prevents, so the tests above are sensitive to it.
+  const p = partner({ created_at: agedIso(40 * DAY_MS), partner_agreement_accepted_at: agedIso(0) });
+  const { deps, rec } = buildDeps({ settingValue: SWITCH_30D, partners: [p] });
+  withRealCopy(deps);
+  await runOnboardingSweep(deps);
+  assertEquals(rec.sent.map((x) => x.stage), ["day0"]);
+});
+
+Deno.test("gh-3239: a P-5 invite acceptance (attestation entry without click_to_accept) still starts the clock at acceptance", async () => {
+  const p = partner({
+    created_at: agedIso(8 * DAY_MS),
+    partner_agreement_accepted_at: agedIso(0),
+    partner_agreement_attestation: { "v4-2026-10": { accepted_at: agedIso(0), accepted_ip: null, accepted_ua: null } },
+  });
+  const { deps, rec } = buildDeps({ settingValue: SWITCH_30D, partners: [p] });
+  withRealCopy(deps);
+  await runOnboardingSweep(deps);
+  assertEquals(rec.sent.map((x) => x.stage), ["day0"]);
+});

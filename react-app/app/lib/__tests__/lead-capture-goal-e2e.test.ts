@@ -225,7 +225,7 @@ function deriveLeadGoalEvent(
 
 describe('gh-2121 S16 end-to-end: Arm F thank-you -> lead capture -> set_lead_converted -> lead_goal_events', () => {
   const cases = [
-    { label: 'help-measurements ($15 measurement purchase)', path: '/help-measurements', destGoal: 'measurement_purchase' as const },
+    { label: 'help-measurements ($22.63 measurement purchase)', path: '/help-measurements', destGoal: 'measurement_purchase' as const },
     { label: 'help-estimate (loss-sheet upload)', path: '/help-estimate', destGoal: 'loss_sheet_upload' as const },
   ];
 

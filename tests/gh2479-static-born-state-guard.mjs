@@ -208,7 +208,7 @@ const lateQuoteKeys = /\b(status|bid_status|renewed_from_quote_id|homeowner_sign
 }
 // claims.status values written by browser code: only the four the guard allows
 const allowedStatus = new Set(['active', 'waitlisted', 'submitted', 'awarded']);
-const statusWriters = ['dashboard.html', 'repair-intake.html', 'bids.html', 'trade-selector.html', 'project-confirmation.html', 'contract-signing.html',
+const statusWriters = ['dashboard.html', 'repair-intake.html', 'bids.html', 'trade-selector.html', 'contract-signing.html',
   'react-app/app/(homeowner)/dashboard/actions.ts', 'react-app/app/(homeowner)/bids/actions.ts',
   'react-app/app/(homeowner)/repair-intake/use-repair-intake-data.ts', 'react-app/app/trade-selector/page.tsx'];
 for (const f of statusWriters) {

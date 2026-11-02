@@ -12,7 +12,7 @@
  * No network / supabase calls — every helper is side-effect-free.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   type CustomerReferral,
   PUBLIC_SITE_URL,
@@ -28,6 +28,11 @@ import {
   summarizeReferrals,
   referralSummaryLine,
   isHomeownerLaunchEnabled,
+  PARTNER_AGREEMENT_CURRENT_VERSION,
+  hasAcceptedAgreementV4,
+  loadReferLink,
+  acceptAgreementAndIssueLink,
+  REFERRAL_STATUS_LABELS,
   FACEBOOK_SHARE_MESSAGE,
   smsShareMessage,
   nextdoorShareMessage,
@@ -40,6 +45,7 @@ import {
   HERO,
   HOW_IT_WORKS,
   FAQ,
+  AGREEMENT_GATE,
   TAX_NOTICE,
   COMMISSION_APPROVAL_DISCLOSURE,
   REFERRAL_FEE_DISCLAIMER,
@@ -82,7 +88,7 @@ describe('referral table cells (four columns, header order, #576)', () => {
     expect(referralStatusLabel('bid_received')).toBe('Bids In');
     expect(referralStatusLabel('contract_signed')).toBe('Contract Signed');
     expect(referralStatusLabel('job_completed')).toBe('Job Completed');
-    expect(referralStatusLabel('commission_paid')).toBe('Commission Paid');
+    expect(referralStatusLabel('commission_paid')).toBe('Referral Fee Paid');
     expect(referralStatusLabel(null)).toBe('Pending');
     expect(referralStatusLabel('')).toBe('Pending');
     expect(referralStatusLabel('some_unknown_value')).toBe('Pending');
@@ -110,7 +116,7 @@ describe('referral table cells (four columns, header order, #576)', () => {
     );
     expect(cells.friend).toBe('Jane Doe');
     expect(cells.date).toBe(referralDate('2026-03-04T00:00:00Z'));
-    expect(cells.statusLabel).toBe('Commission Paid');
+    expect(cells.statusLabel).toBe('Referral Fee Paid');
     expect(cells.statusClass).toBe('status-paid');
     expect(cells.commission).toBe('$200');
   });
@@ -198,7 +204,7 @@ describe('verbatim Tier-3 tax/legal copy', () => {
     expect(TAX_NOTICE.version).toBe('1099-misc-v1-2026-04');
     expect(TAX_NOTICE.label).toBe('Tax Reporting Notice');
     expect(TAX_NOTICE.body).toBe(
-      'Your $200 referral bonus is taxable income. You are responsible for all applicable federal, state, and local taxes on referral income. Otter Quotes does not withhold taxes from bonus payments. We recommend consulting a qualified tax professional if you have questions about your tax obligations.',
+      'Your $200 referral fee is taxable income. You are responsible for all applicable federal, state, and local taxes on referral income. Otter Quotes does not withhold taxes from referral fee payments. We recommend consulting a qualified tax professional if you have questions about your tax obligations.',
     );
     expect(TAX_NOTICE.body).not.toMatch(/1099|W-9|\$600|January 31/);
   });
@@ -206,9 +212,9 @@ describe('verbatim Tier-3 tax/legal copy', () => {
     expect(FAQ.map((f) => f.q)).not.toContain('Will I receive a tax form for my referral bonuses?');
     for (const f of FAQ) expect(`${f.q} ${f.a}`).not.toMatch(/1099|W-9|W9/);
   });
-  it('D-180 commission-approval disclosure', () => {
+  it('D-180 referral-fee approval disclosure (gh-3244: matches refer-a-friend.html @ main; "commission" -> "referral fee", D-301)', () => {
     expect(COMMISSION_APPROVAL_DISCLOSURE).toBe(
-      "Commission payments are subject to Otter Quotes' approval process and are paid after the qualifying job is complete and the payout has been approved.",
+      "Referral fee payments are subject to Otter Quotes' approval process. Referral fees are paid after job completion and approval.",
     );
   });
   // D-266: MANDATORY on every referral funnel surface. It was present on
@@ -225,14 +231,108 @@ describe('verbatim Tier-3 tax/legal copy', () => {
     expect(HERO.subtitle).toContain('completes a project of $10,000 or more');
     expect(HERO.subtitle).toContain('you earn $200');
     expect(HOW_IT_WORKS[2].title).toBe('You Earn $200');
-    expect(HOW_IT_WORKS[2].text).toBe('When their job completes ($10K or more), you earn $200 in commission.');
-    expect(FAQ[2].a).toContain("You won't receive a cash commission for jobs under $10K");
+    expect(HOW_IT_WORKS[2].text).toBe('When their job completes ($10K or more), you earn a $200 referral fee.');
+    expect(FAQ[2].a).toContain("You won't receive a referral fee for jobs under $10K");
   });
   it('table headers match the static (four columns)', () => {
     expect(REFERRALS.thFriend).toBe("Friend's Name");
     expect(REFERRALS.thDate).toBe('Date Referred');
     expect(REFERRALS.thStatus).toBe('Status');
-    expect(REFERRALS.thCommission).toBe('Commission');
+    expect(REFERRALS.thCommission).toBe('Referral Fee');
     expect(LOGIN_ROUTE).toBe('/login');
+  });
+});
+
+// ============================================================
+// gh-3244 (follow-up to #3242): referral-fee wording, Venmo/PayPal, Partner Agreement v4 acceptance gate
+// ============================================================
+describe('gh-3244 partner-facing copy', () => {
+  const allCopy = (): string[] => {
+    const out: string[] = [];
+    const walk = (v: unknown) => {
+      if (typeof v === 'string') out.push(v);
+      else if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+    };
+    [HERO, HOW_IT_WORKS, FAQ, AGREEMENT_GATE, TAX_NOTICE, COMMISSION_APPROVAL_DISCLOSURE, REFERRAL_FEE_DISCLAIMER, REFERRALS, REFERRAL_STATUS_LABELS].forEach(walk);
+    return out;
+  };
+  it('no served string says "commission" or "referral bonus" / "bonus payments"', () => {
+    for (const s of allCopy()) {
+      expect(s).not.toMatch(/commission|referral bonus|bonus payment/i);
+    }
+  });
+  it('payout method is Venmo or PayPal (Agreement Section 5.2), not bank transfer or check', () => {
+    const a = FAQ[0].a;
+    expect(a).toBe("Referral fees are paid after job completion and approval. We'll send payment via Venmo or PayPal, whichever you prefer.");
+    expect(a).not.toMatch(/bank|check/i);
+  });
+  it('acceptance gate links /partner-agreement.html and names v4-2026-10', () => {
+    expect(AGREEMENT_GATE.linkHref).toBe('/partner-agreement.html');
+    expect(AGREEMENT_GATE.checkboxSuffix).toContain(PARTNER_AGREEMENT_CURRENT_VERSION);
+    expect(PARTNER_AGREEMENT_CURRENT_VERSION).toBe('v4-2026-10');
+  });
+  it('pre-acceptance subtitle is the conditional line from refer-a-friend.html', () => {
+    expect(HERO.subtitlePreAcceptance.startsWith('Once you accept the Partner Agreement, you earn $200')).toBe(true);
+  });
+});
+
+describe('gh-3244 Partner Agreement v4 acceptance gate', () => {
+  it('hasAcceptedAgreementV4: v4 attestation key or v4 version column only', () => {
+    expect(hasAcceptedAgreementV4(null)).toBe(false);
+    expect(hasAcceptedAgreementV4(undefined)).toBe(false);
+    expect(hasAcceptedAgreementV4({})).toBe(false);
+    expect(hasAcceptedAgreementV4({ partner_agreement_version: 'v3-2026-09' })).toBe(false);
+    expect(hasAcceptedAgreementV4({ partner_agreement_version: 'v3-2026-09', partner_agreement_attestation: { 'v3-2026-09': {} } })).toBe(false);
+    expect(hasAcceptedAgreementV4({ partner_agreement_version: 'v4-2026-10' })).toBe(true);
+    expect(hasAcceptedAgreementV4({ partner_agreement_attestation: { 'v4-2026-10': { accepted_at: 'x' } } })).toBe(true);
+  });
+
+  it('NEGATIVE CONTROL: not accepted -> no link and the code RPC is never called', async () => {
+    for (const row of [null, {}, { partner_agreement_version: 'v3-2026-09' }]) {
+      const getOrCreateCode = vi.fn(async () => 'ABC123');
+      const r = await loadReferLink({ readAgreementRow: async () => row, getOrCreateCode });
+      expect(r).toEqual({ state: 'needs_agreement' });
+      expect(getOrCreateCode).not.toHaveBeenCalled();
+    }
+  });
+  it('NEGATIVE CONTROL: a failed agreement read fails closed (no link)', async () => {
+    const getOrCreateCode = vi.fn(async () => 'ABC123');
+    const r = await loadReferLink({ readAgreementRow: async () => { throw new Error('rls'); }, getOrCreateCode });
+    expect(r).toEqual({ state: 'needs_agreement' });
+    expect(getOrCreateCode).not.toHaveBeenCalled();
+  });
+  it('POSITIVE: accepted -> link issued', async () => {
+    const getOrCreateCode = vi.fn(async () => 'ABC123');
+    const r = await loadReferLink({ readAgreementRow: async () => ({ partner_agreement_version: 'v4-2026-10' }), getOrCreateCode });
+    expect(r).toEqual({ state: 'link', code: 'ABC123' });
+    expect(getOrCreateCode).toHaveBeenCalledTimes(1);
+  });
+  it('accepted but code RPC fails -> error state, never a fabricated link', async () => {
+    const r = await loadReferLink({ readAgreementRow: async () => ({ partner_agreement_version: 'v4-2026-10' }), getOrCreateCode: async () => null });
+    expect(r).toEqual({ state: 'error' });
+  });
+
+  it('gate submit: get_or_create runs BEFORE accept_partner_agreement_v4, then the code is returned', async () => {
+    const calls: string[] = [];
+    const code = await acceptAgreementAndIssueLink({
+      getOrCreateCode: async () => { calls.push('get_or_create_customer_referral_code'); return 'ABC123'; },
+      acceptAgreement: async () => { calls.push('accept_partner_agreement_v4'); return { agreement_version: 'v4-2026-10', accepted_at: '2026-10-31T00:00:00Z', already_accepted: false }; },
+    });
+    expect(calls).toEqual(['get_or_create_customer_referral_code', 'accept_partner_agreement_v4']);
+    expect(code).toBe('ABC123');
+  });
+  it('NEGATIVE CONTROL: acceptance error / wrong version / no timestamp -> throws, no link returned', async () => {
+    const mk = (accept: () => Promise<{ agreement_version?: string | null; accepted_at?: string | null } | null>) =>
+      acceptAgreementAndIssueLink({ getOrCreateCode: async () => 'ABC123', acceptAgreement: accept });
+    await expect(mk(async () => { throw new Error('rpc'); })).rejects.toThrow();
+    await expect(mk(async () => null)).rejects.toThrow();
+    await expect(mk(async () => ({ agreement_version: 'v3-2026-09', accepted_at: 'x' }))).rejects.toThrow();
+    await expect(mk(async () => ({ agreement_version: 'v4-2026-10', accepted_at: null }))).rejects.toThrow();
+  });
+  it('no code from the RPC -> accept is never called', async () => {
+    const acceptAgreement = vi.fn(async () => ({ agreement_version: 'v4-2026-10', accepted_at: 'x' }));
+    await expect(acceptAgreementAndIssueLink({ getOrCreateCode: async () => null, acceptAgreement })).rejects.toThrow();
+    expect(acceptAgreement).not.toHaveBeenCalled();
   });
 });

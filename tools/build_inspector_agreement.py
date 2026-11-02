@@ -76,7 +76,10 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SOURCE_PATH = REPO_ROOT / "partner-agreement.html"
+# gh-3239 (#3238): the inspector agreement stays derived from the v3-2026-09 text, frozen byte-for-byte at
+# partner-agreement-v3.html, until Amendment No. 1 is applied to the inspector track by its own ruling. partner-agreement.html
+# is now v4-2026-10, whose structure this builder does not model.
+SOURCE_PATH = REPO_ROOT / "partner-agreement-v3.html"
 OUTPUT_PATH = REPO_ROOT / "partner-agreement-inspector.html"
 
 FEE_BLOCK_START = '<div id="feeStructureBlock" class="inspector-hide">'
