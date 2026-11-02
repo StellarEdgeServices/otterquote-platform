@@ -1510,7 +1510,7 @@ export default function GetStartedPage() {
            sign-in / contractor links move to the card's footer row. */
         .gs-pw-phone {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(213px, 1fr));
           gap: 14px 16px;
           align-items: start;
         }
@@ -2107,7 +2107,7 @@ export default function GetStartedPage() {
                       type={showPassword ? 'text' : 'password'}
                       id="password"
                       className="form-input"
-                      style={{ paddingRight: '4.5rem' }}
+                      style={{ paddingRight: '3rem' }}
                       required
                       minLength={MIN_PASSWORD_LENGTH}
                       autoComplete="new-password"

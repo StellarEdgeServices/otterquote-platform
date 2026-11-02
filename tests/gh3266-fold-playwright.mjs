@@ -104,6 +104,15 @@ async function measure(browser, size, c) {
       legalText: legal ? legal.textContent.replace(/\s+/g, ' ').trim() : null,
       phoneShown: !!document.getElementById('phone'),
       hOverflow: document.documentElement.scrollWidth > window.innerWidth,
+      pw: (() => {
+        const el = document.getElementById('password');
+        if (!el) return null;
+        const cs = getComputedStyle(el);
+        const g = document.createElement('canvas').getContext('2d');
+        g.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+        const avail = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+        return { text: el.placeholder, need: Math.ceil(g.measureText(el.placeholder).width), avail: Math.floor(avail) };
+      })(),
     };
   });
   await ctx.close();
@@ -122,6 +131,7 @@ try {
       ok(m.smsPresent && m.smsChecked === false && m.smsRequired === false && m.smsBeforeSubmit, `${label}: SMS consent present, unchecked, not required, before Create My Account`);
       ok(m.legalText === 'By creating an account, you agree to our Terms of Service and Privacy Policy.', `${label}: Terms/Privacy line is the submit button's next sibling`);
       ok(!m.hOverflow, `${label}: no horizontal overflow`);
+      ok(!!m.pw && m.pw.text === 'At least 8 characters' && m.pw.need <= m.pw.avail, `${label}: password placeholder fits (needs ${m.pw && m.pw.need}px, ${m.pw && m.pw.avail}px available)`);
       if (c.lead) ok(m.phoneShown === !c.lead.phone, `${label}: phone input ${c.lead.phone ? 'hidden' : 'shown'} as designed`);
       if (c.asserted && size.asserted && m.google) {
         ok(m.google.bottom <= size.h, `${label}: Google sign-in fully above the fold (bottom ${m.google.bottom} <= ${size.h})`);
