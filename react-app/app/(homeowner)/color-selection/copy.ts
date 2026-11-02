@@ -138,7 +138,7 @@ export const COLOR_COPY = {
     'Opens an interactive visualizer — upload a photo of your home to see real shingle colors.',
   // desktop after-visualizing note (static:880) — "<strong>After visualizing:</strong> …"
   ocAfterVisualizingDesktop:
-    "After visualizing: Once you've found a color you like, enter it in the form below to lock it in.",
+    "After visualizing: Once you've found a color you like.",
   // mobile after-visualizing note (static:861)
   ocAfterVisualizingMobile:
     'After visualizing: Come back here and enter the color you selected in the form below.',

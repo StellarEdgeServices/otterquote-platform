@@ -62,6 +62,7 @@ const noteGuards = (h) => {
     'G: the old "final contract documents" promise is gone': !/final contract documents/.test(h),
     'G: no "before you sign" in the note': !/before you sign/.test(h),
     'G: no "already signed" sentence on the page': !/already signed/.test(h),
+    'G: no "lock it in" promise anywhere on the page': !/lock it in|enter it in the form below/.test(h),
     'G: no contact clause after the note': !/confirm directly with|Contact your contractor, \$\{/.test(h),
   };
 };
@@ -74,6 +75,8 @@ const signedNote = noteGuards(html + ' your contract is already signed');
 check('control: the "already signed" sentence coming back is detected', !signedNote['G: no "already signed" sentence on the page']);
 const beforeNote = noteGuards(html.replace('Please confirm it with your contractor.', 'Please confirm it with your contractor before you sign.'));
 check('control: "before you sign" coming back is detected', !beforeNote['G: no "before you sign" in the note']);
+const lockNote = noteGuards(html + " enter it in the form below to lock it in.");
+check('control: the "lock it in" promise coming back is detected', !lockNote['G: no "lock it in" promise anywhere on the page']);
 const clauseNote = noteGuards(html + ' You can also confirm directly with X at 1.');
 check('control: the contact clause coming back is detected', !clauseNote['G: no contact clause after the note']);
 
