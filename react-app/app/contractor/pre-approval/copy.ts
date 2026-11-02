@@ -5,7 +5,6 @@
  *   - PRE_APPROVAL_COPY.partnerAgreement   (Contractor Partner Agreement + platform-fee disclosure)
  *   - PRE_APPROVAL_COPY.cancellation        (Homeowner Cancellation Policy + sole-remedy clause)
  *   - PRE_APPROVAL_COPY.attestation         (IC 24-5-11 attestation + joint-and-several indemnity, D-170)
- *   - PRE_APPROVAL_COPY.tcpa                 (TCPA SMS consent)
  *   - PRE_APPROVAL_COPY.submitted            (D-225 verbatim post-apply copy)
  * Any wording change to these is Tier-3 -> STOP and gate to Dustin (D-220; mirrors D-244/D-230).
  *
@@ -178,14 +177,8 @@ export const PRE_APPROVAL_COPY = {
         'I am authorized to bind the business. I attest to the licensing, insurance, IC 24-5-11 compliance, and joint-and-several indemnity obligations above. I intend this electronic acceptance to be my signature.',
     },
 
-    // TCPA SMS — :396-404 (optional)
-    tcpa: {
-      heading: 'SMS Notifications',
-      body:
-        'Otter Quotes uses SMS to notify you of new project opportunities, bid updates, and important platform communications.',
-      checkLabel:
-        'I agree to receive transactional SMS from Otter Quotes. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe. (Optional — you can still use the platform without SMS notifications.)',
-    },
+    // D-391 layer 4b (gh-2875 N6): the page's own SMS consent block (heading, body, checkbox label)
+    // was removed. Contractors opt in only through the D-391 verify-a-number screen.
 
     advance: 'Continue to Contract Template →',
     incompleteAlert: 'Please review and accept all agreements before continuing.',

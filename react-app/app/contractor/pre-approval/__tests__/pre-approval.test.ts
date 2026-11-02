@@ -14,6 +14,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   str, parseSignup, buildInitialContractorInsert, resolveInitialState,
   parseCounties, evaluateProfileBasics, wcSatisfied, coiSatisfied, licenseSatisfied, step2Complete,
@@ -274,19 +276,20 @@ describe('IC 24-5-11 attestation (Tier-3 verbatim version + payload)', () => {
     });
   });
 
-  it('buildStep3ContractorUpdate stamps attestation + sms gated on TCPA and NO acceptance columns (gh-2995: accept_cpa owns them)', () => {
+  it('buildStep3ContractorUpdate stamps attestation, NO acceptance columns (gh-2995: accept_cpa owns them) and NO SMS consent columns (D-391 layer 4b)', () => {
     const a = buildAttestationPayload('UA', ISO);
-    const withSms = buildStep3ContractorUpdate({ contact_name: 'Pat', attestation_signer_title: 'Owner' }, a, true, ISO);
-    expect(withSms).toMatchObject({
+    const update = buildStep3ContractorUpdate({ contact_name: 'Pat', attestation_signer_title: 'Owner' }, a, ISO);
+    expect(update).toMatchObject({
       attestation_signer_name: 'Pat', attestation_signer_title: 'Owner',
       attestation_text_version: 'ic-24511-v1-2026-04', attestation_accepted_at: ISO,
-      ic_24511_attestation: a, sms_consent_ts: ISO,
+      ic_24511_attestation: a,
       onboarding_step: 3, updated_at: ISO,
     });
     for (const col of ['cpa_accepted_at', 'cpa_version', 'agreement_accepted_at', 'agreement_version']) {
-      expect(col in withSms).toBe(false);
+      expect(col in update).toBe(false);
     }
-    expect(buildStep3ContractorUpdate({}, a, false, ISO).sms_consent_ts).toBeNull();
+    // gh-2875 N6: no sms_* key at all (not even null, which would erase an opt-in captured elsewhere).
+    expect(Object.keys(update).filter((k) => /sms/i.test(k))).toEqual([]);
   });
 
   it('acceptCpa calls rpc accept_cpa with v1-2026-04 and requires an acceptance_id (gh-2995)', async () => {
@@ -388,9 +391,17 @@ describe('verbatim Tier-3 legal copy', () => {
     expect(c.bodyStrong).toBe('A platform fee refund is your sole remedy if a homeowner exercises this right.');
   });
 
-  it('TCPA SMS consent is optional + STOP to unsubscribe', () => {
-    expect(PRE_APPROVAL_COPY.step3.tcpa.checkLabel).toContain('Reply STOP to unsubscribe');
-    expect(PRE_APPROVAL_COPY.step3.tcpa.checkLabel).toContain('Optional');
+  it('gh-2875 N6: the page carries no hard-coded SMS consent sentence and no consent checkbox state', () => {
+    const CONSENT_RE = /I agree to receive|Text me at this number|Msg & data rates|Message and data rates|Reply STOP|consent to receive/i;
+    expect('tcpa' in PRE_APPROVAL_COPY.step3).toBe(false);
+    expect(JSON.stringify(PRE_APPROVAL_COPY)).not.toMatch(CONSENT_RE);
+    const dir = resolve(__dirname, '..');
+    for (const f of ['page.tsx', 'copy.ts', 'utils.ts']) {
+      const src = readFileSync(resolve(dir, f), 'utf8');
+      expect(src, f).not.toMatch(/sms_consent_ts\s*:/);
+      expect(src, f).not.toMatch(/sms_opt_in\s*:/);
+      expect(src, f).not.toMatch(CONSENT_RE);
+    }
   });
 
   it('D-225 submitted panel copy is verbatim', () => {
