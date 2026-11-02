@@ -1,5 +1,5 @@
 -- gh-3229 PRODUCTION-SAFE proof (P18): $5 measurement referral fee, monthly batch ($25 minimum), partner dashboard stats.
--- Tests only. NOT RUN IN PRODUCTION by its author; Marty runs it. Refs #3229, #3236 (the draft migration under test lives on PR #3236, head 11943b7a68f9).
+-- Tests only. NOT RUN IN PRODUCTION by its author; Marty runs it. Refs #3229, #3236 (the draft migration under test lives on PR #3236, head fc1fdd66960f).
 --
 -- WHAT IT IS
 --   supabase/tests/gh3229_partner_measurement_fee_proof.sql (PR #3236) was written against a throwaway LOCAL database (gh3229_local_stub_extras.sql) that lacks several
@@ -20,7 +20,7 @@
 --     partner_fee_events (new, uncommitted) and platform_settings (row inserts) are not visible to other sessions.
 --
 -- EXPECTED RESULT  (the run ALWAYS ends in an error; that is the design, it is what keeps the file from committing)
---   PASS : ERROR P0U01  'GH3229 PROD PROOF PASSED (forced rollback, nothing was committed)' + one line per assertion ending OK, last line 'TALLY: 75 OK, 0 DIFF'
+--   PASS : ERROR P0U01  'GH3229 PROD PROOF PASSED (forced rollback, nothing was committed)' + one line per assertion ending OK, last line 'TALLY: 80 OK, 0 DIFF'
 --   FAIL : ERROR P0U03  'GH3229 PROD PROOF FAILED (forced rollback): n DIFF' + the failing rows first, then all rows.
 --   A fixture or migration statement that production refuses aborts earlier with that statement's own error (constraint / trigger name in the message). Paste it into #3229.
 --   Anything other than P0U01 / P0U03 is NOT a pass. Verify afterwards that nothing persisted (all three must be 0):
@@ -49,16 +49,16 @@
 --   The admin used for the admin-gated cases is read from public.admin_emails at run time (is_admin_email() reads that table in production); only a JWT claim is simulated, nothing is written for it.
 --
 -- THE INLINED MIGRATION  (verify it is unchanged)
---   Source : supabase/migrations_drafts/gh3229_partner_measurement_fee.sql at PR #3236 head 11943b7a68f9 (git blob f61394cb435d).
---   sha256 of that whole draft file                                   : b0363712f53670e0a96d8b4fa915d54ea7fec1bd782027d4d5f2988fb74f3355
---   sha256 of the inlined block (the draft minus its two lines 'BEGIN;' and 'COMMIT;') : eb46100c3b13921ee7a74a1b38ad58012af8a4facee1cc24b161b33c74134751
+--   Source : supabase/migrations_drafts/gh3229_partner_measurement_fee.sql at PR #3236 head fc1fdd66960f (git blob 5978b97da88b).
+--   sha256 of that whole draft file                                   : ce009c89f44ff119ee48b3a00b3c440ddcac78075484d9e851965e22a4ec1907
+--   sha256 of the inlined block (the draft minus its two lines 'BEGIN;' and 'COMMIT;') : e23dc4f9e4aa0977fdad148831a735684640657e11207f71976bccce05dcc82b
 --   Check the block :  sed -n '/^-- >>> BEGIN INLINED MIGRATION/,/^-- <<< END INLINED MIGRATION/p' <this file> | sed '1d;$d' | sha256sum
---   Check the draft :  git show 11943b7a68f9:supabase/migrations_drafts/gh3229_partner_measurement_fee.sql | grep -v -E '^(BEGIN|COMMIT);$' | sha256sum   (same value)
+--   Check the draft :  git show fc1fdd66960f:supabase/migrations_drafts/gh3229_partner_measurement_fee.sql | grep -v -E '^(BEGIN|COMMIT);$' | sha256sum   (same value)
 --
 -- CASES (key prefix = case id; same ids as the local proof, plus F0*, S9, S10, X0, D11b and the negative controls NC1-NC3)
 --   F0 fixture integrity under production guards.  F1-F4 credited paid order -> one 500 row; setting 700 -> next row 700; no credited partner -> none; duplicate update -> no second row.
 --   F4b/F4c one fee per PaymentIntent; UPDATE accrues nothing.  F5-F9 inspector, click outside window, is_test mismatch (a/b/c), contractor-role order / no Stripe id, all-test chain.
---   F10 customer agent.  F11-F12 (D-402) window runs click -> order.  F13-F15 (#3242) v4 gate.  S1-S10 isolation, no client writes, anon nothing, privileges, function ACLs, RLS.
+--   F10 customer agent.  F11-F12 (D-402) window runs click -> order.  F13-F15 (#3242) v4 gate.  F16-F18 (D-401 item 7, A4.4) excluded states OK/AR/KS/NE/MS: no fee (F16, F16b normalised), F17 other states accrue (negative control), F18 NULL/blank state accrues; NC4 turns an excluded state into IN -> fee accrues.  S1-S10 isolation, no client writes, anon nothing, privileges, function ACLs, RLS.
 --   D1-D11b dashboard stats.  B1-B9 monthly batch (Eastern month boundary).  P1-P4 paid flip.  R1 rejected batch releases events.  V1-V2 rebate does not void.  N8 deleting a batch payout releases events.
 --   NEGATIVE CONTROLS (the case is shown to fail when its precondition is broken):  NC1 is_test mismatch removed -> fee accrues;  NC2 inspector removed -> fee accrues;  NC3 v4 acceptance moved
 --   before the order -> fee accrues.  F11/F12 are a paired control for the window;  F13 vs F14/F15 for the v4 gate.
@@ -139,6 +139,9 @@ CREATE TEMP TABLE adm ON COMMIT DROP AS SELECT email FROM public.admin_emails OR
 --  Month boundaries are America/New_York (the business day), not UTC; only past months can be batched.
 --  10. Agreement gate (v4, #3242): the accrual trigger credits a partner only if partner_v4_accepted_at(agent) is set and not later than the order's created_at.
 --      REFUSES to run unless public.partner_v4_accepted_at(uuid) exists (apply #3242's gh3239_partner_agreement_v4.sql first).
+--  11. Excluded states (D-401 item 7, D-387, D-392; Partner Agreement v4 A4.4; CEO ruling on #3229, comment 6578294998): the accrual trigger credits nothing when the claim's
+--      property_state is OK, AR, KS, NE or MS (compared as upper(btrim()), the way the D-344 gate reads the column). A NULL or blank state still accrues, as the D-344 gate does not gate
+--      a NULL state either. The list is fixed in the function body; changing it is a new migration. The $200 path (apply_referral_commission) is NOT touched here; a separate issue covers it.
 
 
 SET LOCAL lock_timeout = '5s';
@@ -227,6 +230,7 @@ DECLARE
   v_cents         integer;
   v_ref           text;
   v_v4_at         timestamptz;
+  v_state         text;
 BEGIN
   -- homeowner-paid order: requested by the homeowner, a Stripe payment id on it, and a positive charge
   v_ref := COALESCE(NULLIF(btrim(NEW.homeowner_stripe_payment_intent_id), ''), NULLIF(btrim(NEW.stripe_payment_id), ''));
@@ -236,8 +240,8 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  SELECT c.is_test, r.id, r.created_at, r.is_test, a.id, a.is_test, a.agent_type
-    INTO v_claim_test, v_ref_id, v_ref_created, v_ref_test, v_agent_id, v_agent_test, v_agent_type
+  SELECT c.is_test, r.id, r.created_at, r.is_test, a.id, a.is_test, a.agent_type, c.property_state
+    INTO v_claim_test, v_ref_id, v_ref_created, v_ref_test, v_agent_id, v_agent_test, v_agent_type, v_state
     FROM public.claims c
     JOIN public.referrals r        ON r.id = c.referral_id
     JOIN public.referral_agents a  ON a.id = r.referral_agent_id
@@ -262,6 +266,12 @@ BEGIN
 
   -- D-333: no fee to a home inspector
   IF v_agent_type IS NOT DISTINCT FROM 'home_inspector' THEN
+    RETURN NEW;
+  END IF;
+
+  -- D-401 item 7 / D-387 / D-392 / Partner Agreement v4 A4.4: no fee on a Referred Homeowner whose property is in OK, AR, KS, NE or MS.
+  -- upper(btrim()) is how the D-344 gate reads claims.property_state. NULL IN (...) is NULL, so a NULL or blank state falls through and accrues.
+  IF upper(btrim(v_state)) IN ('OK', 'AR', 'KS', 'NE', 'MS') THEN
     RETURN NEW;
   END IF;
 
@@ -674,12 +684,19 @@ END $f$;
 -- BEFORE INSERT trigger claims_apply_locked_referral CLEARS a sent referral that is not 'clicked'/'registered' (ours is 'claim_submitted', so nothing advances and no
 -- send-partner-status-email request is queued by claims_advance_referral). The claim is inserted is_test = true (notify_admin_new_claim / ga4 skip test claims);
 -- p_claim_test = false flips it afterwards (claims_freeze_is_test only restrains anon/authenticated).
-CREATE FUNCTION pg_temp.mk_claim(n int, p_claim_test boolean DEFAULT true, p_ref_test boolean DEFAULT true, p_age interval DEFAULT interval '1 day', p_claim_age interval DEFAULT interval '0') RETURNS uuid LANGUAGE plpgsql AS $f$
+CREATE FUNCTION pg_temp.mk_claim(n int, p_claim_test boolean DEFAULT true, p_ref_test boolean DEFAULT true, p_age interval DEFAULT interval '1 day', p_claim_age interval DEFAULT interval '0', p_state text DEFAULT NULL) RETURNS uuid LANGUAGE plpgsql AS $f$
 DECLARE v_ref uuid := gen_random_uuid(); v_claim uuid := gen_random_uuid();
 BEGIN
+  IF p_state IS NOT NULL AND NOT p_claim_test THEN
+    RAISE EXCEPTION 'gh3229 prod proof: a property_state fixture must be a test claim (trg_notify_admin_out_of_state_claim skips only is_test claims)' USING ERRCODE = 'P0U05';
+  END IF;
   INSERT INTO public.referrals(id, referral_agent_id, status, created_at, is_test) VALUES (v_ref, pg_temp.u(100 + n), 'claim_submitted', now() - p_age, p_ref_test);
   INSERT INTO public.claims(id, user_id, is_test, created_at) VALUES (v_claim, pg_temp.u(300 + n), true, now() - p_claim_age);
   UPDATE public.claims SET referral_id = v_ref, referral_agent_id = pg_temp.u(100 + n) WHERE id = v_claim;
+  IF p_state IS NOT NULL THEN
+    -- set while the claim is still is_test = true: trg_notify_admin_out_of_state_claim (AFTER UPDATE OF property_state) is WHEN is_test IS NOT TRUE, so no net.http_post is queued
+    UPDATE public.claims SET property_state = p_state WHERE id = v_claim;
+  END IF;
   IF NOT p_claim_test THEN
     UPDATE public.claims SET is_test = false WHERE id = v_claim;
   END IF;
@@ -724,6 +741,9 @@ SELECT pg_temp.mk_agent(17, 'other', true, false, NULL, interval '1 hour');   --
 SELECT pg_temp.mk_agent(18, 'other', true, false, NULL, interval '-1 hour');  -- accepted v4 an hour before the order
 SELECT pg_temp.mk_agent(19, 'other', false);                   -- the ONE real-flagged (is_test = false) partner: F7c mismatch and the D11 real-caller stats case
 SELECT pg_temp.mk_agent(20, 'other');                          -- F7b mismatch (real-flagged referral)
+SELECT pg_temp.mk_agent(21, 'other');                          -- S, claims in the excluded states (F16)
+SELECT pg_temp.mk_agent(22, 'other');                          -- claims in states that are not excluded (F17, NC4)
+SELECT pg_temp.mk_agent(23, 'other');                          -- claims with no state / a blank state (F18)
 CREATE TEMP TABLE o(k text PRIMARY KEY, id uuid) ON COMMIT DROP;
 CREATE TEMP TABLE c(k text PRIMARY KEY, id uuid) ON COMMIT DROP;
 
@@ -820,6 +840,30 @@ INSERT INTO c VALUES ('t', pg_temp.mk_claim(9, true, true));
 INSERT INTO o SELECT 't', pg_temp.mk_order((SELECT id FROM c WHERE k = 't'));
 SELECT pg_temp.chk('F9 all-test chain: rows / is_test / amount', pg_temp.q(format($$ SELECT count(*) || '/' || bool_and(is_test) || '/' || max(amount_cents) FROM partner_fee_events WHERE referral_agent_id = %L $$, pg_temp.u(109))), '1/true/500');
 
+-- F16-F18 excluded states (D-401 item 7 / D-387 / D-392 / Partner Agreement v4 A4.4). Same partner type, window and v4 acceptance everywhere: only the claim's property_state differs. All claims are test claims.
+INSERT INTO c SELECT 'st_' || s, pg_temp.mk_claim(21, true, true, interval '1 day', interval '0', s) FROM unnest(ARRAY['OK', 'AR', 'KS', 'NE', 'MS']) s;
+INSERT INTO o SELECT 'st_' || k, pg_temp.mk_order(id) FROM c WHERE k LIKE 'st\_%';
+SELECT pg_temp.chk('F16 OK / AR / KS / NE / MS: orders placed / fee rows', pg_temp.q(format(
+  $$ SELECT (SELECT count(*) FROM hover_orders WHERE claim_id IN (SELECT id FROM c WHERE k LIKE 'st\_%%')) || '/' || (SELECT count(*) FROM partner_fee_events WHERE referral_agent_id = %L) $$, pg_temp.u(121))), '5/0');
+INSERT INTO c SELECT 'sp_' || i, pg_temp.mk_claim(21, true, true, interval '1 day', interval '0', s) FROM unnest(ARRAY[' ok ', 'ne', 'Ms']) WITH ORDINALITY AS t(s, i);
+INSERT INTO o SELECT 'sp_' || k, pg_temp.mk_order(id) FROM c WHERE k LIKE 'sp\_%';
+SELECT pg_temp.chk('F16b lower-case / padded state (" ok ", "ne", "Ms"): orders placed / fee rows for S', pg_temp.q(format(
+  $$ SELECT (SELECT count(*) FROM hover_orders WHERE claim_id IN (SELECT id FROM c WHERE k LIKE 'sp\_%%')) || '/' || (SELECT count(*) FROM partner_fee_events WHERE referral_agent_id = %L) $$, pg_temp.u(121))), '3/0');
+-- F17 negative control: states that are not excluded accrue; same partner, window and agreement as F16
+INSERT INTO c SELECT 'ok_' || s, pg_temp.mk_claim(22, true, true, interval '1 day', interval '0', s) FROM unnest(ARRAY['IN', 'MO', 'NV', 'OH', 'OR', 'MN']) s;
+INSERT INTO o SELECT 'ok_' || k, pg_temp.mk_order(id) FROM c WHERE k LIKE 'ok\_%';
+SELECT pg_temp.chk('F17 IN / MO / NV / OH / OR / MN: fee rows / amount (one 500 row each)', pg_temp.q(format(
+  $$ SELECT count(*) || '/' || min(amount_cents) || '-' || max(amount_cents) FROM partner_fee_events WHERE referral_agent_id = %L $$, pg_temp.u(122))), '6/500-500');
+-- NC4 negative control for F16: the same partner's excluded-state claim moved to IN -> the next order accrues; the excluded ones stay at 0
+UPDATE public.claims SET property_state = 'IN' WHERE id = (SELECT id FROM c WHERE k = 'st_OK');
+INSERT INTO o SELECT 'nc4', pg_temp.mk_order((SELECT id FROM c WHERE k = 'st_OK'));
+SELECT pg_temp.chk('NC4 excluded-state claim moved to IN: new order accrues, S rows', pg_temp.q(format(
+  $$ SELECT count(*) FROM partner_fee_events WHERE hover_order_id = %L $$, (SELECT id FROM o WHERE k = 'nc4'))), '1');
+-- F18 no state recorded: accrues (the D-344 gate does not gate a NULL property_state either); a blank one too
+INSERT INTO c VALUES ('ns_null', pg_temp.mk_claim(23)), ('ns_blank', pg_temp.mk_claim(23, true, true, interval '1 day', interval '0', ''));
+INSERT INTO o SELECT 'ns_null', pg_temp.mk_order((SELECT id FROM c WHERE k = 'ns_null'));
+INSERT INTO o SELECT 'ns_blank', pg_temp.mk_order((SELECT id FROM c WHERE k = 'ns_blank'));
+SELECT pg_temp.chk('F18 NULL state / blank state: fee rows', pg_temp.q(format($$ SELECT count(*) FROM partner_fee_events WHERE referral_agent_id = %L $$, pg_temp.u(123))), '2');
 -- F10 customer agent accrues
 INSERT INTO c VALUES ('cu', pg_temp.mk_claim(12));
 INSERT INTO o SELECT 'cu', pg_temp.mk_order((SELECT id FROM c WHERE k = 'cu'));
