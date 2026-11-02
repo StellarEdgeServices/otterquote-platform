@@ -921,7 +921,13 @@
       Nav.renderFooter();
 
       // gh-3239: no link until the customer has accepted Partner Agreement v4
-      const accepted = await hasAcceptedAgreementV4();
+      let accepted = await hasAcceptedAgreementV4();
+      if (accepted) {
+        // gh-3245: the page read this account as accepted, but the server decides. If it still withholds the code
+        // (v4_acceptance_required), show the existing accept-first gate instead of the error state.
+        const state = await fetchOrCreateReferralCode();
+        if (!userReferralCode && state === 'v4_acceptance_required') accepted = false;
+      }
       if (!accepted) {
         showAgreementGate();
         await loadReferrals();
@@ -938,19 +944,29 @@
     // ── gh-3239 (#3238): Partner Agreement v4 acceptance ──
     const PARTNER_AGREEMENT_CURRENT_VERSION = 'v4-2026-10';
 
-    // Reads the caller's own referral_agents row (RLS: user_id = auth.uid()). No row yet = not accepted.
+    // gh-3245: same test as the server's partner_v4_accepted_at(): the v4 attestation key counts only with a non-empty
+    // accepted_at, the version column only with partner_agreement_accepted_at set. Anything else = not accepted.
+    function rowShowsV4Accepted(row) {
+      if (!row) return false;
+      const att = row.partner_agreement_attestation || {};
+      const entry = att[PARTNER_AGREEMENT_CURRENT_VERSION];
+      if (Object.prototype.hasOwnProperty.call(att, PARTNER_AGREEMENT_CURRENT_VERSION) && entry && entry.accepted_at) return true;
+      return row.partner_agreement_version === PARTNER_AGREEMENT_CURRENT_VERSION && !!row.partner_agreement_accepted_at;
+    }
+
+    // Reads the caller's own CUSTOMER referral_agents row (RLS: user_id = auth.uid()), the row the server's
+    // get_or_create_customer_referral_code() uses. No row yet = not accepted.
     async function hasAcceptedAgreementV4() {
       try {
         const { data, error } = await sb
           .from('referral_agents')
-          .select('partner_agreement_version, partner_agreement_attestation')
+          .select('partner_agreement_version, partner_agreement_accepted_at, partner_agreement_attestation')
           .eq('user_id', currentUser.id)
+          .eq('agent_type', 'customer')
           .limit(1)
           .maybeSingle();
         if (error || !data) return false;
-        const att = data.partner_agreement_attestation || {};
-        return Object.prototype.hasOwnProperty.call(att, PARTNER_AGREEMENT_CURRENT_VERSION)
-          || data.partner_agreement_version === PARTNER_AGREEMENT_CURRENT_VERSION;
+        return rowShowsV4Accepted(data);
       } catch (e) {
         return false;
       }
@@ -981,11 +997,17 @@
       status.textContent = 'Saving your acceptance…';
       try {
         // the customer's referral_agents row must exist before it can carry the acceptance
-        if (!userReferralCode) await fetchOrCreateReferralCode();
-        if (!userReferralCode) throw new Error('no referral code');
+        // gh-3245: once the server withholds the code until v4 is accepted, this first call returns a null code with
+        // v4_acceptance_required true. That is the normal "accept first" state, not an error. Any other null is a failure.
+        if (!userReferralCode) {
+          const state = await fetchOrCreateReferralCode();
+          if (!userReferralCode && state !== 'v4_acceptance_required') throw new Error('no referral code');
+        }
         const { data, error } = await sb.rpc('accept_partner_agreement_v4');
         if (error) throw error;
         if (!data || data.agreement_version !== PARTNER_AGREEMENT_CURRENT_VERSION || !data.accepted_at) throw new Error('unexpected response');
+        // gh-3245: the code is only returned after acceptance, so ask again (a no-op when the first call already returned it)
+        if (!userReferralCode) await fetchOrCreateReferralCode();
         document.getElementById('agreement-accept-section').style.display = 'none';
         document.body.classList.add('agreement-v4-ok');
         showAcceptedHero();
@@ -1042,6 +1064,12 @@
       if (data && data.unique_code) {
         userReferralCode = data.unique_code;
         currentAgent = data; // { unique_code, payments_blocked, w9_notification_sent_at, w9_submitted_at, created }
+      } else if (data && !error && data.v4_acceptance_required === true) {
+        // gh-3245: the row exists but the code is withheld until Partner Agreement v4 is accepted. Not a failure:
+        // no error log, no Sentry event. acceptAgreementV4() accepts, then calls this again to get the code.
+        userReferralCode = null;
+        currentAgent = null;
+        return 'v4_acceptance_required';
       } else {
         // Genuine failure (RPC error, expired session, no verified email,
         // etc.) — do NOT fabricate a fake code. Leave userReferralCode
