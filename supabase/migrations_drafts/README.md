@@ -163,3 +163,9 @@ Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630)
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh3228_measurement_price_2263` | forward, rollback, pre-flight (runbook, mid-checkout sweep, post-apply checks) | NOT APPLIED | drafted 2026-10-30 under #3228 on Dustin's word (chat 2026-10-30 09:17 ET); production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): `hover_measurement_price` = 1500 and `measurement_products.roof_basic.homeowner_price_cents` = 1500. Tier 3B money: CTO applies after the 24-hour R-097 notice and the D-291 amendment; both keys change in one transaction | none |
+
+## Added 2026-10-30 (gh-3259, partners read referrals.status / job_value only through get_my_referrals()): 3 files here (forward, rollback, pre-flight), the proof in `supabase/tests/gh3259_referrals_column_revoke_*` (scratch setup, probe, `_proof_run.sh`); not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh3259_referrals_revoke_status_job_value` | forward, rollback, pre-flight (all three here) | NOT APPLIED (DRAFT, Tier 3B) | drafted 2026-10-30 under #3259; production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): `authenticated` holds column SELECT (`{authenticated=r/postgres}`) on `referrals.status` and `referrals.job_value`, no table-level SELECT; `get_my_referrals()` and `admin_list_referrals()` are SECURITY DEFINER (owner postgres). One `REVOKE SELECT (status, job_value) ... FROM anon, authenticated`, gated on `SET LOCAL gh3259.frontend_published = 'yes'` because `partner-dashboard.html` `loadStats()` on main still reads both columns (PR #3258 removes that read). Proof: `bash supabase/tests/gh3259_referrals_column_revoke_proof_run.sh` on a throwaway PG16 (before / gate / after / rerun / rollback / reapply / gh3257 bodies, 15 mutants). No database was written | none |
