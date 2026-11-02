@@ -10,7 +10,6 @@
  * anon-key-bearer call pattern:
  *   • #336 parse-loss-sheet  — storage_path is scoped under the caller's own
  *                              user_id/claim_id.
- *   • #337 resend-hover-link — user session JWT (invoke), not the anon-key bearer.
  *   • send-support-email / notify-contractors / send-message-notification — all
  *     invoked under the user's authenticated session.
  *
@@ -24,14 +23,6 @@ import type { HomeownerClaim, HomeownerProfile } from './types';
 export interface ActionResult {
   ok: boolean;
   error?: string;
-}
-
-/** D-211 P19 #337 — resend the Hover capture link (rate-limited 3/day server-side). */
-export async function resendHoverLink(claimId: string): Promise<ActionResult> {
-  const { error } = await supabase.functions.invoke('resend-hover-link', {
-    body: { claim_id: claimId },
-  });
-  return error ? { ok: false, error: error.message } : { ok: true };
 }
 
 /**
