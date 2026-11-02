@@ -16,7 +16,7 @@
 -- What this file does: get_or_create_customer_referral_code() is restated with the live body plus two identical checks (marked gh-3245, the only diff):
 --   a caller whose customer row has partner_v4_accepted_at(row.id) IS NULL gets unique_code NULL and v4_acceptance_required true, on both the
 --   existing-row path and the create path. It does NOT raise: a raise would roll back the INSERT and accept_partner_agreement_v4() would find no row
---   (it raises no_partner_record). The row (and its trigger-generated code) exists in the database but is never returned until acceptance.
+--   (it raises no_partner_record). This function does not return the code until acceptance. KNOWN LIMIT (recorded on #3245): the row and its trigger-generated code exist, and the owner can still read their own row's unique_code through the own-row SELECT policy; that policy and the grants are not changed here. The fee is gated on acceptance regardless.
 --   An accepted customer gets exactly the live result. Signature, SECURITY DEFINER, search_path and grants (CREATE OR REPLACE keeps them) are unchanged.
 
 BEGIN;

@@ -4,7 +4,7 @@
 # Base: the gh3239 throwaway chain (schema + live register_partner + gh3239 forward, which provides partner_v4_accepted_at() and
 # accept_partner_agreement_v4()), a profiles stub, and the live get_or_create_customer_referral_code() extracted from the baseline migration.
 # Phases: 1-BASELINE -> 2-AFTER (forward) -> re-run forward -> 3-ROLLBACK (twice) -> 4-REAPPLIED.
-# MUTANTS (separate databases): three one-line mutants of the forward, each killed by a named check; and a forward run without gh3239 must refuse.
+# MUTANTS (separate databases): four one-line mutants of the forward, each killed by a named check; and a forward run without gh3239 must refuse.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 OUT="${1:-$(mktemp -d)}"; mkdir -p "$OUT"
@@ -43,7 +43,7 @@ psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "$RB" >/dev/null 2>&1 || fail "rollback n
 pass 3-ROLLBACK "$DB"
 psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "$FWD" >/dev/null 2>&1 || fail "forward after rollback failed"
 pass 4-REAPPLIED "$DB"
-for ph in 1-BASELINE 2-AFTER 3-ROLLBACK 4-REAPPLIED; do grep -q '^FAILING=0 of 9$' "$OUT/$ph.txt" || fail "$ph must report FAILING=0 of 9"; done
+for ph in 1-BASELINE 2-AFTER 3-ROLLBACK 4-REAPPLIED; do grep -q '^FAILING=0 of 12$' "$OUT/$ph.txt" || fail "$ph must report FAILING=0 of 12"; done
 grep -q '|before|' "$OUT/1-BASELINE.txt" && grep -q '|after|' "$OUT/2-AFTER.txt" || fail "phase detection"
 diff "$OUT/1-BASELINE.txt" "$OUT/3-ROLLBACK.txt" >/dev/null || fail "ROLLBACK differs from BASELINE"
 diff "$OUT/2-AFTER.txt" "$OUT/4-REAPPLIED.txt" >/dev/null || fail "REAPPLIED differs from AFTER"
@@ -74,6 +74,7 @@ PY
 run_mutant existing_row_open  "IF public.partner_v4_accepted_at(v_row.id) IS NULL THEN=>IF false THEN=>1" 'B existing'
 run_mutant create_path_open   "IF public.partner_v4_accepted_at(v_row.id) IS NULL THEN=>IF false THEN=>2" 'A brand-new'
 run_mutant any_version        "IF public.partner_v4_accepted_at(v_row.id) IS NULL THEN=>IF v_row.partner_agreement_version IS NULL THEN=>0" 'D customer who accepted only v3'
+run_mutant key_without_stamp  "IF public.partner_v4_accepted_at(v_row.id) IS NULL THEN=>IF NOT (v_row.partner_agreement_attestation ? 'v4-2026-10') THEN=>0" 'I customer row with a v4 key'
 # NEGATIVE CONTROL: the forward without gh3239 applied refuses and leaves the body untouched
 NDB=gh3245rc_proof_no3239; mkdb "$NDB" no3239
 if psql -q -d "$NDB" -v ON_ERROR_STOP=1 -f "$FWD" > "$OUT/no3239.txt" 2>&1; then fail "forward applied without partner_v4_accepted_at()";

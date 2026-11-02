@@ -52,6 +52,21 @@ SELECT pg_temp.chk('E accept flow: row created by the first call, acceptance rec
 SELECT pg_temp.chk('E2 the code returned after acceptance is the row''s own stored code (stable, not regenerated)', 'true', 'true',
   ((public.get_or_create_customer_referral_code() ->> 'unique_code') = (SELECT unique_code FROM public.referral_agents WHERE user_id = 'dddddddd-0000-0000-0000-000000000005' AND agent_type = 'customer'))::text);
 
+-- H, I (gh-3245 review F2): what "accepted" means to the server is partner_v4_accepted_at(customer row). The refer pages (PR #3327) read the same test:
+-- the v4 key needs a non-empty accepted_at, the version column needs partner_agreement_accepted_at. These two shapes are the ones the pages once read as accepted.
+-- H: a PARTNER row (other agent_type, same user_id) accepted v4, no customer row: the customer row is created and it is NOT accepted.
+INSERT INTO public.referral_agents (agent_type, first_name, last_name, email, user_id, partner_agreement_version, partner_agreement_accepted_at, partner_agreement_attestation) VALUES
+  ('influencer', 'U', 'Seven', 'u7-partner@proof.invalid', 'dddddddd-0000-0000-0000-000000000007', 'v4-2026-10', '2026-11-01T00:00:00Z', '{"v4-2026-10": {"accepted_at": "2026-11-01T00:00:00+00:00"}}');
+SELECT pg_temp.as_user('dddddddd-0000-0000-0000-000000000007', 'u7@proof.invalid');
+SELECT pg_temp.chk('H partner row accepted v4, no customer row: the customer row is created and is not accepted (no code)', 'true|absent|true|1', 'false|true|true|1', pg_temp.call('dddddddd-0000-0000-0000-000000000007'));
+-- I: customer row with the v4 attestation key but no accepted_at, version not v4: not accepted; accept_partner_agreement_v4() stamps nothing (known limit, unchanged by this PR)
+INSERT INTO public.referral_agents (agent_type, first_name, last_name, email, user_id, partner_agreement_version, partner_agreement_accepted_at, partner_agreement_attestation) VALUES
+  ('customer', 'U', 'Eight', 'u8@proof.invalid', 'dddddddd-0000-0000-0000-000000000008', 'v3-2026-09', '2026-09-26T12:00:00Z', '{"v3-2026-09": {}, "v4-2026-10": {}}');
+SELECT pg_temp.as_user('dddddddd-0000-0000-0000-000000000008', 'u8@proof.invalid');
+SELECT pg_temp.chk('I customer row with a v4 key but no accepted_at: not accepted (no code)', 'true|absent|false|1', 'false|true|false|1', pg_temp.call('dddddddd-0000-0000-0000-000000000008'));
+SELECT COALESCE(public.accept_partner_agreement_v4() ->> 'accepted_at', 'none') AS i_accept_at \gset
+SELECT pg_temp.chk('I2 accept on that row returns no accepted_at (known limit: the page then shows its existing acceptance error, logged)', 'none', 'none', :'i_accept_at');
+
 -- F: unchanged guards
 SELECT set_config('request.jwt.claims', '', true);
 DO $t$ BEGIN

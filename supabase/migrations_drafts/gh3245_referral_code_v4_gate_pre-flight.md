@@ -16,7 +16,7 @@ the row insert and `accept_partner_agreement_v4()` then fails with `no_partner_r
 - `react-app/app/refer/utils.ts` `acceptAgreementAndIssueLink()`: `const code = await deps.getOrCreateCode(); if (!code) throw new Error('no referral code');`
 Applying this migration alone therefore breaks first-time acceptance (and acceptance by existing unaccepted customers). The pages must first change to: get-or-create (to create the row; null code
 is expected) -> `accept_partner_agreement_v4()` -> get-or-create again (returns the code). That is a logic change, not new wording; the pinned call-order tests (`tests/gh3239-partner-agreement-v4.mjs`,
-`react-app/app/refer/__tests__/refer.test.ts`) change with it. Not part of this PR. Pages that read the initial state already avoid the RPC for unaccepted customers (`loadReferLink`), so the initial load is unaffected.
+`react-app/app/refer/__tests__/refer.test.ts`) change with it. Not part of this PR. On the initial load, PR #3327 (head `7f76f28d`) reads "accepted" the way this function does (`partner_v4_accepted_at`: the v4 key needs a non-empty `accepted_at`, the version column needs `partner_agreement_accepted_at`; the static page reads the customer row only) and, if the server still answers `v4_acceptance_required`, shows the existing accept-first gate on both pages.
 
 ## Read-only checks before apply
 ```sql
@@ -27,6 +27,17 @@ SELECT to_regprocedure('public.partner_v4_accepted_at(uuid)');
 -- C. customer rows that would be refused a code today (record on the issue)
 SELECT id, created_at, partner_agreement_version FROM public.referral_agents
  WHERE agent_type = 'customer' AND status = 'active' AND public.partner_v4_accepted_at(id) IS NULL;
+-- C2. the shapes the pages once read as accepted but this function refuses (record on the issue)
+SELECT 'v4_key_without_accepted_at' AS shape, count(*) FROM public.referral_agents
+ WHERE agent_type = 'customer' AND status = 'active' AND partner_agreement_attestation ? 'v4-2026-10'
+   AND NULLIF(partner_agreement_attestation -> 'v4-2026-10' ->> 'accepted_at', '') IS NULL
+UNION ALL
+SELECT 'version_v4_without_accepted_at', count(*) FROM public.referral_agents
+ WHERE agent_type = 'customer' AND status = 'active' AND partner_agreement_version = 'v4-2026-10' AND partner_agreement_accepted_at IS NULL
+UNION ALL
+SELECT 'partner_row_accepted_no_customer_row', count(*) FROM public.referral_agents p
+ WHERE p.agent_type <> 'customer' AND p.user_id IS NOT NULL AND public.partner_v4_accepted_at(p.id) IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM public.referral_agents c WHERE c.user_id = p.user_id AND c.agent_type = 'customer' AND c.status = 'active');
 ```
 
 ## Post-apply checks
