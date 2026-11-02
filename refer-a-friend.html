@@ -1412,16 +1412,23 @@ Best regards`;
       tbody.innerHTML = referrals.map((r, i) => {
         // display_name (first name + last initial, gh-3217) is nullable — fall back to a
         // positional label. Cells match the headers: Name | Date | Status | Referral Fee.
-        const name = r.display_name || ('Referral #' + (i + 1));
+        // gh-3257 / privacy.html 4.7: get_my_referrals() returns status = NULL (referrals.status is NOT NULL) when the
+        // homeowner declined updates to their referrer: no name, no progress status, commission only once earned.
+        const declined = r.status == null;
+        const name = declined ? ('Referral #' + (i + 1) + ' — updates declined') : (r.display_name || ('Referral #' + (i + 1)));
         const date = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
         const label = REFERRAL_STATUS_LABELS[r.status] || 'Pending';
         const cls = REFERRAL_STATUS_CLASSES[r.status] || 'status-clicked';
         // gh-3245 (#3243, LEGAL-READ 6525943244): the fee cell shows what actually accrued (commission_amount from
         // get_my_referrals()), never a $200 inferred from the status. A completed referral the Partner Agreement v4 gate
-        // withheld is job_completed with no commission_amount and shows "No fee".
-        const fee = referralFeeCell(r);
+        // withheld is job_completed with no commission_amount and shows "No fee". A declined row (gh-3257) shows its fee
+        // only once earned, and has no status to infer "No fee" from.
+        const fee = declined
+          ? (referralFeeAmount(r) > 0 ? '$' + referralFeeAmount(r).toLocaleString('en-US') : '—')
+          : referralFeeCell(r);
+        const statusCell = declined ? '—' : '<span class="status-badge ' + cls + '">' + label + '</span>';
         return '<tr><td>' + escapeHtml(name) + '</td><td>' + date + '</td>' +
-               '<td><span class="status-badge ' + cls + '">' + label + '</span></td>' +
+               '<td>' + statusCell + '</td>' +
                '<td>' + fee + '</td></tr>';
       }).join('');
     }
@@ -1452,9 +1459,13 @@ Best regards`;
       const total = referrals.length;
       // D-139 (#567): 'job_completed' has accrued but not yet paid out; 'commission_paid' is paid. gh-3245: the totals sum
       // the accrued commission_amount, so a completed referral with no fee (Partner Agreement v4 gate) adds $0.
-      const paidAmt = referrals.filter(r => r.status === 'commission_paid').reduce((t, r) => t + referralFeeAmount(r), 0);
-      const pendingAmt = referrals.filter(r => r.status === 'job_completed').reduce((t, r) => t + referralFeeAmount(r), 0);
-      const completed = referrals.filter(r => r.status === 'job_completed' || r.status === 'commission_paid').length;
+      // gh-3257: a declined row (status NULL) counts from its fee fields instead of its status.
+      const declinedEarned = r => r.status == null && referralFeeAmount(r) > 0;
+      const isPaid = r => r.status === 'commission_paid' || (declinedEarned(r) && r.commission_paid_at != null);
+      const isPending = r => r.status === 'job_completed' || (declinedEarned(r) && r.commission_paid_at == null);
+      const paidAmt = referrals.filter(isPaid).reduce((t, r) => t + referralFeeAmount(r), 0);
+      const pendingAmt = referrals.filter(isPending).reduce((t, r) => t + referralFeeAmount(r), 0);
+      const completed = referrals.filter(r => isPaid(r) || isPending(r)).length;
       const earnedEl  = document.getElementById('total-earned');
       const pendingEl = document.getElementById('total-pending');
       if (earnedEl)  earnedEl.textContent  = '$' + paidAmt.toLocaleString('en-US');
