@@ -145,7 +145,7 @@ function RcvForm({
     setError(null);
         const gaps = missingForRcv({ contact, hasEstimate, material });
     if (gaps.length > 0) {
-      setMissing(gaps.map((g) => C.MISSING_LABELS[g]));
+      setMissing(gaps.map((g) => C.MISSING_LABELS[g as keyof typeof C.MISSING_LABELS]));
       return;
     }
     setMissing([]);
