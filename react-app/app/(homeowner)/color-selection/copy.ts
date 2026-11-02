@@ -113,10 +113,10 @@ export const COLOR_COPY = {
     'Almost done! Please sign the color addendum below to add your selected color to your contract.',
   addendumIframeTitle: 'Color Addendum — E-Sign',
 
-  // ── Addendum fallback (color-selection.html:1205) — "<strong>Color saved.</strong> …" ──
+  // ── Addendum fallback (color-selection.html:1205) — "<strong>Your color choice is saved.</strong> …" ──
   // Base sentence; the phone / no-phone clause is appended via the builders below.
   addendumFallbackBase:
-    'Color saved. Your contractor will include the color selection in your final contract documents.',
+    'Your color choice is saved. Please confirm it with your contractor before you sign.',
 
   // ── Color-board request confirmations (color-selection.html:1014-1017) ──
   colorBoardAlreadyRequested:

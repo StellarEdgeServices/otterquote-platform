@@ -52,6 +52,21 @@ check('control: reverting A is detected', !brokenResults['A: no homeowner_id any
 check('control: reverting C is detected', !brokenResults['C: contractor name and brand come from get_claim_color_contractor']);
 check('control: reverting F is detected', !brokenResults["F: the colour save chains .select('id') and rejects zero rows"]);
 
+// G (gh-3287, Ben's ruling 6581042504): the colour-save note is exactly the ruled sentence
+const RULED_NOTE = 'Your color choice is saved. Please confirm it with your contractor before you sign.';
+const noteGuards = (h) => {
+  const text = h.replace(/<\/?strong>/g, '');
+  return {
+    'G: the colour-save note is the ruled sentence, exactly': text.includes(RULED_NOTE),
+    'G: the old "final contract documents" promise is gone': !/final contract documents/.test(h),
+  };
+};
+for (const [label, ok] of Object.entries(noteGuards(html))) check(label, ok);
+const brokenNote = noteGuards(html.replace('Your color choice is saved.', 'Color saved.'));
+check('control: a reworded note is detected', !brokenNote['G: the colour-save note is the ruled sentence, exactly']);
+const oldNote = noteGuards(html + ' Your contractor will include the color selection in your final contract documents.');
+check('control: the old promise coming back is detected', !oldNote['G: the old "final contract documents" promise is gone']);
+
 // ---- the draft RPC migration ----
 const sqlGuards = (sql) => {
   const body = stripComments(sql);
