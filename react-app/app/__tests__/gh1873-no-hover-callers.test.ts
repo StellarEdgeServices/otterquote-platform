@@ -7,7 +7,7 @@
  *   - react-app/app (non-test .ts/.tsx/.js/.jsx),
  *   - the static site (root *.html and js/*.js),
  *   - every other Edge Function's non-test source (supabase/functions/<other>/**.ts), and
- *   - the six functions' own index.ts / handler.ts (which must be stubs: no Deno.env read, no outbound call),
+ *   - (the six function folders themselves must no longer exist),
  * and checks the unschedule draft for cron job 6 exists with its rollback, and that platform-health-check no longer
  * expects job 6.
  *
@@ -88,25 +88,14 @@ describe('gh-1873 no caller of the six Hover functions remains', () => {
   });
 
   it('no other Edge Function calls them', () => {
-    const files = walk(FN_DIR, (n) => /\.ts$/.test(n) && !/\.test\.ts$/.test(n)).filter(
-      (f) => !SIX.some((s) => f.startsWith(path.join(FN_DIR, s) + path.sep)),
-    );
+    const files = walk(FN_DIR, (n) => /\.ts$/.test(n) && !/\.test\.ts$/.test(n));
     expect(files.length).toBeGreaterThan(100);
     const offenders = files.filter((f) => CALL.test(codeOnly(readFileSync(f, 'utf-8'))));
     expect(offenders.map(rel)).toEqual([]);
   });
 
-  it('the six functions are stubs: index.ts and handler.ts read no secret and make no outbound call', () => {
-    const FORBIDDEN = /Deno\.env|HOVER_[A-Z_]+|hover\.to|fetch\(|createClient|supabase-js/;
-    const offenders: string[] = [];
-    for (const s of SIX) {
-      for (const f of ['index.ts', 'handler.ts']) {
-        const p = path.join(FN_DIR, s, f);
-        if (!existsSync(p)) { offenders.push(`${s}/${f} (missing)`); continue; }
-        if (FORBIDDEN.test(codeOnly(readFileSync(p, 'utf-8')))) offenders.push(`${s}/${f}`);
-      }
-    }
-    expect(offenders).toEqual([]);
+  it('the six function folders are gone from the repo (they were deleted from production 2026-10-30, #1873 6528265692)', () => {
+    expect(SIX.filter((s) => existsSync(path.join(FN_DIR, s)))).toEqual([]);
   });
 
   it('platform-health-check no longer expects cron job 6 (otherwise the stub raises a stale-cron alert)', () => {
