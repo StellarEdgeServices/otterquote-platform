@@ -73,18 +73,19 @@ export const PARTNER_AGREEMENT_CURRENT_VERSION = 'v4-2026-10';
 /** The referral_agents columns that record acceptance (read through RLS: user_id = auth.uid()). */
 export interface AgreementRow {
   partner_agreement_version?: string | null;
+  partner_agreement_accepted_at?: string | null;
   partner_agreement_attestation?: Record<string, unknown> | null;
 }
 
-/** True only when the row carries a v4-2026-10 acceptance (the v4 attestation key, else the version column) —
- *  same test as hasAcceptedAgreementV4() in refer-a-friend.html. No row = not accepted. */
+/** True only when the row carries a v4-2026-10 acceptance the SERVER also counts (gh-3245): the v4 attestation key with a
+ *  non-empty accepted_at, else the version column with partner_agreement_accepted_at set. Same test as the server's
+ *  partner_v4_accepted_at() and as rowShowsV4Accepted() in refer-a-friend.html. No row = not accepted. */
 export function hasAcceptedAgreementV4(row: AgreementRow | null | undefined): boolean {
   if (!row) return false;
-  const att = row.partner_agreement_attestation || {};
-  return (
-    Object.prototype.hasOwnProperty.call(att, PARTNER_AGREEMENT_CURRENT_VERSION) ||
-    row.partner_agreement_version === PARTNER_AGREEMENT_CURRENT_VERSION
-  );
+  const att = (row.partner_agreement_attestation || {}) as Record<string, unknown>;
+  const entry = att[PARTNER_AGREEMENT_CURRENT_VERSION] as { accepted_at?: unknown } | null | undefined;
+  if (Object.prototype.hasOwnProperty.call(att, PARTNER_AGREEMENT_CURRENT_VERSION) && entry && entry.accepted_at) return true;
+  return row.partner_agreement_version === PARTNER_AGREEMENT_CURRENT_VERSION && !!row.partner_agreement_accepted_at;
 }
 
 /** What accept_partner_agreement_v4() returns. */
@@ -105,7 +106,7 @@ export type ReferLinkState =
  */
 export async function loadReferLink(deps: {
   readAgreementRow: () => Promise<AgreementRow | null>;
-  getOrCreateCode: () => Promise<string | null>;
+  getOrCreateCode: () => Promise<CodeResult>;
 }): Promise<ReferLinkState> {
   let row: AgreementRow | null = null;
   try {
@@ -114,8 +115,12 @@ export async function loadReferLink(deps: {
     row = null;
   }
   if (!hasAcceptedAgreementV4(row)) return { state: 'needs_agreement' };
-  const code = await deps.getOrCreateCode();
-  return code ? { state: 'link', code } : { state: 'error' };
+  const result = await deps.getOrCreateCode();
+  if (result.code) return { state: 'link', code: result.code };
+  // gh-3245: the page read this account as accepted but the server still withholds the code (v4_acceptance_required):
+  // show the existing accept-first gate, not the error state.
+  if (result.v4AcceptanceRequired) return { state: 'needs_agreement' };
+  return { state: 'error' };
 }
 
 /**
@@ -130,6 +135,17 @@ export interface CodeResult {
   code: string | null;
   /** true when the RPC returned unique_code null with v4_acceptance_required true */
   v4AcceptanceRequired?: boolean;
+}
+
+/** Maps the get_or_create_customer_referral_code() answer to a CodeResult (gh-3245). A code wins; a null code with
+ *  v4_acceptance_required true and no RPC error is the accept-first state; anything else is a failure (code null). */
+export function codeResultFromRpc(
+  data: { unique_code?: string | null; v4_acceptance_required?: boolean } | null | undefined,
+  error: unknown,
+): CodeResult {
+  if (data && data.unique_code) return { code: data.unique_code };
+  if (data && !error && data.v4_acceptance_required === true) return { code: null, v4AcceptanceRequired: true };
+  return { code: null };
 }
 
 export async function acceptAgreementAndIssueLink(deps: {

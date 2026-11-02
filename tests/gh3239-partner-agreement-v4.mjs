@@ -194,6 +194,67 @@ ok(gated.map(c => c[0]).join(',') === 'get_or_create_customer_referral_code,acce
 const failed = await runRaf(true, 'fail');
 ok(!failed.some(c => c[0] === 'accept_partner_agreement_v4'), '(r7) NEGATIVE CONTROL: a genuine failure (null code, no v4_acceptance_required) still stops before accept: ' + failed.map(c => c[0]).join(','));
 
+// gh-3245 (r8): the page's "accepted" test is the server's partner_v4_accepted_at() test: the v4 attestation key counts only with a
+// non-empty accepted_at, the version column only with partner_agreement_accepted_at set.
+{
+  const c = { PARTNER_AGREEMENT_CURRENT_VERSION: V4 }; vm.createContext(c);
+  vm.runInContext(extractFn(raf, 'rowShowsV4Accepted') + '\nglobalThis.f = rowShowsV4Accepted;', c);
+  const f = c.f;
+  ok(f({ partner_agreement_attestation: { [V4]: { accepted_at: '2026-11-01T00:00:00Z' } } }) === true, '(r8a) v4 key with accepted_at: accepted');
+  ok(f({ partner_agreement_version: V4, partner_agreement_accepted_at: '2026-11-01T00:00:00Z' }) === true, '(r8b) version column v4 with accepted_at: accepted');
+  ok(f({ partner_agreement_attestation: { [V4]: {} } }) === false, '(r8c) NEGATIVE CONTROL: v4 key without accepted_at is NOT accepted (server refuses it)');
+  ok(f({ partner_agreement_version: V4, partner_agreement_accepted_at: null }) === false, '(r8d) NEGATIVE CONTROL: version column v4 without accepted_at is NOT accepted');
+  ok(f({ partner_agreement_version: V3, partner_agreement_attestation: { [V3]: { accepted_at: 'x' } } }) === false && f(null) === false && f({}) === false, '(r8e) v3 only, no row, empty row: not accepted');
+}
+ok(/\.eq\('user_id', currentUser\.id\)\s*\.eq\('agent_type', 'customer'\)/.test(extractFn(raf, 'hasAcceptedAgreementV4')), '(r8f) the acceptance read is limited to the customer row, the row the server RPC uses');
+
+// gh-3245 (r9): fetchOrCreateReferralCode() reads the server's v4_acceptance_required answer. Deleting that branch makes these fail.
+async function runFetch(rpcResult) {
+  const errs = [], sentry = [];
+  const ctx = { console: { error: (...a) => errs.push(a) }, currentUser: { id: 'u' }, userReferralCode: null, currentAgent: null, CONFIG: {},
+    window: { Sentry: { captureException: (e) => sentry.push(e) } }, Sentry: { captureException: (e) => sentry.push(e) },
+    sb: { rpc: async () => rpcResult } };
+  vm.createContext(ctx);
+  vm.runInContext(extractFn(raf, 'fetchOrCreateReferralCode') + '\nglobalThis.__p = fetchOrCreateReferralCode();', ctx);
+  const ret = await ctx.__p;
+  return { ret, code: ctx.userReferralCode, errs, sentry };
+}
+{
+  const gatedR = await runFetch({ data: { unique_code: null, v4_acceptance_required: true, created: true }, error: null });
+  ok(gatedR.ret === 'v4_acceptance_required' && gatedR.code === null && gatedR.errs.length === 0 && gatedR.sentry.length === 0,
+    '(r9a) null code with v4_acceptance_required: returns the accept-first state, no console.error, no Sentry');
+  const goodR = await runFetch({ data: { unique_code: 'ABC', created: false }, error: null });
+  ok(goodR.code === 'ABC' && goodR.errs.length === 0, '(r9b) a code is stored');
+  const badR = await runFetch({ data: null, error: new Error('rpc') });
+  ok(badR.ret !== 'v4_acceptance_required' && badR.code === null && badR.errs.length === 1 && badR.sentry.length === 1,
+    '(r9c) NEGATIVE CONTROL: a genuine failure still logs and reports');
+  const flagWithError = await runFetch({ data: { unique_code: null, v4_acceptance_required: true }, error: new Error('x') });
+  ok(flagWithError.ret !== 'v4_acceptance_required' && flagWithError.errs.length === 1, '(r9d) NEGATIVE CONTROL: the flag alongside an RPC error is a failure');
+}
+
+// gh-3245 (r10): page load. An account the page reads as accepted but the server still gates gets the existing accept-first gate.
+async function runInit({ accepted, serverState }) {
+  const calls = [];
+  const ctx = { userReferralCode: null, currentUser: null, document: { body: { classList: { add: (c) => calls.push('body:' + c) } } },
+    Auth: { requireAuth: async () => ({ id: 'u' }) }, Nav: { renderHeader() {}, renderFooter() {} },
+    hasAcceptedAgreementV4: async () => { calls.push('read'); return accepted; },
+    fetchOrCreateReferralCode: async () => { calls.push('get_or_create'); if (serverState === 'code') { ctx.userReferralCode = 'ABC'; return undefined; } return serverState; },
+    showAgreementGate: () => calls.push('gate'), showAcceptedHero: () => calls.push('hero'),
+    startReferring: async () => calls.push('startReferring'), loadReferrals: async () => calls.push('loadReferrals') };
+  vm.createContext(ctx);
+  vm.runInContext(extractFn(raf, 'init') + '\nglobalThis.__p = init();', ctx);
+  await ctx.__p;
+  return calls.join(',');
+}
+{
+  const a = await runInit({ accepted: true, serverState: 'code' });
+  ok(a === 'read,get_or_create,body:agreement-v4-ok,hero,startReferring,loadReferrals', '(r10a) accepted and the server returns the code: link shown, no gate: ' + a);
+  const b = await runInit({ accepted: true, serverState: 'v4_acceptance_required' });
+  ok(b === 'read,get_or_create,gate,loadReferrals', '(r10b) accepted by the page but gated by the server: the accept-first gate shows, not the error state: ' + b);
+  const c = await runInit({ accepted: false, serverState: 'v4_acceptance_required' });
+  ok(c === 'read,gate,loadReferrals', '(r10c) not accepted: gate, and get-or-create is not called on load: ' + c);
+}
+
 // ---------------------------------------------------------------- (c) copy
 function partnerCopy(h) {
   const noComments = h.replace(/<!--[\s\S]*?-->/g, ' ').replace(/<style[\s\S]*?<\/style>/g, ' ');

@@ -40,6 +40,7 @@ import {
   emailShareBody,
   emailSignatureBadgeHtml,
   facebookShareUrl,
+  codeResultFromRpc,
 } from '../utils';
 import {
   HERO,
@@ -278,39 +279,60 @@ describe('gh-3244 partner-facing copy', () => {
 });
 
 describe('gh-3244 Partner Agreement v4 acceptance gate', () => {
+  const ACCEPTED_ROW = { partner_agreement_version: 'v4-2026-10', partner_agreement_accepted_at: '2026-11-01T00:00:00Z' };
   it('hasAcceptedAgreementV4: v4 attestation key or v4 version column only', () => {
     expect(hasAcceptedAgreementV4(null)).toBe(false);
     expect(hasAcceptedAgreementV4(undefined)).toBe(false);
     expect(hasAcceptedAgreementV4({})).toBe(false);
     expect(hasAcceptedAgreementV4({ partner_agreement_version: 'v3-2026-09' })).toBe(false);
     expect(hasAcceptedAgreementV4({ partner_agreement_version: 'v3-2026-09', partner_agreement_attestation: { 'v3-2026-09': {} } })).toBe(false);
-    expect(hasAcceptedAgreementV4({ partner_agreement_version: 'v4-2026-10' })).toBe(true);
+    expect(hasAcceptedAgreementV4({ partner_agreement_version: 'v4-2026-10', partner_agreement_accepted_at: '2026-11-01T00:00:00Z' })).toBe(true);
     expect(hasAcceptedAgreementV4({ partner_agreement_attestation: { 'v4-2026-10': { accepted_at: 'x' } } })).toBe(true);
+  });
+  it('gh-3245: hasAcceptedAgreementV4 agrees with the server (partner_v4_accepted_at): no accepted_at = not accepted', () => {
+    expect(hasAcceptedAgreementV4({ partner_agreement_version: 'v4-2026-10' })).toBe(false);
+    expect(hasAcceptedAgreementV4({ partner_agreement_version: 'v4-2026-10', partner_agreement_accepted_at: null })).toBe(false);
+    expect(hasAcceptedAgreementV4({ partner_agreement_attestation: { 'v4-2026-10': {} } })).toBe(false);
+    expect(hasAcceptedAgreementV4({ partner_agreement_attestation: { 'v4-2026-10': { accepted_at: '' } } })).toBe(false);
   });
 
   it('NEGATIVE CONTROL: not accepted -> no link and the code RPC is never called', async () => {
     for (const row of [null, {}, { partner_agreement_version: 'v3-2026-09' }]) {
-      const getOrCreateCode = vi.fn(async () => 'ABC123');
+      const getOrCreateCode = vi.fn(async () => ({ code: 'ABC123' }));
       const r = await loadReferLink({ readAgreementRow: async () => row, getOrCreateCode });
       expect(r).toEqual({ state: 'needs_agreement' });
       expect(getOrCreateCode).not.toHaveBeenCalled();
     }
   });
   it('NEGATIVE CONTROL: a failed agreement read fails closed (no link)', async () => {
-    const getOrCreateCode = vi.fn(async () => 'ABC123');
+    const getOrCreateCode = vi.fn(async () => ({ code: 'ABC123' }));
     const r = await loadReferLink({ readAgreementRow: async () => { throw new Error('rls'); }, getOrCreateCode });
     expect(r).toEqual({ state: 'needs_agreement' });
     expect(getOrCreateCode).not.toHaveBeenCalled();
   });
   it('POSITIVE: accepted -> link issued', async () => {
-    const getOrCreateCode = vi.fn(async () => 'ABC123');
-    const r = await loadReferLink({ readAgreementRow: async () => ({ partner_agreement_version: 'v4-2026-10' }), getOrCreateCode });
+    const getOrCreateCode = vi.fn(async () => ({ code: 'ABC123' }));
+    const r = await loadReferLink({ readAgreementRow: async () => ACCEPTED_ROW, getOrCreateCode });
     expect(r).toEqual({ state: 'link', code: 'ABC123' });
     expect(getOrCreateCode).toHaveBeenCalledTimes(1);
   });
   it('accepted but code RPC fails -> error state, never a fabricated link', async () => {
-    const r = await loadReferLink({ readAgreementRow: async () => ({ partner_agreement_version: 'v4-2026-10' }), getOrCreateCode: async () => null });
+    const r = await loadReferLink({ readAgreementRow: async () => ACCEPTED_ROW, getOrCreateCode: async () => ({ code: null }) });
     expect(r).toEqual({ state: 'error' });
+  });
+  it('gh-3245: read as accepted but the server answers v4_acceptance_required -> the accept-first gate, not the error state', async () => {
+    const r = await loadReferLink({ readAgreementRow: async () => ACCEPTED_ROW, getOrCreateCode: async () => ({ code: null, v4AcceptanceRequired: true }) });
+    expect(r).toEqual({ state: 'needs_agreement' });
+  });
+  it('gh-3245: codeResultFromRpc reads the server flag (deleting that branch fails these)', () => {
+    expect(codeResultFromRpc({ unique_code: null, v4_acceptance_required: true }, null)).toEqual({ code: null, v4AcceptanceRequired: true });
+    expect(codeResultFromRpc({ unique_code: 'ABC' }, null)).toEqual({ code: 'ABC' });
+    expect(codeResultFromRpc({ unique_code: 'ABC', v4_acceptance_required: true }, null)).toEqual({ code: 'ABC' });
+    // NEGATIVE CONTROLS: a failure is never the accept-first state
+    expect(codeResultFromRpc({ unique_code: null, v4_acceptance_required: true }, new Error('rpc'))).toEqual({ code: null });
+    expect(codeResultFromRpc({ unique_code: null }, null)).toEqual({ code: null });
+    expect(codeResultFromRpc({ unique_code: null, v4_acceptance_required: false }, null)).toEqual({ code: null });
+    expect(codeResultFromRpc(null, new Error('rpc'))).toEqual({ code: null });
   });
 
   it('gate submit (code already issued, pre-gh-3245 server): get_or_create, accept, get_or_create, then the code is returned', async () => {

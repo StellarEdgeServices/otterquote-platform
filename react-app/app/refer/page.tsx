@@ -58,6 +58,7 @@ import {
   loadReferLink,
   acceptAgreementAndIssueLink,
   type CodeResult,
+  codeResultFromRpc,
   referralUrl,
   referralRowCells,
   summarizeReferrals,
@@ -122,17 +123,10 @@ function isMobileUA(): boolean {
 // null on a genuine failure (RPC error, expired session, no verified email) — never a fabricated code.
 async function fetchOrCreateCodeResult(): Promise<CodeResult> {
   const { data, error } = await supabase.rpc('get_or_create_customer_referral_code');
-  const unique = data ? (data as CustomerReferralAgent).unique_code : null;
-  if (unique) return { code: unique };
   // gh-3245: unique_code null with v4_acceptance_required true is the normal "accept first" state, not a failure.
-  if (data && !error && (data as { v4_acceptance_required?: boolean }).v4_acceptance_required === true) {
-    return { code: null, v4AcceptanceRequired: true };
-  }
-  console.error('Error fetching/creating referral code:', error);
-  return { code: null };
-}
-async function fetchOrCreateCode(): Promise<string | null> {
-  return (await fetchOrCreateCodeResult()).code;
+  const result = codeResultFromRpc(data as { unique_code?: string | null; v4_acceptance_required?: boolean } | null, error);
+  if (!result.code && !result.v4AcceptanceRequired) console.error('Error fetching/creating referral code:', error);
+  return result;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -183,14 +177,14 @@ export default function ReferAFriendPage() {
         // own agent row first, then match referrals.referral_agent_id.
         const { data: agentRow, error: agentError } = await supabase
           .from('referral_agents')
-          .select('id, partner_agreement_version, partner_agreement_attestation')
+          .select('id, partner_agreement_version, partner_agreement_accepted_at, partner_agreement_attestation')
           .eq('user_id', user.id)
           .eq('agent_type', REFERRAL_AGENT_TYPE)
           .maybeSingle();
 
         const link = await loadReferLink({
           readAgreementRow: async () => (agentError ? null : ((agentRow as AgreementRow | null) ?? null)),
-          getOrCreateCode: fetchOrCreateCode,
+          getOrCreateCode: fetchOrCreateCodeResult,
         });
         if (link.state === 'link') {
           setCode(link.code);
