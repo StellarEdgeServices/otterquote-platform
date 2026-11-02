@@ -531,7 +531,7 @@ async function fetchHoverMeasurements(supabase, claimId) {
 //
 //   full      Full RoofScope, or a Hover report. Carries linear measurements.
 //             MEASUREMENT SUMMARY + the full band-expanded LINE-ITEM SCOPE.
-//   basic     RoofScope X ($15 to the homeowner, $11 vendor cost; a contractor
+//   basic     RoofScope X ($22.63 to the homeowner, $11 vendor cost; a contractor
 //             who wants the full report buys it himself). VERIFIED against a
 //             real report: it carries the complete per-pitch area table and
 //             total squares, and NO linear measurements whatsoever -- no eave,

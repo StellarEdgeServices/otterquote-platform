@@ -7,7 +7,7 @@
  *   • the verbatim Tier-3 copy from copy.ts is rendered in the Step-1 disclosures;
  *   • the "Proceed to Sign" button is GATED by the D-123 acknowledgment checkbox;
  *   • Proceed builds the envelope via createHomeownerEnvelope and, on completion,
- *     fires contract_signed (no stamp write, gh-2864) and redirects to the project-confirmation URL.
+ *     fires contract_signed (no stamp write, gh-2864) and redirects to the dashboard (D-407).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -28,8 +28,7 @@ vi.mock('../use-contract-signing-data', () => ({
   createHomeownerEnvelope: vi.fn(),
   sendContractorNudge: vi.fn(() => Promise.resolve(true)),
   requestBidRenewal: vi.fn(() => Promise.resolve(true)),
-  buildProjectConfirmationUrl: (claimId: string) =>
-    `https://otterquote.com/project-confirmation.html?claim_id=${claimId}`,
+  buildPostSignUrl: () => 'https://otterquote.com/dashboard.html',
 }));
 
 vi.mock('@/lib/track', () => ({ track: vi.fn() }));
@@ -164,7 +163,7 @@ describe('contract-signing page — already-signed / no-contract gates', () => {
 });
 
 describe('contract-signing page — init-time signed=true return', () => {
-  it('fires contract_signed (no stamp write, gh-2864) and redirects to project-confirmation on a signed return', async () => {
+  it('fires contract_signed (no stamp write, gh-2864) and redirects to the dashboard (no Project Confirmation) on a signed return', async () => {
     window.history.replaceState({}, '', '/contract-signing?claim_id=c1&signed=true');
 
     // jsdom does not implement navigation; capture href assignments.
@@ -179,9 +178,10 @@ describe('contract-signing page — init-time signed=true return', () => {
 
     await waitFor(() =>
       expect(hrefSpy).toHaveBeenCalledWith(
-        'https://otterquote.com/project-confirmation.html?claim_id=c1',
+        'https://otterquote.com/dashboard.html',
       ),
     );
+    expect(hrefSpy).not.toHaveBeenCalledWith(expect.stringContaining('project-confirmation'));
 
     if (original) Object.defineProperty(window, 'location', original);
   });
