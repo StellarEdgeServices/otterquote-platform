@@ -32,6 +32,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { SWITCH_CUTOFF_DAYS, deriveEstimatedStartDate, isWithinCutoff } from "./cutoff.ts";
+import { selectRefundKey } from "../_shared/stripe-key-select.ts"; // gh-3323
 import { WINNING_QUOTE_OR_FILTER, pickWinningQuote, shouldIssueRefund } from "./winning-quote.ts";
 import {
   contractorSwitchEmailHtml,
@@ -166,7 +167,14 @@ async function sendEmail(
 
 // ─── Main Handler ────────────────────────────────────────────────────────────
 
-serve(async (req) => {
+// gh-3323: exported so the key-selection tests can drive the REAL handler (process-hover-rebate precedent: serve() is
+// guarded by import.meta.main, which the Edge runtime sets for the entry file). `getEnv` defaults to Deno.env.get;
+// `makeClient` defaults to createClient (tests stub it).
+export async function handler(
+  req: Request,
+  getEnv: (name: string) => string | undefined = (n) => Deno.env.get(n),
+  makeClient: typeof createClient = createClient,
+): Promise<Response> {
   const corsHeaders = buildCorsHeaders(req);
 
   // jsonResponse is defined inside the handler so it closes over the
@@ -181,8 +189,8 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  const supabaseUrl   = Deno.env.get("SUPABASE_URL")!;
-  const serviceKey    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabaseUrl   = getEnv("SUPABASE_URL")!;
+  const serviceKey    = getEnv("SUPABASE_SERVICE_ROLE_KEY")!;
   // Staging detection — use test-mode key when origin is staging (fix #86e19wk6z).
   // gh-1536: exact-match, not substring — "app-staging." falsely matched
   // app-staging.otterquote.com, a Netlify DOMAIN ALIAS on the PRODUCTION app
@@ -191,11 +199,11 @@ serve(async (req) => {
   const _reqOrigin = req.headers.get("Origin") || "";
   const isStaging = _reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
     _reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
-  const stripeKey = isStaging
-    ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY") || "")
-    : (Deno.env.get("STRIPE_SECRET_KEY") || "");
-  const mailgunKey    = Deno.env.get("MAILGUN_API_KEY") || "";
-  const mailgunDomain = Deno.env.get("MAILGUN_DOMAIN") || "";
+  // gh-3323: the Stripe key is NOT picked here any more. The Origin alone cannot know whether the claim is a test
+  // claim, and a live-key refund of a test claim's charge is the defect. The key is chosen at step 8, once the claim
+  // is loaded, through selectRefundKey (see _shared/stripe-key-select.ts).
+  const mailgunKey    = getEnv("MAILGUN_API_KEY") || "";
+  const mailgunDomain = getEnv("MAILGUN_DOMAIN") || "";
 
   // ── 1. Auth ──────────────────────────────────────────────────────────────
   const authHeader = req.headers.get("authorization");
@@ -205,7 +213,7 @@ serve(async (req) => {
   const jwt = authHeader.replace("Bearer ", "");
 
   // Create a user-scoped client to validate the JWT
-  const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY") || serviceKey, {
+  const userClient = makeClient(supabaseUrl, getEnv("SUPABASE_ANON_KEY") || serviceKey, {
     global: { headers: { Authorization: authHeader } },
   });
   const { data: { user }, error: authError } = await userClient.auth.getUser();
@@ -214,7 +222,7 @@ serve(async (req) => {
   }
 
   // Admin (service-role) client for writes
-  const sb = createClient(supabaseUrl, serviceKey);
+  const sb = makeClient(supabaseUrl, serviceKey);
 
   try {
     const body = await req.json();
@@ -374,7 +382,24 @@ serve(async (req) => {
     }
 
     // ── 8. Stripe refund ──────────────────────────────────────────────────
-    let refundResult = { success: false, refundId: undefined as string | undefined, error: "No payment found" };
+    // gh-3323: widened to the stripeRefund() return shape so the module type-checks now that tests import it.
+    let refundResult: { success: boolean; refundId?: string; error?: string } = { success: false, refundId: undefined, error: "No payment found" };
+
+    // gh-3323 (Ben's ruling 6578880344): key by the claim's is_test, server-side from the row loaded above. An is_test
+    // claim never gets the live key; one that holds a (possibly) live charge gets NO automatic refund at all.
+    const keyChoice = selectRefundKey({
+      isStaging,
+      claimIsTest: claim.is_test === true,
+      liveChargeAuthorizedAt: claim.live_charge_authorized_at ?? null,
+      env: getEnv,
+    });
+    const stripeKey = keyChoice.ok ? keyChoice.key : "";
+    if (!keyChoice.ok && winningQuote?.payment_intent_id && winningQuote?.payment_status === "succeeded") {
+      console.error(
+        `[switch-contractor] OPS: automatic refund REFUSED (${keyChoice.reason}) -- claim ${claim_id}, quote ${winningQuote.id}. ` +
+        "Switch completed; the platform-fee refund is manual-only (Tier C, entry 7).",
+      );
+    }
 
     if (shouldIssueRefund(winningQuote, !!stripeKey)) {
       console.log("[switch-contractor] Issuing Stripe refund for PI:", winningQuote.payment_intent_id);
@@ -528,4 +553,8 @@ serve(async (req) => {
     console.error("[switch-contractor] Unhandled error:", err);
     return jsonResponse({ error: "An unexpected error occurred. Please try again." }, 500);
   }
-});
+}
+
+if (import.meta.main) {
+  serve((req) => handler(req));
+}
