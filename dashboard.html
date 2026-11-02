@@ -2010,7 +2010,7 @@
       // to the inline onclick="..." attribute on the button that calls it
       // (inline handlers resolve against the global scope only). Matches the
       // window.foo = function(...) pattern already used elsewhere in this
-      // file (e.g. handleUpload, resendHoverLink) for the same reason.
+      // file (e.g. handleUpload) for the same reason.
       window.saveWaitlistSpot = async function() {
         const btn      = document.getElementById('gate-save-btn');
         const optedIn  = document.getElementById('gate-optin-checkbox')?.checked ?? true;
@@ -2391,16 +2391,6 @@
         const isInsurance      = currentClaim.funding_type === 'insurance';
         const isExplicitlyCash = currentClaim.funding_type === 'cash';
 
-        // Measurement order state helpers
-        const hasHoverOrder = hoverOrder && (hoverOrder.status === 'link_sent' || hoverOrder.status === 'pending');
-        const todayResendCount = (() => {
-          if (!hoverOrder?.last_resend_at) return 0;
-          const lastDate = new Date(hoverOrder.last_resend_at).toISOString().slice(0, 10);
-          const today   = new Date().toISOString().slice(0, 10);
-          return lastDate === today ? (hoverOrder.resend_count || 0) : 0;
-        })();
-        const resendAvailable = hasHoverOrder && todayResendCount < 3;
-
         // Build measurements description + buttons depending on context
         let measurementsDesc, measurementsNote, measurementsBtns;
         if (currentClaim.has_measurements) {
@@ -2408,18 +2398,6 @@
           measurementsDesc  = null;
           measurementsNote  = null;
           measurementsBtns  = [];
-        } else if (hasHoverOrder) {
-          measurementsDesc  = 'Your measurement link was sent. Awaiting your photos — check your email inbox.';
-          measurementsNote  = resendAvailable
-            ? `Link sent to ${hoverOrder.capturing_user_email || 'your email'}. Didn't receive it? Resend below.`
-            : 'Resend limit reached for today (3/3). Try again tomorrow or upload measurements manually.';
-          measurementsBtns  = [
-            { label: 'Upload Instead', action: 'upload',   data: 'measurements' },
-            ...(resendAvailable
-              ? [{ label: 'Resend Link', action: 'resend', data: '' }]
-              : [{ label: 'Help Me',     action: 'navigate', data: 'help-measurements.html' }]
-            ),
-          ];
         } else if (isInsurance) {
           measurementsDesc  = 'Optional but recommended. Upload photos, measurements, or inspection reports.';
           measurementsNote  = 'Optional but recommended for more accurate bids.';
@@ -2466,12 +2444,12 @@
             id: 'measurements',
             title: 'Measurements',
             required: isExplicitlyCash, // Hard required only for retail/cash; optional for insurance and unknown
-            status: currentClaim.has_measurements ? 'uploaded' : (hasHoverOrder ? 'hover_pending' : 'pending'),
+            status: currentClaim.has_measurements ? 'uploaded' : 'pending',
             filename: fileDisplayName(currentClaim.measurements_filename),
             description: measurementsDesc,
             note: measurementsNote,
             buttons: measurementsBtns,
-            icon: hasHoverOrder && !currentClaim.has_measurements ? '🔗' : '📐'
+            icon: '📐'
           },
           {
             id: 'material',
@@ -2499,12 +2477,11 @@
 
         container.innerHTML = items.map(item => {
           const isDone    = item.status === 'uploaded' || item.status === 'selected';
-          const isHover   = item.status === 'hover_pending';
           return `
           <div class="checklist-item-wrapper">
             <div class="checklist-item ${isDone ? 'complete' : ''} ${item.required ? 'required' : ''} ${item.disabled ? 'disabled' : ''}">
               <div class="checklist-left">
-                <div class="checklist-icon ${isDone ? 'done' : isHover ? 'hover-pending' : 'pending'}">
+                <div class="checklist-icon ${isDone ? 'done' : 'pending'}">
                   ${isDone ? '✓' : item.icon}
                 </div>
                 <div class="checklist-info">
@@ -2530,8 +2507,6 @@
                     return `<button type="button" class="btn btn-sm btn-ghost" onclick="showHelpModal('${btn.data}')">Help Me</button>`;
                   } else if (btn.action === 'navigate') {
                     return `<a href="${btn.data}" class="btn btn-sm btn-secondary">${btn.label}</a>`;
-                  } else if (btn.action === 'resend') {
-                    return `<button type="button" class="btn btn-sm btn-secondary" id="resend-hover-btn" onclick="resendHoverLink(this)">Resend Link</button>`;
                   }
                   return '';
                 }).join('')}
@@ -3210,81 +3185,6 @@
         const input = document.getElementById('file-input');
         input.dataset.uploadType = type;
         input.click();
-      };
-
-      // ── Resend Measurement Capture Link ──
-      window.resendHoverLink = async function(btn) {
-        if (!currentClaim?.id || CONFIG.DEMO_MODE) return;
-
-        btn.disabled = true;
-        const originalText = btn.textContent;
-        btn.textContent = 'Sending…';
-
-        try {
-          // resend-hover-link now requires an authenticated caller (D-211 P19
-          // Unit 7c): send the user's session JWT, not the public anon key.
-          const { data: { session } } = await sb.auth.getSession();
-          const accessToken = session?.access_token;
-          if (!accessToken) {
-            showError('Your session has expired. Please sign in again to resend the link.');
-            btn.disabled = false;
-            btn.textContent = originalText;
-            return;
-          }
-          const response = await fetch(
-            `${CONFIG.SUPABASE_URL}/functions/v1/resend-hover-link`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'apikey': CONFIG.SUPABASE_ANON,
-                'Authorization': `Bearer ${accessToken}`,
-              },
-              body: JSON.stringify({ claim_id: currentClaim.id }),
-            }
-          );
-
-          const result = await response.json();
-
-          if (!response.ok) {
-            if (response.status === 429) {
-              showError(result.reason || 'Daily resend limit reached. Try again tomorrow.');
-            } else {
-              showError(result.error || 'Failed to resend the link. Please try again.');
-            }
-            btn.disabled = false;
-            btn.textContent = originalText;
-            return;
-          }
-
-          showSuccess('Measurement link resent! Check your email inbox.');
-
-          // Update local hoverOrder state so the count reflects immediately
-          if (hoverOrder) {
-            hoverOrder.resend_count = result.resend_count;
-            hoverOrder.last_resend_at = new Date().toISOString();
-          }
-
-          // Re-render checklist to update resend count display
-          renderChecklist();
-
-          // If no resends remain, disable the button via re-render
-          if (result.resends_remaining_today <= 0) {
-            const resendBtn = document.getElementById('resend-hover-btn');
-            if (resendBtn) {
-              resendBtn.disabled = true;
-              resendBtn.textContent = 'Limit Reached';
-            }
-          } else {
-            // Keep button enabled (re-render already handled it)
-          }
-
-        } catch (err) {
-          console.error('[resendHoverLink] Error:', err);
-          showError('Could not resend the link. Please refresh the page and try again.');
-          btn.disabled = false;
-          btn.textContent = originalText;
-        }
       };
 
       async function uploadFile(file, type) {

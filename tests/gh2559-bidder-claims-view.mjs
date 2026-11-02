@@ -75,10 +75,7 @@ ok(!/bid-release gate/.test(sql), 'view SQL no longer rests the summary on a bid
   ok(!/textContent = (data|payload)\.job_address/.test(form) && !/job_address: data\.job_address/.test(form), 'static bid form: never prints or caches job_address');
   const card = rd('react-app/app/contractor/bid/[claimId]/home-photos-card.tsx');
   ok(!/\{payload\.job_address\}/.test(card) && !/job_address: \(data\?\.job_address/.test(card), 'React bid form photo card: never prints or caches job_address');
-  const fn = rd('supabase/functions/get-hover-siding-data/handler.ts');
-  const fnIndex = rd('supabase/functions/get-hover-siding-data/index.ts');
-  ok(!/job_address|jobAddress/.test(fn.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')) && /from "\.\/handler\.ts"/.test(fnIndex),
-    'get-hover-siding-data: gh-1873 stub returns no job_address at all (it never reads a claim), so no street address can reach a bidder');
+  ok(!fs.existsSync(path.join(ROOT, 'supabase/functions/get-hover-siding-data')), 'get-hover-siding-data: gh-1873 deleted the function, so no street address can reach a bidder through it');
 }
 
 // 2/3. the column lists

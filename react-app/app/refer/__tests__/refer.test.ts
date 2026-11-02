@@ -40,6 +40,7 @@ import {
   emailShareBody,
   emailSignatureBadgeHtml,
   facebookShareUrl,
+  codeResultFromRpc,
 } from '../utils';
 import {
   HERO,
@@ -111,7 +112,7 @@ describe('referral table cells (four columns, header order, #576)', () => {
   });
   it('referralRowCells yields ALL FOUR header columns in order', () => {
     const cells = referralRowCells(
-      mkRef({ display_name: 'Jane Doe', created_at: '2026-03-04T00:00:00Z', status: 'commission_paid' }),
+      mkRef({ display_name: 'Jane Doe', created_at: '2026-03-04T00:00:00Z', status: 'commission_paid', commission_amount: 200 }),
       0,
     );
     expect(cells.friend).toBe('Jane Doe');
@@ -125,11 +126,39 @@ describe('referral table cells (four columns, header order, #576)', () => {
 // ============================================================
 // Summary — D-139 paid/pending split (#567)
 // ============================================================
+// gh-3333: an opted-in row shows / counts the $200 only once the fee has accrued (commission_amount > 0).
+describe('gh-3333: opted-in rows with a 0 or NULL fee show no $200', () => {
+  it.each([
+    ['job_completed', null],
+    ['job_completed', 0],
+    ['commission_paid', null],
+    ['commission_paid', 0],
+  ])('row status %s with commission_amount %s shows "—"', (status, fee) => {
+    const cells = referralRowCells(mkRef({ display_name: 'Bea K.', status, commission_amount: fee }), 0);
+    expect(cells).toMatchObject({ showStatus: true, commission: '—' });
+  });
+  it('row with commission_amount absent shows "—"', () => {
+    expect(referralRowCells(mkRef({ display_name: 'Bea K.', status: 'job_completed' }), 0).commission).toBe('—');
+  });
+  it('an accrued fee still shows $200 (job_completed and commission_paid)', () => {
+    expect(referralRowCells(mkRef({ status: 'job_completed', commission_amount: 200 }), 0).commission).toBe('$200');
+    expect(referralRowCells(mkRef({ status: 'commission_paid', commission_amount: 200 }), 0).commission).toBe('$200');
+  });
+  it('summary dollars skip unaccrued fees but "completed" still counts the job', () => {
+    const s = summarizeReferrals([
+      mkRef({ status: 'job_completed', commission_amount: 0 }),
+      mkRef({ status: 'commission_paid', commission_amount: null }),
+      mkRef({ status: 'job_completed', commission_amount: 200 }),
+    ]);
+    expect(s).toEqual({ total: 3, completed: 3, earned: 0, pending: 200 });
+  });
+});
+
 describe('summarizeReferrals — paid/pending split', () => {
   const refs: CustomerReferral[] = [
-    mkRef({ status: 'commission_paid' }),
-    mkRef({ status: 'commission_paid' }),
-    mkRef({ status: 'job_completed' }),
+    mkRef({ status: 'commission_paid', commission_amount: 200 }),
+    mkRef({ status: 'commission_paid', commission_amount: 200 }),
+    mkRef({ status: 'job_completed', commission_amount: 200 }),
     mkRef({ status: 'bid_received' }),
     mkRef({ status: 'clicked' }),
   ];
@@ -278,53 +307,106 @@ describe('gh-3244 partner-facing copy', () => {
 });
 
 describe('gh-3244 Partner Agreement v4 acceptance gate', () => {
+  const ACCEPTED_ROW = { partner_agreement_version: 'v4-2026-10', partner_agreement_accepted_at: '2026-11-01T00:00:00Z' };
   it('hasAcceptedAgreementV4: v4 attestation key or v4 version column only', () => {
     expect(hasAcceptedAgreementV4(null)).toBe(false);
     expect(hasAcceptedAgreementV4(undefined)).toBe(false);
     expect(hasAcceptedAgreementV4({})).toBe(false);
     expect(hasAcceptedAgreementV4({ partner_agreement_version: 'v3-2026-09' })).toBe(false);
     expect(hasAcceptedAgreementV4({ partner_agreement_version: 'v3-2026-09', partner_agreement_attestation: { 'v3-2026-09': {} } })).toBe(false);
-    expect(hasAcceptedAgreementV4({ partner_agreement_version: 'v4-2026-10' })).toBe(true);
+    expect(hasAcceptedAgreementV4({ partner_agreement_version: 'v4-2026-10', partner_agreement_accepted_at: '2026-11-01T00:00:00Z' })).toBe(true);
     expect(hasAcceptedAgreementV4({ partner_agreement_attestation: { 'v4-2026-10': { accepted_at: 'x' } } })).toBe(true);
+  });
+  it('gh-3245: hasAcceptedAgreementV4 agrees with the server (partner_v4_accepted_at): no accepted_at = not accepted', () => {
+    expect(hasAcceptedAgreementV4({ partner_agreement_version: 'v4-2026-10' })).toBe(false);
+    expect(hasAcceptedAgreementV4({ partner_agreement_version: 'v4-2026-10', partner_agreement_accepted_at: null })).toBe(false);
+    expect(hasAcceptedAgreementV4({ partner_agreement_attestation: { 'v4-2026-10': {} } })).toBe(false);
+    expect(hasAcceptedAgreementV4({ partner_agreement_attestation: { 'v4-2026-10': { accepted_at: '' } } })).toBe(false);
   });
 
   it('NEGATIVE CONTROL: not accepted -> no link and the code RPC is never called', async () => {
     for (const row of [null, {}, { partner_agreement_version: 'v3-2026-09' }]) {
-      const getOrCreateCode = vi.fn(async () => 'ABC123');
+      const getOrCreateCode = vi.fn(async () => ({ code: 'ABC123' }));
       const r = await loadReferLink({ readAgreementRow: async () => row, getOrCreateCode });
       expect(r).toEqual({ state: 'needs_agreement' });
       expect(getOrCreateCode).not.toHaveBeenCalled();
     }
   });
   it('NEGATIVE CONTROL: a failed agreement read fails closed (no link)', async () => {
-    const getOrCreateCode = vi.fn(async () => 'ABC123');
+    const getOrCreateCode = vi.fn(async () => ({ code: 'ABC123' }));
     const r = await loadReferLink({ readAgreementRow: async () => { throw new Error('rls'); }, getOrCreateCode });
     expect(r).toEqual({ state: 'needs_agreement' });
     expect(getOrCreateCode).not.toHaveBeenCalled();
   });
   it('POSITIVE: accepted -> link issued', async () => {
-    const getOrCreateCode = vi.fn(async () => 'ABC123');
-    const r = await loadReferLink({ readAgreementRow: async () => ({ partner_agreement_version: 'v4-2026-10' }), getOrCreateCode });
+    const getOrCreateCode = vi.fn(async () => ({ code: 'ABC123' }));
+    const r = await loadReferLink({ readAgreementRow: async () => ACCEPTED_ROW, getOrCreateCode });
     expect(r).toEqual({ state: 'link', code: 'ABC123' });
     expect(getOrCreateCode).toHaveBeenCalledTimes(1);
   });
   it('accepted but code RPC fails -> error state, never a fabricated link', async () => {
-    const r = await loadReferLink({ readAgreementRow: async () => ({ partner_agreement_version: 'v4-2026-10' }), getOrCreateCode: async () => null });
+    const r = await loadReferLink({ readAgreementRow: async () => ACCEPTED_ROW, getOrCreateCode: async () => ({ code: null }) });
     expect(r).toEqual({ state: 'error' });
   });
+  it('gh-3245: read as accepted but the server answers v4_acceptance_required -> the accept-first gate, not the error state', async () => {
+    const r = await loadReferLink({ readAgreementRow: async () => ACCEPTED_ROW, getOrCreateCode: async () => ({ code: null, v4AcceptanceRequired: true }) });
+    expect(r).toEqual({ state: 'needs_agreement' });
+  });
+  it('gh-3245: codeResultFromRpc reads the server flag (deleting that branch fails these)', () => {
+    expect(codeResultFromRpc({ unique_code: null, v4_acceptance_required: true }, null)).toEqual({ code: null, v4AcceptanceRequired: true });
+    expect(codeResultFromRpc({ unique_code: 'ABC' }, null)).toEqual({ code: 'ABC' });
+    expect(codeResultFromRpc({ unique_code: 'ABC', v4_acceptance_required: true }, null)).toEqual({ code: 'ABC' });
+    // NEGATIVE CONTROLS: a failure is never the accept-first state
+    expect(codeResultFromRpc({ unique_code: null, v4_acceptance_required: true }, new Error('rpc'))).toEqual({ code: null });
+    expect(codeResultFromRpc({ unique_code: null }, null)).toEqual({ code: null });
+    expect(codeResultFromRpc({ unique_code: null, v4_acceptance_required: false }, null)).toEqual({ code: null });
+    expect(codeResultFromRpc(null, new Error('rpc'))).toEqual({ code: null });
+  });
 
-  it('gate submit: get_or_create runs BEFORE accept_partner_agreement_v4, then the code is returned', async () => {
+  it('gate submit (code already issued, pre-gh-3245 server): get_or_create, accept, get_or_create, then the code is returned', async () => {
     const calls: string[] = [];
     const code = await acceptAgreementAndIssueLink({
-      getOrCreateCode: async () => { calls.push('get_or_create_customer_referral_code'); return 'ABC123'; },
+      getOrCreateCode: async () => { calls.push('get_or_create_customer_referral_code'); return { code: 'ABC123' }; },
       acceptAgreement: async () => { calls.push('accept_partner_agreement_v4'); return { agreement_version: 'v4-2026-10', accepted_at: '2026-10-31T00:00:00Z', already_accepted: false }; },
     });
-    expect(calls).toEqual(['get_or_create_customer_referral_code', 'accept_partner_agreement_v4']);
+    expect(calls).toEqual(['get_or_create_customer_referral_code', 'accept_partner_agreement_v4', 'get_or_create_customer_referral_code']);
     expect(code).toBe('ABC123');
+  });
+  it('gh-3245: null code with v4_acceptance_required true is the normal accept-first state; the code comes from the second get_or_create', async () => {
+    const calls: string[] = [];
+    let n = 0;
+    const code = await acceptAgreementAndIssueLink({
+      getOrCreateCode: async () => {
+        calls.push('get_or_create_customer_referral_code');
+        return n++ === 0 ? { code: null, v4AcceptanceRequired: true } : { code: 'ABC123' };
+      },
+      acceptAgreement: async () => { calls.push('accept_partner_agreement_v4'); return { agreement_version: 'v4-2026-10', accepted_at: '2026-11-02T00:00:00Z' }; },
+    });
+    expect(calls).toEqual(['get_or_create_customer_referral_code', 'accept_partner_agreement_v4', 'get_or_create_customer_referral_code']);
+    expect(code).toBe('ABC123');
+  });
+  it('gh-3245 P3: acceptance confirmed but the second get_or_create has no code or fails -> resolves null (link-error state), never throws', async () => {
+    const acceptAgreement = async () => ({ agreement_version: 'v4-2026-10', accepted_at: 'x' });
+    let n = 0;
+    await expect(acceptAgreementAndIssueLink({
+      getOrCreateCode: async () => (n++ === 0 ? { code: null, v4AcceptanceRequired: true } : { code: null }),
+      acceptAgreement,
+    })).resolves.toBeNull();
+    let m = 0;
+    await expect(acceptAgreementAndIssueLink({
+      getOrCreateCode: async () => { if (m++ === 0) return { code: null, v4AcceptanceRequired: true }; throw new Error('network'); },
+      acceptAgreement,
+    })).resolves.toBeNull();
+  });
+  it('NEGATIVE CONTROL (P3): a failure before acceptance is confirmed still throws (gate error stays true)', async () => {
+    await expect(acceptAgreementAndIssueLink({
+      getOrCreateCode: async () => ({ code: null, v4AcceptanceRequired: true }),
+      acceptAgreement: async () => ({ agreement_version: 'v4-2026-10', accepted_at: null }),
+    })).rejects.toThrow('unexpected acceptance response');
   });
   it('NEGATIVE CONTROL: acceptance error / wrong version / no timestamp -> throws, no link returned', async () => {
     const mk = (accept: () => Promise<{ agreement_version?: string | null; accepted_at?: string | null } | null>) =>
-      acceptAgreementAndIssueLink({ getOrCreateCode: async () => 'ABC123', acceptAgreement: accept });
+      acceptAgreementAndIssueLink({ getOrCreateCode: async () => ({ code: 'ABC123' }), acceptAgreement: accept });
     await expect(mk(async () => { throw new Error('rpc'); })).rejects.toThrow();
     await expect(mk(async () => null)).rejects.toThrow();
     await expect(mk(async () => ({ agreement_version: 'v3-2026-09', accepted_at: 'x' }))).rejects.toThrow();
@@ -332,7 +414,7 @@ describe('gh-3244 Partner Agreement v4 acceptance gate', () => {
   });
   it('no code from the RPC -> accept is never called', async () => {
     const acceptAgreement = vi.fn(async () => ({ agreement_version: 'v4-2026-10', accepted_at: 'x' }));
-    await expect(acceptAgreementAndIssueLink({ getOrCreateCode: async () => null, acceptAgreement })).rejects.toThrow();
+    await expect(acceptAgreementAndIssueLink({ getOrCreateCode: async () => ({ code: null }), acceptAgreement })).rejects.toThrow();
     expect(acceptAgreement).not.toHaveBeenCalled();
   });
 });

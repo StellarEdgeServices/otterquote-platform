@@ -122,9 +122,11 @@ describe('MetaPixelGate ALLOWED_PATHS guard (D-330 / gh-2078, R-147 literal enum
     // this file's header for the intended update procedure.
     // gh-3286 (D-407): (homeowner)/project-confirmation was removed (32 -> 31).
     // gh-3285 (D-407): (homeowner)/out-of-pocket added (31 -> 32).
-    // gh-3284 (D-407): insurance-acv added (32 -> 33). Recomputed on the merged tree
-    // with the find command in the header; #3296 adds one more when it merges.
-    const EXPECTED_ROUTE_COUNT = 33;
+    // gh-3284 (D-407): insurance-acv added (32 -> 33).
+    // gh-3283 (D-407): (homeowner)/insurance-rcv added (33 -> 34). Recomputed on the merged tree
+    // with the find command in the header (`find ./app -name "page.tsx" | sort | wc -l` = 34);
+    // #3298 adds one more when it merges.
+    const EXPECTED_ROUTE_COUNT = 34;
     expect(REAL_ROUTES.length).toBe(EXPECTED_ROUTE_COUNT);
   });
 

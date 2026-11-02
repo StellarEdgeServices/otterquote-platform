@@ -128,10 +128,7 @@ ok(/\{opp\.measurementsAvailable && opp\.isSelectedContractor && \(\s*<button ty
 const reactBid = read('react-app/app/contractor/bid/[claimId]/bid-form.tsx');
 ok(/\{canOpenMeasurementPdf && <button type="button" className="oqb-doclink" onClick=\{openHoverPdf\}>/.test(reactBid) && /if \(!canOpenMeasurementPdf\) return;/.test(reactBid),
   'React bid form: the Measurement PDF button and its opener only for the selected contractor');
-const pdfGate = read('supabase/functions/get-hover-pdf/pdf-source.ts');
-ok(/\.select\("user_id, selected_contractor_id"\)/.test(pdfGate) && !/ready_for_bids/.test(pdfGate.slice(pdfGate.indexOf('export async function canAccessClaim')))
-  && !/from\("quotes"\)/.test(pdfGate),
-  'get-hover-pdf: the access gate reads the selected contractor and has no open-for-bids or has-a-quote branch');
+ok(!fs.existsSync(path.join(ROOT, 'supabase/functions/get-hover-pdf')), 'get-hover-pdf: gh-1873 deleted the function, so no raw measurement file can leave it');
 
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

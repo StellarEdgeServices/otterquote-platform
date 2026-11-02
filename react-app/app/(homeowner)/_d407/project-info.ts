@@ -45,6 +45,7 @@ export type MissingField =
   | 'address'
   | 'estimate'
   | 'measurement'
+  | 'estimate_or_measurement'
   | 'materials';
 
 const blank = (v: unknown): boolean => typeof v !== 'string' || v.trim().length === 0;
@@ -74,14 +75,22 @@ export function missingForRcv(args: {
   return out;
 }
 
-/** Out-of-pocket page: contact + a measurement attached + a finished material selection. */
+/**
+ * Out-of-pocket page: contact + a measurement attached + a finished material selection.
+ * gh-3284 (Ben, #3284 6578290796): for a stored ACV answer (acceptEstimate) an insurance
+ * estimate on file stands in for the measurement, so either one satisfies the gate.
+ */
 export function missingForOop(args: {
   contact: ContactInfo;
   hasMeasurement: boolean;
   material: MaterialSelectionState;
+  hasEstimate?: boolean;
+  acceptEstimate?: boolean;
 }): MissingField[] {
   const out = missingContact(args.contact);
-  if (!args.hasMeasurement) out.push('measurement');
+  if (args.acceptEstimate) {
+    if (!args.hasMeasurement && !args.hasEstimate) out.push('estimate_or_measurement');
+  } else if (!args.hasMeasurement) out.push('measurement');
   if (!materialsReady(args.material)) out.push('materials');
   return out;
 }
