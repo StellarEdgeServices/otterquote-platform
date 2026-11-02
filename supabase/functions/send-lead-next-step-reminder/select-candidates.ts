@@ -28,7 +28,7 @@ export const REMINDER_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 // gh-2300 (CTO RUN 46 dispatch, exec:ceo #2121 comment 5868990332 item 2):
 // native Meta-form HO-2 leads (meta-leadgen-webhook, funnel_id HO-2) write
 // leads.variant = 'HO-2', not 'f', so the original Arm-F-only gate silently
-// skipped every one of them. HO-3 (the $15 no-account funnel) must stay
+// skipped every one of them. HO-3 (the $22.63 no-account funnel) must stay
 // excluded — do not widen this by prefix/regex match.
 //
 // gh-2378 (CRO51): the /ho6 landing page (PR #2384, js/oq-lead-core.js create
@@ -75,7 +75,7 @@ export interface CandidateLead {
    * variable start.html uses for the arm letter, not a separate Meta-test
    * value — confirmed by reading that call site), OR the native-form funnel
    * id 'HO-2' written by meta-leadgen-webhook (gh-2300). 'f' is Arm F;
-   * 'HO-3' (the $15 no-account funnel) is deliberately NOT eligible here. */
+   * 'HO-3' (the $22.63 no-account funnel) is deliberately NOT eligible here. */
   variant: string | null;
 }
 

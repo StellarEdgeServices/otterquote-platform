@@ -81,8 +81,8 @@
 // first commitment: it calls bridge.insertFreshLead(name, email, null)
 // -- NAME is already known by this point, unlike arm D's own d-email
 // screen, which is deliberately email-only -- then set_lead_role
-// (role is already known from page 1). Page 13 (home8) keeps arm C's
-// own home8Text VERBATIM, but does NOT re-collect name/email (both
+// (role is already known from page 1). Page 13 (home8; its home8Text
+// paragraph was removed by gh-3265) does NOT re-collect name/email (both
 // already sit on the lead row by then) -- it collects the one remaining
 // optional field, phone, and PATCHes the same row via
 // update_lead_contact, never a second insert.
@@ -841,8 +841,7 @@
   // button, is restored on a bfcache return -- see the `pageshow`
   // listener in init(). ======
   RENDERERS['e-p13'] = function () {
-    var RD = window.RouterDiscovery;
-    root.appendChild(bodyText(RD.COPY.home8Text));
+    // gh-3265: arm C's home8Text paragraph is no longer rendered here.
     var backBtn = backButton(goBack);
     root.appendChild(backBtn);
     var form = wrapInForm(onSubmit);

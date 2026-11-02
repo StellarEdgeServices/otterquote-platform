@@ -1,8 +1,8 @@
 /**
  * gh-2062 (REVIEW: FAIL 5881363760 / RETURNED 5881780522, must-fix 1) - the
- * claim-scoped copy `oq_referral_id_for_claim` lives under the SAME 30-day
+ * claim-scoped copy `oq_referral_id_for_claim` lives under the SAME 90-day
  * click clock as the `oq-ref` cookie. Advance at day 0 with no claim; the claim
- * writer at day 31 must get NO referral id. Undated `_for_claim` expires.
+ * writer at day 91 must get NO referral id. Undated `_for_claim` expires.
  *
  * Runs the REAL code, not a re-implementation:
  *   - js/cookie-storage.js in a vm sandbox (cookie jar honours Max-Age vs a
@@ -115,17 +115,19 @@ function check(cond, label) {
 }
 const A = { oq_referral_id: 'ref-A', oq_referral_agent_id: 'agent-A', oq_referral_code: 'PARTNERA' };
 
-// 1. THE BUG: advance at day 0, no claim, claim writer at day 31 -> NO id.
+// 1. THE BUG: advance at day 0, no claim, claim writer at day 91 -> NO id.
 {
   const t = freshSandbox();
   t.R.write(A, { click: true });
   const calls = await runAdvance(t);
-  check(calls.length === 1 && calls[0].args.p_referral_id === 'ref-A', 'day 0: advance RPC fires for ref-A');
+  const adv = calls.filter((c) => c.name === 'advance_referral_registered');
+  check(adv.length === 1 && adv[0].args.p_referral_id === 'ref-A', 'day 0: advance RPC fires for ref-A');
+  check(calls.filter((c) => c.name === 'get_locked_referral_id').length === 1, 'day 0: P18 lock lookup fires once after the advance');
   check(t.ls.getItem(CLAIM) === 'ref-A', 'day 0: advance re-keys the id to the claim-scoped key');
-  t.advanceDays(31);
+  t.advanceDays(91);
   const got = claimWriterReferralId(t);
-  check(got === null, `day 31: claim writer gets NO referral id (got ${JSON.stringify(got)})`);
-  check(t.ls.getItem(CLAIM) === null, 'day 31: the claim-scoped key is purged, not left as an immortal fallback');
+  check(got === null, `day 91: claim writer gets NO referral id (got ${JSON.stringify(got)})`);
+  check(t.ls.getItem(CLAIM) === null, 'day 91: the claim-scoped key is purged, not left as an immortal fallback');
 }
 
 // 2. POSITIVE CONTROL: in-window the claim-scoped id still attributes.
@@ -133,9 +135,9 @@ const A = { oq_referral_id: 'ref-A', oq_referral_agent_id: 'agent-A', oq_referra
   const t = freshSandbox();
   t.R.write(A, { click: true });
   await runAdvance(t);
-  t.advanceDays(29);
-  check(claimWriterReferralId(t) === 'ref-A', 'day 29: claim writer still gets ref-A (positive control)');
-  check(t.R.read()[CLAIM] === 'ref-A', 'day 29: read() returns the in-window claim-scoped id');
+  t.advanceDays(89);
+  check(claimWriterReferralId(t) === 'ref-A', 'day 89: claim writer still gets ref-A (positive control)');
+  check(t.R.read()[CLAIM] === 'ref-A', 'day 89: read() returns the in-window claim-scoped id');
 }
 
 // 2b. Isolate the claim-scoped path: cookie and id mirrors gone, click ts kept.
@@ -145,10 +147,10 @@ const A = { oq_referral_id: 'ref-A', oq_referral_agent_id: 'agent-A', oq_referra
   await runAdvance(t);
   t.jar.delete('oq-ref');
   for (const k of Object.keys(A)) { t.ls.removeItem(k); t.ss.removeItem(k); }
-  t.advanceDays(29);
-  check(claimWriterReferralId(t) === 'ref-A', 'day 29, cookie+mirrors gone: only the claim-scoped key attributes (positive control)');
+  t.advanceDays(89);
+  check(claimWriterReferralId(t) === 'ref-A', 'day 89, cookie+mirrors gone: only the claim-scoped key attributes (positive control)');
   t.advanceDays(2);
-  check(claimWriterReferralId(t) === null, 'day 31, cookie+mirrors gone: the claim-scoped key no longer attributes');
+  check(claimWriterReferralId(t) === null, 'day 91, cookie+mirrors gone: the claim-scoped key no longer attributes');
 }
 
 // 3. Undated claim-scoped id (no click ts on record anywhere) is expired.
@@ -182,7 +184,7 @@ const A = { oq_referral_id: 'ref-A', oq_referral_agent_id: 'agent-A', oq_referra
 {
   const t = freshSandbox();
   t.ls.setItem('oq_referral_id', 'ref-stale');
-  t.ls.setItem('oq_referral_ts', String(Date.UTC(2026, 8, 1) - 31 * DAY * 1000));
+  t.ls.setItem('oq_referral_ts', String(Date.UTC(2026, 8, 1) - 91 * DAY * 1000));
   const calls = await runAdvance(t);
   check(calls.length === 0, `expired mirror: advance RPC not called (calls=${calls.length})`);
   check(t.ls.getItem(CLAIM) === null, 'expired mirror: _for_claim not set');
@@ -197,4 +199,4 @@ const A = { oq_referral_id: 'ref-A', oq_referral_agent_id: 'agent-A', oq_referra
 }
 
 if (failed) { console.log(`\n${failed} check(s) FAILED`); process.exit(1); }
-console.log('\nOK: gh-2062 claim-scoped id rides the 30-day click clock.');
+console.log('\nOK: gh-2062 claim-scoped id rides the 90-day click clock.');

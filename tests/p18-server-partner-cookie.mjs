@@ -222,13 +222,13 @@ const IDS_B = { oq_referral_id: 'ref-B', oq_referral_agent_id: 'agent-B', oq_ref
   t.R.write(IDS_A, { click: true });
   t.advanceDays(10);
   t.setPc('PARTNERB', t.now());                            // B newer than A's click
-  t.advanceDays(25);                                       // A is 35d old (> 30d oq-ref window), B is 25d old
+  t.advanceDays(85);                                       // A is 95d old (> 90d oq-ref window, P18 #3219), B is 85d old
   check(t.R.read().oq_referral_code === 'PARTNERB', 'expired oq-ref + NEWER in-window oq_pc: oq_pc used');
   const u = freshSandbox();
   u.R.write(IDS_A, { click: true });
   u.advanceDays(1);
   u.setPc('PARTNERB', u.now() - 5 * DAY * 1000);           // B older than A's click
-  u.advanceDays(31);                                       // A expired
+  u.advanceDays(91);                                       // A expired (92d > 90d window, P18 #3219)
   check(eq(u.R.read(), {}), 'expired oq-ref + OLDER oq_pc: nothing returned');
   check(!u.hasPc(), 'expired oq-ref + OLDER oq_pc: the stale oq_pc is deleted');
 }

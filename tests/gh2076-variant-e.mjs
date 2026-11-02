@@ -627,9 +627,14 @@ function driveToP7_5(routerERoot, insertCalls) {
     findOptionButtons(routerERoot)[0].dispatchClick();
     return settle();
   }).then(() => {
+    // gh-3265: arm C's home8Text paragraph is no longer rendered on e-p13.
     const bodyPs = flatten(routerERoot).filter((c) => c.tagName === 'P');
-    ok(bodyPs.some((p) => p.textContent.indexOf('From our stand point, it seems like you would be a good fit') !== -1),
-      'e-p13 renders arm C\'s home8Text verbatim');
+    const OLD_HOME8 = ['From our stand point', 'tech savvy homeowner', 'aerial roof report, rebated in full'];
+    const hasOldHome8 = (ps) => ps.some((p) => OLD_HOME8.some((f) => (p.textContent || '').indexOf(f) !== -1));
+    ok(hasOldHome8([{ textContent: 'From our stand point, it seems like you would be a good fit.' }]),
+      'negative control: the home8 detector fires when the old paragraph is present');
+    ok(!hasOldHome8(bodyPs), 'gh-3265: e-p13 does NOT render arm C\'s home8Text paragraph');
+    ok(!bodyPs.some((p) => !(p.textContent || '').trim()), 'gh-3265: e-p13 leaves no empty <p> behind');
     const inputs = flatten(routerERoot).filter((c) => c.tagName === 'INPUT');
     ok(inputs.length === 1 && inputs[0].id === 'ePhone', 'e-p13 collects ONLY phone -- name/email are already on the lead row from e-p7-5');
     findContinueButton(routerERoot).dispatchClick(); // blank phone, optional -- must not block
