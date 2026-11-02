@@ -185,7 +185,7 @@ Deno.test("gh-2300: sends for role='homeowner' AND variant='HO-2' (native-form l
   assertEquals(selectLeadForReminder(lead, true, NOW).send, true);
 });
 
-Deno.test("gh-2300: skips variant='HO-3' (the $15 no-account funnel — negative control, must stay excluded)", () => {
+Deno.test("gh-2300: skips variant='HO-3' (the $22.63 no-account funnel — negative control, must stay excluded)", () => {
   const lead = baseLead({ variant: "HO-3" });
   assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "not_reminder_eligible_variant" });
 });

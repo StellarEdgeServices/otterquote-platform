@@ -95,7 +95,7 @@ Deno.test("B1: the standard-flow create is built by the pure builder (whose para
 });
 
 Deno.test("B1: the create's idempotency key is still one key per claim and type", () => {
-  assert(standard.includes("const idempotencyKey = standardIdempotencyKey(metadata);"));
+  assert(standard.includes("const idempotencyKey = standardIdempotencyKey(metadata, amount);"));
 });
 
 Deno.test("B1: the variant is attached AFTER the create returns, only for hover_measurement, via attachVariantMetadata", () => {

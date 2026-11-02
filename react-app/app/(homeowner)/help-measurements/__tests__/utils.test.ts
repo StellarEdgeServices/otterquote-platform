@@ -27,8 +27,8 @@ import {
 
 describe('constants (D-291 / D-181 parity values)', () => {
   it('matches the static charge/deliverable/description constants', () => {
-    expect(HOVER_AMOUNT_CENTS).toBe(1500);
-    expect(HOVER_AMOUNT_DOLLARS).toBe(15.0);
+    expect(HOVER_AMOUNT_CENTS).toBe(2263);
+    expect(HOVER_AMOUNT_DOLLARS).toBe(22.63);
     expect(HOVER_DELIVERABLE_TYPE_ID).toBe(3);
     expect(HOVER_PAYMENT_DESCRIPTION).toBe('Complete Property Report');
     expect(MEASUREMENTS_REQUEST_TYPE).toBe('measurements');
@@ -85,7 +85,7 @@ describe('buildHoverPaymentIntentParams', () => {
   it('shapes the PaymentIntent params with claim_id + 1500c + description', () => {
     expect(buildHoverPaymentIntentParams({ id: 'claim-1' })).toEqual({
       claim_id: 'claim-1',
-      amount: 1500,
+      amount: 2263,
       description: 'Complete Property Report',
       variant: 'unknown',
     });
@@ -98,7 +98,7 @@ describe('buildHoverPaymentIntentParams', () => {
   it('threads a caller-supplied variant through to the params', () => {
     expect(buildHoverPaymentIntentParams({ id: 'claim-1' }, 'e')).toEqual({
       claim_id: 'claim-1',
-      amount: 1500,
+      amount: 2263,
       description: 'Complete Property Report',
       variant: 'e',
     });
