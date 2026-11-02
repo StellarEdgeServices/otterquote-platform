@@ -151,6 +151,13 @@ Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630)
 |---|---|---|---|---|
 | `gh3256_default_privs_no_client_truncate` | forward, rollback, pre-flight (all three here) | NOT APPLIED (DRAFT, Tier 3B) | drafted 2026-10-30 under #3256; production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): `pg_default_acl` (postgres, public, tables) and (supabase_admin, public, tables) both grant `arwdDxtm` to anon and authenticated; the migration role `postgres` is not a superuser and not a member of `supabase_admin`, so only postgres's defaults can be altered (`ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE TRUNCATE ON TABLES FROM anon, authenticated`); supabase_admin's are covered by the new diff-scoped CI gate. Proof: `bash supabase/tests/gh3256_default_privs_proof_run.sh` on a throwaway PG16 cluster bootstrapped as supabase_admin (capability / before / after / rerun / rollback / reapply, 18 mutants, gate-vs-Postgres on 18 fixtures). No database was written | none |
 
+## Added 2026-10-30 (gh-3197, internal test sign-ups flagged is_test): 3 files here (forward, rollback, pre-flight); not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh3197_internal_test_signups_is_test` | forward, rollback, pre-flight (all three here) | NOT APPLIED (DRAFT, Tier 3B) | drafted 2026-10-30 under #3197; production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): `set_is_test_for_internal_test_domain()` matches only `@otterquote-internal.test`; 38 internal-email profiles and 3 of their claims read `is_test<>true`. | none |
+| `gh3197_backfill_internal_test_is_test` | forward, rollback (both here) | NOT APPLIED (DRAFT, Tier 3B, apply after `gh3197_internal_test_signups_is_test`) | drafted 2026-10-30 under #3197 per Ben's rulings 6522509807 / 6522674646; raise-only UPDATE of the 38 internal-email profiles and 3 claims read 2026-10-30; rollback hard-codes those ids. Run as service_role/postgres. | none |
+
 ## Added 2026-10-30 (gh-3228, P18, homeowner measurement fee $15 -> $22.63): 3 files here (forward, rollback, pre-flight), not counted in the tables above
 
 | set | files | status | evidence | repo copy |
