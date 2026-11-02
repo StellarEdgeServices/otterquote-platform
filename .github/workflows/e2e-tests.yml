@@ -154,6 +154,9 @@ jobs:
       - name: cookie-storage.js/config.js load-order check (Stage 5 prevention, #601)
         run: python3 scripts/check-script-load-order.py
 
+      - name: og:image / twitter:image share-image guard (gh-3338)
+        run: python3 scripts/check-og-image.py
+
       - name: sitemap.xml vs repo consistency guard (gh-2447)
         run: python3 scripts/check-sitemap.py
 
