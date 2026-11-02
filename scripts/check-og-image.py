@@ -2,7 +2,7 @@
 """gh-3338: fail if any HTML page in the repo still points og:image / twitter:image at the old square
 logos, or if the 1200x630 share images are missing, oversized, or the wrong size.
 Run from repo root:  python3 scripts/check-og-image.py   (exit 1 on any problem)."""
-import re, struct, subprocess, sys
+import re, struct, sys
 from pathlib import Path
 
 BASE = "https://otterquote.com/img/social/"
@@ -28,7 +28,8 @@ for name in ("og-default.jpg", "og-roof-buying-season.jpg"):
     if p.stat().st_size > MAX_BYTES: errs.append(f"{p} is {p.stat().st_size} bytes, over {MAX_BYTES}")
     if jpeg_size(p) != (1200, 630): errs.append(f"{p} is {jpeg_size(p)}, expected (1200, 630)")
 
-pages = [f for f in subprocess.check_output(["git", "ls-files", "*.html"], text=True).split("\n") if f]
+SKIP = {".git", "node_modules", "_site"}
+pages = sorted(str(f) for f in Path(".").rglob("*.html") if not SKIP & set(f.parts))
 tag = re.compile(r'<meta\s+(?:property|name)=["\'](og:image|twitter:image)["\']\s+content=["\']([^"\']*)', re.I)
 for f in pages:
     t = Path(f).read_text(encoding="utf-8", errors="replace")

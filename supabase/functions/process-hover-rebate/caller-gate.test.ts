@@ -114,7 +114,7 @@ Deno.test("index.ts wiring: serviceGate precedes makeClient(...) and every .from
   const handlerAt = at("export async function handler(");
   const gateAt = at("serviceGate(req, getEnv, corsHeaders)");
   const clientAt = at("makeClient(supabaseUrl, supabaseKey)");
-  const stripeKeyAt = at('getEnv("STRIPE_SECRET_KEY")');
+  const stripeKeyAt = at("selectStripeKey({ isStaging, claimIsTest: false, env: getEnv })"); // gh-3323: the Stripe-configured gate (was getEnv("STRIPE_SECRET_KEY"))
   const firstFrom = lines.findIndex((l, i) => i > handlerAt && live(l) && l.includes(".from("));
   assert(handlerAt > 0 && gateAt > handlerAt, "gate inside handler");
   assert(clientAt > gateAt && stripeKeyAt > gateAt && firstFrom > gateAt, "gate before client, Stripe key and DB");

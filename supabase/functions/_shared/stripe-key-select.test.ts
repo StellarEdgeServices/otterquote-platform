@@ -72,3 +72,26 @@ Deno.test("wiring: process-dunning TRIGGER selects the key via selectStripeKey w
   assert(src.includes("triggerClaimIsTest = guardClaim?.is_test === true;"));
   assert(!/getEnv\("STRIPE_SECRET_KEY"\)/.test(src), "process-dunning/index.ts must not read the live key directly in TRIGGER mode");
 });
+
+// gh-3323 -- refund key (Ben's ruling 6578880344).
+import { selectRefundKey } from "./stripe-key-select.ts";
+Deno.test("gh-3323 selectRefundKey: is_test + live charge marker -> refuse (manual only), whatever the Origin", () => {
+  for (const isStaging of [false, true]) {
+    assertEquals(selectRefundKey({ isStaging, claimIsTest: true, liveChargeAuthorizedAt: "2026-08-31T20:00:00Z", env: BOTH }),
+      { ok: false, reason: "live_charge_on_test_claim_manual_refund_only" });
+  }
+});
+Deno.test("gh-3323 selectRefundKey: is_test without the marker -> TEST key; missing test key -> refuse, never live", () => {
+  const r = selectRefundKey({ isStaging: false, claimIsTest: true, liveChargeAuthorizedAt: null, env: BOTH });
+  assert(r.ok && r.key === "sk_test_X" && r.mode === "test");
+  assertEquals(selectRefundKey({ isStaging: false, claimIsTest: true, env: env({ STRIPE_SECRET_KEY: "sk_live_X" }) }),
+    { ok: false, reason: "test_key_missing_for_test_claim" });
+});
+Deno.test("gh-3323 selectRefundKey: real claim == selectStripeKey exactly, marker ignored (control)", () => {
+  for (const isStaging of [false, true]) {
+    for (const e of [BOTH, env({ STRIPE_SECRET_KEY: "sk_live_X" }), env({})]) {
+      assertEquals(selectRefundKey({ isStaging, claimIsTest: false, liveChargeAuthorizedAt: "2026-08-31T20:00:00Z", env: e }),
+        selectStripeKey({ isStaging, claimIsTest: false, env: e }));
+    }
+  }
+});
