@@ -749,7 +749,7 @@ CREATE TEMP TABLE c(k text PRIMARY KEY, id uuid) ON COMMIT DROP;
 
 -- F0 fixtures behaved as the production guards allow (a silently-forced column would invalidate every later row)
 SELECT pg_temp.chk('F0 migration seeded the settings: fee cents / minimum cents', pg_temp.q($$ SELECT (SELECT value #>> '{}' FROM platform_settings WHERE key = 'partner_measurement_fee_cents') || '/' || (SELECT value #>> '{}' FROM platform_settings WHERE key = 'partner_payout_minimum_cents') $$), '500/2500');
-SELECT pg_temp.chk('F0b fixture agents: total / is_test true / is_test false / payments_blocked (service_role claim bypassed the INSERT guard)', pg_temp.q($$ SELECT count(*) || '/' || count(*) FILTER (WHERE is_test) || '/' || count(*) FILTER (WHERE NOT is_test) || '/' || count(*) FILTER (WHERE payments_blocked) FROM referral_agents WHERE unique_code LIKE 'GH3229%' $$), '20/19/1/1');
+SELECT pg_temp.chk('F0b fixture agents: total / is_test true / is_test false / payments_blocked (service_role claim bypassed the INSERT guard)', pg_temp.q($$ SELECT count(*) || '/' || count(*) FILTER (WHERE is_test) || '/' || count(*) FILTER (WHERE NOT is_test) || '/' || count(*) FILTER (WHERE payments_blocked) FROM referral_agents WHERE unique_code LIKE 'GH3229%' $$), '23/22/1/1');
 SELECT pg_temp.chk('F0c production partner_v4_accepted_at reads the real columns: accepted agent set / never-accepted agent NULL / future-accepted agent set', pg_temp.q(format($$ SELECT (public.partner_v4_accepted_at(%L) IS NOT NULL) || '/' || (public.partner_v4_accepted_at(%L) IS NULL) || '/' || (public.partner_v4_accepted_at(%L) > now()) $$, pg_temp.u(118), pg_temp.u(116), pg_temp.u(117))), 'true/true/true');
 
 -- F1 credited paid order
