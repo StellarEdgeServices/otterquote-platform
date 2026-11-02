@@ -34,8 +34,6 @@ import {
   subtitleBrandUnconfirmed,
   colorBoardVisitRequested,
   colorBoardPhoneSuffix,
-  addendumFallbackWithPhone,
-  addendumFallbackNoPhone,
   colorBoardMailtoBody,
 } from './copy';
 import {
@@ -345,12 +343,6 @@ function PageBody({
         <p className="oqcs-subtitle">{subtitle}</p>
       </header>
 
-      {/* No-rush banner */}
-      <div className="oqcs-norush">
-        <div className="oqcs-norush-icon">{C.noRushIcon}</div>
-        <p className="oqcs-norush-text">{C.noRushText}</p>
-      </div>
-
       {/* Option cards */}
       <div className="oqcs-options">
         {OPTIONS.map((opt) => (
@@ -482,10 +474,7 @@ function PageBody({
         {addendum === 'fallback' && (
           <div className="oqcs-addendum-fallback">
             <p>
-              {C.addendumFallbackBase}{' '}
-              {contractorPhone
-                ? addendumFallbackWithPhone(contractorName, contractorPhone)
-                : addendumFallbackNoPhone(contractorName)}
+              {C.addendumFallbackBase}
             </p>
           </div>
         )}

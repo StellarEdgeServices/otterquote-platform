@@ -51,11 +51,6 @@ export const COLOR_COPY = {
   subtitleStaticPlaceholder:
     "Your contractor uses [Brand]. Let's pick the perfect color for your home.",
 
-  // ── No-rush banner (color-selection.html:455-457) ──
-  noRushIcon: '⏳',
-  noRushText:
-    "Take your time — your contract is already signed and your contractor has been notified. There's no rush to pick a color.",
-
   // ── Option cards (color-selection.html:722-762) ──
   // Card 1 "visualize" description is brand-dependent → see visualizerDescriptions below.
   optionVisualizeTitle: 'See It On Your House',
@@ -114,9 +109,9 @@ export const COLOR_COPY = {
   addendumIframeTitle: 'Color Addendum — E-Sign',
 
   // ── Addendum fallback (color-selection.html:1205) — "<strong>Your color choice is saved.</strong> …" ──
-  // Base sentence; the phone / no-phone clause is appended via the builders below.
+  // The whole note (gh-3287, Ben 2026-11-02T17:12Z): nothing is appended after it.
   addendumFallbackBase:
-    'Your color choice is saved. Please confirm it with your contractor before you sign.',
+    'Your color choice is saved. Please confirm it with your contractor.',
 
   // ── Color-board request confirmations (color-selection.html:1014-1017) ──
   colorBoardAlreadyRequested:
@@ -228,16 +223,6 @@ export function colorBoardVisitRequested(contractorName: string): string {
  */
 export function colorBoardPhoneSuffix(phone: string): string {
   return ` To reach them directly: ${phone}`;
-}
-
-/** Addendum-fallback clause when a contractor phone is known (color-selection.html:1207). */
-export function addendumFallbackWithPhone(contractorName: string, phone: string): string {
-  return `You can also confirm directly with ${contractorName} at ${phone}.`;
-}
-
-/** Addendum-fallback clause when no contractor phone is known (color-selection.html:1208). */
-export function addendumFallbackNoPhone(contractorName: string): string {
-  return `Contact your contractor, ${contractorName}, to confirm.`;
 }
 
 /**

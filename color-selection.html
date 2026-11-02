@@ -455,14 +455,6 @@
           </p>
         </div>
 
-        <!-- No rush callout -->
-        <div class="no-rush-banner">
-          <div class="no-rush-icon">⏳</div>
-          <div class="no-rush-text">
-            <p><strong>Take your time</strong> &mdash; your contract is already signed and your contractor has been notified. There's no rush to pick a color.</p>
-          </div>
-        </div>
-
         <!-- Color selection options -->
         <div class="color-options-grid" id="color-options-grid">
           <!-- Populated by JavaScript -->
@@ -1225,10 +1217,7 @@
         note.style.cssText = 'margin-top:1.5rem; padding:1rem 1.25rem; background:rgba(245,158,11,0.08); border-left:3px solid var(--amber,#E07B00); border-radius:0.5rem;';
         note.innerHTML = `
           <p style="color:rgba(255,255,255,0.8); margin:0; font-size:0.9rem;">
-            <strong>Your color choice is saved.</strong> Please confirm it with your contractor before you sign.
-            ${this.contractorPhone
-              ? `You can also confirm directly with <strong>${this.contractorName}</strong> at <a href="tel:${this.contractorPhone}" style="color:var(--amber,#E07B00);">${this.contractorPhone}</a>.`
-              : `Contact your contractor, ${this.contractorName}, to confirm.`}
+            <strong>Your color choice is saved.</strong> Please confirm it with your contractor.
           </p>
         `;
         form.parentNode.insertBefore(note, form.nextSibling);

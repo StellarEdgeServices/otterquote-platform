@@ -52,20 +52,30 @@ check('control: reverting A is detected', !brokenResults['A: no homeowner_id any
 check('control: reverting C is detected', !brokenResults['C: contractor name and brand come from get_claim_color_contractor']);
 check('control: reverting F is detected', !brokenResults["F: the colour save chains .select('id') and rejects zero rows"]);
 
-// G (gh-3287, Ben's ruling 6581042504): the colour-save note is exactly the ruled sentence
-const RULED_NOTE = 'Your color choice is saved. Please confirm it with your contractor before you sign.';
+// G (gh-3287, Ben 2026-11-02T17:12Z, replacing 6581042504): the colour-save note is exactly the ruled sentence,
+// with no "already signed" sentence and no contact clause around it
+const RULED_NOTE = 'Your color choice is saved. Please confirm it with your contractor.';
 const noteGuards = (h) => {
   const text = h.replace(/<\/?strong>/g, '');
   return {
     'G: the colour-save note is the ruled sentence, exactly': text.includes(RULED_NOTE),
     'G: the old "final contract documents" promise is gone': !/final contract documents/.test(h),
+    'G: no "before you sign" in the note': !/before you sign/.test(h),
+    'G: no "already signed" sentence on the page': !/already signed/.test(h),
+    'G: no contact clause after the note': !/confirm directly with|Contact your contractor, \$\{/.test(h),
   };
 };
-for (const [label, ok] of Object.entries(noteGuards(html))) check(label, ok);
+for (const [label, ok] of Object.entries(noteGuards(stripComments(html)))) check(label, ok);
 const brokenNote = noteGuards(html.replace('Your color choice is saved.', 'Color saved.'));
 check('control: a reworded note is detected', !brokenNote['G: the colour-save note is the ruled sentence, exactly']);
 const oldNote = noteGuards(html + ' Your contractor will include the color selection in your final contract documents.');
 check('control: the old promise coming back is detected', !oldNote['G: the old "final contract documents" promise is gone']);
+const signedNote = noteGuards(html + ' your contract is already signed');
+check('control: the "already signed" sentence coming back is detected', !signedNote['G: no "already signed" sentence on the page']);
+const beforeNote = noteGuards(html.replace('Please confirm it with your contractor.', 'Please confirm it with your contractor before you sign.'));
+check('control: "before you sign" coming back is detected', !beforeNote['G: no "before you sign" in the note']);
+const clauseNote = noteGuards(html + ' You can also confirm directly with X at 1.');
+check('control: the contact clause coming back is detected', !clauseNote['G: no contact clause after the note']);
 
 // ---- the draft RPC migration ----
 const sqlGuards = (sql) => {

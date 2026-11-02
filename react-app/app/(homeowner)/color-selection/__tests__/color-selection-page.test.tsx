@@ -263,12 +263,14 @@ describe('color-selection page — graceful EF failure', () => {
       return el!;
     });
     expect(fallback.textContent).toContain(C.addendumFallbackBase);
-    // gh-3287 (Ben's ruling 6581042504): the ruled sentence, literally, and not the old promise
-    expect(fallback.textContent).toContain(
-      'Your color choice is saved. Please confirm it with your contractor before you sign.',
+    // gh-3287 (Ben, 2026-11-02T17:12Z, replacing 6581042504): the note is exactly this sentence
+    expect(fallback.textContent?.trim()).toBe(
+      'Your color choice is saved. Please confirm it with your contractor.',
     );
+    expect(fallback.textContent).not.toContain('before you sign');
     expect(fallback.textContent).not.toContain('final contract documents');
-    expect(fallback.textContent).toContain('555-1234'); // with-phone clause
+    expect(fallback.textContent).not.toContain('555-1234'); // no phone clause
+    expect(document.body.textContent).not.toContain('already signed');
   });
 });
 

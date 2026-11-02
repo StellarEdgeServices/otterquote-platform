@@ -13,14 +13,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import * as copyModule from '../copy';
 import {
   COLOR_COPY,
   subtitleBrandKnown,
   subtitleBrandUnconfirmed,
   colorBoardVisitRequested,
   colorBoardPhoneSuffix,
-  addendumFallbackWithPhone,
-  addendumFallbackNoPhone,
   colorBoardMailtoBody,
 } from '../copy';
 import {
@@ -45,8 +44,6 @@ const STATIC = {
   headerTitle: 'Choose Your Color',
   subtitleStaticPlaceholder:
     "Your contractor uses [Brand]. Let's pick the perfect color for your home.",
-  noRushText:
-    "Take your time — your contract is already signed and your contractor has been notified. There's no rush to pick a color.",
   optionVisualizeTitle: 'See It On Your House',
   optionBrowseTitle: 'Browse Colors',
   optionBrowseDescription: 'See our color catalog and make your selection.',
@@ -72,7 +69,7 @@ const STATIC = {
     'Almost done! Please sign the color addendum below to add your selected color to your contract.',
   addendumIframeTitle: 'Color Addendum — E-Sign',
   addendumFallbackBase:
-    'Your color choice is saved. Please confirm it with your contractor before you sign.',
+    'Your color choice is saved. Please confirm it with your contractor.',
   colorBoardAlreadyRequested:
     '✓ Already requested. Your contractor will reach out soon with physical color samples.',
   colorBoardAlreadyRequestedAlert:
@@ -122,12 +119,11 @@ const URLS = {
 };
 
 describe('verbatim homeowner copy (byte-for-byte)', () => {
-  it('header + no-rush banner match color-selection.html exactly', () => {
+  it('header matches color-selection.html exactly', () => {
     expect(COLOR_COPY.headerTitle).toBe(STATIC.headerTitle);
     expect(COLOR_COPY.subtitleStaticPlaceholder).toBe(STATIC.subtitleStaticPlaceholder);
     expect(COLOR_COPY.subtitleStaticPlaceholder).toContain('[Brand]');
-    expect(COLOR_COPY.noRushIcon).toBe('⏳');
-    expect(COLOR_COPY.noRushText).toBe(STATIC.noRushText);
+    expect(COLOR_COPY).not.toHaveProperty('noRushText');
   });
 
   it('the three option cards (titles/descriptions/buttons/note) match exactly', () => {
@@ -262,13 +258,9 @@ describe('interpolated copy builders', () => {
     expect(base + colorBoardPhoneSuffix('317-555-0100')).toContain('within 48 hours. To reach them directly:');
   });
 
-  it('addendum fallback clauses match verbatim', () => {
-    expect(addendumFallbackWithPhone('Hoosier Roofing Co.', '317-555-0100')).toBe(
-      'You can also confirm directly with Hoosier Roofing Co. at 317-555-0100.',
-    );
-    expect(addendumFallbackNoPhone('Hoosier Roofing Co.')).toBe(
-      'Contact your contractor, Hoosier Roofing Co., to confirm.',
-    );
+  it('the fallback note has no phone or contact clause helpers', () => {
+    expect(copyModule).not.toHaveProperty('addendumFallbackWithPhone');
+    expect(copyModule).not.toHaveProperty('addendumFallbackNoPhone');
   });
 
   it('mailto body matches verbatim, with newline separators', () => {
