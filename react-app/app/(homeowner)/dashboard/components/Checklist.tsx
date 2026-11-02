@@ -2,26 +2,24 @@
 
 /**
  * Pre-submission checklist + progress (estimate / measurements / material) with
- * document upload (→ parse-loss-sheet), the Hover resend-link action, and the
- * Submit-for-Bids action (→ notify-contractors). Mirrors renderChecklist() +
- * updateProgressBar() + handleUpload()/resendHoverLink()/submitForBids().
+ * document upload (→ parse-loss-sheet) and the Submit-for-Bids action
+ * (→ notify-contractors). Mirrors renderChecklist() + updateProgressBar() +
+ * handleUpload()/submitForBids().
  */
 
 import { useRef, useState } from 'react';
-import { resendHoverLink, submitForBids, uploadClaimDocument } from '../actions';
+import { submitForBids, uploadClaimDocument } from '../actions';
 import { computeProgress } from '../utils';
-import type { HomeownerClaim, HoverOrder } from '../types';
+import type { HomeownerClaim } from '../types';
 
 type DocKind = 'estimate' | 'measurements';
 
 export function Checklist({
   claim,
-  hoverOrder,
   userId,
   onChange,
 }: {
   claim: HomeownerClaim;
-  hoverOrder: HoverOrder | null;
   userId: string;
   onChange: () => void;
 }) {
@@ -48,16 +46,6 @@ export function Checklist({
     } else {
       setError(res.error || 'Upload failed. Please try again.');
     }
-  }
-
-  async function onResend() {
-    setBusy('resend');
-    setError(null);
-    setNotice(null);
-    const res = await resendHoverLink(claim.id);
-    setBusy(null);
-    if (res.ok) setNotice('Measurement link re-sent.');
-    else setError(res.error || 'Could not resend the link. You may have hit the daily limit.');
   }
 
   async function onSubmitForBids() {
@@ -87,8 +75,6 @@ export function Checklist({
     !claim.ready_for_bids &&
     (isCash ? !!claim.has_measurements : !!claim.has_estimate) &&
     !!claim.has_material_selection;
-  const showResend =
-    !!hoverOrder && ['pending', 'link_sent'].includes(hoverOrder.status) && !!hoverOrder.capture_link;
 
   return (
     <section
@@ -163,14 +149,6 @@ export function Checklist({
           </li>
         ))}
       </ul>
-
-      {showResend && (
-        <div style={{ marginTop: '1rem' }}>
-          <button type="button" className="btn btn-sm btn-secondary" disabled={busy === 'resend'} onClick={onResend}>
-            {busy === 'resend' ? 'Sending…' : 'Resend measurement link'}
-          </button>
-        </div>
-      )}
 
       {canSubmit && (
         <div style={{ marginTop: '1.25rem' }}>

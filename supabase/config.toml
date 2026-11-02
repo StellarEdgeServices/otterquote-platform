@@ -42,10 +42,6 @@ verify_jwt = true
 # Auth enforced inside handler: caller must be a party to the claim (86e1v6nnh).
 verify_jwt = true
 
-[functions.hover-oauth-callback]
-# OAuth redirect URI — Hover redirects the browser here with no JWT. CSRF-state enforced inside handler (86e1v6nnh).
-verify_jwt = false
-
 [functions.send-incomplete-onboarding-reminders]
 # Cron-exception: JWT verification disabled; access is gated by CRON_SECRET header check inside the function.
 verify_jwt = false
@@ -92,14 +88,6 @@ verify_jwt = false
 [functions.send-support-email]
 # Public support form — emails the hardcoded admin + inserts a ticket; the to_email open-relay branch
 # was removed (D-211 Phase 16 Unit 1b). Pin false so the public form keeps working.
-verify_jwt = false
-
-[functions.get-hover-pdf]
-# Auth + claim-association enforced in-handler (D-211 Phase 16 Unit 2 IDOR fix). Pin false.
-verify_jwt = false
-
-[functions.get-hover-siding-data]
-# Auth + claim-association enforced in-handler (D-211 Phase 16 Unit 2 IDOR fix). Pin false.
 verify_jwt = false
 
 [functions.scrape-manufacturer-certs]
@@ -290,14 +278,6 @@ verify_jwt = false
 # admin-contractor-action); dry-run by default. Deploy waits for the R-097 3B notice.
 verify_jwt = false
 
-[functions.check-siding-design-completion]
-# gh-2462: service bearer required in-handler (cron job 6 vault key, hover-webhook runtime key);
-# 401 with zero I/O otherwise. verify_jwt stays false: the vault key is not a JWT (gh-2309).
-verify_jwt = false
-
-[functions.create-hover-order]
-verify_jwt = false
-
 [functions.create-hubspot-contact]
 verify_jwt = false
 
@@ -305,10 +285,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.create-setup-intent]
-verify_jwt = false
-
-# Provider callback: Hover posts here with no Supabase JWT.
-[functions.hover-webhook]
 verify_jwt = false
 
 # gh-2019: notify-admin-new-homeowner is deployed verify_jwt=false (Supabase
