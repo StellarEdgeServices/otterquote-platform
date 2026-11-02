@@ -159,17 +159,27 @@ ok(/id="agreement-v4-accept" type="button" disabled>/.test(raf), '(r2) the accep
 ok(/\.requires-agreement \{ display: none; \}/.test(raf) && /<!-- Your Referral Link -->\s*<section class="refer-section requires-agreement">/.test(raf)
   && /<!-- Share Options -->\s*<section class="refer-section requires-agreement">/.test(raf), '(r3) link and share tools hidden until acceptance');
 const rafSrc = 'const PARTNER_AGREEMENT_CURRENT_VERSION = "v4-2026-10";\n' + extractFn(raf, 'acceptAgreementV4');
-async function runRaf(checked) {
+async function runRaf(checked, mode = 'issued') {
   const calls = [];
   const els = { 'agreement-v4-checkbox': { checked }, 'agreement-v4-accept': { disabled: !checked }, 'agreement-v4-status': { style: {} }, 'agreement-accept-section': { style: {} } };
   const ctx = { document: { getElementById: (id) => els[id], body: { classList: { add: (c) => calls.push(['body', c]) } } }, console,
     userReferralCode: null,
-    fetchOrCreateReferralCode: async () => { calls.push(['get_or_create_customer_referral_code']); ctx.userReferralCode = 'ABC'; },
+    // mode 'issued': the server returns the code on the first call (before gh-3245). mode 'gated': the first call returns null with
+    // v4_acceptance_required true (after gh-3245), the code only comes once the acceptance is recorded. mode 'fail': a genuine failure.
+    fetchOrCreateReferralCode: async () => {
+      calls.push(['get_or_create_customer_referral_code']);
+      if (mode === 'issued') { ctx.userReferralCode = 'ABC'; return undefined; }
+      if (mode === 'gated') {
+        if (calls.some(c => c[0] === 'accept_partner_agreement_v4')) { ctx.userReferralCode = 'ABC'; return undefined; }
+        return 'v4_acceptance_required';
+      }
+      return undefined;
+    },
     startReferring: async () => calls.push(['startReferring']),
     showAcceptedHero: () => {},   // gh-3245: hero copy swap after acceptance (covered by tests/gh3245-refer-fee-display.mjs)
     sb: { rpc: async (n, a) => { calls.push([n, a]); return { data: { agreement_version: V4, accepted_at: '2026-11-01T00:00:00Z' }, error: null }; } } };
   vm.createContext(ctx);
-  vm.runInContext(rafSrc.replace('if (!userReferralCode) await', 'if (!globalThis.userReferralCode) await').replace("if (!userReferralCode) throw", "if (!globalThis.userReferralCode) throw") + '\nglobalThis.__p = acceptAgreementV4();', ctx);
+  vm.runInContext(rafSrc + '\nglobalThis.__p = acceptAgreementV4();', ctx);
   await ctx.__p;
   return calls;
 }
@@ -177,7 +187,12 @@ const unticked = await runRaf(false);
 ok(unticked.length === 0, '(r4) box not ticked: no RPC, nothing recorded');
 const ticked = await runRaf(true);
 ok(ticked.map(c => c[0]).join(',') === 'get_or_create_customer_referral_code,accept_partner_agreement_v4,body,startReferring',
-  '(r5) box ticked: customer row created, then acceptance recorded, then the link is shown: ' + ticked.map(c => c[0]).join(','));
+  '(r5) box ticked, code issued on the first call: customer row created, then acceptance recorded, then the link is shown: ' + ticked.map(c => c[0]).join(','));
+const gated = await runRaf(true, 'gated');
+ok(gated.map(c => c[0]).join(',') === 'get_or_create_customer_referral_code,accept_partner_agreement_v4,get_or_create_customer_referral_code,body,startReferring',
+  '(r6) gh-3245: null code with v4_acceptance_required is the accept-first state; get-or-create, accept, get-or-create, then the link: ' + gated.map(c => c[0]).join(','));
+const failed = await runRaf(true, 'fail');
+ok(!failed.some(c => c[0] === 'accept_partner_agreement_v4'), '(r7) NEGATIVE CONTROL: a genuine failure (null code, no v4_acceptance_required) still stops before accept: ' + failed.map(c => c[0]).join(','));
 
 // ---------------------------------------------------------------- (c) copy
 function partnerCopy(h) {

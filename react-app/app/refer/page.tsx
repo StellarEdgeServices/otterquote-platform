@@ -57,6 +57,7 @@ import {
   COMING_SOON_REDIRECT,
   loadReferLink,
   acceptAgreementAndIssueLink,
+  type CodeResult,
   referralUrl,
   referralRowCells,
   summarizeReferrals,
@@ -119,12 +120,19 @@ function isMobileUA(): boolean {
 
 // v100/#624: get_or_create_customer_referral_code() — SECURITY DEFINER, keyed on auth.uid() only. Returns the code, or
 // null on a genuine failure (RPC error, expired session, no verified email) — never a fabricated code.
-async function fetchOrCreateCode(): Promise<string | null> {
+async function fetchOrCreateCodeResult(): Promise<CodeResult> {
   const { data, error } = await supabase.rpc('get_or_create_customer_referral_code');
   const unique = data ? (data as CustomerReferralAgent).unique_code : null;
-  if (unique) return unique;
+  if (unique) return { code: unique };
+  // gh-3245: unique_code null with v4_acceptance_required true is the normal "accept first" state, not a failure.
+  if (data && !error && (data as { v4_acceptance_required?: boolean }).v4_acceptance_required === true) {
+    return { code: null, v4AcceptanceRequired: true };
+  }
   console.error('Error fetching/creating referral code:', error);
-  return null;
+  return { code: null };
+}
+async function fetchOrCreateCode(): Promise<string | null> {
+  return (await fetchOrCreateCodeResult()).code;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -216,7 +224,7 @@ export default function ReferAFriendPage() {
   // acceptance response confirms v4-2026-10. A failure throws to the gate, which keeps the link hidden.
   const acceptAgreement = async () => {
     const issued = await acceptAgreementAndIssueLink({
-      getOrCreateCode: fetchOrCreateCode,
+      getOrCreateCode: fetchOrCreateCodeResult,
       acceptAgreement: async () => {
         const { data, error } = await supabase.rpc('accept_partner_agreement_v4');
         if (error) throw error;

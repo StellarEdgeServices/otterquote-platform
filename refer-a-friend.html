@@ -981,11 +981,17 @@
       status.textContent = 'Saving your acceptance…';
       try {
         // the customer's referral_agents row must exist before it can carry the acceptance
-        if (!userReferralCode) await fetchOrCreateReferralCode();
-        if (!userReferralCode) throw new Error('no referral code');
+        // gh-3245: once the server withholds the code until v4 is accepted, this first call returns a null code with
+        // v4_acceptance_required true. That is the normal "accept first" state, not an error. Any other null is a failure.
+        if (!userReferralCode) {
+          const state = await fetchOrCreateReferralCode();
+          if (!userReferralCode && state !== 'v4_acceptance_required') throw new Error('no referral code');
+        }
         const { data, error } = await sb.rpc('accept_partner_agreement_v4');
         if (error) throw error;
         if (!data || data.agreement_version !== PARTNER_AGREEMENT_CURRENT_VERSION || !data.accepted_at) throw new Error('unexpected response');
+        // gh-3245: the code is only returned after acceptance, so ask again (a no-op when the first call already returned it)
+        if (!userReferralCode) await fetchOrCreateReferralCode();
         document.getElementById('agreement-accept-section').style.display = 'none';
         document.body.classList.add('agreement-v4-ok');
         showAcceptedHero();
@@ -1042,6 +1048,12 @@
       if (data && data.unique_code) {
         userReferralCode = data.unique_code;
         currentAgent = data; // { unique_code, payments_blocked, w9_notification_sent_at, w9_submitted_at, created }
+      } else if (data && !error && data.v4_acceptance_required === true) {
+        // gh-3245: the row exists but the code is withheld until Partner Agreement v4 is accepted. Not a failure:
+        // no error log, no Sentry event. acceptAgreementV4() accepts, then calls this again to get the code.
+        userReferralCode = null;
+        currentAgent = null;
+        return 'v4_acceptance_required';
       } else {
         // Genuine failure (RPC error, expired session, no verified email,
         // etc.) — do NOT fabricate a fake code. Leave userReferralCode

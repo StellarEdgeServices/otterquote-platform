@@ -120,20 +120,31 @@ export async function loadReferLink(deps: {
 
 /**
  * Gate submit: get_or_create_customer_referral_code() first (the customer's referral_agents row must exist to carry the
- * acceptance), then accept_partner_agreement_v4(). The code is returned for display only when the acceptance response
- * confirms v4-2026-10 with a timestamp; any failure throws and the caller keeps the gate up with no link.
+ * acceptance), then accept_partner_agreement_v4(), then get_or_create_customer_referral_code() again. gh-3245: once the
+ * server withholds the code until v4 is accepted, the first call returns no code with v4AcceptanceRequired true; that is
+ * the normal "accept first" state, not an error. Any other empty first result is a failure. The code is returned for
+ * display only when the acceptance response confirms v4-2026-10 with a timestamp and the second call returns a code; any
+ * failure throws and the caller keeps the gate up with no link.
  */
+export interface CodeResult {
+  code: string | null;
+  /** true when the RPC returned unique_code null with v4_acceptance_required true */
+  v4AcceptanceRequired?: boolean;
+}
+
 export async function acceptAgreementAndIssueLink(deps: {
-  getOrCreateCode: () => Promise<string | null>;
+  getOrCreateCode: () => Promise<CodeResult>;
   acceptAgreement: () => Promise<AcceptanceResult | null>;
 }): Promise<string> {
-  const code = await deps.getOrCreateCode();
-  if (!code) throw new Error('no referral code');
+  const first = await deps.getOrCreateCode();
+  if (!first.code && !first.v4AcceptanceRequired) throw new Error('no referral code');
   const res = await deps.acceptAgreement();
   if (!res || res.agreement_version !== PARTNER_AGREEMENT_CURRENT_VERSION || !res.accepted_at) {
     throw new Error('unexpected acceptance response');
   }
-  return code;
+  const second = await deps.getOrCreateCode();
+  if (!second.code) throw new Error('no referral code');
+  return second.code;
 }
 
 // ── Referral link + code ──────────────────────────────────────────────────────
