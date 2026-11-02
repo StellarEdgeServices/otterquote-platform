@@ -17,7 +17,7 @@ const ENV_BOTH: Env = { ...BASE_ENV, MAILGUN_API_KEY: undefined, MAILGUN_DOMAIN:
 const STAGING = "https://jade-alpaca-b82b5e.netlify.app";
 const CLAIM = "3f2b8c1e-9a4d-4e57-8b1c-2d6f7a9e0b13";
 
-const quote = { id: "q1", status: "selected", bid_status: "active", cancellation_reason: null, payment_intent_id: "pi_1", payment_status: "succeeded", contractors: { id: "c1", company_name: "Acme", email: null } };
+const quote = { id: "q1", status: "selected", bid_status: "active", cancellation_reason: null, payment_intent_id: "pi_1", payment_status: "succeeded", contractors: { id: "c1", company_name: "Acme", email: "ctr@example.com" } };
 const claimRow = (o: Record<string, unknown> = {}) => ({
   id: CLAIM, user_id: USER_ID, status: "contract_signed", selected_contractor_id: "c1", is_test: false,
   live_charge_authorized_at: null, trades: ["roofing"], ...o,
@@ -29,8 +29,10 @@ const claimRow = (o: Record<string, unknown> = {}) => ({
 const asUser = (make: any) => ((u: string, k: string) => { const c = make(u, k); c.auth.getUser = () => Promise.resolve({ data: { user: { id: USER_ID } }, error: null }); return c; }) as any;
 
 type StripeCall = { url: string; method: string; key: string };
-async function run(claim: Record<string, unknown>, env: Env, origin?: string) {
-  const sb = fakeSupabase({ claims: [claim], quotes: [quote] });
+type Mail = { to: string; subject: string; text: string; html: string };
+async function run(claim: Record<string, unknown>, env: Env, origin?: string, q: Record<string, unknown> = quote) {
+  const sb = fakeSupabase({ claims: [claim], quotes: [q] });
+  const mail: Mail[] = [];
   const stripe: StripeCall[] = [];
   const real = globalThis.fetch;
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
@@ -41,6 +43,10 @@ async function run(claim: Record<string, unknown>, env: Env, origin?: string) {
       const body = url.includes("/payment_intents/") ? { latest_charge: "ch_1" } : { id: "re_1", status: "succeeded" };
       return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
     }
+    if (url.includes("api.mailgun.net")) {
+      const f = new URLSearchParams(String(init?.body ?? ""));
+      mail.push({ to: f.get("to") ?? "", subject: f.get("subject") ?? "", text: f.get("text") ?? "", html: f.get("html") ?? "" });
+    }
     return Promise.resolve(new Response("{}", { status: 200 }));
   }) as typeof fetch;
   try {
@@ -50,7 +56,7 @@ async function run(claim: Record<string, unknown>, env: Env, origin?: string) {
       new Request("https://x.supabase.co/functions/v1/switch-contractor", { method: "POST", headers, body: JSON.stringify({ claim_id: CLAIM }) }),
       (n) => env[n], asUser(sb.make),
     );
-    return { res, body: await res.json(), stripe };
+    return { res, body: await res.json(), stripe, mail };
   } finally {
     globalThis.fetch = real;
   }
@@ -120,4 +126,60 @@ Deno.test("(7) is_test is read from the claim row, not from the request body", a
     assertEquals(res.status, 200, "the switch ran (not a vacuous 401)");
   } finally { globalThis.fetch = real; }
   assertEquals(stripe.length, 0);
+});
+
+// ---- what the two emails say when the refund is NOT done (review 6584282844 / LEGAL-READ 6584286256) ------------------
+// Existing wording only: the "pending" sentences already in templates.ts / index.ts. FAIL-FIRST: on d012e34 the refused case
+// sends "No platform fee had been charged ..." to the contractor and "Refund issued:   Yes" to support.
+const ENV_MAIL: Env = { ...ENV_BOTH, MAILGUN_API_KEY: "mg-fixture", MAILGUN_DOMAIN: "mail.example.test" };
+const NO_FEE = "No platform fee had been charged on this project, so no refund is necessary.";
+const PENDING = "We will process your platform fee refund separately.";
+const FULL = "Your platform fee has been refunded in full";
+function emails(m: Mail[]) {
+  const ctr = m.find((x) => x.to === "ctr@example.com");
+  const sup = m.find((x) => x.to === "dustinstohler1@gmail.com");
+  assert(ctr && sup, "both the contractor and the support email were sent: " + JSON.stringify(m.map((x) => x.to)));
+  return { ctr: ctr!, sup: sup! };
+}
+function assertPending(m: Mail[]) {
+  const { ctr, sup } = emails(m);
+  assert(!ctr.text.includes(NO_FEE) && !ctr.html.includes(NO_FEE), "contractor told no fee was charged: " + ctr.text);
+  assert(ctr.text.includes(PENDING), "contractor email lacks the pending wording: " + ctr.text);
+  assert(!ctr.text.includes(FULL), "contractor told the fee was refunded");
+  assert(sup.text.includes("Refund issued:   Pending"), "support email: " + sup.text);
+  assert(!sup.text.includes("Refund issued:   Yes"), "support told a refund was issued");
+}
+
+Deno.test("(8) is_test + live-charge marker, charge succeeded: contractor and support emails say refund PENDING, not 'no fee' / 'Yes'", async () => {
+  const r = await run(claimRow({ is_test: true, live_charge_authorized_at: "2026-08-31T20:00:00Z" }), ENV_MAIL);
+  assertEquals(r.res.status, 200);
+  assertEquals(r.stripe.length, 0);
+  assertPending(r.mail);
+});
+
+Deno.test("(9) is_test, TEST key missing, charge succeeded: emails say PENDING", async () => {
+  const r = await run(claimRow({ is_test: true }), { ...ENV_MAIL, STRIPE_SECRET_KEY_TEST: undefined });
+  assertEquals(r.stripe.length, 0);
+  assertPending(r.mail);
+});
+
+Deno.test("(10) real claim, no Stripe key configured, charge succeeded (existing defect, same fix): emails say PENDING", async () => {
+  const r = await run(claimRow(), { ...ENV_MAIL, STRIPE_SECRET_KEY: undefined, STRIPE_SECRET_KEY_TEST: undefined });
+  assertEquals(r.stripe.length, 0);
+  assertPending(r.mail);
+});
+
+Deno.test("(11) CONTROL no charge on the quote -> 'no platform fee had been charged' is still said (true there)", async () => {
+  const r = await run(claimRow({ is_test: true, live_charge_authorized_at: "2026-08-31T20:00:00Z" }), ENV_MAIL, undefined,
+    { ...quote, payment_intent_id: null, payment_status: "pending" });
+  const { ctr } = emails(r.mail);
+  assert(ctr.text.includes(NO_FEE), ctr.text);
+  assertEquals(r.stripe.length, 0);
+});
+
+Deno.test("(12) CONTROL real claim with a key: refunded in full, support says Yes", async () => {
+  const r = await run(claimRow(), ENV_MAIL);
+  const { ctr, sup } = emails(r.mail);
+  assert(ctr.text.includes(FULL), ctr.text);
+  assert(sup.text.includes("Refund issued:   Yes"), sup.text);
 });

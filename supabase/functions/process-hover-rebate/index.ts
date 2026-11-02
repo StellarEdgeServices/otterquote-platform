@@ -126,8 +126,11 @@ async function rebateOne(
     env: keyCtx.getEnv,
   });
   if (!keyChoice.ok) {
-    console.error(`[rebate] OPS: automatic refund REFUSED (${keyChoice.reason}) -- order ${order.id}, claim ${order.claim_id}. Manual-only (Tier C, entry 7).`);
-    return { ...base, detail: `Automatic refund refused (${keyChoice.reason}); manual only.` };
+    const manual = keyChoice.reason === "live_charge_on_test_claim_manual_refund_only";
+    console.error(manual
+      ? `[rebate] OPS: automatic refund REFUSED (${keyChoice.reason}) -- order ${order.id}, claim ${order.claim_id}. Manual-only (Tier C, entry 7).`
+      : `[rebate] OPS: refund NOT attempted, no usable Stripe key (${keyChoice.reason}) -- order ${order.id}, claim ${order.claim_id}.`);
+    return { ...base, detail: manual ? `Automatic refund refused (${keyChoice.reason}); manual only.` : `Refund not attempted, no usable Stripe key (${keyChoice.reason}).` };
   }
   const stripeSecretKey = keyChoice.key;
 

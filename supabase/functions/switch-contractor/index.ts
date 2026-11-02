@@ -394,10 +394,14 @@ export async function handler(
       env: getEnv,
     });
     const stripeKey = keyChoice.ok ? keyChoice.key : "";
-    if (!keyChoice.ok && winningQuote?.payment_intent_id && winningQuote?.payment_status === "succeeded") {
+    // A charge that shows succeeded but cannot be refunded here (a refused or unavailable key) is a refund NOT done: it is
+    // reported as pending below, never as "no fee charged" / "refund issued" (gh-3323 review 6584282844).
+    const chargeHeld = !!(winningQuote?.payment_intent_id && winningQuote?.payment_status === "succeeded");
+    if (!keyChoice.ok && chargeHeld) {
       console.error(
-        `[switch-contractor] OPS: automatic refund REFUSED (${keyChoice.reason}) -- claim ${claim_id}, quote ${winningQuote.id}. ` +
-        "Switch completed; the platform-fee refund is manual-only (Tier C, entry 7).",
+        keyChoice.reason === "live_charge_on_test_claim_manual_refund_only"
+          ? `[switch-contractor] OPS: automatic refund REFUSED (${keyChoice.reason}) -- claim ${claim_id}, quote ${winningQuote.id}. Switch completed; the platform-fee refund is manual-only (Tier C, entry 7).`
+          : `[switch-contractor] OPS: refund NOT attempted, no usable Stripe key (${keyChoice.reason}) -- claim ${claim_id}, quote ${winningQuote.id}. Switch completed; the refund is still owed.`,
       );
     }
 
@@ -417,6 +421,10 @@ export async function handler(
           console.error(zeroRowWriteMessage("switch-contractor", `quotes.payment_status=refunded for quote ${winningQuote.id} (refund ${refundResult.refundId})`), refundMarkErr?.message ?? "");
         }
       }
+    } else if (chargeHeld) {
+      // gh-3323: a succeeded charge and no refund attempted (no usable key). success:false selects the existing "pending"
+      // wording in the contractor email, the support email ("Refund issued: Pending") and the activity-log title.
+      refundResult = { success: false, refundId: undefined, error: "Refund not attempted: no usable Stripe key" };
     } else {
       console.log("[switch-contractor] No Stripe refund needed — payment_intent_id:", winningQuote?.payment_intent_id, "payment_status:", winningQuote?.payment_status);
       refundResult = { success: true, refundId: undefined, error: "No fee charged — no refund needed" };
