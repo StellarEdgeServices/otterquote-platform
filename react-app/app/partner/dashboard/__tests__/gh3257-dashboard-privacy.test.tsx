@@ -248,7 +248,7 @@ function staticReferTable(rows: unknown[]): string[][] {
   const classesEnd = src.indexOf('};', src.indexOf('const REFERRAL_STATUS_CLASSES')) + 2;
   const sandbox: Record<string, unknown> = { rows, document: { getElementById: () => tbody } };
   vm.runInNewContext(
-    `${src.slice(labelsStart, classesEnd)}\n${escapeHtmlSrc}\n${extractFunction(src, 'populateReferralsTable')}\npopulateReferralsTable(rows);`,
+    `${src.slice(labelsStart, classesEnd)}\n${escapeHtmlSrc}\n${extractFunction(src, 'referralFeeAmount')}\n${extractFunction(src, 'referralFeeCell')}\n${extractFunction(src, 'populateReferralsTable')}\npopulateReferralsTable(rows);`,
     sandbox,
   );
   const doc = new DOMParser().parseFromString(`<table><tbody>${tbody.innerHTML}</tbody></table>`, 'text/html');
@@ -262,7 +262,7 @@ function staticReferSummary(rows: unknown[]): Record<string, string> {
     'total-pending': { textContent: '' },
     'referral-summary': { textContent: '' },
   };
-  vm.runInNewContext(`${extractFunction(src, 'calculateSummary')}\ncalculateSummary(rows);`, {
+  vm.runInNewContext(`${extractFunction(src, 'referralFeeAmount')}\n${extractFunction(src, 'calculateSummary')}\ncalculateSummary(rows);`, {
     rows,
     document: { getElementById: (id: string) => els[id] ?? null },
   });
@@ -287,7 +287,7 @@ describe('static refer-a-friend.html', () => {
         { status: null, commission_amount: 200, commission_paid_at: '2026-10-06T00:00:00Z' },
         { status: null, commission_amount: 200, commission_paid_at: null },
         { status: null, commission_amount: null },
-        { status: 'commission_paid' },
+        { status: 'commission_paid', commission_amount: 200 },
       ]),
     ).toEqual({ 'total-earned': '$400', 'total-pending': '$200', 'referral-summary': '4 referrals · 3 completed · $400 earned' });
   });
