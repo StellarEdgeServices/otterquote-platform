@@ -128,8 +128,10 @@ export async function loadReferLink(deps: {
  * acceptance), then accept_partner_agreement_v4(), then get_or_create_customer_referral_code() again. gh-3245: once the
  * server withholds the code until v4 is accepted, the first call returns no code with v4AcceptanceRequired true; that is
  * the normal "accept first" state, not an error. Any other empty first result is a failure. The code is returned for
- * display only when the acceptance response confirms v4-2026-10 with a timestamp and the second call returns a code; any
- * failure throws and the caller keeps the gate up with no link.
+ * display only when the acceptance response confirms v4-2026-10 with a timestamp and the second call returns a code. A
+ * failure before acceptance is confirmed throws and the caller keeps the gate up with no link. After acceptance is
+ * confirmed, a second call that fails or returns no code resolves to null (the caller shows the existing link-error
+ * state, not the acceptance error).
  */
 export interface CodeResult {
   code: string | null;
@@ -151,16 +153,21 @@ export function codeResultFromRpc(
 export async function acceptAgreementAndIssueLink(deps: {
   getOrCreateCode: () => Promise<CodeResult>;
   acceptAgreement: () => Promise<AcceptanceResult | null>;
-}): Promise<string> {
+}): Promise<string | null> {
   const first = await deps.getOrCreateCode();
   if (!first.code && !first.v4AcceptanceRequired) throw new Error('no referral code');
   const res = await deps.acceptAgreement();
   if (!res || res.agreement_version !== PARTNER_AGREEMENT_CURRENT_VERSION || !res.accepted_at) {
     throw new Error('unexpected acceptance response');
   }
-  const second = await deps.getOrCreateCode();
-  if (!second.code) throw new Error('no referral code');
-  return second.code;
+  // Acceptance is recorded from here on. A failed or empty second call must not read as a failed acceptance: return null
+  // and the caller closes the gate onto the existing link-error state (refresh recovers), as the static page does.
+  try {
+    const second = await deps.getOrCreateCode();
+    return second.code || null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Referral link + code ──────────────────────────────────────────────────────

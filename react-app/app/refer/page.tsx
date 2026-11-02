@@ -226,6 +226,9 @@ export default function ReferAFriendPage() {
       },
     });
     setNeedsAgreement(false);
+    // issued is null when acceptance was recorded but the second get-or-create gave no code: the gate closes and the
+    // page shows the existing link-error text (REFERRAL_CODE_ERROR_TEXT), never the acceptance-error text.
+    if (!issued) console.error('Partner Agreement v4 accepted but no referral code returned');
     setCode(issued);
   };
 

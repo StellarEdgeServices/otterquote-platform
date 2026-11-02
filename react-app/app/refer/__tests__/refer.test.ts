@@ -357,11 +357,24 @@ describe('gh-3244 Partner Agreement v4 acceptance gate', () => {
     expect(calls).toEqual(['get_or_create_customer_referral_code', 'accept_partner_agreement_v4', 'get_or_create_customer_referral_code']);
     expect(code).toBe('ABC123');
   });
-  it('NEGATIVE CONTROL (gh-3245): v4_acceptance_required but the code is still null after acceptance -> throws, no link', async () => {
+  it('gh-3245 P3: acceptance confirmed but the second get_or_create has no code or fails -> resolves null (link-error state), never throws', async () => {
+    const acceptAgreement = async () => ({ agreement_version: 'v4-2026-10', accepted_at: 'x' });
+    let n = 0;
+    await expect(acceptAgreementAndIssueLink({
+      getOrCreateCode: async () => (n++ === 0 ? { code: null, v4AcceptanceRequired: true } : { code: null }),
+      acceptAgreement,
+    })).resolves.toBeNull();
+    let m = 0;
+    await expect(acceptAgreementAndIssueLink({
+      getOrCreateCode: async () => { if (m++ === 0) return { code: null, v4AcceptanceRequired: true }; throw new Error('network'); },
+      acceptAgreement,
+    })).resolves.toBeNull();
+  });
+  it('NEGATIVE CONTROL (P3): a failure before acceptance is confirmed still throws (gate error stays true)', async () => {
     await expect(acceptAgreementAndIssueLink({
       getOrCreateCode: async () => ({ code: null, v4AcceptanceRequired: true }),
-      acceptAgreement: async () => ({ agreement_version: 'v4-2026-10', accepted_at: 'x' }),
-    })).rejects.toThrow('no referral code');
+      acceptAgreement: async () => ({ agreement_version: 'v4-2026-10', accepted_at: null }),
+    })).rejects.toThrow('unexpected acceptance response');
   });
   it('NEGATIVE CONTROL: acceptance error / wrong version / no timestamp -> throws, no link returned', async () => {
     const mk = (accept: () => Promise<{ agreement_version?: string | null; accepted_at?: string | null } | null>) =>
