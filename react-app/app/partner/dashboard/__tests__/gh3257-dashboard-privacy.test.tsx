@@ -175,7 +175,7 @@ describe('React refer page cells', () => {
     expect(declinedNotEarned).toMatchObject({ friend: 'Referral #2 — updates declined', showStatus: false, commission: '—' });
     const declinedReversed = referralRowCells({ status: null, display_name: null, commission_amount: 0 }, 3);
     expect(declinedReversed).toMatchObject({ showStatus: false, commission: '—' });
-    const optedIn = referralRowCells({ status: 'job_completed', display_name: 'Bea K.' }, 2);
+    const optedIn = referralRowCells({ status: 'job_completed', display_name: 'Bea K.', commission_amount: 200 }, 2);
     expect(optedIn).toMatchObject({ friend: 'Bea K.', showStatus: true, statusLabel: 'Job Completed', commission: '$200' });
   });
   it('summary counts a declined row from its fee fields, not its status', () => {
@@ -183,7 +183,7 @@ describe('React refer page cells', () => {
       { status: null, commission_amount: 200, commission_paid_at: '2026-10-06T00:00:00Z' },
       { status: null, commission_amount: 200, commission_paid_at: null },
       { status: null, commission_amount: null },
-      { status: 'commission_paid' },
+      { status: 'commission_paid', commission_amount: 200 },
     ]);
     expect(s).toEqual({ total: 4, completed: 3, earned: 400, pending: 200 });
   });

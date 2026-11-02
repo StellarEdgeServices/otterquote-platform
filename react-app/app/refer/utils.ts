@@ -272,7 +272,9 @@ export function referralRowCells(ref: CustomerReferral, index: number): Referral
     date: referralDate(ref.created_at),
     statusLabel: referralStatusLabel(ref.status),
     statusClass: referralStatusClass(ref.status),
-    commission: referralCommissionCell(ref.status),
+    // gh-3333: an opted-in row shows the fee only once it has accrued (commission_amount > 0), the same
+    // test the declined branch uses. A job_completed / commission_paid row with a 0 or NULL fee shows '—'.
+    commission: referralFeeEarned(ref) ? referralCommissionCell(ref.status) : '—',
   };
 }
 
@@ -302,8 +304,12 @@ export function summarizeReferrals(referrals: CustomerReferral[]): ReferralSumma
   const paid = referrals.filter((r) => r.status === 'commission_paid' || declinedPaid(r)).length;
   const completedUnpaid = referrals.filter((r) => r.status === 'job_completed' || declinedPending(r)).length;
   const completed = paid + completedUnpaid;
-  const earned = paid * REFERRAL_COMMISSION_USD;
-  const pending = completedUnpaid * REFERRAL_COMMISSION_USD;
+  // gh-3333: the dollar boxes count a fee only once it has accrued (commission_amount > 0). An opted-in
+  // row with status commission_paid / job_completed but a 0 or NULL fee still counts as completed above.
+  const paidWithFee = referrals.filter((r) => (r.status === 'commission_paid' && referralFeeEarned(r)) || declinedPaid(r)).length;
+  const pendingWithFee = referrals.filter((r) => (r.status === 'job_completed' && referralFeeEarned(r)) || declinedPending(r)).length;
+  const earned = paidWithFee * REFERRAL_COMMISSION_USD;
+  const pending = pendingWithFee * REFERRAL_COMMISSION_USD;
   return { total, completed, earned, pending };
 }
 

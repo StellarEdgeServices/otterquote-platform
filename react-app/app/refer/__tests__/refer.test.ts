@@ -112,7 +112,7 @@ describe('referral table cells (four columns, header order, #576)', () => {
   });
   it('referralRowCells yields ALL FOUR header columns in order', () => {
     const cells = referralRowCells(
-      mkRef({ display_name: 'Jane Doe', created_at: '2026-03-04T00:00:00Z', status: 'commission_paid' }),
+      mkRef({ display_name: 'Jane Doe', created_at: '2026-03-04T00:00:00Z', status: 'commission_paid', commission_amount: 200 }),
       0,
     );
     expect(cells.friend).toBe('Jane Doe');
@@ -126,11 +126,39 @@ describe('referral table cells (four columns, header order, #576)', () => {
 // ============================================================
 // Summary — D-139 paid/pending split (#567)
 // ============================================================
+// gh-3333: an opted-in row shows / counts the $200 only once the fee has accrued (commission_amount > 0).
+describe('gh-3333: opted-in rows with a 0 or NULL fee show no $200', () => {
+  it.each([
+    ['job_completed', null],
+    ['job_completed', 0],
+    ['commission_paid', null],
+    ['commission_paid', 0],
+  ])('row status %s with commission_amount %s shows "—"', (status, fee) => {
+    const cells = referralRowCells(mkRef({ display_name: 'Bea K.', status, commission_amount: fee }), 0);
+    expect(cells).toMatchObject({ showStatus: true, commission: '—' });
+  });
+  it('row with commission_amount absent shows "—"', () => {
+    expect(referralRowCells(mkRef({ display_name: 'Bea K.', status: 'job_completed' }), 0).commission).toBe('—');
+  });
+  it('an accrued fee still shows $200 (job_completed and commission_paid)', () => {
+    expect(referralRowCells(mkRef({ status: 'job_completed', commission_amount: 200 }), 0).commission).toBe('$200');
+    expect(referralRowCells(mkRef({ status: 'commission_paid', commission_amount: 200 }), 0).commission).toBe('$200');
+  });
+  it('summary dollars skip unaccrued fees but "completed" still counts the job', () => {
+    const s = summarizeReferrals([
+      mkRef({ status: 'job_completed', commission_amount: 0 }),
+      mkRef({ status: 'commission_paid', commission_amount: null }),
+      mkRef({ status: 'job_completed', commission_amount: 200 }),
+    ]);
+    expect(s).toEqual({ total: 3, completed: 3, earned: 0, pending: 200 });
+  });
+});
+
 describe('summarizeReferrals — paid/pending split', () => {
   const refs: CustomerReferral[] = [
-    mkRef({ status: 'commission_paid' }),
-    mkRef({ status: 'commission_paid' }),
-    mkRef({ status: 'job_completed' }),
+    mkRef({ status: 'commission_paid', commission_amount: 200 }),
+    mkRef({ status: 'commission_paid', commission_amount: 200 }),
+    mkRef({ status: 'job_completed', commission_amount: 200 }),
     mkRef({ status: 'bid_received' }),
     mkRef({ status: 'clicked' }),
   ];
