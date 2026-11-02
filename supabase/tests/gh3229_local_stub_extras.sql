@@ -1,6 +1,7 @@
 -- LOCAL-ONLY additions to local_pg16/00_stub_schema.sql for the gh-3229 proof run (throwaway Postgres, never production).
 -- Tables/columns the migration and the proof touch that the base stub lacks. RLS on partner_fee_events comes from the migration itself.
 CREATE TABLE auth.users (id uuid PRIMARY KEY, email text);
+ALTER TABLE public.claims ADD COLUMN property_state text;   -- production column; the excluded-state cases (F16-F18) set it
 ALTER TABLE public.referral_agents
   ADD COLUMN user_id uuid, ADD COLUMN payments_blocked boolean NOT NULL DEFAULT true,
   ADD COLUMN email text, ADD COLUMN unique_code text;

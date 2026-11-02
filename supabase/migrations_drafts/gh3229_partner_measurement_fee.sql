@@ -35,6 +35,9 @@
 --  Month boundaries are America/New_York (the business day), not UTC; only past months can be batched.
 --  10. Agreement gate (v4, #3242): the accrual trigger credits a partner only if partner_v4_accepted_at(agent) is set and not later than the order's created_at.
 --      REFUSES to run unless public.partner_v4_accepted_at(uuid) exists (apply #3242's gh3239_partner_agreement_v4.sql first).
+--  11. Excluded states (D-401 item 7, D-387, D-392; Partner Agreement v4 A4.4; CEO ruling on #3229, comment 6578294998): the accrual trigger credits nothing when the claim's
+--      property_state is OK, AR, KS, NE or MS (compared as upper(btrim()), the way the D-344 gate reads the column). A NULL or blank state still accrues, as the D-344 gate does not gate
+--      a NULL state either. The list is fixed in the function body; changing it is a new migration. The $200 path (apply_referral_commission) is NOT touched here; a separate issue covers it.
 
 BEGIN;
 
@@ -124,6 +127,7 @@ DECLARE
   v_cents         integer;
   v_ref           text;
   v_v4_at         timestamptz;
+  v_state         text;
 BEGIN
   -- homeowner-paid order: requested by the homeowner, a Stripe payment id on it, and a positive charge
   v_ref := COALESCE(NULLIF(btrim(NEW.homeowner_stripe_payment_intent_id), ''), NULLIF(btrim(NEW.stripe_payment_id), ''));
@@ -133,8 +137,8 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  SELECT c.is_test, r.id, r.created_at, r.is_test, a.id, a.is_test, a.agent_type
-    INTO v_claim_test, v_ref_id, v_ref_created, v_ref_test, v_agent_id, v_agent_test, v_agent_type
+  SELECT c.is_test, r.id, r.created_at, r.is_test, a.id, a.is_test, a.agent_type, c.property_state
+    INTO v_claim_test, v_ref_id, v_ref_created, v_ref_test, v_agent_id, v_agent_test, v_agent_type, v_state
     FROM public.claims c
     JOIN public.referrals r        ON r.id = c.referral_id
     JOIN public.referral_agents a  ON a.id = r.referral_agent_id
@@ -159,6 +163,12 @@ BEGIN
 
   -- D-333: no fee to a home inspector
   IF v_agent_type IS NOT DISTINCT FROM 'home_inspector' THEN
+    RETURN NEW;
+  END IF;
+
+  -- D-401 item 7 / D-387 / D-392 / Partner Agreement v4 A4.4: no fee on a Referred Homeowner whose property is in OK, AR, KS, NE or MS.
+  -- upper(btrim()) is how the D-344 gate reads claims.property_state. NULL IN (...) is NULL, so a NULL or blank state falls through and accrues.
+  IF upper(btrim(v_state)) IN ('OK', 'AR', 'KS', 'NE', 'MS') THEN
     RETURN NEW;
   END IF;
 

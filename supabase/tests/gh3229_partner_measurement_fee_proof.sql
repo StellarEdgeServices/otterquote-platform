@@ -24,6 +24,8 @@
 --   P1-P3 mark paid flips the events (service role only), once; R1 a rejected batch payout releases its events and the next run re-batches them
 --   V1-V2 the job-completion rebate (rebate_paid_at) does NOT void or change a fee event, accrued or paid (CEO ruling, #3236)
 --   F10   a customer (refer-a-friend) agent accrues the $5 like any partner
+--   F16-F18 (D-401 item 7, A4.4) excluded states: a claim whose property_state is OK, AR, KS, NE or MS (also ' ok ' and 'ne', as the D-344 gate normalises) -> no row (F16, F16b);
+--         IN, MO, NV, OH, OR, MN -> one row each (F17, the negative control: the check bites only the five states); a NULL or blank state -> accrues (F18, as the D-344 gate does)
 --   D10-D11 stats are is_test-matching: a test partner sees only test rows, a real partner only real rows
 --   D1-D9 dashboard stats: caller only, is_test-matching, both fees, next payout, recruit earnings for A but not the recruit's own fees
 
@@ -98,11 +100,11 @@ BEGIN
 END $f$;
 
 -- a claim credited to partner n through a referral clicked p_age before the claim; returns the claim id
-CREATE FUNCTION pg_temp.mk_claim(n int, p_claim_test boolean DEFAULT false, p_ref_test boolean DEFAULT false, p_age interval DEFAULT interval '1 day', p_claim_age interval DEFAULT interval '0') RETURNS uuid LANGUAGE plpgsql AS $f$
+CREATE FUNCTION pg_temp.mk_claim(n int, p_claim_test boolean DEFAULT false, p_ref_test boolean DEFAULT false, p_age interval DEFAULT interval '1 day', p_claim_age interval DEFAULT interval '0', p_state text DEFAULT NULL) RETURNS uuid LANGUAGE plpgsql AS $f$
 DECLARE v_ref uuid := gen_random_uuid(); v_claim uuid := gen_random_uuid();
 BEGIN
   INSERT INTO referrals(id, referral_agent_id, status, created_at, is_test) VALUES (v_ref, pg_temp.u(100 + n), 'claim_submitted', now() - p_age, p_ref_test);
-  INSERT INTO claims(id, user_id, is_test, referral_id, created_at) VALUES (v_claim, pg_temp.u(300 + n), p_claim_test, v_ref, now() - p_claim_age);
+  INSERT INTO claims(id, user_id, is_test, referral_id, created_at, property_state) VALUES (v_claim, pg_temp.u(300 + n), p_claim_test, v_ref, now() - p_claim_age, p_state);
   RETURN v_claim;
 END $f$;
 
@@ -144,6 +146,9 @@ SELECT pg_temp.mk_agent(15, 'other');                          -- G, window case
 SELECT pg_temp.mk_agent(16, 'other');                          -- never accepted v4
 SELECT pg_temp.mk_agent(17, 'other');                          -- accepts v4 after the order
 SELECT pg_temp.mk_agent(18, 'other');                          -- accepted v4 an hour before the order
+SELECT pg_temp.mk_agent(19, 'other');                          -- S, claims in the excluded states (F16)
+SELECT pg_temp.mk_agent(20, 'other');                          -- claims in states that are not excluded (F17)
+SELECT pg_temp.mk_agent(21, 'other');                          -- claims with no state / a blank state (F18)
 DELETE FROM public.gh3229_stub_v4 WHERE agent_id = pg_temp.u(116);
 UPDATE public.gh3229_stub_v4 SET accepted_at = now() + interval '1 hour' WHERE agent_id = pg_temp.u(117);
 UPDATE public.gh3229_stub_v4 SET accepted_at = now() - interval '1 hour' WHERE agent_id = pg_temp.u(118);
@@ -196,6 +201,25 @@ INSERT INTO c VALUES ('v16', pg_temp.mk_claim(16)); INSERT INTO o SELECT 'v16', 
 SELECT pg_temp.chk('F13 v4 accepted before the order: accrues', pg_temp.q(format($$ SELECT count(*) FROM partner_fee_events WHERE hover_order_id = %L $$, (SELECT id FROM o WHERE k = 'v18'))), '1');
 SELECT pg_temp.chk('F14 v4 accepted after the order: no fee (and none later)', pg_temp.q(format($$ SELECT count(*) FROM partner_fee_events WHERE hover_order_id = %L $$, (SELECT id FROM o WHERE k = 'v17'))), '0');
 SELECT pg_temp.chk('F15 never accepted v4: no fee', pg_temp.q(format($$ SELECT count(*) FROM partner_fee_events WHERE hover_order_id = %L $$, (SELECT id FROM o WHERE k = 'v16'))), '0');
+-- F16-F18 excluded states (D-401 item 7 / D-387 / D-392 / Partner Agreement v4 A4.4). Same partner type, window and v4 acceptance everywhere: only the claim's property_state differs.
+INSERT INTO c SELECT 'st_' || s, pg_temp.mk_claim(19, false, false, interval '1 day', interval '0', s) FROM unnest(ARRAY['OK', 'AR', 'KS', 'NE', 'MS']) s;
+INSERT INTO o SELECT 'st_' || k, pg_temp.mk_order(id) FROM c WHERE k LIKE 'st\_%';
+SELECT pg_temp.chk('F16 OK / AR / KS / NE / MS: orders placed / fee rows', pg_temp.q(format(
+  $$ SELECT (SELECT count(*) FROM hover_orders WHERE claim_id IN (SELECT id FROM c WHERE k LIKE 'st\_%%')) || '/' || (SELECT count(*) FROM partner_fee_events WHERE referral_agent_id = %L) $$, pg_temp.u(119))), '5/0');
+INSERT INTO c SELECT 'sp_' || i, pg_temp.mk_claim(19, false, false, interval '1 day', interval '0', s) FROM unnest(ARRAY[' ok ', 'ne', 'Ms']) WITH ORDINALITY AS t(s, i);
+INSERT INTO o SELECT 'sp_' || k, pg_temp.mk_order(id) FROM c WHERE k LIKE 'sp\_%';
+SELECT pg_temp.chk('F16b lower-case / padded state (" ok ", "ne", "Ms"): orders placed / fee rows for S', pg_temp.q(format(
+  $$ SELECT (SELECT count(*) FROM hover_orders WHERE claim_id IN (SELECT id FROM c WHERE k LIKE 'sp\_%%')) || '/' || (SELECT count(*) FROM partner_fee_events WHERE referral_agent_id = %L) $$, pg_temp.u(119))), '3/0');
+-- F17 negative control: states that are not excluded (and near-misses of the five codes) accrue; the partner, window and agreement are the same as F16
+INSERT INTO c SELECT 'ok_' || s, pg_temp.mk_claim(20, false, false, interval '1 day', interval '0', s) FROM unnest(ARRAY['IN', 'MO', 'NV', 'OH', 'OR', 'MN']) s;
+INSERT INTO o SELECT 'ok_' || k, pg_temp.mk_order(id) FROM c WHERE k LIKE 'ok\_%';
+SELECT pg_temp.chk('F17 IN / MO / NV / OH / OR / MN: fee rows / amount (one 500 row each)', pg_temp.q(format(
+  $$ SELECT count(*) || '/' || min(amount_cents) || '-' || max(amount_cents) FROM partner_fee_events WHERE referral_agent_id = %L $$, pg_temp.u(120))), '6/500-500');
+-- F18 no state recorded: accrues (the D-344 gate does not gate a NULL property_state either); a blank one too
+INSERT INTO c VALUES ('ns_null', pg_temp.mk_claim(21)), ('ns_blank', pg_temp.mk_claim(21, false, false, interval '1 day', interval '0', ''));
+INSERT INTO o SELECT 'ns_null', pg_temp.mk_order((SELECT id FROM c WHERE k = 'ns_null'));
+INSERT INTO o SELECT 'ns_blank', pg_temp.mk_order((SELECT id FROM c WHERE k = 'ns_blank'));
+SELECT pg_temp.chk('F18 NULL state / blank state: fee rows', pg_temp.q(format($$ SELECT count(*) FROM partner_fee_events WHERE referral_agent_id = %L $$, pg_temp.u(121))), '2');
 -- F5 inspector (D-333)
 INSERT INTO c VALUES ('i', pg_temp.mk_claim(3));
 INSERT INTO o SELECT 'i', pg_temp.mk_order((SELECT id FROM c WHERE k = 'i'));
