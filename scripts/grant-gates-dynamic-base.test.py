@@ -24,6 +24,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 WORKFLOWS = {
     "permissions-ratchet.yml": "scripts/permissions-ratchet.py",
     "new-table-service-role-grant.yml": "scripts/new-table-service-role-grant-check.py",
+    "new-table-truncate-revoke.yml": "scripts/new-table-truncate-revoke-check.py",  # gh-3256
 }
 STALE = "github.event.pull_request.base.sha"
 FAILURES = []
