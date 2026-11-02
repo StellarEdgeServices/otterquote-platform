@@ -1413,7 +1413,7 @@ export default function GetStartedPage() {
           display: flex;
           align-items: flex-start;
           justify-content: center;
-          padding: 20px var(--sp-8, 2rem) 40px;
+          padding: 12px var(--sp-8, 2rem) 40px;
         }
         /* gh-3266: one contained card, one (left) alignment, tighter rhythm.
            Colours/radii follow the approved homepage reskin tokens
@@ -1441,7 +1441,7 @@ export default function GetStartedPage() {
         .gs-subtitle {
           color: var(--gs-ink-2);
           font-size: 0.95rem;
-          margin: 0 0 var(--sp-5, 1.25rem);
+          margin: 0 0 14px;
           line-height: 1.5;
         }
         /* gh-1901: two-step layout — step indicator + back link.
@@ -1508,6 +1508,12 @@ export default function GetStartedPage() {
         }
         /* gh-3266: legal line sits directly under the submit button; the
            sign-in / contractor links move to the card's footer row. */
+        .gs-pw-phone {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 14px 16px;
+          align-items: start;
+        }
         .gs-form-wrap .gs-legal { margin-top: -6px; }
         .gs-card-foot {
           display: flex;
@@ -1619,7 +1625,7 @@ export default function GetStartedPage() {
           display: flex;
           align-items: center;
           gap: 12px;
-          margin: 14px 0 10px;
+          margin: 10px 0 8px;
           color: var(--gs-ink-2);
           font-size: 13px;
         }
@@ -2089,6 +2095,9 @@ export default function GetStartedPage() {
                   </>
                 )}
 
+                {/* gh-3266 follow-up: Password and Phone share one row on wide screens (layout only;
+                    DOM order, text and behaviour unchanged; stacks on phones). */}
+                <div className="gs-pw-phone">
                 {/* Password — the alternative to Google, per Dustin 2026-08-26.
                     gh-3136 (P14): Confirm Password CUT; show/hide toggle added. */}
                 <div className="form-group">
@@ -2151,6 +2160,7 @@ export default function GetStartedPage() {
                   <span className="form-hint">For bid notifications and updates via text.</span>
                 </div>
                 )}
+                </div>
 
                 {/* SMS Consent — TWILIO MESSAGE_FLOW / TCPA */}
                 {/* Text source: legal.ts SMS_CONSENT_LABEL + inline privacy/terms links */}
