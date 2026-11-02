@@ -54,6 +54,13 @@ ok(!/Commission payments/.test(dash) && !/\$600/.test(dash) && /Referral fee pay
   const cmo = fs.readFileSync(path.join(ROOT, 'supabase/functions/create-measurement-order/index.ts'), 'utf8');
   ok(!/body\.buyer_role === "contractor" \? "contractor" : "homeowner"/.test(cmo) && /buyer_role must be 'homeowner' or 'contractor'/.test(cmo), 'create-measurement-order has no silent homeowner default for buyer_role');
 }
+// Partner Agreement v4 A4.4 says the excluded-state list is on the partner dashboard; this must fail if the list goes missing.
+{
+  const exNote = (loader.match(/id="feeExcludedStates">([\s\S]*?)<\/p>/) || ['', ''])[1];
+  ok(/No fee is earned on a Referred Homeowner whose property is in a state Otter Quotes lists as excluded on this dashboard\./.test(exNote), 'fee card states the A4.4 exclusion rule');
+  ok(/Oklahoma, Arkansas, Kansas, Nebraska and Mississippi\./.test(exNote), 'fee card lists the excluded states: Oklahoma, Arkansas, Kansas, Nebraska and Mississippi (A4.4)');
+  ok(['Oklahoma', 'Arkansas', 'Kansas', 'Nebraska', 'Mississippi'].every((st) => exNote.includes(st)) && !/Missouri/.test(exNote), 'excluded list has exactly the five states, not Missouri');
+}
 ok(/if \(!window\.partnerAcceptedV4\)/.test(loader) && /AGREEMENT_V4_FEE_PROMPT/.test(loader), 'fee card only when window.partnerAcceptedV4; otherwise the v4 prompt');
 ok(/midnight Eastern time/.test(admin), 'admin confirm text names Eastern time');
 ok(!/test rows excluded/.test(dash), 'stale test-rows-excluded comment removed');

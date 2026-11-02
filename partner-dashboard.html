@@ -2469,7 +2469,8 @@ Let me know if you have any questions!
                     card('feePaid', 'Referral fees paid', fmtCents(row.earnings_paid_cents), 'sent to you') +
                     card('feeNextPayout', 'Next payout', fmtCents(next), nextSub) +
                     '</div><p class="fee-summary-note" id="feeSummaryNote">Measurement referral fees ($5 each) are totaled monthly and paid once your balance reaches ' +
-                    min + '; a smaller balance rolls over to the next month.</p>';
+                    min + '; a smaller balance rolls over to the next month.</p>' +
+                    '<p class="fee-summary-note" id="feeExcludedStates"><strong>Excluded states.</strong> No fee is earned on a Referred Homeowner whose property is in a state Otter Quotes lists as excluded on this dashboard. The list currently covers Oklahoma, Arkansas, Kansas, Nebraska and Mississippi.</p>';
                 document.getElementById('partnerFeeSummary').style.display = '';
             } catch (err) {
                 console.error('Error loading referral fee summary:', err);
