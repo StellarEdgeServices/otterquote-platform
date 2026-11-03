@@ -308,6 +308,7 @@ const Nav = {
         { href: '/how-it-works.html',     label: 'How It Works',    id: 'how-it-works' },
         { href: '/help-measurements.html',label: 'Measurements',    id: 'measurements' },
         { href: '/refer-a-friend.html',   label: 'Refer a Friend',  id: 'refer-a-friend' },
+        { href: '/pricing.html',          label: 'Pricing',         id: 'pricing' },
         { href: '/faq.html',              label: 'FAQ',             id: 'faq' },
       ],
       authed: [

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<!-- gh-2043: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready (pattern from gh-2010, PR #2023). -->
+<script>
+  window.sentryOnLoad = function () {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  };
+</script>
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>What Otter Quotes Costs · Otter Quotes</title>
+<meta name="description" content="What homeowners pay for Otter Quotes: nothing with your insurance estimate, otherwise as little as $22.63 for measurements, refunded when you complete a job.">
+<link rel="canonical" href="https://otterquote.com/pricing.html">
+<meta property="og:title" content="What Otter Quotes Costs · Otter Quotes">
+<meta property="og:description" content="What homeowners pay for Otter Quotes: nothing with your insurance estimate, otherwise as little as $22.63 for measurements, refunded when you complete a job.">
+<meta property="og:url" content="https://otterquote.com/pricing.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Otter Quotes logo">
+
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script src="/js/linkedin-insight-gate.js"></script>
+<script src="/js/reddit-pixel-gate.js"></script>
+<script>gtag('config','G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: var(--navy); background-image: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.12) 0%, transparent 65%);
+}
+.page-hero h1 { margin-bottom: var(--sp-4); color: var(--white); }
+.page-hero p { max-width: 600px; margin: 0 auto; font-size: 1.1rem; color: var(--slate); }
+
+.faq-list {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.faq-item {
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  transition: padding-left 0.2s;
+}
+.faq-item.open { padding-left: 8px; border-left: 2px solid var(--amber); }
+
+.faq-question {
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-align: left;
+  padding: var(--sp-6) 0;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-4);
+  transition: color var(--duration) var(--ease);
+}
+
+.faq-question:hover { color: var(--amber); }
+
+.faq-arrow {
+  font-size: 1.2rem;
+  transition: transform 0.3s var(--ease);
+  flex-shrink: 0;
+}
+
+.faq-item.open .faq-arrow { transform: rotate(180deg); }
+
+.faq-answer {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s var(--ease), padding 0.3s var(--ease);
+}
+
+.faq-item.open .faq-answer {
+  max-height: 500px;
+  padding-bottom: var(--sp-6);
+}
+
+.faq-answer p {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--slate);
+}
+
+.faq-answer p + p { margin-top: var(--sp-3); }
+
+.faq-category {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--amber);
+  margin-top: var(--sp-10);
+  margin-bottom: var(--sp-2);
+  padding-bottom: var(--sp-2);
+  border-bottom: 2px solid var(--amber);
+  display: inline-block;
+}
+
+.cta-bottom {
+  text-align: center;
+  padding: var(--sp-16) 0 var(--sp-20);
+  background: var(--navy);
+  background-image: radial-gradient(ellipse at 50% 100%, rgba(224,123,0,0.1) 0%, transparent 60%);
+}
+.cta-bottom h2 { margin-bottom: var(--sp-4); color: var(--white); }
+.cta-bottom p { max-width: 500px; margin: 0 auto var(--sp-8); font-size: 1.1rem; }
+</style>
+
+<!-- Structured Data -->
+
+</head>
+<body>
+
+<header id="site-header" data-active="pricing"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>What Otter Quotes Costs</h1>
+    <p>What you pay, and how we get paid.</p>
+  </div>
+</section>
+
+<section class="section" style="background: var(--navy-2);">
+  <div class="container" style="max-width: 720px;">
+    <h2 style="color:#fff;margin:0 0 10px;">What you pay</h2>
+    <p>There is no cost if you provide a copy of your insurance estimate.</p>
+    <p style="margin-top:12px;">Without one, you pay as little as $22.63 up front for professional measurements that contractors use to bid. If you complete a job on the platform, the full amount is rebated to your original payment method. Rebates typically appear on your statement within 5&ndash;10 business days of project completion.</p>
+    <h2 style="color:#fff;margin:32px 0 10px;">How we get paid</h2>
+    <p>Contractors pay Otter Quotes a 5% fee on the bid you accept.</p>
+    <h2 style="color:#fff;margin:32px 0 10px;">If you change your mind</h2>
+    <p>There is no obligation to hire. If something does not work out before work begins, you can switch to another Otter Quotes contractor at no cost, up to 3 days before your start date.</p>
+    <p style="margin-top: 32px;">Are you a contractor? <a href="/contractor-how-it-works.html">See what contractors pay</a>.</p>
+  </div>
+</section>
+
+<section class="cta-bottom">
+  <div class="container">
+    <h2 style="color:#fff;margin:32px 0 10px;">Ready to Get Started?</h2>
+    <p>It takes less than 2 minutes. We'll handle the rest.</p>
+    <a href="/start.html" class="btn btn-primary btn-lg">Get Started</a>
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<script>
+  document.querySelectorAll('.faq-question').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var item = btn.closest('.faq-item');
+      item.classList.toggle('open');
+    });
+  });
+</script>
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>
