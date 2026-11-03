@@ -4,7 +4,6 @@ import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { isInternalTraffic } from "../lib/internal-traffic";
 import { isAdSharingOptedOut, readStoredOptOut, type ProfileReader } from "../lib/ad-optout";
-import { supabase } from "@/lib/supabase";
 import { isHeyCatchAllowedPath, loadHeyCatch } from "../lib/heycatch";
 
 /**
@@ -30,10 +29,14 @@ export function HeyCatchGate() {
     if (/access_token|refresh_token|provider_token/.test(hash)) return;
 
     let cancelled = false;
-    void readStoredOptOut(supabase as unknown as ProfileReader).then((stored) => {
-      // No session: nothing stored to read. A session: only a definite "not opted out" loads it.
-      if (!cancelled && (stored === "no_session" || stored === false)) void loadHeyCatch();
-    });
+    // Loaded lazily, as GA4Gate does, so the auth client is not pulled in before this check runs.
+    void import("../lib/supabase")
+      .then((m) => readStoredOptOut(m.supabase as unknown as ProfileReader))
+      .catch(() => "unknown" as const)
+      .then((stored) => {
+        // No session: nothing stored to read. A session: only a definite "not opted out" loads it.
+        if (!cancelled && (stored === "no_session" || stored === false) && !isAdSharingOptedOut()) void loadHeyCatch();
+      });
     return () => {
       cancelled = true;
     };
