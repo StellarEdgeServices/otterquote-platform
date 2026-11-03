@@ -259,7 +259,7 @@ const Services = {
         body: {
           amount,
           currency: 'usd',
-          description: description || 'Complete Property Report',
+          description: description || 'Aerial Roof Report',
           metadata: {
             claim_id,
             type: 'hover_measurement',

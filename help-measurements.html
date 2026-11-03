@@ -30,10 +30,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
     <title>Measurements Help &mdash; Otter Quotes</title>
-    <meta name="description" content="Get a complete property data file for your home repair project. Purchase a Complete Property Report or request measurements from your adjuster.">
+    <meta name="description" content="Get an aerial roof report for your home repair project. Purchase an Aerial Roof Report or request measurements from your adjuster.">
     <link rel="canonical" href="https://otterquote.com/help-measurements.html">
     <meta property="og:title" content="Measurements Help &mdash; Otter Quotes">
-    <meta property="og:description" content="Get a complete property data file for your home repair project. Purchase a Complete Property Report or request measurements from your adjuster.">
+    <meta property="og:description" content="Get an aerial roof report for your home repair project. Purchase an Aerial Roof Report or request measurements from your adjuster.">
     <meta property="og:url" content="https://otterquote.com/help-measurements.html">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Otter Quotes">
@@ -625,7 +625,7 @@
                         <div class="hover-step-number">1</div>
                         <div class="hover-step-content">
                             <h4>Purchase Your Report</h4>
-                            <p>Pay the $22.63 fee securely through Stripe. This covers your Complete Property Report.</p>
+                            <p>Pay the $22.63 fee securely through Stripe. This covers your Aerial Roof Report.</p>
                         </div>
                     </div>
                     <div class="hover-step">
@@ -692,7 +692,7 @@
         <div id="adjusterSection" class="flow-section">
             <div class="section-card">
                 <h3>Request Measurements from Your Adjuster</h3>
-                <p id="adjusterIntro">If you're working with an insurance claim, we can request property measurements from your adjuster. Many adjusters take measurements during their inspection and can share them at no cost. (If you're paying out of pocket, the Complete Property Report is your best option.)</p>
+                <p id="adjusterIntro">If you're working with an insurance claim, we can request property measurements from your adjuster. Many adjusters take measurements during their inspection and can share them at no cost. (If you're paying out of pocket, the Aerial Roof Report is your best option.)</p>
             </div>
 
             <!-- Check if estimate email already sent -->
@@ -933,7 +933,7 @@
                 const paymentResult = await Services.createHoverPaymentIntent({
                     claim_id: currentClaim?.id,
                     amount: 2263, // gh-1063: $22.63 in cents (D-291 rebated price; set by Dustin 2026-10-30, gh-3228). Cosmetic — create-payment-intent enforces the real amount server-side from platform_settings.hover_measurement_price (see gh-1077 for that value's own drift).
-                    description: 'Complete Property Report',
+                    description: 'Aerial Roof Report',
                 });
 
                 if (!paymentResult?.client_secret) {
