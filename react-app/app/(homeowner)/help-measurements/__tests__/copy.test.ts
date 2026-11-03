@@ -29,7 +29,7 @@ const STATIC = {
   // Hover card (572-583)
   hoverBadge: 'Recommended for Most',
   hoverIcon: '📐',
-  hoverCardTitle: 'Complete Property Report',
+  hoverCardTitle: 'Aerial Roof Report',
   hoverCardPrice: '$22.63 (rebated if you complete a job on the platform)',
   hoverCardDescription:
     "We order an aerial roof measurement report of your roof — total squares and the area at each pitch. Nothing for you to do: no photos, no ladder, no appointment. It carries no ridge, hip, valley or eave lengths; a contractor who needs those can order a fuller report.",
@@ -54,14 +54,14 @@ const STATIC = {
   ],
   cardSelectButton: 'Choose This Option',
   // Hover flow (607-647)
-  hoverSectionTitle: 'Complete Property Report',
+  hoverSectionTitle: 'Aerial Roof Report',
   hoverSectionIntro:
     'An aerial roof measurement report — total squares and the area at each pitch, which contractors use to bid. It carries no ridge, hip, valley or eave lengths; a contractor who needs those can order a fuller report. We order it for you; there is nothing for you to photograph.',
   rebateCallout:
-    "How the $22.63 works: You pay $22.63 now for an aerial roof measurement report. When your project is completed with an Otter Quotes contractor, the full $22.63 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
+    "How the $22.63 works: You pay $22.63 now for an aerial roof measurement report. When your project is completed with an Otter Quotes contractor, the full $22.63 is rebated to your original payment method. Either way, the report stays with you.",
   hoverStep1Title: 'Purchase Your Report',
   hoverStep1Text:
-    'Pay the $22.63 fee securely through Stripe. This covers your Complete Property Report.',
+    'Pay the $22.63 fee securely through Stripe. This covers your Aerial Roof Report.',
   hoverStep2Title: 'We Order It',
   hoverStep2Text:
     "We place the order with our measurement service using your property address. Nothing is required from you at this step.",
@@ -70,7 +70,7 @@ const STATIC = {
     "Our measurement service creates a detailed measurement report (usually 24-48 hours). We'll save it in your account — you'll get a notification when it's ready.",
   hoverWhatYouNeed:
     "What you'll need: Nothing. Your property address is already on file — that is all the report is built from.",
-  hoverPurchaseButton: 'Purchase Property Data File — $22.63',
+  hoverPurchaseButton: 'Purchase Aerial Roof Report — $22.63',
   chooseDifferentButton: '← Choose Different Option',
   // Stripe form (649-659)
   hoverCardFormLead: '💳 Enter your card details to complete the $22.63 purchase:',
@@ -89,7 +89,7 @@ const STATIC = {
   // Adjuster flow (683-725)
   adjusterSectionTitle: 'Request Measurements from Your Adjuster',
   adjusterIntro:
-    "If you're working with an insurance claim, we can request property measurements from your adjuster. Many adjusters take measurements during their inspection and can share them at no cost. (If you're paying out of pocket, the Complete Property Report is your best option.)",
+    "If you're working with an insurance claim, we can request property measurements from your adjuster. Many adjusters take measurements during their inspection and can share them at no cost. (If you're paying out of pocket, the Aerial Roof Report is your best option.)",
   alreadySentEstimateNote:
     "Good news: We already sent an email to your adjuster requesting your insurance estimate. Since that email also requested measurements, you don't need to send another one. We'll capture any measurements they include in their response.",
   adjusterInfoTitle: 'Adjuster Information',
@@ -156,7 +156,7 @@ describe('MEASUREMENTS_COPY — D-291 financial terms (highest-value locks)', ()
     expect(MEASUREMENTS_COPY.rebateCallout).toContain(
       'the full $22.63 is rebated to your original payment method',
     );
-    expect(MEASUREMENTS_COPY.rebateCallout).toContain('the file stays with you');
+    expect(MEASUREMENTS_COPY.rebateCallout).toContain('the report stays with you');
   });
 
   it('locks the Stripe security line exactly', () => {
