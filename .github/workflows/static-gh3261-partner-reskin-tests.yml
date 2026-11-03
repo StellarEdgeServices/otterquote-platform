@@ -3,6 +3,8 @@ name: Static gh-3261 Partner Reskin Copy Tests
 # gh-3261: the partner landing pages wear the approved homepage reskin as a DESIGN-ONLY change. This proves a pull request that touches the reskin
 # stylesheets (or this test) changes no visible string, form, tracking script, JSON-LD, canonical or noindex on the ten partner landing pages:
 # each page at the PR's merge base vs the PR, statically and rendered in Chromium (innerText after JS at 1440 and 390), with negative controls.
+# js/nav.js is in the filter because its shared footer renders on every partner page (gh-3352: a footer Pricing link reached them unnoticed); the render step
+# also asserts no /pricing.html link on a partner page (R3).
 # Path-filtered to the reskin files on purpose: a pull request that deliberately edits partner copy is not a reskin change and must not be blocked here.
 # `pull_request` (never `pull_request_target`), no secrets, read-only token.
 
@@ -12,6 +14,7 @@ on:
     paths:
       - 'css/partner-reskin.css'
       - 'css/home-reskin.css'
+      - 'js/nav.js'
       - 'tests/gh3261-partner-reskin-copy.mjs'
       - '.github/workflows/static-gh3261-partner-reskin-tests.yml'
 

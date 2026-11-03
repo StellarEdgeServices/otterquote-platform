@@ -97,5 +97,20 @@ control('F1 (tagline in sentence case)', failures(mut("tagline: 'Contractors Com
 control('F1 (old footer sentence restored)', failures(mut(': NAP.tagline', ": 'Helping homeowners get the best deal on roofing and exterior projects.'")).length > 0);
 control('F2 (contractor line replaced)', failures(mut("'Your sales team — without the truck, the manager, or the advance.'", 'NAP.tagline')).length > 0);
 
+/* gh-3352: the footer Pricing link is homeowner-facing; every partner page (partners.html, partner-*.html, /partners/*) must not carry it, homeowner pages keep it, contractor footers never had it */
+const PRICING = /<a href="\/pricing\.html">Pricing<\/a>/;
+const PARTNER_PAGES = ['/partners.html', '/partner-re.html', '/partner-inspectors.html', '/partner-dashboard.html', '/partner-login.html', '/partner-agreement.html', '/partners/some-article.html'];
+const HOMEOWNER_PAGES = ['/index.html', '/how-it-works.html', '/pricing.html', '/faq.html', '/ref-demo.html', '/terms.html'];
+const pricingFailures = (src) => {
+  const f = [];
+  for (const p of PARTNER_PAGES) { const r = render(src, p); if (r.error) f.push(p + ' threw'); else if (PRICING.test(r.footer)) f.push(p + ' footer has Pricing'); }
+  for (const p of HOMEOWNER_PAGES) { const r = render(src, p); if (r.error) f.push(p + ' threw'); else if (!PRICING.test(r.footer)) f.push(p + ' footer lost Pricing'); }
+  return f;
+};
+{ const f = pricingFailures(SRC); ok(f.length === 0, 'P1 Pricing is absent from ' + PARTNER_PAGES.length + ' partner footers and present on ' + HOMEOWNER_PAGES.length + ' homeowner footers' + (f.length ? ' | ' + f.join(' | ') : '')); }
+control('P1 (partner gate removed: Pricing back on partner pages)', pricingFailures(mut("!this._isInspectorTrack() && !this._isPartnerPage() ? '<a href=\"/pricing.html\">Pricing", "!this._isInspectorTrack() ? '<a href=\"/pricing.html\">Pricing")).length > 0);
+control('P1 (Pricing hidden everywhere: homeowner footers lose it)', pricingFailures(mut("!this._isInspectorTrack() && !this._isPartnerPage() ? '<a href=\"/pricing.html\">Pricing", "false ? '<a href=\"/pricing.html\">Pricing")).length > 0);
+{ const r = render(SRC, '/contractor-dashboard.html'); ok(!PRICING.test(r.footer), 'P1 the contractor-portal footer has no Pricing link (unchanged)'); }
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

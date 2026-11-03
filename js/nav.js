@@ -1154,6 +1154,8 @@ const Nav = {
       ? '/partner-agreement-inspector.html'
       : '/partner-agreement.html';
 
+    // gh-3352: the footer Pricing link is homeowner-facing (what a homeowner pays). Partner pages are homeowner-free, so it is withheld on every partner page
+    // (partners.html, partner-*.html, /partners/*) via _isPartnerPage(), beside the _isInspectorTrack() gating. Homeowner and contractor footers are unchanged.
     footer.innerHTML = `
       <div class="footer-inner container">
         <div class="footer-grid">
@@ -1186,7 +1188,7 @@ const Nav = {
             ` : `
               <a href="/how-it-works.html">How It Works</a>
               ${!this._isInspectorTrack() ? '<a href="/faq.html">FAQ</a>' : ''}
-              ${!this._isInspectorTrack() ? '<a href="/pricing.html">Pricing</a>' : ''}
+              ${!this._isInspectorTrack() && !this._isPartnerPage() ? '<a href="/pricing.html">Pricing</a>' : ''}
               <a href="/start.html${this._attributionQuery()}">Get Started</a>
               <a href="/blog/">Blog</a>
               <a href="/guides/">Guides</a>
