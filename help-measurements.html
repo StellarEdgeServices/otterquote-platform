@@ -926,12 +926,12 @@
         function showHoverRefusal(code, btn, originalText) {
             if (code === 'MEASUREMENT_ALREADY_PAID') {
                 btn.style.display = 'none';
-                showMessage("You have already paid for the Aerial Roof Report on this project, so we can't take a second payment. You have not been charged again. If you have a question about your report, contact support.", 'error');
+                showMessage('Our records show a payment for the Aerial Roof Report on this project, so we did not start another one. This attempt did not charge your card. If you have a question about your report or a charge, contact support.', 'error');
                 return;
             }
             btn.disabled = false;
             btn.innerHTML = originalText;
-            showMessage('We could not check your payment history just now, so no payment was started. You have not been charged. Please try again in a few minutes.', 'error');
+            showMessage('We could not check your payment history just now, so we did not start a payment. This attempt did not charge your card. Please try again in a few minutes.', 'error');
         }
 
         // Step 1 — Create PaymentIntent and show card form (no charge yet)

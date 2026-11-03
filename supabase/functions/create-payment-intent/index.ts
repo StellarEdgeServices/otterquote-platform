@@ -41,7 +41,20 @@ import {
   evaluateMeasurementUpgradeGate,
   resolveContractorAlreadyPurchased,
 } from "./measurement-upgrade-gate.ts";
-import { assertCreatedIntentNotPaid, checkClaimHasNotPaid, type PaidVerdict, refusalFor } from "./measurement-paid-gate.ts";
+import {
+  assertCreatedIntentNotPaid,
+  cancelSupersededIntents,
+  checkClaimHasNotPaid,
+  loadHoverOrders,
+  type PaidVerdict,
+  refusalFor,
+} from "./measurement-paid-gate.ts";
+import {
+  makePaidAlertDbDeps,
+  PAID_GATE_ALERT_SEND_TIMEOUT_MS,
+  postPaidGateAlertEmail,
+  raisePaidGateAlert,
+} from "./measurement-paid-alert.ts";
 import { detectGpcSignal, makeGpcStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
 import { AMBIGUOUS_OUTCOME_CODE, fetchStripeWithTimeout } from "./stripe-fetch.ts";
 import { AmbiguousChargeOutcomeError, runOffSessionPlatformFeeCharge } from "./off-session-charge.ts";
@@ -72,38 +85,40 @@ function buildCorsHeaders(req: Request): Record<string, string> {
 }
 
 /**
- * gh-3356: record a paid-claim refusal for operators. Best-effort, never throws, never carries Stripe text. A claim that PAID
- * with no hover_orders row is a customer who has no report queued for fulfilment, so it gets its own alert_type; an unavailable
- * check gets one so a broken Stripe search (which blocks purchases) is noticed.
+ * gh-3356: tell an operator about a paid-claim refusal. A claim that PAID with no hover_orders row is a customer with no report queued
+ * for fulfilment ("paid_without_order"); an unavailable check ("check_unavailable") means a broken Stripe search or orders read blocks
+ * purchases. Each raises a platform_alerts_log row AND an admin email through notify-measurement-order, bounded to one per claim per
+ * window (measurement-paid-alert.ts). Never throws, never carries Stripe text.
  */
 async function logPaidGateRefusal(
   // deno-lint-ignore no-explicit-any
   supabase: any,
+  supabaseUrl: string,
+  serviceKey: string,
   verdict: PaidVerdict,
   claimId: string,
   stage: string,
 ): Promise<void> {
-  let alertType: string | null = null;
-  let message = "";
-  if (verdict.kind === "unavailable") {
-    alertType = "measurement_paid_check_unavailable";
-    message = `[gh-3356] hover_measurement refused (${stage}): could not confirm whether claim ${claimId} has already paid (${verdict.why}). Nothing was charged; the buyer was asked to retry.`;
-  } else if (verdict.kind === "paid" && !verdict.hasOrderRow) {
-    alertType = "measurement_paid_without_order";
-    message = `[gh-3356] claim ${claimId} has a ${verdict.reason} measurement payment (${verdict.paymentIntentId}) and NO hover_orders row: no report is queued for fulfilment (${stage}). A second purchase was refused.`;
-  }
   console.error(`[${FUNCTION_NAME}] gh-3356 refusal (${stage}): ${verdict.kind}${verdict.kind === "paid" ? ` ${verdict.reason}` : ""} claim=${claimId}`);
-  if (!alertType) return;
-  try {
-    await supabase.from("platform_alerts_log").insert({
-      alert_type: alertType,
-      function_name: FUNCTION_NAME,
-      message,
-      sent_at: new Date().toISOString(),
-    });
-  } catch (alertErr) {
-    console.error("platform_alerts_log insert failed:", alertErr);
-  }
+  let kind: "paid_without_order" | "check_unavailable" | null = null;
+  if (verdict.kind === "unavailable") kind = "check_unavailable";
+  else if (verdict.kind === "paid" && !verdict.hasOrderRow) kind = "paid_without_order";
+  if (!kind) return;
+  await raisePaidGateAlert(
+    {
+      ...makePaidAlertDbDeps(supabase),
+      sendAdminEmail: (body) =>
+        postPaidGateAlertEmail({ fetchImpl: fetch, supabaseUrl, serviceKey, body, timeoutMs: PAID_GATE_ALERT_SEND_TIMEOUT_MS }),
+      log: (m) => console.error(m),
+    },
+    {
+      kind,
+      claimId,
+      paymentIntentId: verdict.kind === "paid" ? verdict.paymentIntentId : null,
+      stage: stage.replace(/[^a-z_ ]/g, " ").trim(),
+      reason: verdict.kind === "unavailable" ? verdict.why : undefined,
+    },
+  );
 }
 
 /**
@@ -760,20 +775,16 @@ serve(async (req) => {
         apiBase: STRIPE_API_BASE,
         basicAuth,
         claimId: String(metadata.claim_id),
-        loadOrders: async () => {
-          const { data: orderRows, error: orderErr } = await supabase
-            .from("hover_orders")
-            .select("homeowner_stripe_payment_intent_id, product_code, rebate_paid_at")
-            .eq("claim_id", metadata.claim_id)
-            .not("homeowner_stripe_payment_intent_id", "is", null);
-          return { rows: orderRows ?? null, error: orderErr };
-        },
+        loadOrders: () => loadHoverOrders(supabase, String(metadata.claim_id)),
       };
+      // Unpaid intents of this claim the search returned: cancelled (best effort) once this request has its own intent, see below.
+      let supersedeCandidates: string[] = [];
       if (metadata.type === "hover_measurement") {
         const paidVerdict = await checkClaimHasNotPaid(paidGateDeps);
         const paidRefusal = refusalFor(paidVerdict);
+        if (paidVerdict.kind === "not_paid") supersedeCandidates = paidVerdict.cancelable ?? [];
         if (paidRefusal) {
-          await logPaidGateRefusal(supabase, paidVerdict, metadata.claim_id, "before create");
+          await logPaidGateRefusal(supabase, supabaseUrl, supabaseKey, paidVerdict, metadata.claim_id, "before create");
           return new Response(JSON.stringify(paidRefusal.body),
             { status: paidRefusal.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
@@ -805,9 +816,21 @@ serve(async (req) => {
         const replayVerdict = await assertCreatedIntentNotPaid(paidGateDeps, paymentIntentData, r);
         const replayRefusal = refusalFor(replayVerdict);
         if (replayRefusal) {
-          await logPaidGateRefusal(supabase, replayVerdict, metadata.claim_id, "idempotent replay");
+          await logPaidGateRefusal(supabase, supabaseUrl, supabaseKey, replayVerdict, metadata.claim_id, "idempotent replay");
           return new Response(JSON.stringify(replayRefusal.body),
             { status: replayRefusal.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        // gh-3356: this request now has its intent (a new one, or the replayed one). Cancel the claim's OTHER unpaid intents (an older
+        // tab's client_secret), best effort, so only one stays payable. A cancel failure never stops the purchase; Stripe saying an
+        // older intent has since succeeded or is processing (a confirm in another tab won the race) refuses it. See
+        // cancelSupersededIntents in measurement-paid-gate.ts for what is and is not cancelled.
+        const supersede = await cancelSupersededIntents(paidGateDeps, supersedeCandidates, paymentIntentData.id);
+        if (supersede.paid) {
+          const racePaid: PaidVerdict = { kind: "paid", reason: "processing", paymentIntentId: supersede.paid.id, hasOrderRow: true };
+          const raceRefusal = refusalFor(racePaid)!;
+          console.error(`[${FUNCTION_NAME}] gh-3356 refusal (superseded intent paid mid-request): claim=${metadata.claim_id}`);
+          return new Response(JSON.stringify(raceRefusal.body),
+            { status: raceRefusal.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
         // gh-2078c / D-330 (REVIEW: FAIL 5805531419, B1): the router variant is attached AFTER the create, in a separate
         // best-effort update, NOT as a create parameter. The create above carries a per-claim Idempotency-Key, and Stripe

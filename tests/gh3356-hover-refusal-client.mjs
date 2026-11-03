@@ -12,7 +12,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
-import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -62,14 +61,15 @@ ok(r.refusedUnavailable, 'C1 a 503 MEASUREMENT_PAYMENT_CHECK_UNAVAILABLE becomes
 ok(r.othersUnchanged, 'C1 any other failure (500, an unknown code, a network error) is still the old placeholder, not a refusal');
 ok(r.successUnchanged, 'C1 a success still returns the client_secret untouched');
 
-// negative control: main's services.js
-let mainServices = null;
-try { mainServices = execFileSync('git', ['show', 'origin/main:js/services.js'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch (e) { /* no origin/main in this checkout */ }
-if (mainServices) {
-  const m = await c1(mainServices, 'main');
-  ok(!m.refusedPaid && !m.refusedUnavailable && m.successUnchanged, "NC: main's services.js loses the refusal (placeholder only), so C1 fails against it");
-} else {
-  console.log('SKIP: negative control needs origin/main in this checkout');
+// negative control: the pre-fix wrapper. An inline copy of main's catch at a5e52ec8 (no origin/main read, so it cannot go red when this
+// merges): the same shipped file with the gh-3356 block cut out of the catch, which leaves exactly the old catch.
+const OLD_CATCH = "} catch (err) {\n      console.warn('Stripe Edge function not deployed:', err);\n      return { client_secret: null, placeholder: true };\n    }";
+const NEW_CATCH_RE = /\} catch \(err\) \{\s*\/\/ gh-3356:[\s\S]*?return \{ client_secret: null, placeholder: true \};\s*\}/;
+const preFixServices = services.replace(NEW_CATCH_RE, OLD_CATCH);
+ok(preFixServices !== services && !preFixServices.includes('gh-3356') && preFixServices.includes(OLD_CATCH), 'NC setup: the pre-fix wrapper is the shipped file with only the gh-3356 catch block replaced by the old catch');
+{
+  const m = await c1(preFixServices, 'pre-fix');
+  ok(!m.refusedPaid && !m.refusedUnavailable && m.successUnchanged, "NC: the pre-fix wrapper loses the refusal (placeholder only), so C1 fails against it");
 }
 
 // C2
@@ -85,13 +85,20 @@ function runShow(code) {
   return { btn, messages };
 }
 if (showSrc) {
+  const PAID_TEXT = 'Our records show a payment for the Aerial Roof Report on this project, so we did not start another one. This attempt did not charge your card. If you have a question about your report or a charge, contact support.';
+  const UNAVAILABLE_TEXT = 'We could not check your payment history just now, so we did not start a payment. This attempt did not charge your card. Please try again in a few minutes.';
   const paid = runShow('MEASUREMENT_ALREADY_PAID');
   ok(paid.btn.style.display === 'none', 'C2 already paid: the Purchase button is hidden');
-  ok(paid.messages.length === 1 && paid.messages[0][1] === 'error' && /already paid/.test(paid.messages[0][0]) && /not been charged again/.test(paid.messages[0][0]), 'C2 already paid: one plain error message that says so and that nothing further was charged');
-  ok(!/\$|rebate|refund|free|guarantee/i.test(paid.messages[0][0]), 'C2 already paid: the message states no price, rebate, refund or promise');
+  ok(paid.messages.length === 1 && paid.messages[0][1] === 'error' && paid.messages[0][0] === PAID_TEXT, 'C2 already paid: exactly the approved sentence, as an error message');
   const unavailable = runShow('MEASUREMENT_PAYMENT_CHECK_UNAVAILABLE');
   ok(unavailable.btn.style.display === '' && unavailable.btn.disabled === false && unavailable.btn.innerHTML === 'Purchase Aerial Roof Report', 'C2 unavailable: the button stays and is usable again');
-  ok(unavailable.messages.length === 1 && /try again/.test(unavailable.messages[0][0]) && /not been charged/.test(unavailable.messages[0][0]), 'C2 unavailable: a retry message that says nothing was charged');
+  ok(unavailable.messages.length === 1 && unavailable.messages[0][1] === 'error' && unavailable.messages[0][0] === UNAVAILABLE_TEXT, 'C2 unavailable: exactly the approved sentence, as an error message');
+  for (const [label, text] of [['paid', PAID_TEXT], ['unavailable', UNAVAILABLE_TEXT]]) {
+    ok(!/not been charged|have already paid|can't take|second payment/i.test(text), 'C2 ' + label + ': none of the rejected wording survives');
+    ok(html.includes(text.replace(/'/g, "\\'")) || html.includes(text), 'C2 ' + label + ': the sentence is in help-measurements.html verbatim');
+  }
+  ok(!/You have not been charged|You have already paid for the Aerial Roof Report|can't take a second payment/.test(html), 'C2 the page carries none of the rejected wording');
+  ok(!/\$|rebate|refund|free|guarantee/i.test(PAID_TEXT + UNAVAILABLE_TEXT), 'C2 the sentences state no price, rebate, refund or promise');
 }
 
 // C3

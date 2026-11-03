@@ -41,6 +41,7 @@ import {
   footerPostalAddressText,
 } from "./email-footer.ts";
 import { buildNonUsdAlertEmail } from "./non-usd-alert-email.ts";
+import { buildPaidGateAlertEmail } from "./measurement-paid-gate-alert-email.ts";
 
 const FUNCTION_NAME = "notify-measurement-order";
 const ADMIN_EMAIL = "dustinstohler1@gmail.com";
@@ -235,7 +236,8 @@ serve(async (req: Request) => {
     // gh-2107 / D-330 (Ben's DECIDED (b) on #2078): `alert` mode. A rejected non-USD payment has no order, so it is dispatched here, after
     // the service-role bearer check above and before the order_id requirement below. It reuses this function's Mailgun call and admin
     // address; the body is re-validated and never echoed verbatim (see non-usd-alert-email.ts).
-    const alertEmail = buildNonUsdAlertEmail(body);
+    // gh-3356: the paid-claim gate's two alerts ride the same mode and path (measurement-paid-gate-alert-email.ts).
+    const alertEmail = buildNonUsdAlertEmail(body) ?? buildPaidGateAlertEmail(body);
     if (alertEmail) {
       const alertForm = new FormData();
       alertForm.append("from", `Otter Quotes <notifications@${mailgunDomain}>`);
