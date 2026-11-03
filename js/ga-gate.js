@@ -677,6 +677,22 @@
     return; // a live Supabase credential is in this URL; Clarity never loads.
   }
 
+  // HeyCatch trial (CEO RUN 144). Same gates as Clarity above, on a NARROWER page
+  // set: the Clarity list minus every page signed-in data can render on, plus the
+  // public /locations pages. Default-deny, so a new page never loads it by accident.
+  var HEYCATCH_DENIED_PATHS = ['/bids', '/dashboard', '/contractor-about', '/project-info-acv', '/project-info-cash', '/project-info-rcv', '/repair-intake', '/contractor-login', '/partner-login'];
+  var hcPath = normalizeClarityPath(window.location.pathname);
+  if (HEYCATCH_DENIED_PATHS.indexOf(hcPath) === -1) {
+    oqWhenSharingAllowed(function () {
+      _oqLoadOnIdleOrInteraction(function () {
+        var hc = document.createElement('script');
+        hc.type = 'module';
+        hc.src = '/js/heycatch-boot.js';
+        document.head.appendChild(hc);
+      });
+    });
+  }
+
   // gh-1939 review finding 1: data-clarity-mask hides a field in replay, but
   // Clarity's fraud checksum still uploads a 28-bit hash of any typed value of
   // 5+ characters at the Text/TextImage privacy levels -- brute-forceable for
