@@ -21,17 +21,33 @@ export interface StandardCreateInput {
   contractor_id?: unknown;
 }
 
+/**
+ * gh-3350: what a hover_measurement PaymentIntent is created with, whatever a client sends. This is the string every client
+ * sent before the rename, and it must stay byte-for-byte what the keyed create carries: the create's Idempotency-Key is
+ * `<type>-<claim>-<amount>` and Stripe refuses a reused key whose body differs. For a claim that has already paid, that key is
+ * the only thing that makes a reload return the SAME PaymentIntent instead of a second chargeable one, so neither the key nor
+ * this body may change. The visible name, "Aerial Roof Report", is set after the create (HOVER_MEASUREMENT_DESCRIPTION below).
+ */
+export const HOVER_KEYED_CREATE_DESCRIPTION = "Complete Property Report";
+/** gh-3350: the name Dustin ruled ("Aerial Roof Report"), set on a hover_measurement PaymentIntent by the non-keyed update. */
+export const HOVER_MEASUREMENT_DESCRIPTION = "Aerial Roof Report";
+
+/**
+ * The description the keyed create request carries. hover_measurement: pinned (see above), the client value is ignored.
+ * measurement_upgrade: description is server-enforced, never the client-sent value — D-312/#1414 scrubbed vendor names from
+ * every customer-facing string and this must never regress that. Other types: the client value, as before.
+ */
+export function standardChargeDescription(metadata: { type: string }, description?: string | null): string {
+  if (metadata.type === "hover_measurement") return HOVER_KEYED_CREATE_DESCRIPTION;
+  return metadata.type === "measurement_upgrade" ? UPGRADE_CHARGE_DESCRIPTION : (description || "");
+}
+
 export function buildStandardCreateForm(i: StandardCreateInput): URLSearchParams {
   const { amount, currency, description, metadata, contractor_id } = i;
   const form = new URLSearchParams();
   form.append("amount", String(amount));
   form.append("currency", currency);
-  // measurement_upgrade: description is server-enforced, never the
-  // client-sent value — D-312/#1414 scrubbed vendor names from every
-  // customer-facing string and this must never regress that.
-  const chargeDescription = metadata.type === "measurement_upgrade"
-    ? UPGRADE_CHARGE_DESCRIPTION
-    : (description || "");
+  const chargeDescription = standardChargeDescription(metadata, description);
   form.append("description", chargeDescription);
   form.append("metadata[claim_id]", metadata.claim_id);
   form.append("metadata[type]", metadata.type);

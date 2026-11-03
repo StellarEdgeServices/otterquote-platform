@@ -3,7 +3,7 @@
 // DIFFERENTIAL test: a literal copy of main's inline construction (the reference) is compared with the module across a
 // matrix of inputs, and a per-request field (the variant) is proven to have no influence.
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
+import { buildStandardCreateForm, HOVER_KEYED_CREATE_DESCRIPTION, HOVER_MEASUREMENT_DESCRIPTION, standardIdempotencyKey } from "./standard-create-form.ts";
 import { UPGRADE_CHARGE_DESCRIPTION, VENDOR_CREDIT_EXPECTED_CENTS } from "./measurement-upgrade-gate.ts";
 
 // REFERENCE: main's create-payment-intent/index.ts standard flow, copied verbatim (2d1ab1ed / 7982f54f).
@@ -37,7 +37,8 @@ Deno.test("the module's create body equals main's construction for every combina
   for (const type of TYPES) for (const d of DESCRIPTIONS) for (const a of AMOUNTS) for (const c of CLAIMS) for (const k of CONTRACTORS) {
     const metadata = { type, claim_id: c };
     const got = buildStandardCreateForm({ amount: a, currency: "usd", description: d, metadata, contractor_id: k }).toString();
-    assertEquals(got, mainForm(a, "usd", d, metadata, k), JSON.stringify({ type, d, a, c, k }));
+    // gh-3350: the ONE intended difference from main: a hover_measurement create always carries the pre-rename description.
+    assertEquals(got, mainForm(a, "usd", type === "hover_measurement" ? "Complete Property Report" : d, metadata, k), JSON.stringify({ type, d, a, c, k }));
     n++;
   }
   assert(n === TYPES.length * DESCRIPTIONS.length * AMOUNTS.length * CLAIMS.length * CONTRACTORS.length && n > 400, String(n));
@@ -87,6 +88,28 @@ Deno.test("gh-3228: the key is a function of the body's own inputs: same key imp
   assert(body(1500) !== body(2263) && standardIdempotencyKey(md, 1500) !== standardIdempotencyKey(md, 2263));
 });
 
+// gh-3350: the key and the keyed create body do not change for ANY charge type, so a reload (same claim, same amount) still gets
+// the same PaymentIntent back, including for a claim that has already paid.
+Deno.test("gh-3350: the idempotency key is main's `<type>-<claim>-<amount>`, for every type", () => {
+  for (const type of TYPES) assertEquals(standardIdempotencyKey({ type, claim_id: "abc" }, 2263), `${type}-abc-2263`);
+});
+
+Deno.test("gh-3350: a hover_measurement create body is identical whatever description the client sends (old page, new page, nothing)", () => {
+  const md = { type: "hover_measurement", claim_id: "c1" };
+  const body = (d: string | null | undefined) => buildStandardCreateForm({ amount: 2263, currency: "usd", description: d, metadata: md }).toString();
+  const old = body("Complete Property Report");
+  for (const d of ["Aerial Roof Report", "", null, undefined, "anything else"]) assertEquals(body(d), old, String(d));
+  assertEquals(new URLSearchParams(old).get("description"), HOVER_KEYED_CREATE_DESCRIPTION);
+  assertEquals(HOVER_KEYED_CREATE_DESCRIPTION, "Complete Property Report");
+  assertEquals(HOVER_MEASUREMENT_DESCRIPTION, "Aerial Roof Report");
+});
+
+Deno.test("gh-3350: other types keep their client-sent description in the create (deductible_escrow) or the server's (measurement_upgrade)", () => {
+  const f = (type: string, d: string) => new URLSearchParams(buildStandardCreateForm({ amount: 1, currency: "usd", description: d, metadata: { type, claim_id: "c" }, contractor_id: "x" })).get("description");
+  assertEquals(f("deductible_escrow", "Deductible escrow"), "Deductible escrow");
+  assertEquals(f("measurement_upgrade", "client text"), UPGRADE_CHARGE_DESCRIPTION);
+});
+
 // -- index.ts uses them, and only them -------------------------------------------------------------
 const index = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
 
@@ -94,8 +117,46 @@ Deno.test("index.ts builds the standard create with buildStandardCreateForm and 
   assert(index.includes('from "./standard-create-form.ts"'));
   assertEquals(index.split("buildStandardCreateForm(").length - 1, 1);
   assertEquals(index.split("standardIdempotencyKey(").length - 1, 1);
+  assert(index.includes("standardIdempotencyKey(metadata, amount);"), "gh-3350: the key call is unchanged");
   const std = index.slice(index.indexOf("// ===== Standard flow"), index.indexOf("// gh-948: 'processing' (ACH in flight)"));
   assert(!std.includes("metadata[variant]"), "no variant in the standard flow's create");
   assert(!std.includes("const form = new URLSearchParams();"), "the inline form is gone");
   assert(!std.includes("`${metadata.type}-${metadata.claim_id}`"), "the inline key is gone");
+});
+
+// ── gh-3350: source-level guards on index.ts's standard flow ─────────────────────────────────────────────────────────────────
+// A real harness for index.ts (auth, rate limits, platform_settings reads) is not practical, so these check the source of the
+// standard flow. Each pins one way the keyed create could silently change again, which for a claim that has already paid would
+// let a reload create a second chargeable PaymentIntent (the key is the only thing that returns the same one).
+const stdStart = index.indexOf("// ===== Standard flow");
+const stdEnd = index.indexOf("// gh-948: 'processing' (ACH in flight) must NOT be reported", stdStart);
+const std = index.slice(stdStart, stdEnd);
+const createStart = std.indexOf("const form = buildStandardCreateForm(");
+const createEnd = std.indexOf("paymentIntentData = await r.json();");
+
+Deno.test("gh-3350 guard: the standard-flow slice of index.ts is found and non-empty", () => {
+  assert(stdStart > 0 && stdEnd > stdStart && std.length > 500, `${stdStart} ${stdEnd}`);
+  assert(createStart > 0 && createEnd > createStart);
+});
+
+Deno.test("gh-3350 guard: the Idempotency-Key header is exactly the key, with no suffix, and is the only idempotency header", () => {
+  assert(std.includes("const idempotencyKey = standardIdempotencyKey(metadata, amount);"));
+  assert(std.includes('"Idempotency-Key": idempotencyKey,'), "the header value must be the bare key");
+  assertEquals(std.split('"Idempotency-Key"').length - 1, 1);
+  assertEquals(std.split("idempotencyKey").length - 1, 2, "the variable appears exactly twice: its declaration and the header value");
+});
+
+Deno.test("gh-3350 guard: the keyed create body is the builder's output, untouched: nothing is set, appended or deleted on the form before the create", () => {
+  const keyed = std.slice(createStart, createEnd);
+  assertEquals(keyed.split("form.").length - 1, 1, "only `form.toString()` may touch the form between the build and the create's response");
+  assert(keyed.includes("body: form.toString(),"));
+  assert(!/form\.(set|append|delete)\(/.test(keyed));
+  assert(!/new URLSearchParams\(/.test(keyed), "no second body is built");
+});
+
+Deno.test("gh-3350 guard: the visible description is passed to the post-create update, not to the keyed create", () => {
+  const attach = std.slice(std.indexOf("await attachVariantMetadata({"));
+  assert(attach.slice(0, attach.indexOf("});")).includes("description: HOVER_MEASUREMENT_DESCRIPTION,"), "the update must carry the new description");
+  assert(!std.slice(createStart, createEnd).includes("HOVER_MEASUREMENT_DESCRIPTION"), "and the keyed create must not");
+  assert(index.includes('HOVER_MEASUREMENT_DESCRIPTION, standardIdempotencyKey } from "./standard-create-form.ts"'));
 });

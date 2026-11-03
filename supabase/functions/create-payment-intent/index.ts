@@ -35,7 +35,7 @@ import {
 import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-setting.ts";
 import { keyRefusalResponse, selectStripeKey } from "../_shared/stripe-key-select.ts";
 import { attachVariantMetadata } from "./variant-metadata.ts";
-import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
+import { buildStandardCreateForm, HOVER_MEASUREMENT_DESCRIPTION, standardIdempotencyKey } from "./standard-create-form.ts";
 import {
   buildPriorUpgradeLookupQuery,
   evaluateMeasurementUpgradeGate,
@@ -709,9 +709,12 @@ serve(async (req) => {
       }
     } else {
       // ===== Standard flow (hover_measurement, deductible_escrow, measurement_upgrade) =====
-      // The create body and its idempotency key are functions of the claim, the request type and the amount ONLY (see
-      // standard-create-form.ts): Stripe refuses a reused key with a different body, so nothing per-request may ever be in
-      // this create. The router variant is attached AFTER it, below.
+      // The create body and its idempotency key (`<type>-<claim>-<amount>`) are functions of the claim, the request type and the
+      // amount ONLY (see standard-create-form.ts): Stripe refuses a reused key with a different body, and for a claim that has
+      // already paid that key is the only thing that returns the SAME PaymentIntent on a reload instead of a second chargeable
+      // one. So nothing per-request may be in this create, and neither the key nor the hover_measurement body may ever change:
+      // buildStandardCreateForm pins the hover_measurement description to the pre-rename string whatever the client sent
+      // (gh-3350). The router variant and the visible description ("Aerial Roof Report") are set AFTER it, below.
       const form = buildStandardCreateForm({ amount, currency, description, metadata, contractor_id });
       const idempotencyKey = standardIdempotencyKey(metadata, amount);
       // gh-1886: bounded timeout. This call has no surrounding try/catch, so a timeout (like any
@@ -739,6 +742,9 @@ serve(async (req) => {
         // variant must never be part of it. The create form stays byte-identical to main. Awaited: the client confirms the
         // card only after it has client_secret, so the metadata is in place before payment_intent.succeeded and the
         // server-side Meta CAPI Purchase (PR #2107) reads it. Never fails the payment.
+        // gh-3350: the same update sets the description "Aerial Roof Report" (server-chosen, so an old cached page is renamed
+        // too). If it fails or times out, the charge stands with the pre-rename description. On a replay of an intent that has
+        // already succeeded it rewrites only the description (and variant); see variant-metadata.ts.
         await attachVariantMetadata({
           fetchFn: fetch,
           apiBase: STRIPE_API_BASE,
@@ -746,6 +752,7 @@ serve(async (req) => {
           paymentIntentId: paymentIntentData.id,
           status: paymentIntentData.status,
           variant: metadata.variant,
+          description: HOVER_MEASUREMENT_DESCRIPTION,
           optOut: gpcSignalPresent,
         });
       }
