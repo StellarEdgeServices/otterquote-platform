@@ -55,6 +55,11 @@ for (const [label, m] of [['js', js], ['ts', ts]]) {
   check(`${label}: never throws`, m.makeBeforeSend()(undefined) === null && m.makeBeforeSend(() => { throw new Error('x'); })(event()) === null);
 }
 for (const u of [SIGNED_IN, CLAIM_IN_PATH, '$direct', 'nonsense', '/rel/path', 'android-app://x/', 'http://127.0.0.1:3000/a?b']) check(`js and ts agree on scrubReferrer(${u.slice(0, 40)})`, js.scrubReferrer(u) === ts.scrubReferrer(u));
+for (const [label, m] of [['js', js], ['ts', ts]]) {
+  check(`${label}: encoded "@" in a UTM value is dropped from the URL`, m.scrubUrl('https://a.test/p?utm_source=x%2540plantd.com&utm_medium=paid', true) === 'https://a.test/p?utm_medium=paid');
+  const c = m.scrubEvent({ event: 'e', properties: { utm_term: 'plant2@example.com', $session_entry_utm_term: 'a@b.com', $initial_utm_term: 'ok', utm_source: 'meta', mc_cid: '1', gad_source: '1', ph_keyword: 'q' }, $set_once: { utm_term: 'a@b.com', $initial_utm_campaign: 'hail', $initial_mc_cid: '9' } });
+  check(`${label}: standalone campaign properties follow the value rule, other campaign keys dropped`, JSON.stringify(c) === JSON.stringify({ event: 'e', properties: { $initial_utm_term: 'ok', utm_source: 'meta' }, $set_once: { $initial_utm_campaign: 'hail' } }), JSON.stringify(c));
+}
 check('js and ts agree on every case', JSON.stringify(js.scrubEvent(event())) === JSON.stringify(ts.scrubEvent(event())));
 for (const u of ['https://a.test/p?claim_id=1&utm_source=meta#f', '/p?utm_term=a%40b.com', 'mailto:a@b.com?x=1', '$direct', 'https://a.test/p?utm_source=%E0%A4%A', 'https://a.test/p?utm_content=' + 'x'.repeat(101)]) {
   for (const keep of [true, false]) check(`js and ts agree on scrubUrl(${u.slice(0, 40)}, ${keep})`, js.scrubUrl(u, keep) === ts.scrubUrl(u, keep));

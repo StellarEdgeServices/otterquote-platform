@@ -55,6 +55,26 @@ describe("HeyCatch scrubUrl", () => {
   });
 });
 
+describe("HeyCatch campaign values", () => {
+  it("drops a UTM value that hides an address, however it is encoded", () => {
+    expect(scrubUrl("https://a.test/p?utm_source=x%2540plantd.com&utm_medium=paid", true)).toBe("https://a.test/p?utm_medium=paid");
+    expect(scrubUrl("https://a.test/p?utm_term=a%40b.com", true)).toBe("https://a.test/p");
+    expect(scrubUrl("https://a.test/p?utm_term=a%252540b.com", true)).toBe("https://a.test/p");
+    expect(scrubUrl("https://a.test/p?utm_term=a%EF%BC%A0b.com", true)).toBe("https://a.test/p");
+  });
+  it("applies the same rule to the SDK's standalone campaign properties and drops the keys the URL rule drops", () => {
+    const out = scrubEvent({
+      event: "$pageview",
+      properties: { utm_term: "plant2@example.com", $session_entry_utm_term: "a@b.com", $initial_utm_term: "ok-term", utm_source: "meta", utm_campaign: "x%2540plantd.com", mc_cid: "1", gad_source: "1", gclid: "<masked>", ph_keyword: "my claim", $search_engine: "google" },
+      $set_once: { utm_term: "a@b.com", $initial_utm_campaign: "hail", $initial_gclid: "<masked>", $initial_mc_cid: "9" },
+    })!;
+    const p = out.properties as Record<string, unknown>;
+    expect(p).toEqual({ $initial_utm_term: "ok-term", utm_source: "meta", $search_engine: "google" });
+    expect(out.$set_once).toEqual({ $initial_utm_campaign: "hail" });
+    expect(JSON.stringify(out)).not.toMatch(/plant|@|mc_cid|gad_source|my claim/);
+  });
+});
+
 describe("HeyCatch scrubReferrer", () => {
   it("sends the origin only, never a path, query or fragment", () => {
     expect(scrubReferrer(SIGNED_IN)).toBe("https://app.otterquote.com");

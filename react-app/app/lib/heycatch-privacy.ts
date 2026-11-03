@@ -19,20 +19,46 @@ const REFERRER_KEY = /referrer$/i;
 const OPAQUE_SCHEME = /^(mailto|tel|sms|javascript|data|blob):/i;
 const MAX_DEPTH = 10;
 
+/** The one value rule for a kept campaign value, in a URL or as a standalone property: 1 to 100 characters,
+ *  and no "@" (or fullwidth "@") at any level of percent-decoding, so "x%2540y.com" is caught. */
+function valueOk(raw: unknown): boolean {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_KEPT_VALUE) return false;
+  let cur = raw;
+  for (let i = 0; i < 5; i++) {
+    if (/[@\uFF20]/.test(cur)) return false;
+    let next: string;
+    try {
+      next = decodeURIComponent(cur.replace(/\+/g, " "));
+    } catch {
+      return false;
+    }
+    if (next === cur) return true;
+    cur = next;
+  }
+  return !/[@\uFF20]/.test(cur);
+}
+
 function keepPair(pair: string): boolean {
   const eq = pair.indexOf("=");
   const rawKey = eq < 0 ? pair : pair.slice(0, eq);
   const rawVal = eq < 0 ? "" : pair.slice(eq + 1);
   let key: string;
-  let val: string;
   try {
     key = decodeURIComponent(rawKey.replace(/\+/g, " "));
-    val = decodeURIComponent(rawVal.replace(/\+/g, " "));
   } catch {
     return false;
   }
   if (!KEEP_KEYS.includes(key)) return false;
-  return val.length > 0 && val.length <= MAX_KEPT_VALUE && !val.includes("@");
+  return valueOk(rawVal);
+}
+
+/** The SDK also sends campaign parameters as standalone properties (utm_term, $initial_utm_term,
+ *  $session_entry_utm_term, also inside $set_once). The five UTM keys follow the value rule and are dropped when
+ *  it fails; every other campaign key the URL rule drops is dropped too, as is ph_keyword (the search query the
+ *  SDK lifts out of a search-engine referrer's query string). */
+const CAMPAIGN_DROP = ["gad_source", "mc_cid", "gclid", "gclsrc", "dclid", "gbraid", "wbraid", "fbclid", "msclkid", "twclid", "li_fat_id", "igshid", "ttclid", "rdt_cid", "epik", "qclid", "sccid", "irclid", "_kx", "ph_keyword"];
+function campaignBase(key: string): string {
+  return key.replace(/^\$(?:initial_|session_entry_)/, "");
 }
 
 export function scrubUrl<T>(value: T, keepAttribution: boolean): T | string {
@@ -77,6 +103,11 @@ function isPlain(v: object): boolean {
 
 function walk(v: unknown, key: string, depth: number): unknown {
   if (depth > MAX_DEPTH) return undefined;
+  if (key) {
+    const base = campaignBase(key);
+    if (CAMPAIGN_DROP.includes(base)) return undefined;
+    if (KEEP_KEYS.includes(base) && v !== null && v !== undefined && !valueOk(v)) return undefined;
+  }
   if (typeof v === "string") {
     if (key === "$elements_chain") return scrubChain(v);
     if (key && REFERRER_KEY.test(key)) return scrubReferrer(v);

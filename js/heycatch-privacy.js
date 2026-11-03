@@ -9,7 +9,12 @@
 // gh-3352 item 1: what HeyCatch is allowed to receive in a URL-bearing property.
 //   Current-page URLs ($current_url, $initial_current_url, $session_entry_url):
 //     origin + path + ONLY these query keys, and only when the value is short and
-//     has no "@": utm_source, utm_medium, utm_campaign, utm_content, utm_term.
+//     has no "@" at any level of percent-decoding (so "x%2540y.com" is out):
+//     utm_source, utm_medium, utm_campaign, utm_content, utm_term. The SDK's
+//     standalone campaign properties (utm_term, $initial_utm_term,
+//     $session_entry_utm_term, also in $set_once) follow the same value rule, and
+//     the campaign keys the URL rule drops (mc_cid, gad_source, gclid, fbclid ...)
+//     and ph_keyword are dropped there too.
 //     They are what attribution-core.ts and get-started read, and what the
 //     boot's UTM restore puts back. Everything else is dropped: claim_id, email,
 //     code, token, gclid and fbclid (the SDK already masks those two), job_type,
@@ -36,20 +41,42 @@ var REFERRER_KEY = /referrer$/i;
 var OPAQUE_SCHEME = /^(mailto|tel|sms|javascript|data|blob):/i;
 var MAX_DEPTH = 10;
 
+// The one value rule for a kept campaign value, in a URL or as a standalone property: 1 to 100
+// characters, and no "@" (or fullwidth "@") at any level of percent-decoding, so "x%2540y.com" is caught.
+function valueOk(raw) {
+  if (typeof raw !== 'string' || raw.length === 0 || raw.length > MAX_KEPT_VALUE) return false;
+  var cur = raw;
+  for (var i = 0; i < 5; i++) {
+    if (/[@\uFF20]/.test(cur)) return false;
+    var next;
+    try { next = decodeURIComponent(cur.replace(/\+/g, ' ')); } catch (e) { return false; }
+    if (next === cur) return true;
+    cur = next;
+  }
+  return !/[@\uFF20]/.test(cur);
+}
+
 function keepPair(pair) {
   var eq = pair.indexOf('=');
   var rawKey = eq < 0 ? pair : pair.slice(0, eq);
   var rawVal = eq < 0 ? '' : pair.slice(eq + 1);
   var key;
-  var val;
   try {
     key = decodeURIComponent(rawKey.replace(/\+/g, ' '));
-    val = decodeURIComponent(rawVal.replace(/\+/g, ' '));
   } catch (e) {
     return false;
   }
   if (KEEP_KEYS.indexOf(key) === -1) return false;
-  return val.length > 0 && val.length <= MAX_KEPT_VALUE && val.indexOf('@') === -1;
+  return valueOk(rawVal);
+}
+
+// The SDK also sends campaign parameters as standalone properties: utm_term, $initial_utm_term,
+// $session_entry_utm_term, also inside $set_once. The five UTM keys follow the value rule above and are
+// dropped when it fails; every other campaign key the URL rule drops is dropped here too, as is
+// ph_keyword (the search query the SDK lifts out of a search-engine referrer's query string).
+var CAMPAIGN_DROP = ['gad_source', 'mc_cid', 'gclid', 'gclsrc', 'dclid', 'gbraid', 'wbraid', 'fbclid', 'msclkid', 'twclid', 'li_fat_id', 'igshid', 'ttclid', 'rdt_cid', 'epik', 'qclid', 'sccid', 'irclid', '_kx', 'ph_keyword'];
+function campaignBase(key) {
+  return key.replace(/^\$(?:initial_|session_entry_)/, '');
 }
 
 export function scrubUrl(value, keepAttribution) {
@@ -95,6 +122,11 @@ function isPlain(v) {
 
 function walk(v, key, depth) {
   if (depth > MAX_DEPTH) return undefined;
+  if (key) {
+    var base = campaignBase(key);
+    if (CAMPAIGN_DROP.indexOf(base) !== -1) return undefined;
+    if (KEEP_KEYS.indexOf(base) !== -1 && v !== null && v !== undefined && !valueOk(v)) return undefined;
+  }
   if (typeof v === 'string') {
     if (key === '$elements_chain') return scrubChain(v);
     if (key && REFERRER_KEY.test(key)) return scrubReferrer(v);
