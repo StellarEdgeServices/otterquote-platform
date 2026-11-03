@@ -602,7 +602,7 @@ const Nav = {
       ${this._roleBarHTML(role)}
       <div class="nav-inner container">
         <a href="${this._roleLogoHref(role, false)}" class="nav-logo">
-          <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;">
+          <img src="/img/brand-assets/otter-icon.webp" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;">
           <span class="nav-logo-text">${CONFIG.SITE_NAME}</span>
         </a>
         <div class="nav-links" id="nav-links">
@@ -1159,7 +1159,7 @@ const Nav = {
         <div class="footer-grid">
           <div class="footer-col">
             <div class="footer-logo">
-              <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;">
+              <img src="/img/brand-assets/otter-icon.webp" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;">
               <span class="nav-logo-text">${CONFIG.SITE_NAME}</span>
             </div>
             <!-- gh-2598 slice 4 / D-377: the footer slot carries the tagline exactly as approved. Non-contractor footers only: the contractor-portal line below
