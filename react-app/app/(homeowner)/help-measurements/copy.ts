@@ -54,7 +54,7 @@ export const MEASUREMENTS_COPY = {
   // D-291 price line (repriced from D-205's $150) — LOCKED, exact.
   hoverCardPrice: '$22.63 (rebated if you complete a job on the platform)',
   hoverCardDescription:
-    "We order an aerial roof measurement report of your roof — squares, pitch, facets, ridge, hip, valley and eave lengths. Nothing for you to do: no photos, no ladder, no appointment. It is enough for a contractor to bid most roofing jobs.",
+    "We order an aerial roof measurement report of your roof — total squares and the area at each pitch. Nothing for you to do: no photos, no ladder, no appointment. It carries no ridge, hip, valley or eave lengths; a contractor who needs those can order a fuller report.",
   hoverCardFeatures: [
     'Precise, professional-grade measurements',
     'Nothing for you to photograph or upload',
@@ -82,7 +82,7 @@ export const MEASUREMENTS_COPY = {
   // ── Hover flow section (help-measurements.html:607-647) ──
   hoverSectionTitle: 'Complete Property Report',
   hoverSectionIntro:
-    'An aerial roof measurement report — squares, pitch, facets, and the ridge, hip, valley and eave lengths a contractor needs to bid accurately. We order it for you; there is nothing for you to photograph.',
+    'An aerial roof measurement report — total squares and the area at each pitch, which contractors use to bid. It carries no ridge, hip, valley or eave lengths; a contractor who needs those can order a fuller report. We order it for you; there is nothing for you to photograph.',
 
   // Rebate callout (help-measurements.html:611) — D-291 financial terms (repriced from D-205's $150), LOCKED.
   // "<strong>How the $22.63 works:</strong> …" flattened.
