@@ -160,7 +160,7 @@ control('S3 (paid and promise swapped)', swapped2 !== PAGE && JSON.stringify(ord
 
 /* ---------- S4: money and promise wording stays inside #paid and #promise ---------- */
 /* Third ruled exception (see the header): this one exact hero line is allowed; any other wording still fails S4. */
-const HERO_COST_LINE = 'Free with your insurance estimate. Otherwise $22.63 for measurements, refunded in full if your job is completed through the platform. Switch contractors at no cost up to 3 days before your start date.';
+const HERO_COST_LINE = 'Free with your insurance estimate. Otherwise $22.63 up front for professional measurements, refunded in full if your job is completed through the platform. Switch contractors at no cost up to 3 days before your start date.';
 const MONEY = /\$\s?\d|\brefund|\bfee\b|\bswitch (?:to )?another|at no cost|up to \d+ days|no cost\b/i;
 /* visible attribute text: placeholder, value, title, alt, aria-label (the string extractor reads text nodes only) */
 function attrTexts(chunkHtml) {
