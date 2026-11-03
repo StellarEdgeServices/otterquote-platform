@@ -153,9 +153,22 @@ export function deriveEstimatedStartDate(scopeSummary: unknown): string | null {
   }
 }
 
+/** Zone that defines "today" for the cutoff; must equal SWITCH_CUTOFF_TIMEZONE in switch-contractor/cutoff.ts. */
+export const SWITCH_CUTOFF_TIMEZONE = 'America/Chicago';
+export const SWITCH_CUTOFF_DAYS = 3;
+
+function zonedDayMs(instant: Date): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: SWITCH_CUTOFF_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(instant);
+  const n = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+  return Date.UTC(n('year'), n('month') - 1, n('day'));
+}
+
 /**
- * 3-day switch cutoff. Switching is disabled when the installation (the winning quote's
- * estimated start date, see deriveEstimatedStartDate) is within the next 3 days.
+ * 3-day switch cutoff, mirroring supabase/functions/switch-contractor/cutoff.ts (gh-3350). Switching is closed when the start
+ * date (see deriveEstimatedStartDate) is fewer than 3 calendar days after today in America/Chicago, or already past. Day three
+ * itself is open: with start date S, switching is allowed through the end of day S-3 and closed from the start of day S-2.
  * No/unparseable date -> allowed, matching the server.
  */
 export function isSwitchWithinCutoff(
@@ -163,11 +176,19 @@ export function isSwitchWithinCutoff(
   now: Date = new Date(),
 ): boolean {
   if (!estimatedStartDate) return false;
-  const installDate = new Date(estimatedStartDate);
-  if (Number.isNaN(installDate.getTime())) return false;
-  const cutoff = new Date(now);
-  cutoff.setDate(cutoff.getDate() + 3);
-  return installDate <= cutoff;
+  const raw = estimatedStartDate.trim();
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  let installDayMs: number;
+  if (dateOnly) {
+    installDayMs = Date.UTC(+dateOnly[1], +dateOnly[2] - 1, +dateOnly[3]);
+    const chk = new Date(installDayMs);
+    if (chk.getUTCFullYear() !== +dateOnly[1] || chk.getUTCMonth() !== +dateOnly[2] - 1 || chk.getUTCDate() !== +dateOnly[3]) return false;
+  } else {
+    const instant = new Date(raw);
+    if (Number.isNaN(instant.getTime())) return false;
+    installDayMs = zonedDayMs(instant);
+  }
+  return Math.round((installDayMs - zonedDayMs(now)) / 86_400_000) < SWITCH_CUTOFF_DAYS;
 }
 
 /** Switch survey is offered only on a contract_signed claim. */
