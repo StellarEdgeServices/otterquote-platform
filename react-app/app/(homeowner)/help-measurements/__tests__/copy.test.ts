@@ -58,7 +58,7 @@ const STATIC = {
   hoverSectionIntro:
     'An aerial roof measurement report — total squares and the area at each pitch, which contractors use to bid. It carries no ridge, hip, valley or eave lengths; a contractor who needs those can order a fuller report. We order it for you; there is nothing for you to photograph.',
   rebateCallout:
-    "How the $22.63 works: You pay $22.63 now for an aerial roof measurement report. When your project is completed with an Otter Quotes contractor, the full $22.63 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
+    "How the $22.63 works: You pay $22.63 now for an aerial roof measurement report. When your project is completed with an Otter Quotes contractor, the full $22.63 is rebated to your original payment method. Either way, the report stays with you.",
   hoverStep1Title: 'Purchase Your Report',
   hoverStep1Text:
     'Pay the $22.63 fee securely through Stripe. This covers your Aerial Roof Report.',
@@ -156,7 +156,7 @@ describe('MEASUREMENTS_COPY — D-291 financial terms (highest-value locks)', ()
     expect(MEASUREMENTS_COPY.rebateCallout).toContain(
       'the full $22.63 is rebated to your original payment method',
     );
-    expect(MEASUREMENTS_COPY.rebateCallout).toContain('the file stays with you');
+    expect(MEASUREMENTS_COPY.rebateCallout).toContain('the report stays with you');
   });
 
   it('locks the Stripe security line exactly', () => {

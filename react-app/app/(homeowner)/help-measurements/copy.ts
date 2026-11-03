@@ -87,7 +87,7 @@ export const MEASUREMENTS_COPY = {
   // Rebate callout (help-measurements.html:611) — D-291 financial terms (repriced from D-205's $150), LOCKED.
   // "<strong>How the $22.63 works:</strong> …" flattened.
   rebateCallout:
-    "How the $22.63 works: You pay $22.63 now for an aerial roof measurement report. When your project is completed with an Otter Quotes contractor, the full $22.63 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
+    "How the $22.63 works: You pay $22.63 now for an aerial roof measurement report. When your project is completed with an Otter Quotes contractor, the full $22.63 is rebated to your original payment method. Either way, the report stays with you.",
 
   // Hover steps (help-measurements.html:614-636).
   hoverStep1Title: 'Purchase Your Report',
