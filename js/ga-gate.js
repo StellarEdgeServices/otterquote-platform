@@ -678,8 +678,8 @@
   }
 
   // HeyCatch trial (CEO RUN 144). Same gates as Clarity above, on a NARROWER page
-  // set: the Clarity list minus every page signed-in data can render on, plus the
-  // public /locations pages. Default-deny, so a new page never loads it by accident.
+  // set: the Clarity list minus every page signed-in data can render on.
+  // Default-deny, so a new page never loads it by accident.
   var HEYCATCH_DENIED_PATHS = ['/bids', '/dashboard', '/contractor-about', '/project-info-acv', '/project-info-cash', '/project-info-rcv', '/repair-intake', '/contractor-login', '/partner-login'];
   var hcPath = normalizeClarityPath(window.location.pathname);
   if (HEYCATCH_DENIED_PATHS.indexOf(hcPath) === -1) {
