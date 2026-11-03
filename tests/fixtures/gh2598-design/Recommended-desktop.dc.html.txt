@@ -56,7 +56,7 @@ a{color:#0D1B2E}a:hover{color:#B45309}
 </div>
 </div>
 <div style="font-size: 16px; color: #C7D2DE">No salesperson in your home. No obligation to hire.</div>
-<p>Free with your insurance estimate. Otherwise $22.63 up front for professional measurements, refunded in full if your job is completed through the platform. Switch contractors at no cost up to 3 days before your start date.</p>
+<p>Free with your insurance estimate. Otherwise as little as $22.63 up front for professional measurements, refunded in full if your job is completed through the platform; conditions apply. Switch to another Otter Quotes contractor at no cost up to 3 days before your start date.</p>
 </div>
 
 <div style="flex: 1 1 460px; min-width: 0; background: #FFFFFF; color: #14212E; border-radius: 10px; padding: 28px; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px">
