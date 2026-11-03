@@ -185,7 +185,7 @@ a{color:#0D1B2E}a:hover{color:#B45309}
 <div style="max-width: 1160px; margin: 0 auto; padding: 72px 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px">
 <div style="background: #FFFFFF; border: 1px solid #DCE2E8; border-radius: 10px; padding: 32px; display: flex; flex-direction: column; gap: 14px">
 <h2 style="margin: 0; font-size: 30px; font-weight: 800; color: #0D1B2E">How we're paid</h2>
-<p style="margin: 0; font-size: 18px; line-height: 1.55; color: #3D4F60">Contractors pay Otter Quotes a 5% fee on the bid you accept.</p>
+<p style="margin: 0; font-size: 18px; line-height: 1.55; color: #3D4F60">Contractors pay Otter Quotes a fee, currently 5%, on the bid you accept.</p>
 <p style="margin: 0; font-size: 18px; line-height: 1.55; color: #3D4F60">You pay as little as $22.63 up front for professional measurements that contractors use to bid. If you complete a job on the platform, that money is refunded to you. There is no cost if you provide a copy of your insurance estimate.</p>
 <p>See what everything costs and when the fee is refunded</p>
 </div>

@@ -142,7 +142,7 @@ control('S1 (two list items swapped on the page)', bad(sectionResults(word(word(
 
 control('S1 (the Questions header link removed)', bad(sectionResults(word(PAGE, '<a href="#questions">Questions</a>', ''), DESK, PHONE)).length > 0);
 control('S1 (the How we\'re paid header link removed)', bad(sectionResults(word(PAGE, '<a href="#paid">How we\'re paid</a>', ''), DESK, PHONE)).length > 0);
-control('S1 (one word changed in the fee sentence)', bad(sectionResults(word(PAGE, 'Contractors pay Otter Quotes a 5% fee on the bid you accept.', 'Contractors pay Otter Quotes a 5% fee on the bid they accept.'), DESK, PHONE)).length > 0);
+control('S1 (one word changed in the fee sentence)', bad(sectionResults(word(PAGE, 'Contractors pay Otter Quotes a fee, currently 5%, on the bid you accept.', 'Contractors pay Otter Quotes a fee, currently 5%, on the bid they accept.'), DESK, PHONE)).length > 0);
 control('S1 (the $22.63 sentence loses its refund sentence)', bad(sectionResults(word(PAGE, ' If you complete a job on the platform, that money is refunded to you.', ''), DESK, PHONE)).length > 0);
 control('S1 (switch promise changed from 3 days to 5 days)', bad(sectionResults(word(PAGE, 'up to 3 days before your start date', 'up to 5 days before your start date'), DESK, PHONE)).length > 0);
 control('S1 (a "What we do not do" item removed)', bad(sectionResults(word(PAGE, '<li>We do not sell upgrades.</li>', ''), DESK, PHONE)).length > 0);
