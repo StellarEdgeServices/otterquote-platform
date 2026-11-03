@@ -159,6 +159,8 @@ const swapped2 = PAGE.replace(/(<section class="hr-sec hr-paid"[\s\S]*?<\/sectio
 control('S3 (paid and promise swapped)', swapped2 !== PAGE && JSON.stringify(orderOf(swapped2)) !== JSON.stringify(want));
 
 /* ---------- S4: money and promise wording stays inside #paid and #promise ---------- */
+/* Third ruled exception (see the header): this one exact hero line is allowed; any other wording still fails S4. */
+const HERO_COST_LINE = 'Free with your insurance estimate. Otherwise $22.63 for measurements, refunded in full if your job is completed through the platform. Switch contractors at no cost up to 3 days before your start date.';
 const MONEY = /\$\s?\d|\brefund|\bfee\b|\bswitch (?:to )?another|at no cost|up to \d+ days|no cost\b/i;
 /* visible attribute text: placeholder, value, title, alt, aria-label (the string extractor reads text nodes only) */
 function attrTexts(chunkHtml) {
@@ -179,7 +181,7 @@ function stray(html) {   /* money or promise wording found outside #paid and #pr
   const P = byKey(html), hits = [];
   for (const k of Object.keys(P)) {
     if (MONEY_SECTIONS.includes(k)) continue;
-    for (const x of sectionTextAll(P[k])) { if (MONEY.test(x) || moneyOnly.has(x)) hits.push(k + ': ' + x); }
+    for (const x of sectionTextAll(P[k])) { if (x !== HERO_COST_LINE && (MONEY.test(x) || moneyOnly.has(x))) hits.push(k + ': ' + x); }
   }
   return hits;
 }
