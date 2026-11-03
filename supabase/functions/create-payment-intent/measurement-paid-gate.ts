@@ -60,10 +60,13 @@ export const CANCELLED_REPLAY_CODE = "MEASUREMENT_PAYMENT_CANNOT_START";
 /** Technical text for logs and the `error` field. The customer-facing sentences live in help-measurements.html, keyed by `code`. */
 export const ALREADY_PAID_ERROR = "A report has already been paid for on this claim; no new payment was created.";
 export const PAID_CHECK_UNAVAILABLE_ERROR = "Could not confirm whether this claim has already paid for its report; no payment was created. Retry shortly.";
+export const REFUNDED_REPLAY_ERROR = "The payment for this report that the idempotency key returns was fully refunded; no new payment was created.";
 export const CANCELLED_REPLAY_ERROR = "The payment for this report that the idempotency key returns has been cancelled; no new payment was created.";
 
 /** Replayed creates older than this are re-read from Stripe (a replay returns the FIRST response, whose status can be stale). */
 export const REPLAY_AGE_SECONDS = 60;
+/** The only statuses for which a replayed intent's secret may be handed back (it can still be paid). */
+export const REPLAY_UNPAID_STATUSES = ["requires_payment_method", "requires_confirmation", "requires_action"];
 export const PAID_CHECK_TIMEOUT_MS = 8000;
 
 export interface HoverOrderRow {
@@ -86,7 +89,12 @@ export type PaidVerdict =
    * a person cancelling it in the Stripe dashboard). Its client_secret is dead and the same key replays it again, so this buyer
    * cannot start a payment at this price until Stripe drops the key. Not a failed lookup: it has its own code, sentence and alert.
    */
-  | { kind: "cancelled_replay"; paymentIntentId: string };
+  | { kind: "cancelled_replay"; paymentIntentId: string }
+  /**
+   * The keyed create REPLAYED an intent that SUCCEEDED and has since been FULLY REFUNDED outside the rebate flow. Its secret cannot be
+   * paid again, so it is never handed back. Only this claim is affected, and the buyer can pay again once Stripe removes the key.
+   */
+  | { kind: "refunded_replay"; paymentIntentId: string };
 
 /** The columns create-payment-intent reads from hover_orders. A test checks each against the migrations: a wrong name here is a 503 for every buyer. */
 export const HOVER_ORDER_SELECT = "homeowner_stripe_payment_intent_id, product_code, rebate_paid_at";
@@ -308,10 +316,14 @@ export async function assertCreatedIntentNotPaid(
     if (r.body?.status === "canceled") return { kind: "cancelled_replay", paymentIntentId: created.id };
     // A replayed intent that SUCCEEDED but is fully refunded (evaluatePaymentIntent: "refunded", not paid for the gate's purposes) must not
     // be handed back either, whatever its refund state: its secret cannot be paid again, and the page's recovery of a succeeded intent
-    // would record an order for a refunded charge. Refuse with the retry path (503, "could not check ... try again"; the attempt charged
-    // nothing). A buyer whose payment was refunded outside the rebate flow can buy again once Stripe has removed the key.
-    if (r.body?.status === "succeeded") return { kind: "unavailable", why: REPLAY_REFUNDED_WHY };
-    return { kind: "not_paid" };
+    // would record an order for a refunded charge. Its own verdict: the page shows the cannot-start sentence (no statement about a charge),
+    // and an operator alert says what happened. A buyer whose payment was refunded outside the rebate flow can buy again once Stripe has
+    // removed the key.
+    if (r.body?.status === "succeeded") return { kind: "refunded_replay", paymentIntentId: created.id };
+    // ALLOWLIST: only an unpaid status may have its secret handed back. Anything else (a malformed 200 with no status, an unknown value)
+    // fails to the retry path instead of being treated as unpaid.
+    if (typeof r.body?.status === "string" && REPLAY_UNPAID_STATUSES.includes(r.body.status)) return { kind: "not_paid" };
+    return { kind: "unavailable", why: "replay re-read returned an unexpected status" };
   } catch (e) {
     log(`[create-payment-intent] gh-3356: replay re-read failed (${e instanceof Error ? e.name : typeof e})`);
     return { kind: "unavailable", why: "replay re-read threw" };
@@ -323,15 +335,13 @@ export async function assertCreatedIntentNotPaid(
  * email tells the operator that a very recent charge may still be waiting for its order row, so they check the row before acting).
  * Bounded per claim and kind in measurement-paid-alert.ts.
  */
-export function alertKindFor(v: PaidVerdict): "paid_without_order" | "check_unavailable" | "cancelled_replay" | null {
+export function alertKindFor(v: PaidVerdict): "paid_without_order" | "check_unavailable" | "cancelled_replay" | "refunded_replay" | null {
   if (v.kind === "unavailable") return "check_unavailable";
   if (v.kind === "cancelled_replay") return "cancelled_replay"; // a homeowner is stuck: a person must know
+  if (v.kind === "refunded_replay") return "refunded_replay"; // same, for a fully refunded payment
   if (v.kind === "paid" && !v.hasOrderRow) return "paid_without_order";
   return null;
 }
-
-/** `why` of the unavailable verdict for a replayed intent that succeeded and was fully refunded (see assertCreatedIntentNotPaid). */
-export const REPLAY_REFUNDED_WHY = "replayed intent succeeded and was refunded";
 
 /**
  * The verdict for an OLDER intent that cancelSupersededIntents found paid (a confirm in another tab won the race). Whether an order row
@@ -356,6 +366,7 @@ export async function supersededPaidVerdict(
 export function refusalFor(verdict: PaidVerdict): { status: number; body: { error: string; code: string } } | null {
   if (verdict.kind === "paid") return { status: 409, body: { error: ALREADY_PAID_ERROR, code: ALREADY_PAID_CODE } };
   if (verdict.kind === "unavailable") return { status: 503, body: { error: PAID_CHECK_UNAVAILABLE_ERROR, code: PAID_CHECK_UNAVAILABLE_CODE } };
+  if (verdict.kind === "refunded_replay") return { status: 503, body: { error: REFUNDED_REPLAY_ERROR, code: CANCELLED_REPLAY_CODE } };
   if (verdict.kind === "cancelled_replay") return { status: 503, body: { error: CANCELLED_REPLAY_ERROR, code: CANCELLED_REPLAY_CODE } };
   return null;
 }

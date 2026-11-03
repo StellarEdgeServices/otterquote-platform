@@ -90,7 +90,7 @@ function buildCorsHeaders(req: Request): Record<string, string> {
  * gh-3356: tell an operator about a paid-claim refusal. A claim that PAID with no hover_orders row is a customer with no report queued
  * for fulfilment ("paid_without_order"; a very recent charge may still be waiting for its order row, and the email says so); an
  * unavailable check ("check_unavailable") means a broken Stripe search or orders read blocks purchases; a replayed cancelled intent
- * ("cancelled_replay") means a homeowner is stuck at this price. Each raises a platform_alerts_log row AND an admin email through notify-measurement-order, bounded to one per claim per
+ * ("cancelled_replay") means a homeowner is stuck at this price; a replayed fully refunded payment ("refunded_replay") is the same for that claim only. Each raises a platform_alerts_log row AND an admin email through notify-measurement-order, bounded to one per claim per
  * window (measurement-paid-alert.ts). Never throws, never carries Stripe text.
  */
 async function logPaidGateRefusal(
@@ -116,7 +116,7 @@ async function logPaidGateRefusal(
     {
       kind,
       claimId,
-      paymentIntentId: verdict.kind === "paid" || verdict.kind === "cancelled_replay" ? verdict.paymentIntentId : null,
+      paymentIntentId: verdict.kind === "paid" || verdict.kind === "cancelled_replay" || verdict.kind === "refunded_replay" ? verdict.paymentIntentId : null,
       stage: stage.replace(/[^a-z_ ]/g, " ").trim(),
       reason: verdict.kind === "unavailable" ? verdict.why : undefined,
     },

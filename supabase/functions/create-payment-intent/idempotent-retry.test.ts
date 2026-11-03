@@ -805,7 +805,8 @@ Deno.test("gh-3356 (3q) a replayed intent that SUCCEEDED and was fully refunded 
   assertEquals(a.http, 200);
   w.setStatus(a.piId!, "succeeded"); w.setRefunded(a.piId!, "true"); // paid, then refunded outside the rebate flow; the key is still held
   const again = await gatedSequence(w);
-  assertEquals([again.http, again.code, again.clientSecretReturned, again.piId], [503, PAID_CHECK_UNAVAILABLE_CODE, false, null]);
+  assertEquals([again.http, again.code, again.clientSecretReturned, again.piId], [503, CANCELLED_REPLAY_CODE, false, null], "own verdict: the page shows the cannot-start sentence, not the retry sentence");
+  assertEquals(alertKindFor({ kind: "refunded_replay", paymentIntentId: a.piId! }), "refunded_replay", "own operator alert");
   // the pre-check saw "refunded" (not paid), which is why the pre-fix replay branch returned not_paid and handed the secret back
   const sb = w.sb();
   const pre = await checkClaimHasNotPaid({ fetchFn: w.fetchFn, apiBase: API, basicAuth: w.basicAuth, claimId: CLAIM, loadOrders: () => loadHoverOrders(sb, CLAIM), log: () => {} });
@@ -819,6 +820,29 @@ Deno.test("gh-3356 (3q) a replayed intent that SUCCEEDED and was fully refunded 
   // after Stripe removes the key a buyer whose payment was refunded outside the rebate flow can buy again
   w.expireKeys();
   assertEquals((await gatedSequence(w)).http, 200);
+});
+
+// REVIEW at dc5f4927: the replay re-read hands a secret back ONLY for an unpaid status.
+Deno.test("gh-3356 (3s) replay re-read allowlist: the three unpaid statuses are handed back; a malformed or unknown 200 fails to 503 (unavailable); succeeded is the refunded_replay verdict", async () => {
+  const mk = (body: unknown) => ({
+    fetchFn: (() => Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }))) as typeof fetch,
+    apiBase: API, basicAuth: "QUJD", log: () => {},
+  });
+  const replay = new Response("{}", { headers: { "Idempotent-Replayed": "true" } });
+  for (const status of ["requires_payment_method", "requires_confirmation", "requires_action"]) {
+    const v = await assertCreatedIntentNotPaid(mk({ id: "pi_x1", status }), { id: "pi_x1" }, replay);
+    assertEquals(v.kind, "not_paid", status);
+  }
+  for (const body of [{ id: "pi_x1" }, { id: "pi_x1", status: "" }, { id: "pi_x1", status: "requires_capture" }, { id: "pi_x1", status: 7 }, null]) {
+    const v = await assertCreatedIntentNotPaid(mk(body), { id: "pi_x1" }, replay);
+    assertEquals(v.kind, "unavailable", JSON.stringify(body));
+    const r = refusalFor(v);
+    assertEquals([r?.status, r?.body.code], [503, PAID_CHECK_UNAVAILABLE_CODE]);
+  }
+  const refunded = await assertCreatedIntentNotPaid(mk({ id: "pi_x1", status: "succeeded", amount: 2263, amount_refunded: 2263, latest_charge: { refunded: true, amount_refunded: 2263, amount: 2263 } }), { id: "pi_x1" }, replay);
+  assertEquals(refunded, { kind: "refunded_replay", paymentIntentId: "pi_x1" });
+  const rr = refusalFor(refunded);
+  assertEquals([rr?.status, rr?.body.code], [503, CANCELLED_REPLAY_CODE]);
 });
 
 // REVIEW at afc53f50, F2: the supersede branch determined nothing about an order row and raised no alert.

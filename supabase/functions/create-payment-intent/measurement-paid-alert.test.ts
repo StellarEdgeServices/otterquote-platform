@@ -152,7 +152,7 @@ Deno.test("parity: the sender's token, kinds and body keys are the ones notify-m
   assert(recv.includes(`PAID_GATE_ALERT_TOKEN = "${PAID_GATE_ALERT_TOKEN}"`));
   for (const kind of Object.keys(PAID_GATE_ALERT_TYPES)) assert(recv.includes(`"${kind}"`), kind);
   for (const key of ["alert", "kind", "claim_id", "payment_intent_id", "stage"]) assert(recv.includes(`body.${key}`) || recv.includes(`"${key}"`), key);
-  for (const kind of ["paid_without_order", "check_unavailable", "cancelled_replay"] as const) {
+  for (const kind of ["paid_without_order", "check_unavailable", "cancelled_replay", "refunded_replay"] as const) {
     const body: PaidGateAlertEmailBody = { alert: PAID_GATE_ALERT_TOKEN, kind, claim_id: CLAIM, payment_intent_id: "pi_3Abc", stage: "before create" };
     const e = buildPaidGateAlertEmail(body);
     assert(e && e.subject.length > 10 && e.text.includes(CLAIM), kind);
@@ -177,6 +177,20 @@ Deno.test("alert: cancelled_replay (a homeowner is stuck) writes ONE row with it
   assert(!/24[- ]?h/i.test(String(w.rows()[0].message)), "no 24-hour claim");
   assertEquals(w.emails.map((e) => e.kind), ["cancelled_replay"]);
   for (let i = 1; i < 20; i++) await raisePaidGateAlert(w.deps, A("cancelled_replay"), () => new Date(T0.getTime() + i * 1000));
+  assertEquals([w.rows().length, w.emails.length], [1, 1], "bounded");
+});
+
+Deno.test("alert: refunded_replay writes ONE row with its own type, the PaymentIntent id, fully refunded / only this claim / pay again once Stripe removes the key, no Stripe-search pointer, bounded", async () => {
+  const w = world();
+  assertEquals(await raisePaidGateAlert(w.deps, A("refunded_replay"), () => T0), true);
+  assertEquals(w.rows().length, 1);
+  assertEquals(w.rows()[0].alert_type, "measurement_paid_refunded_replay");
+  const m = String(w.rows()[0].message);
+  assert(m.includes(CLAIM) && m.includes("pi_3Abc") && /FULLY REFUNDED/.test(m) && /Only this claim is affected/.test(m) && /pay again once Stripe removes the key/.test(m), m);
+  assert(!/search (for|the)|Stripe search for/i.test(m.replace("Stripe search is not involved", "")), "does not point at Stripe search");
+  assert(!/24[- ]?h/i.test(m), "no 24-hour claim");
+  assertEquals(w.emails.map((e) => e.kind), ["refunded_replay"]);
+  for (let i = 1; i < 20; i++) await raisePaidGateAlert(w.deps, A("refunded_replay"), () => new Date(T0.getTime() + i * 1000));
   assertEquals([w.rows().length, w.emails.length], [1, 1], "bounded");
 });
 

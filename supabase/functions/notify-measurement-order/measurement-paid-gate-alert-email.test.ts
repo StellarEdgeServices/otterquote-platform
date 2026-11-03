@@ -74,6 +74,16 @@ Deno.test("paid-gate email: paid_without_order reads a recent charge as 'order m
   assert(/If the order row is still missing after a few minutes/.test(e.text));
 });
 
+Deno.test("paid-gate email: refunded_replay names the fully refunded PaymentIntent, only this claim, pay again once Stripe removes the key; no Stripe-search pointer, no 24-hour claim", () => {
+  const e = buildPaidGateAlertEmail(body({ kind: "refunded_replay" }))!;
+  assert(/fully refunded/.test(e.subject) && /cannot start a report payment/.test(e.subject));
+  assert(/Only this claim is affected/.test(e.text) && /pay again once Stripe removes the key/.test(e.text) && /fully refunded/.test(e.text));
+  assert(e.text.includes("dashboard.stripe.com/payments/pi_"), "links the refunded PaymentIntent");
+  assert(!/24[- ]?h/i.test(e.text) && !/24[- ]?h/i.test(e.subject), "no 24-hour claim");
+  assert(!/search the (stripe|dashboard)|stripe search for/i.test(e.text.replace("not a problem with Stripe search", "")), "does not point at Stripe search");
+  assert(/At most one of these emails is sent per claim per hour/.test(e.text));
+});
+
 Deno.test("paid-gate email: cancelled_replay names a stuck homeowner, asks a person to reach out, claims no 24-hour limit and no charge by that request", () => {
   const e = buildPaidGateAlertEmail(body({ kind: "cancelled_replay" }))!;
   assert(/cannot start a report payment/.test(e.subject));

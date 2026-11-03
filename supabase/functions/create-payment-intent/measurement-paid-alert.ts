@@ -3,11 +3,13 @@
  * non-usd-alert.ts: a platform_alerts_log row (the surface an operator watches) AND an admin email through notify-measurement-order
  * (the existing admin email path: same Mailgun account, same recipient, service-role bearer), in a second `alert` mode of that function.
  *
- * Three alerts:
+ * Four alerts:
  *   - measurement_paid_without_order: a claim has a succeeded (or processing) measurement payment and NO hover_orders row, so no
  *     report is queued for fulfilment. The refusal of a second purchase leaves that customer with a charge and nothing coming.
  *   - measurement_paid_check_unavailable: the gate could not tell whether the claim had paid (Stripe search or the orders read failed),
  *     so it refused to start a payment. If Stripe search is unusable for the account, no purchase can start until someone acts.
+ *   - measurement_paid_refunded_replay: the keyed create replayed a PaymentIntent that succeeded and was then FULLY REFUNDED outside the
+ *     rebate flow; its secret is never handed back. Only that claim is affected; it can pay again once Stripe removes the key.
  *   - measurement_paid_cancelled_replay: the keyed create replayed a PaymentIntent that is now cancelled, so this homeowner cannot start
  *     a payment at this price until Stripe drops the idempotency key (a person is stuck; someone should reach out).
  *
@@ -25,17 +27,19 @@
 
 /** The `alert` token of the body sent to notify-measurement-order. A parity test pins it to that function's copy. */
 export const PAID_GATE_ALERT_TOKEN = "measurement_paid_gate";
-export type PaidGateAlertKind = "paid_without_order" | "check_unavailable" | "cancelled_replay";
+export type PaidGateAlertKind = "paid_without_order" | "check_unavailable" | "cancelled_replay" | "refunded_replay";
 
 export const PAID_GATE_ALERT_TYPES: Record<PaidGateAlertKind, string> = {
   paid_without_order: "measurement_paid_without_order",
   check_unavailable: "measurement_paid_check_unavailable",
   cancelled_replay: "measurement_paid_cancelled_replay",
+  refunded_replay: "measurement_paid_refunded_replay",
 };
 export const PAID_GATE_ALERT_WINDOW_MS: Record<PaidGateAlertKind, number> = {
   paid_without_order: 24 * 60 * 60 * 1000,
   check_unavailable: 60 * 60 * 1000,
   cancelled_replay: 60 * 60 * 1000,
+  refunded_replay: 60 * 60 * 1000,
 };
 export const PAID_GATE_ALERT_SEND_TIMEOUT_MS = 5000;
 export const PAID_GATE_ALERT_DEADLINE_MS = 6000;
@@ -74,6 +78,8 @@ export function buildPaidGateAlertRow(
   const pi = a.paymentIntentId && PI_ID_RE.test(a.paymentIntentId) ? a.paymentIntentId : "unrecognized";
   const message = a.kind === "paid_without_order"
     ? `[gh-3356] claim ${a.claimId} has a succeeded or processing measurement payment (${pi}) and NO hover_orders row (${a.stage}). A second purchase was refused. If the charge is only minutes old the order step may still be in progress: check the hover_orders row before acting.`
+    : a.kind === "refunded_replay"
+    ? `[gh-3356] claim ${a.claimId}: the measurement PaymentIntent (${pi}) that the idempotency key returns was FULLY REFUNDED (${a.stage}), so no payment could be started for this homeowner. Only this claim is affected; nothing else is wrong and Stripe search is not involved. The homeowner can pay again once Stripe removes the key. Nothing was charged by this request.`
     : a.kind === "cancelled_replay"
     ? `[gh-3356] claim ${a.claimId}: the measurement PaymentIntent (${pi}) that the idempotency key returns is cancelled (${a.stage}), so the homeowner cannot start a payment at this price until Stripe drops the key. Nothing was charged by this request. A person should reach out.`
     : `[gh-3356] hover_measurement refused (${a.stage}): could not confirm whether claim ${a.claimId} has already paid (${a.reason ?? "lookup failed"}). Nothing was charged; the buyer was asked to retry.`;
