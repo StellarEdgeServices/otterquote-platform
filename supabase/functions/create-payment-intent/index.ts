@@ -49,6 +49,7 @@ import {
   type PaidVerdict,
   refusalFor,
   alertKindFor,
+  supersededPaidVerdict,
 } from "./measurement-paid-gate.ts";
 import {
   makePaidAlertDbDeps,
@@ -827,9 +828,9 @@ serve(async (req) => {
         // cancelSupersededIntents in measurement-paid-gate.ts for what is and is not cancelled.
         const supersede = await cancelSupersededIntents(paidGateDeps, supersedeCandidates, paymentIntentData.id);
         if (supersede.paid) {
-          const racePaid: PaidVerdict = { kind: "paid", reason: "processing", paymentIntentId: supersede.paid.id, hasOrderRow: true };
+          const racePaid: PaidVerdict = await supersededPaidVerdict(paidGateDeps, supersede.paid.id);
           const raceRefusal = refusalFor(racePaid)!;
-          console.error(`[${FUNCTION_NAME}] gh-3356 refusal (superseded intent paid mid-request): claim=${metadata.claim_id}`);
+          await logPaidGateRefusal(supabase, supabaseUrl, supabaseKey, racePaid, metadata.claim_id, "superseded intent paid");
           return new Response(JSON.stringify(raceRefusal.body),
             { status: raceRefusal.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }

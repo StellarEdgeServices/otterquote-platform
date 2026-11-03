@@ -16,6 +16,8 @@ import {
   checkClaimHasNotPaid,
   alertKindFor,
   CANCELLED_REPLAY_CODE,
+  evaluatePaymentIntent,
+  supersededPaidVerdict,
   HOVER_ORDER_SELECT,
   type HoverOrderRow,
   loadHoverOrders,
@@ -794,6 +796,51 @@ Deno.test("gh-3356 (3n) the replay of a LIVE intent (same tab reload, same price
   const a = await gatedSequence(w, CLAIM, { amount: 2263 });
   const again = await gatedSequence(w, CLAIM, { amount: 2263 });
   assertEquals([again.http, again.piId], [200, a.piId]);
+});
+
+// REVIEW at afc53f50, F1: a fully REFUNDED payment whose key is still held is replayed with a stale status; its secret must not be handed back.
+Deno.test("gh-3356 (3q) a replayed intent that SUCCEEDED and was fully refunded is NOT handed back (503 retry code, nothing created); it is not 'paid' for the gate, so only the replay re-read can stop it", async () => {
+  const w = paidWorld();
+  const a = await gatedSequence(w);
+  assertEquals(a.http, 200);
+  w.setStatus(a.piId!, "succeeded"); w.setRefunded(a.piId!, "true"); // paid, then refunded outside the rebate flow; the key is still held
+  const again = await gatedSequence(w);
+  assertEquals([again.http, again.code, again.clientSecretReturned, again.piId], [503, PAID_CHECK_UNAVAILABLE_CODE, false, null]);
+  // the pre-check saw "refunded" (not paid), which is why the pre-fix replay branch returned not_paid and handed the secret back
+  const sb = w.sb();
+  const pre = await checkClaimHasNotPaid({ fetchFn: w.fetchFn, apiBase: API, basicAuth: w.basicAuth, claimId: CLAIM, loadOrders: () => loadHoverOrders(sb, CLAIM), log: () => {} });
+  assertEquals(pre.kind, "not_paid");
+  const raw = await w.fetchFn(`${API}/payment_intents/${a.piId}?expand[]=latest_charge`, { method: "GET", headers: { Authorization: `Basic ${w.basicAuth}` } });
+  assertEquals(evaluatePaymentIntent(await raw.json()), "refunded", "NEGATIVE CONTROL: evaluatePaymentIntent alone calls it refunded (not paid), so without the status check the replay is handed back");
+  // a partial refund is paid (409), unchanged
+  const w2 = paidWorld();
+  const p = await gatedSequence(w2); w2.setStatus(p.piId!, "succeeded"); w2.setRefunded(p.piId!, "partial");
+  assertEquals((await gatedSequence(w2)).code, ALREADY_PAID_CODE);
+  // after Stripe removes the key a buyer whose payment was refunded outside the rebate flow can buy again
+  w.expireKeys();
+  assertEquals((await gatedSequence(w)).http, 200);
+});
+
+// REVIEW at afc53f50, F2: the supersede branch determined nothing about an order row and raised no alert.
+Deno.test("gh-3356 (3r) an older intent found paid while superseding: the order row is read for THAT intent (not assumed), so a paid homeowner with no order alerts on this refusal too", async () => {
+  const w = paidWorld();
+  const deps = (rows: Row[] | null, error: unknown = null) => ({ loadOrders: () => Promise.resolve({ rows: rows as HoverOrderRow[] | null, error }), log: () => {} });
+  const none = await supersededPaidVerdict(deps([]), "pi_older");
+  assertEquals([none.kind, (none as { hasOrderRow?: boolean }).hasOrderRow, alertKindFor(none)], ["paid", false, "paid_without_order"]);
+  const has = await supersededPaidVerdict(deps([orderFor("pi_older")]), "pi_older");
+  assertEquals([(has as { hasOrderRow?: boolean }).hasOrderRow, alertKindFor(has)], [true, null]);
+  const other = await supersededPaidVerdict(deps([orderFor("pi_other")]), "pi_older");
+  assertEquals(alertKindFor(other), "paid_without_order", "an order for a different intent is not an order for this one");
+  const upgrade = await supersededPaidVerdict(deps([orderFor("pi_older", { product_code: "roof_upgrade_detailed" })]), "pi_older");
+  assertEquals(alertKindFor(upgrade), "paid_without_order", "the contractor upgrade never counts");
+  assertEquals(alertKindFor(await supersededPaidVerdict(deps(null, new Error("db down")), "pi_older")), "paid_without_order", "an unreadable orders table alerts (bounded) rather than staying quiet");
+  assertEquals(alertKindFor(await supersededPaidVerdict({ loadOrders: () => Promise.reject(new Error("x")), log: () => {} }, "pi_older")), "paid_without_order");
+  void w;
+  // wiring in index.ts: the verdict comes from supersededPaidVerdict, the refusal is logged through logPaidGateRefusal, no hard-coded hasOrderRow: true
+  const branch = indexSource.slice(indexSource.indexOf("if (supersede.paid) {"), indexSource.indexOf("gh-2078c / D-330"));
+  assert(branch.includes("await supersededPaidVerdict(paidGateDeps, supersede.paid.id)") && branch.includes('logPaidGateRefusal(supabase, supabaseUrl, supabaseKey, racePaid, metadata.claim_id, "superseded intent paid")'));
+  assert(!/hasOrderRow:\s*true/.test(branch), "NEGATIVE CONTROL: the hard-coded hasOrderRow: true is gone (it is what silenced the alert)");
+  assert(/^[a-z_ ]{1,40}$/.test("superseded intent paid"), "the stage text passes the alert's stage validation");
 });
 
 // No grace period (the 300-second grace of d64225d6 left a paid homeowner with no order and no alert: 30 s and 299 s refused with 0 alert rows).

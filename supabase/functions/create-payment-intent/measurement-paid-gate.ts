@@ -78,7 +78,7 @@ export type PaidReason = "rebated_order" | "succeeded" | "processing" | "order_r
 export type PaidVerdict =
   /** `cancelable`: unpaid intents of this claim the search returned (candidates for cancelSupersededIntents). */
   | { kind: "not_paid"; cancelable?: string[] }
-  /** `hasOrderRow` false means "raise the paid-without-order alert"; verdicts found mid-race set it true to stay quiet. */
+  /** `hasOrderRow` false means "raise the paid-without-order alert". It is always determined from the claim's hover_orders rows (never assumed), including for an older intent found paid while superseding (supersededPaidVerdict). */
   | { kind: "paid"; reason: PaidReason; paymentIntentId: string | null; hasOrderRow: boolean }
   | { kind: "unavailable"; why: string }
   /**
@@ -306,6 +306,11 @@ export async function assertCreatedIntentNotPaid(
     // A -> B -> A inside the key's life (the key carries the amount): the create for A replays the first A intent, which the B request
     // superseded. Do not hand it back, and do not let the caller run its cancels (the only LIVE intent is the B one).
     if (r.body?.status === "canceled") return { kind: "cancelled_replay", paymentIntentId: created.id };
+    // A replayed intent that SUCCEEDED but is fully refunded (evaluatePaymentIntent: "refunded", not paid for the gate's purposes) must not
+    // be handed back either, whatever its refund state: its secret cannot be paid again, and the page's recovery of a succeeded intent
+    // would record an order for a refunded charge. Refuse with the retry path (503, "could not check ... try again"; the attempt charged
+    // nothing). A buyer whose payment was refunded outside the rebate flow can buy again once Stripe has removed the key.
+    if (r.body?.status === "succeeded") return { kind: "unavailable", why: REPLAY_REFUNDED_WHY };
     return { kind: "not_paid" };
   } catch (e) {
     log(`[create-payment-intent] gh-3356: replay re-read failed (${e instanceof Error ? e.name : typeof e})`);
@@ -323,6 +328,28 @@ export function alertKindFor(v: PaidVerdict): "paid_without_order" | "check_unav
   if (v.kind === "cancelled_replay") return "cancelled_replay"; // a homeowner is stuck: a person must know
   if (v.kind === "paid" && !v.hasOrderRow) return "paid_without_order";
   return null;
+}
+
+/** `why` of the unavailable verdict for a replayed intent that succeeded and was fully refunded (see assertCreatedIntentNotPaid). */
+export const REPLAY_REFUNDED_WHY = "replayed intent succeeded and was refunded";
+
+/**
+ * The verdict for an OLDER intent that cancelSupersededIntents found paid (a confirm in another tab won the race). Whether an order row
+ * exists for THAT intent is read from the claim's hover_orders rows, not assumed: a paid homeowner with no order row must alert on this
+ * refusal too (alertKindFor). If the orders read fails, hasOrderRow is false (fail toward telling the operator; the alert is bounded).
+ */
+export async function supersededPaidVerdict(
+  deps: Pick<PaidGateDeps, "loadOrders" | "log">,
+  paidIntentId: string,
+): Promise<PaidVerdict> {
+  let hasOrderRow = false;
+  try {
+    const { rows, error } = await deps.loadOrders();
+    if (!error && Array.isArray(rows)) hasOrderRow = rows.some((r) => r.homeowner_stripe_payment_intent_id === paidIntentId && r.product_code !== UPGRADE_PRODUCT_CODE);
+  } catch (_e) {
+    (deps.log ?? ((m: string) => console.error(m)))("[create-payment-intent] gh-3356: orders read for a superseded paid intent threw");
+  }
+  return { kind: "paid", reason: "processing", paymentIntentId: paidIntentId, hasOrderRow };
 }
 
 /** The refusal's HTTP shape. 409 for "already paid" (a conflict, not a malformed request), 503 for "could not check" and for a cancelled replay (its own code). */
