@@ -115,6 +115,7 @@
 
 'use client';
 
+import { trackSignupCompleted } from '@/lib/heycatch';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
@@ -1141,6 +1142,7 @@ export default function GetStartedPage() {
     // gh-1817: Meta Pixel Lead event — fires on both the Google OAuth and
     // password sign-up paths, matching the GA4 call sites above exactly.
     fbq('track', 'Lead');
+    trackSignupCompleted(method);
     // gh-1926: LinkedIn Insight Tag + Reddit Pixel Lead events — shipped
     // dark/gated (LinkedInInsightGate/RedditPixelGate never mount their
     // real loader until a follow-up config drop lands real IDs), same
