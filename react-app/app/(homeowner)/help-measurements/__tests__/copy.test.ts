@@ -32,7 +32,7 @@ const STATIC = {
   hoverCardTitle: 'Complete Property Report',
   hoverCardPrice: '$22.63 (rebated if you complete a job on the platform)',
   hoverCardDescription:
-    "We order an aerial roof measurement report of your roof — squares, pitch, facets, ridge, hip, valley and eave lengths. Nothing for you to do: no photos, no ladder, no appointment. It is enough for a contractor to bid most roofing jobs.",
+    "We order an aerial roof measurement report of your roof — total squares and the area at each pitch. Nothing for you to do: no photos, no ladder, no appointment. It carries no ridge, hip, valley or eave lengths; a contractor who needs those can order a fuller report.",
   hoverCardFeatures: [
     'Precise, professional-grade measurements',
     'Nothing for you to photograph or upload',
@@ -56,7 +56,7 @@ const STATIC = {
   // Hover flow (607-647)
   hoverSectionTitle: 'Complete Property Report',
   hoverSectionIntro:
-    'An aerial roof measurement report — squares, pitch, facets, and the ridge, hip, valley and eave lengths a contractor needs to bid accurately. We order it for you; there is nothing for you to photograph.',
+    'An aerial roof measurement report — total squares and the area at each pitch, which contractors use to bid. It carries no ridge, hip, valley or eave lengths; a contractor who needs those can order a fuller report. We order it for you; there is nothing for you to photograph.',
   rebateCallout:
     "How the $22.63 works: You pay $22.63 now for an aerial roof measurement report. When your project is completed with an Otter Quotes contractor, the full $22.63 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
   hoverStep1Title: 'Purchase Your Report',
