@@ -11,7 +11,13 @@
 //    the URL one second after init on ANY link with utm_campaign, not only its
 //    own short links, which would hide ad attribution from anything reading
 //    the URL later.
-import { analytics } from '/js/vendor/heycatch-sdk-0.8.3.js';
+//  - gh-3352: the SDK is imported DYNAMICALLY, after js/heycatch-privacy.js has
+//    removed the toolbar triggers. A static import would evaluate the SDK first,
+//    and the SDK reads location.hash when its module is evaluated, so a
+//    /faq#__posthog=... link would load in.heycatch.ai/static/toolbar.js before
+//    any code here could stop it. beforeSend strips query strings and fragments
+//    from every URL-bearing property (see the header of js/heycatch-privacy.js).
+import { makeBeforeSend, hideToolbarTrigger } from '/js/heycatch-privacy.js';
 
 var UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign'];
 var kept = {};
@@ -24,22 +30,31 @@ try {
   }
 } catch (e) { /* no UTMs to keep */ }
 
-analytics.init({
-  projectKey: 'hck_pk_EDCHqNmpbCRmDWZD6PCDsAEczZa0eWr6',
-  site: 'landing',
-  requestBatching: false,
-  install: { framework: 'web', agent: 'claude-code' }
-});
-
-if (Object.keys(kept).length) {
-  setTimeout(function () {
-    var now = new URLSearchParams(window.location.search);
-    var changed = false;
-    Object.keys(kept).forEach(function (k) {
-      if (now.get(k) === null) { now.set(k, kept[k]); changed = true; }
+var guard = hideToolbarTrigger();
+if (guard) {
+  import('/js/vendor/heycatch-sdk-0.8.3.js').then(function (sdk) {
+    sdk.analytics.init({
+      projectKey: 'hck_pk_EDCHqNmpbCRmDWZD6PCDsAEczZa0eWr6',
+      site: 'landing',
+      requestBatching: false,
+      install: { framework: 'web', agent: 'claude-code' },
+      beforeSend: makeBeforeSend()
     });
-    if (changed) {
-      window.history.replaceState(window.history.state, '', window.location.pathname + '?' + now.toString() + window.location.hash);
+    guard.restore();
+    if (Object.keys(kept).length) {
+      setTimeout(function () {
+        var now = new URLSearchParams(window.location.search);
+        var changed = false;
+        Object.keys(kept).forEach(function (k) {
+          if (now.get(k) === null) { now.set(k, kept[k]); changed = true; }
+        });
+        if (changed) {
+          window.history.replaceState(window.history.state, '', window.location.pathname + '?' + now.toString() + window.location.hash);
+        }
+      }, 1100);
     }
-  }, 1100);
+  }).catch(function (e) {
+    guard.restore();
+    try { console.error('[HeyCatch] not loaded', e && e.message); } catch (e2) { /* no console */ }
+  });
 }
