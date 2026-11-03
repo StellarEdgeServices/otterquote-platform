@@ -77,8 +77,28 @@ export type PaidVerdict =
   /** `cancelable`: unpaid intents of this claim the search returned (candidates for cancelSupersededIntents). */
   | { kind: "not_paid"; cancelable?: string[] }
   /** `hasOrderRow` false means "raise the paid-without-order alert"; verdicts found mid-race set it true to stay quiet. */
-  | { kind: "paid"; reason: PaidReason; paymentIntentId: string | null; hasOrderRow: boolean }
+  | { kind: "paid"; reason: PaidReason; paymentIntentId: string | null; hasOrderRow: boolean; recentlyPaid?: boolean }
   | { kind: "unavailable"; why: string };
+
+/** A charge younger than this may simply be waiting for its order row (the browser's second request is still running). */
+export const ORDER_GRACE_SECONDS = 300;
+
+/** `why` of the unavailable verdict for a replayed intent that has been cancelled (see assertCreatedIntentNotPaid). */
+export const REPLAY_CANCELED_WHY = "replayed intent was cancelled";
+
+/** Is the PaymentIntent's charge (when the charge was expanded) younger than ORDER_GRACE_SECONDS? An unreadable charge is not recent. */
+export function chargeIsRecent(pi: unknown, nowSeconds: number): boolean {
+  const charge = (pi as { latest_charge?: { created?: unknown } } | null)?.latest_charge;
+  return !!charge && typeof charge === "object" && typeof charge.created === "number" && nowSeconds - charge.created < ORDER_GRACE_SECONDS && nowSeconds - charge.created > -60;
+}
+
+/**
+ * Should a paid verdict raise the "paid with NO order row" alert? Not when an order row exists, and not when the charge is so recent
+ * that the order step may still be running (a reload while it runs must not send a false ACTION NEEDED).
+ */
+export function shouldAlertPaidWithoutOrder(v: PaidVerdict): boolean {
+  return v.kind === "paid" && !v.hasOrderRow && v.recentlyPaid !== true;
+}
 
 /** The columns create-payment-intent reads from hover_orders. A test checks each against the migrations: a wrong name here is a 503 for every buyer. */
 export const HOVER_ORDER_SELECT = "homeowner_stripe_payment_intent_id, product_code, rebate_paid_at";
@@ -107,6 +127,8 @@ export interface PaidGateDeps {
   /** hover_orders rows for the claim; `error` non-null means the read failed. */
   loadOrders: () => Promise<{ rows: HoverOrderRow[] | null; error: unknown }>;
   timeoutMs?: number;
+  /** Test seam for "now", in seconds. */
+  nowSeconds?: number;
   log?: (message: string) => void;
 }
 
@@ -188,6 +210,7 @@ export async function checkClaimHasNotPaid(deps: PaidGateDeps): Promise<PaidVerd
           reason: v === "paid_processing" ? "processing" : "succeeded",
           paymentIntentId: id,
           hasOrderRow: orderPiIds.has(id),
+          recentlyPaid: chargeIsRecent(pi, deps.nowSeconds ?? Math.floor(Date.now() / 1000)),
         };
       }
       if ((pi.status === "requires_payment_method" || pi.status === "requires_confirmation") &&
@@ -292,8 +315,12 @@ export async function assertCreatedIntentNotPaid(
     if (!r.response.ok) return { kind: "unavailable", why: `Stripe retrieve answered HTTP ${r.response.status}` };
     const v = evaluatePaymentIntent(r.body);
     if (v === "paid_succeeded" || v === "paid_processing") {
-      return { kind: "paid", reason: v === "paid_processing" ? "processing" : "succeeded", paymentIntentId: created.id, hasOrderRow: false };
+      return { kind: "paid", reason: v === "paid_processing" ? "processing" : "succeeded", paymentIntentId: created.id, hasOrderRow: false, recentlyPaid: chargeIsRecent(r.body, nowSeconds) };
     }
+    // A replayed intent that has been CANCELLED is dead: Stripe will refuse the buyer's card on it. This happens when the price goes
+    // A -> B -> A inside 24 hours (the key carries the amount): the create for A replays the first A intent, which the B request
+    // superseded. Do not hand it back, and do not let the caller run its cancels (the only LIVE intent is the B one).
+    if (r.body?.status === "canceled") return { kind: "unavailable", why: REPLAY_CANCELED_WHY };
     return { kind: "not_paid" };
   } catch (e) {
     log(`[create-payment-intent] gh-3356: replay re-read failed (${e instanceof Error ? e.name : typeof e})`);

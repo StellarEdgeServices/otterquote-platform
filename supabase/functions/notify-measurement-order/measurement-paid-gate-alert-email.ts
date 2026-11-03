@@ -26,6 +26,24 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
 
+/**
+ * What notify-measurement-order logs, and writes to platform_alerts_log, when the Mailgun send of an alert email fails. Fixed text only
+ * (the send error can echo request data). The text names the alert that failed: the paid-claim alerts must not read as a non-USD problem.
+ */
+export function alertSendFailureText(isPaidGateAlert: boolean): { log: string; rowMessage: string; rowWriteFailedLog: string } {
+  return isPaidGateAlert
+    ? {
+      log: "measurement paid-claim alert email send failed",
+      rowMessage: "measurement paid-claim alert email could not be sent; see the measurement_paid_without_order or measurement_paid_check_unavailable alert row",
+      rowWriteFailedLog: "measurement paid-claim alert failure row could not be written",
+    }
+    : {
+      log: "non-usd alert email send failed",
+      rowMessage: "non-USD payment alert email could not be sent; see the non_usd_payment_rejected alert row",
+      rowWriteFailedLog: "non-usd alert failure row could not be written",
+    };
+}
+
 /** Returns null unless `body` is this alert with a known kind. */
 export function buildPaidGateAlertEmail(body: unknown): PaidGateAlertEmail | null {
   if (!isRecord(body) || body.alert !== PAID_GATE_ALERT_TOKEN) return null;

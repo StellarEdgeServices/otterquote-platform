@@ -14,6 +14,10 @@ import {
   assertCreatedIntentNotPaid,
   cancelSupersededIntents,
   checkClaimHasNotPaid,
+  chargeIsRecent,
+  ORDER_GRACE_SECONDS,
+  REPLAY_CANCELED_WHY,
+  shouldAlertPaidWithoutOrder,
   HOVER_ORDER_SELECT,
   type HoverOrderRow,
   loadHoverOrders,
@@ -272,7 +276,7 @@ const OTHER_CLAIM = "c0ffee00-0000-4000-8000-000000000002";
 const SCHEMA = { hover_orders: await tableColumns("hover_orders"), platform_alerts_log: await tableColumns("platform_alerts_log") };
 
 type SearchMode = "ok" | "http500" | "throw" | "badshape" | "has_more" | "stall_body";
-type CancelMode = "ok" | "http500" | "throw" | "confirm_wins";
+type CancelMode = "ok" | "http500" | "throw" | "confirm_wins" | "processing_wins";
 function paidWorld(opts: { basicAuth?: string } = {}) {
   const base = fakeStripe();
   const basicAuth = opts.basicAuth ?? "QUJD";
@@ -280,6 +284,10 @@ function paidWorld(opts: { basicAuth?: string } = {}) {
   const alerts: Row[] = [];
   const state = {
     ordersError: null as unknown, searchMode: "ok" as SearchMode, searchLag: false, retrieveFails: false, cancelMode: "ok" as CancelMode,
+    /** how old (seconds) the expanded latest_charge is; a day by default, so it is "not recent" unless a test says otherwise */
+    chargeAgeSeconds: 86400,
+    /** intents the search returns whatever the query says (a search that over-matches) */
+    searchInjected: [] as string[],
     /** what search REPORTS for an intent, overriding its real status (a stale index) */
     staleSearch: {} as Record<string, string>,
     gets: [] as { url: string; auth: string | null }[],
@@ -299,7 +307,7 @@ function paidWorld(opts: { basicAuth?: string } = {}) {
       status: reportedStatus ?? rec["status"] ?? "requires_payment_method",
       amount: Number(rec["amount"]),
       metadata: { claim_id: rec["metadata[claim_id]"], type: rec["metadata[type]"] },
-      latest_charge: expanded ? { id: `ch_${id}`, refunded: rec["refunded"] === "true" } : `ch_${id}`,
+      latest_charge: expanded ? { id: `ch_${id}`, refunded: rec["refunded"] === "true", created: Math.floor(Date.now() / 1000) - state.chargeAgeSeconds } : `ch_${id}`,
     };
   };
   const fetchFn = (async (url: string, init: RequestInit) => {
@@ -321,7 +329,8 @@ function paidWorld(opts: { basicAuth?: string } = {}) {
         const ex = strictExpand(u, "data.latest_charge");
         if (ex instanceof Response) return ex;
         const expanded = ex.includes("data.latest_charge");
-        const data = state.searchLag ? [] : [...base.intents.keys()].map((id) => view(id, expanded, state.staleSearch[id])).filter((p) => p.metadata.claim_id === m[1] && p.metadata.type === "hover_measurement");
+        const matching = state.searchLag ? [] : [...base.intents.keys()].map((id) => view(id, expanded, state.staleSearch[id])).filter((p) => p.metadata.claim_id === m[1] && p.metadata.type === "hover_measurement");
+        const data = [...matching, ...state.searchInjected.filter((id) => !matching.some((p) => p.id === id)).map((id) => view(id, expanded, state.staleSearch[id]))];
         if (state.searchMode === "stall_body") {
           // headers arrive, then the body never completes unless the caller aborts (like a real stalled socket)
           const body = new ReadableStream({ start(c) { (init.signal as AbortSignal | undefined)?.addEventListener("abort", () => c.error(new DOMException("aborted", "AbortError"))); } });
@@ -346,6 +355,7 @@ function paidWorld(opts: { basicAuth?: string } = {}) {
       const rec = base.intents.get(cm[1]);
       if (!rec) return json(404, { error: { code: "resource_missing" } });
       if (state.cancelMode === "confirm_wins") rec["status"] = "succeeded"; // the other tab's confirm lands first
+      if (state.cancelMode === "processing_wins") rec["status"] = "processing"; // ... or its confirm is still in flight (a bank debit, say)
       const st = rec["status"] ?? "requires_payment_method";
       if (["requires_payment_method", "requires_confirmation", "requires_action"].includes(st)) { rec["status"] = "canceled"; return json(200, { id: cm[1], status: "canceled" }); }
       return json(400, { error: { type: "invalid_request_error", code: "payment_intent_unexpected_state", payment_intent: { id: cm[1], status: st } } });
@@ -375,7 +385,7 @@ function paidWorld(opts: { basicAuth?: string } = {}) {
 type World = ReturnType<typeof paidWorld>;
 interface Answer { http: number; code?: string; piId: string | null; clientSecretReturned: boolean; cancelled?: string[] }
 
-async function gatedSequence(w: World, claim = CLAIM, o: { failOpen?: boolean; cancel?: boolean; deps?: Partial<Parameters<typeof checkClaimHasNotPaid>[0]> } = {}): Promise<Answer> {
+async function gatedSequence(w: World, claim = CLAIM, o: { failOpen?: boolean; cancel?: boolean; amount?: number; deps?: Partial<Parameters<typeof checkClaimHasNotPaid>[0]> } = {}): Promise<Answer> {
   const metadata = { claim_id: claim, type: "hover_measurement", variant: "e" };
   const sb = w.sb();
   const deps = {
@@ -387,10 +397,10 @@ async function gatedSequence(w: World, claim = CLAIM, o: { failOpen?: boolean; c
   const refusal = refusalFor(before);
   if (refusal && !(o.failOpen && before.kind === "unavailable")) return { http: refusal.status, code: refusal.body.code, piId: null, clientSecretReturned: false };
   const candidates = before.kind === "not_paid" ? before.cancelable ?? [] : [];
-  const form = buildStandardCreateForm({ amount: 2263, currency: "usd", description: "Complete Property Report", metadata });
+  const form = buildStandardCreateForm({ amount: o.amount ?? 2263, currency: "usd", description: "Complete Property Report", metadata });
   const res = await w.fetchFn(`${API}/payment_intents`, {
     method: "POST",
-    headers: { Authorization: `Basic ${w.basicAuth}`, "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": standardIdempotencyKey(metadata, 2263) },
+    headers: { Authorization: `Basic ${w.basicAuth}`, "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": standardIdempotencyKey(metadata, o.amount ?? 2263) },
     body: form.toString(),
   });
   if (!res.ok) return { http: res.status, piId: null, clientSecretReturned: false };
@@ -719,6 +729,108 @@ Deno.test("gh-3356 (3j) only this claim's intents are cancelled, and at most MAX
   assertEquals(olds.filter((id) => w.statusOf(id) === "canceled").length, MAX_CANCELS);
 });
 
+Deno.test("gh-3356 (3k) a cancel the Stripe API answers with 'processing' (the other tab's confirm is in flight): treated as paid, 409, nothing handed back", async () => {
+  const w = paidWorld();
+  const p0 = await mainSequence(w);
+  w.expireKeys();
+  w.state.cancelMode = "processing_wins";
+  const r = await gatedSequence(w);
+  assertEquals([r.http, r.code, r.clientSecretReturned], [409, ALREADY_PAID_CODE, false]);
+  assertEquals(w.statusOf(p0.piId!), "processing");
+  // negative control: the same race with a cancel answer of an unrelated state ('canceled' already) is NOT paid
+  const w2 = paidWorld();
+  await mainSequence(w2);
+  w2.expireKeys();
+  const orig = w2.fetchFn;
+  w2.state.cancelMode = "ok";
+  const answersWithOtherState = ((url: string, init: RequestInit) =>
+    /\/cancel$/.test(url) ? Promise.resolve(new Response(JSON.stringify({ error: { code: "payment_intent_unexpected_state", payment_intent: { id: "pi_1", status: "canceled" } } }), { status: 400 })) : orig(url, init)) as typeof fetch;
+  const r2 = await gatedSequence(w2, CLAIM, { deps: { fetchFn: answersWithOtherState } });
+  assertEquals(r2.http, 200, "an error answer whose intent is 'canceled' is not a payment");
+});
+
+Deno.test("gh-3356 (3l) metadata scope: an intent the search returns that belongs to ANOTHER claim, or to another type, is never cancelled (the paid decision is deliberately NOT scoped: an over-matching search can only make the gate refuse, never allow)", async () => {
+  const w = paidWorld();
+  const otherClaim = await mainSequence(w, OTHER_CLAIM);
+  // a different type on the same claim, made through the fake's base create
+  const res = await w.fetchFn(`${API}/payment_intents`, { method: "POST", headers: { Authorization: `Basic ${w.basicAuth}`, "Idempotency-Key": "other-type-key" }, body: buildStandardCreateForm({ amount: 5000, currency: "usd", description: "x", metadata: { claim_id: CLAIM, type: "something_else" } }).toString() });
+  const otherType = (await res.json()).id as string;
+  w.state.searchInjected = [otherClaim.piId!, otherType];
+  const r = await gatedSequence(w);
+  assertEquals(r.http, 200);
+  assertEquals(w.state.cancels.length, 0, "nothing foreign was cancelled");
+  assertEquals(w.statusOf(otherType), "requires_payment_method");
+});
+
+Deno.test("gh-3356 (3m) PRICE A -> B -> A inside 24 h: the replayed A intent was cancelled by the B request, so it is NOT handed back (503 retry code), no cancel runs, no alert, and the live B intent is untouched", async () => {
+  const w = paidWorld();
+  const a = await gatedSequence(w, CLAIM, { amount: 2263 });
+  const b = await gatedSequence(w, CLAIM, { amount: 2500 });
+  assertEquals([a.http, b.http], [200, 200]);
+  assertEquals(w.statusOf(a.piId!), "canceled", "the B request superseded the A intent");
+  const cancelsBefore = w.state.cancels.length;
+  const again = await gatedSequence(w, CLAIM, { amount: 2263 });
+  assertEquals([again.http, again.code, again.clientSecretReturned, again.piId], [503, PAID_CHECK_UNAVAILABLE_CODE, false, null]);
+  assertEquals(w.state.cancels.length, cancelsBefore, "no cancel ran on this request");
+  assertEquals(w.statusOf(b.piId!), "requires_payment_method", "the live intent survives");
+  // when the verdict is the replay-cancelled one, index.ts raises no operator alert (it is expected, not a broken lookup)
+  const verdict = await assertCreatedIntentNotPaid(
+    { fetchFn: w.fetchFn, apiBase: API, basicAuth: w.basicAuth, log: () => {} },
+    { id: a.piId!, created: Math.floor(Date.now() / 1000) }, new Response("{}", { headers: { "Idempotent-Replayed": "true" } }));
+  assertEquals(verdict, { kind: "unavailable", why: REPLAY_CANCELED_WHY });
+  // why a body-only check cannot catch this: the replayed create body is the FIRST response, whose status is still requires_payment_method
+  const metadata = { claim_id: CLAIM, type: "hover_measurement", variant: "e" };
+  const raw = await w.fetchFn(`${API}/payment_intents`, { method: "POST", headers: { Authorization: `Basic ${w.basicAuth}`, "Idempotency-Key": standardIdempotencyKey(metadata, 2263) }, body: buildStandardCreateForm({ amount: 2263, currency: "usd", description: "x", metadata }).toString() });
+  assertEquals([raw.headers.get("Idempotent-Replayed"), (await raw.json()).status], ["true", "requires_payment_method"], "the replay looks live; only a re-read shows it is cancelled");
+  // the customer can pay again once the cancelled intent is out of the way: after 24 h the key expires and A gets a fresh intent
+  w.expireKeys();
+  const later = await gatedSequence(w, CLAIM, { amount: 2263 });
+  assertEquals(later.http, 200);
+  assert(later.piId !== a.piId && later.piId !== b.piId);
+});
+
+Deno.test("gh-3356 (3n) the replay of a LIVE intent (same tab reload, same price) is still handed back: the canceled refusal fires only for a cancelled intent", async () => {
+  const w = paidWorld();
+  const a = await gatedSequence(w, CLAIM, { amount: 2263 });
+  const again = await gatedSequence(w, CLAIM, { amount: 2263 });
+  assertEquals([again.http, again.piId], [200, a.piId]);
+});
+
+// F7: the "paid, no order row" alert is for a payment nobody recorded. A charge this young may just be waiting for the order step.
+Deno.test("gh-3356 (3o) a charge younger than 5 minutes with no order row yet is paid (refused) but is NOT an alert; an older one is", async () => {
+  const w = paidWorld();
+  const p0 = await gatedSequence(w);
+  w.setStatus(p0.piId!, "succeeded");
+  const run = async () => {
+    const sb = w.sb();
+    return await checkClaimHasNotPaid({ fetchFn: w.fetchFn, apiBase: API, basicAuth: w.basicAuth, claimId: CLAIM, loadOrders: () => loadHoverOrders(sb, CLAIM), log: () => {} });
+  };
+  w.state.chargeAgeSeconds = 30;
+  const young = await run();
+  assertEquals([young.kind, (young as { recentlyPaid?: boolean }).recentlyPaid, shouldAlertPaidWithoutOrder(young)], ["paid", true, false]);
+  w.state.chargeAgeSeconds = ORDER_GRACE_SECONDS + 60;
+  const old = await run();
+  assertEquals([old.kind, (old as { recentlyPaid?: boolean }).recentlyPaid, shouldAlertPaidWithoutOrder(old)], ["paid", false, true]);
+  // the grace is only about the alert: with an order row there is never one, and the money verdict is the same either way
+  w.orders.push(orderFor(p0.piId));
+  assertEquals(shouldAlertPaidWithoutOrder(await run()), false);
+});
+
+Deno.test("gh-3356 (3p) the replay re-read carries the charge age too, so a reload while the order step runs does not alert; an unreadable or future charge time is NOT treated as recent", async () => {
+  const w = paidWorld();
+  const p0 = await gatedSequence(w);
+  w.setStatus(p0.piId!, "succeeded");
+  const deps = { fetchFn: w.fetchFn, apiBase: API, basicAuth: w.basicAuth, claimId: CLAIM, loadOrders: () => Promise.resolve({ rows: [], error: null }), log: () => {} };
+  const replayRes = new Response("{}", { headers: { "Idempotent-Replayed": "true" } });
+  w.state.chargeAgeSeconds = 20;
+  assertEquals(shouldAlertPaidWithoutOrder(await assertCreatedIntentNotPaid(deps, { id: p0.piId!, created: 1 }, replayRes)), false);
+  w.state.chargeAgeSeconds = 7200;
+  assertEquals(shouldAlertPaidWithoutOrder(await assertCreatedIntentNotPaid(deps, { id: p0.piId!, created: 1 }, replayRes)), true);
+  assertEquals(chargeIsRecent({ latest_charge: "ch_bare" }, 1000), false, "an unexpanded charge is not recent");
+  assertEquals(chargeIsRecent({ latest_charge: { created: 5000 } }, 1000), false, "a charge time far in the future is not trusted");
+  assertEquals(chargeIsRecent(null, 1000), false);
+});
+
 // ── 4. a Stripe or database lookup failure fails CLOSED with a retry code ────────────────────────────────────────────────────
 Deno.test("gh-3356 (4) every lookup failure (search 500, network, bad shape, more than a page, stalled body, orders read error, retrieve 500) refuses with the retry code and creates nothing", async () => {
   const cases: [string, (w: World) => void][] = [
@@ -873,6 +985,14 @@ Deno.test("gh-3356 (6b) index.ts: a refusal returns the verdict's own status and
   assert(/paidRefusal\.status/.test(indexSource) && /replayRefusal\.status/.test(indexSource));
   assert(/if \(supersede\.paid\) \{[\s\S]*?raceRefusal\.status/.test(indexSource), "supersede.paid returns the refusal");
   assert(/cancelSupersededIntents\(paidGateDeps, supersedeCandidates, paymentIntentData\.id\)/.test(indexSource), "the intent being handed back is the one kept");
+});
+
+Deno.test("gh-3356 (6d) index.ts: the cancel of older intents is CALLED, with the candidates the pre-check found, after the replay re-read, and its 'paid' answer refuses (deleting the call, or feeding it nothing, fails here)", () => {
+  assert(indexSource.includes("const supersede = await cancelSupersededIntents(paidGateDeps, supersedeCandidates, paymentIntentData.id);"), "the cancel call exists in index.ts");
+  assert(/if \(paidVerdict\.kind === "not_paid"\) supersedeCandidates = paidVerdict\.cancelable \?\? \[\];/.test(indexSource), "its candidates come from the pre-check verdict");
+  assert(indexSource.includes("let supersedeCandidates: string[] = [];"));
+  // the index.ts alert wiring: a replayed-cancelled intent raises no alert, and the paid-without-order alert goes through the grace rule
+  assert(indexSource.includes("verdict.why !== REPLAY_CANCELED_WHY") && indexSource.includes("shouldAlertPaidWithoutOrder(verdict)"));
 });
 
 Deno.test("gh-3356 (6c) index.ts: the gate and the cancel use THE create's Stripe key (basicAuth, built from keyChoice.key), never another source", () => {

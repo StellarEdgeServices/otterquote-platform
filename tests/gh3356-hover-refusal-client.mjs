@@ -6,6 +6,7 @@
  *       check unavailable -> button kept (re-enabled) and a retry message.
  *   C3  purchaseHover() checks `refused` BEFORE it reads client_secret, and nothing on the refusal path mounts Stripe elements.
  *   C4  the claims.hover_paid / hover_order_id / hover_status columns are not written by any code, so the page does not gate on them.
+ *   C5  the REAL confirmHoverPayment(): a cancelled / already-paid PaymentIntent gets the plain reload sentence, Pay stays disabled.
  * Negative control: main's services.js (the catch that returns only the placeholder) fails C1.
  * Run: node tests/gh3356-hover-refusal-client.mjs   (exit 0 = all pass)
  */
@@ -116,6 +117,49 @@ if (purchaseSrc) {
 // C4
 const gated = /hover_paid|hover_order_id|hover_status/.test(purchaseSrc || '') || /currentClaim\??\.hover_(paid|order_id|status)/.test(html);
 ok(!gated, 'C4 the page does not gate the Purchase button on claims.hover_paid / hover_order_id / hover_status (nothing writes them)');
+
+// C5 (F2) the REAL confirmHoverPayment(): a cancelled or already-paid PaymentIntent gets the plain reload sentence, Pay stays disabled,
+// no order is recorded; an ordinary card decline still shows Stripe's own message and re-enables Pay.
+const STALE_TEXT = 'This payment page is out of date. Please reload the page to continue. If you have a question about a charge, contact support.';
+const staleVar = /var HOVER_STALE_INTENT_MESSAGE = '[^']*';/.exec(html)?.[0];
+const staleFn = extractFn(html, 'hoverStaleIntentMessage');
+const confirmSrc = extractFn(html, 'confirmHoverPayment');
+ok(!!staleVar && !!staleFn && !!confirmSrc, 'C5 help-measurements.html defines the stale-intent message, its helper and confirmHoverPayment');
+async function runConfirm(src, stripeError) {
+  const els = { payHoverBtn: { disabled: false, innerHTML: 'Pay $22.63' }, hoverCardErrors: { textContent: '' } };
+  const orders = [];
+  const ctx = {
+    document: { getElementById: (id) => els[id] || (els[id] = { style: {}, textContent: '', innerHTML: '' }) },
+    hoverStripe: { confirmCardPayment: async () => ({ error: stripeError }) },
+    hoverCardElement: {}, hoverClientSecret: 'pi_old_secret_x',
+    Services: { createMeasurementOrder: async (a) => { orders.push(a); return {}; } },
+    currentClaim: { id: 'c1' }, MEASUREMENT_PRODUCT_CODE: 'roof_basic', console: { warn() {}, log() {}, error() {} },
+    showMessage() {},
+  };
+  vm.createContext(ctx);
+  vm.runInContext(staleVar + '\n' + staleFn + '\n' + src + '\n;globalThis.__go = confirmHoverPayment;', ctx);
+  await ctx.__go();
+  return { btn: els.payHoverBtn, text: els.hoverCardErrors.textContent, orders };
+}
+if (staleVar && staleFn && confirmSrc) {
+  const cancelled = { type: 'invalid_request_error', code: 'payment_intent_unexpected_state', message: 'You cannot confirm this PaymentIntent because it has a status of canceled.', payment_intent: { status: 'canceled' } };
+  const alreadyPaid = { type: 'invalid_request_error', code: 'payment_intent_unexpected_state', message: 'status of succeeded.', payment_intent: { status: 'succeeded' } };
+  for (const [label, err] of [['cancelled', cancelled], ['already paid', alreadyPaid]]) {
+    const r5 = await runConfirm(confirmSrc, err);
+    ok(r5.text === STALE_TEXT, 'C5 ' + label + ' intent: exactly the reload sentence is shown (not Stripe\'s raw text)');
+    ok(r5.btn.disabled === true, 'C5 ' + label + ' intent: Pay stays disabled against the dead secret');
+    ok(r5.orders.length === 0, 'C5 ' + label + ' intent: no order is recorded');
+  }
+  ok(!/charged|not charge|refund|\$/i.test(STALE_TEXT.replace('a charge', '')), 'C5 the sentence makes no claim that a card was or was not charged, and no price');
+  ok(html.includes(STALE_TEXT), 'C5 the sentence is in help-measurements.html verbatim');
+  const decline = await runConfirm(confirmSrc, { type: 'card_error', code: 'card_declined', message: 'Your card was declined.' });
+  ok(decline.text === 'Your card was declined.' && decline.btn.disabled === false, 'C5 an ordinary card decline still shows Stripe\'s message and lets the buyer try another card');
+  // negative control: the pre-fix branch (no stale handling) re-enables Pay on a cancelled intent and shows Stripe's raw text
+  const preFixConfirm = confirmSrc.replace(/var staleMessage = hoverStaleIntentMessage\(stripeError\);\s*if \(staleMessage\) \{[\s\S]*?return;\s*\}/, '');
+  ok(preFixConfirm !== confirmSrc, 'NC5 setup: the pre-fix confirmHoverPayment is the shipped one with the stale branch removed');
+  const old5 = await runConfirm(preFixConfirm, cancelled);
+  ok(old5.btn.disabled === false && old5.text !== STALE_TEXT, 'NC5: without the fix Pay is re-enabled against the dead secret, so C5 fails against it');
+}
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

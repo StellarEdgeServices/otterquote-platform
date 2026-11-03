@@ -934,6 +934,18 @@
             showMessage('We could not check your payment history just now, so we did not start a payment. This attempt did not charge your card. Please try again in a few minutes.', 'error');
         }
 
+        // gh-3356 (F2): Stripe answers confirmCardPayment with payment_intent_unexpected_state when the PaymentIntent this page holds is no
+        // longer payable: it was cancelled (a newer tab or a price change replaced it) or it has already been paid. The page must not hand
+        // that dead client_secret back to the buyer for another try. The sentence makes no claim about a charge: in the cancelled case there
+        // is none, in the already-paid case there is one, and the page cannot tell which from here.
+        var HOVER_STALE_INTENT_MESSAGE = 'This payment page is out of date. Please reload the page to continue. If you have a question about a charge, contact support.';
+        function hoverStaleIntentMessage(stripeError) {
+            if (!stripeError) return null;
+            var status = stripeError.payment_intent && stripeError.payment_intent.status;
+            if (stripeError.code === 'payment_intent_unexpected_state' || status === 'canceled') return HOVER_STALE_INTENT_MESSAGE;
+            return null;
+        }
+
         // Step 1 — Create PaymentIntent and show card form (no charge yet)
         async function purchaseHover() {
             const btn = document.getElementById('purchaseHoverBtn');
@@ -1081,6 +1093,13 @@
                 );
 
                 if (stripeError) {
+                    // gh-3356 (F2): a cancelled or already-paid PaymentIntent: plain reload message, Pay stays DISABLED (the secret is dead)
+                    var staleMessage = hoverStaleIntentMessage(stripeError);
+                    if (staleMessage) {
+                        document.getElementById('hoverCardErrors').textContent = staleMessage;
+                        payBtn.innerHTML = originalText;
+                        return;
+                    }
                     // Stripe declined or card error — surface to user, don't create order
                     document.getElementById('hoverCardErrors').textContent = stripeError.message;
                     payBtn.disabled = false;

@@ -43,7 +43,27 @@ Deno.test("paid-gate email: hostile field values print as 'unrecognized' and nev
 Deno.test("paid-gate email: wired into notify-measurement-order's alert mode, after the service-role check and before the order_id requirement", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   const iBearer = src.indexOf("bearerToken !== serviceRoleKey");
-  const iAlert = src.indexOf("buildNonUsdAlertEmail(body) ?? buildPaidGateAlertEmail(body)");
+  const iAlert = src.indexOf("nonUsdEmail ?? buildPaidGateAlertEmail(body)");
   const iOrder = src.indexOf("const orderId = body?.order_id");
   assert(iBearer > -1 && iAlert > iBearer && iOrder > iAlert);
+});
+
+// ── F5: a failed paid-claim alert email must not be logged as a non-USD problem ──────────────────────────────────────────────────
+Deno.test("paid-gate email: the send-failure text for the paid-claim alerts names the paid-claim alert, never the non-USD row; the non-USD text is unchanged", async () => {
+  const { alertSendFailureText } = await import("./measurement-paid-gate-alert-email.ts");
+  const paid = alertSendFailureText(true);
+  for (const t of [paid.log, paid.rowMessage, paid.rowWriteFailedLog]) assert(!/non-?usd/i.test(t), `no non-USD wording: ${t}`);
+  assert(/measurement_paid_without_order/.test(paid.rowMessage) && /measurement_paid_check_unavailable/.test(paid.rowMessage));
+  const nonUsd = alertSendFailureText(false);
+  assertEquals(nonUsd.log, "non-usd alert email send failed");
+  assertEquals(nonUsd.rowMessage, "non-USD payment alert email could not be sent; see the non_usd_payment_rejected alert row");
+});
+
+Deno.test("notify-measurement-order index.ts: the alert-send failure path takes its text from alertSendFailureText for the matched alert (no hard-coded non-USD string left)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url).pathname);
+  assert(src.includes("const nonUsdEmail = buildNonUsdAlertEmail(body);") && src.includes("alertSendFailureText(!nonUsdEmail)"));
+  const failurePath = src.slice(src.indexOf("} catch (_alertSendErr) {"), src.indexOf("return json({ success: true, alert: true }"));
+  assert(failurePath.length > 100);
+  assert(!/non-?usd/i.test(failurePath.replace(/_alertSendErr/g, "")), "the failure path has no non-USD literal");
+  assert(failurePath.includes("failureText.log") && failurePath.includes("failureText.rowMessage") && failurePath.includes("failureText.rowWriteFailedLog"));
 });

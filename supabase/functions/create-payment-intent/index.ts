@@ -48,6 +48,8 @@ import {
   loadHoverOrders,
   type PaidVerdict,
   refusalFor,
+  REPLAY_CANCELED_WHY,
+  shouldAlertPaidWithoutOrder,
 } from "./measurement-paid-gate.ts";
 import {
   makePaidAlertDbDeps,
@@ -101,8 +103,9 @@ async function logPaidGateRefusal(
 ): Promise<void> {
   console.error(`[${FUNCTION_NAME}] gh-3356 refusal (${stage}): ${verdict.kind}${verdict.kind === "paid" ? ` ${verdict.reason}` : ""} claim=${claimId}`);
   let kind: "paid_without_order" | "check_unavailable" | null = null;
-  if (verdict.kind === "unavailable") kind = "check_unavailable";
-  else if (verdict.kind === "paid" && !verdict.hasOrderRow) kind = "paid_without_order";
+  // A replayed intent that was cancelled (price A -> B -> A inside 24 h) is expected, not a broken lookup: no operator alert for it.
+  if (verdict.kind === "unavailable" && verdict.why !== REPLAY_CANCELED_WHY) kind = "check_unavailable";
+  else if (shouldAlertPaidWithoutOrder(verdict)) kind = "paid_without_order";
   if (!kind) return;
   await raisePaidGateAlert(
     {
