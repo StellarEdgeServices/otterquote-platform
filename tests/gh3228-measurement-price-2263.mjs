@@ -114,7 +114,7 @@ ok(/payment_intents search/.test(pre) && /amount:1500/.test(pre) && /hover_order
 ok(!/T-1h|T - 1h/.test(pre), 'S3b: negative control -- the old +-1h sweep window is gone');
 ok(/status:'succeeded'/.test(pre) && /measurement_order/.test(pre) && /hover_measurement/.test(pre), 'S3b: the sweep covers both PaymentIntent types (measurement_order and legacy hover_measurement)');
 const idem = read('supabase/functions/create-payment-intent/standard-create-form.ts');
-ok(/\$\{metadata\.type\}-\$\{metadata\.claim_id\}-\$\{String\(amount\)\}/.test(idem) && /standardIdempotencyKey\(metadata, amount\)/.test(read('supabase/functions/create-payment-intent/index.ts')), 'S3b: the create-payment-intent idempotency key includes the amount (a reload after the change gets a fresh 2263 intent)');
+ok(/\$\{metadata\.type\}-\$\{metadata\.claim_id\}-\$\{String\(amount\)\}/.test(idem) && /standardIdempotencyKey\(metadata, amount(, description)?\)/.test(read('supabase/functions/create-payment-intent/index.ts')), 'S3b: the create-payment-intent idempotency key includes the amount (a reload after the change gets a fresh 2263 intent)');
 ok(!/return `\$\{metadata\.type\}-\$\{metadata\.claim_id\}`;/.test(idem), 'S3b: negative control -- the per-claim-only key is gone');
 const rd = read('supabase/migrations_drafts/README.md');
 ok(/measurement fee \$15 -> \$22\.63\): 3 files here \(forward, rollback, pre-flight\)/.test(rd), 'S3b: the README section counts the three gh3228 files');

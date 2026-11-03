@@ -713,7 +713,7 @@ serve(async (req) => {
       // standard-create-form.ts): Stripe refuses a reused key with a different body, so nothing per-request may ever be in
       // this create. The router variant is attached AFTER it, below.
       const form = buildStandardCreateForm({ amount, currency, description, metadata, contractor_id });
-      const idempotencyKey = standardIdempotencyKey(metadata, amount);
+      const idempotencyKey = standardIdempotencyKey(metadata, amount, description);
       // gh-1886: bounded timeout. This call has no surrounding try/catch, so a timeout (like any
       // other thrown error here) propagates to the handler's outer catch(error) below, which already
       // maps it to the existing 500 JSON error-response path -- no new response shape, no change to

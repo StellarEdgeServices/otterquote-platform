@@ -62,7 +62,7 @@ export const HOVER_AMOUNT_DOLLARS = 22.63 as const;
 /** D-205 deliverable: 3 = Complete (universal for full-replacement). help-measurements.html:988. */
 export const HOVER_DELIVERABLE_TYPE_ID = 3 as const;
 /** PaymentIntent description (help-measurements.html:898). */
-export const HOVER_PAYMENT_DESCRIPTION = 'Complete Property Report' as const;
+export const HOVER_PAYMENT_DESCRIPTION = 'Aerial Roof Report' as const;
 /** request_type sent to send-adjuster-email for this page (help-measurements.html:1067). */
 export const MEASUREMENTS_REQUEST_TYPE = 'measurements' as const;
 

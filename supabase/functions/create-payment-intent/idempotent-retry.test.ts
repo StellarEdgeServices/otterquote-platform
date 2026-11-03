@@ -52,12 +52,12 @@ const API = "https://api.stripe.com/v1";
 const CLAIM = "c0ffee00-0000-4000-8000-000000000001";
 
 /** The sequence index.ts runs for a hover_measurement: build the create, send it under the per-claim key, then attach the variant. */
-async function createAndAttach(fetchFn: typeof fetch, variant: unknown, logs: string[] = [], optOut = false): Promise<{ status: number; piId: string | null; attach: string | null }> {
+async function createAndAttach(fetchFn: typeof fetch, variant: unknown, logs: string[] = [], optOut = false, description = "Aerial Roof Report"): Promise<{ status: number; piId: string | null; attach: string | null }> {
   const metadata = { claim_id: CLAIM, type: "hover_measurement", variant }; // the client sends its variant inside metadata
-  const form = buildStandardCreateForm({ amount: 1500, currency: "usd", description: "Complete Property Report", metadata });
+  const form = buildStandardCreateForm({ amount: 1500, currency: "usd", description, metadata });
   const res = await fetchFn(`${API}/payment_intents`, {
     method: "POST",
-    headers: { Authorization: "Basic QUJD", "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": standardIdempotencyKey(metadata, 1500) },
+    headers: { Authorization: "Basic QUJD", "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": standardIdempotencyKey(metadata, 1500, description) },
     body: form.toString(),
   });
   if (!res.ok) return { status: res.status, piId: null, attach: null };
@@ -87,11 +87,11 @@ Deno.test("NEGATIVE CONTROL: put the variant inside the keyed create (the pre-fi
   const { fetchFn } = fakeStripe();
   async function preFix(variant: string) {
     const metadata = { claim_id: CLAIM, type: "hover_measurement" };
-    const form = buildStandardCreateForm({ amount: 1500, currency: "usd", description: "Complete Property Report", metadata });
+    const form = buildStandardCreateForm({ amount: 1500, currency: "usd", description: "Aerial Roof Report", metadata });
     form.append("metadata[variant]", variant); // what #2110 did before this fix
     return await fetchFn(`${API}/payment_intents`, {
       method: "POST",
-      headers: { Authorization: "Basic QUJD", "Idempotency-Key": standardIdempotencyKey(metadata, 1500) },
+      headers: { Authorization: "Basic QUJD", "Idempotency-Key": standardIdempotencyKey(metadata, 1500, "Aerial Roof Report") },
       body: form.toString(),
     });
   }
@@ -104,12 +104,44 @@ Deno.test("NEGATIVE CONTROL: put the variant inside the keyed create (the pre-fi
 Deno.test("the deploy scenario: a claim whose PaymentIntent was created BEFORE this change (no variant) can still be retried after it", async () => {
   const { fetchFn } = fakeStripe();
   const metadata = { claim_id: CLAIM, type: "hover_measurement" };
-  const old = buildStandardCreateForm({ amount: 1500, currency: "usd", description: "Complete Property Report", metadata });
-  const headers = { Authorization: "Basic QUJD", "Idempotency-Key": standardIdempotencyKey(metadata, 1500) };
+  const old = buildStandardCreateForm({ amount: 1500, currency: "usd", description: "Aerial Roof Report", metadata });
+  const headers = { Authorization: "Basic QUJD", "Idempotency-Key": standardIdempotencyKey(metadata, 1500, "Aerial Roof Report") };
   const createdBefore = await fetchFn(`${API}/payment_intents`, { method: "POST", headers, body: old.toString() });
   assertEquals(createdBefore.status, 200);
   const after = await createAndAttach(fetchFn, "e"); // the first retry after the deploy
   assertEquals(after.status, 200, "no 400 for a claim that predates the change");
+});
+
+// gh-3350: the description deploy. A checkout opened before the deploy created an intent under "Complete Property Report";
+// the same claim, same amount, retried within 24 hours after the deploy sends "Aerial Roof Report".
+Deno.test("gh-3350: a checkout opened before the description change and retried after it gets a fresh intent, not a 400", async () => {
+  const { fetchFn, intents } = fakeStripe();
+  const before = await createAndAttach(fetchFn, "e", [], false, "Complete Property Report"); // opened before the deploy
+  const after = await createAndAttach(fetchFn, "e", [], false, "Aerial Roof Report"); // retried after it
+  assertEquals(before.status, 200);
+  assertEquals(after.status, 200, "no 400 idempotency_error");
+  assert(before.piId !== after.piId, "a new intent is created under the new description");
+  assertEquals(intents.get(after.piId!)!["description"], "Aerial Roof Report");
+  const again = await createAndAttach(fetchFn, "f", [], false, "Aerial Roof Report");
+  assertEquals(again.piId, after.piId, "a further retry with the same description still reuses that intent");
+  const stale = await createAndAttach(fetchFn, "e", [], false, "Complete Property Report"); // a cached old page
+  assertEquals(stale.status, 200, "an old cached page still retries without a 400");
+  assertEquals(stale.piId, before.piId);
+});
+
+Deno.test("gh-3350: NEGATIVE CONTROL -- the key without the description (the pre-fix key) is refused with a 400 after the description changes", async () => {
+  const { fetchFn } = fakeStripe();
+  const metadata = { claim_id: CLAIM, type: "hover_measurement" };
+  const preFixKey = `${metadata.type}-${metadata.claim_id}-1500`; // gh-3228's key: type, claim, amount
+  const send = (description: string) => fetchFn(`${API}/payment_intents`, {
+    method: "POST",
+    headers: { Authorization: "Basic QUJD", "Idempotency-Key": preFixKey },
+    body: buildStandardCreateForm({ amount: 1500, currency: "usd", description, metadata }).toString(),
+  });
+  assertEquals((await send("Complete Property Report")).status, 200);
+  const retry = await send("Aerial Roof Report");
+  assertEquals(retry.status, 400);
+  assertEquals((await retry.json()).error.type, "idempotency_error");
 });
 
 Deno.test("a failed or stalled update never changes the create's outcome (the buyer still gets the PaymentIntent)", async () => {

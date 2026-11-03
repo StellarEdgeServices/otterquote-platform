@@ -21,17 +21,21 @@ export interface StandardCreateInput {
   contractor_id?: unknown;
 }
 
+/**
+ * The description the create request carries. measurement_upgrade: description is server-enforced, never the
+ * client-sent value — D-312/#1414 scrubbed vendor names from every customer-facing string and this must never regress that.
+ * Shared by the body and the idempotency key so the two cannot disagree about it (gh-3350).
+ */
+export function standardChargeDescription(metadata: { type: string }, description?: string | null): string {
+  return metadata.type === "measurement_upgrade" ? UPGRADE_CHARGE_DESCRIPTION : (description || "");
+}
+
 export function buildStandardCreateForm(i: StandardCreateInput): URLSearchParams {
   const { amount, currency, description, metadata, contractor_id } = i;
   const form = new URLSearchParams();
   form.append("amount", String(amount));
   form.append("currency", currency);
-  // measurement_upgrade: description is server-enforced, never the
-  // client-sent value — D-312/#1414 scrubbed vendor names from every
-  // customer-facing string and this must never regress that.
-  const chargeDescription = metadata.type === "measurement_upgrade"
-    ? UPGRADE_CHARGE_DESCRIPTION
-    : (description || "");
+  const chargeDescription = standardChargeDescription(metadata, description);
   form.append("description", chargeDescription);
   form.append("metadata[claim_id]", metadata.claim_id);
   form.append("metadata[type]", metadata.type);
@@ -55,7 +59,28 @@ export function buildStandardCreateForm(i: StandardCreateInput): URLSearchParams
  * stale intent (or, with the new amount in the body, a 400 idempotency_error and a 500 from this function for 24 hours).
  * With the amount in the key, a reload after a price change creates a fresh intent at the new price, and the same amount still
  * reuses the same intent. The key is therefore a function of exactly the body's own inputs.
+ *
+ * gh-3350: the description is part of the key for the same reason the amount is. The body carries it, so a checkout opened
+ * before a description change (here "Complete Property Report" -> "Aerial Roof Report") and retried after the deploy within
+ * Stripe's 24-hour window would send the same key with a different body: HTTP 400 `idempotency_error` and a 500 from this
+ * function. With the description in the key, that retry creates a fresh intent under the new description (an old intent that a
+ * page already open still holds can still be confirmed; one nobody confirms is left to expire unpaid), and the same description still reuses the same intent. `description` is the
+ * client-sent value; the key uses the description the body will actually carry (standardChargeDescription).
  */
-export function standardIdempotencyKey(metadata: { type: string; claim_id: string }, amount: unknown): string {
-  return `${metadata.type}-${metadata.claim_id}-${String(amount)}`;
+export function standardIdempotencyKey(
+  metadata: { type: string; claim_id: string },
+  amount: unknown,
+  description?: string | null,
+): string {
+  return `${metadata.type}-${metadata.claim_id}-${String(amount)}-d${descriptionDigest(standardChargeDescription(metadata, description))}`;
+}
+
+/** 32-bit FNV-1a of the description as 8 hex digits: short, stable, synchronous, and Stripe keys allow 255 characters. */
+function descriptionDigest(text: string): string {
+  let h = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(text)) {
+    h ^= byte;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
 }

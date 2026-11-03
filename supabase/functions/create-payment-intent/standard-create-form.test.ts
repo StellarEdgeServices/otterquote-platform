@@ -3,7 +3,7 @@
 // DIFFERENTIAL test: a literal copy of main's inline construction (the reference) is compared with the module across a
 // matrix of inputs, and a per-request field (the variant) is proven to have no influence.
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
+import { buildStandardCreateForm, standardChargeDescription, standardIdempotencyKey } from "./standard-create-form.ts";
 import { UPGRADE_CHARGE_DESCRIPTION, VENDOR_CREDIT_EXPECTED_CENTS } from "./measurement-upgrade-gate.ts";
 
 // REFERENCE: main's create-payment-intent/index.ts standard flow, copied verbatim (2d1ab1ed / 7982f54f).
@@ -26,6 +26,8 @@ function mainForm(amount: unknown, currency: string, description: string | null 
   return form.toString();
 }
 
+const DESC = "Aerial Roof Report";
+const KEY_DIGEST_AERIAL = "45cb1b27"; // FNV-1a 32 of "Aerial Roof Report", pinned so the key format cannot change silently
 const TYPES = ["hover_measurement", "deductible_escrow", "measurement_upgrade"];
 const DESCRIPTIONS: (string | null | undefined)[] = ["Complete Property Report", "", null, undefined, "Deductible escrow"];
 const AMOUNTS: unknown[] = [1500, 2500, 5500, 0, "1500"];
@@ -60,8 +62,8 @@ Deno.test("the create's parameter set is exactly main's", () => {
   assertEquals(keys("measurement_upgrade"), ["amount", "currency", "description", "metadata[claim_id]", "metadata[type]", "metadata[contractor_id]", "metadata[vendor_credit_expected_cents]", "automatic_payment_methods[enabled]"]);
 });
 
-Deno.test("the idempotency key is one key per claim, type and amount", () => {
-  assertEquals(standardIdempotencyKey({ type: "hover_measurement", claim_id: "abc" }, 2263), "hover_measurement-abc-2263");
+Deno.test("the idempotency key is one key per claim, type, amount and description", () => {
+  assertEquals(standardIdempotencyKey({ type: "hover_measurement", claim_id: "abc" }, 2263, "Aerial Roof Report"), "hover_measurement-abc-2263-d" + KEY_DIGEST_AERIAL);
 });
 
 // gh-3228: Stripe pins an Idempotency-Key to its first body for 24 hours. The key must change with the amount (a reload after the
@@ -69,7 +71,7 @@ Deno.test("the idempotency key is one key per claim, type and amount", () => {
 Deno.test("gh-3228: the key changes with the amount", () => {
   const md = { type: "hover_measurement", claim_id: "c0ffee00-0000-4000-8000-000000000001" };
   assert(standardIdempotencyKey(md, 1500) !== standardIdempotencyKey(md, 2263));
-  assertEquals(standardIdempotencyKey(md, 2263), "hover_measurement-c0ffee00-0000-4000-8000-000000000001-2263");
+  assertEquals(standardIdempotencyKey(md, 2263, DESC), "hover_measurement-c0ffee00-0000-4000-8000-000000000001-2263-d" + KEY_DIGEST_AERIAL);
 });
 
 Deno.test("gh-3228: NEGATIVE CONTROL -- the key is stable for the same amount (a retry still reuses the same intent), and still differs by claim and type", () => {
@@ -85,6 +87,34 @@ Deno.test("gh-3228: the key is a function of the body's own inputs: same key imp
   const body = (a: number) => buildStandardCreateForm({ amount: a, currency: "usd", description: "Complete Property Report", metadata: md }).toString();
   for (const a of [1500, 2263]) assertEquals(body(a).includes(`amount=${a}&`), true);
   assert(body(1500) !== body(2263) && standardIdempotencyKey(md, 1500) !== standardIdempotencyKey(md, 2263));
+});
+
+// gh-3350: the description is part of the key, because the body carries it. A key that ignores it is handed a different body
+// after a description change and Stripe answers 400 idempotency_error (then this function 500s) for up to 24 hours.
+Deno.test("gh-3350: the key changes with the description the body carries, and is stable for the same one", () => {
+  const md = { type: "hover_measurement", claim_id: "c1" };
+  assert(standardIdempotencyKey(md, 2263, "Complete Property Report") !== standardIdempotencyKey(md, 2263, "Aerial Roof Report"));
+  assertEquals(standardIdempotencyKey(md, 2263, "Aerial Roof Report"), standardIdempotencyKey({ ...md }, 2263, "Aerial Roof Report"));
+  assertEquals(standardIdempotencyKey(md, 2263, null), standardIdempotencyKey(md, 2263, ""));
+  assertEquals(standardIdempotencyKey(md, 2263, undefined), standardIdempotencyKey(md, 2263, ""));
+  assert(standardIdempotencyKey(md, 2263, DESC).length < 255);
+});
+
+Deno.test("gh-3350: for every type, same key implies same body (matrix over type, description, amount)", () => {
+  const seen = new Map<string, string>();
+  for (const type of TYPES) for (const d of DESCRIPTIONS) for (const a of [1500, 2263]) {
+    const metadata = { type, claim_id: "c1" };
+    const key = standardIdempotencyKey(metadata, a, d);
+    const body = buildStandardCreateForm({ amount: a, currency: "usd", description: d, metadata, contractor_id: "ct-1" }).toString();
+    if (seen.has(key)) assertEquals(seen.get(key), body, `key ${key} was reused with a different body`);
+    seen.set(key, body);
+  }
+});
+
+Deno.test("gh-3350: measurement_upgrade ignores the client description in the body, so it must in the key too", () => {
+  const md = { type: "measurement_upgrade", claim_id: "c1" };
+  assertEquals(standardIdempotencyKey(md, 5500, "anything"), standardIdempotencyKey(md, 5500, "something else"));
+  assertEquals(standardChargeDescription(md, "anything"), UPGRADE_CHARGE_DESCRIPTION);
 });
 
 // -- index.ts uses them, and only them -------------------------------------------------------------
