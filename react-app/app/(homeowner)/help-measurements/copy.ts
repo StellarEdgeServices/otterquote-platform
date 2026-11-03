@@ -50,7 +50,7 @@ export const MEASUREMENTS_COPY = {
   // ── Path A card — Hover, PAID (help-measurements.html:572-583) ──
   hoverBadge: 'Recommended for Most',
   hoverIcon: '📐',
-  hoverCardTitle: 'Aerial Roof Report',
+  hoverCardTitle: 'Complete Property Report',
   // D-291 price line (repriced from D-205's $150) — LOCKED, exact.
   hoverCardPrice: '$22.63 (rebated if you complete a job on the platform)',
   hoverCardDescription:
