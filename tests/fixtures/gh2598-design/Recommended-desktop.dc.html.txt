@@ -47,6 +47,7 @@ a{color:#0D1B2E}a:hover{color:#B45309}
 <div style="font-size: 15px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #C7D2DE">Roofing · Siding · Gutters</div>
 <h1 style="margin: 0; font-size: 58px; line-height: 1.05; font-weight: 800; color: #FFFFFF">Make contractors compete for your job.</h1>
 <p style="margin: 0; max-width: 520px; font-size: 20px; line-height: 1.5; color: #C7D2DE">Get multiple bids without a salesperson in your home. Compare them online, next to reviews and licensing information.</p>
+<p>Already filed your claim and have your adjuster's estimate? Your bids are free. Contractors compete for the job.</p>
 <div style="display: flex; flex-direction: column; gap: 8px">
 <label for="zip-top" style="font-size: 15px; font-weight: 600; color: #FFFFFF">ZIP code of the home</label>
 <div style="display: flex; flex-wrap: wrap; gap: 12px">
@@ -55,6 +56,7 @@ a{color:#0D1B2E}a:hover{color:#B45309}
 </div>
 </div>
 <div style="font-size: 16px; color: #C7D2DE">No salesperson in your home. No obligation to hire.</div>
+<p>Free with your insurance estimate. Need measurements? As little as $22.63 up front for professional measurements, refunded in full if your job is completed through the platform; conditions apply. Switch to another Otter Quotes contractor at no cost up to 3 days before your start date.</p>
 </div>
 
 <div style="flex: 1 1 460px; min-width: 0; background: #FFFFFF; color: #14212E; border-radius: 10px; padding: 28px; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px">
@@ -183,8 +185,9 @@ a{color:#0D1B2E}a:hover{color:#B45309}
 <div style="max-width: 1160px; margin: 0 auto; padding: 72px 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px">
 <div style="background: #FFFFFF; border: 1px solid #DCE2E8; border-radius: 10px; padding: 32px; display: flex; flex-direction: column; gap: 14px">
 <h2 style="margin: 0; font-size: 30px; font-weight: 800; color: #0D1B2E">How we're paid</h2>
-<p style="margin: 0; font-size: 18px; line-height: 1.55; color: #3D4F60">Contractors pay Otter Quotes a fee on the bid you accept.</p>
+<p style="margin: 0; font-size: 18px; line-height: 1.55; color: #3D4F60">Contractors pay Otter Quotes a fee, currently 5%, on the bid you accept.</p>
 <p style="margin: 0; font-size: 18px; line-height: 1.55; color: #3D4F60">You pay as little as $22.63 up front for professional measurements that contractors use to bid. If you complete a job on the platform, that money is refunded to you. There is no cost if you provide a copy of your insurance estimate.</p>
+<p>See what everything costs and when the fee is refunded</p>
 </div>
 <div style="background: #FFFFFF; border: 1px solid #DCE2E8; border-radius: 10px; padding: 32px; display: flex; flex-direction: column; gap: 14px">
 <h2 style="margin: 0; font-size: 30px; font-weight: 800; color: #0D1B2E">What we do not do</h2>

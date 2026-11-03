@@ -1186,6 +1186,7 @@ const Nav = {
             ` : `
               <a href="/how-it-works.html">How It Works</a>
               ${!this._isInspectorTrack() ? '<a href="/faq.html">FAQ</a>' : ''}
+              ${!this._isInspectorTrack() ? '<a href="/pricing.html">Pricing</a>' : ''}
               <a href="/start.html${this._attributionQuery()}">Get Started</a>
               <a href="/blog/">Blog</a>
               <a href="/guides/">Guides</a>

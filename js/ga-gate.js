@@ -449,6 +449,7 @@
     '/partner-other',
     '/partner-re',
     '/privacy',
+    '/pricing',
     '/project-info-acv',
     '/project-info-cash',
     '/project-info-rcv',
