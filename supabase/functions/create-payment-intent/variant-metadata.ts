@@ -12,6 +12,13 @@
  * The client confirms the card only after it has received `client_secret` from this function, so the metadata is in place
  * before `payment_intent.succeeded` fires and the server-side Meta CAPI Purchase (PR #2107) reads it.
  *
+ * gh-3350: the same non-keyed update also carries the PaymentIntent `description` when the caller passes one (hover_measurement:
+ * "Aerial Roof Report"). The keyed create keeps sending the old description, so the key and the keyed body do not change and a
+ * reload still gets the same PaymentIntent back; the visible name is set here, before the client confirms. On an idempotent
+ * REPLAY the create returns the first response, whose status can be stale, so this update can reach a PaymentIntent that has
+ * already succeeded: it then only rewrites the description and the variant metadata (it never touches amount, status or charge),
+ * and if Stripe refuses it the 4xx is swallowed below and the buyer is unaffected.
+ *
  * NEVER FAILS THE PAYMENT: any failure is swallowed and logged with a fixed message plus the HTTP status, never Stripe's body,
  * the URL, or the error's text.
  */
@@ -40,6 +47,8 @@ export interface AttachArgs {
    */
   status: string;
   variant: unknown;
+  /** gh-3350: when set, sent as `description` in the same non-keyed update (never in the keyed create). */
+  description?: string;
   /**
    * gh-2107 (REVIEW: FAIL 5806828503 F2 on #2134): true when THIS request carried a Global Privacy Control signal. It is written to
    * the PaymentIntent as metadata[ad_sharing_opt_out]=1 so the Stripe webhook can skip the Meta CAPI Purchase even if the profile
@@ -61,6 +70,7 @@ export async function attachVariantMetadata(a: AttachArgs): Promise<AttachOutcom
     const body = new URLSearchParams();
     body.append("metadata[variant]", sanitizeVariantForMetadata(a.variant));
     if (a.optOut === true) body.append("metadata[ad_sharing_opt_out]", "1");
+    if (typeof a.description === "string" && a.description !== "") body.append("description", a.description);
     const res = await a.fetchFn(`${a.apiBase}/payment_intents/${a.paymentIntentId}`, {
       method: "POST",
       headers: { Authorization: `Basic ${a.basicAuth}`, "Content-Type": "application/x-www-form-urlencoded" },
