@@ -14,21 +14,25 @@
 //     boot's UTM restore puts back. Everything else is dropped: claim_id, email,
 //     code, token, gclid and fbclid (the SDK already masks those two), job_type,
 //     v and anything unknown. The fragment is always dropped.
-//   Referrers ($referrer, $initial_referrer, $session_entry_referrer),
+//   Referrers (any key ending in "referrer": $referrer, $initial_referrer,
+//     $session_entry_referrer): ORIGIN ONLY, no path, query or fragment ("$direct"
+//     is kept; a value that is not an http(s) URL is dropped). The legal read of
+//     #3360 found that a referrer path names signed-in pages and can carry a claim id.
 //   $external_click_url and link targets in autocapture ($elements attr__href,
-//     href, $elements_chain): origin + path only. No query, no fragment.
+//     href, $elements_chain): origin + path, no query, no fragment.
 //     mailto:, tel:, sms:, javascript: and data: values are cut to the scheme.
 //   Left alone: $pathname, $host, $referring_domain, $prev_pageview_pathname,
 //     $session_entry_pathname and the other path or host-only properties. They
-//     carry no query. The path of a referrer ("/bids.html") still reaches
-//     HeyCatch; dropping it too is a one-line change in scrubUrl.
-//   Any other string property whose name ends in url, referrer, href, action or
-//     src is treated as a referrer, so a property the SDK adds later fails closed.
+//     carry no query.
+//   Any other string property whose name ends in url, href, action or src is
+//     scrubbed like a link target, and one ending in referrer like a referrer, so a
+//     property the SDK adds later fails closed.
 
 var KEEP_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
 var MAX_KEPT_VALUE = 100;
 var CURRENT_URL_KEYS = ['$current_url', '$initial_current_url', '$session_entry_url', '$session_entry_current_url'];
-var URL_KEY = /(url|referrer|href|action|src)$/i;
+var URL_KEY = /(url|href|action|src)$/i;
+var REFERRER_KEY = /referrer$/i;
 var OPAQUE_SCHEME = /^(mailto|tel|sms|javascript|data|blob):/i;
 var MAX_DEPTH = 10;
 
@@ -63,6 +67,21 @@ export function scrubUrl(value, keepAttribution) {
   return kept.length ? base + '?' + kept.join('&') : base;
 }
 
+// Referrer properties: ORIGIN ONLY. A referrer path can name a signed-in page ("/bids.html") or carry a
+// claim id ("/contractor/bid/<claimId>"), so no path, query or fragment is sent. "$direct" passes through;
+// a value that is not an http(s) URL is dropped (undefined).
+export function scrubReferrer(value) {
+  if (typeof value !== 'string') return value;
+  if (value === '$direct') return value;
+  try {
+    var u = new URL(value);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return undefined;
+    return u.origin;
+  } catch (e) {
+    return undefined;
+  }
+}
+
 function scrubChain(chain) {
   return chain.replace(/((?:attr__)?(?:href|action|src)=")((?:[^"\\]|\\.)*)"/g, function (all, head, val) {
     return head + scrubUrl(val, false) + '"';
@@ -78,6 +97,7 @@ function walk(v, key, depth) {
   if (depth > MAX_DEPTH) return undefined;
   if (typeof v === 'string') {
     if (key === '$elements_chain') return scrubChain(v);
+    if (key && REFERRER_KEY.test(key)) return scrubReferrer(v);
     if (key && URL_KEY.test(key)) return scrubUrl(v, CURRENT_URL_KEYS.indexOf(key) !== -1);
     return v;
   }
@@ -86,7 +106,10 @@ function walk(v, key, depth) {
   }
   if (v && typeof v === 'object' && isPlain(v)) {
     var out = {};
-    Object.keys(v).forEach(function (k) { out[k] = walk(v[k], k, depth + 1); });
+    Object.keys(v).forEach(function (k) {
+      var r = walk(v[k], k, depth + 1);
+      if (r !== undefined) out[k] = r;
+    });
     return out;
   }
   return v;

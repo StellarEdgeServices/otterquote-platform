@@ -48,8 +48,8 @@ describe("HeyCatch loader (gh-3352)", () => {
     expect(seen.hashAtInit).toBe("");
     expect(window.location.hash).toBe(`#__posthog=${trigger}`);
     const beforeSend = seen.config!.beforeSend as (e: unknown) => { properties: Record<string, string> } | null;
-    const out = beforeSend({ event: "$pageview", properties: { $referrer: "https://app.otterquote.com/bids?claim_id=CLAIMREF999", $current_url: "https://app.otterquote.com/get-started?utm_source=meta&claim_id=C" } });
-    expect(out!.properties.$referrer).toBe("https://app.otterquote.com/bids");
+    const out = beforeSend({ event: "$pageview", properties: { $referrer: "https://app.otterquote.com/contractor/bid/CLAIMPATH777?claim_id=CLAIMREF999", $current_url: "https://app.otterquote.com/get-started?utm_source=meta&claim_id=C" } });
+    expect(out!.properties.$referrer).toBe("https://app.otterquote.com");
     expect(out!.properties.$current_url).toBe("https://app.otterquote.com/get-started?utm_source=meta");
     window.history.replaceState(null, "", "/dashboard");
     expect(beforeSend({ event: "$pageview", properties: {} })).toBeNull();

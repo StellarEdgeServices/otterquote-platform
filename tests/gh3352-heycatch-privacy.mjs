@@ -24,6 +24,7 @@ function check(name, ok, detail) {
 const js = await import(pathToFileURL(path.join(root, 'js/heycatch-privacy.js')).href);
 const ts = await import(pathToFileURL(path.join(root, 'react-app/app/lib/heycatch-privacy.ts')).href);
 
+const CLAIM_IN_PATH = 'https://app.otterquote.com/contractor/bid/CLAIMPATH777?x=1#y';
 const SIGNED_IN = 'https://app.otterquote.com/bids?claim_id=CLAIMREF999&email=pat%40example.com#sec';
 const event = () => ({
   uuid: 'u1', event: '$autocapture',
@@ -44,11 +45,16 @@ for (const [label, m] of [['js', js], ['ts', ts]]) {
   const out = m.scrubEvent(event());
   const text = JSON.stringify(out);
   check(`${label}: no claim id, email, code or fragment survives`, !/CLAIMREF999|claim_id|pat%40|a%40b|code=ABC|frag=1|bid=9|gclid/.test(text), text);
-  check(`${label}: referrer properties are origin + path`, out.properties.$referrer === 'https://app.otterquote.com/bids' && out.properties.$session_entry_referrer === 'https://app.otterquote.com/bids' && out.$set_once.$initial_referrer === 'https://app.otterquote.com/bids');
+  check(`${label}: referrer properties are origin only`, out.properties.$referrer === 'https://app.otterquote.com' && out.properties.$session_entry_referrer === 'https://app.otterquote.com' && out.$set_once.$initial_referrer === 'https://app.otterquote.com');
+  const pathEv = { event: '$pageview', properties: { $referrer: CLAIM_IN_PATH, $session_entry_referrer: CLAIM_IN_PATH, $initial_referrer: '$direct', $bad_referrer: 'nonsense' }, $set_once: { $initial_referrer: CLAIM_IN_PATH } };
+  const pe = m.scrubEvent(pathEv);
+  check(`${label}: no signed-in path or claim id in the path survives (/contractor/bid/CLAIMPATH777)`, !/CLAIMPATH777|\/contractor|\/bids/.test(JSON.stringify(pe)), JSON.stringify(pe));
+  check(`${label}: $direct kept, unparseable referrer dropped`, pe.properties.$initial_referrer === '$direct' && !('$bad_referrer' in pe.properties));
   check(`${label}: current URL keeps UTMs only`, out.properties.$current_url === 'https://otterquote.com/faq?utm_source=meta&utm_medium=paid&utm_campaign=hail' && out.$set_once.$initial_current_url === 'https://otterquote.com/faq?utm_source=meta');
   check(`${label}: paths and hosts untouched`, out.properties.$pathname === '/faq' && out.properties.$host === 'otterquote.com' && out.properties.$referring_domain === 'app.otterquote.com');
   check(`${label}: never throws`, m.makeBeforeSend()(undefined) === null && m.makeBeforeSend(() => { throw new Error('x'); })(event()) === null);
 }
+for (const u of [SIGNED_IN, CLAIM_IN_PATH, '$direct', 'nonsense', '/rel/path', 'android-app://x/', 'http://127.0.0.1:3000/a?b']) check(`js and ts agree on scrubReferrer(${u.slice(0, 40)})`, js.scrubReferrer(u) === ts.scrubReferrer(u));
 check('js and ts agree on every case', JSON.stringify(js.scrubEvent(event())) === JSON.stringify(ts.scrubEvent(event())));
 for (const u of ['https://a.test/p?claim_id=1&utm_source=meta#f', '/p?utm_term=a%40b.com', 'mailto:a@b.com?x=1', '$direct', 'https://a.test/p?utm_source=%E0%A4%A', 'https://a.test/p?utm_content=' + 'x'.repeat(101)]) {
   for (const keep of [true, false]) check(`js and ts agree on scrubUrl(${u.slice(0, 40)}, ${keep})`, js.scrubUrl(u, keep) === ts.scrubUrl(u, keep));
@@ -76,7 +82,7 @@ check('SDK toolbar still keyed on _postHogToolbarParams', sdkText.includes('eu="
 // (d) negative controls
 const staticBoot = "import { analytics } from '/js/vendor/heycatch-sdk-0.8.3.js';\nimport { hideToolbarTrigger } from '/js/heycatch-privacy.js';\nhideToolbarTrigger();";
 check('negative control: a static SDK import is detected', /^\s*import\s[^;]*vendor\/heycatch-sdk/m.test(staticBoot));
-const unscrubbed = { event: 'x', properties: { $referrer: SIGNED_IN } };
+const unscrubbed = { event: 'x', properties: { $referrer: CLAIM_IN_PATH.replace('/contractor/bid/CLAIMPATH777','/CLAIMREF999') } };
 check('negative control: an unscrubbed event would carry the claim id', JSON.stringify(unscrubbed).includes('CLAIMREF999') && !JSON.stringify(js.scrubEvent(unscrubbed)).includes('CLAIMREF999'));
 
 if (failed) { console.log(`\n${failed} check(s) failed`); process.exit(1); }

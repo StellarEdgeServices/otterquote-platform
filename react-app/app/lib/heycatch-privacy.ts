@@ -14,7 +14,8 @@
 const KEEP_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
 const MAX_KEPT_VALUE = 100;
 const CURRENT_URL_KEYS = ["$current_url", "$initial_current_url", "$session_entry_url", "$session_entry_current_url"];
-const URL_KEY = /(url|referrer|href|action|src)$/i;
+const URL_KEY = /(url|href|action|src)$/i;
+const REFERRER_KEY = /referrer$/i;
 const OPAQUE_SCHEME = /^(mailto|tel|sms|javascript|data|blob):/i;
 const MAX_DEPTH = 10;
 
@@ -49,6 +50,22 @@ export function scrubUrl<T>(value: T, keepAttribution: boolean): T | string {
   return kept.length ? `${base}?${kept.join("&")}` : base;
 }
 
+/**
+ * Referrer properties: ORIGIN ONLY. A referrer path can name a signed-in page ("/bids.html") or carry a
+ * claim id ("/contractor/bid/<claimId>"). "$direct" passes through; a value that is not an http(s) URL is dropped.
+ */
+export function scrubReferrer<T>(value: T): T | string | undefined {
+  if (typeof value !== "string") return value;
+  if (value === "$direct") return value;
+  try {
+    const u = new URL(value);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return undefined;
+    return u.origin;
+  } catch {
+    return undefined;
+  }
+}
+
 function scrubChain(chain: string): string {
   return chain.replace(/((?:attr__)?(?:href|action|src)=")((?:[^"\\]|\\.)*)"/g, (_all, head: string, val: string) => `${head}${scrubUrl(val, false)}"`);
 }
@@ -62,13 +79,17 @@ function walk(v: unknown, key: string, depth: number): unknown {
   if (depth > MAX_DEPTH) return undefined;
   if (typeof v === "string") {
     if (key === "$elements_chain") return scrubChain(v);
+    if (key && REFERRER_KEY.test(key)) return scrubReferrer(v);
     if (key && URL_KEY.test(key)) return scrubUrl(v, CURRENT_URL_KEYS.includes(key));
     return v;
   }
   if (Array.isArray(v)) return v.map((x) => walk(x, key, depth + 1));
   if (v && typeof v === "object" && isPlain(v)) {
     const out: Record<string, unknown> = {};
-    for (const k of Object.keys(v)) out[k] = walk((v as Record<string, unknown>)[k], k, depth + 1);
+    for (const k of Object.keys(v)) {
+      const r = walk((v as Record<string, unknown>)[k], k, depth + 1);
+      if (r !== undefined) out[k] = r;
+    }
     return out;
   }
   return v;

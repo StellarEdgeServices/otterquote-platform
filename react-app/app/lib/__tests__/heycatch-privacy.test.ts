@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearStoredToolbarParams, hideToolbarTrigger, makeBeforeSend, scrubEvent, scrubUrl } from "../heycatch-privacy";
+import { clearStoredToolbarParams, hideToolbarTrigger, makeBeforeSend, scrubEvent, scrubReferrer, scrubUrl } from "../heycatch-privacy";
 
 // gh-3352 items 1 and 2. The event below has the shape the real SDK 0.8.3 produced in headless Chromium
 // for /get-started opened from a signed-in page, with the values the review planted.
 const SIGNED_IN = "https://app.otterquote.com/bids?claim_id=CLAIMREF999&email=pat%40example.com#sec";
+const CLAIM_IN_PATH = "https://app.otterquote.com/contractor/bid/CLAIMPATH777?x=1#y";
 
 function realisticEvent() {
   return {
@@ -45,7 +46,7 @@ describe("HeyCatch scrubUrl", () => {
     expect(scrubUrl(`https://a.test/p?utm_term=${"x".repeat(101)}`, true)).toBe("https://a.test/p");
     expect(scrubUrl("https://a.test/p?utm_source=%E0%A4%A", true)).toBe("https://a.test/p");
   });
-  it("keeps nothing from a referrer or link target, and cuts opaque schemes to the scheme", () => {
+  it("keeps nothing from a link target but its path, and cuts opaque schemes to the scheme", () => {
     expect(scrubUrl("https://a.test/bids.html?claim_id=1&utm_source=x#f", false)).toBe("https://a.test/bids.html");
     expect(scrubUrl("mailto:pat@example.com?subject=hi", false)).toBe("mailto:");
     expect(scrubUrl("tel:+13175550100", false)).toBe("tel:");
@@ -54,15 +55,31 @@ describe("HeyCatch scrubUrl", () => {
   });
 });
 
+describe("HeyCatch scrubReferrer", () => {
+  it("sends the origin only, never a path, query or fragment", () => {
+    expect(scrubReferrer(SIGNED_IN)).toBe("https://app.otterquote.com");
+    expect(scrubReferrer(CLAIM_IN_PATH)).toBe("https://app.otterquote.com");
+    expect(scrubReferrer("https://www.google.com/search?q=roof+claim#x")).toBe("https://www.google.com");
+    expect(scrubReferrer("http://127.0.0.1:3000/a/b")).toBe("http://127.0.0.1:3000");
+  });
+  it("keeps $direct, drops anything that is not an http(s) URL", () => {
+    expect(scrubReferrer("$direct")).toBe("$direct");
+    expect(scrubReferrer("not a url")).toBeUndefined();
+    expect(scrubReferrer("/contractor/bid/CLAIMPATH777")).toBeUndefined();
+    expect(scrubReferrer("android-app://com.google.android.gm/")).toBeUndefined();
+    expect(scrubReferrer("")).toBeUndefined();
+  });
+});
+
 describe("HeyCatch scrubEvent", () => {
   it("removes claim ids and emails from every URL-bearing property, including $set, $set_once and autocapture elements", () => {
     const out = scrubEvent(realisticEvent())!;
     const text = JSON.stringify(out);
     for (const bad of ["CLAIMREF999", "CLAIMQ777", "claim_id", "pat%40", "a%40b.com", "code=ABC123", "frag=1", "bid=9", "gclid"]) expect(text).not.toContain(bad);
-    expect(out.properties.$referrer).toBe("https://app.otterquote.com/bids");
-    expect(out.properties.$session_entry_referrer).toBe("https://app.otterquote.com/bids");
-    expect(out.$set_once.$initial_referrer).toBe("https://app.otterquote.com/bids");
-    expect(out.$set_once.$referrer).toBe("https://app.otterquote.com/bids");
+    expect(out.properties.$referrer).toBe("https://app.otterquote.com");
+    expect(out.properties.$session_entry_referrer).toBe("https://app.otterquote.com");
+    expect(out.$set_once.$initial_referrer).toBe("https://app.otterquote.com");
+    expect(out.$set_once.$referrer).toBe("https://app.otterquote.com");
     expect(out.properties.$external_click_url).toBe("https://example.com/p");
     expect(out.properties.$elements[0].attr__href).toBe("/contract-signing");
     expect(out.properties.$elements_chain).toContain('attr__href="/contract-signing"');
@@ -91,10 +108,22 @@ describe("HeyCatch scrubEvent", () => {
     expect(JSON.stringify(e)).toBe(before);
   });
 
+  it("never sends the path of a signed-in referrer, including a claim id in the path", () => {
+    const e = { event: "$pageview", properties: { $referrer: CLAIM_IN_PATH, $session_entry_referrer: CLAIM_IN_PATH, $referring_domain: "app.otterquote.com" }, $set_once: { $initial_referrer: CLAIM_IN_PATH } };
+    const text = JSON.stringify(scrubEvent(e));
+    expect(text).not.toContain("CLAIMPATH777");
+    expect(text).not.toContain("/contractor");
+    expect(text).not.toContain("/bids");
+    const out = scrubEvent({ event: "x", properties: { $referrer: "$direct", $initial_referrer: "garbage", $referring_domain: "$direct" } })!;
+    expect(out.properties.$referrer).toBe("$direct");
+    expect("$initial_referrer" in out.properties).toBe(false);
+    expect(out.properties.$referring_domain).toBe("$direct");
+  });
+
   it("treats an unknown property whose name ends in url, referrer or href as a URL", () => {
-    const out = scrubEvent({ event: "x", properties: { $future_landing_url: "https://a.test/p?claim_id=1", $x_referrer: "https://a.test/q?e=1#h" } })!;
+    const out = scrubEvent({ event: "x", properties: { $future_landing_url: "https://a.test/p?claim_id=1", $x_referrer: "https://a.test/q/r?e=1#h" } })!;
     expect(out.properties.$future_landing_url).toBe("https://a.test/p");
-    expect(out.properties.$x_referrer).toBe("https://a.test/q");
+    expect(out.properties.$x_referrer).toBe("https://a.test");
   });
 
   it("returns null instead of throwing", () => {
