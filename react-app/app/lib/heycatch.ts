@@ -5,6 +5,7 @@
  * setIdentity, which is a Tier C call for Dustin on a trial vendor.
  */
 import type { analytics as HeyCatchAnalytics } from "@heycatch/sdk";
+import { hideToolbarTrigger, makeBeforeSend } from "./heycatch-privacy";
 
 export const HEYCATCH_ALLOWED_PATHS = ["/get-started"];
 
@@ -56,17 +57,25 @@ let loading: Promise<void> | null = null;
 export function loadHeyCatch(): Promise<void> {
   if (loading) return loading;
   const kept = utmToKeep(window.location.search);
-  loading = import("@heycatch/sdk").then(({ analytics }) => {
-    analytics.init({
-      projectKey: "hck_pk_EDCHqNmpbCRmDWZD6PCDsAEczZa0eWr6",
-      requestBatching: false,
-      install: { framework: "nextjs", frameworkVersion: "16", agent: "claude-code" },
-      // A client-side move off an allowed route must not keep reporting.
-      beforeSend: (event) => (isHeyCatchAllowedPath(window.location.pathname) ? event : null),
-    });
-    sdk = analytics;
-    if (Object.keys(kept).length) setTimeout(() => restoreStrippedUtm(kept), 1100);
-  });
+  // gh-3352: the SDK reads location.hash when its module is evaluated, so the toolbar triggers
+  // (a `__posthog=` or `state=` fragment, stored _postHogToolbarParams) are removed BEFORE the import.
+  const guard = hideToolbarTrigger();
+  if (!guard) return (loading = Promise.resolve());
+  loading = import("@heycatch/sdk")
+    .then(({ analytics }) => {
+      analytics.init({
+        projectKey: "hck_pk_EDCHqNmpbCRmDWZD6PCDsAEczZa0eWr6",
+        requestBatching: false,
+        install: { framework: "nextjs", frameworkVersion: "16", agent: "claude-code" },
+        // A client-side move off an allowed route must not keep reporting. Every URL-bearing
+        // property loses its query string and fragment (gh-3352); see heycatch-privacy.ts.
+        beforeSend: makeBeforeSend(() => isHeyCatchAllowedPath(window.location.pathname)),
+      });
+      sdk = analytics;
+      guard.restore();
+      if (Object.keys(kept).length) setTimeout(() => restoreStrippedUtm(kept), 1100);
+    })
+    .catch(() => guard.restore());
   return loading;
 }
 
