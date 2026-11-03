@@ -48,8 +48,7 @@ import {
   loadHoverOrders,
   type PaidVerdict,
   refusalFor,
-  REPLAY_CANCELED_WHY,
-  shouldAlertPaidWithoutOrder,
+  alertKindFor,
 } from "./measurement-paid-gate.ts";
 import {
   makePaidAlertDbDeps,
@@ -88,8 +87,9 @@ function buildCorsHeaders(req: Request): Record<string, string> {
 
 /**
  * gh-3356: tell an operator about a paid-claim refusal. A claim that PAID with no hover_orders row is a customer with no report queued
- * for fulfilment ("paid_without_order"); an unavailable check ("check_unavailable") means a broken Stripe search or orders read blocks
- * purchases. Each raises a platform_alerts_log row AND an admin email through notify-measurement-order, bounded to one per claim per
+ * for fulfilment ("paid_without_order"; a very recent charge may still be waiting for its order row, and the email says so); an
+ * unavailable check ("check_unavailable") means a broken Stripe search or orders read blocks purchases; a replayed cancelled intent
+ * ("cancelled_replay") means a homeowner is stuck at this price. Each raises a platform_alerts_log row AND an admin email through notify-measurement-order, bounded to one per claim per
  * window (measurement-paid-alert.ts). Never throws, never carries Stripe text.
  */
 async function logPaidGateRefusal(
@@ -102,10 +102,8 @@ async function logPaidGateRefusal(
   stage: string,
 ): Promise<void> {
   console.error(`[${FUNCTION_NAME}] gh-3356 refusal (${stage}): ${verdict.kind}${verdict.kind === "paid" ? ` ${verdict.reason}` : ""} claim=${claimId}`);
-  let kind: "paid_without_order" | "check_unavailable" | null = null;
-  // A replayed intent that was cancelled (price A -> B -> A inside 24 h) is expected, not a broken lookup: no operator alert for it.
-  if (verdict.kind === "unavailable" && verdict.why !== REPLAY_CANCELED_WHY) kind = "check_unavailable";
-  else if (shouldAlertPaidWithoutOrder(verdict)) kind = "paid_without_order";
+  // The FIRST refused request alerts (bounded per claim and kind in measurement-paid-alert.ts); there is no grace period.
+  const kind = alertKindFor(verdict);
   if (!kind) return;
   await raisePaidGateAlert(
     {
@@ -117,7 +115,7 @@ async function logPaidGateRefusal(
     {
       kind,
       claimId,
-      paymentIntentId: verdict.kind === "paid" ? verdict.paymentIntentId : null,
+      paymentIntentId: verdict.kind === "paid" || verdict.kind === "cancelled_replay" ? verdict.paymentIntentId : null,
       stage: stage.replace(/[^a-z_ ]/g, " ").trim(),
       reason: verdict.kind === "unavailable" ? verdict.why : undefined,
     },
@@ -770,7 +768,7 @@ serve(async (req) => {
       // buildStandardCreateForm pins the hover_measurement description to the pre-rename string whatever the client sent
       // (gh-3350). The router variant and the visible description ("Aerial Roof Report") are set AFTER it, below.
       // gh-3356: a claim that has already paid for its report gets NO new PaymentIntent, whatever the age of the idempotency key.
-      // Checked BEFORE the create (after the 24-hour key expires the create would mint a second chargeable intent), against
+      // Checked BEFORE the create (once Stripe has removed the key the create would mint a second chargeable intent), against
       // hover_orders AND Stripe (a card that succeeded whose order step failed has no order row). Fails closed: see
       // measurement-paid-gate.ts. The key and the keyed create body below are deliberately untouched.
       const paidGateDeps = {
@@ -813,7 +811,7 @@ serve(async (req) => {
       }
       paymentIntentData = await r.json();
       if (metadata.type === "hover_measurement") {
-        // gh-3356: inside the 24-hour key window the create above REPLAYS the first response, whose status can be stale: a
+        // gh-3356: while Stripe still holds the key the create above REPLAYS the first response, whose status can be stale: a
         // PaymentIntent that has since succeeded still reads requires_payment_method. Re-read it (only when it looks like a
         // replay) and never hand back the client_secret of one that has been paid. Before the variant/description update.
         const replayVerdict = await assertCreatedIntentNotPaid(paidGateDeps, paymentIntentData, r);

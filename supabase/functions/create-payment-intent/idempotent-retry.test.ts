@@ -14,10 +14,8 @@ import {
   assertCreatedIntentNotPaid,
   cancelSupersededIntents,
   checkClaimHasNotPaid,
-  chargeIsRecent,
-  ORDER_GRACE_SECONDS,
-  REPLAY_CANCELED_WHY,
-  shouldAlertPaidWithoutOrder,
+  alertKindFor,
+  CANCELLED_REPLAY_CODE,
   HOVER_ORDER_SELECT,
   type HoverOrderRow,
   loadHoverOrders,
@@ -284,7 +282,7 @@ function paidWorld(opts: { basicAuth?: string } = {}) {
   const alerts: Row[] = [];
   const state = {
     ordersError: null as unknown, searchMode: "ok" as SearchMode, searchLag: false, retrieveFails: false, cancelMode: "ok" as CancelMode,
-    /** how old (seconds) the expanded latest_charge is; a day by default, so it is "not recent" unless a test says otherwise */
+    /** how old (seconds) the expanded latest_charge is (a test seam: the gate no longer looks at it, there is no grace period) */
     chargeAgeSeconds: 86400,
     /** intents the search returns whatever the query says (a search that over-matches) */
     searchInjected: [] as string[],
@@ -373,7 +371,7 @@ function paidWorld(opts: { basicAuth?: string } = {}) {
   return {
     ...base, fetchFn, orders, alerts, state, basicAuth,
     sb: () => fakeSupabase(SCHEMA, { hover_orders: orders, platform_alerts_log: alerts }, { selectError: state.ordersError ? { hover_orders: state.ordersError } : {} }),
-    /** Stripe's 24-hour idempotency window ends. */
+    /** Stripe removes the idempotency keys (the time is not fixed; a test just clears them). */
     expireKeys() { base.byKey.clear(); seenKeys.clear(); },
     setStatus(piId: string, status: string) { base.intents.get(piId)!["status"] = status; },
     statusOf: (piId: string) => base.intents.get(piId)!["status"] ?? "requires_payment_method",
@@ -434,7 +432,7 @@ async function mainSequence(w: World, claim = CLAIM): Promise<Answer> {
 
 const orderFor = (piId: string | null, extra: Row = {}, claim = CLAIM): Row => ({ claim_id: claim, homeowner_stripe_payment_intent_id: piId, product_code: "roof_basic", rebate_paid_at: null, ...extra });
 
-// ── 1. a paid claim, key expired (> 24 h): refused, nothing created ──────────────────────────────────────────────────────────
+// ── 1. a paid claim, key expired: refused, nothing created ──────────────────────────────────────────────────────────
 Deno.test("gh-3356 (1) PAID with NO order row (card succeeded, order step failed), key expired: refused 409, no second intent, no create call", async () => {
   const w = paidWorld();
   const first = await gatedSequence(w);
@@ -501,7 +499,7 @@ Deno.test("gh-3356 (1d) an order row naming a PaymentIntent Stripe has never hea
 });
 
 // ── 2. claims that must still be able to buy ─────────────────────────────────────────────────────────────────────────────────
-Deno.test("gh-3356 (2) a first purchase proceeds; an unpaid intent retried inside 24 h returns the SAME intent; after expiry a fresh one is allowed", async () => {
+Deno.test("gh-3356 (2) a first purchase proceeds; an unpaid intent retried while the key is held returns the SAME intent; after expiry a fresh one is allowed", async () => {
   const w = paidWorld();
   const a = await gatedSequence(w);
   const b = await gatedSequence(w); // reload, key live, intent unpaid
@@ -510,7 +508,7 @@ Deno.test("gh-3356 (2) a first purchase proceeds; an unpaid intent retried insid
   assertEquals(w.intents.size, 1);
   assertEquals(w.state.cancels.length, 0, "the intent being handed back is never cancelled");
   w.expireKeys();
-  const c = await gatedSequence(w); // unpaid intent abandoned for > 24 h: a fresh one is allowed, the old one is superseded
+  const c = await gatedSequence(w); // unpaid intent abandoned until the key is gone: a fresh one is allowed, the old one is superseded
   assertEquals(c.http, 200);
   assertEquals(w.intents.size, 2);
   assertEquals(w.createCalls().length, 3);
@@ -566,8 +564,8 @@ Deno.test("gh-3356 (2e) the lookups and the cancels use the SAME Stripe key as t
   assertEquals(wrong.createCalls().length, 0);
 });
 
-// ── 3. paid claim INSIDE the 24-hour window ──────────────────────────────────────────────────────────────────────────────────
-Deno.test("gh-3356 (3) paid claim within 24 h, search sees it: refused BEFORE the create, no second intent", async () => {
+// ── 3. paid claim while the key is still held ──────────────────────────────────────────────────────────────────────────────────
+Deno.test("gh-3356 (3) paid claim while the key is held, search sees it: refused BEFORE the create, no second intent", async () => {
   const w = paidWorld();
   const first = await gatedSequence(w);
   w.setStatus(first.piId!, "succeeded");
@@ -578,7 +576,7 @@ Deno.test("gh-3356 (3) paid claim within 24 h, search sees it: refused BEFORE th
   assertEquals(w.intents.size, 1);
 });
 
-Deno.test("gh-3356 (3b) paid within 24 h while Stripe search has not indexed it yet: the replayed (stale) intent is re-read and its secret is NOT handed back", async () => {
+Deno.test("gh-3356 (3b) paid while the key is held and Stripe search has not indexed it yet: the replayed (stale) intent is re-read and its secret is NOT handed back", async () => {
   const w = paidWorld();
   const first = await gatedSequence(w);
   w.setStatus(first.piId!, "succeeded");
@@ -616,7 +614,7 @@ Deno.test("gh-3356 (3c) the replay re-read happens only when the create looks li
 Deno.test("gh-3356 (3d) an old tab's unpaid intent is CANCELLED once the buyer has a newer one, so it cannot be paid after the newer one succeeds", async () => {
   const w = paidWorld();
   const tabA = await gatedSequence(w); // tab A loads the form: intent P1
-  w.expireKeys(); // a day passes with tab A open
+  w.expireKeys(); // time passes with tab A open
   const tabB = await gatedSequence(w); // reload in tab B: P2, and P1 is superseded
   assertEquals(tabB.cancelled, [tabA.piId]);
   assertEquals(w.statusOf(tabA.piId!), "canceled");
@@ -762,7 +760,7 @@ Deno.test("gh-3356 (3l) metadata scope: an intent the search returns that belong
   assertEquals(w.statusOf(otherType), "requires_payment_method");
 });
 
-Deno.test("gh-3356 (3m) PRICE A -> B -> A inside 24 h: the replayed A intent was cancelled by the B request, so it is NOT handed back (503 retry code), no cancel runs, no alert, and the live B intent is untouched", async () => {
+Deno.test("gh-3356 (3m) PRICE A -> B -> A while the key is held: the replayed A intent was cancelled by the B request, so it is NOT handed back (503 with its own code), no cancel runs, an operator alert is raised, and the live B intent is untouched", async () => {
   const w = paidWorld();
   const a = await gatedSequence(w, CLAIM, { amount: 2263 });
   const b = await gatedSequence(w, CLAIM, { amount: 2500 });
@@ -770,19 +768,21 @@ Deno.test("gh-3356 (3m) PRICE A -> B -> A inside 24 h: the replayed A intent was
   assertEquals(w.statusOf(a.piId!), "canceled", "the B request superseded the A intent");
   const cancelsBefore = w.state.cancels.length;
   const again = await gatedSequence(w, CLAIM, { amount: 2263 });
-  assertEquals([again.http, again.code, again.clientSecretReturned, again.piId], [503, PAID_CHECK_UNAVAILABLE_CODE, false, null]);
+  assertEquals([again.http, again.code, again.clientSecretReturned, again.piId], [503, CANCELLED_REPLAY_CODE, false, null]);
+  assertEquals(String(CANCELLED_REPLAY_CODE) === String(PAID_CHECK_UNAVAILABLE_CODE), false, "its own code, so the page does not say could-not-check");
   assertEquals(w.state.cancels.length, cancelsBefore, "no cancel ran on this request");
   assertEquals(w.statusOf(b.piId!), "requires_payment_method", "the live intent survives");
-  // when the verdict is the replay-cancelled one, index.ts raises no operator alert (it is expected, not a broken lookup)
+  // the verdict is its own kind, and it DOES raise an operator alert: a homeowner is stuck and a person must know
   const verdict = await assertCreatedIntentNotPaid(
     { fetchFn: w.fetchFn, apiBase: API, basicAuth: w.basicAuth, log: () => {} },
     { id: a.piId!, created: Math.floor(Date.now() / 1000) }, new Response("{}", { headers: { "Idempotent-Replayed": "true" } }));
-  assertEquals(verdict, { kind: "unavailable", why: REPLAY_CANCELED_WHY });
+  assertEquals(verdict, { kind: "cancelled_replay", paymentIntentId: a.piId! });
+  assertEquals(alertKindFor(verdict), "cancelled_replay");
   // why a body-only check cannot catch this: the replayed create body is the FIRST response, whose status is still requires_payment_method
   const metadata = { claim_id: CLAIM, type: "hover_measurement", variant: "e" };
   const raw = await w.fetchFn(`${API}/payment_intents`, { method: "POST", headers: { Authorization: `Basic ${w.basicAuth}`, "Idempotency-Key": standardIdempotencyKey(metadata, 2263) }, body: buildStandardCreateForm({ amount: 2263, currency: "usd", description: "x", metadata }).toString() });
   assertEquals([raw.headers.get("Idempotent-Replayed"), (await raw.json()).status], ["true", "requires_payment_method"], "the replay looks live; only a re-read shows it is cancelled");
-  // the customer can pay again once the cancelled intent is out of the way: after 24 h the key expires and A gets a fresh intent
+  // the customer can pay again once Stripe has removed the key: A then gets a fresh intent
   w.expireKeys();
   const later = await gatedSequence(w, CLAIM, { amount: 2263 });
   assertEquals(later.http, 200);
@@ -796,8 +796,8 @@ Deno.test("gh-3356 (3n) the replay of a LIVE intent (same tab reload, same price
   assertEquals([again.http, again.piId], [200, a.piId]);
 });
 
-// F7: the "paid, no order row" alert is for a payment nobody recorded. A charge this young may just be waiting for the order step.
-Deno.test("gh-3356 (3o) a charge younger than 5 minutes with no order row yet is paid (refused) but is NOT an alert; an older one is", async () => {
+// No grace period (the 300-second grace of d64225d6 left a paid homeowner with no order and no alert: 30 s and 299 s refused with 0 alert rows).
+Deno.test("gh-3356 (3o) a paid claim with no order row alerts on the FIRST refused request whatever the charge's age (30 s, 299 s, 301 s, a day); an order row means no alert", async () => {
   const w = paidWorld();
   const p0 = await gatedSequence(w);
   w.setStatus(p0.piId!, "succeeded");
@@ -805,30 +805,32 @@ Deno.test("gh-3356 (3o) a charge younger than 5 minutes with no order row yet is
     const sb = w.sb();
     return await checkClaimHasNotPaid({ fetchFn: w.fetchFn, apiBase: API, basicAuth: w.basicAuth, claimId: CLAIM, loadOrders: () => loadHoverOrders(sb, CLAIM), log: () => {} });
   };
-  w.state.chargeAgeSeconds = 30;
-  const young = await run();
-  assertEquals([young.kind, (young as { recentlyPaid?: boolean }).recentlyPaid, shouldAlertPaidWithoutOrder(young)], ["paid", true, false]);
-  w.state.chargeAgeSeconds = ORDER_GRACE_SECONDS + 60;
-  const old = await run();
-  assertEquals([old.kind, (old as { recentlyPaid?: boolean }).recentlyPaid, shouldAlertPaidWithoutOrder(old)], ["paid", false, true]);
-  // the grace is only about the alert: with an order row there is never one, and the money verdict is the same either way
+  for (const age of [30, 299, 301, 86400]) {
+    w.state.chargeAgeSeconds = age;
+    const v = await run();
+    assertEquals([age, v.kind, alertKindFor(v)], [age, "paid", "paid_without_order"]);
+  }
   w.orders.push(orderFor(p0.piId));
-  assertEquals(shouldAlertPaidWithoutOrder(await run()), false);
+  assertEquals(alertKindFor(await run()), null, "an order row exists: nothing to alert");
 });
 
-Deno.test("gh-3356 (3p) the replay re-read carries the charge age too, so a reload while the order step runs does not alert; an unreadable or future charge time is NOT treated as recent", async () => {
+Deno.test("gh-3356 (3p) the replay re-read alerts at once too, and alertKindFor maps every verdict; the grace code is gone from the gate and from index.ts", async () => {
   const w = paidWorld();
   const p0 = await gatedSequence(w);
   w.setStatus(p0.piId!, "succeeded");
   const deps = { fetchFn: w.fetchFn, apiBase: API, basicAuth: w.basicAuth, claimId: CLAIM, loadOrders: () => Promise.resolve({ rows: [], error: null }), log: () => {} };
   const replayRes = new Response("{}", { headers: { "Idempotent-Replayed": "true" } });
-  w.state.chargeAgeSeconds = 20;
-  assertEquals(shouldAlertPaidWithoutOrder(await assertCreatedIntentNotPaid(deps, { id: p0.piId!, created: 1 }, replayRes)), false);
-  w.state.chargeAgeSeconds = 7200;
-  assertEquals(shouldAlertPaidWithoutOrder(await assertCreatedIntentNotPaid(deps, { id: p0.piId!, created: 1 }, replayRes)), true);
-  assertEquals(chargeIsRecent({ latest_charge: "ch_bare" }, 1000), false, "an unexpanded charge is not recent");
-  assertEquals(chargeIsRecent({ latest_charge: { created: 5000 } }, 1000), false, "a charge time far in the future is not trusted");
-  assertEquals(chargeIsRecent(null, 1000), false);
+  for (const age of [20, 7200]) {
+    w.state.chargeAgeSeconds = age;
+    assertEquals(alertKindFor(await assertCreatedIntentNotPaid(deps, { id: p0.piId!, created: 1 }, replayRes)), "paid_without_order");
+  }
+  assertEquals(alertKindFor({ kind: "unavailable", why: "x" }), "check_unavailable");
+  assertEquals(alertKindFor({ kind: "cancelled_replay", paymentIntentId: "pi_1" }), "cancelled_replay");
+  assertEquals(alertKindFor({ kind: "not_paid" }), null);
+  assertEquals(alertKindFor({ kind: "paid", reason: "succeeded", paymentIntentId: "pi_1", hasOrderRow: true }), null);
+  const gateSrc = await Deno.readTextFile(new URL("./measurement-paid-gate.ts", import.meta.url));
+  for (const src of [gateSrc, indexSource]) assert(!/recentlyPaid|ORDER_GRACE|chargeIsRecent|shouldAlertPaidWithoutOrder|nowSeconds\?:/.test(src), "no grace period left");
+  assert(indexSource.includes("const kind = alertKindFor(verdict);"), "index.ts takes the alert from alertKindFor");
 });
 
 // ── 4. a Stripe or database lookup failure fails CLOSED with a retry code ────────────────────────────────────────────────────
@@ -950,7 +952,7 @@ Deno.test("gh-3356 (4f) an order row for the claim on a hover_orders read that w
 });
 
 // ── 5. the key and the keyed create body are untouched ───────────────────────────────────────────────────────────────────────
-Deno.test("gh-3356 (5) the gated flow sends the SAME key and the SAME create body as main's, so a paid claim's reload inside 24 h still gets the same intent", async () => {
+Deno.test("gh-3356 (5) the gated flow sends the SAME key and the SAME create body as main's, so a paid claim's reload while the key is held still gets the same intent", async () => {
   const g = paidWorld(); const m = paidWorld();
   await gatedSequence(g); await mainSequence(m);
   const gc = g.createCalls()[0]; const mc = m.createCalls()[0];
@@ -991,8 +993,8 @@ Deno.test("gh-3356 (6d) index.ts: the cancel of older intents is CALLED, with th
   assert(indexSource.includes("const supersede = await cancelSupersededIntents(paidGateDeps, supersedeCandidates, paymentIntentData.id);"), "the cancel call exists in index.ts");
   assert(/if \(paidVerdict\.kind === "not_paid"\) supersedeCandidates = paidVerdict\.cancelable \?\? \[\];/.test(indexSource), "its candidates come from the pre-check verdict");
   assert(indexSource.includes("let supersedeCandidates: string[] = [];"));
-  // the index.ts alert wiring: a replayed-cancelled intent raises no alert, and the paid-without-order alert goes through the grace rule
-  assert(indexSource.includes("verdict.why !== REPLAY_CANCELED_WHY") && indexSource.includes("shouldAlertPaidWithoutOrder(verdict)"));
+  // the index.ts alert wiring: every refusal asks alertKindFor (no grace period, a cancelled replay alerts)
+  assert(indexSource.includes("const kind = alertKindFor(verdict);"));
 });
 
 Deno.test("gh-3356 (6c) index.ts: the gate and the cancel use THE create's Stripe key (basicAuth, built from keyChoice.key), never another source", () => {

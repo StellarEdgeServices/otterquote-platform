@@ -3,9 +3,11 @@
  * (measurement-paid-alert.ts there is the sender and keeps its own copy of the token and body keys: the Edge Function deploy path does
  * not resolve shared imports; a parity test in create-payment-intent pins the two together).
  *
- * Two kinds:
+ * Three kinds:
  *   paid_without_order: a homeowner's measurement payment succeeded but no hover_orders row exists, so no report is queued.
  *   check_unavailable:  the gate could not confirm whether a claim had already paid, so it refused to start a payment.
+ *   cancelled_replay:   the payment the idempotency key returns for a claim has been cancelled, so that homeowner cannot start a
+ *                       payment at this price until Stripe drops the key. A person is stuck and someone should reach out.
  *
  * The body arrives over HTTP and an email is built from it, so every field is re-validated to a fixed shape and anything else prints as
  * "unrecognized". Nothing from the body is put in the email verbatim, so it cannot carry markup, a header injection or a link of its own.
@@ -34,7 +36,7 @@ export function alertSendFailureText(isPaidGateAlert: boolean): { log: string; r
   return isPaidGateAlert
     ? {
       log: "measurement paid-claim alert email send failed",
-      rowMessage: "measurement paid-claim alert email could not be sent; see the measurement_paid_without_order or measurement_paid_check_unavailable alert row",
+      rowMessage: "measurement paid-claim alert email could not be sent; see the measurement_paid_without_order, measurement_paid_check_unavailable or measurement_paid_cancelled_replay alert row",
       rowWriteFailedLog: "measurement paid-claim alert failure row could not be written",
     }
     : {
@@ -48,7 +50,7 @@ export function alertSendFailureText(isPaidGateAlert: boolean): { log: string; r
 export function buildPaidGateAlertEmail(body: unknown): PaidGateAlertEmail | null {
   if (!isRecord(body) || body.alert !== PAID_GATE_ALERT_TOKEN) return null;
   const kind = body.kind;
-  if (kind !== "paid_without_order" && kind !== "check_unavailable") return null;
+  if (kind !== "paid_without_order" && kind !== "check_unavailable" && kind !== "cancelled_replay") return null;
 
   const claim = typeof body.claim_id === "string" && /^[A-Za-z0-9-]{8,64}$/.test(body.claim_id) ? body.claim_id : null;
   const pi = typeof body.payment_intent_id === "string" && /^pi_[A-Za-z0-9_]{1,80}$/.test(body.payment_intent_id) ? body.payment_intent_id : null;
@@ -61,10 +63,10 @@ export function buildPaidGateAlertEmail(body: unknown): PaidGateAlertEmail | nul
   let subject: string;
   let lines: string[];
   if (kind === "paid_without_order") {
-    subject = "ACTION NEEDED: a homeowner paid for a report and no order is queued";
+    subject = "ACTION NEEDED: a homeowner paid for a report and no order row was found (check the order row first)";
     lines = [
-      "A homeowner's measurement payment succeeded in Stripe, but no order exists for the claim, so no report is queued for fulfilment.",
-      "A second purchase attempt on the claim was refused.",
+      "A homeowner's measurement payment succeeded in Stripe, and no order row was found for the claim when a second purchase attempt on it was refused.",
+      "If the charge is only minutes old, the order may still be in progress (the browser records the order right after the card payment): check the order row for this claim first.",
       "",
       `claim: ${claimText}`,
       `payment_intent: ${piText}`,
@@ -72,8 +74,23 @@ export function buildPaidGateAlertEmail(body: unknown): PaidGateAlertEmail | nul
       "",
       link ? `Open the PaymentIntent in Stripe: ${link}` : "The PaymentIntent id could not be read; find the payment in the Stripe dashboard.",
       "",
-      "Next step: ask engineering to record the order for this payment (the order step after the card payment did not complete).",
+      "If the order row is still missing after a few minutes, no report is queued: ask engineering to record the order for this payment (the order step after the card payment did not complete).",
       "Whether and how to refund is a manual decision, and it is yours (Dustin's).",
+    ];
+  } else if (kind === "cancelled_replay") {
+    subject = "A homeowner cannot start a report payment: the payment Stripe returns for the claim was cancelled";
+    lines = [
+      "A homeowner tried to buy the measurement report, but the payment that Stripe's idempotency key returns for this claim at this price has been cancelled, so no usable payment could be started. The attempt was refused and nothing was charged by it.",
+      "The same key returns the same cancelled payment on every retry, so this homeowner stays stuck until Stripe removes the key. Stripe removes a key on its own schedule, so no time can be promised. A price change back to an earlier price, or a payment cancelled by hand in the Stripe dashboard, can cause this.",
+      "",
+      `claim: ${claimText}`,
+      `payment_intent (cancelled): ${piText}`,
+      `where it was found: ${stageText}`,
+      "",
+      link ? `Open the PaymentIntent in Stripe: ${link}` : "The PaymentIntent id could not be read; find the payment in the Stripe dashboard.",
+      "",
+      "Next step: reach out to the homeowner through support, and ask engineering whether a payment can be started for them another way.",
+      "At most one of these emails is sent per claim per hour.",
     ];
   } else {
     subject = "Measurement purchase check unavailable: buyers are being asked to retry";

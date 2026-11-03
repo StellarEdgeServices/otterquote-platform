@@ -10,9 +10,9 @@ const body = (over: Record<string, unknown> = {}) => ({
 
 Deno.test("paid-gate email: the token is measurement_paid_gate", () => assertEquals(PAID_GATE_ALERT_TOKEN, "measurement_paid_gate"));
 
-Deno.test("paid-gate email: paid_without_order names the claim and PaymentIntent, links Stripe, says no order is queued and that refunds are manual", () => {
+Deno.test("paid-gate email: paid_without_order names the claim and PaymentIntent, links Stripe, says no order row was found and that refunds are manual", () => {
   const e = buildPaidGateAlertEmail(body())!;
-  assert(e && /ACTION NEEDED/.test(e.subject) && /no order is queued/.test(e.subject));
+  assert(e && /ACTION NEEDED/.test(e.subject) && /no order row was found/.test(e.subject));
   for (const part of ["c0ffee00-0000-4000-8000-000000000001", "pi_3Abc123", "before create", "https://dashboard.stripe.com/payments/pi_3Abc123"]) {
     assert(e.text.includes(part), "text has " + part);
   }
@@ -66,4 +66,19 @@ Deno.test("notify-measurement-order index.ts: the alert-send failure path takes 
   assert(failurePath.length > 100);
   assert(!/non-?usd/i.test(failurePath.replace(/_alertSendErr/g, "")), "the failure path has no non-USD literal");
   assert(failurePath.includes("failureText.log") && failurePath.includes("failureText.rowMessage") && failurePath.includes("failureText.rowWriteFailedLog"));
+});
+
+Deno.test("paid-gate email: paid_without_order reads a recent charge as 'order may still be in progress; check the order row' and does not declare the order missing", () => {
+  const e = buildPaidGateAlertEmail(body({ kind: "paid_without_order" }))!;
+  assert(/order may still be in progress/.test(e.text) && /check the order row/.test(e.text));
+  assert(/If the order row is still missing after a few minutes/.test(e.text));
+});
+
+Deno.test("paid-gate email: cancelled_replay names a stuck homeowner, asks a person to reach out, claims no 24-hour limit and no charge by that request", () => {
+  const e = buildPaidGateAlertEmail(body({ kind: "cancelled_replay" }))!;
+  assert(/cannot start a report payment/.test(e.subject));
+  assert(/stays stuck until Stripe removes the key/.test(e.text) && /reach out to the homeowner/.test(e.text));
+  assert(!/24[- ]?h/i.test(e.text) && !/24[- ]?h/i.test(e.subject), "no 24-hour claim");
+  assert(e.text.includes("dashboard.stripe.com/payments/pi_"), "links the cancelled PaymentIntent");
+  assert(/At most one of these emails is sent per claim per hour/.test(e.text));
 });

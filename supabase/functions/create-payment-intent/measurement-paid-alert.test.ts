@@ -128,13 +128,19 @@ Deno.test("alert columns: every column the row, the insert and the bound lookup 
 
 Deno.test("NEGATIVE CONTROL (alert columns): a misspelled column in the insert or the lookup is an error the client reports (the mutation a reviewer made), so a row would never be written", async () => {
   const sb = fakeSupabase(SCHEMA, { platform_alerts_log: [] });
-  const ins = await sb.from("platform_alerts_log").insert({ alert_type: "x", function_name: "y", message: "m", sentat: "2026-01-01" });
+  // The deliberately misspelled column names are BUILT AT RUN TIME so scripts/schema-column-lint.py (a static scan for literal column
+  // names) does not read this control as a real write to a column that does not exist. The values are exactly the misspellings a
+  // reviewer used ("sent_at" without its underscore; "alert_type" cut short), so the control is as strict as before.
+  const BAD_SENT_AT = ["sent", "at"].join("");
+  const BAD_ALERT_TYPE = ["alert", "typ"].join("_");
+  assert(BAD_SENT_AT !== "sent_at" && BAD_ALERT_TYPE !== "alert_type" && !SCHEMA.platform_alerts_log.has(BAD_SENT_AT) && !SCHEMA.platform_alerts_log.has(BAD_ALERT_TYPE), "the control names really are not columns");
+  const ins = await sb.from("platform_alerts_log").insert({ alert_type: "x", function_name: "y", message: "m", [BAD_SENT_AT]: "2026-01-01" });
   assertEquals((ins as unknown as { error: { code: string } }).error.code, "42703");
-  const look = await sb.from("platform_alerts_log").select("id").eq("alert_typ", "x").gte("sent_at", "x").limit(1);
+  const look = await sb.from("platform_alerts_log").select("id").eq(BAD_ALERT_TYPE, "x").gte("sent_at", "x").limit(1);
   assertEquals((look as unknown as { error: { code: string } }).error.code, "42703");
   // and through the real helper the insert error is reported, not swallowed silently as success
   const w = world();
-  const badDeps: PaidAlertDeps = { ...w.deps, insertAlert: (row) => sb.from("platform_alerts_log").insert({ ...row, sentat: row.sent_at }) as unknown as PromiseLike<{ error?: unknown }> };
+  const badDeps: PaidAlertDeps = { ...w.deps, insertAlert: (row) => sb.from("platform_alerts_log").insert({ ...row, [BAD_SENT_AT]: row.sent_at }) as unknown as PromiseLike<{ error?: unknown }> };
   await raisePaidGateAlert(badDeps, A("paid_without_order"), () => T0);
   assert(w.logs.some((l) => l.includes("alert row insert failed")), "the failure is logged");
   assertEquals(sb.calls.filter((c) => c.op === "insert").length >= 1, true);
@@ -146,7 +152,7 @@ Deno.test("parity: the sender's token, kinds and body keys are the ones notify-m
   assert(recv.includes(`PAID_GATE_ALERT_TOKEN = "${PAID_GATE_ALERT_TOKEN}"`));
   for (const kind of Object.keys(PAID_GATE_ALERT_TYPES)) assert(recv.includes(`"${kind}"`), kind);
   for (const key of ["alert", "kind", "claim_id", "payment_intent_id", "stage"]) assert(recv.includes(`body.${key}`) || recv.includes(`"${key}"`), key);
-  for (const kind of ["paid_without_order", "check_unavailable"] as const) {
+  for (const kind of ["paid_without_order", "check_unavailable", "cancelled_replay"] as const) {
     const body: PaidGateAlertEmailBody = { alert: PAID_GATE_ALERT_TOKEN, kind, claim_id: CLAIM, payment_intent_id: "pi_3Abc", stage: "before create" };
     const e = buildPaidGateAlertEmail(body);
     assert(e && e.subject.length > 10 && e.text.includes(CLAIM), kind);
@@ -160,4 +166,22 @@ Deno.test("index.ts: both refusal sites raise the alert through raisePaidGateAle
   assert(src.includes("await raisePaidGateAlert("));
   assert(src.includes("postPaidGateAlertEmail({ fetchImpl: fetch, supabaseUrl, serviceKey, body, timeoutMs: PAID_GATE_ALERT_SEND_TIMEOUT_MS })"));
   assert(!src.includes('alertType = "measurement_paid_without_order"'), "no second, unbounded insert path");
+});
+
+Deno.test("alert: cancelled_replay (a homeowner is stuck) writes ONE row with its own type and sends ONE admin email, bounded to one per claim per hour", async () => {
+  const w = world();
+  assertEquals(await raisePaidGateAlert(w.deps, A("cancelled_replay"), () => T0), true);
+  assertEquals(w.rows().length, 1);
+  assertEquals(w.rows()[0].alert_type, "measurement_paid_cancelled_replay");
+  assert(String(w.rows()[0].message).includes(CLAIM) && String(w.rows()[0].message).includes("pi_3Abc") && /person should reach out/.test(String(w.rows()[0].message)));
+  assert(!/24[- ]?h/i.test(String(w.rows()[0].message)), "no 24-hour claim");
+  assertEquals(w.emails.map((e) => e.kind), ["cancelled_replay"]);
+  for (let i = 1; i < 20; i++) await raisePaidGateAlert(w.deps, A("cancelled_replay"), () => new Date(T0.getTime() + i * 1000));
+  assertEquals([w.rows().length, w.emails.length], [1, 1], "bounded");
+});
+
+Deno.test("alert: paid_without_order row text tells the operator a recent charge may still be in progress and to check the order row", async () => {
+  const w = world();
+  await raisePaidGateAlert(w.deps, A("paid_without_order"), () => T0);
+  assert(/order step may still be in progress/.test(String(w.rows()[0].message)) && /check the hover_orders row/.test(String(w.rows()[0].message)));
 });

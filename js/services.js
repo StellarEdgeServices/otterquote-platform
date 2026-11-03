@@ -272,11 +272,11 @@ const Services = {
       return data; // { client_secret }
     } catch (err) {
       // gh-3356: create-payment-intent refuses a second report on a claim that has already paid (HTTP 409, code
-      // MEASUREMENT_ALREADY_PAID) or could not check (HTTP 503, MEASUREMENT_PAYMENT_CHECK_UNAVAILABLE). functions.invoke turns a
+      // MEASUREMENT_ALREADY_PAID) or could not check (HTTP 503, MEASUREMENT_PAYMENT_CHECK_UNAVAILABLE), or the payment its key returns was cancelled (HTTP 503, MEASUREMENT_PAYMENT_CANNOT_START). functions.invoke turns a
       // non-2xx into an error whose `context` is the Response; read its code so the page can say so instead of "not deployed".
       try {
         const refusalBody = err && err.context && typeof err.context.json === 'function' ? await err.context.json() : null;
-        if (refusalBody && (refusalBody.code === 'MEASUREMENT_ALREADY_PAID' || refusalBody.code === 'MEASUREMENT_PAYMENT_CHECK_UNAVAILABLE')) {
+        if (refusalBody && (refusalBody.code === 'MEASUREMENT_ALREADY_PAID' || refusalBody.code === 'MEASUREMENT_PAYMENT_CHECK_UNAVAILABLE' || refusalBody.code === 'MEASUREMENT_PAYMENT_CANNOT_START')) {
           return { client_secret: null, refused: true, code: refusalBody.code };
         }
       } catch (parseErr) { /* not a JSON refusal: fall through to the placeholder */ }

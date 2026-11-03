@@ -1,7 +1,7 @@
 /**
  * [gh-3356] Refuse a SECOND hover_measurement PaymentIntent on a claim that has already paid for its report.
  *
- * THE DEFECT. The only thing that stopped a second $22.63 charge on a paid claim was Stripe's 24-hour idempotency key
+ * THE DEFECT. The only thing that stopped a second $22.63 charge on a paid claim was Stripe's idempotency key (Stripe may remove a key once it is at least 24 hours old; the removal time is not exact)
  * (`hover_measurement-<claim>-<amount>`): inside the window a reload gets the first PaymentIntent back, after it a reload gets a
  * new, chargeable one. index.ts checked claim ownership only; it never looked at hover_orders, payment status or Stripe.
  *
@@ -19,7 +19,7 @@
  *     D-291) and sets hover_orders.rebate_paid_at; the report was delivered and the rebate is the product's own pricing model, not
  *     a cancellation. A homeowner who completed the job and was rebated must not be sold a second report. rebate_paid_at set => paid.
  *   - A payment fully refunded BY ANY OTHER ROUTE (a support refund, Tier C) has no code behind it that says whether a repurchase is
- *     legitimate. Today's behaviour is that a new intent can be created once the 24-hour key has expired, so that is kept: a
+ *     legitimate. Today's behaviour is that a new intent can be created once Stripe has removed the key, so that is kept: a
  *     PaymentIntent whose charge is fully refunded and which has no rebate_paid_at is NOT counted as paid. FLAGGED in the PR for a
  *     decision. A PARTIAL refund still counts as paid (the report was bought and not wholly returned).
  *   - The refund test needs the charge, so every Stripe read here expands latest_charge. If it cannot be read as an object, the
@@ -35,8 +35,8 @@
  *
  * RESIDUAL (not closed here, stated so nobody calls #3356 fully closed by this alone): Stripe search is eventually consistent, normally
  * under a minute and up to about an hour in an outage. A payment that succeeded moments ago, with NO order row yet, and whose
- * idempotency key has already expired (an intent created more than 24 hours earlier, paid now from a stale tab), is invisible to the
- * pre-create check, so a reload in that window can still be given a new intent. Inside the 24-hour key window the replay re-read
+ * idempotency key has already expired (an intent created long before, paid now from a stale tab), is invisible to the
+ * pre-create check, so a reload in that window can still be given a new intent. While the key is still held the replay re-read
  * (assertCreatedIntentNotPaid) covers it. Closing the rest needs a payment record written at confirm time, which is a separate change.
  *
  * OLDER UNPAID INTENTS (cancelSupersededIntents). A stale tab holds the client_secret of an older, unpaid intent that stays payable
@@ -55,10 +55,12 @@ import { UPGRADE_PRODUCT_CODE } from "./measurement-upgrade-gate.ts";
 
 export const ALREADY_PAID_CODE = "MEASUREMENT_ALREADY_PAID";
 export const PAID_CHECK_UNAVAILABLE_CODE = "MEASUREMENT_PAYMENT_CHECK_UNAVAILABLE";
+export const CANCELLED_REPLAY_CODE = "MEASUREMENT_PAYMENT_CANNOT_START";
 
 /** Technical text for logs and the `error` field. The customer-facing sentences live in help-measurements.html, keyed by `code`. */
 export const ALREADY_PAID_ERROR = "A report has already been paid for on this claim; no new payment was created.";
 export const PAID_CHECK_UNAVAILABLE_ERROR = "Could not confirm whether this claim has already paid for its report; no payment was created. Retry shortly.";
+export const CANCELLED_REPLAY_ERROR = "The payment for this report that the idempotency key returns has been cancelled; no new payment was created.";
 
 /** Replayed creates older than this are re-read from Stripe (a replay returns the FIRST response, whose status can be stale). */
 export const REPLAY_AGE_SECONDS = 60;
@@ -77,28 +79,14 @@ export type PaidVerdict =
   /** `cancelable`: unpaid intents of this claim the search returned (candidates for cancelSupersededIntents). */
   | { kind: "not_paid"; cancelable?: string[] }
   /** `hasOrderRow` false means "raise the paid-without-order alert"; verdicts found mid-race set it true to stay quiet. */
-  | { kind: "paid"; reason: PaidReason; paymentIntentId: string | null; hasOrderRow: boolean; recentlyPaid?: boolean }
-  | { kind: "unavailable"; why: string };
-
-/** A charge younger than this may simply be waiting for its order row (the browser's second request is still running). */
-export const ORDER_GRACE_SECONDS = 300;
-
-/** `why` of the unavailable verdict for a replayed intent that has been cancelled (see assertCreatedIntentNotPaid). */
-export const REPLAY_CANCELED_WHY = "replayed intent was cancelled";
-
-/** Is the PaymentIntent's charge (when the charge was expanded) younger than ORDER_GRACE_SECONDS? An unreadable charge is not recent. */
-export function chargeIsRecent(pi: unknown, nowSeconds: number): boolean {
-  const charge = (pi as { latest_charge?: { created?: unknown } } | null)?.latest_charge;
-  return !!charge && typeof charge === "object" && typeof charge.created === "number" && nowSeconds - charge.created < ORDER_GRACE_SECONDS && nowSeconds - charge.created > -60;
-}
-
-/**
- * Should a paid verdict raise the "paid with NO order row" alert? Not when an order row exists, and not when the charge is so recent
- * that the order step may still be running (a reload while it runs must not send a false ACTION NEEDED).
- */
-export function shouldAlertPaidWithoutOrder(v: PaidVerdict): boolean {
-  return v.kind === "paid" && !v.hasOrderRow && v.recentlyPaid !== true;
-}
+  | { kind: "paid"; reason: PaidReason; paymentIntentId: string | null; hasOrderRow: boolean }
+  | { kind: "unavailable"; why: string }
+  /**
+   * The keyed create REPLAYED an intent that Stripe now reports as cancelled (a price that went A -> B -> A inside the key's life, or
+   * a person cancelling it in the Stripe dashboard). Its client_secret is dead and the same key replays it again, so this buyer
+   * cannot start a payment at this price until Stripe drops the key. Not a failed lookup: it has its own code, sentence and alert.
+   */
+  | { kind: "cancelled_replay"; paymentIntentId: string };
 
 /** The columns create-payment-intent reads from hover_orders. A test checks each against the migrations: a wrong name here is a 503 for every buyer. */
 export const HOVER_ORDER_SELECT = "homeowner_stripe_payment_intent_id, product_code, rebate_paid_at";
@@ -127,8 +115,6 @@ export interface PaidGateDeps {
   /** hover_orders rows for the claim; `error` non-null means the read failed. */
   loadOrders: () => Promise<{ rows: HoverOrderRow[] | null; error: unknown }>;
   timeoutMs?: number;
-  /** Test seam for "now", in seconds. */
-  nowSeconds?: number;
   log?: (message: string) => void;
 }
 
@@ -210,7 +196,6 @@ export async function checkClaimHasNotPaid(deps: PaidGateDeps): Promise<PaidVerd
           reason: v === "paid_processing" ? "processing" : "succeeded",
           paymentIntentId: id,
           hasOrderRow: orderPiIds.has(id),
-          recentlyPaid: chargeIsRecent(pi, deps.nowSeconds ?? Math.floor(Date.now() / 1000)),
         };
       }
       if ((pi.status === "requires_payment_method" || pi.status === "requires_confirmation") &&
@@ -289,7 +274,7 @@ export async function cancelSupersededIntents(
 }
 
 /**
- * The post-create check, for the 24-hour replay window. A reused Idempotency-Key returns the FIRST response, so a PaymentIntent
+ * The post-create check, for the window while Stripe still holds the key. A reused Idempotency-Key returns the FIRST response, so a PaymentIntent
  * that has since succeeded still reads `requires_payment_method` here. When the create looks like a replay (Stripe's
  * `Idempotent-Replayed: true` header, or a PaymentIntent created more than REPLAY_AGE_SECONDS ago) it is re-read from Stripe, and
  * if it has been paid the caller must NOT hand its client_secret back. A first-time buyer's brand-new PaymentIntent is not re-read.
@@ -315,12 +300,12 @@ export async function assertCreatedIntentNotPaid(
     if (!r.response.ok) return { kind: "unavailable", why: `Stripe retrieve answered HTTP ${r.response.status}` };
     const v = evaluatePaymentIntent(r.body);
     if (v === "paid_succeeded" || v === "paid_processing") {
-      return { kind: "paid", reason: v === "paid_processing" ? "processing" : "succeeded", paymentIntentId: created.id, hasOrderRow: false, recentlyPaid: chargeIsRecent(r.body, nowSeconds) };
+      return { kind: "paid", reason: v === "paid_processing" ? "processing" : "succeeded", paymentIntentId: created.id, hasOrderRow: false };
     }
     // A replayed intent that has been CANCELLED is dead: Stripe will refuse the buyer's card on it. This happens when the price goes
-    // A -> B -> A inside 24 hours (the key carries the amount): the create for A replays the first A intent, which the B request
+    // A -> B -> A inside the key's life (the key carries the amount): the create for A replays the first A intent, which the B request
     // superseded. Do not hand it back, and do not let the caller run its cancels (the only LIVE intent is the B one).
-    if (r.body?.status === "canceled") return { kind: "unavailable", why: REPLAY_CANCELED_WHY };
+    if (r.body?.status === "canceled") return { kind: "cancelled_replay", paymentIntentId: created.id };
     return { kind: "not_paid" };
   } catch (e) {
     log(`[create-payment-intent] gh-3356: replay re-read failed (${e instanceof Error ? e.name : typeof e})`);
@@ -328,9 +313,22 @@ export async function assertCreatedIntentNotPaid(
   }
 }
 
-/** The refusal's HTTP shape. 409 for "already paid" (a conflict, not a malformed request), 503 for "could not check". */
+/**
+ * Which operator alert a refusal raises, if any. NO grace period: the first refused request alerts, whatever the charge's age (the
+ * email tells the operator that a very recent charge may still be waiting for its order row, so they check the row before acting).
+ * Bounded per claim and kind in measurement-paid-alert.ts.
+ */
+export function alertKindFor(v: PaidVerdict): "paid_without_order" | "check_unavailable" | "cancelled_replay" | null {
+  if (v.kind === "unavailable") return "check_unavailable";
+  if (v.kind === "cancelled_replay") return "cancelled_replay"; // a homeowner is stuck: a person must know
+  if (v.kind === "paid" && !v.hasOrderRow) return "paid_without_order";
+  return null;
+}
+
+/** The refusal's HTTP shape. 409 for "already paid" (a conflict, not a malformed request), 503 for "could not check" and for a cancelled replay (its own code). */
 export function refusalFor(verdict: PaidVerdict): { status: number; body: { error: string; code: string } } | null {
   if (verdict.kind === "paid") return { status: 409, body: { error: ALREADY_PAID_ERROR, code: ALREADY_PAID_CODE } };
   if (verdict.kind === "unavailable") return { status: 503, body: { error: PAID_CHECK_UNAVAILABLE_ERROR, code: PAID_CHECK_UNAVAILABLE_CODE } };
+  if (verdict.kind === "cancelled_replay") return { status: 503, body: { error: CANCELLED_REPLAY_ERROR, code: CANCELLED_REPLAY_CODE } };
   return null;
 }
