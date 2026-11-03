@@ -29,7 +29,7 @@ const STATIC = {
   // Hover card (572-583)
   hoverBadge: 'Recommended for Most',
   hoverIcon: '📐',
-  hoverCardTitle: 'Complete Property Report',
+  hoverCardTitle: 'Aerial Roof Report',
   hoverCardPrice: '$22.63 (rebated if you complete a job on the platform)',
   hoverCardDescription:
     "We order an aerial roof measurement report of your roof — total squares and the area at each pitch. Nothing for you to do: no photos, no ladder, no appointment. It carries no ridge, hip, valley or eave lengths; a contractor who needs those can order a fuller report.",
@@ -54,7 +54,7 @@ const STATIC = {
   ],
   cardSelectButton: 'Choose This Option',
   // Hover flow (607-647)
-  hoverSectionTitle: 'Complete Property Report',
+  hoverSectionTitle: 'Aerial Roof Report',
   hoverSectionIntro:
     'An aerial roof measurement report — total squares and the area at each pitch, which contractors use to bid. It carries no ridge, hip, valley or eave lengths; a contractor who needs those can order a fuller report. We order it for you; there is nothing for you to photograph.',
   rebateCallout:
