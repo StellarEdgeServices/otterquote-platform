@@ -30,7 +30,7 @@ describe('constants (D-291 / D-181 parity values)', () => {
     expect(HOVER_AMOUNT_CENTS).toBe(2263);
     expect(HOVER_AMOUNT_DOLLARS).toBe(22.63);
     expect(HOVER_DELIVERABLE_TYPE_ID).toBe(3);
-    expect(HOVER_PAYMENT_DESCRIPTION).toBe('Aerial Roof Report');
+    expect(HOVER_PAYMENT_DESCRIPTION).toBe('Complete Property Report');
     expect(MEASUREMENTS_REQUEST_TYPE).toBe('measurements');
   });
 });
@@ -86,7 +86,7 @@ describe('buildHoverPaymentIntentParams', () => {
     expect(buildHoverPaymentIntentParams({ id: 'claim-1' })).toEqual({
       claim_id: 'claim-1',
       amount: 2263,
-      description: 'Aerial Roof Report',
+      description: 'Complete Property Report',
       variant: 'unknown',
     });
   });
@@ -99,7 +99,7 @@ describe('buildHoverPaymentIntentParams', () => {
     expect(buildHoverPaymentIntentParams({ id: 'claim-1' }, 'e')).toEqual({
       claim_id: 'claim-1',
       amount: 2263,
-      description: 'Aerial Roof Report',
+      description: 'Complete Property Report',
       variant: 'e',
     });
   });

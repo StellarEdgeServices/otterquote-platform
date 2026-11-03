@@ -123,3 +123,40 @@ Deno.test("index.ts builds the standard create with buildStandardCreateForm and 
   assert(!std.includes("const form = new URLSearchParams();"), "the inline form is gone");
   assert(!std.includes("`${metadata.type}-${metadata.claim_id}`"), "the inline key is gone");
 });
+
+// ── gh-3350: source-level guards on index.ts's standard flow ─────────────────────────────────────────────────────────────────
+// A real harness for index.ts (auth, rate limits, platform_settings reads) is not practical, so these check the source of the
+// standard flow. Each pins one way the keyed create could silently change again, which for a claim that has already paid would
+// let a reload create a second chargeable PaymentIntent (the key is the only thing that returns the same one).
+const stdStart = index.indexOf("// ===== Standard flow");
+const stdEnd = index.indexOf("// gh-948: 'processing' (ACH in flight) must NOT be reported", stdStart);
+const std = index.slice(stdStart, stdEnd);
+const createStart = std.indexOf("const form = buildStandardCreateForm(");
+const createEnd = std.indexOf("paymentIntentData = await r.json();");
+
+Deno.test("gh-3350 guard: the standard-flow slice of index.ts is found and non-empty", () => {
+  assert(stdStart > 0 && stdEnd > stdStart && std.length > 500, `${stdStart} ${stdEnd}`);
+  assert(createStart > 0 && createEnd > createStart);
+});
+
+Deno.test("gh-3350 guard: the Idempotency-Key header is exactly the key, with no suffix, and is the only idempotency header", () => {
+  assert(std.includes("const idempotencyKey = standardIdempotencyKey(metadata, amount);"));
+  assert(std.includes('"Idempotency-Key": idempotencyKey,'), "the header value must be the bare key");
+  assertEquals(std.split('"Idempotency-Key"').length - 1, 1);
+  assertEquals(std.split("idempotencyKey").length - 1, 2, "the variable appears exactly twice: its declaration and the header value");
+});
+
+Deno.test("gh-3350 guard: the keyed create body is the builder's output, untouched: nothing is set, appended or deleted on the form before the create", () => {
+  const keyed = std.slice(createStart, createEnd);
+  assertEquals(keyed.split("form.").length - 1, 1, "only `form.toString()` may touch the form between the build and the create's response");
+  assert(keyed.includes("body: form.toString(),"));
+  assert(!/form\.(set|append|delete)\(/.test(keyed));
+  assert(!/new URLSearchParams\(/.test(keyed), "no second body is built");
+});
+
+Deno.test("gh-3350 guard: the visible description is passed to the post-create update, not to the keyed create", () => {
+  const attach = std.slice(std.indexOf("await attachVariantMetadata({"));
+  assert(attach.slice(0, attach.indexOf("});")).includes("description: HOVER_MEASUREMENT_DESCRIPTION,"), "the update must carry the new description");
+  assert(!std.slice(createStart, createEnd).includes("HOVER_MEASUREMENT_DESCRIPTION"), "and the keyed create must not");
+  assert(index.includes('HOVER_MEASUREMENT_DESCRIPTION, standardIdempotencyKey } from "./standard-create-form.ts"'));
+});

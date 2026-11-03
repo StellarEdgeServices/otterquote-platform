@@ -29,8 +29,8 @@ function load(navigatorValue) {
   vm.runInContext(src + '\n;globalThis.__Services = Services;', ctx);
   return { Services: ctx.__Services, invoked };
 }
-const PARAMS = { claim_id: 'c1', amount: 1500, description: 'Aerial Roof Report' };
-const BASE_BODY = { amount: 1500, currency: 'usd', description: 'Aerial Roof Report', metadata: { claim_id: 'c1', type: 'hover_measurement' } };
+const PARAMS = { claim_id: 'c1', amount: 1500, description: 'Complete Property Report' };
+const BASE_BODY = { amount: 1500, currency: 'usd', description: 'Complete Property Report', metadata: { claim_id: 'c1', type: 'hover_measurement' } };
 
 async function main() {
   // GPC on: gpc:true rides along, everything else unchanged

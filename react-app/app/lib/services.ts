@@ -339,7 +339,7 @@ async function createHoverPaymentIntent(
       body: {
         amount,
         currency: 'usd',
-        description: description || 'Aerial Roof Report',
+        description: description || 'Complete Property Report',
         metadata: {
           claim_id,
           type: 'hover_measurement',

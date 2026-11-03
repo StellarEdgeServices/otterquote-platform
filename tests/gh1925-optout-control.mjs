@@ -121,7 +121,7 @@ for (const [g, marker] of [['generate_contractor_pages', 'index_path = CONTRACTO
 // must-fix 1: the button's cookie reaches the server. A cookie-only visitor (real button script, GPC absent/false) sends gpc:true.
 {
   const svc = read('js/services.js');
-  const PARAMS = { claim_id: 'c1', amount: 1500, description: 'Aerial Roof Report' };
+  const PARAMS = { claim_id: 'c1', amount: 1500, description: 'Complete Property Report' };
   async function bodyFor({ nav, cookie }) {
     const invoked = [];
     const ctx = { sb: { functions: { invoke: (n, o) => { invoked.push(o.body); return Promise.resolve({ data: {}, error: null }); } } }, console, decodeURIComponent };

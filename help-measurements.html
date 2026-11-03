@@ -933,7 +933,7 @@
                 const paymentResult = await Services.createHoverPaymentIntent({
                     claim_id: currentClaim?.id,
                     amount: 2263, // gh-1063: $22.63 in cents (D-291 rebated price; set by Dustin 2026-10-30, gh-3228). Cosmetic — create-payment-intent enforces the real amount server-side from platform_settings.hover_measurement_price (see gh-1077 for that value's own drift).
-                    description: 'Aerial Roof Report',
+                    description: 'Complete Property Report',
                 });
 
                 if (!paymentResult?.client_secret) {
