@@ -17,7 +17,7 @@
 //    /faq#__posthog=... link would load in.heycatch.ai/static/toolbar.js before
 //    any code here could stop it. beforeSend strips query strings and fragments
 //    from every URL-bearing property (see the header of js/heycatch-privacy.js).
-import { makeBeforeSend, hideToolbarTrigger } from '/js/heycatch-privacy.js';
+import { makeBeforeSend, hideToolbarTrigger, makeEventTracker } from '/js/heycatch-privacy.js';
 
 var UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign'];
 var kept = {};
@@ -41,6 +41,10 @@ if (guard) {
       beforeSend: makeBeforeSend()
     });
     guard.restore();
+    // gh-3389 (D-409): the one named goal event, no properties, no identity. Pages call window.__oqHcTrack('lead_saved')
+    // after the leads row is saved; if this file never loaded (blocked, opted out, page not on the gate) the hook does not
+    // exist and the call is skipped. See makeEventTracker in js/heycatch-privacy.js.
+    window.__oqHcTrack = makeEventTracker(function (n) { sdk.analytics.trackEvent(n); });
     if (Object.keys(kept).length) {
       setTimeout(function () {
         var now = new URLSearchParams(window.location.search);
