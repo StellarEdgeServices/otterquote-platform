@@ -277,6 +277,34 @@ class T(unittest.TestCase):
         self.assertFalse(any(k.lower() == "authorization" for k in list(n1.headers) + list(n1.unredirected_hdrs)))
         n2 = h.redirect_request(req, None, 302, "Found", {}, "https://api.github.com/z")
         self.assertTrue(any(k.lower() == "authorization" for k in list(n2.headers) + list(n2.unredirected_hdrs)))
+    def test_nothing_served_and_real_fail(self):
+        """A tools-only change must PASS (nothing served); a served page that 404s must still FAIL."""
+        import io, contextlib
+        pages = {"https://otterquote.com/sitemap.xml?oq_internal=1": (200, "<urlset><loc>https://otterquote.com/news/a.html</loc></urlset>")}
+        calls = []
+        def fake_http(method, url, headers=None, body=None, timeout=30):
+            calls.append(url); return pages.get(url, (404, ""))
+        class C:
+            def gh(s, m, path, body=None): return 404, None, ""
+        o_http, o_repo = pn.http, pn.fetch_repo_sitemap
+        pn.http = fake_http; pn.fetch_repo_sitemap = lambda ctx, ref: "<urlset><loc>https://otterquote.com/news/a.html</loc></urlset>"
+        try:
+            def run(files, sites):
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    ok = pn.step_check(C(), files, "main", sites)
+                return ok, buf.getvalue()
+            ok, out = run([], set())  # tools-only PR: files=[] sites=set()
+            self.assertTrue(ok, out); self.assertIn("PASS (nothing served)", out); self.assertNotIn("FAIL", out)
+            self.assertEqual(pn.result_text(ok, [], set()), "PASS (nothing served)")
+            ok, out = run(["news/a.html"], {"jade"})  # page served but 404 live: must FAIL
+            self.assertFalse(ok, out); self.assertIn("FAIL https://otterquote.com/news/a.html 404", out)
+            self.assertEqual(pn.result_text(ok, ["news/a.html"], {"jade"}), "FAIL")
+            ok, out = run([], {"jade"})  # a site changed but no URL derived: still FAIL (unchanged behaviour)
+            self.assertFalse(ok, out); self.assertIn("FAIL: no public URLs", out)
+            self.assertEqual(pn.result_text(True, ["news/a.html"], {"jade"}), "PASS")
+        finally:
+            pn.http, pn.fetch_repo_sitemap = o_http, o_repo
     def test_pick(self):
         ds = [{"id": "1", "state": "ready", "branch": "main", "commit_ref": "m1"}, {"id": "2", "state": "building", "branch": "main", "commit_ref": "m2"}]
         self.assertEqual(pn.pick_deploy(ds, "m1")["id"], "1")
