@@ -289,14 +289,15 @@ class T(unittest.TestCase):
         o_http, o_repo = pn.http, pn.fetch_repo_sitemap
         pn.http = fake_http; pn.fetch_repo_sitemap = lambda ctx, ref: "<urlset><loc>https://otterquote.com/news/a.html</loc></urlset>"
         try:
-            def run(files, sites):
+            def run(files, sites, changed=None):
                 buf = io.StringIO()
                 with contextlib.redirect_stdout(buf):
-                    ok = pn.step_check(C(), files, "main", sites)
+                    ok = pn.step_check(C(), files, "main", sites, changed)
                 return ok, buf.getvalue()
-            ok, out = run([], set())  # tools-only PR: files=[] sites=set()
+            ok, out = run([], set(), ["tools/x.py", "tests/a.mjs", ".github/workflows/a.yml", "supabase/m.sql"])  # tools-only PR, own file list
             self.assertTrue(ok, out); self.assertIn("PASS (nothing served)", out); self.assertNotIn("FAIL", out)
-            self.assertEqual(pn.result_text(ok, [], set()), "PASS (nothing served)")
+            self.assertEqual(pn.result_text(ok, [], set(), ["tools/x.py"]), "PASS (nothing served)")
+            self.assertEqual(pn.result_text(ok, [], set()), "PASS")  # no PR file list: never the nothing-served label
             ok, out = run(["news/a.html"], {"jade"})  # page served but 404 live: must FAIL
             self.assertFalse(ok, out); self.assertIn("FAIL https://otterquote.com/news/a.html 404", out)
             self.assertEqual(pn.result_text(ok, ["news/a.html"], {"jade"}), "FAIL")
@@ -305,6 +306,48 @@ class T(unittest.TestCase):
             self.assertEqual(pn.result_text(True, ["news/a.html"], {"jade"}), "PASS")
         finally:
             pn.http, pn.fetch_repo_sitemap = o_http, o_repo
+    def test_main_paths_never_nothing_served(self):
+        """Review 6642289406: through main(), a 404 page must FAIL whatever the spelling, and only a PR's own,
+        non-empty, positively-recognised non-served file list may print PASS (nothing served). Fixtures only, no network."""
+        import io, contextlib
+        class C:
+            gh_tok = nl_tok = None
+            def gh(s, m, path, body=None): return 404, None, ""
+        saved = (pn.Ctx, pn.http, pn.curl_status, pn.fetch_repo_sitemap, pn.tree_files, pn.pr_files)
+        pn.Ctx = C; pn.http = lambda *a, **k: (404, ""); pn.curl_status = lambda u: 404
+        pn.fetch_repo_sitemap = lambda ctx, ref: "<urlset></urlset>"; pn.tree_files = lambda ctx, ref: ["news/a.html"]
+        try:
+            def run(argv, pr_files=()):
+                pn.pr_files = lambda ctx, n: [{"filename": f, "status": "modified"} for f in pr_files]
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    code = pn.main(argv)
+                return code, buf.getvalue()
+            for spec in ("./news/a.html", "news/not-live.html", "docs/not-live.html", ".not-live.html", "news/not-live.md",
+                         ",", " ", "tools/x.py", "./tools/x.py", "news/../tools/x.py", "../tools/x.py"):
+                for pr in ("0", "3392"):
+                  with self.subTest(pr=pr, paths=spec):
+                    code, out = run([pr, "--check-only", "--paths", spec], ["tools/x.py"])
+                    self.assertEqual(code, 1, (pr, spec, out)); self.assertNotIn("PASS (nothing served)", out, (pr, spec, out))
+                    self.assertIn("RESULT: FAIL", out, (pr, spec))
+            code, out = run(["0", "--check-only", "--paths", "./news/a.html"])
+            self.assertIn("FAIL https://otterquote.com/news/a.html 404", out)  # the page really was fetched
+            # PR-driven: tools-only passes; anything unrecognised, empty or oddly spelled fails
+            code, out = run(["3392", "--check-only"], ["tools/x.py", "tests/a.mjs", ".github/workflows/a.yml", "supabase/m.sql"])
+            self.assertEqual(code, 0, out); self.assertIn("RESULT: PASS (nothing served)", out)
+            for files in ([], ["docs/not-live.html"], [".not-live.html"], ["news/not-live.md"], ["tools/x.py", "docs/a.md"],
+                          [" tools/x.py"], ["tools/x.py "], ["./tools/x.py"], ["Tools/x.py"], ["tools"], ["tools/../news/a.html"],
+                          ["netlify.toml"], ["news/a.html"], ["react-app/a.tsx"], ["netlify/edge-functions/x.ts"]):
+                with self.subTest(pr_files=files):
+                    code, out = run(["3392", "--check-only"], files)
+                    self.assertEqual(code, 1, (files, out)); self.assertNotIn("PASS (nothing served)", out, (files, out))
+            # rename between served and tools/: previous_filename is part of the list
+            pn.pr_files = lambda ctx, n: [{"filename": "tools/a.html", "status": "renamed", "previous_filename": "news/a.html"}]
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf): code = pn.main(["3392", "--check-only"])
+            self.assertEqual(code, 1, buf.getvalue()); self.assertNotIn("PASS (nothing served)", buf.getvalue())
+        finally:
+            pn.Ctx, pn.http, pn.curl_status, pn.fetch_repo_sitemap, pn.tree_files, pn.pr_files = saved
     def test_pick(self):
         ds = [{"id": "1", "state": "ready", "branch": "main", "commit_ref": "m1"}, {"id": "2", "state": "building", "branch": "main", "commit_ref": "m2"}]
         self.assertEqual(pn.pick_deploy(ds, "m1")["id"], "1")

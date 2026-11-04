@@ -38,6 +38,7 @@ so on exit 3 ("PENDING") just run the same command again:
 Exit codes: 0 PASS | 1 FAIL | 2 refused (gate not met / error) | 3 PENDING, re-run | 4 Netlify credits < 300.
 """
 import json
+import posixpath
 import os
 import re
 import sys
@@ -81,9 +82,29 @@ _SECRETS = []
 
 # ---------------------------------------------------------------- pure functions (unit-tested, no network)
 
+def _norm(path):
+    """Canonical repo-relative spelling: trimmed, './' and '//' and 'x/../' folded away, no leading '/'."""
+    p = path.strip()
+    q = posixpath.normpath(p) if p else ""
+    return "" if q == "." else q.lstrip("/")
+
+
+# Top-level directories POSITIVELY known to be outside the published tree (exact case, as the build sees them).
+SAFE_NOT_SERVED_TOP = ("tools", "tests", ".github", "supabase")
+
+
+def positively_not_served(path):
+    """True only for a path that is already in canonical spelling and sits under a SAFE_NOT_SERVED_TOP directory.
+    Anything else (unrecognised, odd spelling, '..', whitespace, wrong case) is False, so it is never waved through."""
+    if not isinstance(path, str) or path != path.strip() or _norm(path) != path:
+        return False
+    segs = path.split("/")
+    return len(segs) >= 2 and segs[0] in SAFE_NOT_SERVED_TOP and all(s and s not in (".", "..") for s in segs)
+
+
 def is_served(path):
     """True if this repo path ends up in the published _site tree (mirrors the netlify.toml build command)."""
-    p = path.strip().lstrip("/")
+    p = _norm(path)
     if not p:
         return False
     top = p.split("/", 1)[0]
@@ -103,7 +124,7 @@ def sites_for_files(files):
     react-app/app/lib/attribution-core.ts is bundled into the jade edge function, so it also builds jade."""
     out = set()
     for f in files:
-        p = f.strip().lstrip("/")
+        p = _norm(f)
         if p in ROOT_CONFIG:
             out.add("jade")  # netlify.toml / _headers / _redirects build and ship the root site
         elif p.startswith("react-app/"):
@@ -118,7 +139,7 @@ def sites_for_files(files):
 
 def url_for_path(path, host=SITES["jade"]["host"]):
     """Public URL for a served repo path, or None when the path is not a public URL."""
-    p = path.strip().lstrip("/")
+    p = _norm(path)
     if not is_served(p) or p in NOT_A_URL:
         return None
     base = p.rsplit("/", 1)[-1]
@@ -135,11 +156,14 @@ def expand_paths(spec, tree_files):
     """--paths entries: a file, or a directory ('b/') expanded against the known tree listing."""
     out = []
     for item in [s.strip() for s in spec.split(",") if s.strip()]:
-        item = item.lstrip("/")
         if item.endswith("/"):
+            item = _norm(item)
+            item = item + "/" if item else ""
             out += [f for f in tree_files if f.startswith(item)]
         else:
-            out.append(item)
+            item = _norm(item)
+            if item:
+                out.append(item)
     return out
 
 
@@ -147,7 +171,9 @@ def empty_dirs(spec, tree_files):
     """--paths directory entries ('b/') that expand to zero files (unreadable tree or a wrong prefix)."""
     out = []
     for item in [s.strip() for s in spec.split(",") if s.strip()]:
-        item = item.lstrip("/")
+        if item.endswith("/"):
+            item = _norm(item)
+            item = item + "/" if item else ""
         if item.endswith("/") and not any(f.startswith(item) for f in tree_files):
             out.append(item)
     return out
@@ -184,13 +210,16 @@ def check_urls(paths, sites=()):
     return urls
 
 
-def nothing_served(paths, sites):
-    """True when a change set serves nothing (tools/tests/docs/workflows only): no site is touched and no URL derives."""
-    return not sites and not check_urls(paths, sites)
+def nothing_served(changed, sites):
+    """True only when the PR's OWN complete file list (changed: every new, removed and renamed-from path; None when
+    the paths came from --paths or anywhere else) is non-empty and every entry is positively recognised as a
+    non-served class (SAFE_NOT_SERVED_TOP). An empty, unrecognised or hand-typed list is never 'nothing served'."""
+    return (changed is not None and len(changed) > 0 and not sites
+            and all(positively_not_served(p) for p in changed) and not check_urls(changed, sites))
 
 
-def result_text(ok, paths, sites):
-    return "PASS (nothing served)" if ok and nothing_served(paths, sites) else ("PASS" if ok else "FAIL")
+def result_text(ok, paths, sites, changed=None):
+    return "PASS (nothing served)" if ok and nothing_served(changed, sites) else ("PASS" if ok else "FAIL")
 
 
 def sitemap_locs(xml_text):
@@ -694,7 +723,7 @@ def curl_status(url):
     return s
 
 
-def step_check(ctx, files, ref, sites):
+def step_check(ctx, files, ref, sites, changed=None):
     repo_locs = sitemap_locs(fetch_repo_sitemap(ctx, ref))
     s, live_xml = http("GET", SITES["jade"]["host"] + "/sitemap.xml?oq_internal=1", timeout=30)
     live_locs = sitemap_locs(live_xml) if s == 200 else set()
@@ -704,7 +733,7 @@ def step_check(ctx, files, ref, sites):
     ok_all = True
     dirs = set()
     if not urls:
-        if nothing_served(files, sites):
+        if nothing_served(changed, sites):
             say("PASS (nothing served): no served files changed, so there is no URL to check"); return True
         say("FAIL: no public URLs derived from the change set"); return False
     for u in urls:
@@ -747,6 +776,7 @@ def main(argv):
     if not check_only and not (ctx.gh_tok and ctx.nl_tok):
         say("REFUSED: GITHUB_TOKEN and NETLIFY_TOKEN must be set in the environment"); return 2
     # --check-only reads only public data; GITHUB_TOKEN is optional there (avoids anonymous rate limits)
+    changed = None  # the PR's own full file list; stays None whenever --paths drives the check
     if n in ("-", "0", ""):
         if not paths:
             say("usage: a PR number or --paths is required"); return 2
@@ -761,6 +791,8 @@ def main(argv):
         n = str(int(n))
         all_paths, files = split_pr_files(pr_files(ctx, n))
         sites = sites_for_files(all_paths)
+        if not paths:
+            changed = all_paths
         if paths:
             tree = tree_files(ctx, "main")
             bad = empty_dirs(paths, tree)
@@ -774,8 +806,8 @@ def main(argv):
             s, p, _ = ctx.gh("GET", "/repos/%s/pulls/%s" % (REPO, n))
             if s == 200 and p.get("merged"):
                 ref = p["merge_commit_sha"]
-        ok = step_check(ctx, files, ref, sites)
-        say("RESULT: %s" % result_text(ok, files, sites)); return 0 if ok else 1
+        ok = step_check(ctx, files, ref, sites, changed)
+        say("RESULT: %s" % result_text(ok, files, sites, changed)); return 0 if ok else 1
     if n in ("-", "0", ""):
         say("REFUSED: publishing requires a PR number"); return 2
     say("PR #%s changes %d file(s) (%d to URL-check); sites: %s" % (n, len(all_paths), len(files), sorted(sites) or "none (nothing served changes)"))
@@ -785,8 +817,8 @@ def main(argv):
         step_publish(ctx, sites, merge_sha)
     else:
         say("no served files changed: nothing to publish")
-    ok = step_check(ctx, files, ref, sites)
-    say("RESULT: %s" % result_text(ok, files, sites))
+    ok = step_check(ctx, files, ref, sites, changed)
+    say("RESULT: %s" % result_text(ok, files, sites, changed))
     return 0 if ok else 1
 
 
