@@ -97,5 +97,31 @@ control('F1 (tagline in sentence case)', failures(mut("tagline: 'Contractors Com
 control('F1 (old footer sentence restored)', failures(mut(': NAP.tagline', ": 'Helping homeowners get the best deal on roofing and exterior projects.'")).length > 0);
 control('F2 (contractor line replaced)', failures(mut("'Your sales team — without the truck, the manager, or the advance.'", 'NAP.tagline')).length > 0);
 
+/* gh-3352: the footer Pricing link is homeowner-facing; every partner page (partners.html, partner-*.html, /partners/*) must not carry it, homeowner pages keep it, contractor footers never had it */
+/* any <a> whose href points at the pricing page: /pricing.html, the pretty /pricing, an absolute URL on any host, any case, an optional trailing slash, query or fragment */
+const PRICING = /<a\b[^>]*\bhref\s*=\s*["']?(?:https?:\/\/[^\/"'\s>]+)?\/pricing(?:\.html)?\/?(?:[?#][^"'\s>]*)?["'\s>]/i;
+const PARTNER_PAGES = ['/partners', '/partners/', '/Partners.html', '/PARTNERS', '/partners.html', '/partner-re.html', '/partner-inspectors.html', '/partner-dashboard.html', '/partner-login.html', '/partner-agreement.html', '/partners/some-article.html'];
+const HOMEOWNER_PAGES = ['/', '/pricing', '/index.html', '/how-it-works.html', '/pricing.html', '/faq.html', '/ref-demo.html', '/terms.html'];
+const pricingFailures = (src) => {
+  const f = [];
+  for (const p of PARTNER_PAGES) { const r = render(src, p); if (r.error) f.push(p + ' threw'); else if (PRICING.test(r.footer)) f.push(p + ' footer has Pricing'); }
+  for (const p of HOMEOWNER_PAGES) { const r = render(src, p); if (r.error) f.push(p + ' threw'); else if (!PRICING.test(r.footer)) f.push(p + ' footer lost Pricing'); }
+  return f;
+};
+/* the selector itself: it must see every spelling of the link (a selector that misses one would pass a leak) and must not see look-alikes */
+ok(['<a href="/pricing.html">', '<a href="/pricing">', '<a class="x" href="/Pricing.HTML">', '<a href="https://otterquote.com/pricing">', '<a href="http://www.otterquote.com/PRICING/">', '<a href=\'/pricing?x=1\'>', '<a href="/pricing#fees">', '<a href=/pricing >'].every((h) => PRICING.test(h))
+  && ['<a href="/pricing-guide.html">', '<a href="/pricingx">', '<a href="/faq.html">Pricing', '<a href="/blog/pricing.html">', '<a href="https://otterquote.com/guides/pricing">'].every((h) => !PRICING.test(h)),
+  'P1 the Pricing selector matches /pricing.html, /pricing, absolute URLs and case variants, and not look-alikes');
+{ const f = pricingFailures(SRC); ok(f.length === 0, 'P1 Pricing is absent from ' + PARTNER_PAGES.length + ' partner footers and present on ' + HOMEOWNER_PAGES.length + ' homeowner footers' + (f.length ? ' | ' + f.join(' | ') : '')); }
+control('P1 (partner gate removed: Pricing back on partner pages)', pricingFailures(mut("!this._isInspectorTrack() && !this._isPartnerPage() ? '<a href=\"/pricing.html\">Pricing", "!this._isInspectorTrack() ? '<a href=\"/pricing.html\">Pricing")).length > 0);
+const OLD_IS_PARTNER = "const token = this._normalizePageToken(this._currentFile());";
+{ const i = SRC.indexOf('_isPartnerPage() {'), j = SRC.indexOf('\n  },', i); const body = SRC.slice(i, j);
+  const old = SRC.slice(0, i) + "_isPartnerPage() {\n    const file = this._currentFile();\n    return file === 'partners.html' || file.startsWith('partner-') || window.location.pathname.indexOf('/partners/') === 0;" + SRC.slice(j);
+  ok(i > 0 && body.includes(OLD_IS_PARTNER), 'P1 setup: _isPartnerPage goes through _normalizePageToken');
+  const f = pricingFailures(old);
+  control('P1 (the previous _isPartnerPage: /partners, /Partners.html and /PARTNERS leak Pricing)', ['/partners ', '/Partners.html', '/PARTNERS '].every((p) => f.some((m) => m.startsWith(p)))); }
+control('P1 (Pricing hidden everywhere: homeowner footers lose it)', pricingFailures(mut("!this._isInspectorTrack() && !this._isPartnerPage() ? '<a href=\"/pricing.html\">Pricing", "false ? '<a href=\"/pricing.html\">Pricing")).length > 0);
+{ const r = render(SRC, '/contractor-dashboard.html'); ok(!PRICING.test(r.footer), 'P1 the contractor-portal footer has no Pricing link (unchanged)'); }
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

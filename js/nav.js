@@ -63,8 +63,11 @@ const Nav = {
    * pages for nav purposes.
    */
   _isPartnerPage() {
-    const file = this._currentFile();
-    return file === 'partners.html' || file.startsWith('partner-') || window.location.pathname.indexOf('/partners/') === 0;
+    // gh-3352: matched through _normalizePageToken() (case-folded, "/" and ".html" stripped) so every form production serves for the profession gate matches:
+    // /partners (served 200), and /partners/, /Partners.html, /PARTNERS (all 301 to it), as well as partner-*.html and the /partners/ directory.
+    const token = this._normalizePageToken(this._currentFile());
+    const path = String(window.location.pathname || '').toLowerCase();
+    return token === 'partners' || token.indexOf('partner-') === 0 || path === '/partners' || path.indexOf('/partners/') === 0;
   },
 
   /**
@@ -1154,6 +1157,8 @@ const Nav = {
       ? '/partner-agreement-inspector.html'
       : '/partner-agreement.html';
 
+    // gh-3352: the footer Pricing link is homeowner-facing (what a homeowner pays). Partner pages are homeowner-free, so it is withheld on every partner page
+    // (partners.html, partner-*.html, /partners/*) via _isPartnerPage(), beside the _isInspectorTrack() gating. Homeowner and contractor footers are unchanged.
     footer.innerHTML = `
       <div class="footer-inner container">
         <div class="footer-grid">
@@ -1186,7 +1191,7 @@ const Nav = {
             ` : `
               <a href="/how-it-works.html">How It Works</a>
               ${!this._isInspectorTrack() ? '<a href="/faq.html">FAQ</a>' : ''}
-              ${!this._isInspectorTrack() ? '<a href="/pricing.html">Pricing</a>' : ''}
+              ${!this._isInspectorTrack() && !this._isPartnerPage() ? '<a href="/pricing.html">Pricing</a>' : ''}
               <a href="/start.html${this._attributionQuery()}">Get Started</a>
               <a href="/blog/">Blog</a>
               <a href="/guides/">Guides</a>
