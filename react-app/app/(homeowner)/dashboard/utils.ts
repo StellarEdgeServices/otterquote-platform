@@ -61,6 +61,27 @@ export interface ProgressState {
   percent: number;
 }
 
+/**
+ * gh-3334 (D-407): an insurance claim on an ACV policy. D-407 treats ACV like a cash job: the
+ * homeowner may build the scope from the insurance estimate OR a purchased measurement. Mirrors
+ * isAcvClaim() in dashboard.html. Cash/retail is never ACV; RCV and unknown policy are not ACV.
+ */
+export function isAcvClaim(claim: HomeownerClaim | null | undefined): boolean {
+  return !!claim && claim.funding_type !== 'cash' && claim.policy_type === 'acv';
+}
+
+/**
+ * The Submit-for-Bids gate (mirrors isChecklistComplete() in dashboard.html). Material selection is
+ * always required. Cash needs measurements. ACV needs the insurance estimate OR measurements (gh-3334).
+ * Every other insurance claim (RCV, unknown) still needs the insurance estimate.
+ */
+export function isChecklistComplete(claim: HomeownerClaim | null | undefined): boolean {
+  if (!claim || !claim.has_material_selection) return false;
+  if (claim.funding_type === 'cash') return !!claim.has_measurements;
+  if (isAcvClaim(claim)) return !!claim.has_estimate || !!claim.has_measurements;
+  return !!claim.has_estimate;
+}
+
 /** Mirrors updateProgressBar() — 3 steps, percent rounded. */
 export function computeProgress(claim: HomeownerClaim | null | undefined): ProgressState {
   const total = 3;

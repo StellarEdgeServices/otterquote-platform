@@ -2837,7 +2837,15 @@
         // retail homeowner out of Submit for Bids.
         const needsEstimate = claim.funding_type !== 'cash';
         const estimateOk    = !needsEstimate || !!claim.has_estimate;
+        // gh-3334 (D-407): an ACV claim is handled like a cash job, so a purchased
+        // measurement stands in for the insurance estimate. RCV and unknown policy
+        // types are unchanged (estimate required).
+        if (isAcvClaim(claim)) return (!!claim.has_estimate || !!claim.has_measurements) && !!claim.has_material_selection;
         return estimateOk && !!claim.has_material_selection && measurementsOk;
+      }
+
+      function isAcvClaim(claim) {
+        return !!claim && claim.funding_type !== 'cash' && claim.policy_type === 'acv';
       }
 
       function updateSubmitButton() {
@@ -2849,7 +2857,7 @@
         const hasMeasurements = currentClaim?.has_measurements;
 
         const needsMeasurements = currentClaim?.funding_type === 'cash';
-        const needsEstimate     = currentClaim?.funding_type !== 'cash';
+        const needsEstimate     = currentClaim?.funding_type !== 'cash' && !isAcvClaim(currentClaim);
 
         const isReady = isChecklistComplete(currentClaim);
 
@@ -2858,6 +2866,7 @@
         if (!isReady) {
           const missing = [];
           if (needsEstimate && !hasEstimate) missing.push('Insurance Estimate');
+          if (isAcvClaim(currentClaim) && !hasEstimate && !hasMeasurements) missing.push('Insurance Estimate or Property Measurements');
           if (!hasMaterial) missing.push('Material Selection');
           if (needsMeasurements && !hasMeasurements) missing.push('Property Measurements (required for retail projects)');
           hint.textContent = `Complete the required items: ${missing.join(', ')}.`;

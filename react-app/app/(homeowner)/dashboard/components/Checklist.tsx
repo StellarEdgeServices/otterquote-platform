@@ -9,7 +9,7 @@
 
 import { useRef, useState } from 'react';
 import { submitForBids, uploadClaimDocument } from '../actions';
-import { computeProgress } from '../utils';
+import { computeProgress, isChecklistComplete } from '../utils';
 import type { HomeownerClaim } from '../types';
 
 type DocKind = 'estimate' | 'measurements';
@@ -71,10 +71,8 @@ export function Checklist({
     { id: 'material' as const, label: 'Material selection', done: !!claim.has_material_selection },
   ];
 
-  const canSubmit =
-    !claim.ready_for_bids &&
-    (isCash ? !!claim.has_measurements : !!claim.has_estimate) &&
-    !!claim.has_material_selection;
+  // gh-3334 (D-407): an ACV claim may submit on the estimate OR purchased measurements.
+  const canSubmit = !claim.ready_for_bids && isChecklistComplete(claim);
 
   return (
     <section

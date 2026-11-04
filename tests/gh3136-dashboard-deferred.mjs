@@ -23,8 +23,10 @@ function fnBody(src, name) {
 let n = 0; const ok = (m) => console.log('ok ' + (++n) + ' - ' + m);
 
 // 1. Submit gate untouched
-assert.equal(fnBody(cur, 'isChecklistComplete'), fnBody(main, 'isChecklistComplete'));
-ok('isChecklistComplete body byte-identical to main');
+// gh-3334 amended this gate for ACV claims only (see tests/gh3334-acv-measurement-gate.mjs); the
+// cash and RCV branches are pinned there, so this no longer requires byte identity with main.
+assert.match(fnBody(cur, 'isChecklistComplete'), /funding_type !== 'cash'/);
+ok('isChecklistComplete still gates insurance on the estimate');
 const gate = fnBody(cur, 'isChecklistComplete');
 assert.ok(!/deductible|referral/.test(gate));
 ok('gate mentions neither deductible nor referral');
