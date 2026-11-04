@@ -235,5 +235,27 @@ if (staleVar && stateFn && outcomeFn && confirmSrc && purchaseSrc) {
     ok(run(outcomeFn).kind === 'stale' && run(noRegex).kind === 'paid', 'NC7: another intent\'s id is refused by the shipped check and accepted without it'); }
 }
 
+// C8 -- the price-drift answer of create-measurement-order (LEGAL-READ FAIL at 2bb700a4, Ben's ruling on #3322 comment 6642630135).
+// That answer is only reached from a page that has already seen the PaymentIntent succeed, so it must not say "Nothing has been charged";
+// it says only that the report is already paid for (the PR's own wording in ALREADY_PAID_ERROR: "has already been paid for").
+{
+  const orderSrc = fs.readFileSync(path.join(root, 'supabase', 'functions', 'create-measurement-order', 'index.ts'), 'utf8');
+  const driftFn = extractFn(orderSrc, 'detectPriceDrift');
+  const DRIFT_TEXT = 'This report is temporarily unavailable — its price is misconfigured. The report has already been paid for. Please contact support.';
+  const driftReturns = driftFn ? [...driftFn.matchAll(/return "([^"\n]*)";/g)].map((m) => m[1]) : [];
+  ok(!!driftFn && driftReturns.includes(DRIFT_TEXT), 'C8 the price-drift answer is exactly the approved sentence (it says the report has already been paid for)');
+  ok(!/not been charged|nothing has been charged|no charge/i.test(driftReturns.join('\n')), 'C8 the price-drift answer makes no statement that nothing was charged');
+  ok(!/refund|\$|will be|within|guarantee|free/i.test(DRIFT_TEXT) && /contact support/.test(DRIFT_TEXT), 'C8 the price-drift answer adds no refund, price, time or other promise, and still sends the buyer to support');
+  ok(!/nothing has been charged/i.test(orderSrc.replace(/^\s*(\/\/|\*|\/\*).*$/gm, '')), 'C8 create-measurement-order carries no "Nothing has been charged" outside comments');
+  // negative control: the same function with the sentence put back (the 2bb700a4 text) must fail the same checks
+  const OLD_TEXT = 'This report is temporarily unavailable — its price is misconfigured. Nothing has been charged. Please contact support.';
+  const oldFn = driftFn && driftFn.replace(DRIFT_TEXT, OLD_TEXT);
+  const oldReturns = oldFn ? [...oldFn.matchAll(/return "([^"\n]*)";/g)].map((m) => m[1]) : [];
+  ok(!!oldFn && oldFn !== driftFn && oldReturns.includes(OLD_TEXT) && !oldReturns.includes(DRIFT_TEXT) && /nothing has been charged/i.test(oldReturns.join('\n')),
+    'NC8: with the old sentence put back the same checks fail (the text carries "Nothing has been charged" and not the approved sentence)');
+  // and the e276ba83 text (sentence dropped, nothing said about payment) is not the approved sentence either
+  ok(!['This report is temporarily unavailable — its price is misconfigured. Please contact support.'].includes(DRIFT_TEXT), 'NC8b: the dropped-only text of e276ba83 is not the approved sentence');
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
