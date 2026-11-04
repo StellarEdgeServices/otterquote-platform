@@ -223,6 +223,7 @@ INSERT INTO public.reserved_slugs (slug) VALUES
   ('partner-sw.js'),
   ('partners'),
   ('pricing'),
+  ('about'),
   ('privacy'),
   ('project-confirmation'),
   ('project-info-acv'),
