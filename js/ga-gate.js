@@ -681,10 +681,94 @@
 
   // HeyCatch trial (CEO RUN 144). Same gates as Clarity above, on a NARROWER page
   // set: the Clarity list minus every page signed-in data can render on.
-  // Default-deny, so a new page never loads it by accident.
-  var HEYCATCH_DENIED_PATHS = ['/bids', '/dashboard', '/contractor-about', '/project-info-acv', '/project-info-cash', '/project-info-rcv', '/repair-intake', '/contractor-login', '/partner-login'];
+  // gh-3352 item 3: this is now an explicit ALLOWLIST. It was a denylist
+  // (load everywhere on CLARITY_ALLOWED_PATHS except nine named pages), so a
+  // path added to the Clarity list loaded HeyCatch by default -- and Clarity
+  // allows masked signed-in pages while HeyCatch has no masking. Adding a path
+  // here is a deliberate, reviewed decision, never a side effect of the Clarity
+  // list. Every entry must also be on CLARITY_ALLOWED_PATHS (the Clarity gate
+  // above returns first) and must be a public, signed-out page;
+  // scripts/check-clarity-page-gate.py enforces both.
+  var HEYCATCH_ALLOWED_PATHS = [
+    '/',
+    '/blog',
+    '/blog/aerial-roof-measurement-reports',
+    '/blog/does-homeowners-insurance-cover-roof-damage',
+    '/blog/hail-damage-roof-inspection-first-72-hours',
+    '/blog/hail-vs-wind-roof-damage',
+    '/blog/how-to-negotiate-better-roof-repair-insurance-claim',
+    '/blog/public-adjuster-vs-diy-roof-claim',
+    '/blog/rcv-vs-acv-roof-insurance',
+    '/blog/roof-shingle-warranty-tiers-explained',
+    '/blog/roofing-estimate-red-flags',
+    '/blog/storm-chaser-roofing-scams',
+    '/blog/what-is-recoverable-depreciation-roofing',
+    '/blog/what-is-scope-of-loss-roofing',
+    '/blog/what-to-do-after-storm-damages-roof',
+    '/blog/when-not-to-file-roof-insurance-claim',
+    '/blog/why-roofers-quote-different-prices',
+    '/coming-soon',
+    '/contractor-agreement',
+    '/contractor-faq',
+    '/contractor-how-it-works',
+    '/contractor-join',
+    '/contractors',
+    '/faq',
+    '/guides',
+    '/guides/how-to-choose-contractor',
+    '/guides/how-to-file-property-damage-claim',
+    '/guides/how-to-negotiate-with-insurer',
+    '/guides/how-to-read-contractor-estimate',
+    '/hc',
+    '/hc/save-money',
+    '/hc/materials',
+    '/hc/warranties',
+    '/hc/decisions',
+    '/hi-1',
+    '/hi-4',
+    '/hi-5',
+    '/ho6',
+    '/ho6/start',
+    '/how-it-works',
+    '/ins-1',
+    '/ins-3',
+    '/ins-5',
+    '/landing',
+    '/onboarding-demo',
+    '/oq-voice-ai',
+    '/partner-adjusters',
+    '/partner-agreement',
+    '/partner-app',
+    '/partner-app-install-android',
+    '/partner-app-install-ios',
+    '/partner-inspectors',
+    '/partner-insurance',
+    '/partner-insurance-fees',
+    '/partner-insurance-how-it-works',
+    '/partner-insurance-why',
+    '/partner-other',
+    '/partner-re',
+    '/privacy',
+    '/pricing',
+    '/about',
+    '/re-1',
+    '/re-3',
+    '/re-5',
+    '/recruit',
+    '/ref',
+    '/ref-inspector',
+    '/ref-insurance',
+    '/ref-re',
+    '/start',
+    '/stellar-edge',
+    '/terms',
+    '/tools',
+    '/tools-crm',
+    '/tools-online-presence',
+    '/tools-voice-ai'
+  ];
   var hcPath = normalizeClarityPath(window.location.pathname);
-  if (HEYCATCH_DENIED_PATHS.indexOf(hcPath) === -1) {
+  if (HEYCATCH_ALLOWED_PATHS.indexOf(hcPath) !== -1) {
     oqWhenSharingAllowed(function () {
       _oqLoadOnIdleOrInteraction(function () {
         var hc = document.createElement('script');
