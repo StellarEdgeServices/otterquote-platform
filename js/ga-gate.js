@@ -450,6 +450,7 @@
     '/partner-re',
     '/privacy',
     '/pricing',
+    '/about',
     '/project-info-acv',
     '/project-info-cash',
     '/project-info-rcv',

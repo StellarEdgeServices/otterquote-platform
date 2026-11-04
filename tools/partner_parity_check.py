@@ -257,6 +257,10 @@ def _has_fee_sentence(text: str) -> bool:
 
 
 D266_PAGES_EXEMPT = {
+    "about": (
+        "founder bio (D-411); \"sales commission\" names an industry selling cost near "
+        "the $25 billion estimate. It offers no referral fee and no partner money."
+    ),
     "partner-login": (
         "bare magic-link sign-in form; mentions \"referral fee status\" as a "
         "dashboard label, not a fee-sentence disclosure of its own (gh-737)."
