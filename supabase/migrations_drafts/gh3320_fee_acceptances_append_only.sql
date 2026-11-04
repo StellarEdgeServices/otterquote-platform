@@ -8,6 +8,9 @@
 -- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3B path (migration-author, R-177 pair or Ben's ruling that none is owed, R-097 24-hour notice, a recorded apply).
 -- Rollback: supabase/migrations_rollbacks/gh3320_fee_acceptances_append_only_rollback.sql
 -- Pre-flight: supabase/migrations_rollbacks/gh3320_fee_acceptances_append_only_pre-flight.md  Proof (BEGIN ... ROLLBACK, throwaway Postgres): supabase/tests/gh3320_fee_acceptances_append_only_proof.sql
+-- TRANSACTION: this file carries its own BEGIN ... COMMIT, so a plain `psql -f` applies it all-or-nothing: if the guard raises, the DROP POLICY and the REVOKE roll back with it (the runner's
+-- guard cases G1/G2 prove that nothing is left committed). If the applier's tool already wraps the file in a transaction, the inner BEGIN is only a warning and the outer transaction decides;
+-- after any apply, read pre-flight checks 1 and 2 again rather than trusting the tool's exit status.
 --
 -- What changes (two statements, then a guard):
 --   (1) DROP the policy "Admin can update fee acceptances" (UPDATE for any caller whose JWT email is the owner's). Nothing in this repo reads or writes through it: the only writers of
@@ -18,6 +21,8 @@
 -- What does NOT change: INSERT and SELECT for every role, the three remaining policies, service_role and postgres (the e2e teardown and one-off purges still work), the table, its rows, columns,
 -- indexes and FKs. No trigger is added (see the PR body, Q2: a trigger that also bound service_role would break tests/e2e/seed/teardown.mjs).
 -- Money: none changed; the table is the evidence of a fee the contractor accepted, and this narrows who can alter it. Consent: no wording changes.
+
+BEGIN;
 
 DROP POLICY IF EXISTS "Admin can update fee acceptances" ON public.fee_acceptances;
 
@@ -39,3 +44,5 @@ BEGIN
   END IF;
 END
 $guard$;
+
+COMMIT;
