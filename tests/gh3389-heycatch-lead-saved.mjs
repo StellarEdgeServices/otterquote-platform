@@ -60,7 +60,16 @@ for (const [file, label] of [['js/router-variant-f.js', '/start'], ['js/ho6-star
   check(label + ': fireConversion calls the hook with the literal name and nothing else', /window\.__oqHcTrack\('lead_saved'\)/.test(body) && (body.match(/__oqHcTrack\(/g) || []).length === 1);
   check(label + ': the call is guarded by typeof window.__oqHcTrack === \'function\' (no-op when HeyCatch did not load)', /typeof window\.__oqHcTrack === 'function'/.test(body));
   check(label + ': the only __oqHcTrack call in the file is that one', (src.match(/__oqHcTrack\(/g) || []).length === 1);
-  check(label + ': fireConversion is only called from the saved-lead branch', (src.match(/fireConversion\(/g) || []).length === 2); // definition + one call, in saving.then
+  { // ORDER, not a count: the one call site sits inside the .then() that follows the insert call, and no call precedes the insert.
+    const calls = Array.from(src.matchAll(/fireConversion\(/g)).map((x) => x.index).filter((i) => !src.slice(Math.max(0, i - 9), i).includes('function '));
+    const ins = src.indexOf('insertFreshLead(');
+    const thenAt = src.indexOf('.then(', ins);
+    check(label + ': fireConversion is called exactly once, after the insert call and inside the .then() that follows it', ins > 0 && calls.length === 1 && thenAt > ins && calls[0] > thenAt, JSON.stringify({ ins, thenAt, calls }));
+    const moved = src.replace(/(\n\s*)fireConversion\([^)]*\);/, '$1').replace(/(\n\s*)saving = /, '$1fireConversion(); saving = ');
+    const mcalls = Array.from(moved.matchAll(/fireConversion\(/g)).map((x) => x.index).filter((i) => !moved.slice(Math.max(0, i - 9), i).includes('function '));
+    const mins = moved.indexOf('insertFreshLead('), mthen = moved.indexOf('.then(', mins);
+    check(label + ': negative control: a call moved before the insert is detected by the same order check', moved !== src && !(mins > 0 && mcalls.length === 1 && mthen > mins && mcalls[0] > mthen));
+  }
   // behaviour: run the real function with stubs
   const run = (hook) => {
     const hits = [];
@@ -84,7 +93,7 @@ for (const p of ['/get-started', '/auth-callback', '/dashboard', '/contract-sign
   check('gate does not list ' + p + ' (privacy 5.5A)', !allowed.includes(p));
 const jsDir = readdirSync(path.join(root, 'js')).filter((f) => f.endsWith('.js'));
 const users = jsDir.filter((f) => /__oqHcTrack/.test(read('js/' + f))).sort();
-check('only the boot and the two start pages reference the hook', JSON.stringify(users) === JSON.stringify(['heycatch-boot.js', 'ho6-start.js', 'router-variant-f.js']), JSON.stringify(users));
+check('only the boot and the start pages (Arm D, Arm F, HO-6) reference the hook', JSON.stringify(users) === JSON.stringify(['heycatch-boot.js', 'ho6-start.js', 'router-variant-d.js', 'router-variant-f.js']), JSON.stringify(users));
 
 // (e) negative control: the pre-change shape of a fire site is detected
 const pre = (fnBody(read('js/ho6-start.js'), 'fireConversion') || '').replace(/^.*__oqHcTrack.*\n/m, '');
