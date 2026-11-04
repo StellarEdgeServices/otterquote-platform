@@ -2111,7 +2111,10 @@
           retail:        'Cash / Out-of-Pocket',
           repair:        'Repair Only',
         };
-        const fundingLabel = JOB_TYPE_LABELS[currentClaim.job_type]
+        // gh-3398 (D-407): a homeowner who answered "not sure" (policy_type 'idk') must not be
+        // told RCV. No replacement wording exists yet, so the payment-type line is hidden.
+        const fundingLabel = currentClaim.policy_type === 'idk' ? null
+          : JOB_TYPE_LABELS[currentClaim.job_type]
           || (currentClaim.funding_type === 'insurance'
                 ? (currentClaim.policy_type === 'acv' ? 'Insurance (ACV)' : 'Insurance (RCV)')
                 : currentClaim.funding_type === 'cash' ? 'Cash / Out-of-Pocket'
@@ -2981,6 +2984,7 @@
             );
             if (jobType) {
               window.selectJobType(jobType);
+              window.selectedJobTypeIsPreselect = true;  // gh-3398: set after the call; a user click clears it
               // Pre-populate conditional fields
               if (jobType === 'repair') {
                 if (currentClaim.repair_squares) document.querySelector('[name="repairSquares"]').value = currentClaim.repair_squares;
@@ -3091,7 +3095,11 @@
             updates.job_type = selectedType;
             if (selectedType === 'insurance_rcv') {
               updates.funding_type = 'insurance';
-              updates.policy_type = 'rcv';
+              // gh-3398 (D-407): edit mode pre-selects RCV for a stored 'idk'. Saving that
+              // untouched pre-selection must not rewrite 'idk' to 'rcv'. An explicit click can.
+              if (!(currentClaim.policy_type === 'idk' && window.selectedJobTypeIsPreselect === true)) {
+                updates.policy_type = 'rcv';
+              }
             } else if (selectedType === 'insurance_acv') {
               updates.funding_type = 'insurance';
               updates.policy_type = 'acv';
@@ -3195,6 +3203,7 @@
           // Close edit mode
           isEditingClaim = false;
           window.selectedJobType = null;
+          window.selectedJobTypeIsPreselect = false;
           document.getElementById('claim-display').style.display = 'grid';
           document.getElementById('claim-edit-form').style.display = 'none';
           document.getElementById('job-type-section').style.display = 'none';
@@ -3512,6 +3521,7 @@
       // onclick="..." attribute, which needs global scope, not IIFE scope).
       window.selectJobType = function(type) {
         window.selectedJobType = type;
+        window.selectedJobTypeIsPreselect = false;  // gh-3398
         document.querySelectorAll('.job-type-btn').forEach(btn => {
           btn.classList.toggle('selected', btn.dataset.type === type);
         });
