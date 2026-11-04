@@ -1,5 +1,5 @@
 -- gh-3320: PLANTED WRITERS for the pre-flight proof (throwaway Postgres only). Loaded after gh3320_throwaway_schema.sql by the runner's pre-flight phase.
--- Seven functions that write public.fee_acceptances in the seven shapes a naive regex misses, one view, one cron stub row, and two fixture rows for the digest cases.
+-- Seven functions that write public.fee_acceptances in the seven shapes a naive regex misses, three views (one direct, two nested), one cron stub row, and two fixture rows for the digest cases.
 -- Each function body is never executed; pre-flight check 5 must LIST every name below (gh3320_w1 .. gh3320_w7, gh3320_v_edit, the cron job).
 \set ON_ERROR_STOP on
 CREATE FUNCTION public.gh3320_w1_plain() RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $f$ BEGIN UPDATE public.fee_acceptances SET fee_pct = 0; END $f$;
@@ -14,6 +14,10 @@ GRANT EXECUTE ON FUNCTION public.gh3320_w1_plain() TO authenticated;
 -- an updatable view owned by the superuser that hands UPDATE to a client role: writes the table with no grant or policy on the table itself
 CREATE VIEW public.gh3320_v_edit AS SELECT id, fee_text_displayed FROM public.fee_acceptances;
 GRANT SELECT, UPDATE ON public.gh3320_v_edit TO authenticated;
+-- two levels of view: UPDATE is granted ONLY on the outer one (REVIEW FAIL 6644033286, finding 3); the inner one carries no client grant at all
+CREATE VIEW public.gh3320_v1_inner AS SELECT id, fee_text_displayed FROM public.fee_acceptances;
+CREATE VIEW public.gh3320_v2_outer AS SELECT id, fee_text_displayed FROM public.gh3320_v1_inner;
+GRANT SELECT, UPDATE ON public.gh3320_v2_outer TO authenticated;
 CREATE SCHEMA IF NOT EXISTS cron;
 CREATE TABLE cron.job (jobid serial PRIMARY KEY, jobname text, command text);
 INSERT INTO cron.job (jobname, command) VALUES ('gh3320_cron_writer', 'DELETE FROM public.fee_acceptances WHERE false');

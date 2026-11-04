@@ -8,9 +8,12 @@
 -- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3B path (migration-author, R-177 pair or Ben's ruling that none is owed, R-097 24-hour notice, a recorded apply).
 -- Rollback: supabase/migrations_rollbacks/gh3320_fee_acceptances_append_only_rollback.sql
 -- Pre-flight: supabase/migrations_rollbacks/gh3320_fee_acceptances_append_only_pre-flight.md  Proof (BEGIN ... ROLLBACK, throwaway Postgres): supabase/tests/gh3320_fee_acceptances_append_only_proof.sql
--- TRANSACTION: this file carries its own BEGIN ... COMMIT, so a plain `psql -f` applies it all-or-nothing: if the guard raises, the DROP POLICY and the REVOKE roll back with it (the runner's
--- guard cases G1/G2 prove that nothing is left committed). If the applier's tool already wraps the file in a transaction, the inner BEGIN is only a warning and the outer transaction decides;
--- after any apply, read pre-flight checks 1 and 2 again rather than trusting the tool's exit status.
+-- TRANSACTION: this file carries its own BEGIN ... COMMIT and is meant to be run ALONE (`psql -v ON_ERROR_STOP=1 -f`). Run that way it is all-or-nothing: if the guard raises, the DROP POLICY and the
+-- REVOKE roll back with it (the runner's guard cases G1, G2, G4 and G5 prove that nothing is left committed).
+-- THE FILE'S OWN COMMIT ENDS ANY TRANSACTION THE APPLIER OPENED AROUND IT. `BEGIN; <this file>; ROLLBACK;` and `psql -1 -f` therefore leave the change COMMITTED (the inner BEGIN is only a
+-- warning), and a step placed after this file in the same transaction (a history insert, a check) is not atomic with it. NEVER dry-run this file by wrapping it; rehearse on a throwaway Postgres
+-- (the runner's case W1 shows a wrapped ROLLBACK committing). A guard that fires inside a wrapping transaction still commits nothing, because the transaction is aborted (case W2).
+-- A plain `psql -f` exits 0 even when the guard fires (the error is printed, nothing is committed), so do not trust the tool's exit status: after any apply read pre-flight checks 1 and 2 again.
 --
 -- What changes (two statements, then a guard):
 --   (1) DROP the policy "Admin can update fee acceptances" (UPDATE for any caller whose JWT email is the owner's). Nothing in this repo reads or writes through it: the only writers of
@@ -28,14 +31,16 @@ DROP POLICY IF EXISTS "Admin can update fee acceptances" ON public.fee_acceptanc
 
 REVOKE UPDATE, DELETE ON TABLE public.fee_acceptances FROM anon, authenticated;
 
--- GUARD: refuse (and so roll back the whole migration) if a client role still holds UPDATE or DELETE, or an UPDATE or DELETE policy survives.
+-- GUARD: refuse (and so roll back the whole migration) if a client role still holds UPDATE (table-wide or on any single column), DELETE or TRUNCATE, or an UPDATE or DELETE policy survives.
+-- TRUNCATE is not revoked here (gh-3240 already revoked it and #3320's figures do not list it) but it ignores RLS, so a surviving TRUNCATE stops the migration for the applier to look at.
+-- A column-level UPDATE grant made by another grantor is untouched by the REVOKE above; has_table_privilege does not report it, has_any_column_privilege does.
 DO $guard$
 DECLARE
   bad text;
 BEGIN
-  SELECT string_agg(r || ':' || p, ', ') INTO bad
-    FROM unnest(ARRAY['anon', 'authenticated']) r, unnest(ARRAY['UPDATE', 'DELETE']) p
-   WHERE has_table_privilege(r, 'public.fee_acceptances', p);
+  SELECT string_agg(r || ':' || p || CASE WHEN p = 'UPDATE' AND NOT has_table_privilege(r, 'public.fee_acceptances', p) THEN ' (column-level)' ELSE '' END, ', ') INTO bad
+    FROM unnest(ARRAY['anon', 'authenticated']) r, unnest(ARRAY['UPDATE', 'DELETE', 'TRUNCATE']) p
+   WHERE CASE WHEN p = 'UPDATE' THEN has_any_column_privilege(r, 'public.fee_acceptances', p) ELSE has_table_privilege(r, 'public.fee_acceptances', p) END;
   IF bad IS NOT NULL THEN
     RAISE EXCEPTION 'gh3320: client privilege survived on public.fee_acceptances: %', bad USING ERRCODE = '55000';
   END IF;
