@@ -169,6 +169,8 @@ body.hr { margin: 0; font-family: var(--hr-font); color: var(--hr-ink); backgrou
   .hr-call-short { display: inline; }
   .hr-header .hr-wrap { padding: 8px 16px; flex-wrap: nowrap; gap: 12px; }
   .hr-brand { gap: 10px; }
+  .hr-brand { min-height: 44px; }
+  .hr-pp a { display: inline-block; min-height: 44px; }
   .hr-brand img { width: 24px; height: 38px; }
   .hr-brand-name { font-size: 19px; }
   .hr .hr-phone { height: 48px; padding: 0 14px; border: 2px solid var(--hr-on-navy); border-radius: 6px; font-size: 16px; }

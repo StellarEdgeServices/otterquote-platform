@@ -530,3 +530,16 @@
   .nav-phone-num { display: none; }
   .nav-phone-call { display: inline; }
 }
+
+/* gh-3387 part D: 44x44 CSS px tap targets on phones. Hit area grows by min-size and
+   centred flex content; font sizes and colours are unchanged. */
+@media (max-width: 768px) {
+  .nav-logo { min-height: 44px; }
+  .nav-hamburger { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; }
+  .nav-role-tab { display: inline-flex; align-items: center; min-height: 44px; }
+  .nav-links .nav-link { display: flex; align-items: center; min-height: 44px; }
+  .footer-col { gap: 0; }
+  .footer-col > a { display: flex; align-items: center; min-height: 44px; }
+  .footer-nap a { display: inline-flex; align-items: center; min-height: 44px; }
+  button.router-back { min-height: 44px; min-width: 44px; padding-top: 14px; padding-bottom: 14px; margin-top: -14px; margin-bottom: calc(var(--sp-4) - 14px); }
+}
