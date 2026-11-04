@@ -2650,10 +2650,29 @@
           } catch (swErr) {
             console.warn('[Dashboard] Could not load install date for switch gating (non-fatal):', swErr);
           }
-          const installDate = startDateStr ? new Date(startDateStr) : null;
-          const cutoffDate = new Date();
-          cutoffDate.setDate(cutoffDate.getDate() + 3);
-          const withinCutoff = installDate && !isNaN(installDate.getTime()) && installDate <= cutoffDate;
+          // gh-3350: same rule as switch-contractor/cutoff.ts isWithinCutoff. Closed when the start date is fewer than
+          // 3 calendar days after today in America/Chicago (or past); day three itself (S-3) is open.
+          const withinCutoff = (function (startStr) {
+            if (!startStr) return false;
+            const zonedDayMs = function (d) {
+              const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
+              const n = function (t) { return Number(parts.find(function (p) { return p.type === t; }).value); };
+              return Date.UTC(n('year'), n('month') - 1, n('day'));
+            };
+            const raw = String(startStr).trim();
+            const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+            let installDayMs;
+            if (m) {
+              installDayMs = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+              const chk = new Date(installDayMs);
+              if (chk.getUTCFullYear() !== +m[1] || chk.getUTCMonth() !== +m[2] - 1 || chk.getUTCDate() !== +m[3]) return false;
+            } else {
+              const inst = new Date(raw);
+              if (isNaN(inst.getTime())) return false;
+              installDayMs = zonedDayMs(inst);
+            }
+            return Math.round((installDayMs - zonedDayMs(new Date())) / 86400000) < 3;
+          })(startDateStr);
 
           const actionsEl = document.getElementById('status-banner-actions');
           if (actionsEl) {
