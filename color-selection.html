@@ -473,7 +473,7 @@
           <div class="in-person-icon">🏠</div>
           <div class="in-person-content">
             <h3 class="in-person-title">Prefer to See Colors In Person?</h3>
-            <p class="in-person-description">Request physical color boards. Your contractor will bring shingle samples to your home so you can see the real colors in your own lighting and against your exterior.</p>
+            <p class="in-person-description">Request physical color boards. We'll ask your contractor to bring shingle samples so you can see the real colors in your own lighting and against your exterior.</p>
             <button class="btn btn-secondary" id="inperson-btn" onclick="ColorSelection.requestColorBoardVisit()">
               Request In-Person Color Samples
             </button>
@@ -694,10 +694,12 @@
           // Update subtitle
           const subtitle = document.getElementById('color-subtitle');
           if (subtitle) {
+            // gh-3287 (Ben, 6584752880, items 2/3): when the name is missing, drop the name.
+            const who = contractor?.company_name ? `Your contractor ${this.contractorName}` : 'Your contractor';
             if (this.brand) {
-              subtitle.textContent = `Your contractor ${this.contractorName} uses ${this.brand}. Let's pick the perfect color for your home.`;
+              subtitle.textContent = `${who} uses ${this.brand}. Let's pick the perfect color for your home.`;
             } else {
-              subtitle.textContent = `Your contractor ${this.contractorName} will confirm the brand. Let's pick the perfect color for your home.`;
+              subtitle.textContent = `${who} will confirm the brand. Let's pick the perfect color for your home.`;
             }
           }
 
@@ -735,13 +737,6 @@
             hasVisualizer: ['Owens Corning', 'GAF', 'CertainTeed', 'TAMKO', 'Atlas', 'IKO'].includes(this.brand),
           },
           {
-            id: 'browse',
-            title: 'Browse Colors',
-            icon: '🎨',
-            description: 'See our color catalog and make your selection.',
-            primary: false,
-          },
-          {
             id: 'inperson',
             title: "I'd Rather See Colors In Person",
             icon: '👁️',
@@ -755,14 +750,14 @@
             <div class="color-option-icon">${opt.icon}</div>
             <h3 class="color-option-title">${opt.title}</h3>
             <p class="color-option-description">${opt.description}</p>
-            ${this.brand === 'GAF' || this.brand === 'CertainTeed' || this.brand === 'TAMKO' || this.brand === 'Atlas' || this.brand === 'IKO' ?
+            ${opt.id === 'visualize' && (this.brand === 'GAF' || this.brand === 'CertainTeed' || this.brand === 'TAMKO' || this.brand === 'Atlas' || this.brand === 'IKO') ?
               `<div class="color-option-note">
                 <span class="external-link-indicator">
                   <span class="external-icon">↗</span> Opens in new tab
                 </span>
               </div>` : ''}
             <button class="btn btn-primary btn-full color-option-button" onclick="ColorSelection.handleOptionClick('${opt.id}')">
-              ${opt.id === 'visualize' ? 'Start Visualizing' : opt.id === 'browse' ? 'View Colors' : 'Request Visit'}
+              ${opt.id === 'visualize' ? 'Start Visualizing' : 'Request Visit'}
             </button>
           </div>
         `).join('');
@@ -791,8 +786,6 @@
         if (optionId === 'visualize') {
           window.scrollTo(0, document.getElementById('visualizer-section').offsetTop - 100);
           gtag('event', 'color_option_click', { option: 'visualize', brand: this.brand });
-        } else if (optionId === 'browse') {
-          gtag('event', 'color_option_click', { option: 'browse', brand: this.brand });
         } else if (optionId === 'inperson') {
           this.requestColorBoardVisit();
         }
@@ -883,7 +876,7 @@
               <div id="visualizer" data-zip="${zip}"></div>
             </div>
             <div class="color-option-note">
-              <strong>After visualizing:</strong> Once you've found a color you like.
+              <strong>After visualizing:</strong> Come back here and enter the color you selected.
             </div>
           `;
           // Script is intentionally NOT injected here — loaded on demand via launchOCWidget()
@@ -1017,7 +1010,7 @@
 
           if (existing) {
             if (confirmEl) {
-              confirmEl.innerHTML = '<strong>✓ Already requested.</strong> Your contractor will reach out soon with physical color samples.';
+              confirmEl.innerHTML = '<strong>✓ Already requested.</strong> Please mention it to your contractor too.';
               confirmEl.classList.add('active');
             } else {
               alert('You\'ve already requested a color board visit. Your contractor will reach out soon.');
@@ -1044,7 +1037,7 @@
             ? ` To reach them directly: <strong><a href="tel:${this.contractorPhone}" style="color:inherit;">${this.contractorPhone}</a></strong>`
             : '';
 
-          const confirmMsg = `<strong>✓ Visit requested!</strong> We've notified ${this.contractorName} to schedule a color board visit. They'll reach out within 48 hours.${phoneHtml}`;
+          const confirmMsg = `<strong>✓ Visit requested.</strong> Please mention it to your contractor too.${phoneHtml}`;
 
           // Show confirmation in persistent in-person section
           if (confirmEl) {
@@ -1155,52 +1148,16 @@
           const data = response.data;
           const fnError = response.error;
 
+          // gh-3287 (Ben, 6584752880, items 69-71): the signing panel is removed (D-393 as
+          // amended retired that envelope); the saved note is shown whatever the call returns.
           if (fnError || !data?.signing_url) {
-            // Graceful fallback — template may not exist yet
             console.warn('[ColorAddendum] DocuSign addendum unavailable:', fnError || 'No signing_url returned');
-            this.showAddendumFallback();
-            return;
           }
-
-          // Success — show embedded signing iframe
-          // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id removed —
-          // a per-homeowner database identifier must not reach GA4.
-          gtag('event', 'color_addendum_created', {});
-          this.showAddendumSigningIframe(data.signing_url);
+          this.showAddendumFallback();
         } catch (err) {
           console.warn('[ColorAddendum] Error creating addendum:', err);
           this.showAddendumFallback();
         }
-      },
-
-      /**
-       * Show embedded DocuSign iframe for color addendum signing
-       */
-      showAddendumSigningIframe(signingUrl) {
-        // Inject signing section below the success state
-        const form = document.getElementById('color-form');
-        if (!form) return;
-
-        // Remove existing addendum section if present
-        const existing = document.getElementById('color-addendum-section');
-        if (existing) existing.remove();
-
-        const section = document.createElement('div');
-        section.id = 'color-addendum-section';
-        section.style.cssText = 'margin-top:2rem; padding:1.5rem; background:rgba(224,123,0,0.08); border:1px solid rgba(224,123,0,0.3); border-left:4px solid var(--teal,#E07B00); border-radius:0.75rem;';
-        section.innerHTML = `
-          <h3 style="color:var(--white,#fff); margin:0 0 0.75rem;">Sign Color Addendum</h3>
-          <p style="color:var(--slate,#94A3B8); margin:0 0 1rem;">
-            Almost done! Please sign the color addendum below to add your selected color to your contract.
-          </p>
-          <iframe
-            src="${signingUrl}"
-            style="width:100%; height:500px; border-radius:0.5rem; border:1px solid rgba(255,255,255,0.1);"
-            title="Color Addendum — E-Sign"
-          ></iframe>
-        `;
-        form.parentNode.insertBefore(section, form.nextSibling);
-        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
       },
 
       /**

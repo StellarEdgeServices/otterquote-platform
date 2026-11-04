@@ -56,10 +56,6 @@ export const COLOR_COPY = {
   optionVisualizeTitle: 'See It On Your House',
   optionVisualizeIcon: '🏡',
   optionVisualizeButton: 'Start Visualizing',
-  optionBrowseTitle: 'Browse Colors',
-  optionBrowseIcon: '🎨',
-  optionBrowseDescription: 'See our color catalog and make your selection.',
-  optionBrowseButton: 'View Colors',
   optionInPersonTitle: "I'd Rather See Colors In Person",
   optionInPersonIcon: '👁️',
   optionInPersonDescription: 'Request physical color boards for a closer look at your options.',
@@ -75,7 +71,7 @@ export const COLOR_COPY = {
   inPersonIcon: '🏠',
   inPersonTitle: 'Prefer to See Colors In Person?',
   inPersonDescription:
-    'Request physical color boards. Your contractor will bring shingle samples to your home so you can see the real colors in your own lighting and against your exterior.',
+    "Request physical color boards. We'll ask your contractor to bring shingle samples so you can see the real colors in your own lighting and against your exterior.",
   inPersonButton: 'Request In-Person Color Samples',
 
   // ── Color confirmation section (color-selection.html:490-512) ──
@@ -102,11 +98,16 @@ export const COLOR_COPY = {
   successText:
     "✓ Color confirmed! We've saved your selection.",
 
-  // ── Addendum signing (color-selection.html:1177-1185) — note literal em-dash in title ──
-  addendumHeading: 'Sign Color Addendum',
-  addendumBody:
-    'Almost done! Please sign the color addendum below to add your selected color to your contract.',
-  addendumIframeTitle: 'Color Addendum — E-Sign',
+  // gh-3287 (Ben, 6584752880, items 69-71): the colour signing panel (heading, body, frame
+  // title) is removed. D-393 as amended retired that envelope.
+
+  // ── Save failure (gh-3287, Ben 6584752880, item 67): item 68's words; a raw database
+  // message is never shown. Also the zero-row save failure.
+  saveError: 'Error saving color. Please try again.',
+
+  // ── Claim lookup failed (gh-3287, Ben 6584752880, items 76/78). "Missing claim ID" is kept
+  // for the no-claim_id case only (item 77).
+  claimNotFoundTitle: 'Claim not found',
 
   // ── Addendum fallback (color-selection.html:1205) — "<strong>Your color choice is saved.</strong> …" ──
   // The whole note (gh-3287, Ben 2026-11-02T17:12Z): nothing is appended after it.
@@ -114,8 +115,13 @@ export const COLOR_COPY = {
     'Your color choice is saved. Please confirm it with your contractor.',
 
   // ── Color-board request confirmations (color-selection.html:1014-1017) ──
+  // gh-3287 (Ben, 6584752880, items 47/49): saving the request notifies nobody (the
+  // 'color_board_request' notifications row has no reader anywhere in the repo), so the
+  // "no" wording applies.
   colorBoardAlreadyRequested:
-    '✓ Already requested. Your contractor will reach out soon with physical color samples.',
+    '✓ Already requested. Please mention it to your contractor too.',
+  colorBoardVisitRequested:
+    '✓ Visit requested. Please mention it to your contractor too.',
   colorBoardAlreadyRequestedAlert:
     "You've already requested a color board visit. Your contractor will reach out soon.",
   // mailto fallback (static:1055-1057)
@@ -138,7 +144,7 @@ export const COLOR_COPY = {
     'Opens an interactive visualizer — upload a photo of your home to see real shingle colors.',
   // desktop after-visualizing note (static:880) — "<strong>After visualizing:</strong> …"
   ocAfterVisualizingDesktop:
-    "After visualizing: Once you've found a color you like.",
+    'After visualizing: Come back here and enter the color you selected.',
   // mobile after-visualizing note (static:861)
   ocAfterVisualizingMobile:
     'After visualizing: Come back here and enter the color you selected in the form below.',
@@ -201,19 +207,24 @@ export const COLOR_COPY = {
 // ── Interpolated copy builders ───────────────────────────────────────────────────
 // Each returns a string whose fixed text is byte-for-byte from color-selection.html.
 
-/** Subtitle when the contractor's brand is known (color-selection.html:692). */
+/** True when the lookup returned a real company name (not empty, not the generic fallback). */
+function hasContractorName(contractorName: string): boolean {
+  return !!contractorName && contractorName !== COLOR_COPY.contractorNameFallback;
+}
+
+/**
+ * Subtitle when the contractor's brand is known (color-selection.html:692).
+ * gh-3287 (Ben, 6584752880, items 2/3): when the name is missing, the name is dropped.
+ */
 export function subtitleBrandKnown(contractorName: string, brand: string): string {
-  return `Your contractor ${contractorName} uses ${brand}. Let's pick the perfect color for your home.`;
+  const who = hasContractorName(contractorName) ? `Your contractor ${contractorName}` : 'Your contractor';
+  return `${who} uses ${brand}. Let's pick the perfect color for your home.`;
 }
 
-/** Subtitle when the brand is not yet confirmed (color-selection.html:694). */
+/** Subtitle when the brand is not yet confirmed (color-selection.html:694). Name dropped when missing. */
 export function subtitleBrandUnconfirmed(contractorName: string): string {
-  return `Your contractor ${contractorName} will confirm the brand. Let's pick the perfect color for your home.`;
-}
-
-/** Color-board "visit requested" confirmation, base sentence (color-selection.html:1041). */
-export function colorBoardVisitRequested(contractorName: string): string {
-  return `✓ Visit requested! We've notified ${contractorName} to schedule a color board visit. They'll reach out within 48 hours.`;
+  const who = hasContractorName(contractorName) ? `Your contractor ${contractorName}` : 'Your contractor';
+  return `${who} will confirm the brand. Let's pick the perfect color for your home.`;
 }
 
 /**

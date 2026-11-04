@@ -18,7 +18,6 @@ import {
   COLOR_COPY,
   subtitleBrandKnown,
   subtitleBrandUnconfirmed,
-  colorBoardVisitRequested,
   colorBoardPhoneSuffix,
   colorBoardMailtoBody,
 } from '../copy';
@@ -45,17 +44,14 @@ const STATIC = {
   subtitleStaticPlaceholder:
     "Your contractor uses [Brand]. Let's pick the perfect color for your home.",
   optionVisualizeTitle: 'See It On Your House',
-  optionBrowseTitle: 'Browse Colors',
-  optionBrowseDescription: 'See our color catalog and make your selection.',
   optionInPersonTitle: "I'd Rather See Colors In Person",
   optionInPersonDescription: 'Request physical color boards for a closer look at your options.',
   optionVisualizeButton: 'Start Visualizing',
-  optionBrowseButton: 'View Colors',
   optionInPersonButton: 'Request Visit',
   opensInNewTabLabel: 'Opens in new tab',
   inPersonTitle: 'Prefer to See Colors In Person?',
   inPersonDescription:
-    'Request physical color boards. Your contractor will bring shingle samples to your home so you can see the real colors in your own lighting and against your exterior.',
+    "Request physical color boards. We'll ask your contractor to bring shingle samples so you can see the real colors in your own lighting and against your exterior.",
   inPersonButton: 'Request In-Person Color Samples',
   confirmationTitle: 'What Color Did You Choose?',
   confirmationSubtitle: 'Tell us the color you selected from the tool above or physical boards.',
@@ -64,14 +60,10 @@ const STATIC = {
   colorNamePlaceholder: 'e.g., Estate Gray, Charcoal, Weathered Wood',
   successText:
     "✓ Color confirmed! We've saved your selection.",
-  addendumHeading: 'Sign Color Addendum',
-  addendumBody:
-    'Almost done! Please sign the color addendum below to add your selected color to your contract.',
-  addendumIframeTitle: 'Color Addendum — E-Sign',
   addendumFallbackBase:
     'Your color choice is saved. Please confirm it with your contractor.',
-  colorBoardAlreadyRequested:
-    '✓ Already requested. Your contractor will reach out soon with physical color samples.',
+  colorBoardAlreadyRequested: '✓ Already requested. Please mention it to your contractor too.',
+  colorBoardVisitRequested: '✓ Visit requested. Please mention it to your contractor too.',
   colorBoardAlreadyRequestedAlert:
     "You've already requested a color board visit. Your contractor will reach out soon.",
   colorBoardMailtoSubject: 'Color Board Visit Request',
@@ -83,8 +75,7 @@ const STATIC = {
   ocLauncherButton: '🎨 Click to Preview Colors',
   ocLauncherSubNote:
     'Opens an interactive visualizer — upload a photo of your home to see real shingle colors.',
-  ocAfterVisualizingDesktop:
-    "After visualizing: Once you've found a color you like.",
+  ocAfterVisualizingDesktop: 'After visualizing: Come back here and enter the color you selected.',
   ocAfterVisualizingMobile:
     'After visualizing: Come back here and enter the color you selected in the form below.',
   ocMobileButton: 'Open OC Design EyeQ',
@@ -126,14 +117,14 @@ describe('verbatim homeowner copy (byte-for-byte)', () => {
     expect(COLOR_COPY).not.toHaveProperty('noRushText');
   });
 
-  it('the three option cards (titles/descriptions/buttons/note) match exactly', () => {
+  it('the two option cards (titles/descriptions/buttons/note) match exactly; the Browse Colors card is gone (Ben 6584752880, items 14-16)', () => {
     expect(COLOR_COPY.optionVisualizeTitle).toBe(STATIC.optionVisualizeTitle);
     expect(COLOR_COPY.optionVisualizeIcon).toBe('🏡');
     expect(COLOR_COPY.optionVisualizeButton).toBe(STATIC.optionVisualizeButton);
-    expect(COLOR_COPY.optionBrowseTitle).toBe(STATIC.optionBrowseTitle);
-    expect(COLOR_COPY.optionBrowseIcon).toBe('🎨');
-    expect(COLOR_COPY.optionBrowseDescription).toBe(STATIC.optionBrowseDescription);
-    expect(COLOR_COPY.optionBrowseButton).toBe(STATIC.optionBrowseButton);
+    for (const k of ['optionBrowseTitle', 'optionBrowseIcon', 'optionBrowseDescription', 'optionBrowseButton']) {
+      expect(COLOR_COPY).not.toHaveProperty(k);
+    }
+    expect(Object.values(COLOR_COPY).join(' ')).not.toMatch(/Browse Colors|View Colors|color catalog/);
     expect(COLOR_COPY.optionInPersonTitle).toBe(STATIC.optionInPersonTitle);
     expect(COLOR_COPY.optionInPersonIcon).toBe('👁️');
     expect(COLOR_COPY.optionInPersonDescription).toBe(STATIC.optionInPersonDescription);
@@ -179,18 +170,28 @@ describe('verbatim homeowner copy (byte-for-byte)', () => {
     expect(COLOR_COPY.backToDashboardButton).toBe('Back to Dashboard');
   });
 
-  it('success + addendum signing + fallback copy match exactly', () => {
+  it('success + fallback copy match exactly; the signing panel copy is gone (Ben 6584752880, items 69-71)', () => {
     expect(COLOR_COPY.successText).toBe(STATIC.successText);
-    expect(COLOR_COPY.addendumHeading).toBe(STATIC.addendumHeading);
-    expect(COLOR_COPY.addendumBody).toBe(STATIC.addendumBody);
-    expect(COLOR_COPY.addendumIframeTitle).toBe(STATIC.addendumIframeTitle);
-    expect(COLOR_COPY.addendumIframeTitle).toContain('—'); // literal em-dash
     expect(COLOR_COPY.addendumFallbackBase).toBe(STATIC.addendumFallbackBase);
+    for (const k of ['addendumHeading', 'addendumBody', 'addendumIframeTitle']) {
+      expect(COLOR_COPY).not.toHaveProperty(k);
+    }
+    expect(Object.values(COLOR_COPY).join(' ')).not.toMatch(/Sign Color Addendum|Almost done|E-Sign/);
+  });
+
+  it('save failure and claim-not-found copy are the ruled words (Ben 6584752880, items 67, 68, 76, 78)', () => {
+    expect(COLOR_COPY.saveError).toBe('Error saving color. Please try again.');
+    expect(COLOR_COPY.claimNotFoundTitle).toBe('Claim not found');
   });
 
   it('color-board confirmation + mailto strings match exactly', () => {
     expect(COLOR_COPY.colorBoardAlreadyRequested).toBe(STATIC.colorBoardAlreadyRequested);
+    expect(COLOR_COPY.colorBoardVisitRequested).toBe(STATIC.colorBoardVisitRequested);
     expect(COLOR_COPY.colorBoardAlreadyRequestedAlert).toBe(STATIC.colorBoardAlreadyRequestedAlert);
+    // Ben 6584752880, items 47/49: no "within 48 hours", no promise that the contractor will reach out
+    expect(`${COLOR_COPY.colorBoardVisitRequested} ${COLOR_COPY.colorBoardAlreadyRequested}`).not.toMatch(
+      /48 hours|reach out|notified/,
+    );
     expect(COLOR_COPY.colorBoardMailtoSubject).toBe(STATIC.colorBoardMailtoSubject);
     expect(COLOR_COPY.colorBoardMailtoAddress).toBe('info@otterquote.com');
   });
@@ -249,13 +250,23 @@ describe('interpolated copy builders', () => {
     );
   });
 
-  it('color-board visit-requested + phone suffix join verbatim', () => {
-    const base = colorBoardVisitRequested('Hoosier Roofing Co.');
-    expect(base).toBe(
-      "✓ Visit requested! We've notified Hoosier Roofing Co. to schedule a color board visit. They'll reach out within 48 hours.",
+  it('subtitle builders drop the name when it is missing (Ben 6584752880, items 2/3)', () => {
+    for (const missing of [COLOR_COPY.contractorNameFallback, '']) {
+      expect(subtitleBrandKnown(missing, 'GAF')).toBe(
+        "Your contractor uses GAF. Let's pick the perfect color for your home.",
+      );
+      expect(subtitleBrandUnconfirmed(missing)).toBe(
+        "Your contractor will confirm the brand. Let's pick the perfect color for your home.",
+      );
+      expect(subtitleBrandKnown(missing, 'GAF')).not.toContain('Your Contractor');
+    }
+  });
+
+  it('visit-requested confirmation has no promise; the phone suffix still joins', () => {
+    expect(COLOR_COPY.colorBoardVisitRequested).toBe(
+      '✓ Visit requested. Please mention it to your contractor too.',
     );
     expect(colorBoardPhoneSuffix('317-555-0100')).toBe(' To reach them directly: 317-555-0100');
-    expect(base + colorBoardPhoneSuffix('317-555-0100')).toContain('within 48 hours. To reach them directly:');
   });
 
   it('the fallback note has no phone or contact clause helpers', () => {

@@ -257,10 +257,12 @@ export async function saveColorSelection({
     .select('id');
 
   if (error) {
-    throw new Error('Failed to save color selection: ' + error.message);
+    // gh-3287 (Ben 6584752880, item 67): the raw database message is logged, never shown.
+    console.error('[ColorSelection] save failed:', error.message);
+    throw new Error(COLOR_COPY.saveError);
   }
   if (!data || data.length === 0) {
-    throw new Error('Error saving color. Please try again.');
+    throw new Error(COLOR_COPY.saveError);
   }
 }
 

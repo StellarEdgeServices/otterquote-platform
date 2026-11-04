@@ -22,17 +22,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
-import {
-  DocuSignEmbed,
-  isSigningCompleteReturn,
-  runSigningReturnBridge,
-} from '@/components/docusign-embed';
+import { isSigningCompleteReturn, runSigningReturnBridge } from '@/components/docusign-embed';
 import { HomeownerShell } from '../_shell/HomeownerShell';
 import {
   COLOR_COPY as C,
   subtitleBrandKnown,
   subtitleBrandUnconfirmed,
-  colorBoardVisitRequested,
   colorBoardPhoneSuffix,
   colorBoardMailtoBody,
 } from './copy';
@@ -117,7 +112,7 @@ function Content() {
     return (
       <Wrap>
         <ErrorPanel
-          title="Missing claim ID"
+          title={data.error ? C.claimNotFoundTitle : 'Missing claim ID'}
           detail={
             data.error ??
             'No claim ID was found in the URL. Please return to your dashboard and navigate here from your project page.'
@@ -175,8 +170,8 @@ function PageBody({
   const [saveError, setSaveError] = useState<string | null>(null);
 
   // ── Addendum state ──
-  const [addendum, setAddendum] = useState<'none' | 'signing' | 'fallback'>('none');
-  const [signingUrl, setSigningUrl] = useState<string | null>(null);
+  // gh-3287 (Ben 6584752880, items 69-71): the signing panel is removed; only the saved note remains.
+  const [addendum, setAddendum] = useState<'none' | 'fallback'>('none');
 
   // ── In-person request state ──
   const [inPersonMsg, setInPersonMsg] = useState<string | null>(null);
@@ -184,14 +179,6 @@ function PageBody({
 
   // ── Visualizer scroll target ──
   const visualizerRef = useRef<HTMLDivElement>(null);
-
-  // ── onComplete ref (stable identity for the embed listener) ──
-  const onCompleteRef = useRef<() => void>(() => {});
-  onCompleteRef.current = () => {
-    setPhase('done');
-    setSigningUrl(null);
-  };
-  const handleComplete = useCallback(() => onCompleteRef.current(), []);
 
   // ── Init-time signed=true return (mirror H4) ──
   const firedReturn = useRef(false);
@@ -218,7 +205,9 @@ function PageBody({
       await saveColorSelection({ claimId, userId, brand, colorName: name });
     } catch (err) {
       setSaving(false);
-      setSaveError(err instanceof Error ? err.message : 'Error saving color. Please try again.');
+      // gh-3287 (Ben 6584752880, item 67): never show a raw database message.
+      console.error('[ColorSelection] save failed:', err);
+      setSaveError(C.saveError);
       return;
     }
 
@@ -232,16 +221,15 @@ function PageBody({
       return;
     }
     try {
-      const { signingUrl: url } = await createColorAddendumEnvelope({
+      await createColorAddendumEnvelope({
         claimId,
         contractorId: contractorId!,
         origin: window.location.origin,
       });
-      setSigningUrl(url);
-      setAddendum('signing');
     } catch {
-      setAddendum('fallback');
+      /* the envelope is retired; the saved note below is shown either way */
     }
+    setAddendum('fallback');
   }, [colorInput, claimId, userId, brand, contractorId, signerEmail]);
 
   // ── In-person color board request ──
@@ -252,7 +240,7 @@ function PageBody({
       return;
     }
     if (res.status === 'created') {
-      let msg = colorBoardVisitRequested(contractorName);
+      let msg: string = C.colorBoardVisitRequested;
       if (contractorPhone) msg += colorBoardPhoneSuffix(contractorPhone);
       setInPersonMsg(msg);
       setInPersonDisabled(true);
@@ -268,13 +256,13 @@ function PageBody({
 
   // ── Option-card click ──
   const handleOptionClick = useCallback(
-    (id: 'visualize' | 'browse' | 'inperson') => {
+    (id: 'visualize' | 'inperson') => {
       if (id === 'visualize') {
         visualizerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } else if (id === 'inperson') {
         void handleInPerson();
       }
-      // 'browse' is a no-op in the static (analytics only) — preserved.
+      // gh-3287 (Ben 6584752880, items 14-16): the 'browse' card is removed.
     },
     [handleInPerson],
   );
@@ -302,7 +290,7 @@ function PageBody({
   const showLinkOutNote = isLinkOutBrand(brand);
 
   const OPTIONS: {
-    id: 'visualize' | 'browse' | 'inperson';
+    id: 'visualize' | 'inperson';
     title: string;
     icon: string;
     description: string;
@@ -316,14 +304,6 @@ function PageBody({
       description: getVisualizerDescription(brand),
       primary: true,
       button: C.optionVisualizeButton,
-    },
-    {
-      id: 'browse',
-      title: C.optionBrowseTitle,
-      icon: C.optionBrowseIcon,
-      description: C.optionBrowseDescription,
-      primary: false,
-      button: C.optionBrowseButton,
     },
     {
       id: 'inperson',
@@ -353,7 +333,7 @@ function PageBody({
             <div className="oqcs-option-icon">{opt.icon}</div>
             <h3 className="oqcs-option-title">{opt.title}</h3>
             <p className="oqcs-option-desc">{opt.description}</p>
-            {showLinkOutNote && (
+            {showLinkOutNote && opt.id === 'visualize' && (
               <div className="oqcs-option-note">
                 <span className="oqcs-ext">
                   <span className="oqcs-ext-icon">{C.externalLinkIcon}</span> {C.opensInNewTabLabel}
@@ -459,18 +439,6 @@ function PageBody({
         </form>
 
         {/* Addendum (rendered below the form, like the static) */}
-        {addendum === 'signing' && signingUrl && (
-          <div className="oqcs-addendum">
-            <h3 className="oqcs-addendum-heading">{C.addendumHeading}</h3>
-            <p className="oqcs-addendum-body">{C.addendumBody}</p>
-            <DocuSignEmbed
-              signingUrl={signingUrl}
-              onComplete={handleComplete}
-              title={C.addendumIframeTitle}
-            />
-          </div>
-        )}
-
         {addendum === 'fallback' && (
           <div className="oqcs-addendum-fallback">
             <p>
