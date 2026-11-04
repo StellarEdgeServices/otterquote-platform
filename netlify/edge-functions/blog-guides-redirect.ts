@@ -128,6 +128,10 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/roofers-backed-up-after-storm.html',
   '/guides/online-roof-bids-no-salesperson':
     '/guides/online-roof-bids-no-salesperson.html',
+  '/guides/competitive-roof-bids-vs-single-referral':
+    '/guides/competitive-roof-bids-vs-single-referral.html',
+  '/guides/otter-quotes-vs-thumbtack-angi':
+    '/guides/otter-quotes-vs-thumbtack-angi.html',
   '/guides/hail-damaged-windows-gutters-bids':
     '/guides/hail-damaged-windows-gutters-bids.html',
   '/guides/gutter-replacement-cost-factors':
