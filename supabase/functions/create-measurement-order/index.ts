@@ -50,6 +50,11 @@ import {
   buildUpgradeOrderInsert,
   UPGRADE_PRODUCT_CODE,
 } from "./measurement-upgrade-order.ts";
+import {
+  buildBuyerRoleAlertRow,
+  raiseBuyerRoleAlert,
+  resolveBuyerRole,
+} from "./buyer-role.ts";
 import { checkMeasurementPaymentIntent, checkUpgradePaymentIntent, type PaymentCheckResult } from "./payment-intent-checks.ts";
 import {
   NON_USD_ALERT_SEND_TIMEOUT_MS,
@@ -415,13 +420,11 @@ serve(async (req) => {
     const claimId: string | null = body.claim_id ?? null;
     const productCode: string = body.product_code ?? "";
     const paymentIntentId: string | undefined = body.payment_intent_id;
-    // gh-3229 (P18): no silent default. A missing/unknown buyer_role used to become "homeowner", which would let a contractor
-    // purchase that omitted the field be recorded as homeowner-paid (and earn a referrer's $5). Both callers (js/services.js,
-    // contractor-opportunities.html) already send it explicitly.
-    if (body.buyer_role !== "homeowner" && body.buyer_role !== "contractor") {
-      return json({ error: "buyer_role must be 'homeowner' or 'contractor'." }, 400, corsHeaders);
-    }
-    const buyerRole: string = body.buyer_role;
+    // gh-3229 (P18): no silent default. A missing/unknown buyer_role must never be recorded as "homeowner" (it would earn a referrer's $5).
+    // gh-3447: but it is no longer refused up front either: this handler runs AFTER the buyer has paid, so a 400 here was money taken, no
+    // order. An unresolved role carries on to the payment checks (an unpaid request is still refused there) and, once payment is confirmed,
+    // the order is recorded as requested_by_role='unspecified' (no $5 accrual) with an operator alert. See buyer-role.ts.
+    const { role: buyerRole, unresolved: roleUnresolved } = resolveBuyerRole(body.buyer_role);
     const contractorId: string | null = body.contractor_id ?? null;
     const note: string | null = typeof body.note === "string" ? body.note.slice(0, 2000) : null;
 
@@ -432,7 +435,9 @@ serve(async (req) => {
     // Not a catalog SKU (see the file header note) — handled entirely here,
     // before the generic loadProduct() flow below.
     if (productCode === UPGRADE_PRODUCT_CODE) {
-      if (buyerRole !== "contractor" || !contractorId) {
+      // gh-3447: the upgrade is contractor-only by D-317, so a missing/unknown role plus a contractor_id is derived as the contractor it must be.
+      // An explicit 'homeowner' is still refused; a bare unresolved role with no contractor_id is refused before any order exists, as today.
+      if ((buyerRole !== "contractor" && !roleUnresolved) || !contractorId) {
         return json({ error: "The detailed-measurement upgrade may only be purchased by a contractor." }, 400, corsHeaders);
       }
       if (!paymentIntentId || typeof paymentIntentId !== "string") {
@@ -683,6 +688,16 @@ serve(async (req) => {
       product_code: productCode,
       amount: paid.amount,
     });
+
+    // gh-3447: money confirmed and recorded, but nobody said who the buyer is. Tell the operator (platform_alerts_log, the surface the
+    // other payment alerts use); the order row, the activity_log row and the admin email below all carry role 'unspecified'. Contained.
+    if (roleUnresolved) {
+      await raiseBuyerRoleAlert(
+        (row) => supabase.from("platform_alerts_log").insert(row),
+        (m) => console.error(m),
+        buildBuyerRoleAlertRow({ orderId: order.id, paymentIntentId, claimId, productCode }),
+      );
+    }
 
     // gh-1412: log + admin email ("Buy basic report — [address]").
     await recordOrderCreated(supabase, supabaseUrl, order, claimId, productCode, buyerRole, authedUser.id, paid.amount);
