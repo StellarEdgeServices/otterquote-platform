@@ -6,8 +6,10 @@
  * the merge it compares main with itself.
  *
  * STATIC checks (no browser; always run):
- *   S0  HEAD == BASE + only the allowed reskin edits: removing the one gh-3261 head block (comment, gstatic preconnect, Libre Franklin link, /css/home-reskin.css,
- *       /css/partner-reskin.css) and the body class "pr" from HEAD gives BASE byte for byte
+ *   S0  HEAD == BASE + only the allowed reskin edits. BOTH sides are normalised by removing the one gh-3261 head block (comment, gstatic preconnect, Libre Franklin
+ *       link, /css/home-reskin.css, /css/partner-reskin.css) and the body class "pr" (a no-op on a side that lacks them), and the results must be equal byte for
+ *       byte. So it is meaningful whether BASE predates the reskin (the reskin PR) or already contains it (every later PR, and main itself); HEAD must still
+ *       wear the reskin. Any other byte that differs, on a partner page, fails.
  *   S1  visible text: every text node outside <script>/<style>/<template> and comments, entity-decoded, whitespace-collapsed, in document order, plus <title>
  *   S2  alt / title / aria-label / placeholder / value attributes and <label> text
  *   S3  forms: every <form>, <input> (names, types, hidden fields, consent checkboxes, required), <select>, <option>, <textarea>, <button>, tag for tag with all attributes
@@ -16,6 +18,8 @@
  * RENDERED checks (Playwright + Chromium over two local static servers, BASE extracted with `git archive`; run with --render or GH3261_RENDER=1):
  *   R1  document.body.innerText after JS (nav.js header/footer, the partners.html chooser cards), whitespace-collapsed, at 1440x900 and 390x844. innerText applies
  *       CSS text-transform and display:none, so a style that hides, shows or re-cases a string fails here even though the source text is unchanged
+ *   R3  no link to the pricing page (/pricing.html, /pricing, absolute URLs, any case; a homeowner-facing page) is rendered on a partner landing page: absolute, not relative to BASE, so a footer link added by js/nav.js cannot pass
+ *       by being present on both sides
  *   R2  rendered alt / title / aria-label / placeholder values, <title>, form control names/types/required/checked, script srcs, canonical and robots after JS
  * NEGATIVE CONTROLS: S1 (one word changed), S2 (an aria-label changed), S3 (an input name changed; a consent checkbox removed; a hidden field added), S4 (a gate script
  * dropped), S5 (canonical changed; noindex added; JSON-LD edited), S0 (a stray word added) must each go red on a mutated copy of the real HEAD source; in render mode,
@@ -93,15 +97,18 @@ function parse(html) {
 }
 
 /* ---------- the allowed reskin edit (S0) ---------- */
-const BLOCK = /<!-- gh-3261: the approved homepage reskin \(gh-2598\) on the partner landing pages\.[^\n]*-->\n<link rel="preconnect" href="https:\/\/fonts\.gstatic\.com" crossorigin>\n<link href="https:\/\/fonts\.googleapis\.com\/css2\?family=Libre\+Franklin:wght@400;600;800&display=swap" rel="stylesheet">\n<link rel="stylesheet" href="\/css\/home-reskin\.css">\n<link rel="stylesheet" href="\/css\/partner-reskin\.css">\n(?=<\/head>)/;
-const unreskin = (s) => s.replace(BLOCK, '').replace('<body class="pr">', '<body>');
+const escRe = (t) => t.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&');
+/* the comment line is pinned to its EXACT text (every one of the ten pages carries it byte for byte): a tolerant "anything up to -->" would let markup ride on that line */
+const BLOCK_COMMENT = '<!-- gh-3261: the approved homepage reskin (gh-2598) on the partner landing pages. Design only: tokens from /css/home-reskin.css, rules in /css/partner-reskin.css (scoped to body.pr). -->';
+const BLOCK = new RegExp(escRe(BLOCK_COMMENT) + '\\n' + escRe('<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>') + '\\n' + escRe('<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;600;800&display=swap" rel="stylesheet">') + '\\n' + escRe('<link rel="stylesheet" href="/css/home-reskin.css">') + '\\n' + escRe('<link rel="stylesheet" href="/css/partner-reskin.css">') + '\\n(?=</head>)');
+const unreskin = (s) => s.replace(BLOCK, '').replace('<body class="pr">', '<body>');   /* idempotent, and a no-op on a source without the reskin */
 
 function diffFirst(a, b) { const n = Math.max(a.length, b.length); for (let i = 0; i < n; i++) if (a[i] !== b[i]) return `#${i}: base=${JSON.stringify(a[i])} head=${JSON.stringify(b[i])}`; return ''; }
-function staticChecks(base, head) {
+function staticChecks(base, head, norm = unreskin) {
   const B = parse(base), H = parse(head);
   const eq = (x, y) => JSON.stringify(x) === JSON.stringify(y);
   return {
-    S0: BLOCK.test(head) && head.includes('<body class="pr">') && unreskin(head) === base,
+    S0: BLOCK.test(head) && head.includes('<body class="pr">') && norm(head) === norm(base),
     S1: eq(B.text, H.text) && B.title === H.title && B.text.length > 0,
     S2: eq(B.attrs, H.attrs) && eq(B.labels, H.labels),
     S3: eq(B.controls, H.controls),
@@ -137,6 +144,31 @@ control('S5 a JSON-LD block added (partner-re.html)', !mut('partner-re.html', (h
 { const f = 'partner-re.html', withLd = sources[f].head.replace('</head>', '<script type="application/ld+json">{"@context":"https://schema.org"}</script>\n</head>'), baseLd = sources[f].base.replace('</head>', '<script type="application/ld+json">{"@context":"https://schema.org"}</script>\n</head>');
   control('S5 a JSON-LD value edited (partner-re.html with a block on both sides)', staticChecks(baseLd, withLd).S5 && !staticChecks(baseLd, withLd.replace('schema.org"}', 'schema.org/"}')).S5); }
 control('S0 a stray word added inside the reskin edit (partner-insurance-how-it-works.html)', !mut('partner-insurance-how-it-works.html', (h) => h.replace('<body class="pr">', '<body class="pr">New')).S0);
+/* S0 when BASE already contains the reskin (every PR after gh-3261 merged): the unchanged page must be green, and a stray word, a changed block or a dropped
+   reskin must each still be red. This is the case the original S0 got wrong (it assumed BASE lacked the block). */
+{ const f = 'partner-insurance-how-it-works.html', h = sources[f].head, b = unreskin(h), S0 = (base, head) => staticChecks(base, head).S0;
+  ok(h !== b, 'S0 setup: the HEAD page really wears the reskin and the stripped copy really lacks it (' + f + ')');
+  ok(S0(h, h) && S0(b, h), 'S0 is green both when BASE already has the reskin and when BASE predates it (' + f + ')');
+  control('S0 a stray word on the page when BASE already has the reskin (' + f + ')', !S0(h, h.replace('<body class="pr">', '<body class="pr">New')) && !S0(h, h.replace('<h1>', '<h1>New ')) );
+  control('S0 a stray word added in the body (not the class) when BASE already has the reskin (' + f + ')', !S0(h, h.replace(/<p>/, '<p>Stray ')));
+  control('S0 the reskin block altered when BASE already has it (' + f + ')', !S0(h, h.replace('<link rel="stylesheet" href="/css/partner-reskin.css">', '<link rel="stylesheet" href="/css/partner-reskin2.css">')));
+  control('S0 the reskin dropped from HEAD when BASE has it (' + f + ')', !S0(h, b));
+  /* markup riding on the comment line, a change in <head> outside the block, and a same-length substitution: each red, whether BASE has the reskin or not */
+  const onComment = h.replace(' (scoped to body.pr). -->', ' (scoped to body.pr). --><meta http-equiv="refresh" content="0;url=https://example.invalid/"><!-- x -->');
+  const headExtra = h.replace('<head>', '<head>\n<style>body{display:none}</style>');
+  const t = /<title>([^<]+)<\/title>/.exec(h)[1], sameLen = h.replace('<title>' + t + '</title>', '<title>' + (t[0] === 'Z' ? 'Y' : 'Z') + t.slice(1) + '</title>');
+  ok(onComment !== h && headExtra !== h && sameLen !== h && sameLen.length === h.length, 'S0 setup: the three mutations apply and the substitution keeps the byte length (' + f + ')');
+  const MUT = { 'markup on the reskin comment line': onComment, 'a <style> added in <head> outside the block': headExtra, 'a same-length substitution in <head> (<title>)': sameLen };
+  for (const [name, m] of Object.entries(MUT)) {
+    control('S0 ' + name + ', BASE already reskinned (' + f + ')', !S0(h, m));
+    control('S0 ' + name + ', BASE predates the reskin (' + f + ')', !S0(b, m));
+  }
+  /* (the comment-line mutation is caught by the exact pin on HEAD, not by the normaliser, so it is not part of this check)
+     a normaliser that strips all of <head> would make S0 vacuous: prove the controls above would then fail (the mutations would sail through) */
+  const sabotaged = (x) => unreskin(x).replace(/<head>[\s\S]*?<\/head>/, '<head></head>');
+  for (const [name, m] of Object.entries(MUT).slice(1)) ok(staticChecks(h, m, sabotaged).S0 === true && staticChecks(h, m).S0 === false, 'S0 SABOTAGE CHECK: with a normaliser that strips all of <head>, "' + name + '" is no longer caught, so the control above would fail the run');
+  /* and the pin itself: the real normaliser leaves a head change that merely resembles the block alone */
+  ok(BLOCK.test(h) && !BLOCK.test(onComment) && unreskin(onComment) !== b, 'S0 the reskin block is pinned to its exact comment text'); }
 
 /* ---------- rendered checks ---------- */
 async function rendered() {
@@ -165,7 +197,7 @@ async function rendered() {
       const w = (s) => (s || '').replace(/\s+/g, ' ').trim();
       const a = []; document.querySelectorAll('[alt],[title],[aria-label],[placeholder]').forEach((e) => ['alt', 'title', 'aria-label', 'placeholder'].forEach((k) => e.hasAttribute(k) && a.push(e.tagName + '[' + k + ']=' + w(e.getAttribute(k)))));
       const c = []; document.querySelectorAll('form,input,select,textarea,button').forEach((e) => c.push([e.tagName, e.getAttribute('name'), e.getAttribute('type'), e.id, e.hasAttribute('required'), e.checked === true, e.tagName === 'INPUT' && e.type === 'hidden' ? e.value : ''].join('|')));
-      return { text: w(document.body.innerText), title: document.title, a, c, s: [...document.scripts].map((e) => e.getAttribute('src') || ('inline:' + e.text.length)),
+      return { pricing: [...document.querySelectorAll('a[href]')].filter((e) => { try { return /^\/pricing(\.html)?\/?$/i.test(new URL(e.getAttribute('href').trim(), location.href).pathname); } catch (_) { return false; } }).length, text: w(document.body.innerText), title: document.title, a, c, s: [...document.scripts].map((e) => e.getAttribute('src') || ('inline:' + e.text.length)),
         canon: [...document.querySelectorAll('link[rel=canonical]')].map((e) => e.getAttribute('href')), robots: [...document.querySelectorAll('meta[name=robots]')].map((e) => e.content) };
     });
     await ctx.close();
@@ -174,7 +206,9 @@ async function rendered() {
   const VPS = [['desktop', { width: 1440, height: 900 }], ['phone', { width: 390, height: 844 }]];
   for (const f of PAGES) for (const [tag, vp] of VPS) {
     const B = await snap(sb.address().port, f, vp), H = await snap(sh.address().port, f, vp);
-    ok(B.text.length > 200 && B.text === H.text && B.title === H.title, `${f} ${tag} R1 rendered innerText identical (${B.text.length} chars)${B.text === H.text ? '' : '  first difference at ' + [...B.text].findIndex((ch, i) => ch !== H.text[i]) + ': base "' + B.text.slice(Math.max(0, [...B.text].findIndex((ch, i) => ch !== H.text[i]) - 30), [...B.text].findIndex((ch, i) => ch !== H.text[i]) + 30) + '"'}`);
+    const cp = (x) => Array.from(x), bc = cp(B.text), hc = cp(H.text), at = bc.findIndex((ch, i) => ch !== hc[i]), d = at < 0 && bc.length !== hc.length ? Math.min(bc.length, hc.length) : at;   /* code points both ways */
+    ok(B.text.length > 200 && B.text === H.text && B.title === H.title, `${f} ${tag} R1 rendered innerText identical (${B.text.length} chars)${B.text === H.text ? '' : '  first difference at code point ' + d + ': base "' + bc.slice(Math.max(0, d - 30), d + 30).join('') + '" head "' + hc.slice(Math.max(0, d - 30), d + 30).join('') + '"'}`);
+    ok(H.pricing === 0, `${f} ${tag} R3 no homeowner Pricing link (any spelling) rendered on the partner page`);
     ok(JSON.stringify([B.a, B.c, B.s, B.canon, B.robots]) === JSON.stringify([H.a, H.c, H.s, H.canon, H.robots]), `${f} ${tag} R2 rendered attributes, form controls, scripts, canonical and robots identical`);
   }
   /* render-mode controls */
@@ -185,6 +219,11 @@ async function rendered() {
   overrides.set('/' + page, headSrc(page).replace('name="firstName"', 'name="first_name"'));
   { const M = await snap(sh.address().port, page, vp); control('R2 an input name changed in the served HEAD page (partner-adjusters.html)', JSON.stringify(M.c) !== JSON.stringify(B.c)); }
   overrides.clear();
+  /* R3 on the pretty URLs production serves (/partners is served 200; /Partners.html and /PARTNERS 301 to it): the HEAD partners.html under each name, nav.js reads the pathname */
+  for (const u of ['/partners', '/Partners.html', '/PARTNERS']) { overrides.set(u, headSrc('partners.html')); const P = await snap(sh.address().port, u.slice(1), vp); ok(P.text.length > 200 && P.pricing === 0, `${u} (pretty URL) R3 no homeowner Pricing link rendered (${P.text.length} chars)`); overrides.delete(u); }
+  for (const href of ['/pricing', '/PRICING.HTML', 'https://otterquote.com/Pricing/', '/pricing.html?x=1']) { overrides.set('/' + page, headSrc(page).replace('</body>', `<a href="${href}">Pricing</a></body>`)); const M = await snap(sh.address().port, page, vp); control('R3 a Pricing link spelled ' + href + ' in the served partner page', M.pricing > 0); overrides.clear(); }
+  { const homeowner = await snap(sh.address().port, 'how-it-works.html', vp); control('R3 the counter sees the Pricing link where it renders (homeowner how-it-works.html)', homeowner.pricing > 0); }
+  control('R3 a Pricing link in the served partner page', (await (async () => { overrides.set('/' + page, headSrc(page).replace('</body>', '<a href="/pricing.html">Pricing</a></body>')); const m = await snap(sh.address().port, page, vp); overrides.clear(); return m; })()).pricing > 0);
   control('R1 a CSS-only change that re-cases visible text (injected h2 { text-transform: uppercase })', (await snap(sh.address().port, page, vp, 'h2 { text-transform: uppercase !important; }')).text !== B.text);
   await browser.close(); sb.close(); sh.close();
   fs.rmSync(baseDir, { recursive: true, force: true });

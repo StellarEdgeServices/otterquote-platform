@@ -19,7 +19,7 @@ const securityHeaders = [
       "object-src 'none'",
       "frame-ancestors 'none'",
       "form-action 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://in.heycatch.ai",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "img-src 'self' data: blob: https:",
       // gh-1964 review fix (should-fix): the contractor-profile page
@@ -27,7 +27,7 @@ const securityHeaders = [
       // bytes, never the raw signed URL) -- media-src must allow blob:.
       "media-src 'self' blob:",
       "font-src 'self' data: https://fonts.gstatic.com",
-      "connect-src 'self' https://*.supabase.co https://*.sentry.io https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://api.stripe.com https://accounts.google.com",
+      "connect-src 'self' https://*.supabase.co https://*.sentry.io https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://api.stripe.com https://accounts.google.com https://in.heycatch.ai",
       "frame-src https://js.stripe.com https://accounts.google.com",
       "worker-src 'self' blob:",
     ].join("; "),
@@ -37,6 +37,16 @@ const securityHeaders = [
 const nextConfig = {
   reactStrictMode: true,
   eslint: { ignoreDuringBuilds: true },
+  // HeyCatch channel short links. The app's own / has no analytics, so they go to the marketing home.
+  async redirects() {
+    return [
+      {
+        source: "/:l([a-z0-9])",
+        destination: "https://otterquote.com/?utm_source=heycatch&utm_campaign=:l",
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

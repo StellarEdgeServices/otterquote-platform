@@ -196,6 +196,17 @@
     bridge.trackRouter('router_contact_submitted', { step: 'd-email', step_index: STEP_INDEX['d-email'] });
     try { fbq('track', 'Lead'); } catch (e) {}
   }
+  // gh-3389 (D-409): the HeyCatch goal `lead_saved`, fired from the point Arm D has really saved a HOMEOWNER lead, i.e. only after
+  // insertFreshLead has resolved with a lead id (never before, never on an insert failure). Arm D is the arm a bare /start serves
+  // (LIVE_VARIANTS = ['d']). Its own once-only flag, so a Back-and-resubmit never counts the same lead twice. Contractor and
+  // professional rows are not homeowner leads and do not count. Name only: no properties, no identity. A no-op when HeyCatch did
+  // not load (consent, blocker, off-list path): the hook is then undefined. Never throws into the page.
+  var hcLeadSavedFired = false;
+  function fireHcLeadSaved() {
+    if (hcLeadSavedFired || role !== 'homeowner' || !leadId) return;
+    hcLeadSavedFired = true;
+    try { if (typeof window.__oqHcTrack === 'function') window.__oqHcTrack('lead_saved'); } catch (e) {}
+  }
   function emitDisqualified(sourceToken) { bridge.trackRouter('router_disqualified', { step: sourceToken, step_index: STEP_INDEX[sourceToken] }); }
 
   var RENDERERS = {};
@@ -360,6 +371,7 @@
       if (leadId) {
         email = value;
         bridge.sb.rpc('set_lead_role', { p_lead_id: leadId, p_role: role }).then(null, function () {});
+        fireHcLeadSaved(); // the row was saved earlier; counts once if the role is now homeowner (flag-guarded)
         if (role === 'contractor') {
           fireContactSubmitted();
           redirectWithLeadId(bridge.ROLE_DESTINATIONS.contractor, leadId);
@@ -378,6 +390,7 @@
       bridge.insertFreshLead(null, value, null, undefined, undefined, homeZipExtra).then(function (newId) {
         email = value;
         leadId = newId;
+        fireHcLeadSaved(); // gh-3389: the leads insert has resolved
 
         function proceed() {
           // Meta Lead -- same bare call as start.html's own Step 1 and

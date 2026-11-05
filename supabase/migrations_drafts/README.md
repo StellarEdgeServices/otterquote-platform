@@ -145,8 +145,27 @@ Nine more versions were filed on 2026-10-21 (CTO RUN 75, #1438 STATE 6304092630)
 |---|---|---|---|---|
 | `gh3212_freeze_claims_is_test` | forward, rollback, pre-flight (all three here) | NOT APPLIED (DRAFT, Tier 3B) | drafted 2026-10-30 under #3212; production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): `has_column_privilege` UPDATE on `claims.is_test` is true for anon and authenticated, and no claims trigger freezes it on UPDATE (the 18 triggers read). One new BEFORE UPDATE OF is_test trigger `claims_freeze_is_test` raises 42501 for a changed value from client roles (mirrors `profiles_freeze_privileged_columns`, gh-2785); service_role and postgres unaffected; separate function so it does not conflict with PR #3209, which replaces `claims_guard_referral_columns()`. No client or Edge Function UPDATEs `claims.is_test`. No database was written | none |
 
+## Added 2026-10-30 (gh-3256, new public tables stop inheriting client TRUNCATE): 3 files here (forward, rollback, pre-flight), the proof in `supabase/tests/gh3256_default_privs_*` (scratch setup, `_proof_run.sh`), and the fallback CI gate `scripts/new-table-truncate-revoke-check.py`; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh3256_default_privs_no_client_truncate` | forward, rollback, pre-flight (all three here) | NOT APPLIED (DRAFT, Tier 3B) | drafted 2026-10-30 under #3256; production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): `pg_default_acl` (postgres, public, tables) and (supabase_admin, public, tables) both grant `arwdDxtm` to anon and authenticated; the migration role `postgres` is not a superuser and not a member of `supabase_admin`, so only postgres's defaults can be altered (`ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE TRUNCATE ON TABLES FROM anon, authenticated`); supabase_admin's are covered by the new diff-scoped CI gate. Proof: `bash supabase/tests/gh3256_default_privs_proof_run.sh` on a throwaway PG16 cluster bootstrapped as supabase_admin (capability / before / after / rerun / rollback / reapply, 18 mutants, gate-vs-Postgres on 18 fixtures). No database was written | none |
+
+## Added 2026-10-30 (gh-3197, internal test sign-ups flagged is_test): 3 files here (forward, rollback, pre-flight); not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh3197_internal_test_signups_is_test` | forward, rollback, pre-flight (all three here) | NOT APPLIED (DRAFT, Tier 3B) | drafted 2026-10-30 under #3197; production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): `set_is_test_for_internal_test_domain()` matches only `@otterquote-internal.test`; 38 internal-email profiles and 3 of their claims read `is_test<>true`. | none |
+| `gh3197_backfill_internal_test_is_test` | forward, rollback (both here) | NOT APPLIED (DRAFT, Tier 3B, apply after `gh3197_internal_test_signups_is_test`) | drafted 2026-10-30 under #3197 per Ben's rulings 6522509807 / 6522674646; raise-only UPDATE of the 38 internal-email profiles and 3 claims read 2026-10-30; rollback hard-codes those ids. Run as service_role/postgres. | none |
+
 ## Added 2026-10-30 (gh-3228, P18, homeowner measurement fee $15 -> $22.63): 3 files here (forward, rollback, pre-flight), not counted in the tables above
 
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh3228_measurement_price_2263` | forward, rollback, pre-flight (runbook, mid-checkout sweep, post-apply checks) | NOT APPLIED | drafted 2026-10-30 under #3228 on Dustin's word (chat 2026-10-30 09:17 ET); production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): `hover_measurement_price` = 1500 and `measurement_products.roof_basic.homeowner_price_cents` = 1500. Tier 3B money: CTO applies after the 24-hour R-097 notice and the D-291 amendment; both keys change in one transaction | none |
+
+## Added 2026-10-30 (gh-3259, partners read referrals.status / job_value only through get_my_referrals()): 3 files here (forward, rollback, pre-flight), the proof in `supabase/tests/gh3259_referrals_column_revoke_*` (scratch setup, probe, `_proof_run.sh`); not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh3259_referrals_revoke_status_job_value` | forward, rollback, pre-flight (all three here) | NOT APPLIED (DRAFT, Tier 3B) | drafted 2026-10-30 under #3259; production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): `authenticated` holds column SELECT (`{authenticated=r/postgres}`) on `referrals.status` and `referrals.job_value`, no table-level SELECT; `get_my_referrals()` and `admin_list_referrals()` are SECURITY DEFINER (owner postgres). One `REVOKE SELECT (status, job_value) ... FROM anon, authenticated`, gated on `SET LOCAL gh3259.frontend_published = 'yes'` because `partner-dashboard.html` `loadStats()` on main still reads both columns (PR #3258 removes that read). Proof: `bash supabase/tests/gh3259_referrals_column_revoke_proof_run.sh` on a throwaway PG16 (before / gate / after / rerun / rollback / reapply / gh3257 bodies, 15 mutants). No database was written | none |

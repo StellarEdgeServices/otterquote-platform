@@ -67,7 +67,11 @@ function markers(html, navSrc) {
   out.push(['M5 the three motion words are in the served HTML', /<span id="hr-w1" class="hr-w">price,<\/span>\s*<span id="hr-w2" class="hr-w">materials<\/span>\s*<span id="hr-w3" class="hr-w">and warranties\.<\/span>/.test(html)]);
   out.push(['M5 the pre-paint head script and js/home-reskin.js are wired', /root\.classList\.add\('hr-js'\)/.test(html) && /<script src="\/js\/home-reskin\.js" onerror="window\.__hrOpen &amp;&amp; window\.__hrOpen\(\)"><\/script>/.test(html)]);
   out.push(['M6 no "Your Project. Your Terms." in the served HTML', !/Your Project\.\s*Your Terms/i.test(html)]);
-  out.push(['M6 no "Dustin" or "Stohler" in the served HTML', !/dustin|stohler/i.test(html)]);
+  // Narrowed per Ben's #3387 comment (founder link in the promise section) and D-411 (founder page, commit 57d99005):
+  // exactly one founder line linking to /about.html is allowed; any other occurrence still fails.
+  const FOUNDER_LINE = '<p class="hr-promise-p"><a href="/about.html" style="color:inherit;text-decoration:underline">Meet the founder: Dustin Stohler ran roofing companies for 15 years.</a></p>';
+  out.push(['M6 no "Dustin" or "Stohler" in the served HTML except the one D-411 founder line linking /about.html', !/dustin|stohler/i.test(html.split(FOUNDER_LINE).join(''))]);
+  out.push(['M6 ...and that founder line appears at most once', html.split(FOUNDER_LINE).length <= 2]);
   out.push(['M6 ...nor in the visible footer nav.js renders (HTML comments inside nav.js templates are stripped first: they name Dustin and belong to the name clean-up sub-issue, not to this swap)', !/your project\.\s*your terms|dustin|stohler/i.test(foot.html.replace(/<!--[\s\S]*?-->/g, ''))]);
   return out;
 }
@@ -80,6 +84,7 @@ control('M4 (tagline)', markers(INDEX, NAV.replace(/tagline: 'Contractors Compet
 control('M4 (slot)', markers(INDEX.replace('<footer id="site-footer"></footer>', ''), NAV).some(([, v]) => !v));
 control('M5 (words)', markers(INDEX.replace('and warranties.</span>', 'and warranties</span>'), NAV).some(([, v]) => !v));
 control('M6 (old tagline)', markers(INDEX.replace('</main>', '<p>Your Project. Your Terms.</p></main>'), NAV).some(([, v]) => !v));
+control('M6 (second founder-line occurrence)', markers(INDEX.replace('</main>', '<p>Dustin Stohler</p></main>'), NAV).some(([, v]) => !v));
 control('M6 (name)', markers(INDEX.replace('</main>', '<!-- Dustin --></main>'), NAV).some(([, v]) => !v));
 
 /* ---------- H1: indexable, one canonical ---------- */
@@ -102,7 +107,7 @@ function essentials(html) {
   return [
     ['H2 the auth-hash bounce is the first script in <head>', !!firstInline && /function log\(\)/.test(firstInline[1]) && /BOUNCING to \/contractor-pre-approval\.html/.test(firstInline[1]) && head.indexOf(firstInline[0]) < head.indexOf('sentryOnLoad')],
     ['H2 the Sentry onLoad is predeclared before the loader tag', /window\.sentryOnLoad\s*=/.test(head) && head.search(/window\.sentryOnLoad\s*=/) < head.indexOf('js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js')],
-    ['H2 viewport, og:url, og:image and twitter:card kept', /<meta name="viewport"/.test(head) && /<meta property="og:url" content="https:\/\/otterquote\.com\/">/.test(head) && /<meta property="og:image" content="https:\/\/otterquote\.com\/img\/otter-icon-navy\.png">/.test(head) && /<meta name="twitter:card" content="summary_large_image">/.test(head)],
+    ['H2 viewport, og:url, og:image and twitter:card kept', /<meta name="viewport"/.test(head) && /<meta property="og:url" content="https:\/\/otterquote\.com\/">/.test(head) && /<meta property="og:image" content="https:\/\/otterquote\.com\/img\/social\/og-default\.jpg">/.test(head) && /<meta name="twitter:card" content="summary_large_image">/.test(head)],
     ['H2 Organization JSON-LD parses (Organization + WebSite, +1-844-875-3412) and the nap-schema mount exists', !!parsed && parsed['@graph'].some((n) => n['@type'] === 'Organization' && n.telephone === '+1-844-875-3412') && parsed['@graph'].some((n) => n['@type'] === 'WebSite') && /<script type="application\/ld\+json" id="nap-schema-mount"><\/script>/.test(head)],
     ['H2 script order: Supabase, cookie-storage, config, auth, nav', iSup > 0 && iCs > 0 && iSup < iCs && iCs < iCfg && iCfg < iAuth && iAuth < iNav],
     ['H2 the preview/staging host guard in the Sentry init is intact', /environment: window\.location\.hostname\.includes\("staging"\)/.test(head)],

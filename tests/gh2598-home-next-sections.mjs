@@ -12,6 +12,8 @@
  * SECOND RULED EXCEPTION to "verbatim" (Dustin, #2813 comment 6253699223, 2026-10-18, option (b), \"Narrow: \"...that contractors use to bid\" (Recommended)\"): the #paid
  * sentence reads "You pay as little as $22.63 up front for professional measurements that contractors use to bid." in the page AND in both committed fixtures
  * (the approved drive originals still say "that every contractor uses"). Re-run the legal read on that line.
+ * THIRD RULED EXCEPTION to "verbatim" (Dustin, chat, 2026-11-03, CEO RUN 144, the HeyCatch audit: "Quick wins first"): the hero claim line, the hero cost line, the 5% in #paid
+ * and the pricing link are in the page AND in both committed fixtures; the drive originals do not carry them. Each needs the legal read.
  * Slice 3 (How we're paid, What we do not do, You can change your mind) is built; it restates the fee, the $22.63 measurement charge and its refund and the
  * switch-contractor promise, so the PR that adds it carries an independent LEGAL-READ and the CEO's R-177 SIGNED line (D-377, D-378, D-291, D-313, D-371).
  *
@@ -140,7 +142,7 @@ control('S1 (two list items swapped on the page)', bad(sectionResults(word(word(
 
 control('S1 (the Questions header link removed)', bad(sectionResults(word(PAGE, '<a href="#questions">Questions</a>', ''), DESK, PHONE)).length > 0);
 control('S1 (the How we\'re paid header link removed)', bad(sectionResults(word(PAGE, '<a href="#paid">How we\'re paid</a>', ''), DESK, PHONE)).length > 0);
-control('S1 (one word changed in the fee sentence)', bad(sectionResults(word(PAGE, 'Contractors pay Otter Quotes a fee on the bid you accept.', 'Contractors pay Otter Quotes a fee on the bid they accept.'), DESK, PHONE)).length > 0);
+control('S1 (one word changed in the fee sentence)', bad(sectionResults(word(PAGE, 'Contractors pay Otter Quotes a fee, currently 5%, on the bid you accept.', 'Contractors pay Otter Quotes a fee, currently 5%, on the bid they accept.'), DESK, PHONE)).length > 0);
 control('S1 (the $22.63 sentence loses its refund sentence)', bad(sectionResults(word(PAGE, ' If you complete a job on the platform, that money is refunded to you.', ''), DESK, PHONE)).length > 0);
 control('S1 (switch promise changed from 3 days to 5 days)', bad(sectionResults(word(PAGE, 'up to 3 days before your start date', 'up to 5 days before your start date'), DESK, PHONE)).length > 0);
 control('S1 (a "What we do not do" item removed)', bad(sectionResults(word(PAGE, '<li>We do not sell upgrades.</li>', ''), DESK, PHONE)).length > 0);
@@ -157,6 +159,8 @@ const swapped2 = PAGE.replace(/(<section class="hr-sec hr-paid"[\s\S]*?<\/sectio
 control('S3 (paid and promise swapped)', swapped2 !== PAGE && JSON.stringify(orderOf(swapped2)) !== JSON.stringify(want));
 
 /* ---------- S4: money and promise wording stays inside #paid and #promise ---------- */
+/* Third ruled exception (see the header): this one exact hero line is allowed; any other wording still fails S4. */
+const HERO_COST_LINE = 'Free with your insurance estimate. Need measurements? As little as $22.63 up front for professional measurements, refunded in full if your job is completed through the platform; conditions apply. Switch to another Otter Quotes contractor at no cost up to 3 days before your start date.';
 const MONEY = /\$\s?\d|\brefund|\bfee\b|\bswitch (?:to )?another|at no cost|up to \d+ days|no cost\b/i;
 /* visible attribute text: placeholder, value, title, alt, aria-label (the string extractor reads text nodes only) */
 function attrTexts(chunkHtml) {
@@ -177,7 +181,7 @@ function stray(html) {   /* money or promise wording found outside #paid and #pr
   const P = byKey(html), hits = [];
   for (const k of Object.keys(P)) {
     if (MONEY_SECTIONS.includes(k)) continue;
-    for (const x of sectionTextAll(P[k])) { if (MONEY.test(x) || moneyOnly.has(x)) hits.push(k + ': ' + x); }
+    for (const x of sectionTextAll(P[k])) { if (x !== HERO_COST_LINE && (MONEY.test(x) || moneyOnly.has(x))) hits.push(k + ': ' + x); }
   }
   return hits;
 }

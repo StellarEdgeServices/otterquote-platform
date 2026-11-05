@@ -246,6 +246,9 @@ function extractSameSiteLinks(html) {
     // adds to js/nav.js itself (leak 1's root cause).
     let file = href.split(/[?#]/)[0];
     if (file.startsWith('/')) file = file.slice(1);
+    // gh-3365: a directory href ("/guides/", "/blog/", "/") is served as that directory's index.html.
+    // Appending ".html" to it produced "guides/.html", a file that does not exist, so hub pages were never scanned.
+    if (file === '' || file.endsWith('/')) file += 'index.html';
     if (!file.toLowerCase().endsWith('.html')) file += '.html';
     hrefs.push(file);
   }
@@ -350,6 +353,9 @@ async function navInjectedLinks(pathname, inspectorContext = true) {
     let file = href.split(/[?#]/)[0];
     if (file.startsWith('/')) file = file.slice(1);
     if (!file) file = 'index.html';
+    // gh-3365: a directory href ("/guides/", "/blog/", "/") is served as that directory's index.html.
+    // Appending ".html" to it produced "guides/.html", a file that does not exist, so hub pages were never scanned.
+    if (file === '' || file.endsWith('/')) file += 'index.html';
     if (!file.toLowerCase().endsWith('.html')) file += '.html';
     hrefs.push(file);
   }

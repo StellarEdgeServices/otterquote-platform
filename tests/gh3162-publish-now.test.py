@@ -281,5 +281,37 @@ class T(unittest.TestCase):
         ds = [{"id": "1", "state": "ready", "branch": "main", "commit_ref": "m1"}, {"id": "2", "state": "building", "branch": "main", "commit_ref": "m2"}]
         self.assertEqual(pn.pick_deploy(ds, "m1")["id"], "1")
         self.assertIsNone(pn.pick_deploy(ds, "m2"))
+    def _run_check_only(self, paths):
+        """Run main() --check-only --paths <paths> against stubbed network; return (exit_code, output_lines)."""
+        import io, contextlib
+        saved = (pn.tree_files, pn.fetch_repo_sitemap, pn.http)
+        pn.tree_files = lambda ctx, ref: []
+        pn.fetch_repo_sitemap = lambda ctx, ref: ""
+        pn.http = lambda *a, **k: (404, "")
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                rc = pn.main(["0", "--check-only", "--paths", paths])
+        finally:
+            pn.tree_files, pn.fetch_repo_sitemap, pn.http = saved
+        return rc, buf.getvalue().splitlines()
+    def test_tools_only_passes_nothing_served(self):
+        """#3162 nit: a tools-only change set serves nothing, so it must print RESULT: PASS (nothing served), exit 0."""
+        rc, out = self._run_check_only("tools/publish-now.py,tests/x.test.py,README.md")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("RESULT: PASS (nothing served)", out)
+        self.assertFalse(any("no public URLs" in l for l in out), out)
+    def test_negative_control_served_site_no_urls_still_fails(self):
+        """A change set that DOES touch a served site (an edge function is bundled into the jade deploy but is not itself a URL) but yields no URLs must still FAIL."""
+        rc, out = self._run_check_only("netlify/edge-functions/x.ts")
+        self.assertEqual(pn.url_for_path("netlify/edge-functions/x.ts"), None)
+        self.assertEqual(pn.sites_for_files(["netlify/edge-functions/x.ts"]), {"jade"})
+        self.assertEqual(rc, 1, out)
+        self.assertIn("RESULT: FAIL", out)
+        self.assertIn("FAIL: no public URLs derived from the change set", out)
+    def test_nothing_served_helper(self):
+        self.assertTrue(pn.nothing_served([], set()))
+        self.assertFalse(pn.nothing_served([], {"jade"}))
+        self.assertFalse(pn.nothing_served(["news/a.html"], {"jade"}))
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -72,12 +72,12 @@ const notOwed = /<strong>When the Rebate Is Not Owed\.<\/strong>[\s\S]*?<\/p>/.e
 ok(!!notOwed && !/\$\d/.test(notOwed[0]) && /the Measurement Fee compensates Otter Quotes for the cost of ordering the report on your behalf/.test(notOwed[0]), 'S2b: Terms 8.5 "When the Rebate Is Not Owed" states no figure and says "the Measurement Fee compensates"');
 ok(/Payment processing and billing services, including processing of the Measurement Fee and any associated rebate/.test(privacy), 'S2b: privacy.html Stripe line names the Measurement Fee with no figure');
 ok(!/Stripe:<\/strong>[^<]*\$\d/.test(privacy), 'S2b: negative control -- no dollar figure on the privacy.html Stripe line');
-ok(/<strong>Effective Date:<\/strong> October 31, 2026/.test(terms) && /Effective Date: October 31, 2026/.test(privacy), 'S2b: terms.html and privacy.html Effective Date is October 31, 2026');
+ok(/<strong>Effective Date:<\/strong> (October 31|November 3), 2026/.test(terms) && /Effective Date: (October 31|November 3|November 4), 2026/.test(privacy), 'S2b: terms.html and privacy.html Effective Date is October 31, 2026 or later');
 const faq = read('faq.html');
 ok(faq.includes('The fee pays for ordering the report for you.') && !/covers (Otter Quotes\'|our) cost/.test(faq), 'S2b: FAQ says "The fee pays for ordering the report for you." (no "covers ... cost")');
 const hpf = read('react-app/app/(homeowner)/help-measurements/HoverPaymentForm.tsx');
 ok(/'Your payment went through and is confirmed\./.test(hpf) && !/Your \$\d[\d.]* payment went through/.test(hpf), 'S2b: the order-failed "payment went through" message carries no amount (a customer caught across the apply was charged the old price)');
-ok(/fallback of 1500 cents \(\$15\)/.test(read('supabase/functions/create-hover-order/price-setting.ts')), 'S2b: create-hover-order/price-setting.ts comment still reads "1500 cents ($15)" (historical)');
+ok(!fs.existsSync(path.join(repoRoot, 'supabase/functions/create-hover-order')), 'S2b: create-hover-order is deleted (gh-1873), so its price-setting.ts no longer carries a price');
 
 // ── S3: the draft settings migration ─────────────────────────────────────────
 const fwd = read('supabase/migrations_drafts/gh3228_measurement_price_2263.sql');

@@ -40,7 +40,7 @@ const NEW = {
   s41Added: "We share your name and contact information with the contractor you select, so they can prepare and perform your contract.",
   s71: "4 years from creation, then deleted unless the lead has become an account or we hold a call or text consent record for it",
   // D-366 amendment (#2556 comment 6022019578, 2026-10-06T17:43:49Z): Effective Date line with the Section 18.1 carve-out.
-  effective: "Effective Date: October 6, 2026. For Contractors who accepted an earlier version, the changes apply to new Opportunities posted after the date stated in the written notice sent under Section 18.1.",
+  effective: "Effective Date: November 3, 2026. For Contractors who accepted an earlier version, the changes apply to new Opportunities posted after the date stated in the written notice sent under Section 18.1.",
 };
 
 describe('gh-2556 item 1: Contractor Agreement 9.3', () => {

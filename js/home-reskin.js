@@ -121,6 +121,22 @@
     a.addEventListener('click', function () { track('phone_click', { cta_location: a.getAttribute('data-hr-phone') }); });
   });
 
+  /* ---------- phone menu (gh-3387): the toggle opens .hr-nav as a dropdown under the header ---------- */
+  var menuBtn = $('#hr-menu-btn'), menuHdr = $('.hr-header');
+  if (menuBtn && menuHdr) {
+    var firstLink = $('#hr-nav a');
+    var setMenu = function (open, refocus) {
+      menuHdr.classList.toggle('hr-menu-open', open);
+      menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      /* #hr-nav comes before the toggle in the DOM, so Tab from the toggle would skip it: move focus in on open, back to the toggle on Escape. */
+      if (open && firstLink && firstLink.focus) { firstLink.focus(); }
+      if (!open && refocus && menuBtn.focus) { menuBtn.focus(); }
+    };
+    menuBtn.addEventListener('click', function () { setMenu(!menuHdr.classList.contains('hr-menu-open'), false); });
+    if (d.addEventListener) { d.addEventListener('keydown', function (e) { if (e.key === 'Escape' && menuHdr.classList.contains('hr-menu-open')) { setMenu(false, true); } }); }
+    $$('#hr-nav a').forEach(function (a) { a.addEventListener('click', function () { setMenu(false, false); }); });
+  }
+
   /* ---------- phone sticky bar: shown once the hero button has scrolled out of view ---------- */
   var sticky = $('#hr-sticky'), heroBtn = $('#hr-hero-go');
   if (sticky && heroBtn && 'IntersectionObserver' in window) {

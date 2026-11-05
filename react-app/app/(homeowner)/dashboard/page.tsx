@@ -105,7 +105,7 @@ function DashboardContent() {
           <DetailedMeasurementBadge claim={claim} /> */}
 
       {!claim.ready_for_bids && (
-        <Checklist claim={claim} hoverOrder={aux.hoverOrder} userId={userId} onChange={aux.refetch} />
+        <Checklist claim={claim} userId={userId} onChange={aux.refetch} />
       )}
 
       <MessagesPanel claimId={claimId} userId={userId} />

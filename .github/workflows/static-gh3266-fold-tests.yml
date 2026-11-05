@@ -1,0 +1,50 @@
+name: Static gh-3266 Google Above The Fold
+
+# gh-3266: on the homeowner Create Your Account step, the whole "Continue with Google" button must sit above the fold at 1366x657 and 390x844,
+# with the phone captured or skipped, and the SMS-consent / Terms placement rules must hold. Builds the react-app and measures it in Chromium.
+# `pull_request` (never `pull_request_target`), no secrets, read-only token; Supabase and every non-local request are stubbed or aborted.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'react-app/app/get-started/**'
+      - 'tests/gh3266-fold-playwright.mjs'
+      - '.github/workflows/static-gh3266-fold-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3266-fold-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-gh3266-fold-tests:
+    name: Google sign-in above the fold at 1366x657 and 390x844
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Build react-app
+        working-directory: react-app
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:9
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: x
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: |
+          npm ci --no-audit --no-fund
+          npx next build
+      - name: Install Playwright + Chromium from the tests/e2e lockfile
+        working-directory: tests/e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Fold and consent-placement measurement (gh3266-fold-playwright)
+        run: node tests/gh3266-fold-playwright.mjs

@@ -382,9 +382,11 @@
       gap: var(--sp-2);
     }
 
+    /* gh-3267: --gray (#64748B) measured 3.07:1 on the completed row (13.6px, weight 400, so AA needs 4.5:1).
+       --slate is the colour the card's descriptions already use. */
     .checklist-filename {
       font-size: 0.85rem;
-      color: var(--gray);
+      color: var(--slate);
       font-family: var(--font-mono);
       word-break: break-all;
     }
@@ -1533,7 +1535,7 @@
           <div class="switch-success-icon">✅</div>
           <h3>We've got you.</h3>
           <p>An Otter Quotes team member will reach out shortly to get you matched with a new contractor from our network.</p>
-          <p style="font-size: 0.85rem; color: var(--slate); opacity: 0.8;">We've received your request. An Otter Quotes team member will contact you shortly to confirm the switch and get you matched with a new contractor. You do not need to contact them directly.</p>
+          <p style="font-size: 0.85rem; color: var(--slate); opacity: 0.8;">We've received your request. An Otter Quotes team member will contact you shortly to confirm the switch and get you matched with a new contractor.</p>
         </div>
         <div class="switch-modal-actions" style="justify-content: center;">
           <button class="btn btn-secondary" onclick="closeSwitchModal()">Close</button>
@@ -2010,7 +2012,7 @@
       // to the inline onclick="..." attribute on the button that calls it
       // (inline handlers resolve against the global scope only). Matches the
       // window.foo = function(...) pattern already used elsewhere in this
-      // file (e.g. handleUpload, resendHoverLink) for the same reason.
+      // file (e.g. handleUpload) for the same reason.
       window.saveWaitlistSpot = async function() {
         const btn      = document.getElementById('gate-save-btn');
         const optedIn  = document.getElementById('gate-optin-checkbox')?.checked ?? true;
@@ -2111,7 +2113,10 @@
           retail:        'Cash / Out-of-Pocket',
           repair:        'Repair Only',
         };
-        const fundingLabel = JOB_TYPE_LABELS[currentClaim.job_type]
+        // gh-3398 (D-407): a homeowner who answered "not sure" (policy_type 'idk') must not be
+        // told RCV. No replacement wording exists yet, so the payment-type line is hidden.
+        const fundingLabel = currentClaim.policy_type === 'idk' ? null
+          : JOB_TYPE_LABELS[currentClaim.job_type]
           || (currentClaim.funding_type === 'insurance'
                 ? (currentClaim.policy_type === 'acv' ? 'Insurance (ACV)' : 'Insurance (RCV)')
                 : currentClaim.funding_type === 'cash' ? 'Cash / Out-of-Pocket'
@@ -2391,16 +2396,6 @@
         const isInsurance      = currentClaim.funding_type === 'insurance';
         const isExplicitlyCash = currentClaim.funding_type === 'cash';
 
-        // Measurement order state helpers
-        const hasHoverOrder = hoverOrder && (hoverOrder.status === 'link_sent' || hoverOrder.status === 'pending');
-        const todayResendCount = (() => {
-          if (!hoverOrder?.last_resend_at) return 0;
-          const lastDate = new Date(hoverOrder.last_resend_at).toISOString().slice(0, 10);
-          const today   = new Date().toISOString().slice(0, 10);
-          return lastDate === today ? (hoverOrder.resend_count || 0) : 0;
-        })();
-        const resendAvailable = hasHoverOrder && todayResendCount < 3;
-
         // Build measurements description + buttons depending on context
         let measurementsDesc, measurementsNote, measurementsBtns;
         if (currentClaim.has_measurements) {
@@ -2408,18 +2403,6 @@
           measurementsDesc  = null;
           measurementsNote  = null;
           measurementsBtns  = [];
-        } else if (hasHoverOrder) {
-          measurementsDesc  = 'Your measurement link was sent. Awaiting your photos — check your email inbox.';
-          measurementsNote  = resendAvailable
-            ? `Link sent to ${hoverOrder.capturing_user_email || 'your email'}. Didn't receive it? Resend below.`
-            : 'Resend limit reached for today (3/3). Try again tomorrow or upload measurements manually.';
-          measurementsBtns  = [
-            { label: 'Upload Instead', action: 'upload',   data: 'measurements' },
-            ...(resendAvailable
-              ? [{ label: 'Resend Link', action: 'resend', data: '' }]
-              : [{ label: 'Help Me',     action: 'navigate', data: 'help-measurements.html' }]
-            ),
-          ];
         } else if (isInsurance) {
           measurementsDesc  = 'Optional but recommended. Upload photos, measurements, or inspection reports.';
           measurementsNote  = 'Optional but recommended for more accurate bids.';
@@ -2466,12 +2449,12 @@
             id: 'measurements',
             title: 'Measurements',
             required: isExplicitlyCash, // Hard required only for retail/cash; optional for insurance and unknown
-            status: currentClaim.has_measurements ? 'uploaded' : (hasHoverOrder ? 'hover_pending' : 'pending'),
+            status: currentClaim.has_measurements ? 'uploaded' : 'pending',
             filename: fileDisplayName(currentClaim.measurements_filename),
             description: measurementsDesc,
             note: measurementsNote,
             buttons: measurementsBtns,
-            icon: hasHoverOrder && !currentClaim.has_measurements ? '🔗' : '📐'
+            icon: '📐'
           },
           {
             id: 'material',
@@ -2499,12 +2482,11 @@
 
         container.innerHTML = items.map(item => {
           const isDone    = item.status === 'uploaded' || item.status === 'selected';
-          const isHover   = item.status === 'hover_pending';
           return `
           <div class="checklist-item-wrapper">
             <div class="checklist-item ${isDone ? 'complete' : ''} ${item.required ? 'required' : ''} ${item.disabled ? 'disabled' : ''}">
               <div class="checklist-left">
-                <div class="checklist-icon ${isDone ? 'done' : isHover ? 'hover-pending' : 'pending'}">
+                <div class="checklist-icon ${isDone ? 'done' : 'pending'}">
                   ${isDone ? '✓' : item.icon}
                 </div>
                 <div class="checklist-info">
@@ -2530,8 +2512,6 @@
                     return `<button type="button" class="btn btn-sm btn-ghost" onclick="showHelpModal('${btn.data}')">Help Me</button>`;
                   } else if (btn.action === 'navigate') {
                     return `<a href="${btn.data}" class="btn btn-sm btn-secondary">${btn.label}</a>`;
-                  } else if (btn.action === 'resend') {
-                    return `<button type="button" class="btn btn-sm btn-secondary" id="resend-hover-btn" onclick="resendHoverLink(this)">Resend Link</button>`;
                   }
                   return '';
                 }).join('')}
@@ -2675,10 +2655,29 @@
           } catch (swErr) {
             console.warn('[Dashboard] Could not load install date for switch gating (non-fatal):', swErr);
           }
-          const installDate = startDateStr ? new Date(startDateStr) : null;
-          const cutoffDate = new Date();
-          cutoffDate.setDate(cutoffDate.getDate() + 3);
-          const withinCutoff = installDate && !isNaN(installDate.getTime()) && installDate <= cutoffDate;
+          // gh-3350: same rule as switch-contractor/cutoff.ts isWithinCutoff. Closed when the start date is fewer than
+          // 3 calendar days after today in America/Chicago (or past); day three itself (S-3) is open.
+          const withinCutoff = (function (startStr) {
+            if (!startStr) return false;
+            const zonedDayMs = function (d) {
+              const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
+              const n = function (t) { return Number(parts.find(function (p) { return p.type === t; }).value); };
+              return Date.UTC(n('year'), n('month') - 1, n('day'));
+            };
+            const raw = String(startStr).trim();
+            const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+            let installDayMs;
+            if (m) {
+              installDayMs = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+              const chk = new Date(installDayMs);
+              if (chk.getUTCFullYear() !== +m[1] || chk.getUTCMonth() !== +m[2] - 1 || chk.getUTCDate() !== +m[3]) return false;
+            } else {
+              const inst = new Date(raw);
+              if (isNaN(inst.getTime())) return false;
+              installDayMs = zonedDayMs(inst);
+            }
+            return Math.round((installDayMs - zonedDayMs(new Date())) / 86400000) < 3;
+          })(startDateStr);
 
           const actionsEl = document.getElementById('status-banner-actions');
           if (actionsEl) {
@@ -2843,7 +2842,15 @@
         // retail homeowner out of Submit for Bids.
         const needsEstimate = claim.funding_type !== 'cash';
         const estimateOk    = !needsEstimate || !!claim.has_estimate;
+        // gh-3334 (D-407): an ACV claim is handled like a cash job, so a purchased
+        // measurement stands in for the insurance estimate. RCV and unknown policy
+        // types are unchanged (estimate required).
+        if (isAcvClaim(claim)) return (!!claim.has_estimate || !!claim.has_measurements) && !!claim.has_material_selection;
         return estimateOk && !!claim.has_material_selection && measurementsOk;
+      }
+
+      function isAcvClaim(claim) {
+        return !!claim && claim.funding_type !== 'cash' && claim.policy_type === 'acv';
       }
 
       function updateSubmitButton() {
@@ -2855,7 +2862,7 @@
         const hasMeasurements = currentClaim?.has_measurements;
 
         const needsMeasurements = currentClaim?.funding_type === 'cash';
-        const needsEstimate     = currentClaim?.funding_type !== 'cash';
+        const needsEstimate     = currentClaim?.funding_type !== 'cash' && !isAcvClaim(currentClaim);
 
         const isReady = isChecklistComplete(currentClaim);
 
@@ -2864,6 +2871,7 @@
         if (!isReady) {
           const missing = [];
           if (needsEstimate && !hasEstimate) missing.push('Insurance Estimate');
+          if (isAcvClaim(currentClaim) && !hasEstimate && !hasMeasurements) missing.push('Insurance Estimate or Property Measurements');
           if (!hasMaterial) missing.push('Material Selection');
           if (needsMeasurements && !hasMeasurements) missing.push('Property Measurements (required for retail projects)');
           hint.textContent = `Complete the required items: ${missing.join(', ')}.`;
@@ -2978,6 +2986,7 @@
             );
             if (jobType) {
               window.selectJobType(jobType);
+              window.selectedJobTypeIsPreselect = true;  // gh-3398: set after the call; a user click clears it
               // Pre-populate conditional fields
               if (jobType === 'repair') {
                 if (currentClaim.repair_squares) document.querySelector('[name="repairSquares"]').value = currentClaim.repair_squares;
@@ -3088,7 +3097,11 @@
             updates.job_type = selectedType;
             if (selectedType === 'insurance_rcv') {
               updates.funding_type = 'insurance';
-              updates.policy_type = 'rcv';
+              // gh-3398 (D-407): edit mode pre-selects RCV for a stored 'idk'. Saving that
+              // untouched pre-selection must not rewrite 'idk' to 'rcv'. An explicit click can.
+              if (!(currentClaim.policy_type === 'idk' && window.selectedJobTypeIsPreselect === true)) {
+                updates.policy_type = 'rcv';
+              }
             } else if (selectedType === 'insurance_acv') {
               updates.funding_type = 'insurance';
               updates.policy_type = 'acv';
@@ -3192,6 +3205,7 @@
           // Close edit mode
           isEditingClaim = false;
           window.selectedJobType = null;
+          window.selectedJobTypeIsPreselect = false;
           document.getElementById('claim-display').style.display = 'grid';
           document.getElementById('claim-edit-form').style.display = 'none';
           document.getElementById('job-type-section').style.display = 'none';
@@ -3210,81 +3224,6 @@
         const input = document.getElementById('file-input');
         input.dataset.uploadType = type;
         input.click();
-      };
-
-      // ── Resend Measurement Capture Link ──
-      window.resendHoverLink = async function(btn) {
-        if (!currentClaim?.id || CONFIG.DEMO_MODE) return;
-
-        btn.disabled = true;
-        const originalText = btn.textContent;
-        btn.textContent = 'Sending…';
-
-        try {
-          // resend-hover-link now requires an authenticated caller (D-211 P19
-          // Unit 7c): send the user's session JWT, not the public anon key.
-          const { data: { session } } = await sb.auth.getSession();
-          const accessToken = session?.access_token;
-          if (!accessToken) {
-            showError('Your session has expired. Please sign in again to resend the link.');
-            btn.disabled = false;
-            btn.textContent = originalText;
-            return;
-          }
-          const response = await fetch(
-            `${CONFIG.SUPABASE_URL}/functions/v1/resend-hover-link`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'apikey': CONFIG.SUPABASE_ANON,
-                'Authorization': `Bearer ${accessToken}`,
-              },
-              body: JSON.stringify({ claim_id: currentClaim.id }),
-            }
-          );
-
-          const result = await response.json();
-
-          if (!response.ok) {
-            if (response.status === 429) {
-              showError(result.reason || 'Daily resend limit reached. Try again tomorrow.');
-            } else {
-              showError(result.error || 'Failed to resend the link. Please try again.');
-            }
-            btn.disabled = false;
-            btn.textContent = originalText;
-            return;
-          }
-
-          showSuccess('Measurement link resent! Check your email inbox.');
-
-          // Update local hoverOrder state so the count reflects immediately
-          if (hoverOrder) {
-            hoverOrder.resend_count = result.resend_count;
-            hoverOrder.last_resend_at = new Date().toISOString();
-          }
-
-          // Re-render checklist to update resend count display
-          renderChecklist();
-
-          // If no resends remain, disable the button via re-render
-          if (result.resends_remaining_today <= 0) {
-            const resendBtn = document.getElementById('resend-hover-btn');
-            if (resendBtn) {
-              resendBtn.disabled = true;
-              resendBtn.textContent = 'Limit Reached';
-            }
-          } else {
-            // Keep button enabled (re-render already handled it)
-          }
-
-        } catch (err) {
-          console.error('[resendHoverLink] Error:', err);
-          showError('Could not resend the link. Please refresh the page and try again.');
-          btn.disabled = false;
-          btn.textContent = originalText;
-        }
       };
 
       async function uploadFile(file, type) {
@@ -3584,6 +3523,7 @@
       // onclick="..." attribute, which needs global scope, not IIFE scope).
       window.selectJobType = function(type) {
         window.selectedJobType = type;
+        window.selectedJobTypeIsPreselect = false;  // gh-3398
         document.querySelectorAll('.job-type-btn').forEach(btn => {
           btn.classList.toggle('selected', btn.dataset.type === type);
         });

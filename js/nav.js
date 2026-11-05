@@ -63,8 +63,11 @@ const Nav = {
    * pages for nav purposes.
    */
   _isPartnerPage() {
-    const file = this._currentFile();
-    return file === 'partners.html' || file.startsWith('partner-') || window.location.pathname.indexOf('/partners/') === 0;
+    // gh-3352: matched through _normalizePageToken() (case-folded, "/" and ".html" stripped) so every form production serves for the profession gate matches:
+    // /partners (served 200), and /partners/, /Partners.html, /PARTNERS (all 301 to it), as well as partner-*.html and the /partners/ directory.
+    const token = this._normalizePageToken(this._currentFile());
+    const path = String(window.location.pathname || '').toLowerCase();
+    return token === 'partners' || token.indexOf('partner-') === 0 || path === '/partners' || path.indexOf('/partners/') === 0;
   },
 
   /**
@@ -307,6 +310,7 @@ const Nav = {
         { href: '/index.html',            label: 'Home',            id: 'home' },
         { href: '/how-it-works.html',     label: 'How It Works',    id: 'how-it-works' },
         { href: '/help-measurements.html',label: 'Measurements',    id: 'measurements' },
+        { href: '/pricing.html',          label: 'Pricing',         id: 'pricing' },
         { href: '/refer-a-friend.html',   label: 'Refer a Friend',  id: 'refer-a-friend' },
         { href: '/faq.html',              label: 'FAQ',             id: 'faq' },
       ],
@@ -549,7 +553,11 @@ const Nav = {
     // everywhere the flag is set. Removal only -- every other homeowner
     // link (Home, How It Works, Measurements) is unaffected.
     if (role === 'homeowner' && this._isInspectorTrack()) {
-      return links.filter(l => l.href !== '/refer-a-friend.html' && l.href !== '/faq.html');
+      return links.filter(l => l.href !== '/refer-a-friend.html' && l.href !== '/faq.html' && l.href !== '/pricing.html');
+    }
+    // gh-3387 (D2.4/D4.1): "Pricing" is a homeowner-only link (what a homeowner pays), same rule as the footer Pricing link (gh-3352): withheld on partner pages and on the inspector track.
+    if (role === 'homeowner' && this._isPartnerPage()) {
+      return links.filter(l => l.href !== '/pricing.html');
     }
     return links;
   },
@@ -602,7 +610,7 @@ const Nav = {
       ${this._roleBarHTML(role)}
       <div class="nav-inner container">
         <a href="${this._roleLogoHref(role, false)}" class="nav-logo">
-          <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;">
+          <img src="/img/brand-assets/otter-icon.webp" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;">
           <span class="nav-logo-text">${CONFIG.SITE_NAME}</span>
         </a>
         <div class="nav-links" id="nav-links">
@@ -1154,12 +1162,14 @@ const Nav = {
       ? '/partner-agreement-inspector.html'
       : '/partner-agreement.html';
 
+    // gh-3352: the footer Pricing link is homeowner-facing (what a homeowner pays). Partner pages are homeowner-free, so it is withheld on every partner page
+    // (partners.html, partner-*.html, /partners/*) via _isPartnerPage(), beside the _isInspectorTrack() gating. Homeowner and contractor footers are unchanged.
     footer.innerHTML = `
       <div class="footer-inner container">
         <div class="footer-grid">
           <div class="footer-col">
             <div class="footer-logo">
-              <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;">
+              <img src="/img/brand-assets/otter-icon.webp" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;">
               <span class="nav-logo-text">${CONFIG.SITE_NAME}</span>
             </div>
             <!-- gh-2598 slice 4 / D-377: the footer slot carries the tagline exactly as approved. Non-contractor footers only: the contractor-portal line below
@@ -1186,6 +1196,7 @@ const Nav = {
             ` : `
               <a href="/how-it-works.html">How It Works</a>
               ${!this._isInspectorTrack() ? '<a href="/faq.html">FAQ</a>' : ''}
+              ${!this._isInspectorTrack() && !this._isPartnerPage() ? '<a href="/pricing.html">Pricing</a><a href="/about.html">About</a>' : ''}
               <a href="/start.html${this._attributionQuery()}">Get Started</a>
               <a href="/blog/">Blog</a>
               <a href="/guides/">Guides</a>

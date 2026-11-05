@@ -29,6 +29,11 @@ describe('required fields (negative controls)', () => {
   it('OOP: measurement is required', () => {
     expect(missingForOop({ contact, hasMeasurement: false, material: done })).toEqual(['measurement']);
     expect(missingForOop({ contact, hasMeasurement: true, material: done })).toEqual([]);
+    // gh-3284: an estimate stands in for the measurement only when acceptEstimate (stored ACV) is set
+    expect(missingForOop({ contact, hasMeasurement: false, hasEstimate: true, material: done })).toEqual(['measurement']);
+    expect(missingForOop({ contact, hasMeasurement: false, hasEstimate: true, acceptEstimate: true, material: done })).toEqual([]);
+    expect(missingForOop({ contact, hasMeasurement: true, hasEstimate: false, acceptEstimate: true, material: done })).toEqual([]);
+    expect(missingForOop({ contact, hasMeasurement: false, hasEstimate: false, acceptEstimate: true, material: done })).toEqual(['estimate_or_measurement']);
   });
   it('contact check alone', () => {
     expect(missingContact({ ...contact, fullName: '', phone: '' })).toEqual(['name', 'phone']);

@@ -554,6 +554,21 @@ async function fetchHoverMeasurements(supabase, claimId) {
 // exists (gh-1245: roof_basic == RoofScope X) but the PDF-parse path is the
 // canonical one today and writes no product code at all, so keying off it would
 // mis-shape every claim measured through the path we actually use.
+// [gh-3288 / D-407 7/8] One signed document per job: what a Project Confirmation used to carry is read by the Scope of Work (Exhibit A) from
+// where the homeowner's selections now live. Nothing writes claims.project_confirmation any more (PC front end gone, #3300), so the shingle
+// line must come from the colour the homeowner saved on the colour page (claims.color_brand / claims.color_name). The PC columns are kept for
+// history (D-407): they still fill any field the selection does not carry. No new wording: the existing "Shingle:" line prints this value.
+// A saved brand that disagrees with the winning bid's brand (stale after switch-contractor, or the contractor's preferred brand differs from the
+// bid's) is NOT printed: the SOW would otherwise show two brands (Materials: vs Shingle:). Omission only; no wording added (review 6668152181 F2).
+function mergeSowSelections(pc: any, claim: any, bidBrand?: string | null) {
+  const name = typeof claim?.color_name === "string" ? claim.color_name.trim() : "";
+  if (!name) return pc ?? null;
+  const brand = typeof claim?.color_brand === "string" ? claim.color_brand.trim() : "";
+  const norm = (v: unknown) => String(v ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const nb = norm(bidBrand), ns = norm(brand);
+  if (nb && ns && !nb.includes(ns) && !ns.includes(nb)) return pc ?? null;
+  return { ...(pc ?? {}), shingleColor: name, shingleManufacturer: brand || pc?.shingleManufacturer || null };
+}
 function resolveMeasurementShape(measurements: any) {
   const m = measurements || {};
   const LINEAR = ["ridgeHipLf", "valleyLf", "rakeLf", "eaveLf", "dripEdgeLf", "stepFlashingLf", "flashingLf"];
@@ -2208,9 +2223,14 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
       const d390SowNotes = redactSowTextOrRefuse(claimData?.homeowner_notes ?? null, d390FeeCollected);
       // project_confirmation: the SOW reads homeownerNotes and workNotBeingDone; the form saves projectNotes and exclusions (key mismatch, not
       // changed here). All four free-text keys are wrapped, so aligning the keys later cannot print unredacted text.
+      // [gh-3288 / D-407] In-memory only (never written back): fold the saved colour selection into the PC-shaped object the SOW reads.
+      if (claimData) claimData.project_confirmation = mergeSowSelections(claimData.project_confirmation, claimData, bidBrand);
       const d390Pc = claimData?.project_confirmation
         ? {
           ...claimData.project_confirmation,
+          // [gh-3288 / D-390] colour and brand are homeowner-typed (free-text input): same redaction, same refusal, before the fee.
+          shingleColor: redactSowTextOrRefuse(claimData.project_confirmation.shingleColor ?? null, d390FeeCollected),
+          shingleManufacturer: redactSowTextOrRefuse(claimData.project_confirmation.shingleManufacturer ?? null, d390FeeCollected),
           homeownerNotes: redactSowTextOrRefuse(claimData.project_confirmation.homeownerNotes ?? null, d390FeeCollected),
           workNotBeingDone: redactSowTextOrRefuse(claimData.project_confirmation.workNotBeingDone ?? null, d390FeeCollected),
           projectNotes: redactSowTextOrRefuse(claimData.project_confirmation.projectNotes ?? null, d390FeeCollected),

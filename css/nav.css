@@ -523,10 +523,29 @@
   .nav-phone { gap: 0; min-height: 44px; padding: 0 4px; }
   .nav-links .nav-link { padding-left: 8px; padding-right: 8px; }
 }
+/* gh-3387: the homeowner guest nav gained a Pricing link (~60px). Reclaim it at 769-1099px (where the guest header otherwise wraps up to 949px against the 889px budget)
+   by tightening link padding and gap only; font size unchanged. */
+@media (min-width: 769px) and (max-width: 1099px) {
+  .nav-links { gap: 0; }
+  .nav-links .nav-link { padding-left: 4px; padding-right: 4px; }
+}
 /* /gh-2598-nav-compact-band */
 @media (max-width: 768px) {
   .nav-phone { margin-left: auto; margin-right: var(--sp-2); padding: 0 14px; border: 2px solid var(--white); border-radius: 6px; }
   .nav-phone:hover { text-decoration: none; background: rgba(255,255,255,0.08); }
   .nav-phone-num { display: none; }
   .nav-phone-call { display: inline; }
+}
+
+/* gh-3387 part D: 44x44 CSS px tap targets on phones. Hit area grows by min-size and
+   centred flex content; font sizes and colours are unchanged. */
+@media (max-width: 768px) {
+  .nav-logo { min-height: 44px; }
+  .nav-hamburger { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; }
+  .nav-role-tab { display: inline-flex; align-items: center; min-height: 44px; }
+  .nav-links .nav-link { display: flex; align-items: center; min-height: 44px; }
+  .footer-col { gap: 0; }
+  .footer-col > a { display: flex; align-items: center; min-height: 44px; }
+  .footer-nap a { display: inline-flex; align-items: center; min-height: 44px; }
+  button.router-back { min-height: 44px; min-width: 44px; padding-top: 14px; padding-bottom: 14px; margin-top: -14px; margin-bottom: calc(var(--sp-4) - 14px); }
 }
