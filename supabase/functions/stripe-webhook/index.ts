@@ -47,8 +47,7 @@ import {
   isFinalSubmitEnabled,
   postDisputeEvidence,
 } from "./dispute-routing.ts";
-import { assembleTextEvidence, claimRecordLines, formatAcceptedFeeDollars } from "./dispute-evidence-fields.ts";
-import { describeMissingFeeAcceptance, loadFeeAcceptanceForDispute, type AcceptancePickReason } from "./fee-acceptance-select.ts";
+import { assembleDisputeFeeEvidence, type FeeAcceptanceRow } from "./dispute-fee-evidence.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 import {
@@ -134,20 +133,6 @@ interface QuoteRow {
   contractor_id: string;
   payment_intent_id: string | null;
   fee_amount: number | null;
-}
-
-interface FeeAcceptanceRow {
-  id: string;
-  contractor_id: string;
-  claim_id: string;
-  bid_id: string;
-  fee_pct: number;
-  fee_amount: number;
-  fee_text_displayed: string;
-  accepted_at: string;
-  ip_address: string | null;
-  user_agent: string | null;
-  invoice_url: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -242,12 +227,11 @@ async function stripeRequest(
 async function createClickUpTask(params: {
   dispute: StripeDispute;
   claim: ClaimRow | null;
-  feeAcceptance: FeeAcceptanceRow | null;
-  feeAcceptanceMissingReason?: AcceptancePickReason | null;
+  taskFeeInfo: string;
   disputeUrl: string;
   clickupKey: string;
 }): Promise<{ taskId: string | null; taskUrl: string | null; error?: string }> {
-  const { dispute, claim, feeAcceptance, feeAcceptanceMissingReason, disputeUrl, clickupKey } = params;
+  const { dispute, claim, taskFeeInfo, disputeUrl, clickupKey } = params;
   const amountDollars = (dispute.amount / 100).toFixed(2);
   const isNonDelivery = NON_DELIVERY_REASONS.has(dispute.reason);
 
@@ -265,15 +249,7 @@ async function createClickUpTask(params: {
       ].join("\n")
     : "⚠️ Could not resolve claim from charge ID — manual lookup required.";
 
-  const feeInfo = feeAcceptance
-    ? [
-        `**Fee %:** ${feeAcceptance.fee_pct}%`,
-        `**Fee Amount:** ${formatAcceptedFeeDollars(feeAcceptance.fee_amount)}`,
-        `**Accepted At:** ${feeAcceptance.accepted_at}`,
-        `**Fee Text Shown:** ${feeAcceptance.fee_text_displayed}`,
-        `**Invoice URL:** ${feeAcceptance.invoice_url ?? "None"}`,
-      ].join("\n")
-    : `⚠️ ${describeMissingFeeAcceptance(feeAcceptanceMissingReason)}`;
+  const feeInfo = taskFeeInfo;
 
   const description = [
     `## Dispute Requires Manual Review`,
@@ -336,102 +312,6 @@ async function createClickUpTask(params: {
 }
 
 // ---------------------------------------------------------------------------
-// Evidence builder — D-215 stack
-// ---------------------------------------------------------------------------
-function buildEvidencePayload(params: {
-  dispute: StripeDispute;
-  claim: ClaimRow | null;
-  feeAcceptance: FeeAcceptanceRow | null;
-  feeAcceptanceMissingReason?: AcceptancePickReason | null;
-}): Record<string, string> {
-  const { dispute, claim, feeAcceptance, feeAcceptanceMissingReason } = params;
-
-  const productDescription = [
-    "Otter Quotes is a platform that facilitates roofing and exterior repair contracts.",
-    "The platform collects a platform fee from contractors when a homeowner signs their contract.",
-    "The platform fee covers: competitive bid management, digital contract execution (electronic signature), ",
-    "and document compliance services.",
-  ].join(" ");
-
-  const serviceDocLines = [
-    "TRANSACTION RECORD — Otter Quotes Platform Fee",
-    `Dispute ID: ${dispute.id}`,
-    `Charge ID: ${dispute.charge}`,
-    `Dispute Amount: $${(dispute.amount / 100).toFixed(2)} ${dispute.currency.toUpperCase()}`,
-    `Dispute Reason: ${dispute.reason}`,
-    "",
-  ];
-
-  if (feeAcceptance) {
-    serviceDocLines.push(
-      "FEE ACCEPTANCE RECORD (UETA Layer 1 — D-215):",
-      `  Fee Rate: ${feeAcceptance.fee_pct}%`,
-      `  Fee Amount: ${formatAcceptedFeeDollars(feeAcceptance.fee_amount)}`,
-      `  Accepted At: ${feeAcceptance.accepted_at}`,
-      `  IP Address: ${feeAcceptance.ip_address ?? "Not recorded"}`,
-      `  Fee Text Shown to Contractor: "${feeAcceptance.fee_text_displayed}"`,
-      "",
-    );
-  } else {
-    serviceDocLines.push(
-      `FEE ACCEPTANCE RECORD: Not found in database — manual lookup required. (${describeMissingFeeAcceptance(feeAcceptanceMissingReason)})`,
-      "",
-    );
-  }
-
-  if (claim) {
-    serviceDocLines.push(
-      ...claimRecordLines(claim),
-    );
-
-    if (claim.completion_date) {
-      serviceDocLines.push(`  Job Completion Date: ${claim.completion_date} (contractor marked job complete)`);
-    } else {
-      serviceDocLines.push(
-        "  Job Completion Date: PENDING — contractor 'Mark Complete' action not yet triggered.",
-        "  NOTE: Completion cannot be auto-verified at this time. Manual verification of job",
-        "  completion required.",
-      );
-    }
-
-    serviceDocLines.push(
-      "  Homeowner Completion Acknowledgment: NOT AVAILABLE — homeowner acknowledgment flow is",
-      "  a net-new build per D-228 and has not yet been deployed. This evidence layer will be",
-      "  available after the homeowner acknowledgment feature ships.",
-    );
-  }
-
-  const customerCommunication = feeAcceptance
-    ? [
-        "A bid confirmation email was sent to the contractor upon bid submission.",
-        `The email included the platform fee rate (${feeAcceptance.fee_pct}%), a link to rescind the bid,`,
-        "and a link to review the bid.",
-        feeAcceptance.invoice_url
-          ? `Invoice URL (D-215 Layer 3): ${feeAcceptance.invoice_url}`
-          : "Invoice URL: Not available — invoice may not have been generated yet.",
-      ].join(" ")
-    : "Fee acceptance record could not be retrieved at this time.";
-
-  // gh-1759: service_documentation / customer_communication / receipt are Stripe
-  // FILE fields; the prose belongs in the text fields (see dispute-evidence-fields.ts).
-  const evidence: Record<string, string> = assembleTextEvidence({
-    productDescription,
-    serviceDocumentation: serviceDocLines.join("\n"),
-    customerCommunication, // already carries the invoice URL when one exists
-  });
-
-  // ── gh-1759 GATE 2 / gh-2794 GATE 3 ────────────────────────────────────────
-  // This function returns the evidence FIELDS only. Whether the request submits
-  // FINAL is decided in postDisputeEvidence() (dispute-routing.ts), which always
-  // sends an explicit top-level `submit` parameter: Stripe's Update-a-dispute API
-  // defaults `submit` to true, so leaving it out would submit FINAL. It is
-  // "true" only when claim + fee acceptance are resolved AND
-  // DISPUTE_EVIDENCE_FINAL_SUBMIT_ENABLED is exactly "true"; otherwise "false"
-  // (staged draft for a person to finish).
-  return evidence;
-}
-
-// ---------------------------------------------------------------------------
 // Core dispute handler
 // ---------------------------------------------------------------------------
 async function handleDisputeCreated(
@@ -452,8 +332,6 @@ async function handleDisputeCreated(
 
   let claim: ClaimRow | null = null;
   let quote: QuoteRow | null = null;
-  let feeAcceptance: FeeAcceptanceRow | null = null;
-  let feeAcceptanceMissingReason: AcceptancePickReason | null = null;
 
   const { data: claimRows } = await supabase
     .from("claims")
@@ -491,25 +369,10 @@ async function handleDisputeCreated(
     }
   }
 
-  if (claim) {
-    const contractorId = claim.selected_contractor_id ?? quote?.contractor_id;
-    if (contractorId) {
-      // gh-3409 (REVIEW 6668449870 B1, 6669057587 B2): the evidence row is the acceptance of the bid being charged (the
-      // selected bid), and only when its fee equals that bid's current fee. See fee-acceptance-select.ts.
-      const picked = await loadFeeAcceptanceForDispute<FeeAcceptanceRow>(
-        supabase,
-        claim,
-        contractorId,
-        quote as QuoteRow | null, // resolved from the payment intent above, when the claim came from it
-      );
-      if (picked.row) {
-        feeAcceptance = picked.row;
-      } else {
-        feeAcceptanceMissingReason = picked.reason;
-        console.warn(`[${FN_NAME}] gh-3409: no usable fee acceptance for claim ${claim.id} (${picked.reason}); manual evidence gathering`);
-      }
-    }
-  }
+  // gh-3409 (REVIEW 6668449870 B1, 6669057587 B2, 6669923343 B2): the evidence row is the acceptance of the bid being charged (the selected bid),
+  // and only when its fee equals that bid's current fee. The whole read-pick-build chain is dispute-fee-evidence.ts, which a test runs end to end.
+  const feeEvidence = await assembleDisputeFeeEvidence(supabase, dispute, claim, quote);
+  const feeAcceptance: FeeAcceptanceRow | null = feeEvidence.feeAcceptance;
 
   // ── gh-1759 GATE 1: an unresolvable dispute goes to a human ───────────────
   // Previously `routeToManualQueue` considered only the amount and the reason,
@@ -584,7 +447,7 @@ async function handleDisputeCreated(
   const disputeRowId = disputeRows?.id ?? null;
 
   if (!routeToManualQueue) {
-    const evidencePayload = buildEvidencePayload({ dispute, claim, feeAcceptance, feeAcceptanceMissingReason });
+    const evidencePayload = feeEvidence.evidencePayload;
 
     console.log(`[${FN_NAME}] Submitting evidence for dispute ${dispute.id} via Stripe API`);
 
@@ -718,8 +581,7 @@ async function handleDisputeCreated(
       const cuResult = await createClickUpTask({
         dispute,
         claim,
-        feeAcceptance,
-        feeAcceptanceMissingReason,
+        taskFeeInfo: feeEvidence.taskFeeInfo,
         disputeUrl,
         clickupKey,
       });

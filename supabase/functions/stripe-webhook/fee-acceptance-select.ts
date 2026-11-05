@@ -56,6 +56,16 @@ export function describeMissingFeeAcceptance(reason: AcceptancePickReason | null
   }
 }
 
+/**
+ * The line staged at Stripe. Never names an internal table or reason (a person finishes that draft and Stripe keeps it), and never both says "not found"
+ * and "a record exists". The internal reason goes to the ClickUp task (describeMissingFeeAcceptance). Starts with the literal the gates look for.
+ */
+export function describeMissingFeeAcceptanceForStripe(reason: AcceptancePickReason | null | undefined): string {
+  return reason === "fee_differs_from_bid"
+    ? "Not found in database as a record usable for this charge — manual lookup required."
+    : "Not found in database — manual lookup required.";
+}
+
 /** The slice of the supabase-js query builder this needs; a test passes a fake. */
 // deno-lint-ignore no-explicit-any
 export type QueryBuilder = any;

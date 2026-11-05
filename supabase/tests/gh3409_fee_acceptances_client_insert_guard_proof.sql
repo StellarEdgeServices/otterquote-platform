@@ -35,6 +35,7 @@ SELECT proof.mk('q8','u1',15000); SELECT proof.mk('q9','u1',15000); SELECT proof
 SELECT proof.mk('q12','u1',15000); SELECT proof.mk('q13','u1',15000); SELECT proof.mk('q14','u1',15000); SELECT proof.mk('q15','u1',15000);
 SELECT proof.mk('q16','u1',15000); SELECT proof.mk('q17','u1',15000); SELECT proof.mk('q18','u1',4000,'submitted',24);
 SELECT proof.mk('k1','u1',15000); SELECT proof.mk('k2','u1',15000); SELECT proof.mk('k3','u1',15000); SELECT proof.mk('k4','u1',15000); SELECT proof.mk('k5','u1',15000); SELECT proof.mk('k6a','u1',15000); SELECT proof.mk('k6b','u1',15000); SELECT proof.mk('k6c','u1',15000); SELECT proof.mk('k7','u1',15000); SELECT proof.mk('k9','u1',15000); SELECT proof.mk('k10','u1',15000); SELECT proof.mk('k12','u1',15000); SELECT proof.mk('k13','u1',15000);
+SELECT proof.mk('k14','u1',15000); SELECT proof.mk('k15','u1',15000); SELECT proof.mk('k16','u1',15000); SELECT proof.mk('k17','u1',15000); SELECT proof.mk('k18','u1',15000);
 SELECT proof.mk('q20','u1',15000); SELECT proof.mk('q21','u1',15000); SELECT proof.mk('q22','u1',15000); SELECT proof.mk('q23','u1',15000); SELECT proof.mk('q24','u1',15000);
 
 -- run any statement as a client session; ok or REFUSED:<sqlstate>
@@ -78,7 +79,7 @@ END $w$;
 -- one acceptance INSERT as a given role. Default identity is the bid's own contractor.
 CREATE FUNCTION proof.ins(p_role text, p_who text, p_label text, p_text text, p_pct numeric, p_fee numeric,
   p_accepted timestamptz DEFAULT now(), p_created timestamptz DEFAULT NULL, p_invoice text DEFAULT NULL, p_resc timestamptz DEFAULT NULL,
-  p_claim_label text DEFAULT NULL, p_contractor_who text DEFAULT NULL, p_bid uuid DEFAULT NULL, p_basis text DEFAULT 'bid_amount', p_reason text DEFAULT NULL, p_id uuid DEFAULT gen_random_uuid()) RETURNS text LANGUAGE plpgsql AS $i$
+  p_claim_label text DEFAULT NULL, p_contractor_who text DEFAULT NULL, p_bid uuid DEFAULT NULL, p_basis text DEFAULT 'bid_amount', p_reason text DEFAULT NULL, p_id uuid DEFAULT gen_random_uuid(), p_ip text DEFAULT '203.0.113.7', p_ua text DEFAULT 'UA/1.0') RETURNS text LANGUAGE plpgsql AS $i$
 DECLARE qr proof.q; uid uuid; cid uuid; claim uuid; bid uuid; r text;
 BEGIN
   SELECT * INTO qr FROM proof.q WHERE label = p_label;
@@ -91,7 +92,7 @@ BEGIN
   BEGIN
     EXECUTE 'SET LOCAL ROLE ' || quote_ident(p_role);
     INSERT INTO public.fee_acceptances (id, contractor_id, claim_id, bid_id, fee_pct, fee_basis, fee_amount, fee_text_displayed, accepted_at, ip_address, user_agent, created_at, invoice_url, rescinded_at, rescission_reason)
-      VALUES (p_id, cid, claim, bid, p_pct, p_basis, p_fee, p_text, p_accepted, '203.0.113.7', 'UA/1.0', COALESCE(p_created, now()), p_invoice, p_resc, p_reason);
+      VALUES (p_id, cid, claim, bid, p_pct, p_basis, p_fee, p_text, p_accepted, p_ip::inet, p_ua, COALESCE(p_created, now()), p_invoice, p_resc, p_reason);
     RESET ROLE; r := 'ok';
   EXCEPTION WHEN OTHERS THEN RESET ROLE; r := 'REFUSED:' || SQLSTATE;
   END;
@@ -135,6 +136,16 @@ BEGIN
   EXECUTE 'SELECT ''stored='' || length(fee_text_displayed) || '' original='' || fee_text_length FROM public.fee_acceptance_quarantine WHERE bid_id = (SELECT quote_id FROM proof.q WHERE label = $1) LIMIT 1' INTO r USING p_label;
   RETURN coalesce(r, 'no held row');
 END $hl$;
+CREATE FUNCTION proof.held_ua_len(p_label text) RETURNS text LANGUAGE plpgsql AS $hu$
+DECLARE r text;
+BEGIN
+  IF to_regclass('public.fee_acceptance_quarantine') IS NULL THEN RETURN 'no quarantine table'; END IF;
+  EXECUTE 'SELECT ''ua='' || length(user_agent) FROM public.fee_acceptance_quarantine WHERE bid_id = (SELECT quote_id FROM proof.q WHERE label = $1) LIMIT 1' INTO r USING p_label;
+  RETURN coalesce(r, 'no held row');
+END $hu$;
+CREATE FUNCTION proof.svc_privs() RETURNS text LANGUAGE sql AS $sp$
+  SELECT CASE WHEN to_regclass('public.fee_acceptance_quarantine') IS NULL THEN 'no quarantine table'
+  ELSE (SELECT string_agg(p, ',' ORDER BY p) FROM unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) p WHERE has_table_privilege('service_role', 'public.fee_acceptance_quarantine', p)) END $sp$;
 -- one session diverts p_n mismatching acceptances; returns how many quarantine rows that caller has
 CREATE FUNCTION proof.flood(p_who text, p_n integer) RETURNS text LANGUAGE plpgsql AS $fl$
 DECLARE i integer; lbl text; n text;
@@ -284,6 +295,13 @@ SELECT proof.rec('K10b K10 as stored in quarantine', 'no quarantine table', 'acc
 SELECT proof.rec('K12 junk text of 5000 characters is kept, capped at 4000', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:text_not_form_wording', proof.ins('authenticated','u1','k12', repeat('x', 5000), 5.00, 750.00));
 SELECT proof.rec('K12b K12 stored length (original length is recorded beside it)', 'no quarantine table', 'stored=4000 original=5000', proof.held_len('k12'), 'no held row');
 SELECT proof.rec('K13 flood: one session diverts 30 rows; the cap is 25 an hour', 'no quarantine table', 'quarantine rows=25', proof.flood('u2', 30), 'quarantine rows=0');
+SELECT proof.rec('K14 React wording, net amount $1.00 off (tolerance is two cents)', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:displayed_fee_differs', proof.ins('authenticated','u1','k14', replace(:'text_react_q2','$14,250.00','$14,249.00'), 5.00, 750.00));
+SELECT proof.rec('K15 React wording, net amount two cents off is within tolerance', 'ok -> fa=1 q=0', 'ok -> fa=1 q=0', proof.ins('authenticated','u1','k15', replace(:'text_react_q2','$14,250.00','$14,250.02'), 5.00, 750.00));
+SELECT proof.rec('K16 a 600-character user agent on a diverted row is kept, capped at 500', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:text_not_form_wording', proof.ins('authenticated','u1','k16', 'junk', 5.00, 750.00, p_ua => repeat('u', 600)));
+SELECT proof.rec('K16b K16 stored user agent length', 'no quarantine table', 'ua=500', proof.held_ua_len('k16'), 'no held row');
+SELECT proof.rec('K17 genuine insert with no IP (the lookup failed; the forms now send null)', 'ok -> fa=1 q=0', 'ok -> fa=1 q=0', proof.ins('authenticated','u1','k17', :'text_html_q9', 5.00, 750.00, p_ip => NULL));
+SELECT proof.rec('K18 the string unknown as ip_address (the old forms) is refused by the inet type before any trigger runs: nothing is recorded or kept', 'REFUSED:22P02 -> fa=0 q=0', 'REFUSED:22P02 -> fa=0 q=0', proof.ins('authenticated','u1','k18', :'text_html_q9', 5.00, 750.00, p_ip => 'unknown'));
+SELECT proof.rec('K19 service_role holds only SELECT and INSERT on the quarantine table (default ACLs grant it everything)', 'no quarantine table', 'INSERT,SELECT', proof.svc_privs(), 'INSERT,SELECT');
 
 -- ======================= STATE =======================
 SELECT proof.rec('S1 non-internal triggers on fee_acceptances', '0', '1', (SELECT count(*)::text FROM pg_trigger WHERE tgrelid = 'public.fee_acceptances'::regclass AND NOT tgisinternal));

@@ -2,7 +2,7 @@
 // Shapes S1-S3 are the ones the reviewer reproduced on Postgres; each row below is "true at its own instant".
 // On main the webhook took the newest row for (claim, contractor) and these returned the $0.05 row.
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { describeMissingFeeAcceptance, loadFeeAcceptanceForDispute, pickFeeAcceptanceForBid } from "./fee-acceptance-select.ts";
+import { describeMissingFeeAcceptance, describeMissingFeeAcceptanceForStripe, loadFeeAcceptanceForDispute, pickFeeAcceptanceForBid } from "./fee-acceptance-select.ts";
 import { stripComments } from "./test-source-utils.ts";
 
 const genuine = { id: "a1", bid_id: "bid-selected", fee_amount: 750 };
@@ -111,9 +111,10 @@ Deno.test("messages: a record that exists but is not used is never described as 
   assert(/No fee_acceptances record found/.test(describeMissingFeeAcceptance(null)));
 });
 
-Deno.test("index.ts passes the loader the payment-intent quote and carries the reason into both documents", () => {
-  const src = stripComments(Deno.readTextFileSync(new URL("./index.ts", import.meta.url)));
-  assert(/loadFeeAcceptanceForDispute<FeeAcceptanceRow>\(\s*supabase,\s*claim,\s*contractorId,\s*quote as QuoteRow \| null/.test(src), "index.ts must call the loader with claim, contractorId and the payment-intent quote");
-  assert(!/feeAcceptance\s*=\s*feeRows\[0\]/.test(src), "index.ts must not take feeRows[0] directly");
-  assertEquals((src.match(/describeMissingFeeAcceptance\(feeAcceptanceMissingReason\)/g) ?? []).length, 2);
+Deno.test("messages for Stripe: neutral, never name the quarantine table, never say both 'not found' and 'a record exists'", () => {
+  for (const r of ["fee_differs_from_bid", "no_row_for_selected_bid", "no_selected_bid", null] as const) {
+    const m = describeMissingFeeAcceptanceForStripe(r);
+    assert(m.startsWith("Not found in database"), "keeps the literal the final-submit gates look for");
+    assert(!/quarantine|fee_acceptances|exists/i.test(m), `Stripe text leaks an internal name: ${m}`);
+  }
 });

@@ -45,12 +45,26 @@ psql -q -At -d $PD -c "SELECT 'PREREQ nothing committed: triggers=' || count(*) 
 
 # ---- the HTML form's insert shape (static): no .single(); a form that brings it back must fail this check ----
 node "$T/gh3409_form_shape_check.mjs" contractor-bid-form.html || fail "contractor-bid-form.html fee_acceptances insert asks for a single row"
-python3 - "$OUT/form-with-single.html" <<'PY'
+python3 - "$OUT" <<'PY'
 import sys
-s=open('contractor-bid-form.html').read(); a="user_agent: _userAgent,\n              }).select('id');"
-assert s.count(a)==1; open(sys.argv[1],'w').write(s.replace(a, a[:-1]+".single();"))
+s=open('contractor-bid-form.html').read(); o=sys.argv[1]
+M={
+ 'form-with-single': ("user_agent: _userAgent,\n              }).select('id');", "user_agent: _userAgent,\n              }).select('id').single();"),
+ 'form-with-unknown-ip': ("ip_address: (_contractorIP && _contractorIP !== 'unknown') ? _contractorIP : null,", "ip_address: _contractorIP,"),
+ 'form-without-diverted-report': ("Sentry.captureMessage('[D-215] Fee acceptance diverted to quarantine'", "console.log('[D-215] Fee acceptance diverted to quarantine'"),
+}
+for k,(a,b) in M.items():
+    assert s.count(a)==1,k; open(f"{o}/{k}.html","w").write(s.replace(a,b))
 PY
-if node "$T/gh3409_form_shape_check.mjs" "$OUT/form-with-single.html" >/dev/null; then fail "form mutant with .single() SURVIVED"; else echo "FORMSHAPE mutant (.single() brought back): killed"; fi
+for m in form-with-single form-with-unknown-ip form-without-diverted-report; do
+  if node "$T/gh3409_form_shape_check.mjs" "$OUT/$m.html" >/dev/null; then fail "form mutant $m SURVIVED"; else echo "FORMSHAPE mutant $m: killed"; fi
+done
+
+# ---- the webhook's reading of the anchored row (Deno): the whole directory passes, and each broken link is caught ----
+if command -v deno >/dev/null; then
+  ( cd supabase/functions/stripe-webhook && deno test -A 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E '^(ok|FAILED) \|' ) | tee "$OUT/deno.txt"; grep -q ' 0 failed' "$OUT/deno.txt" || fail "stripe-webhook Deno tests fail"
+  bash "$T/gh3409_webhook_mutants.sh" | tee "$OUT/webhook-mutants.txt"; grep -q 'killed: 14 of 14' "$OUT/webhook-mutants.txt" || fail "a webhook mutant survived"
+else echo "Deno tests SKIPPED (deno not installed)"; fi
 
 # ---- real PostgREST: the form's insert shapes against PostgREST itself (needs PGRST_BIN and SUPABASE_JS_DIR; a run without them says SKIPPED and does not count as proved) ----
 if [ -n "${PGRST_BIN:-}" ] && [ -n "${SUPABASE_JS_DIR:-}" ]; then
@@ -106,6 +120,9 @@ M={
  'M29_no_flood_cap': ("x.quarantined_at > now() - interval '1 hour') >= 25", "x.quarantined_at > now() - interval '1 hour') >= 1000000"),
  'M30_quarantine_text_uncapped': ("left(p_row.fee_text_displayed, 4000), length", "p_row.fee_text_displayed, length"),
  'M31_diversion_not_logged': ("    RAISE WARNING 'gh-3409 fee acceptance quarantined", "    PERFORM 'gh-3409 fee acceptance quarantined"),
+ 'M32_react_net_tolerance_widened': ("<= 0.02", "<= 100"),
+ 'M33_quarantine_user_agent_uncapped': ("left(p_row.user_agent, 500)", "p_row.user_agent"),
+ 'M34_service_role_keeps_update_delete_truncate': ("REVOKE ALL ON TABLE public.fee_acceptance_quarantine FROM PUBLIC, anon, authenticated, service_role;", "REVOKE ALL ON TABLE public.fee_acceptance_quarantine FROM PUBLIC, anon, authenticated;"),
 }
 for k,(a,b) in M.items():
     if a.startswith("ALL:"):

@@ -63,5 +63,10 @@ rec('P13 a signed-in contractor cannot read the quarantine table', 'error 42501'
 // 8. the quarantine writer is exposed as an RPC route (a SECURITY DEFINER function a trigger needs the caller to be able to run); calling it directly must not write
 r = await A.rpc('fee_acceptance_quarantine_add', { p_row: { ...row('a9', 'forged direct call'), id: crypto.randomUUID() }, p_reasons: ['forged'], p_server_pct: 5, p_server_fee: 750 });
 rec('P14 a contractor calling the quarantine writer directly over RPC', 'error 42501; held=0', `${shape(r)}; held=${await held('a9')}`);
+// 9. the React form's failed IP lookup (REVIEW 6669923343 B1): the old form sent the string 'unknown', which the inet column refuses BEFORE the trigger runs, so the acceptance was lost with no trace
+r = await A.from('fee_acceptances').insert(row('a10', goodReact, { ip_address: 'unknown' })).select('id');
+rec('P15 React insert with ip_address "unknown" (the old failure): refused by the inet type, nothing recorded or kept', 'error 22P02; recorded=0 held=0', `${shape(r)}; recorded=${await recorded('a10')} held=${await held('a10')}`);
+r = await A.from('fee_acceptances').insert(row('a11', goodReact, { ip_address: null })).select('id');
+rec('P16 React insert with ip_address null (what the form sends now when the lookup fails): recorded', 'no error, data=array(1); recorded=1 held=0', `${shape(r)}; recorded=${await recorded('a11')} held=${await held('a11')}`);
 console.log(`PGRST_FAILING=${bad} of ${n}`);
 process.exit(bad ? 1 : 0);

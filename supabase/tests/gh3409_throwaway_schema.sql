@@ -110,3 +110,6 @@ REVOKE ALL ON public.fee_acceptances FROM PUBLIC, anon, authenticated, service_r
 GRANT SELECT, INSERT, UPDATE, REFERENCES, TRIGGER ON public.fee_acceptances TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE, REFERENCES, TRIGGER ON public.fee_acceptances TO authenticated;
 GRANT ALL ON public.fee_acceptances TO service_role;
+-- Supabase's default ACLs hand every new public table to the client roles and service_role (production: arwdDxtm). Set AFTER the baseline tables so only tables created later
+-- (the quarantine table) are affected; the forward file must take away what it does not want.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;

@@ -34,7 +34,8 @@
 -- SHIP ORDER, READ THIS (REVIEW 6669057587 B1, proven against a real PostgREST 12.2.3 and supabase-js in supabase/tests/gh3409_postgrest_proof.mjs): the HTML bid form inserts with `.select('id').single()`, which asks
 --   PostgREST for exactly one row. A diverted row returns zero rows, so PostgREST answers 406 PGRST116 and ROLLS THE WHOLE REQUEST BACK, taking the quarantine row with it: the record of what was shown is lost
 --   (only the log line below survives). contractor-bid-form.html in this PR drops `.single()` (it keeps `.select('id')`) and treats an empty result as a diversion to report. THAT FORM CHANGE MUST BE LIVE BEFORE
---   THIS MIGRATION IS APPLIED (pre-flight check 0 reads the deployed page). The React form sends no returning clause and is unaffected. Any other client that uses `.single()` on this insert would lose the quarantine row.
+--   THIS MIGRATION IS APPLIED (pre-flight check 0 reads the deployed page). The React form (changed in this PR to `.select('id')` so it can report an error or a diversion) is unaffected by `.single()`. Any other client that uses `.single()` on this insert would lose the quarantine row.
+--   ALSO (REVIEW 6669923343 B1): both forms used to send the string 'unknown' as ip_address when the IP lookup failed; the inet column refuses it (22P02) BEFORE this trigger runs, so that acceptance was lost with no trace and no quarantine row. Both forms in this PR send null instead; they must be live before apply too.
 -- Quarantine table: RLS on, no policy, no privilege for anon or authenticated (service_role and the SQL editor only). It is written by one SECURITY DEFINER function that refuses to run outside a trigger.
 --
 -- STILL OPEN IN THE DATA PATH, and fixed in the webhook, not here (REVIEW 6668449870 B1): a contractor can submit a second bid, or move a bid's price down and back, and each acceptance row is true at its own
@@ -94,7 +95,8 @@ CREATE TABLE IF NOT EXISTS public.fee_acceptance_quarantine (
   rescission_reason text
 );
 ALTER TABLE public.fee_acceptance_quarantine ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.fee_acceptance_quarantine FROM PUBLIC, anon, authenticated;
+-- Supabase's default privileges give service_role everything (UPDATE, DELETE, TRUNCATE too) on a new public table; the table is append-only in intent, so take it all away and grant back two.
+REVOKE ALL ON TABLE public.fee_acceptance_quarantine FROM PUBLIC, anon, authenticated, service_role;
 GRANT SELECT, INSERT ON TABLE public.fee_acceptance_quarantine TO service_role;
 COMMENT ON TABLE public.fee_acceptance_quarantine IS
   'gh-3409: client fee-acceptance inserts that were not recorded in fee_acceptances, kept exactly as the browser sent them with the reasons. Read by a person. Not read by stripe-webhook.';
