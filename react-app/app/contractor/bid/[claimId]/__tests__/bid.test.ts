@@ -186,17 +186,35 @@ describe('fee math', () => {
 });
 
 // =============================================================================
-describe('buildFeeDisclosureText — VERBATIM (D-214/D-215, :5035)', () => {
-  it('matches the static generateExactFeeText byte-for-byte', () => {
-    expect(buildFeeDisclosureText(5, 500, 10000)).toBe(
-      'By submitting this bid, you agree to pay Otter Quotes a platform fee of 5.00% ($500.00) upon contract execution. ' +
-      'This fee is deducted from your bid amount before disbursement. You will receive $9,500.00 upon completion. ' +
-      'I understand and agree to the platform fee of 5.00% ($500.00)',
-    );
+describe('buildFeeDisclosureText — GC-approved #547 item 1A wording (gh-3480)', () => {
+  // Copied from contractor-bid-form.html generateExactFeeText(); must stay identical.
+  const APPROVED =
+    'Platform fee for this job: $500.00 (5.00% of your bid). By submitting this bid, you agree to pay Otter Quotes this fee if the homeowner selects your bid and a contract is signed. ' +
+    'The fee is due upon contract execution and will be charged to your card on file. Submitting this bid constitutes your acceptance of this fee.';
+  it('matches the HTML form wording character for character', () => {
+    expect(buildFeeDisclosureText(5, 500)).toBe(APPROVED);
+  });
+  it('is the same sentence the live HTML form generates (read from contractor-bid-form.html)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const html = readFileSync(`${process.cwd()}/../contractor-bid-form.html`, 'utf8'); // vitest runs from react-app/
+    const m = html.match(/function generateExactFeeText\(\)[\s\S]*?return `([^`]*)`;/);
+    expect(m).not.toBeNull();
+    const rendered = m![1]
+      .replace('${feeAmount.toLocaleString(\'en-US\', { style: \'currency\', currency: \'USD\' })}', '$500.00')
+      .replace('${feePct.toFixed(2)}', '5.00');
+    expect(rendered).not.toContain('${');
+    expect(buildFeeDisclosureText(5, 500)).toBe(rendered);
   });
   it('formats pct to 2 decimals and amounts as USD currency', () => {
-    expect(buildFeeDisclosureText(7.5, 750, 10000)).toContain('platform fee of 7.50% ($750.00)');
-    expect(buildFeeDisclosureText(7.5, 750, 10000)).toContain('You will receive $9,250.00 upon completion');
+    expect(buildFeeDisclosureText(7.5, 750)).toContain('Platform fee for this job: $750.00 (7.50% of your bid).');
+  });
+  it('never promises a payment: no deduction, disbursement or "you will receive" (D-229)', () => {
+    const t = buildFeeDisclosureText(7.5, 750);
+    expect(t).not.toMatch(/deducted from your bid amount/i);
+    expect(t).not.toMatch(/before disbursement/i);
+    expect(t).not.toMatch(/you will receive/i);
+    expect(t).not.toContain('$9,250.00');
+    expect(t).not.toMatch(/irrevocable/i);
   });
 });
 

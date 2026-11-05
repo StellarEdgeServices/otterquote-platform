@@ -303,7 +303,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
       const valueAdds = applyCustomWarrantyReview(valueAddsRaw, warranty, nowIso);
       const feeBase = computeQuoteFeeBase(claim, bidAmount);
       const feeAmount = disclosure.feeAmount;
-      const exactFeeText = buildFeeDisclosureText(feePct, feeAmount, bidAmount);
+      const exactFeeText = buildFeeDisclosureText(feePct, feeAmount);
       const scopeSummary = buildScopeSummary({ brand: form.brandProduct, estimatedStartDate: form.startDate, estimatedCompletionTime: form.completionTime });
       const perTradeBreakdown = wizardMode
         ? Object.fromEntries(Object.entries(wizardPrices).map(([k, v]) => [k, parseFloat(v) || 0]).filter(([, v]) => (v as number) > 0))

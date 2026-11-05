@@ -104,25 +104,22 @@ export const BID_COPY = {
 
 /**
  * D-214/D-215 fee-acceptance disclosure — VERBATIM (Tier-3).
- * Byte-for-byte port of contractor-bid-form.html:5035 (generateExactFeeText),
+ * Byte-for-byte port of contractor-bid-form.html generateExactFeeText(), the
+ * GC-approved wording (#547 item 1A, D-215; "irrevocable" deliberately absent),
  * including the `.toFixed(2)` percentage and `toLocaleString('en-US', currency)`
  * formatting, which are part of the legally-displayed string captured in
  * fee_acceptances.fee_text_displayed (UETA Layer 1 evidence).
+ * No net or disbursement figure appears: the fee is charged to the card on
+ * file and nothing is disbursed to the contractor (D-229). gh-3480.
  *
  * @param feePct    platform fee percentage (e.g. 5)
  * @param feeAmount fee dollar amount
- * @param bidAmount the contractor's bid amount (net = bid − fee)
  */
 export function buildFeeDisclosureText(
   feePct: number,
   feeAmount: number,
-  bidAmount: number,
 ): string {
-  const netAmount = bidAmount - feeAmount;
-  const pct = feePct.toFixed(2);
-  const fee = feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-  const net = netAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-  return `By submitting this bid, you agree to pay Otter Quotes a platform fee of ${pct}% (${fee}) upon contract execution. This fee is deducted from your bid amount before disbursement. You will receive ${net} upon completion. I understand and agree to the platform fee of ${pct}% (${fee})`;
+  return `Platform fee for this job: ${feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} (${feePct.toFixed(2)}% of your bid). By submitting this bid, you agree to pay Otter Quotes this fee if the homeowner selects your bid and a contract is signed. The fee is due upon contract execution and will be charged to your card on file. Submitting this bid constitutes your acceptance of this fee.`;
 }
 
 /**
