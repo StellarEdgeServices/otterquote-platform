@@ -127,7 +127,50 @@ const SOW_PATTERNS: RegExp[] = [
   new RegExp(`${LOCAL}[ \\t]+${AT_W}[ \\t]+(?:${LABEL}\\.)+${TLDS}${TLD_END}`, "g"),
 ];
 
+// [gh-3461 / D-390] The Scope of Work PDF prints each string through esc() in create-docusign-envelope/index.ts, which folds dashes, quotes, the ellipsis,
+// the superscript two, the vulgar fractions and the no-break space to ASCII and then DROPS every other character outside space..tilde (and every control
+// character, tabs and line breaks included). A contact written with such characters between its digits or letters ("317<emoji>555<emoji>0142",
+// "jane<zero-width>@example.com") therefore prints as a plain contact although the folded copy above never matched it. printForm() is that same
+// transformation, kept in step with esc() by a test that runs the REAL esc() from index.ts, with a map from each printed character back to the span of the
+// original it came from, so a match on the printed form is cut out of the ORIGINAL (the dropped characters inside the match go with it).
+const PRINT_FOLDS: Record<string, string> = {
+  "\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201b": "'",
+  "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u201f": '"',
+  "\u2026": "...", "\u00b2": "2", "\u00bd": "1/2", "\u00bc": "1/4", "\u00be": "3/4", "\u00a0": " ",
+};
+const printOf = (ch: string): string => {
+  const cp = ch.codePointAt(0)!;
+  return cp >= 0x2010 && cp <= 0x2015 ? "-" : PRINT_FOLDS[ch] ?? (cp >= 0x20 && cp <= 0x7e ? ch : "");
+};
+// Pinned by sow-redact.test.ts (LEGAL-READ 6256737488 L4, precision over recall): the middle dot and the bullet are NOT phone separators, so a figure list
+// "250 <bullet> 500 <bullet> 1000" prints as typed and "317<middle dot>555<middle dot>0142" is a named advisory leak. A printed-form match whose ONLY
+// dropped characters are those two is therefore left alone; any other dropped character in the match (an emoji, an accent, a zero-width character) is not.
+const PINNED_NON_SEPARATORS = new Set(["\u00b7", "\u2022"]);
+function onlyPinnedDropped(original: string): boolean {
+  let any = false;
+  for (const ch of original) {
+    if (printOf(ch) !== "") continue;
+    if (!PINNED_NON_SEPARATORS.has(ch)) return false;
+    any = true;
+  }
+  return any;
+}
+export function printForm(text: string): { printed: string; from: Array<[number, number]> } {
+  let printed = "";
+  const from: Array<[number, number]> = [];
+  let i = 0;
+  for (const ch of text) {
+    const end = i + ch.length;
+    const out = printOf(ch);
+    for (let k = 0; k < out.length; k++) from.push([i, end]);
+    printed += out;
+    i = end;
+  }
+  return { printed, from };
+}
+
 // Returns the text with phone and e-mail spans replaced by REMOVED_TOKEN and everything else byte-for-byte as typed.
+// Detection runs on two views of the same text: the folded copy (what a reader of the typed text sees) and the printed form (what the document prints).
 export function redactSowText(text: string): string {
   const folded = foldForDetection(text);
   if (folded.length !== text.length) throw new Error("fold changed the text length");
@@ -136,6 +179,17 @@ export function redactSowText(text: string): string {
     re.lastIndex = 0;
     for (const m of folded.matchAll(re)) {
       if (m[0].length > 0) spans.push([m.index!, m.index! + m[0].length]);
+    }
+  }
+  const { printed, from } = printForm(text);
+  if (printed.length !== from.length) throw new Error("print form map out of step");
+  for (const re of SOW_PATTERNS) {
+    re.lastIndex = 0;
+    for (const m of printed.matchAll(re)) {
+      if (m[0].length === 0) continue;
+      const a = from[m.index!][0], b = from[m.index! + m[0].length - 1][1];
+      if (onlyPinnedDropped(text.slice(a, b))) continue;
+      spans.push([a, b]);
     }
   }
   if (spans.length === 0) return text;
