@@ -134,7 +134,9 @@ const SOW_PATTERNS: RegExp[] = [
 // redacts THAT, and esc() has nothing left to drop:
 //   - a character with no visible width (zero-width, soft hyphen, joiner, BOM, combining mark) is removed;
 //   - every other character esc() would drop (line break, tab, emoji, symbol, accented letter) becomes one space, so nothing joins;
-//   - the characters esc() folds print as esc() folds them.
+//   - the characters esc() folds print as esc() folds them;
+//   - full-width forms and Arabic-Indic digits print as their plain form, because they are the character the homeowner typed. No other compatibility form does:
+//     a superscript, subscript or circled mark is a dropped character, or "$5,000<superscript one>" would print as a different price (LEGAL-READ 6669633277).
 // One zero-width exception: after a full stop and before anything but a digit it counts as a space, or "Install at 400.<zero-width>Friday" would join the
 // sentences into an address shape. printForm() also returns `marked`, the same length as `printed`, with the unit SOFT wherever a dropped or folded character
 // landed. A few contact forms can only be seen by reading across those places ("jane@exam<break>ple.com"); only the second pass below does that, and it
@@ -149,21 +151,21 @@ const printOf = (ch: string): string => {
   return cp >= 0x2010 && cp <= 0x2015 ? "-" : PRINT_FOLDS[ch] ?? (cp >= 0x20 && cp <= 0x7e ? ch : "");
 };
 const NO_WIDTH = /^[\p{Cf}\p{Mn}\p{Me}]$/u;
-const QUOTES_AND_ELLIPSIS = /^[‘-‟…]$/;
+const QUOTES_AND_ELLIPSIS = /^[\u2018-\u201f\u2026]$/;
+const PRINTS_AS_PLAIN = /^[\uff01-\uff5e\u0660-\u0669\u06f0-\u06f9]$/;
 const SOFT = "\x1f"; // typed control characters can never reach `marked`: they are dropped characters themselves
 const FOLDED_DASH = "\x1e";
 // Pinned by sow-redact.test.ts (LEGAL-READ 6256737488 L4), with Ben as a ruling (Q 6668703638 on #3461): exactly the shapes "317<middle dot>555<middle dot>0142",
 // "250 <bullet> 500 <bullet> 1000" and "250 <middle dot> 500 <middle dot> 1000", the same character twice with even spacing, and not with a leading 1 or a
-// further group. These two characters stay in the output as typed, so THIS IS THE ONE PLACE esc() STILL DROPS SOMETHING: the unspaced form prints as ten digits
+// further group, and ASCII digits only: it runs on the typed text, never a folded copy (LEGAL-READ 6669633277). These two characters stay in the output as typed, so THIS IS THE ONE PLACE esc() STILL DROPS SOMETHING: the unspaced form prints as ten digits
 // until the ruling comes. Everywhere else they are dropped characters like any other.
 const PINNED_FIGURES =
-  /(?<!\d)(?<!(?<!\d)\+?1[\s.\-·•]*)(?:\d{3}·\d{3}·\d{4}|\d{3} ([·•]) \d{3} \1 \d{4})(?!\d)(?![.,]\d)(?! ?[·•] ?\d)/g;
+  /(?<!\p{N})(?<!(?<!\p{N})[+\uff0b]?[1\uff11\u0661\u06f1][\s.\-\u00b7\u2022]*)(?:[0-9]{3}\u00b7[0-9]{3}\u00b7[0-9]{4}|[0-9]{3} ([\u00b7\u2022]) [0-9]{3} \1 [0-9]{4})(?!\p{N})(?![.,]\p{N})(?! ?[\u00b7\u2022] ?\p{N})/gu;
 
 export function printForm(text: string): { printed: string; marked: string } {
-  const folded = foldForDetection(text);
   const pinned = new Set<number>();
-  for (const m of folded.matchAll(PINNED_FIGURES)) {
-    for (let k = m.index!; k < m.index! + m[0].length; k++) if (folded[k] === "·" || folded[k] === "•") pinned.add(k);
+  for (const m of text.matchAll(PINNED_FIGURES)) {
+    for (let k = m.index!; k < m.index! + m[0].length; k++) if (text[k] === "\u00b7" || text[k] === "\u2022") pinned.add(k);
   }
   let printed = "";
   let marked = "";
@@ -173,13 +175,14 @@ export function printForm(text: string): { printed: string; marked: string } {
     if (printed !== "" && !printed.endsWith(" ")) { printed += " "; marked += SOFT; }
   };
   let i = 0;
-  for (const ch of folded) {
+  for (const typed of text) {
     const at = i;
-    i += ch.length;
-    if (pinned.has(at)) { printed += ch; marked += ch; continue; }
+    i += typed.length;
+    if (pinned.has(at)) { printed += typed; marked += typed; continue; }
+    const ch = PRINTS_AS_PLAIN.test(typed) ? foldForDetection(typed) : typed;
     const out = printOf(ch);
-    if (out === "" || (out === " " && text[at] !== " ")) { // the folded copy has already made wide and no-break spaces plain; they count as dropped
-      if (!NO_WIDTH.test(ch) || (printed.endsWith(".") && i < folded.length && !/\d/.test(folded[i]))) dropped();
+    if (out === "" || (out === " " && ch !== " ")) { // a no-break space counts as dropped, like the wide spaces
+      if (!NO_WIDTH.test(ch) || (printed.endsWith(".") && i < text.length && !/[\d\uff10-\uff19\u0660-\u0669\u06f0-\u06f9]/.test(text[i]))) dropped();
       continue;
     }
     if (out === " " && afterDropped && printed.endsWith(" ")) continue;
