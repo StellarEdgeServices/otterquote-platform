@@ -54,6 +54,7 @@ import {
   buildBuyerRoleAlertRow,
   raiseBuyerRoleAlert,
   resolveBuyerRole,
+  UNSPECIFIED_ROLE,
 } from "./buyer-role.ts";
 import { checkMeasurementPaymentIntent, checkUpgradePaymentIntent, type PaymentCheckResult } from "./payment-intent-checks.ts";
 import {
@@ -436,8 +437,9 @@ serve(async (req) => {
     // before the generic loadProduct() flow below.
     if (productCode === UPGRADE_PRODUCT_CODE) {
       // gh-3447: the upgrade is contractor-only by D-317, so a missing/unknown role plus a contractor_id is derived as the contractor it must be.
-      // An explicit 'homeowner' is still refused; a bare unresolved role with no contractor_id is refused before any order exists, as today.
-      if ((buyerRole !== "contractor" && !roleUnresolved) || !contractorId) {
+      // A missing/unknown role with NO contractor_id goes on to verify the payment and is then recorded as 'unspecified' with an alert (below),
+      // so a paid upgrade is never answered with a 400. An explicit 'homeowner', or an explicit 'contractor' with no contractor_id, is still refused.
+      if (!roleUnresolved && (buyerRole !== "contractor" || !contractorId)) {
         return json({ error: "The detailed-measurement upgrade may only be purchased by a contractor." }, 400, corsHeaders);
       }
       if (!paymentIntentId || typeof paymentIntentId !== "string") {
@@ -479,11 +481,12 @@ serve(async (req) => {
         return json({ error: paidUpgrade.error }, paidUpgrade.status, corsHeaders);
       }
 
+      const upgradeRole = roleUnresolved && !contractorId ? UNSPECIFIED_ROLE : "contractor";
       const decision = buildUpgradeOrderInsert(
         paidUpgrade,
         claimId,
         authedUser.id,
-        contractorId,
+        contractorId ?? "",
         paymentIntentId,
         isFirstBuyer,
         note,
@@ -497,9 +500,13 @@ serve(async (req) => {
         return json({ error: decision.error, payment_captured: true }, decision.status, corsHeaders);
       }
 
+      // gh-3447: paid, but no usable role and no contractor_id: record it for an admin rather than refuse it.
+      const upgradePayload = upgradeRole === UNSPECIFIED_ROLE
+        ? { ...decision.insertPayload, requested_by_role: UNSPECIFIED_ROLE, requested_by_contractor_id: null }
+        : decision.insertPayload;
       let { data: upgradeOrder, error: upgradeInsErr } = await supabase
         .from("hover_orders")
-        .insert(decision.insertPayload)
+        .insert(upgradePayload)
         .select("id, status")
         .single();
 
@@ -514,7 +521,7 @@ serve(async (req) => {
           `[${FUNCTION_NAME}] hover_orders.vendor_credit_expected_cents missing (migration not yet applied) — retrying without it:`,
           upgradeInsErr,
         );
-        const { vendor_credit_expected_cents: _omit, ...payloadWithoutVendorCredit } = decision.insertPayload;
+        const { vendor_credit_expected_cents: _omit, ...payloadWithoutVendorCredit } = upgradePayload;
         const retry = await supabase
           .from("hover_orders")
           .insert(payloadWithoutVendorCredit)
@@ -546,6 +553,14 @@ serve(async (req) => {
         first_buyer: isFirstBuyer,
       });
 
+      if (upgradeRole === UNSPECIFIED_ROLE) {
+        await raiseBuyerRoleAlert(
+          (row) => supabase.from("platform_alerts_log").insert(row),
+          (m) => console.error(m),
+          buildBuyerRoleAlertRow({ orderId: upgradeOrder.id, paymentIntentId, claimId, productCode: UPGRADE_PRODUCT_CODE }),
+        );
+      }
+
       // gh-1412: same log + admin email path every other paid order uses.
       await recordOrderCreated(
         supabase,
@@ -553,7 +568,7 @@ serve(async (req) => {
         upgradeOrder,
         claimId,
         UPGRADE_PRODUCT_CODE,
-        "contractor",
+        upgradeRole,
         authedUser.id,
         paidUpgrade.amount,
       );

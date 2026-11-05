@@ -77,6 +77,18 @@ Deno.test("index.ts: an unpaid request with an unresolved role is still refused 
   assert(index.includes("if (!paid.ok) {"), "the payment checks still gate the insert");
 });
 
-Deno.test("index.ts: the upgrade (contractor-only, D-317) derives contractor only for an unresolved role WITH a contractor_id; explicit homeowner is refused", () => {
-  assert(index.includes('if ((buyerRole !== "contractor" && !roleUnresolved) || !contractorId) {'));
+Deno.test("index.ts: upgrade -- unresolved role derives contractor only WITH a contractor_id; explicit homeowner or contractor-without-id is still refused", () => {
+  assert(index.includes('if (!roleUnresolved && (buyerRole !== "contractor" || !contractorId)) {'));
+});
+
+Deno.test("index.ts: upgrade -- a PAID upgrade with no usable role and no contractor_id is recorded as unspecified and alerted, never a 400 (fails on the code before the fix)", () => {
+  const guard = index.indexOf('if (!roleUnresolved && (buyerRole !== "contractor" || !contractorId)) {');
+  const verify = index.indexOf("const paidUpgrade = await verifyUpgradePayment(");
+  const role = index.indexOf('const upgradeRole = roleUnresolved && !contractorId ? UNSPECIFIED_ROLE : "contractor";');
+  const insert = index.indexOf(".insert(upgradePayload)");
+  const alertAt = index.indexOf("if (upgradeRole === UNSPECIFIED_ROLE) {");
+  assert(guard > 0 && verify > guard, "an unresolved role reaches the Stripe verification");
+  assert(role > verify && insert > role && alertAt > insert, "verified, then recorded, then alerted");
+  assert(index.includes("requested_by_role: UNSPECIFIED_ROLE, requested_by_contractor_id: null"));
+  assert(index.indexOf("UPGRADE_PRODUCT_CODE,\n        upgradeRole,") > 0, "the order email and activity_log carry the effective role");
 });

@@ -56,7 +56,7 @@ export function buildBuyerRoleAlertRow(
     function_name: "create-measurement-order",
     message:
       `Paid measurement order recorded with no usable buyer_role: order ${order}, payment_intent ${pi}, claim ${claim}, product ${product}. ` +
-      `requested_by_role was set to '${UNSPECIFIED_ROLE}' (no $5 partner fee accrues for it). An admin should confirm who bought it.`,
+      `requested_by_role was set to '${UNSPECIFIED_ROLE}' (no $5 partner fee accrues for it). An admin should confirm who bought it before the report is delivered (the ready email assumes a homeowner).`,
     sent_at: now().toISOString(),
   };
 }
