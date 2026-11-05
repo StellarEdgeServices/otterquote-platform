@@ -22,6 +22,7 @@ const escSrc = "// @ts-nocheck\n" + grab("esc").replace("function esc", "export 
 const { esc } = await import("data:application/typescript," + encodeURIComponent(escSrc)) as any;
 // What a reader of the PDF sees: esc() output with the PDF string escapes taken off again.
 const printsAs = (t: string): string => String(esc(t)).replace(/\\([\\()])/g, "$1");
+// Before the fee the helper's output is what prints: esc() has nothing left to drop or fold.
 // A contact survives when the SOW patterns still match anything in what prints.
 const survives = (t: string): boolean => H.redactSowText(printsAs(t)) !== printsAs(t);
 const before = (t: string): string => H.redactSowTextOrRefuse(t, false) as string;
@@ -74,18 +75,18 @@ Deno.test("gh-3461: after the fee the text is returned exactly as typed", () => 
   for (const t of [...PHONES, ...EMAILS]) assertEquals(H.redactSowTextOrRefuse(t, true), t);
 });
 
-Deno.test("gh-3461: text with no contact, including non-ASCII characters, is returned exactly as typed before the fee", () => {
-  for (
-    const t of [
-      `Leak near chimney ${EMO} please call after 5`, `caf${E} ${U(0xbd)} ft${U(0xb2)} 12500.00`, `Budget 1,250.00 by 11-15-2026 ${ZW}ok`,
-      `Limits 250/500/1000`, `Shingles @ 400 per square`, `Gate code 4412${EMO}5512`, `Claim 123456789012${EMO}34`, `Meet at 5${EMO}30${EMO}pm`,
-    ]
-  ) assertEquals(before(t), t, `over-redacted: ${JSON.stringify(t)}`);
+Deno.test("gh-3461: text with no contact, including non-ASCII characters, loses no word or figure before the fee", () => {
+  const rows: Array<[string, string]> = [
+    [`Leak near chimney ${EMO} please call after 5`, "Leak near chimney please call after 5"], [`caf${E} ${U(0xbd)} ft${U(0xb2)} 12500.00`, "caf 1/2 ft2 12500.00"],
+    [`Budget 1,250.00 by 11-15-2026 ${ZW}ok`, "Budget 1,250.00 by 11-15-2026 ok"], [`Limits 250/500/1000`, "Limits 250/500/1000"], [`Shingles @ 400 per square`, "Shingles @ 400 per square"],
+    [`Gate code 4412${EMO}5512`, "Gate code 4412 5512"], [`Claim 123456789012${EMO}34`, "Claim 123456789012 34"], [`Meet at 5${EMO}30${EMO}pm`, "Meet at 5 30 pm"],
+  ];
+  for (const [t, want] of rows) assertEquals(before(t), want, `over-redacted: ${JSON.stringify(t)}`);
 });
 
-Deno.test("gh-3461: only the contact is cut out; the characters around it stay as typed", () => {
-  assertEquals(before(`caf${E} ${EMO} call 317${EMO}555${EMO}0142 ${E}nd`), `caf${E} ${EMO} call ${H.REMOVED_TOKEN} ${E}nd`);
-  assertEquals(before(`a ${U(0xbd)} jane${ZW}@example.com b`), `a ${U(0xbd)} ${H.REMOVED_TOKEN} b`);
+Deno.test("gh-3461: only the contact is cut out; the words around it still print", () => {
+  assertEquals(before(`caf${E} ${EMO} call 317${EMO}555${EMO}0142 ${E}nd`), `caf call ${H.REMOVED_TOKEN} nd`);
+  assertEquals(before(`a ${U(0xbd)} jane${ZW}@example.com b`), `a 1/2 ${H.REMOVED_TOKEN} b`);
 });
 
 Deno.test("gh-3461: the two characters sow-redact.test.ts pins as non-separators (middle dot, bullet) stay as typed alone, but not mixed with others", () => {
@@ -103,18 +104,20 @@ Deno.test("gh-3461: still fails closed for the pre-fee case", () => {
   assert(threw);
 });
 
-Deno.test("gh-3461: printForm is in step with the real esc() for every BMP character and a sample of astral ones", () => {
-  // deno-lint-ignore no-explicit-any
-  const printForm = (H as any).printForm;
-  assert(typeof printForm === "function", "printForm missing");
+Deno.test("gh-3461: for every BMP character and a sample of astral ones, printForm leaves esc() nothing to drop, and nothing joins", () => {
+  const printForm = H.printForm;
   const cps: number[] = [];
   for (let c = 0; c < 0x10000; c++) if (c < 0xd800 || c > 0xdfff) cps.push(c);
   for (const c of [0x1f642, 0x10000, 0x1d7d8, 0x10ffff]) cps.push(c);
   for (const c of cps) {
     const ch = String.fromCodePoint(c);
     const t = `a${ch}b`;
-    const { printed, from } = printForm(t);
-    assertEquals(printed, printsAs(t), `printForm differs from esc for U+${c.toString(16)}`);
-    assertEquals(from.length, printed.length);
+    const { printed, marked } = printForm(t);
+    assertEquals(printsAs(printed), printed, `esc would still change U+${c.toString(16)}`);
+    assertEquals(marked.length, printed.length);
+    const typedKept = printsAs(t) !== "ab"; // esc prints something for it: same result, folds included (compatibility forms print their plain form)
+    if (typedKept) assertEquals(printed, printsAs(t), `differs from esc for U+${c.toString(16)}`);
+    assert(/^a.*b$/.test(printed), `U+${c.toString(16)}: ${printed}`);
+    if (!typedKept && printed === "ab") assert(/[\p{Cf}\p{Mn}\p{Me}]/u.test(ch.normalize("NFKC")), `U+${c.toString(16)} joined the words but has width`);
   }
 });

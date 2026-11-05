@@ -23,16 +23,21 @@ const { esc } = await import("data:application/typescript," + encodeURIComponent
 const printsAs = (t: string): string => String(esc(t)).replace(/\\([\\()])/g, "$1");
 
 const LS = String.fromCodePoint(0x2028);
-const MUST_SURVIVE = [
-  "Decking 3 sheets@75.\nTear off included", "Use shingles@400.\nInstall Friday", "Drip edge 10pcs@12.\nGutters excluded", "Repair at house.\nCA rules apply",
-  "Decking 3 sheets@75.\r\nTear off included", "Use shingles@400.\tInstall Friday", `Use shingles@400.${LS}Install Friday`, "Repair at house.\n\nCA rules apply",
-  "Leak at front.\nin the valley", "Price $12500.00\nFinish by 11-15-2026\nGutters excluded",
+const MUST_SURVIVE: Array<[string, string]> = [
+  ["Decking 3 sheets@75.\nTear off included", "Decking 3 sheets@75. Tear off included"], ["Use shingles@400.\nInstall Friday", "Use shingles@400. Install Friday"],
+  ["Drip edge 10pcs@12.\nGutters excluded", "Drip edge 10pcs@12. Gutters excluded"], ["Repair at house.\nCA rules apply", "Repair at house. CA rules apply"],
+  ["Decking 3 sheets@75.\r\nTear off included", "Decking 3 sheets@75. Tear off included"], ["Use shingles@400.\tInstall Friday", "Use shingles@400. Install Friday"],
+  [`Use shingles@400.${LS}Install Friday`, "Use shingles@400. Install Friday"], ["Repair at house.\n\nCA rules apply", "Repair at house. CA rules apply"],
+  ["Leak at front.\nin the valley", "Leak at front. in the valley"], ["Price $12500.00\nFinish by 11-15-2026\nGutters excluded", "Price $12500.00 Finish by 11-15-2026 Gutters excluded"],
 ];
 const MUST_REMOVE = ["317\n555\n0142", "317\t555\t0142", "317\r\n555\r\n0142", "jane@\nexample.com", "jane\n@example.com", "jane @\n example.com", "Ring jane@\r\nexample.com now"];
 
 for (const [label, H] of [["shared", Shared], ["local copy", Local]] as const) {
-  Deno.test(`gh-3461 legal (${label}): agreed words and prices across a line break or tab print as typed before the fee`, () => {
-    for (const t of MUST_SURVIVE) assertEquals(H.redactSowTextOrRefuse(t, false), t, `cut: ${JSON.stringify(t)}`);
+  Deno.test(`gh-3461 legal (${label}): agreed words and prices across a line break or tab all print, with a space where the break was, before the fee`, () => {
+    for (const [t, want] of MUST_SURVIVE) {
+      assertEquals(H.redactSowTextOrRefuse(t, false), want, `cut: ${JSON.stringify(t)}`);
+      assertEquals(printsAs(want), want);
+    }
   });
   Deno.test(`gh-3461 legal (${label}): a contact split by a line break or tab at the digits or beside the at-sign is still removed`, () => {
     for (const t of MUST_REMOVE) {

@@ -32,8 +32,11 @@ const MUST_REMOVE = [
   // phone: the pinned character is not between the digit groups of the pinned shape
   `317-${B}555-0142`, `317-${D}555-0142`, `31755501${D}42`, `3175${D}550142`, `3${D}1${D}7${D}5${D}5${D}5${D}0${D}1${D}4${D}2`,
   `3${B}1${B}7${B}5${B}5${B}5${B}0${B}1${B}4${B}2`, `note 317.555.014${D}2`, `317${D}${EMO}555${D}${EMO}0142`,
+  // not the pinned forms: mixed characters, uneven spacing, tabs, the unspaced bullet, a leading 1 or a further group (review 6668877014 B2)
+  `317 ${D}555${D} 0142`, `317${D} 555${D} 0142`, `317 ${D}555 ${D}0142`, `317${D}555${B}0142`, `317\t${D}\t555\t${D}\t0142`, `317${B}555${B}0142`,
+  `+1 317${D}555${D}0142`, `1${D}317${D}555${D}0142`, `(317)${D}555${D}0142`,
 ];
-const MUST_STAY = [`317${D}555${D}0142`, `317${B}555${B}0142`, `Line items 250 ${B} 500 ${B} 1000`, `Line items 250 ${D} 500 ${D} 1000`, `Ring 317${D}555${D}0142 today`];
+const MUST_STAY = [`317${D}555${D}0142`, `Line items 250 ${B} 500 ${B} 1000`, `Line items 250 ${D} 500 ${D} 1000`, `Ring 317${D}555${D}0142 today`];
 
 for (const [label, H] of [["shared", Shared], ["local copy", Local]] as const) {
   Deno.test(`gh-3461 F1 (${label}): a contact hidden with a middle dot or bullet outside the pinned phone shape is removed before the fee`, () => {
@@ -42,7 +45,7 @@ for (const [label, H] of [["shared", Shared], ["local copy", Local]] as const) {
       const p = printsAs(out);
       assert(out.includes(H.REMOVED_TOKEN), `no token: ${JSON.stringify(t)} -> ${JSON.stringify(out)}`);
       assert(H.redactSowText(p) === p, `still matches on the printed text: ${JSON.stringify(t)} -> ${p}`);
-      assert(!/\d{10}|example\.?com|example dot com/i.test(p), `contact prints: ${JSON.stringify(t)} -> ${p}`);
+      assert(!/\d{10}|example\.?com|example dot com/i.test(p.replaceAll(" ", "")), `contact prints: ${JSON.stringify(t)} -> ${p}`);
     }
   });
   Deno.test(`gh-3461 F1 (${label}): the three pinned phone forms still print as typed (pin kept, ruling is F2)`, () => {

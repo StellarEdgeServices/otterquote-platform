@@ -36,7 +36,6 @@ const SURVIVE = [
   "Work at front.Back slope is fine",
   "Shingles @ 400 per square",
   "Install by 11/15/2026, $1,250.00, 8/12 pitch, 2400 sq ft",
-  "café — 40 ft² and ½ inch gap",
   "Call after 5 pm; ask for the 555-0142 line",
   // fix2880d B1 (item@price) and B2 (figure lists with spaced separators)
   "3 bundles@32.50 each",
@@ -119,6 +118,11 @@ const REDACT: Array<[string, string]> = [
 
 Deno.test("SOW redaction: every must-survive row prints verbatim", () => {
   for (const t of SURVIVE) assertEquals(redactSowText(t), t, t);
+});
+
+// [gh-3461] Before the fee the helper returns the string the document prints, so a row with characters esc() folds or drops comes back as it prints.
+Deno.test("gh-3461: before the fee a no-contact row comes back as the document prints it", () => {
+  assertEquals(redactSowText("café — 40 ft² and ½ inch gap"), "caf - 40 ft2 and 1/2 inch gap");
 });
 
 Deno.test("SOW redaction: every must-redact row has the contact detail cut out and nothing else changed", () => {
@@ -388,7 +392,7 @@ Deno.test("gh-2881: a phone typed in Arabic-Indic or Extended Arabic-Indic digit
   assertEquals(redactSowText(ar), "Call [removed] after 5");
   assertEquals(redactSowText(arDashed), "Call [removed] after 5");
   assertEquals(redactSowText(fa), "Call [removed] after 5");
-  assertEquals(redactSowText(`Ref ${AR("2026")} and ${AR("12500")}.${AR("00")} stay`), `Ref ${AR("2026")} and ${AR("12500")}.${AR("00")} stay`); // short runs / figures are not phones
+  assertEquals(redactSowText(`Ref ${AR("2026")} and ${AR("12500")}.${AR("00")} stay`), "Ref 2026 and 12500.00 stay"); // short runs / figures are not phones; [gh-3461] returned as they print
   assertEquals(foldForDetection(AR("0123456789")).length, 10);
   assertEquals(foldForDetection(AR("0123456789")), "0123456789");
 });
