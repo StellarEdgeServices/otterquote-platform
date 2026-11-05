@@ -382,9 +382,11 @@
       gap: var(--sp-2);
     }
 
+    /* gh-3267: --gray (#64748B) measured 3.07:1 on the completed row (13.6px, weight 400, so AA needs 4.5:1).
+       --slate is the colour the card's descriptions already use. */
     .checklist-filename {
       font-size: 0.85rem;
-      color: var(--gray);
+      color: var(--slate);
       font-family: var(--font-mono);
       word-break: break-all;
     }
