@@ -3107,9 +3107,10 @@
               updates.funding_type = 'cash';
               updates.policy_type = null;
             } else if (selectedType === 'repair') {
-              // gh-3398 (D-407): a stored 'idk' reaches Repair Only with funding_type 'insurance'.
-              // Saving the untouched pre-selection must leave policy_type and funding_type alone.
-              if (!(currentClaim.policy_type === 'idk' && window.selectedJobTypeIsPreselect === true)) {
+              // gh-3398 / gh-3463 (D-407): a stored 'idk' reaches Repair Only with funding_type 'insurance'.
+              // Repair is a job scope, not a payment answer, so any Repair save (including a second
+              // click on the highlighted button) must leave a stored 'idk' policy_type and funding_type alone.
+              if (currentClaim.policy_type !== 'idk') {
                 updates.funding_type = 'cash';
                 updates.policy_type = null;
               }
@@ -3544,8 +3545,7 @@
           '<li><strong>Insurance (ACV)</strong> — Your policy pays actual cash value (depreciated). There may be a gap you cover out of pocket.</li>',
           '<li><strong>Retail / Cash</strong> — No insurance; you\'re paying for the project yourself.</li>',
           '<li><strong>Repair Only</strong> — Partial repair from a specific estimate, not a full replacement.</li>',
-          '</ul>',
-          '<p style="color:var(--slate);font-size:0.9rem;">If you\'re still unsure, choose <strong>Insurance (RCV)</strong> — it\'s the most common and can be updated later.</p>'
+          '</ul>'
         ].join('');
         document.getElementById('help-modal').classList.add('active');
       }
