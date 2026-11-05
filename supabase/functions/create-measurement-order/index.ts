@@ -60,6 +60,13 @@ import {
 } from "./buyer-role.ts";
 import { checkMeasurementPaymentIntent, checkUpgradePaymentIntent, type PaymentCheckResult } from "./payment-intent-checks.ts";
 import {
+  buildClockAlertRow,
+  chargeIdOf,
+  decideGuaranteeClock,
+  paymentSucceededAt,
+  raiseClockAlert,
+} from "./guarantee-clock.ts";
+import {
   NON_USD_ALERT_SEND_TIMEOUT_MS,
   NON_USD_ALERT_TYPE,
   postAdminAlertEmail,
@@ -203,7 +210,7 @@ async function verifyPayment(
   expectedAmount: number,
   claimId: string | null,
   requestOrigin: string,
-): Promise<PaymentCheckResult & { piType?: string | null; piClaimId?: string | null }> {
+): Promise<PaymentCheckResult & { piType?: string | null; piClaimId?: string | null; paidAt?: Date | null; livemode?: boolean | null }> {
   // gh-1536: exact-match, not substring — "app-staging." falsely matched
   // app-staging.otterquote.com, a Netlify DOMAIN ALIAS on the PRODUCTION app
   // site (not staging), which selected Stripe TEST-mode keys against real
@@ -218,8 +225,9 @@ async function verifyPayment(
   }
 
   const basicAuth = btoa(`${stripeSecretKey}:`);
+  // gh-3471: latest_charge is expanded so the charge's own created time (when the payment succeeded) comes back in the same call.
   const piRes = await fetch(
-    `${STRIPE_API_BASE}/payment_intents/${encodeURIComponent(paymentIntentId)}`,
+    `${STRIPE_API_BASE}/payment_intents/${encodeURIComponent(paymentIntentId)}?expand%5B%5D=latest_charge`,
     { headers: { Authorization: `Basic ${basicAuth}` } },
   );
   if (!piRes.ok) {
@@ -231,10 +239,13 @@ async function verifyPayment(
     };
   }
   const pi = await piRes.json();
+  // gh-3471: expanding latest_charge turns pi.latest_charge into an object; the checks (and stripe_payment_id) still get the charge id string, as before.
+  const paidAt = paymentSucceededAt(pi);
+  const forChecks = pi.latest_charge && typeof pi.latest_charge === "object" ? { ...pi, latest_charge: chargeIdOf(pi.latest_charge) } : pi;
   // gh-2107 (Ben's step 2 on #2078): the post-fetch checks live in payment-intent-checks.ts (verbatim, plus the USD guard).
-  const checked = checkMeasurementPaymentIntent(pi, { expectedAmount, claimId });
+  const checked = checkMeasurementPaymentIntent(forChecks, { expectedAmount, claimId });
   // gh-3447: the PaymentIntent's own type and claim, for resolving an unstated buyer_role (see buyer-role.ts resolvePaidRole).
-  return { ...checked, piType: pi.metadata?.type ?? null, piClaimId: pi.metadata?.claim_id ?? null };
+  return { ...checked, piType: pi.metadata?.type ?? null, piClaimId: pi.metadata?.claim_id ?? null, paidAt, livemode: typeof pi.livemode === "boolean" ? pi.livemode : null };
 }
 
 /**
@@ -667,6 +678,26 @@ serve(async (req) => {
       return json({ error: paid.error }, paid.status, corsHeaders);
     }
 
+    // gh-3471: the 100-hour clock for a real (non-test) payment. Test orders and unreadable payment times get no clock. Contained: never throws.
+    const clock = await decideGuaranteeClock({
+      livemode: paid.livemode,
+      paidAt: paid.paidAt ?? null,
+      buyerId: authedUser.id,
+      lookupClaim: async () => {
+        const { data } = await supabase.from("claims").select("is_test, user_id").eq("id", claimId).maybeSingle();
+        return data ?? null;
+      },
+      lookupProfile: async (id: string) => {
+        const { data } = await supabase.from("profiles").select("is_test, email").eq("id", id).maybeSingle();
+        return data ?? null;
+      },
+      dbSaysInternal: async (email: string) => {
+        const { data } = await supabase.rpc("is_internal_test_email", { p_email: email });
+        return data === true;
+      },
+      log: (m) => console.error(m),
+    });
+
     // gh-3447 (CEO/Tier A ruling): a missing/unknown role resolves to 'homeowner' ONLY when the verified PaymentIntent is a hover_measurement
     // whose metadata claim_id is this claim and the claim is owned by the caller (create-payment-intent issues that charge only to the claim's
     // owner). Otherwise 'unspecified'. Never a default. The lookup is contained: any failure resolves to 'unspecified'.
@@ -689,9 +720,7 @@ serve(async (req) => {
     }
     const roleStillUnspecified = roleUnresolved && paidRole === UNSPECIFIED_ROLE;
 
-    const { data: order, error: insErr } = await supabase
-      .from("hover_orders")
-      .insert({
+    const orderPayload = {
         claim_id: claimId,
         user_id: authedUser.id,
         status: "awaiting_fulfillment",
@@ -705,11 +734,23 @@ serve(async (req) => {
         stripe_payment_id: paid.stripeChargeId,
         rebate_due: product.rebate_on_close === true,
         admin_notes: note,
-      })
-      .select("id, status")
-      .single();
+        // gh-3471: the clock is a homeowner promise, so a contractor-role order never carries one; a test order or an unreadable payment time has no fields.
+        ...(paidRole === "contractor" ? {} : clock.fields),
+    };
+    let { data: order, error: insErr } = await supabase.from("hover_orders").insert(orderPayload).select("id, status").single();
 
-    if (insErr) {
+    // gh-3471: if the clock columns are not in this database yet (migration not applied), a paid order must still be recorded: retry without them and alert.
+    let clockColumnsMissing = false;
+    if (insErr?.code === "42703" && "guarantee_started_at" in orderPayload) {
+      console.error(`[${FUNCTION_NAME}] hover_orders guarantee clock columns missing (migration not yet applied) -- retrying without them:`, insErr);
+      const { guarantee_started_at: _s, guarantee_deadline_at: _d, ...withoutClock } = orderPayload as Record<string, unknown>;
+      const retry = await supabase.from("hover_orders").insert(withoutClock).select("id, status").single();
+      order = retry.data;
+      insErr = retry.error;
+      clockColumnsMissing = true;
+    }
+
+    if (insErr || !order) {
       // The buyer's money has already moved. Never tell them the order failed
       // in a way that invites a second payment — this is a support case.
       console.error(`[${FUNCTION_NAME}] order insert failed AFTER successful payment:`, {
@@ -729,6 +770,15 @@ serve(async (req) => {
       product_code: productCode,
       amount: paid.amount,
     });
+
+    // gh-3471: a real payment whose clock could not be stored (time unreadable, or columns not applied) is an operator alert, never a silent gap. Contained.
+    if (clockColumnsMissing || (!clock.stored && clock.reason === "no_payment_time" && paidRole !== "contractor")) {
+      await raiseClockAlert(
+        (row) => supabase.from("platform_alerts_log").insert(row),
+        (m) => console.error(m),
+        buildClockAlertRow({ reason: clockColumnsMissing ? "column_missing" : "no_payment_time", orderId: order.id, paymentIntentId, claimId }),
+      );
+    }
 
     // gh-3447: money confirmed and recorded, but nobody said who the buyer is. Tell the operator (platform_alerts_log, the surface the
     // other payment alerts use); the order row, the activity_log row and the admin email below all carry role 'unspecified'. Contained.
