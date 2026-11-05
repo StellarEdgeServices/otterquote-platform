@@ -7,7 +7,7 @@
 #   2-AFTER    forward file applied: forged inserts refused / neutralised, real paths still work
 #   3-ROLLBACK forward then rollback: must behave as BEFORE
 #   4-REAPPLY  forward run twice (idempotent): must behave as AFTER
-#   M1..M12    mutants of the forward file: each must apply cleanly and then FAIL the AFTER expectations
+#   M01..M16   mutants of the forward file: each must apply cleanly and then FAIL the AFTER expectations
 #   C-A / C-B  PR #3406's forward file (gh-3320) applied before / after this one: AFTER expectations hold in both orders; rollbacks are independent
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -30,13 +30,13 @@ apply $DB "$FWD" || fail "forward failed"
 runproof $DB after 2-AFTER
 apply $DB "$FWD" || fail "forward not idempotent"
 apply $DB "$RBK" || fail "rollback failed"
-runproof $DB before 3-ROLLBACK
+runproof $DB rollback 3-ROLLBACK
 apply $DB "$FWD" || fail "forward after rollback failed"
 apply $DB "$FWD" || fail "forward twice failed"
 runproof $DB after 4-REAPPLY
 for p in 1-BEFORE 2-AFTER 3-ROLLBACK 4-REAPPLY; do [ "$(failing $p)" = 0 ] || fail "$p has failing rows"; done
 apply $DB "$RBK" || fail "rollback of the final state failed"
-psql -q -At -d $DB -c "SELECT 'after final rollback: triggers=' || (SELECT count(*) FROM pg_trigger WHERE tgrelid='public.fee_acceptances'::regclass AND NOT tgisinternal) || ' functions=' || (SELECT count(*) FROM pg_proc WHERE proname IN ('fee_acceptances_guard_client_insert','fee_acceptance_text_matches'))"
+psql -q -At -d $DB -c "SELECT 'after final rollback: triggers=' || (SELECT count(*) FROM pg_trigger WHERE tgrelid='public.fee_acceptances'::regclass AND NOT tgisinternal) || ' functions=' || (SELECT count(*) FROM pg_proc WHERE proname IN ('fee_acceptances_guard_client_insert','fee_acceptance_text_check','fee_acceptance_quarantine_add')) || ' quarantine_table_kept=' || (to_regclass('public.fee_acceptance_quarantine') IS NOT NULL)"
 
 # ---- prerequisite refusal: the forward file must refuse to run without gh-2519's quotes_platform_fee_for ----
 PD=gh3409_prereq; newdb $PD; psql -q -d $PD -c "DROP FUNCTION public.quotes_platform_fee_for(uuid,uuid)" >/dev/null
@@ -48,22 +48,31 @@ mkdir -p "$OUT/mut"
 python3 - "$FWD" "$OUT/mut" <<'PY'
 import sys
 src=open(sys.argv[1]).read(); out=sys.argv[2]
+DIG="(?:0|[1-9][0-9]{0,2}(?:,[0-9]{3})*)"
 M={
  'M01_trigger_body_returns_immediately': ("BEGIN\n  -- Only client callers are bound.", "BEGIN\n  RETURN NEW;\n  -- Only client callers are bound."),
- 'M02_no_own_bid_on_claim_match': ("WHERE id = NEW.bid_id AND contractor_id = NEW.contractor_id AND claim_id = NEW.claim_id;", "WHERE id = NEW.bid_id;"),
- 'M03_no_text_check': ("IF NOT public.fee_acceptance_text_matches(NEW.fee_text_displayed, NEW.fee_pct, NEW.fee_amount, q.total_price) THEN", "IF false THEN"),
- 'M04_created_at_client_chosen': ("  NEW.created_at       := now();\n", ""),
- 'M05_no_one_acceptance_per_bid': ("IF EXISTS (SELECT 1 FROM public.fee_acceptances x", "IF false AND EXISTS (SELECT 1 FROM public.fee_acceptances x"),
- 'M06_no_fresh_open_bid_check': ("IF q.status IS DISTINCT FROM 'submitted'", "IF false AND q.status IS DISTINCT FROM 'submitted'"),
- 'M07_fee_not_overwritten': ("  NEW.fee_pct    := COALESCE(q.platform_fee_pct, q.fee_percentage);\n  NEW.fee_basis  := COALESCE(q.platform_fee_basis, 'bid_amount');\n  NEW.fee_amount := q.fee_amount;\n", ""),
- 'M08_real_path_blocked_react_wording': ("IF b IS NOT NULL THEN", "IF false THEN"),
- 'M09_real_path_blocked_net_rounding': ("<= 0.02", "= 0"),
- 'M10_real_path_blocked_service_role_bound': ("IF NOT (current_user IN ('anon', 'authenticated') AND COALESCE(auth.role(), '') <> 'service_role') THEN", "IF false THEN"),
- 'M11_accepted_at_client_chosen': ("  IF NEW.accepted_at IS NULL OR NEW.accepted_at < now() - interval '15 minutes' OR NEW.accepted_at > now() + interval '5 minutes' THEN\n    NEW.accepted_at := now();\n  END IF;\n", ""),
- 'M12_rescinded_at_client_chosen': ("  NEW.rescinded_at     := NULL;\n", ""),
+ 'M02_no_own_bid_on_claim_match': ("WHERE x.id = NEW.bid_id AND x.contractor_id = NEW.contractor_id AND x.claim_id = NEW.claim_id;", "WHERE x.id = NEW.bid_id;"),
+ 'M03_no_text_check': ("v_chk := public.fee_acceptance_text_check(NEW.fee_text_displayed, v_pct, v_amt, q.total_price);", "v_chk := 'ok';"),
+ 'M04_created_at_client_chosen': ("  NEW.created_at        := now();\n", ""),
+ 'M05_no_one_acceptance_per_bid': ("IF EXISTS (SELECT 1 FROM public.fee_acceptances d", "IF false AND EXISTS (SELECT 1 FROM public.fee_acceptances d"),
+ 'M06_fee_not_overwritten': ("  NEW.fee_pct    := v_pct;\n  NEW.fee_basis  := COALESCE(q.platform_fee_basis, 'bid_amount');\n  NEW.fee_amount := v_amt;\n", ""),
+ 'M07_real_path_lost_react_wording_unrecognised': ("IF b IS NOT NULL THEN", "IF false THEN"),
+ 'M08_real_path_lost_net_rounding': ("<= 0.02", "= 0"),
+ 'M09_real_path_lost_service_role_bound': ("IF NOT (current_user IN ('anon', 'authenticated') AND COALESCE(auth.role(), '') <> 'service_role') THEN", "IF false THEN"),
+ 'M10_accepted_at_client_chosen': ("  IF NEW.accepted_at IS NULL OR NEW.accepted_at < now() - interval '15 minutes' OR NEW.accepted_at > now() + interval '5 minutes' THEN\n    NEW.accepted_at := now();\n  END IF;\n", ""),
+ 'M11_rescinded_at_client_chosen': ("  NEW.rescinded_at      := NULL;\n", ""),
+ 'M12_genuine_record_lost_mismatch_refused': ("    RAISE WARNING 'gh-3409 fee acceptance quarantined: bid % reasons %', NEW.bid_id, v_reasons;\n    RETURN NULL;", "    RAISE EXCEPTION 'refused' USING ERRCODE = '42501';"),
+ 'M13_genuine_record_lost_quarantine_writes_nothing': ("  INSERT INTO public.fee_acceptance_quarantine (reasons", "  IF true THEN RETURN; END IF;\n  INSERT INTO public.fee_acceptance_quarantine (reasons"),
+ 'M14_loose_number_pattern': ("ALL:"+DIG, "[0-9,]+"),
+ 'M15_late_bid_refused_again': ("  -- B / C. decide whether this is a true record of this bid", "  IF EXISTS (SELECT 1 FROM public.quotes z WHERE z.id = NEW.bid_id AND z.created_at < now() - interval '15 minutes') THEN RAISE EXCEPTION 'late' USING ERRCODE = '42501'; END IF;\n  -- B / C. decide whether this is a true record of this bid"),
+ 'M16_quarantine_writer_callable_by_client': ("IF pg_trigger_depth() < 1 THEN", "IF false THEN"),
 }
 for k,(a,b) in M.items():
-    if src.count(a)!=1: print("MUTANT EDIT NOT UNIQUE/PRESENT:",k); sys.exit(5)
+    if a.startswith("ALL:"):
+        a=a[4:]
+        if src.count(a)<4: print("MUTANT EDIT NOT PRESENT:",k); sys.exit(5)
+        open(f"{out}/{k}.sql","w").write(src.replace(a,b)); continue
+    if src.count(a)!=1: print("MUTANT EDIT NOT UNIQUE/PRESENT:",k,src.count(a)); sys.exit(5)
     open(f"{out}/{k}.sql","w").write(src.replace(a,b))
 PY
 [ $? = 0 ] || fail "mutant generation failed"
@@ -90,7 +99,7 @@ if git show "$REF:$D/$G.sql" > "$X/fwd.sql" 2>/dev/null && git show "$REF:$RB/${
     COMPOSED=1 runproof $CD after C-$order-BOTH-APPLIED >/dev/null; echo "C-$order both applied: FAILING=$(failing C-$order-BOTH-APPLIED); $(psql -q -At -d $CD -c "SELECT 'authenticated UPDATE/DELETE=' || has_table_privilege('authenticated','public.fee_acceptances','UPDATE') || '/' || has_table_privilege('authenticated','public.fee_acceptances','DELETE') || ', triggers=' || (SELECT count(*) FROM pg_trigger WHERE tgrelid='public.fee_acceptances'::regclass AND NOT tgisinternal) || ', policies=' || (SELECT count(*) FROM pg_policies WHERE tablename='fee_acceptances')")"
     [ "$(failing C-$order-BOTH-APPLIED)" = 0 ] || fail "C-$order AFTER expectations fail with both applied"
     apply $CD "$RBK" || fail "C-$order: 3409 rollback failed with 3406 applied"
-    COMPOSED=1 runproof $CD before C-$order-ONLY3406 >/dev/null; echo "C-$order 3409 rolled back, 3406 still applied: FAILING=$(failing C-$order-ONLY3406); $(psql -q -At -d $CD -c "SELECT 'authenticated UPDATE/DELETE=' || has_table_privilege('authenticated','public.fee_acceptances','UPDATE') || '/' || has_table_privilege('authenticated','public.fee_acceptances','DELETE') || ', triggers=' || (SELECT count(*) FROM pg_trigger WHERE tgrelid='public.fee_acceptances'::regclass AND NOT tgisinternal)")"
+    COMPOSED=1 runproof $CD rollback C-$order-ONLY3406 >/dev/null; echo "C-$order 3409 rolled back, 3406 still applied: FAILING=$(failing C-$order-ONLY3406); $(psql -q -At -d $CD -c "SELECT 'authenticated UPDATE/DELETE=' || has_table_privilege('authenticated','public.fee_acceptances','UPDATE') || '/' || has_table_privilege('authenticated','public.fee_acceptances','DELETE') || ', triggers=' || (SELECT count(*) FROM pg_trigger WHERE tgrelid='public.fee_acceptances'::regclass AND NOT tgisinternal)")"
     [ "$(failing C-$order-ONLY3406)" = 0 ] || fail "C-$order BEFORE expectations fail after 3409 rollback"
   done
 else echo "COMPOSITION SKIPPED: $REF not available in this clone"; fi

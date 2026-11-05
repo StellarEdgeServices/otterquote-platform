@@ -1,10 +1,10 @@
 -- gh-3409: a contractor session cannot insert a forged public.fee_acceptances row (UETA fee-acceptance evidence, D-214 / D-215).
--- STATUS (gh-1438, as of 2026-11-05): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-05): NOT APPLIED. REVISED at the second head after REVIEW FAIL 6668449870 and LEGAL-READ FAIL 6668344412: a genuine acceptance is never refused or lost; see below.
 -- EVIDENCE: drafted on main e39d091 under #3409 (CTO RUN 96, claim cto-2026-11-05T19:06:47Z, subagent cto96-b3409). Production read-only SELECTs 2026-11-05 (project yeszghaspzwwstvsrioa, nothing written):
 --   fee_acceptances: RLS on, not forced; policies admin read / admin UPDATE / contractor INSERT own (WITH CHECK contractor_id only) / contractor read own; NO trigger; 8 rows; anon holds INSERT, SELECT, UPDATE;
 --   authenticated holds INSERT, SELECT, UPDATE, DELETE. platform_fee_config: 1 row (fee_pct 5.00, bid_amount). quotes_platform_fee_for(uuid,uuid) exists (gh-2519 applied, ledger 20261015205902), so quotes.platform_fee_pct /
---   fee_percentage / fee_amount are server-set on a client bid. All 8 existing rows pass every rule below (pre-flight check 3): same contractor and claim as their bid, rate and fee equal the bid's, fee text equals the
---   form's text, inserted 0.16 to 1.10 s after the bid, one row per bid.
+--   fee_percentage / fee_amount are server-set on a client bid. All 8 existing rows (all is_test = true, HTML wording) pass every rule below (pre-flight check 3): same contractor and claim as their bid, rate and fee equal the bid's,
+--   fee text equals the form's text, one row per bid. They describe TEST acceptances; no real contractor acceptance has been observed.
 -- REPO COPY: none
 -- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3B path (review, R-177 pair or Ben's ruling that none is owed, R-097 24-hour notice, a recorded apply).
 -- Rollback: supabase/migrations_rollbacks/gh3409_fee_acceptances_client_insert_guard_rollback.sql
@@ -14,30 +14,36 @@
 --   (same hazard, proven for gh-3320 in PR #3406). A plain `psql -f` exits 0 even if the guard below fires (nothing is committed); read pre-flight checks 1 and 2 afterwards.
 --
 -- THE REAL ACCEPTANCE PATH (read before this file was written). There is NO server-side function that writes fee_acceptances. The only writers are the two bid forms inserting straight from the contractor's
--- browser session (role authenticated, PostgREST): contractor-bid-form.html (~line 5436, new bids only, `if (!changeBidMode)`) and react-app/app/contractor/bid/[claimId]/bid-form.tsx (~line 366, new bids only).
--- Each inserts the contractor's bid (quotes) first, then, a fraction of a second later, one fee_acceptances row naming that bid. The two forms send DIFFERENT disclosure wording (the HTML form "Platform fee for
--- this job: ..."; the React form "By submitting this bid, you agree ... I understand and agree ..."), so both wordings are accepted. service_role (stripe-webhook and get-business-lines-dashboard read it, e2e teardown
--- deletes) and owner-level SECURITY DEFINER code are not client callers and are untouched.
+-- browser session (role authenticated, PostgREST): contractor-bid-form.html (~5436, new bids only) and react-app/app/contractor/bid/[claimId]/bid-form.tsx (~366, new bids only; it ignores the returned error).
+-- Each inserts the contractor's bid (quotes) first, then one fee_acceptances row naming that bid. The two forms send DIFFERENT disclosure wording, so both are recognised. service_role (stripe-webhook and
+-- get-business-lines-dashboard read it, e2e teardown deletes) and owner-level SECURITY DEFINER code are not client callers and are untouched.
 --
--- What this adds: ONE trigger function and ONE BEFORE INSERT trigger on public.fee_acceptances, plus one pure text-check function. It changes no policy, no grant, no column, no row. For a CLIENT caller only
--- (current_user anon or authenticated, JWT role not service_role), an INSERT is now accepted only if ALL hold, else it is refused 42501 and nothing is written:
---   1. contractor_id is the caller's own contractor row (the policy's own test, repeated because a BEFORE trigger runs first);
---   2. bid_id is one of the caller's own bids, on the claim named by claim_id (read through the caller's own quotes RLS, so another contractor's bid is invisible and refused);
---   3. that bid is still status 'submitted' and bid_status 'active' and was created within the last 15 minutes (the forms insert within seconds; a late or backdated acceptance for an old, selected or declined bid is refused);
---   4. that bid has no fee_acceptances row yet (one acceptance per bid: a second, newer forged row can no longer outrank the genuine one in stripe-webhook's `order by created_at desc limit 1`);
---   5. fee_text_displayed is exactly one of the two forms' disclosure texts, and the rate and dollar fee printed in it equal the bid's stored rate and fee (to a cent, because the browser formats a float and the
---      server rounds half up), and in the React wording the net amount equals the bid total minus the fee (to two cents).
--- And, rather than refusing, the server WRITES these columns on a client insert, so what the browser sent in them no longer matters and the real forms keep working unchanged:
---   fee_pct, fee_basis and fee_amount from the bid (quotes.platform_fee_pct else fee_percentage; platform_fee_basis else 'bid_amount'; fee_amount); created_at = now(); invoice_url, rescinded_at and
---   rescission_reason = NULL (nothing writes them today; a client-set rescinded_at would hide the genuine row from the webhook's `rescinded_at IS NULL`); accepted_at is kept if within 15 minutes before to 5 minutes
---   after now(), otherwise set to now() (a wrong device clock must not lose the evidence row).
--- NOT changed, stated plainly: ip_address and user_agent are what the browser reports and cannot be verified on the server; a contractor can still choose them. id is client-chosen (harmless). The bid's own
---   price and fee are the bid form's and gh-2519's business (gh-2519 sets them server-side on a client bid; this file RELIES ON gh-2519 being applied and refuses to run without it).
--- WORDING DRIFT, a deliberate coupling: the accepted texts are written into public.fee_acceptance_text_matches() from the two forms. If Legal changes either form's disclosure, that function must change in the same
---   release or a client insert of the new wording is refused (the forms treat a failed insert as non-fatal and report it to Sentry, so evidence capture would silently stop). The runner renders the texts FROM THE
---   FORM SOURCE FILES and inserts them, so a wording change in a form turns the proof red before it reaches production. No wording is changed here (Tier C stays with Legal).
--- ORDER WITH PR #3406 (gh-3320, UPDATE/DELETE revoke + admin UPDATE policy drop): independent. This file touches only the INSERT path (a trigger and two functions); #3406 touches only UPDATE/DELETE grants and one
---   UPDATE policy. Neither file reads or writes what the other changes. Recommended order: #3406 first (smaller, already reviewed), then this file; the runner proves both orders and independent rollback.
+-- DESIGN RULE (Legal read 6668344412, D-214 "the amount displayed", D-215, D-267): a genuine acceptance is NEVER refused and NEVER lost, and no row that is not a true record reaches the table stripe-webhook reads.
+-- The two are reconciled by DIVERTING, not refusing. For a CLIENT caller only (current_user anon or authenticated, JWT role not service_role), an INSERT does one of three things:
+--   A. REFUSED 42501, only for what no genuine form insert can be: contractor_id that is not the caller's own contractor row, or a bid_id that is not one of the caller's own bids on the claim named by claim_id.
+--      (The form inserts the bid first and uses its returned id, so the genuine path always satisfies this. The bid is committed before the acceptance, so a refusal here never refuses a bid.)
+--   B. RECORDED in public.fee_acceptances when the disclosure text is exactly one of the two forms' texts, the rate and dollar fee printed in it equal the bid's stored rate and fee (to a cent, because the browser
+--      formats a float and the server rounds half up; in the React wording the net equals total minus fee to two cents), and the bid has no acceptance yet. The server writes fee_pct, fee_basis and fee_amount from the
+--      bid, created_at = now(), and NULLs invoice_url, rescinded_at and rescission_reason; accepted_at is kept unless the device clock is more than 15 minutes off. Age and status of the bid do NOT matter (a slow
+--      IP lookup, a late retry or a bid already selected still records the true values); a bid whose created_at is forged is harmless because nothing depends on it.
+--   C. QUARANTINED, otherwise: the whole row exactly as the browser sent it, plus the reasons (text_not_form_wording, displayed_fee_differs, duplicate_bid, bid_has_no_fee), the server's rate and fee and the caller,
+--      go into public.fee_acceptance_quarantine and NO row is added to fee_acceptances (so stripe-webhook cannot pick it), a WARNING is logged, and the client sees a normal success. The record of what the contractor
+--      was shown is kept for a person to read; which figure stands when the screen and the server disagree is a Tier C decision (question on #3409), not made here.
+-- Cases that land in C legitimately: the form's rate lookup differs from the server's (the forms read contractors.state, a column production does not have, the server reads address_state, so the first state-specific
+--   row in platform_fee_config would do it), a rate change while a form is open, an out-of-order fee refresh on a keystroke, and any wording change not yet mirrored here. Every one is KEPT, none lost.
+-- Quarantine table: RLS on, no policy, no privilege for anon or authenticated (service_role and the SQL editor only). It is written by one SECURITY DEFINER function that refuses to run outside a trigger.
+--
+-- STILL OPEN IN THE DATA PATH, and fixed in the webhook, not here (REVIEW 6668449870 B1): a contractor can submit a second bid, or move a bid's price down and back, and each acceptance row is true at its own
+--   instant, so "the newest row for claim and contractor" can name the wrong bid or a superseded price. supabase/functions/stripe-webhook now reads the acceptance of the SELECTED bid (bid_id) and treats a row whose
+--   fee differs from that bid's current fee as not-evidence (manual evidence gathering). That is a code change, deployed through the normal Edge Function path; this file does not need it to be safe, and it does
+--   not rely on this file.
+-- NOT changed, stated plainly: ip_address and user_agent are what the browser reports and cannot be verified on the server. id is client-chosen (harmless). The bid's own price and fee are the bid form's and
+--   gh-2519's business (gh-2519 sets them server-side; this file RELIES ON gh-2519 being applied and refuses to run without it). The React form's sentence "deducted from your bid amount ... You will receive $X"
+--   is recognised as the React form's own wording because it is on main; Legal's note that it sits badly with D-226 is a wording question for Legal (Tier C) and is not decided here.
+-- WORDING DRIFT, a deliberate coupling: the recognised texts live in public.fee_acceptance_text_check(). A new wording is quarantined (kept, not lost) until that function is updated in the same release. The runner
+--   renders the texts from the two form source files; supabase/tests/gh3409_*.mjs and the runner should be run in CI (a workflow is proposed in the PR, not added here).
+-- ORDER WITH PR #3406 (gh-3320, UPDATE/DELETE revoke + admin UPDATE policy drop): independent. This file touches only the INSERT path (a trigger, three functions, one new table); #3406 touches only UPDATE/DELETE
+--   grants and one UPDATE policy on fee_acceptances. Recommended order: #3406 first, then this file; the runner proves both orders and independent rollback.
 
 BEGIN;
 
@@ -57,9 +63,35 @@ BEGIN
 END
 $prereq$;
 
--- Pure check of the two disclosure texts. Not SECURITY DEFINER, reads no table.
-CREATE OR REPLACE FUNCTION public.fee_acceptance_text_matches(p_text text, p_pct numeric, p_fee numeric, p_total numeric)
-RETURNS boolean
+-- Where a diverted row is kept. Append-only in intent; no client privilege of any kind.
+CREATE TABLE IF NOT EXISTS public.fee_acceptance_quarantine (
+  id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
+  quarantined_at timestamptz DEFAULT now() NOT NULL,
+  reasons text[] NOT NULL,
+  caller_user_id uuid,
+  server_fee_pct numeric(5,2),
+  server_fee_amount numeric(12,2),
+  contractor_id uuid,
+  claim_id uuid,
+  bid_id uuid,
+  fee_pct numeric(5,2),
+  fee_basis text,
+  fee_amount numeric(10,2),
+  fee_text_displayed text,
+  accepted_at timestamptz,
+  ip_address inet,
+  user_agent text
+);
+ALTER TABLE public.fee_acceptance_quarantine ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.fee_acceptance_quarantine FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT ON TABLE public.fee_acceptance_quarantine TO service_role;
+COMMENT ON TABLE public.fee_acceptance_quarantine IS
+  'gh-3409: client fee-acceptance inserts that were not recorded in fee_acceptances, kept exactly as the browser sent them with the reasons. Read by a person. Not read by stripe-webhook.';
+
+-- Recognises the two forms' disclosure texts. Returns ok, text_not_form_wording (not exactly either text) or displayed_fee_differs (a form text, but the rate or fee printed in it is not the bid's).
+-- Pure, reads no table. Numbers must be written the way the forms write them (no leading zeros, thousands grouped by three).
+CREATE OR REPLACE FUNCTION public.fee_acceptance_text_check(p_text text, p_pct numeric, p_fee numeric, p_total numeric)
+RETURNS text
 LANGUAGE plpgsql
 IMMUTABLE
 SET search_path = pg_catalog, pg_temp
@@ -68,26 +100,46 @@ DECLARE
   a text[];
   b text[];
 BEGIN
-  IF p_text IS NULL OR p_pct IS NULL OR p_fee IS NULL THEN RETURN false; END IF;
+  IF p_text IS NULL THEN RETURN 'text_not_form_wording'; END IF;
   -- contractor-bid-form.html generateExactFeeText() (GC-approved verbatim, #547 item 1A)
-  a := regexp_match(p_text, '^Platform fee for this job: \$([0-9,]+\.[0-9]{2}) \(([0-9]+\.[0-9]{2})% of your bid\)\. By submitting this bid, you agree to pay Otter Quotes this fee if the homeowner selects your bid and a contract is signed\. The fee is due upon contract execution and will be charged to your card on file\. Submitting this bid constitutes your acceptance of this fee\.$');
+  a := regexp_match(p_text, '^Platform fee for this job: \$((?:0|[1-9][0-9]{0,2}(?:,[0-9]{3})*)\.[0-9]{2}) \(((?:0|[1-9][0-9]{0,2})\.[0-9]{2})% of your bid\)\. By submitting this bid, you agree to pay Otter Quotes this fee if the homeowner selects your bid and a contract is signed\. The fee is due upon contract execution and will be charged to your card on file\. Submitting this bid constitutes your acceptance of this fee\.$');
   IF a IS NOT NULL THEN
-    RETURN abs(replace(a[1], ',', '')::numeric - p_fee) <= 0.01 AND a[2]::numeric = round(p_pct, 2);
+    IF p_pct IS NOT NULL AND p_fee IS NOT NULL AND abs(replace(a[1], ',', '')::numeric - p_fee) <= 0.01 AND a[2]::numeric = round(p_pct, 2) THEN RETURN 'ok'; END IF;
+    RETURN 'displayed_fee_differs';
   END IF;
   -- react-app contractor/bid/[claimId]/copy.ts buildFeeDisclosureText()
-  b := regexp_match(p_text, '^By submitting this bid, you agree to pay Otter Quotes a platform fee of ([0-9]+\.[0-9]{2})% \(\$([0-9,]+\.[0-9]{2})\) upon contract execution\. This fee is deducted from your bid amount before disbursement\. You will receive \$([0-9,]+\.[0-9]{2}) upon completion\. I understand and agree to the platform fee of ([0-9]+\.[0-9]{2})% \(\$([0-9,]+\.[0-9]{2})\)$');
+  b := regexp_match(p_text, '^By submitting this bid, you agree to pay Otter Quotes a platform fee of ((?:0|[1-9][0-9]{0,2})\.[0-9]{2})% \(\$((?:0|[1-9][0-9]{0,2}(?:,[0-9]{3})*)\.[0-9]{2})\) upon contract execution\. This fee is deducted from your bid amount before disbursement\. You will receive \$((?:0|[1-9][0-9]{0,2}(?:,[0-9]{3})*)\.[0-9]{2}) upon completion\. I understand and agree to the platform fee of ((?:0|[1-9][0-9]{0,2})\.[0-9]{2})% \(\$((?:0|[1-9][0-9]{0,2}(?:,[0-9]{3})*)\.[0-9]{2})\)$');
   IF b IS NOT NULL THEN
-    RETURN b[1]::numeric = round(p_pct, 2) AND b[4]::numeric = round(p_pct, 2)
-       AND b[2] = b[5]
+    IF b[1] <> b[4] OR b[2] <> b[5] THEN RETURN 'text_not_form_wording'; END IF;
+    IF p_pct IS NOT NULL AND p_fee IS NOT NULL AND b[1]::numeric = round(p_pct, 2)
        AND abs(replace(b[2], ',', '')::numeric - p_fee) <= 0.01
-       AND (p_total IS NULL OR abs(replace(b[3], ',', '')::numeric - (p_total - p_fee)) <= 0.02);
+       AND (p_total IS NULL OR abs(replace(b[3], ',', '')::numeric - (p_total - p_fee)) <= 0.02) THEN RETURN 'ok'; END IF;
+    RETURN 'displayed_fee_differs';
   END IF;
-  RETURN false;
+  RETURN 'text_not_form_wording';
 END
 $txt$;
 
-COMMENT ON FUNCTION public.fee_acceptance_text_matches(text, numeric, numeric, numeric) IS
-  'gh-3409: true only when p_text is exactly the HTML bid form''s or the React bid form''s fee disclosure and the rate and dollar fee printed in it equal p_pct and p_fee (one cent) and, in the React wording, the net equals p_total - p_fee (two cents). Update together with either form''s wording.';
+COMMENT ON FUNCTION public.fee_acceptance_text_check(text, numeric, numeric, numeric) IS
+  'gh-3409: ok when p_text is exactly the HTML bid form''s or the React bid form''s fee disclosure and the rate and fee printed in it equal p_pct and p_fee (one cent) and, in the React wording, the net equals p_total - p_fee (two cents); displayed_fee_differs when it is a form text with other numbers; text_not_form_wording otherwise. Update together with either form''s wording.';
+
+-- The only writer of the quarantine table. SECURITY DEFINER so the client roles need no privilege on it; refuses to run outside a trigger, so a client cannot call it to write rows.
+CREATE OR REPLACE FUNCTION public.fee_acceptance_quarantine_add(p_row public.fee_acceptances, p_reasons text[], p_server_pct numeric, p_server_fee numeric)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $qa$
+BEGIN
+  IF pg_trigger_depth() < 1 THEN
+    RAISE EXCEPTION 'fee_acceptance_quarantine_add runs only inside the fee_acceptances guard trigger (gh-3409)' USING ERRCODE = '42501';
+  END IF;
+  INSERT INTO public.fee_acceptance_quarantine (reasons, caller_user_id, server_fee_pct, server_fee_amount, contractor_id, claim_id, bid_id, fee_pct, fee_basis, fee_amount, fee_text_displayed, accepted_at, ip_address, user_agent)
+  VALUES (p_reasons, auth.uid(), p_server_pct, p_server_fee, p_row.contractor_id, p_row.claim_id, p_row.bid_id, p_row.fee_pct, p_row.fee_basis, p_row.fee_amount, p_row.fee_text_displayed, p_row.accepted_at, p_row.ip_address, p_row.user_agent);
+END
+$qa$;
+REVOKE ALL ON FUNCTION public.fee_acceptance_quarantine_add(public.fee_acceptances, text[], numeric, numeric) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.fee_acceptance_quarantine_add(public.fee_acceptances, text[], numeric, numeric) TO anon, authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION public.fee_acceptances_guard_client_insert()
 RETURNS trigger
@@ -95,55 +147,57 @@ LANGUAGE plpgsql
 SET search_path = public, pg_temp
 AS $guard$
 DECLARE
-  q public.quotes%ROWTYPE;
+  q record;
+  v_pct numeric;
+  v_amt numeric;
+  v_chk text;
+  v_reasons text[] := '{}';
 BEGIN
   -- Only client callers are bound. service_role (Edge Functions, e2e teardown), postgres and owner-level SECURITY DEFINER code are not.
   IF NOT (current_user IN ('anon', 'authenticated') AND COALESCE(auth.role(), '') <> 'service_role') THEN
     RETURN NEW;
   END IF;
 
-  -- 1. the caller's own contractor row
+  -- A. refuse what no genuine form insert can be
   IF NOT COALESCE(EXISTS (SELECT 1 FROM public.contractors k WHERE k.id = NEW.contractor_id AND k.user_id = auth.uid()), false) THEN
     RAISE EXCEPTION 'fee_acceptances: an acceptance can only be recorded by the contractor it names (gh-3409)' USING ERRCODE = '42501';
   END IF;
-
-  -- 2. the caller's own bid, on the named claim (the quotes read policy shows the caller only its own bids)
-  SELECT * INTO q FROM public.quotes WHERE id = NEW.bid_id AND contractor_id = NEW.contractor_id AND claim_id = NEW.claim_id;
+  SELECT x.id, x.total_price, x.platform_fee_pct, x.fee_percentage, x.platform_fee_basis, x.fee_amount INTO q
+    FROM public.quotes x WHERE x.id = NEW.bid_id AND x.contractor_id = NEW.contractor_id AND x.claim_id = NEW.claim_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'fee_acceptances: bid_id must be this contractor''s own bid on claim_id (gh-3409)' USING ERRCODE = '42501';
   END IF;
 
-  -- 3. a bid that has just been submitted and is still open
-  IF q.status IS DISTINCT FROM 'submitted' OR q.bid_status IS DISTINCT FROM 'active'
-     OR q.created_at IS NULL OR q.created_at < now() - interval '15 minutes' THEN
-    RAISE EXCEPTION 'fee_acceptances: an acceptance is recorded when the bid is submitted, not later or for a bid that is no longer open (gh-3409)' USING ERRCODE = '42501';
+  -- B / C. decide whether this is a true record of this bid
+  v_pct := COALESCE(q.platform_fee_pct, q.fee_percentage);
+  v_amt := q.fee_amount;
+  IF v_pct IS NULL OR v_amt IS NULL THEN
+    v_reasons := array_append(v_reasons, 'bid_has_no_fee');
+  ELSE
+    v_chk := public.fee_acceptance_text_check(NEW.fee_text_displayed, v_pct, v_amt, q.total_price);
+    IF v_chk <> 'ok' THEN v_reasons := array_append(v_reasons, v_chk); END IF;
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.fee_acceptances d WHERE d.bid_id = NEW.bid_id) THEN
+    v_reasons := array_append(v_reasons, 'duplicate_bid');
   END IF;
 
-  -- 4. one acceptance per bid
-  IF EXISTS (SELECT 1 FROM public.fee_acceptances x WHERE x.bid_id = NEW.bid_id) THEN
-    RAISE EXCEPTION 'fee_acceptances: this bid already has its acceptance record (gh-3409)' USING ERRCODE = '42501';
-  END IF;
-
-  -- server-written values from the bid (gh-2519 set them on the bid)
-  NEW.fee_pct    := COALESCE(q.platform_fee_pct, q.fee_percentage);
-  NEW.fee_basis  := COALESCE(q.platform_fee_basis, 'bid_amount');
-  NEW.fee_amount := q.fee_amount;
-  IF NEW.fee_pct IS NULL OR NEW.fee_amount IS NULL THEN
-    RAISE EXCEPTION 'fee_acceptances: the bid carries no fee to accept (gh-3409)' USING ERRCODE = '42501';
-  END IF;
-
-  -- 5. the disclosure the contractor saw must be one of the two forms' texts, stating this fee
-  IF NOT public.fee_acceptance_text_matches(NEW.fee_text_displayed, NEW.fee_pct, NEW.fee_amount, q.total_price) THEN
-    RAISE EXCEPTION 'fee_acceptances: fee_text_displayed is not the bid form''s disclosure for this bid''s fee (gh-3409)' USING ERRCODE = '42501';
-  END IF;
-
-  NEW.created_at       := now();
-  NEW.invoice_url      := NULL;
-  NEW.rescinded_at     := NULL;
+  NEW.created_at        := now();
+  NEW.invoice_url       := NULL;
+  NEW.rescinded_at      := NULL;
   NEW.rescission_reason := NULL;
   IF NEW.accepted_at IS NULL OR NEW.accepted_at < now() - interval '15 minutes' OR NEW.accepted_at > now() + interval '5 minutes' THEN
     NEW.accepted_at := now();
   END IF;
+
+  IF cardinality(v_reasons) > 0 THEN
+    PERFORM public.fee_acceptance_quarantine_add(NEW, v_reasons, v_pct, v_amt);
+    RAISE WARNING 'gh-3409 fee acceptance quarantined: bid % reasons %', NEW.bid_id, v_reasons;
+    RETURN NULL;
+  END IF;
+
+  NEW.fee_pct    := v_pct;
+  NEW.fee_basis  := COALESCE(q.platform_fee_basis, 'bid_amount');
+  NEW.fee_amount := v_amt;
   RETURN NEW;
 END
 $guard$;
@@ -156,7 +210,7 @@ CREATE TRIGGER fee_acceptances_guard_client_insert
   BEFORE INSERT ON public.fee_acceptances
   FOR EACH ROW EXECUTE FUNCTION public.fee_acceptances_guard_client_insert();
 
--- GUARD: the trigger exists, is enabled for every session role (tgenabled 'O'), and is the only non-internal trigger on the table. Else raise and roll the whole file back.
+-- GUARD: the trigger exists, is enabled for every session role (tgenabled 'O'), is BEFORE INSERT FOR EACH ROW, and no client role holds a privilege on the quarantine table, which has RLS on.
 DO $final$
 DECLARE n integer;
 BEGIN
@@ -164,6 +218,13 @@ BEGIN
      AND tgname = 'fee_acceptances_guard_client_insert' AND tgenabled = 'O' AND (tgtype & 1) = 1 AND (tgtype & 2) = 2 AND (tgtype & 4) = 4;
   IF n <> 1 THEN
     RAISE EXCEPTION 'gh3409: guard trigger missing, disabled or not BEFORE INSERT FOR EACH ROW; nothing is applied';
+  END IF;
+  IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.fee_acceptance_quarantine'::regclass)
+     OR has_table_privilege('anon', 'public.fee_acceptance_quarantine', 'SELECT,INSERT,UPDATE,DELETE')
+     OR has_table_privilege('authenticated', 'public.fee_acceptance_quarantine', 'SELECT,INSERT,UPDATE,DELETE')
+     OR has_any_column_privilege('anon', 'public.fee_acceptance_quarantine', 'SELECT,INSERT,UPDATE')
+     OR has_any_column_privilege('authenticated', 'public.fee_acceptance_quarantine', 'SELECT,INSERT,UPDATE') THEN
+    RAISE EXCEPTION 'gh3409: the quarantine table is readable or writable by a client role, or has no RLS; nothing is applied';
   END IF;
 END
 $final$;

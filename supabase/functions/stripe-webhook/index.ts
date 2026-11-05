@@ -48,6 +48,7 @@ import {
   postDisputeEvidence,
 } from "./dispute-routing.ts";
 import { assembleTextEvidence, claimRecordLines, formatAcceptedFeeDollars } from "./dispute-evidence-fields.ts";
+import { pickFeeAcceptanceForBid, type SelectedBid } from "./fee-acceptance-select.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 import {
@@ -490,6 +491,26 @@ async function handleDisputeCreated(
   if (claim) {
     const contractorId = claim.selected_contractor_id ?? quote?.contractor_id;
     if (contractorId) {
+      // gh-3409 (REVIEW 6668449870 B1): the evidence row is the acceptance of the bid being charged (the selected bid),
+      // and only when its fee equals that bid's current fee. The newest row for (claim, contractor) could name a
+      // second bid or a superseded price. Anything else is not evidence: feeAcceptance stays null and the dispute
+      // goes to a person ("manual evidence gathering").
+      const paidQuote = quote as QuoteRow | null; // resolved from the payment intent above, when the claim came from it
+      let selectedBid: SelectedBid | null = paidQuote && paidQuote.claim_id === claim.id
+        ? { id: paidQuote.id, fee_amount: paidQuote.fee_amount }
+        : null;
+      if (!selectedBid) {
+        const { data: selRows } = await supabase
+          .from("quotes")
+          .select("id, fee_amount")
+          .eq("claim_id", claim.id)
+          .eq("contractor_id", contractorId)
+          .eq("status", "selected")
+          .order("created_at", { ascending: false })
+          .limit(1);
+        const sel = (selRows ?? []) as { id: string; fee_amount: number | null }[];
+        if (sel.length > 0) selectedBid = { id: sel[0].id, fee_amount: sel[0].fee_amount };
+      }
       const { data: feeRows } = await supabase
         .from("fee_acceptances")
         .select(
@@ -499,10 +520,13 @@ async function handleDisputeCreated(
         .eq("contractor_id", contractorId)
         .is("rescinded_at", null)
         .order("created_at", { ascending: false })
-        .limit(1);
+        .limit(20);
 
-      if (feeRows && feeRows.length > 0) {
-        feeAcceptance = feeRows[0] as FeeAcceptanceRow;
+      const picked = pickFeeAcceptanceForBid(feeRows as FeeAcceptanceRow[] | null, selectedBid);
+      if (picked.row) {
+        feeAcceptance = picked.row;
+      } else {
+        console.warn(`[${FN_NAME}] gh-3409: no usable fee acceptance for claim ${claim.id} (${picked.reason}); manual evidence gathering`);
       }
     }
   }
