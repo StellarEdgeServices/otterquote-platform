@@ -15,7 +15,10 @@
  *   (4) COMPLETED STATE (estimate, measurements and material all done), at 1440 and 390: every .checklist-filename (the
  *       "est.pdf" / "Architectural Shingles" line shown after an upload or material choice) >= 4.5:1, and every text
  *       element in the two cards >= 4.5:1. The close review of gh-3267 found this row at 3.07:1 (--gray on the card).
- * NEGATIVE CONTROLS: (N2) put the old `color: var(--gray)` back on .checklist-filename and the filename must FAIL 4.5:1.
+ *   (5) INPUT PLACEHOLDERS in the cards, in the states that render them (referral "Their Name"/"Their Email" after the Insurance
+ *       Agent chip, and the deductible prompt): >= 4.5:1. They were --gray on the navy field (2.89:1).
+ *   (6) COMPLETED STATE check mark glyphs (a text character, 19.2px, so 4.5 applies, not 3:1): >= 4.5:1. Was --green on its tint, 4.47:1.
+ * NEGATIVE CONTROLS: (N4) old --green check mark must FAIL. (N3) put the old `.form-input::placeholder` --gray back and the placeholders must FAIL 4.5:1. (N2) put the old `color: var(--gray)` back on .checklist-filename and the filename must FAIL 4.5:1.
  *   (N1) delete the gh-3267 `.checklist-actions .btn-secondary` rule from the live stylesheet (restoring the old
  * cascade) and re-measure: the Upload button must FAIL 4.5:1. Proves the assertion can see the bug.
  *
@@ -153,7 +156,7 @@ const failures = await page.evaluate((measureSrc) => {
   const bad = []; let n = 0;
   for (const r of roots) for (const el of r.querySelectorAll('*')) {
     const own = [...el.childNodes].filter((x) => x.nodeType === 3).map((x) => x.textContent).join('').trim();
-    if (!own || !el.getClientRects().length || el.classList.contains('checklist-icon')) continue;
+    if (!own || !el.getClientRects().length || (el.classList.contains('checklist-icon') && !el.classList.contains('done'))) continue; // the done-state check mark is a text character: measured, not exempt
     n++;
     const v = MEASURE(el);
     if (v < 4.5) bad.push(`${el.tagName.toLowerCase()}.${el.className} "${own.slice(0, 40)}" ${v}:1`);
@@ -189,7 +192,7 @@ for (const w of [1440, 390]) {
     const bad = []; let n = 0;
     for (const r of roots) for (const el of r.querySelectorAll('*')) {
       const own = [...el.childNodes].filter((x) => x.nodeType === 3).map((x) => x.textContent).join('').trim();
-      if (!own || !el.getClientRects().length || el.classList.contains('checklist-icon')) continue;
+      if (!own || !el.getClientRects().length || (el.classList.contains('checklist-icon') && !el.classList.contains('done'))) continue; // the done-state check mark is a text character: measured, not exempt
       n++; const v = M(el); if (v < 4.5) bad.push(`${el.tagName.toLowerCase()}.${el.className} "${own.slice(0, 30)}" ${v}:1`);
     }
     return { fnR, n, bad };
@@ -197,11 +200,18 @@ for (const w of [1440, 390]) {
   const minFn = Math.min(...res.fnR.map((r) => r[1]));
   ok(minFn >= AA, `(4b) ${w}px completed: filename rows ${res.fnR.map((r) => r[1]).join(' / ')}:1, min ${minFn}:1 >= ${AA}:1`);
   ok(res.bad.length === 0, `(4c) ${w}px completed: all ${res.n} text elements in the cards >= 4.5:1${res.bad.length ? ' -- failing: ' + res.bad.join('; ') : ''}`);
+  const chk = await page.$$eval('#checklist-container .checklist-icon.done', (els, src) => { const M = eval(src); return els.map((e) => M(e)); }, MEASURE.toString());
+  ok(chk.length === 3 && Math.min(...chk) >= AA, `(6) ${w}px completed: check mark glyphs ${chk.join(' / ')}:1 >= ${AA}:1`);
 }
 // N2: the old colour must fail.
 await page.addStyleTag({ content: '.checklist-filename{color:#64748B !important}' });
 const oldFn = await (await page.$('#checklist-container .checklist-filename')).evaluate(MEASURE);
 ok(oldFn < AA, `(N2) negative control: old --gray colour on the filename is ${oldFn}:1 < ${AA}:1`);
+
+// N4: the old check mark colour (--green) must fail.
+await page.addStyleTag({ content: '.dashboard-section .checklist-icon.done{color:#10B981 !important}' });
+const oldChk = Math.min(...(await page.$$eval('#checklist-container .checklist-icon.done', (els, src) => { const M = eval(src); return els.map((e) => M(e)); }, MEASURE.toString())));
+ok(oldChk < AA, `(N4) negative control: old --green check mark is ${oldChk}:1 < ${AA}:1`);
 
 // NEGATIVE CONTROL: remove the gh-3267 rule -> the old cascade -> Upload must fail.
 const removed = await page.evaluate(() => {
@@ -214,6 +224,30 @@ const removed = await page.evaluate(() => {
 });
 const oldRatio = await (await page.$(`#checklist-container button.btn-secondary >> nth=${uploadIdx[0]}`)).evaluate(MEASURE);
 ok(removed >= 1 && oldRatio < AA, `(N1) negative control: without the gh-3267 rule (${removed} removed) Upload is ${oldRatio}:1 < ${AA}:1`);
+
+// (5) Placeholders, in the states that render them. The placeholder colour is read from ::placeholder and measured as text.
+const PH = (page_) => page_.evaluate((src) => {
+  const M = eval(src);
+  return [...document.querySelectorAll('.dashboard-section input[placeholder], .dashboard-section textarea[placeholder]')]
+    .filter((e) => e.getClientRects().length)
+    .map((e) => { const keep = e.style.color; e.style.color = getComputedStyle(e, '::placeholder').color; const v = M(e); e.style.color = keep; return [e.placeholder, v]; });
+}, MEASURE.toString());
+CLAIM = { ...CLAIM, has_estimate: false, has_measurements: false, has_material_selection: false, loss_sheet_parsed_at: '2026-10-02T00:00:00Z' };
+await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
+await page.goto(BASE + '/dashboard.html?state=placeholders' + frag, { waitUntil: 'domcontentloaded' }).catch(() => {});
+await page.waitForSelector('#deductible-prompt-input', { timeout: 20000 });
+await page.addStyleTag({ content: '*{animation:none!important;transition:none!important}' });
+await page.click('.deferred-chip[data-ref="insurance_agent"]');
+await page.waitForSelector('#dash-ref-name');
+for (const w of [1440, 390]) {
+  await page.setViewportSize({ width: w, height: 900 }); await page.waitForTimeout(100);
+  const ph = await PH(page);
+  const min = Math.min(...ph.map((r) => r[1]));
+  ok(ph.length >= 3 && min >= AA, `(5) ${w}px placeholders (${ph.map((r) => r[0] + ' ' + r[1]).join(' | ')}) min ${min}:1 >= ${AA}:1`);
+}
+await page.addStyleTag({ content: '.dashboard-section .form-input::placeholder{color:#64748B !important}' });
+const oldPh = Math.min(...(await PH(page)).map((r) => r[1]));
+ok(oldPh < AA, `(N3) negative control: old --gray placeholder is ${oldPh}:1 < ${AA}:1`);
 
 await browser.close();
 server.close();
