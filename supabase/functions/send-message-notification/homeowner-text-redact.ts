@@ -139,7 +139,12 @@ const SOW_PATTERNS: RegExp[] = [
 //   - full-width forms and Arabic-Indic digits print as their plain form, because they are the character the homeowner typed. No other compatibility form does:
 //     a superscript, subscript or circled mark is a dropped character, or "$5,000<superscript one>" would print as a different price (LEGAL-READ 6669633277).
 // One zero-width exception: after a full stop and before anything but a digit it counts as a space, or "Install at 400.<zero-width>Friday" would join the
-// sentences into an address shape. printForm() also returns `marked`, the same length as `printed`, with the unit SOFT wherever a dropped or folded character
+// sentences into an address shape.
+// A folded character is a real character the printed string no longer shows. "jane@gmail.com<em dash>text" prints with a hyphen, and the patterns will not end an
+// address before a hyphen; "317-555-0142<one half>" prints with a digit, and they will not end a phone before a digit. So the patterns read `view`, the same length as
+// `printed`, where a folded dash is still a dash that is not "-" and any other folded character is a BARRIER, which no pattern reads as part of a contact. They then
+// run once more on the folded typed text, the detection every earlier version used, and `to` carries those matches to the printed string: a contact that
+// detection removes is removed here too, whatever character sits inside or beside it (reviews 6670027861, 6669938877). printForm() also returns `marked`, the same length as `printed`, with the unit SOFT wherever a dropped or folded character
 // landed. A few contact forms can only be seen by reading across those places ("jane@exam<break>ple.com"); only the second pass below does that, and it
 // keeps what it finds only on the narrow terms in keepSplitEmail(), so a sentence ending in a price and a new line stays as typed.
 const PRINT_FOLDS: Record<string, string> = {
@@ -156,6 +161,8 @@ const QUOTES_AND_ELLIPSIS = /^[\u2018-\u201f\u2026]$/;
 const PRINTS_AS_PLAIN = /^[\uff01-\uff5e\u0660-\u0669\u06f0-\u06f9]$/;
 const SOFT = "\x1f"; // typed control characters can never reach `marked`: they are dropped characters themselves
 const FOLDED_DASH = "\x1e";
+const BARRIER = "\x1d";
+const DASH_IN_VIEW = String.fromCharCode(0x2010);
 // Pinned by sow-redact.test.ts (LEGAL-READ 6256737488 L4), with Ben as a ruling (Q 6668703638 on #3461): exactly the shapes "317<middle dot>555<middle dot>0142",
 // "250 <bullet> 500 <bullet> 1000" and "250 <middle dot> 500 <middle dot> 1000", the same character twice with even spacing, and not with a leading 1 or a
 // further group, and ASCII digits only: it runs on the typed text, never a folded copy (LEGAL-READ 6669633277). These two characters stay in the output as typed, so THIS IS THE ONE PLACE esc() STILL DROPS SOMETHING: the unspaced form prints as ten digits
@@ -163,45 +170,54 @@ const FOLDED_DASH = "\x1e";
 const PINNED_FIGURES =
   /(?<!\p{N})(?<!(?<!\p{N})[+\uff0b]?[1\uff11\u0661\u06f1][\s.\-\u00b7\u2022]*)(?:[0-9]{3}\u00b7[0-9]{3}\u00b7[0-9]{4}|[0-9]{3} ([\u00b7\u2022]) [0-9]{3} \1 [0-9]{4})(?!\p{N})(?![.,]\p{N})(?! ?[\u00b7\u2022] ?\p{N})/gu;
 
-export function printForm(text: string): { printed: string; marked: string } {
+export function printForm(text: string): { printed: string; marked: string; view: string; to: number[] } {
   const pinned = new Set<number>();
   for (const m of text.matchAll(PINNED_FIGURES)) {
     for (let k = m.index!; k < m.index! + m[0].length; k++) if (text[k] === "\u00b7" || text[k] === "\u2022") pinned.add(k);
   }
   let printed = "";
   let marked = "";
+  let view = "";
+  const to: number[] = new Array(text.length + 1);
   let afterDropped = false;
   const dropped = () => {
     afterDropped = true;
-    if (printed !== "" && !printed.endsWith(" ")) { printed += " "; marked += SOFT; }
+    if (printed !== "" && !printed.endsWith(" ")) { printed += " "; marked += SOFT; view += " "; }
   };
   let i = 0;
   for (const typed of text) {
     const at = i;
     i += typed.length;
-    if (pinned.has(at)) { printed += typed; marked += typed; continue; }
+    for (let k = at; k < i; k++) to[k] = printed.length;
+    if (pinned.has(at)) { printed += typed; marked += typed; view += typed; continue; }
     const ch = PRINTS_AS_PLAIN.test(typed) ? foldForDetection(typed) : typed;
     const out = printOf(ch);
     if (out === "" || (out === " " && ch !== " ")) { // a no-break space counts as dropped, like the wide spaces
-      if (!NO_WIDTH.test(ch) || (printed.endsWith(".") && i < text.length && !/[\d\uff10-\uff19\u0660-\u0669\u06f0-\u06f9]/.test(text[i]))) dropped();
+      let next = i;
+      while (next < text.length && NO_WIDTH.test(text[next])) next++;
+      if (!NO_WIDTH.test(ch) || (printed.endsWith(".") && next < text.length && !/[\d\uff10-\uff19\u0660-\u0669\u06f0-\u06f9]/.test(text[next]))) dropped();
       continue;
     }
     if (out === " " && afterDropped && printed.endsWith(" ")) continue;
     afterDropped = false;
     printed += out;
-    marked += out === "-" && ch !== "-" ? FOLDED_DASH : QUOTES_AND_ELLIPSIS.test(ch) ? SOFT.repeat(out.length) : out;
+    const isDash = out === "-" && typed !== "-";
+    const isFold = !isDash && out !== typed && !PRINTS_AS_PLAIN.test(typed);
+    view += isDash ? DASH_IN_VIEW : isFold ? BARRIER.repeat(out.length) : out;
+    marked += isDash ? FOLDED_DASH : QUOTES_AND_ELLIPSIS.test(ch) ? SOFT.repeat(out.length) : isFold ? BARRIER.repeat(out.length) : out;
   }
-  if (printed.endsWith(" ") && marked.endsWith(SOFT)) { printed = printed.slice(0, -1); marked = marked.slice(0, -1); }
+  if (printed.endsWith(" ") && marked.endsWith(SOFT)) { printed = printed.slice(0, -1); marked = marked.slice(0, -1); view = view.slice(0, -1); }
+  to[text.length] = printed.length;
   // One folded dash prints and reads as a dash ("100-250", "11-15-2026"); doubled it is no separator anyone types by hand.
-  marked = marked.replace(/[-\x1e]*\x1e[-\x1e]*/g, (d) => (d.length > 1 ? SOFT.repeat(d.length) : "-"));
-  return { printed, marked };
+  marked = marked.replace(/[-\x1e]*\x1e[-\x1e]*/g, (d) => (d.length > 1 ? SOFT.repeat(d.length) : DASH_IN_VIEW));
+  return { printed, marked, view, to };
 }
 
 // ---- the second pass, on `marked` only; every match must cross a SOFT unit, because the patterns above already read the same text without one ----
 const S = "\\x1f";
 const WS = `[ ${S}]`;
 const gapped = (w: string) => [...w].map((c) => `[${c.toUpperCase()}${c.toLowerCase()}]`).join(`${S}*`);
-const SPLIT_GAP = `(?:[ ]+|[.\\-${S}]*)`;
+const SPLIT_GAP = `(?:[ ]+|[.\\-\\u2010${S}]*)`;
 const SPLIT_D = `\\d${S}*`;
 const SPLIT_GROUP3 = `[2-9]${S}*\\d${S}*\\d`;
 const SPLIT_PHONE = new RegExp(
@@ -210,7 +226,7 @@ const SPLIT_PHONE = new RegExp(
 );
 const SPLIT_AT = `(?:${WS}*@${WS}*|${WS}*[\\(\\[\\{<]${WS}*${gapped("at")}${WS}*[\\)\\]\\}>]${WS}*|${WS}+${gapped("at")}${WS}+)`;
 const SPLIT_DOT = `(?:${NOT_DETERMINER}(?:${WS}*[\\(\\[\\{<]${WS}*${gapped("dot")}${WS}*[\\)\\]\\}>]${WS}*|${WS}+${gapped("dot")}${WS}+)|${WS}*\\.${S}*)`;
-const SPLIT_LABEL = `[A-Za-z0-9](?:[A-Za-z0-9\\-${S}]*[A-Za-z0-9])?`;
+const SPLIT_LABEL = `[A-Za-z0-9](?:[A-Za-z0-9\\-\\u2010${S}]*[A-Za-z0-9])?`;
 const SPLIT_TLD = [...TLD_LIST].sort((a, b) => b.length - a.length).map(gapped).join("|");
 const SPLIT_EMAIL = new RegExp(`${LOCAL}${SPLIT_AT}${SPLIT_LABEL}(?:${SPLIT_DOT}${SPLIT_LABEL})*(${SPLIT_DOT}|${S}+)(${SPLIT_TLD})${TLD_END}`, "g");
 // A dropped character right beside the at-sign of an otherwise whole address: any lower-case last label ("jane<emoji>@proton.me").
@@ -223,7 +239,7 @@ const WORD_TLDS = /^(?:net|org|dev|ca|uk|co|pro)$/;
 const DETERMINER_THEN_DOT = new RegExp(`(?<![A-Za-z0-9\\-])(?:${DETERMINERS})[ ]*[\\(\\[\\{<]?[ ]*${DOT_W}`);
 function keepSplitEmail(m: RegExpMatchArray): boolean {
   const all = m[0];
-  if (!all.includes(SOFT) || DETERMINER_THEN_DOT.test(all.replaceAll(SOFT, ""))) return false;
+  if (!(all.includes(SOFT) || all.includes(DASH_IN_VIEW)) || DETERMINER_THEN_DOT.test(all.replaceAll(SOFT, ""))) return false;
   const tld = m[2].replaceAll(SOFT, "");
   const tight = all.includes("@") && !all.includes(" ");
   if (tld !== tld.toLowerCase() && (tld !== tld.toUpperCase() || /[a-z]/.test(all) || !/[@(\[{<]/.test(all))) return false;
@@ -236,11 +252,14 @@ function keepSplitEmail(m: RegExpMatchArray): boolean {
 
 // Returns the string the document prints, with phone and e-mail spans replaced by REMOVED_TOKEN.
 export function redactSowText(text: string): string {
-  const { printed, marked } = printForm(text);
-  if (printed.length !== marked.length) throw new Error("print form out of step");
+  const { printed, marked, view, to } = printForm(text);
+  if (printed.length !== marked.length || printed.length !== view.length) throw new Error("print form out of step");
+  const folded = foldForDetection(text);
+  if (folded.length !== text.length) throw new Error("fold changed the text length");
   const spans: Array<[number, number]> = [];
   for (const re of SOW_PATTERNS) {
-    for (const m of printed.matchAll(re)) if (m[0].length > 0) spans.push([m.index!, m.index! + m[0].length]);
+    for (const m of view.matchAll(re)) if (m[0].length > 0) spans.push([m.index!, m.index! + m[0].length]);
+    for (const m of folded.matchAll(re)) if (m[0].length > 0) spans.push([to[m.index!], to[m.index! + m[0].length]]);
   }
   for (const m of marked.matchAll(SPLIT_PHONE)) {
     if (m[0].includes(SOFT) && !SENTENCE_FIGURES.test(m[0])) spans.push([m.index!, m.index! + m[0].length]);
@@ -250,10 +269,12 @@ export function redactSowText(text: string): string {
   spans.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
   let out = "";
   let pos = 0;
+  let cut = false;
   for (const [a, b] of spans) {
-    if (a < pos) { pos = Math.max(pos, b); continue; }
+    if (cut && a <= pos) { pos = Math.max(pos, b); continue; }
     out += printed.slice(pos, a) + REMOVED_TOKEN;
     pos = b;
+    cut = true;
   }
   out += printed.slice(pos);
   // Printed equals redacted: anything esc() would still drop, other than the pinned characters, refuses the envelope rather than prints.
