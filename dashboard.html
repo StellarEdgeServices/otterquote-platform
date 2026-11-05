@@ -1251,6 +1251,8 @@
       .deferred-row .form-input { max-width: 220px; }
       /* gh-3267: the shared .form-input::placeholder is --gray (2.89:1 on the navy field); scoped here so other pages keep it. */
       .dashboard-section .form-input::placeholder { color: var(--slate); opacity: 1; }
+      /* gh-3267: the done-state check mark is a text character (✓, 19.2px, not large text): --green on its 15% green tint is 4.47:1. */
+      .dashboard-section .checklist-icon.done { color: #34D399; }
       .deferred-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
       .deferred-chip { border: 1px solid rgba(255,255,255,0.5); background: transparent; color: var(--white); border-radius: 999px; padding: 8px 14px; font-size: 0.875rem; cursor: pointer; min-height: 40px; }
       .deferred-chip.active { border-color: #E07B00; background: #E07B00; color: var(--navy); } /* gh-3267: white on amber is 3.0:1; navy is 5.77:1 */
