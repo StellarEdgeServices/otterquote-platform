@@ -782,6 +782,8 @@ Deno.test("gh-3077: admin email list cannot be read (error / throw / null / malf
     { getAdminEmails: async () => ({ data: null, error: { message: "boom" } }) },
     { getAdminEmails: async () => { throw new Error("network"); } },
     { getAdminEmails: async () => ({ data: null, error: null }) },
+    { getAdminEmails: async () => ({ data: [], error: null }) },
+    { getAdminEmails: async () => ({ data: ["", "   "], error: null }) },
     // deno-lint-ignore no-explicit-any
     { getAdminEmails: async () => ({ data: "not-an-array" as any, error: null }) },
   ];
@@ -792,6 +794,14 @@ Deno.test("gh-3077: admin email list cannot be read (error / throw / null / malf
     assertEquals(r.body.code, "ADMIN_CHECK_UNAVAILABLE");
     assertEquals(minted(), 0);
   }
+});
+
+Deno.test("gh-3077 REVIEW 6668644817: an EMPTY admin_emails list refuses to mint for the founder's address (403 ADMIN_CHECK_UNAVAILABLE, nothing minted)", async () => {
+  const { db, minted } = adminTargetDb({ getAdminEmails: async () => ({ data: [], error: null }) }, "dustinstohler1@gmail.com");
+  const r = await resolveAndMint({ contractor_id: "c-admin" }, db, ACTOR_EMAIL);
+  assertEquals(r.status, 403);
+  assertEquals(r.body.code, "ADMIN_CHECK_UNAVAILABLE");
+  assertEquals(minted(), 0);
 });
 
 Deno.test("gh-3077: a target is refused when admin_emails holds its address, even if every role signal reads non-admin", async () => {

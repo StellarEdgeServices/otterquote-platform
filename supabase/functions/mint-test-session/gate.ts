@@ -314,7 +314,12 @@ async function adminRefusal(
   } catch (e) {
     console.error("[mint-test-session] admin email list read threw:", e);
   }
-  if (!adminEmails || !Array.isArray(adminEmails)) {
+  // An empty list (zero rows, or no usable string rows) is NOT a successful read: it would silently stop
+  // refusing the admin accounts. Treat it exactly like a read failure.
+  if (
+    !adminEmails || !Array.isArray(adminEmails) ||
+    !adminEmails.some((x) => typeof x === "string" && x.trim() !== "")
+  ) {
     return codedError(403, ADMIN_CHECK_UNAVAILABLE, "Forbidden: admin status of target could not be verified — refused");
   }
   if (emailInAdminList(adminEmails, email)) {

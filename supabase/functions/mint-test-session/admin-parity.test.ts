@@ -70,9 +70,11 @@ Deno.test("gh-3077: gate.ts and index.ts carry no admin email literal", async ()
 });
 
 // ── negative controls ──
-Deno.test("gh-3077 negative control: an emptied list refuses nobody, so the equivalence FAILS", () => {
+Deno.test("gh-3077 negative control: the matcher alone refuses nobody on an empty list, so the GATE must fail closed on it", async () => {
   assert(oldRefuses("dustin@otterquote.com"));
-  assertFalse(emailInAdminList([], "dustin@otterquote.com"), "an empty list admits the admin target: the corpus check above would fail");
+  assertFalse(emailInAdminList([], "dustin@otterquote.com"), "matcher on [] is false: the hole the gate-level check closes");
+  const src = await Deno.readTextFile(new URL("./gate.ts", import.meta.url));
+  assert(/adminEmails\.some\(\(x\) => typeof x === "string" && x\.trim\(\) !== ""\)/.test(src), "adminRefusal must treat an empty list as unreadable");
 });
 
 Deno.test("gh-3077 negative control: a list missing one address FAILS the equivalence for that address", () => {
