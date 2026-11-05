@@ -4,6 +4,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   RETURN_STORAGE_KEY,
+  RETURN_TTL_MS,
   RETURN_TARGETS,
   captureReturnFromUrl,
   parseReturnToken,
@@ -78,8 +79,20 @@ describe('stored return (get-started to auth-callback)', () => {
   });
 
   it('re-validates what it reads back', () => {
-    sessionStorage.setItem(RETURN_STORAGE_KEY, 'https://evil.example/');
+    sessionStorage.setItem(RETURN_STORAGE_KEY, 'https://evil.example/|' + String(Date.now()));
     expect(takeStoredReturn()).toBeNull();
+  });
+
+  it('oq_return older than the 30 minute TTL, untimestamped or future-dated is stale: dropped and cleared', () => {
+    sessionStorage.setItem(RETURN_STORAGE_KEY, 'measurements|' + String(Date.now() - RETURN_TTL_MS - 1000));
+    expect(takeStoredReturn()).toBeNull();
+    expect(sessionStorage.getItem(RETURN_STORAGE_KEY)).toBeNull();
+    sessionStorage.setItem(RETURN_STORAGE_KEY, 'measurements');
+    expect(takeStoredReturn()).toBeNull();
+    sessionStorage.setItem(RETURN_STORAGE_KEY, 'measurements|' + String(Date.now() + 3600_000));
+    expect(takeStoredReturn()).toBeNull();
+    sessionStorage.setItem(RETURN_STORAGE_KEY, 'measurements|' + String(Date.now() - 60_000));
+    expect(takeStoredReturn()).toBe('measurements');
   });
 
   it('readReturnFromUrl only returns allowlisted tokens', () => {

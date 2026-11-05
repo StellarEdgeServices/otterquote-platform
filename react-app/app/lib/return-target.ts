@@ -16,6 +16,8 @@ export const RETURN_TARGETS = {
 export type ReturnToken = keyof typeof RETURN_TARGETS;
 
 export const RETURN_STORAGE_KEY = 'oq_return';
+/** A remembered token older than this (or dated in the future) is dropped, so an abandoned visit cannot steer a later unrelated sign-in in the same tab. */
+export const RETURN_TTL_MS = 30 * 60 * 1000;
 
 /** The token for a raw value, or null. Exact match on an own key only ('__proto__', 'constructor', 'MEASUREMENTS', URLs: null). */
 export function parseReturnToken(value: unknown): ReturnToken | null {
@@ -38,18 +40,22 @@ export function captureReturnFromUrl(search: string): ReturnToken | null {
   let token: ReturnToken | null = null;
   try { token = parseReturnToken(new URLSearchParams(search).get('return')); } catch { /* malformed query */ }
   try {
-    if (token) sessionStorage.setItem(RETURN_STORAGE_KEY, token);
+    if (token) sessionStorage.setItem(RETURN_STORAGE_KEY, token + '|' + String(Date.now()));
     else sessionStorage.removeItem(RETURN_STORAGE_KEY);
   } catch { /* storage blocked: the flag is simply not kept */ }
   return token;
 }
 
-/** auth-callback: the remembered token (re-validated on read), cleared as it is taken. */
+/** auth-callback: the remembered token (re-validated and TTL-checked on read), cleared as it is taken. */
 export function takeStoredReturn(): ReturnToken | null {
   try {
-    const token = parseReturnToken(sessionStorage.getItem(RETURN_STORAGE_KEY));
+    const raw = sessionStorage.getItem(RETURN_STORAGE_KEY);
     sessionStorage.removeItem(RETURN_STORAGE_KEY);
-    return token;
+    if (!raw) return null;
+    const [value, at] = raw.split('|');
+    const age = Date.now() - Number(at);
+    if (!Number.isFinite(age) || age < 0 || age > RETURN_TTL_MS) return null; // untimestamped, future-dated or stale
+    return parseReturnToken(value);
   } catch {
     return null;
   }

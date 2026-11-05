@@ -201,7 +201,12 @@ async function walkB(browser, appPort) {
 
 // ── C: the return flag cannot be abused ──
 async function walkC(browser, appPort) {
-  const settle = async (page) => { await page.waitForTimeout(3500); return new URL(page.url()); };
+  // settled = the main frame's URL has not changed for 2 s (max 12 s): no fixed sleep, so a slow redirect chain cannot race the check
+  const settle = async (page) => {
+    let last = ''; let same = 0;
+    for (let i = 0; i < 48 && same < 8; i++) { await page.waitForTimeout(250); const u = page.url(); if (u === last) same++; else { same = 0; last = u; } }
+    return new URL(page.url());
+  };
   // C1: tokens that are not on the allowlist go nowhere
   for (const bad of ['https://evil.example/', '//evil.example', 'javascript:alert(1)', '__proto__', 'constructor', 'MEASUREMENTS', 'measurements/../x', '/help-measurements.html']) {
     const { context } = await newWorld(browser, appPort, { signedIn: true });
@@ -220,7 +225,8 @@ async function walkC(browser, appPort) {
   // C3: the D-344 state gate still runs first and the token is not followed
   { const { context } = await newWorld(browser, appPort, { signedIn: true, state: 'TX' }); const page = await context.newPage();
     await page.goto('https://otterquote.com/dashboard.html?return=measurements', { waitUntil: 'domcontentloaded' });
-    const u = await settle(page); const body = await page.innerText('body');
+    await page.locator('text=available in Texas').first().waitFor({ timeout: 8000 }).catch(() => {});
+    const u = await settle(page); const body = await page.innerText('body').catch(() => '');
     ok(u.pathname === '/dashboard.html' && /isn't available in Texas yet/.test(body), 'C3 a Texas homeowner with ?return=measurements still gets the state gate card and is not sent to the measurement page'); await context.close(); }
   // C4: signed out, a valid token still means sign up first
   { const { context } = await newWorld(browser, appPort, {}); const page = await context.newPage();
