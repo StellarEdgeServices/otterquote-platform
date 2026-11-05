@@ -18,7 +18,7 @@ set -uo pipefail
 cd "$(dirname "$0")/../.."
 OUT="${1:-$(mktemp -d)}"; mkdir -p "$OUT"
 D=supabase/migrations_drafts; T=supabase/tests
-LIVE="$D/gh3217a_get_my_referrals.sql"
+LIVE="supabase/migrations/20261030141016_gh3217a_get_my_referrals.sql"
 FWD="supabase/migrations/20261105211753_gh3259_referrals_revoke_status_job_value.sql"; RBK="supabase/migrations_rollbacks/20261105211753_gh3259_referrals_revoke_status_job_value_rollback.sql"
 SETUP="$T/gh3259_referrals_column_revoke_scratch_setup.sql"; PROBE="$T/gh3259_referrals_column_revoke_probe.sql"
 LIVE_MD5=e63684bf6ce7d5b2da454ee00b31a9e9
@@ -134,15 +134,7 @@ probe "$DB" reapply
 check_phase "$OUT/reapply.txt" REAPPLY AFTER q && ok "REAPPLY: same as AFTER" || bad "REAPPLY expectations"
 
 echo "== 6. GH3257 (revoke on top of the #3255 + #3258 get_my_referrals() bodies)"
-S41=""; S57=""
-for ref in "" "refs/remotes/pr/3258" "refs/remotes/origin/gh-3257-dashboard-privacy"; do
-  if [ -z "$ref" ]; then
-    [ -f "$D/gh3241_get_my_referrals_opt_out.sql" ] && [ -f "$D/gh3257_get_my_referrals_privacy.sql" ] && { S41="$D/gh3241_get_my_referrals_opt_out.sql"; S57="$D/gh3257_get_my_referrals_privacy.sql"; break; }
-  elif git cat-file -e "$ref:$D/gh3257_get_my_referrals_privacy.sql" 2>/dev/null; then
-    git show "$ref:$D/gh3241_get_my_referrals_opt_out.sql" > "$OUT/gh3241.sql"; git show "$ref:$D/gh3257_get_my_referrals_privacy.sql" > "$OUT/gh3257.sql"
-    S41="$OUT/gh3241.sql"; S57="$OUT/gh3257.sql"; echo "  (gh3241/gh3257 drafts read from $ref)"; break
-  fi
-done
+S41="supabase/migrations/20261031181159_gh3241_get_my_referrals_opt_out.sql"; S57="supabase/migrations/20261105211705_gh3257_get_my_referrals_privacy.sql"  # both filed (applied) on main
 if [ -z "$S57" ]; then echo "SKIP: gh3241/gh3257 drafts not reachable (main does not carry them yet, no PR ref fetched)"; else
   fresh "${DB}_57"
   psql -q -1 -d "${DB}_57" -v ON_ERROR_STOP=1 -f "$S41" >/dev/null && psql -q -1 -d "${DB}_57" -v ON_ERROR_STOP=1 -f "$S57" >/dev/null || bad "gh3241/gh3257 bodies did not apply"

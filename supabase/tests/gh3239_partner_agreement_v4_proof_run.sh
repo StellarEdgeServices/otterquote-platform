@@ -22,13 +22,13 @@ mkdb "$DB"
 # only the check lines are kept (set_config() echoes are noise with per-run uuids and timestamps)
 pass() { psql -q -At -d "$DB" -f "$T/gh3239_partner_agreement_v4_proof.sql" 2> "$OUT/$1.err" | grep -E '[|](PASS|FAIL)$|^FAILING=' > "$OUT/$1.txt"; echo "== $1"; cat "$OUT/$1.txt"; grep -v '^$' "$OUT/$1.err" | grep -v 'NOTICE' || true; }
 pass 1-BASELINE
-psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "$D/gh3239_partner_agreement_v4.sql" >/dev/null || fail "forward failed"
+psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "supabase/migrations/20261030165458_gh3239_partner_agreement_v4.sql" >/dev/null || fail "forward failed"
 pass 2-AFTER
-psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "$D/gh3239_partner_agreement_v4.sql" >/dev/null || fail "forward not idempotent"
-psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "$D/gh3239_partner_agreement_v4_rollback.sql" >/dev/null || fail "rollback failed"
-psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "$D/gh3239_partner_agreement_v4_rollback.sql" >/dev/null || fail "rollback not idempotent"
+psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "supabase/migrations/20261030165458_gh3239_partner_agreement_v4.sql" >/dev/null || fail "forward not idempotent"
+psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "supabase/migrations_rollbacks/20261030165458_gh3239_partner_agreement_v4_rollback.sql" >/dev/null || fail "rollback failed"
+psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "supabase/migrations_rollbacks/20261030165458_gh3239_partner_agreement_v4_rollback.sql" >/dev/null || fail "rollback not idempotent"
 pass 3-ROLLBACK
-psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "$D/gh3239_partner_agreement_v4.sql" >/dev/null || fail "forward after rollback failed"
+psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "supabase/migrations/20261030165458_gh3239_partner_agreement_v4.sql" >/dev/null || fail "forward after rollback failed"
 pass 4-REAPPLIED
 for ph in 1-BASELINE 2-AFTER 3-ROLLBACK 4-REAPPLIED; do
   grep -q '^FAILING=0 of 23$' "$OUT/$ph.txt" || fail "$ph must report FAILING=0 of the full check list"
@@ -39,7 +39,7 @@ diff "$OUT/2-AFTER.txt" "$OUT/4-REAPPLIED.txt" >/dev/null || fail "REAPPLIED dif
 # negative control: the md5 guard refuses a drifted register_partner and the transaction leaves no gh3239 object
 NC=gh3239_proof_nc; mkdb "$NC"
 psql -q -d "$NC" -v ON_ERROR_STOP=1 -c "DO \$x\$ BEGIN EXECUTE replace(pg_get_functiondef('public.register_partner(text,text,text,text,text,text,text,text,text,text,jsonb,text,text,text,text,text,boolean,text,text,text,text)'::regprocedure), 'rate_limited: %', 'rate-limited: %'); END \$x\$;" >/dev/null || exit 2
-if psql -q -d "$NC" -v ON_ERROR_STOP=1 -f "$D/gh3239_partner_agreement_v4.sql" > "$OUT/nc.txt" 2>&1; then
+if psql -q -d "$NC" -v ON_ERROR_STOP=1 -f "supabase/migrations/20261030165458_gh3239_partner_agreement_v4.sql" > "$OUT/nc.txt" 2>&1; then
   fail "NEGATIVE CONTROL: forward applied over a drifted register_partner"
 else
   grep -q 'register_partner() body drifted' "$OUT/nc.txt" || fail "NEGATIVE CONTROL: forward failed for the wrong reason: $(cat "$OUT/nc.txt")"

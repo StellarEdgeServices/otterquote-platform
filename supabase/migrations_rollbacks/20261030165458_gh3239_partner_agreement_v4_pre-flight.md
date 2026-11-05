@@ -1,9 +1,9 @@
 <!--
-STATUS (gh-1438, as of 2026-10-30T15:00:00Z): NOT APPLIED
+STATUS (gh-1438, as of 2026-11-05): APPLIED to production as ledger version 20261030165458 (#3239 (ledger row read-only 2026-11-05)); this file is not run
 FILE ROLE: pre-flight file of set gh3239_partner_agreement_v4 (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: drafted 2026-10-30 under #3239; production read-only queries the same day (project yeszghaspzwwstvsrioa). No database was written to produce this file.
-REPO COPY: none. When applied, move to supabase/migrations_rollbacks/.
-DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+REPO COPY: forward supabase/migrations/20261030165458_gh3239_partner_agreement_v4.sql; this pre-flight is in supabase/migrations_rollbacks/.
+Pre-flight record; the forward migration is already applied.
 -->
 # Pre-flight: gh3239_partner_agreement_v4
 

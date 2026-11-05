@@ -9,7 +9,7 @@
     "repo_migrations_scan": "filesystem scan of supabase/migrations/ on this branch (excludes _rollback.sql and _pre-flight.md), de-duplicated -- 192 distinct version prefixes"
   },
   "counts": {
-    "applied_versions_total": 252,
+    "applied_versions_total": 256,
     "applied_no_repo_file": 36,
     "repo_file_no_applied": 18
   },
@@ -265,7 +265,11 @@
     "20261101172143",
     "20261105194055",
     "20261105211705",
-    "20261105211753"
+    "20261105211753",
+    "20261030141016",
+    "20261030141726",
+    "20261030165458",
+    "20261031181159"
   ],
   "applied_no_repo_file_versions": [
     "20260423184557",
@@ -345,6 +349,7 @@
     "rw-f35 (2026-11-01, gh3240): 20261031181122 gh3240_revoke_client_truncate applied to production (issue #3240 comment 6547259462) and filed under supabase/migrations/ by git mv from supabase/migrations_drafts/ (rollback and pre-flight moved to supabase/migrations_rollbacks/ under the same version; the proof runner supabase/tests/gh3240_revoke_client_truncate_proof_run.sh repointed); applied_versions_total 246 -> 247. The ledger row stores the same statements without the comment header and BEGIN/COMMIT (whitespace-normalised md5 e2eb100b3f9d7427 equals the draft's); only header comments were edited. applied_no_repo_file_versions (36) and repo_file_no_applied_versions (18) are unchanged.",
     "cto87 (2026-10-29, gh-3137): one version applied through the ledger on 2026-10-28 (CTO RUN 85), 20261028152549 gh2995_accept_cpa_append_only, is added to applied_versions and filed under supabase/migrations/ byte for byte from supabase/migrations_drafts/gh2995_accept_cpa_append_only.sql at 0f9fd397 (sha256 a36bd8c1d395ca717a4d73b43147245aa92b3768da8adf833385f28064b8a6d3); applied_versions_total 246 -> 247. The rollback file is corrected to the saved production pre-image of contractors_freeze_privileged_columns() (pg_get_functiondef md5 c6ba2d09301424037f5ec024a281806d).",
     "rw-f35 (2026-11-01, gh3284): 20261101172143 gh3284_reserved_slugs_add applied to production (issue #3284 comment 6561302107) and filed under supabase/migrations/ by git mv from supabase/migrations_drafts/ (rollback moved to supabase/migrations_rollbacks/ under the same version); applied_versions_total 246 -> 247. The ledger row stores only the INSERT statement (96 characters, no comments, no BEGIN/COMMIT); the filed file adds the draft's comment header and BEGIN/COMMIT around the same INSERT, and only header comments were edited from the draft. applied_no_repo_file_versions (36) and repo_file_no_applied_versions (18) are unchanged.",
-    "cto96 (2026-11-05, filing, Refs #3320): three versions applied to production on 2026-11-05 are added to applied_versions and filed under supabase/migrations/<ledger version>_<name>.sql by git mv from supabase/migrations_drafts/ (rollback and pre-flight moved to supabase/migrations_rollbacks/ under the same version; the three proof runners repointed); applied_versions_total 249 -> 252. 20261105194055 gh3229_partner_measurement_fee (issue #3229 comment 6667513359, applied from PR #3236 head ff9a203b, sha256 prefix ce009c89f44ff119), 20261105211705 gh3257_get_my_referrals_privacy (#3257 comment 6669790662, sha256 prefix b17dd9c4d12ed087) and 20261105211753 gh3259_referrals_revoke_status_job_value (#3259 comment 6669808019; applied bytes were the draft, sha256 prefix cb6be35c8f85acc5, plus one line, SET LOCAL gh3259.frontend_published = 'yes'; inserted right after its BEGIN;, sha256 prefix dd4ba6f0b368c393; the filed file carries that line). Each filed file differs from the applied bytes in three header comment lines only (STATUS, REPO COPY, DO NOT RUN); statements are unchanged. gh3245 (#3326) is not applied and stays a draft. applied_no_repo_file_versions (36) and repo_file_no_applied_versions (18) are unchanged."
+    "cto96 (2026-11-05, filing, Refs #3320): three versions applied to production on 2026-11-05 are added to applied_versions and filed under supabase/migrations/<ledger version>_<name>.sql by git mv from supabase/migrations_drafts/ (rollback and pre-flight moved to supabase/migrations_rollbacks/ under the same version; the three proof runners repointed); applied_versions_total 249 -> 252. 20261105194055 gh3229_partner_measurement_fee (issue #3229 comment 6667513359, applied from PR #3236 head ff9a203b, sha256 prefix ce009c89f44ff119), 20261105211705 gh3257_get_my_referrals_privacy (#3257 comment 6669790662, sha256 prefix b17dd9c4d12ed087) and 20261105211753 gh3259_referrals_revoke_status_job_value (#3259 comment 6669808019; applied bytes were the draft, sha256 prefix cb6be35c8f85acc5, plus one line, SET LOCAL gh3259.frontend_published = 'yes'; inserted right after its BEGIN;, sha256 prefix dd4ba6f0b368c393; the filed file carries that line). Each filed file differs from the applied bytes in three header comment lines only (STATUS, REPO COPY, DO NOT RUN); statements are unchanged. gh3245 (#3326) is not applied and stays a draft. applied_no_repo_file_versions (36) and repo_file_no_applied_versions (18) are unchanged.",
+    "cto96 follow-up (2026-11-05, review of PR #3479, Refs #3320): the four predecessors the three filed files depend on were read in supabase_migrations.schema_migrations (read-only SELECT 2026-11-05) as applied and are added to applied_versions and filed under supabase/migrations/<ledger version>_<name>.sql by git mv from supabase/migrations_drafts/ (rollbacks and pre-flights to supabase/migrations_rollbacks/); applied_versions_total 252 -> 256: 20261030141016 gh3217a_get_my_referrals (sha256 prefix 4f12bc64fbf8ab6f, equals the draft), 20261030141726 gh3217b_referrals_column_allowlist (ac49a2a7032fd9c1, the draft wrapped in BEGIN; and COMMIT; as applied), 20261030165458 gh3239_partner_agreement_v4 (960feec56b02cf6b, equals the draft), 20261031181159 gh3241_get_my_referrals_opt_out (aebc180baf577fdaae, statements only: the ledger row has no comment header, no blank line before REVOKE and no trailing newline, and the filed file carries the header comments then those exact statements). gh3245 (#3326) is not applied and stays a draft."
   ]
 }

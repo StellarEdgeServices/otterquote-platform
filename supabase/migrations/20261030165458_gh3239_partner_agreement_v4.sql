@@ -1,9 +1,8 @@
--- STATUS (gh-1438, as of 2026-10-30T15:00:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-05): APPLIED to production as ledger version 20261030165458 (#3239 (ledger row read-only 2026-11-05))
 -- FILE ROLE: forward file of set gh3239_partner_agreement_v4 (rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-10-30 under #3239; production read-only SELECTs the same day (project yeszghaspzwwstvsrioa), details below. No database was written.
--- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and
---   pre-flight to supabase/migrations_rollbacks/.
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- REPO COPY: this file, filed under its ledger version; rollback and pre-flight in supabase/migrations_rollbacks/20261030165458_*. Header comments only differ from the draft.
+-- Already applied; do not run again.
 -- Evidence detail (production read-only 2026-10-30):
 --   register_partner(21 args) is SECURITY DEFINER, search_path public, pg_temp, EXECUTE to anon/authenticated/service_role,
 --   md5(prosrc) = 042da30fdc75423c32383035b27f2fa4 (length 14758), byte-identical to the body in

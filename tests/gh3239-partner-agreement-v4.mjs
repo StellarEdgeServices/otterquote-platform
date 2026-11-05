@@ -42,8 +42,8 @@ const archive = read('partner-agreement-v3.html');
 const legalMd = read('docs/legal/partner-agreement-v4-2026-10.md');
 const dashboard = read('partner-dashboard.html');
 const raf = read('refer-a-friend.html');
-const fwd = read('supabase/migrations_drafts/gh3239_partner_agreement_v4.sql');
-const rb = read('supabase/migrations_drafts/gh3239_partner_agreement_v4_rollback.sql');
+const fwd = read('supabase/migrations/20261030165458_gh3239_partner_agreement_v4.sql');
+const rb = read('supabase/migrations_rollbacks/20261030165458_gh3239_partner_agreement_v4_rollback.sql');
 const ef = read('supabase/functions/partner-invite-accept/index.ts');
 
 // ---------------------------------------------------------------- (v) versions
@@ -299,8 +299,8 @@ ok(/v_uid\s+uuid := auth\.uid\(\);/.test(acceptFn) && /WHERE user_id = v_uid/.te
 ok(/REVOKE ALL ON FUNCTION public\.accept_partner_agreement_v4\(\) FROM PUBLIC, anon;/.test(fwd) && /GRANT EXECUTE ON FUNCTION public\.accept_partner_agreement_v4\(\) TO authenticated;/.test(fwd), '(m3) accept RPC: anon revoked, authenticated granted');
 ok(/CREATE TRIGGER referral_agents_guard_agreement_columns\s+BEFORE UPDATE ON public\.referral_agents/.test(fwd), '(m4) column-lock trigger on referral_agents');
 ok(/042da30fdc75423c32383035b27f2fa4/.test(fwd) && /f4affeb5b17e2b4d242ce452686ada4d/.test(fwd) && /042da30fdc75423c32383035b27f2fa4/.test(rb), '(m5) forward and rollback pin the audited and rewritten register_partner md5');
-for (const f of ['gh3239_partner_agreement_v4.sql', 'gh3239_partner_agreement_v4_rollback.sql', 'gh3239_partner_agreement_v4_pre-flight.md'])
-  ok(/STATUS \(gh-1438, as of [^)]+\): NOT APPLIED/.test(read('supabase/migrations_drafts/' + f)), `(m6) ${f} carries the STATUS header`);
+for (const f of ['supabase/migrations/20261030165458_gh3239_partner_agreement_v4.sql', 'supabase/migrations_rollbacks/20261030165458_gh3239_partner_agreement_v4_rollback.sql', 'supabase/migrations_rollbacks/20261030165458_gh3239_partner_agreement_v4_pre-flight.md'])
+  ok(/STATUS \(gh-1438, as of [^)]+\): APPLIED to production as ledger version 20261030165458/.test(read(f)), `(m6) ${f} carries the STATUS header (filed, APPLIED)`);
 ok(/REVOKE EXECUTE ON FUNCTION public\.record_partner_agreement_reacceptance\(uuid, text\) FROM authenticated;/.test(fwd)
   && /GRANT EXECUTE ON FUNCTION public\.record_partner_agreement_reacceptance\(uuid, text\) TO authenticated;/.test(rb), '(m8) re-acceptance RPC revoked from authenticated; rollback grants it back');
 ok(fs.existsSync(path.join(root, 'supabase/tests/gh3239_partner_agreement_v4_proof_run.sh')) && fs.existsSync(path.join(root, 'supabase/tests/gh3239_partner_agreement_v4_proof.sql')), '(m7) throwaway-Postgres proof and runner are in the repo');
