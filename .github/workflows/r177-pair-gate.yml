@@ -38,8 +38,12 @@ name: R-177 pair gate
 # "unflagged" and stay green. run.cjs therefore also runs the labeller's predicate on the PR diff
 # (scripts/r177/predicate.mjs, default branch): a predicate hit flags the PR even before the label.
 #
+# STALE RED (gh-2965, comment 6669372188): the check run the comment job posts lands in another check
+# suite, so a failed `pull_request` run on the same head would keep showing red. Once the pair is
+# present the comment job therefore re-runs that run (run.cjs rerunStaleGate); no manual step.
+#
 # SAFETY: two jobs. `r177-pair-gate` (pull_request, merge_group) holds READ-ONLY permissions.
-# `r177-pair-gate-comment` (issue_comment) is the only job with `checks: write`. Neither checks
+# `r177-pair-gate-comment` (issue_comment) is the only job with `checks: write` and `actions: write` (the re-run). Neither checks
 # out nor executes PR code: scripts/r177/gate.mjs and run.cjs are read from the DEFAULT branch,
 # actions are pinned by full commit sha, credentials are not persisted, only GITHUB_TOKEN is used.
 # issue_comment (created, edited, deleted): deleting a pair comment re-evaluates and turns red.
@@ -103,6 +107,8 @@ jobs:
       pull-requests: read
       issues: read
       checks: write
+      # gh-2965: actions: write lets this job re-run the failed pull_request run; this job only.
+      actions: write
     concurrency:
       group: r177-pair-gate-${{ github.event.issue.number }}
       cancel-in-progress: false
