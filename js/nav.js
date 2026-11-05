@@ -310,6 +310,7 @@ const Nav = {
         { href: '/index.html',            label: 'Home',            id: 'home' },
         { href: '/how-it-works.html',     label: 'How It Works',    id: 'how-it-works' },
         { href: '/help-measurements.html',label: 'Measurements',    id: 'measurements' },
+        { href: '/pricing.html',          label: 'Pricing',         id: 'pricing' },
         { href: '/refer-a-friend.html',   label: 'Refer a Friend',  id: 'refer-a-friend' },
         { href: '/faq.html',              label: 'FAQ',             id: 'faq' },
       ],
@@ -552,7 +553,11 @@ const Nav = {
     // everywhere the flag is set. Removal only -- every other homeowner
     // link (Home, How It Works, Measurements) is unaffected.
     if (role === 'homeowner' && this._isInspectorTrack()) {
-      return links.filter(l => l.href !== '/refer-a-friend.html' && l.href !== '/faq.html');
+      return links.filter(l => l.href !== '/refer-a-friend.html' && l.href !== '/faq.html' && l.href !== '/pricing.html');
+    }
+    // gh-3387 (D2.4/D4.1): "Pricing" is a homeowner-only link (what a homeowner pays), same rule as the footer Pricing link (gh-3352): withheld on partner pages and on the inspector track.
+    if (role === 'homeowner' && this._isPartnerPage()) {
+      return links.filter(l => l.href !== '/pricing.html');
     }
     return links;
   },

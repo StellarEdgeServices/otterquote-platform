@@ -1607,7 +1607,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
 <meta property="og:description" content="{html.escape(meta_desc, quote=True)}">
 <meta property="og:type" content="website">
 <meta property="og:url" content="{page_url}">
-<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image" content="https://otterquote.com/img/social/og-default.jpg">
 <meta property="og:site_name" content="Otter Quotes">
 
 <!-- GA4 -->
@@ -1880,7 +1880,7 @@ def build_hub_page(entries: list, state_names: dict) -> str:
 <meta property="og:description" content="{meta_desc}">
 <meta property="og:type" content="website">
 <meta property="og:url" content="{HUB_URL}">
-<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image" content="https://otterquote.com/img/social/og-default.jpg">
 <meta property="og:site_name" content="Otter Quotes">
 
 <!-- GA4 -->
