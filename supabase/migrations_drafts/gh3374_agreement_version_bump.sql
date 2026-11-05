@@ -1,6 +1,6 @@
 -- gh-3374: move the server-held contractor AGREEMENT version label from 'v2-2026-10' to 'v3-2026-11' (D-366 / D-138 Amendment 2).
--- STATUS (gh-1438, as of 2026-11-04): NOT APPLIED
--- EVIDENCE: drafted on main 33f7c8ae. No production read was made by the author (no database connection, by instruction). The target table
+-- STATUS (gh-1438, as of 2026-11-05T18:07:53Z): APPLIED
+-- EVIDENCE: applied to production 2026-11-05T18:07:45Z from this file at PR #3405 head 3b0ab9de (sha256 7f8d2a24d233...), on Dustin's word in chat 2026-11-05 12:59 ET. Ledger version 20261105180745, name gh3374_agreement_version_bump. Read back 18:07:53Z: agreement_version_current.version_label = v3-2026-11. Record: #3374 comment 6665505964.
 -- public.agreement_version_current and its seed 'v2-2026-10' come from supabase/migrations_drafts/gh3073_agreement_version_stamp.sql, which the #3073
 -- thread records as APPLIED 2026-10-29 (ledger 20261029190222, comment 6505803035); the applier re-reads that first (pre-flight).
 -- REPO COPY: none
