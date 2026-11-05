@@ -40,7 +40,7 @@ async function run(claim: Record<string, unknown>, env: Env, origin?: string, q:
     if (url.includes("api.stripe.com")) {
       const auth = String((init?.headers as Record<string, string> | undefined)?.Authorization ?? "");
       stripe.push({ url, method: init?.method ?? "GET", key: atob(auth.replace("Basic ", "")).replace(/:$/, "") });
-      const body = url.includes("/payment_intents/") ? { latest_charge: "ch_1" } : { id: "re_1", status: "succeeded" };
+      const body = url.includes("/payment_intents/") ? { latest_charge: "ch_1", amount: 18054, metadata: { platform_fee_cents: "17500" } } : { id: "re_1", status: "succeeded" };
       return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
     }
     if (url.includes("api.mailgun.net")) {
