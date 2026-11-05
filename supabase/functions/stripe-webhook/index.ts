@@ -47,7 +47,7 @@ import {
   isFinalSubmitEnabled,
   postDisputeEvidence,
 } from "./dispute-routing.ts";
-import { assembleTextEvidence, claimRecordLines } from "./dispute-evidence-fields.ts";
+import { assembleTextEvidence, claimRecordLines, formatAcceptedFeeDollars } from "./dispute-evidence-fields.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 import {
@@ -266,7 +266,7 @@ async function createClickUpTask(params: {
   const feeInfo = feeAcceptance
     ? [
         `**Fee %:** ${feeAcceptance.fee_pct}%`,
-        `**Fee Amount:** $${(feeAcceptance.fee_amount / 100).toFixed(2)}`,
+        `**Fee Amount:** ${formatAcceptedFeeDollars(feeAcceptance.fee_amount)}`,
         `**Accepted At:** ${feeAcceptance.accepted_at}`,
         `**Fee Text Shown:** ${feeAcceptance.fee_text_displayed}`,
         `**Invoice URL:** ${feeAcceptance.invoice_url ?? "None"}`,
@@ -363,7 +363,7 @@ function buildEvidencePayload(params: {
     serviceDocLines.push(
       "FEE ACCEPTANCE RECORD (UETA Layer 1 — D-215):",
       `  Fee Rate: ${feeAcceptance.fee_pct}%`,
-      `  Fee Amount: $${(feeAcceptance.fee_amount / 100).toFixed(2)}`,
+      `  Fee Amount: ${formatAcceptedFeeDollars(feeAcceptance.fee_amount)}`,
       `  Accepted At: ${feeAcceptance.accepted_at}`,
       `  IP Address: ${feeAcceptance.ip_address ?? "Not recorded"}`,
       `  Fee Text Shown to Contractor: "${feeAcceptance.fee_text_displayed}"`,
