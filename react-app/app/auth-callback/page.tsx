@@ -57,6 +57,7 @@ import { rescueImplicitFragment } from './implicit-fragment';
 import { readFreshSignupRaw } from '@/lib/signup-storage';
 import { adoptFirstTouchFromParam, recordFirstTouch } from '@/lib/attribution';
 import { CLAIM_INTAKE_COLUMNS, claimFinishedIntake, signupEmailMismatch } from '@/lib/claim-intake';
+import { takeStoredReturn, withReturn } from '@/lib/return-target';
 
 // ─── Name recovery for the Google path (gh-1901 Option 2) ────────────────────
 
@@ -423,7 +424,10 @@ export default function AuthCallbackPage() {
       // sent to the dashboard never had its address, phone, funding and
       // trades saved: trade-selector is the only page that writes them, and
       // its save UPDATEs the existing claim rather than inserting another.
-      let destination = TRADE_SELECTOR_PATH;
+      // gh-3471 (D-419): a sign-up that started on a measurement link carries its allowlisted return token along, unchanged in
+      // order: trade-selector still comes first for a draft, and the dashboard still runs its state gate before it forwards.
+      const returnToken = takeStoredReturn();
+      let destination = withReturn(TRADE_SELECTOR_PATH, returnToken);
       try {
         const { data: claim } = await supabase
           .from('claims')
@@ -433,7 +437,7 @@ export default function AuthCallbackPage() {
           .limit(1)
           .maybeSingle();
         if (claimFinishedIntake(claim)) {
-          destination = HOMEOWNER_DASHBOARD_URL;
+          destination = withReturn(HOMEOWNER_DASHBOARD_URL, returnToken);
         }
       } catch {
         // No claim found — fall through to trade-selector

@@ -212,7 +212,7 @@ main.pi-main {
       if (!Array.isArray(savedRows) || savedRows.length === 0) throw new Error('update_zero_rows: claims (project info cash)');
 
       gtag('event', 'project_info_saved', { job_type: 'retail' });
-      window.location.href = '/dashboard.html';
+      window.location.href = Auth.dashboardUrlWithReturn(window.location.search); // gh-3471: carries a valid ?return= token on to the dashboard
     } catch (err) {
       console.error('[project-info-cash] submit failed:', err);
       // gh-2105: the internal update_zero_rows token is logged above, never shown.

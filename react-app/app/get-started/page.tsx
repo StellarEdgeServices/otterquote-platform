@@ -129,6 +129,7 @@ import { readFirstTouch } from '@/lib/attribution';
 import { withFirstTouchParam } from '@/lib/attribution-core';
 import { formatPhoneValue, isValidEmail, isValidZip, fullAddress, splitLeadName } from './utils';
 import { captureVariantFromUrl } from '@/lib/variant';
+import { captureReturnFromUrl } from '@/lib/return-target';
 import { stampRoleOwner } from '@/lib/role-breadcrumb-owner';
 import { stampSignup } from '@/lib/signup-storage';
 import { SMS_CONSENT_LABEL } from '../../constants/legal';
@@ -597,6 +598,12 @@ export default function GetStartedPage() {
   // from this origin. Runs once per mount; best-effort, never throws.
   useEffect(() => {
     captureVariantFromUrl();
+  }, []);
+
+  // gh-3471 (D-419): ?return=<token> from a signed-out measurement click. Kept for this tab until /auth-callback;
+  // only an allowlisted token is kept (see lib/return-target.ts). Does not change sign-up, consent or any redirect here.
+  useEffect(() => {
+    captureReturnFromUrl(window.location.search);
   }, []);
 
   // Form state
