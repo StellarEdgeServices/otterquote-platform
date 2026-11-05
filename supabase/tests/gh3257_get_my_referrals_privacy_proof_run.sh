@@ -16,7 +16,7 @@ if [ "${1:-}" = "--mutations" ]; then MUT=1; shift; fi
 OUT="${1:-$(mktemp -d)}"; mkdir -p "$OUT"
 D=supabase/migrations_drafts; T=supabase/tests
 LIVE="$D/gh3217a_get_my_referrals.sql"; BASE="$D/gh3241_get_my_referrals_opt_out.sql"
-FWD="$D/gh3257_get_my_referrals_privacy.sql"; RBK="$D/gh3257_get_my_referrals_privacy_rollback.sql"
+FWD="supabase/migrations/20261105211705_gh3257_get_my_referrals_privacy.sql"; RBK="supabase/migrations_rollbacks/20261105211705_gh3257_get_my_referrals_privacy_rollback.sql"
 SETUP="$T/gh3241_get_my_referrals_opt_out_scratch_setup.sql"; PROOF="$T/gh3257_get_my_referrals_privacy_proof.sql"
 LIVE_MD5=e63684bf6ce7d5b2da454ee00b31a9e9
 GH3241_MD5=358ef8ae03a472b546d6ffa7e791d263

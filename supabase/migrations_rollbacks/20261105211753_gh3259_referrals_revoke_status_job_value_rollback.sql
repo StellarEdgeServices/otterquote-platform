@@ -1,8 +1,8 @@
--- STATUS (gh-1438, as of 2026-10-30T21:00:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-05): forward APPLIED as ledger version 20261105211753; this rollback is NOT run
 -- FILE ROLE: rollback file of set gh3259_referrals_revoke_status_job_value (forward and pre-flight beside it)
 -- EVIDENCE: drafted 2026-10-30 under #3259. Restores the production state read 2026-10-30 (project yeszghaspzwwstvsrioa): attacl of referrals.status and referrals.job_value = {authenticated=r/postgres}. No database was written to produce this file.
--- REPO COPY: none. When the forward is applied, move this file to supabase/migrations_rollbacks/ under the forward's ledger version.
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- REPO COPY: this file, beside the filed forward supabase/migrations/20261105211753_gh3259_referrals_revoke_status_job_value.sql.
+-- Run only as a deliberate rollback.
 --
 -- Rollback: gh3259_referrals_revoke_status_job_value. Re-grants SELECT (status, job_value) to authenticated, grantor postgres (run it as
 -- postgres, the table owner, so the ACL entry reads authenticated=r/postgres exactly as before). anon held neither column before the

@@ -19,7 +19,7 @@ cd "$(dirname "$0")/../.."
 OUT="${1:-$(mktemp -d)}"; mkdir -p "$OUT"
 D=supabase/migrations_drafts; T=supabase/tests
 LIVE="$D/gh3217a_get_my_referrals.sql"
-FWD="$D/gh3259_referrals_revoke_status_job_value.sql"; RBK="$D/gh3259_referrals_revoke_status_job_value_rollback.sql"
+FWD="supabase/migrations/20261105211753_gh3259_referrals_revoke_status_job_value.sql"; RBK="supabase/migrations_rollbacks/20261105211753_gh3259_referrals_revoke_status_job_value_rollback.sql"
 SETUP="$T/gh3259_referrals_column_revoke_scratch_setup.sql"; PROBE="$T/gh3259_referrals_column_revoke_probe.sql"
 LIVE_MD5=e63684bf6ce7d5b2da454ee00b31a9e9
 DB=gh3259_proof; rc=0
@@ -100,7 +100,9 @@ probe "$DB" before
 if check_phase "$OUT/before.txt" BEFORE BEFORE; then ok "BEFORE: partner JWT reads job_value and status directly (today's success)"; else bad "BEFORE expectations"; fi
 
 echo "== 1. GATE (forward without the operator statement refuses and changes nothing)"
-if apply "$DB" "$FWD" gate; then bad "forward ran without the gate statement"; else
+# the filed forward carries the operator statement as applied (ledger 20261105211753); the gate phase runs it with that one line removed
+grep -v -E "^SET LOCAL gh3259\.frontend_published = 'yes';" "$FWD" > "$OUT/fwd_ungated.sql"
+if apply "$DB" "$OUT/fwd_ungated.sql" gate; then bad "forward ran without the gate statement"; else
   grep -q P0A92 "$OUT/apply-gate.log" || grep -q 'gh3259: refused' "$OUT/apply-gate.log" && ok "gate refused: $(grep -o 'gh3259: refused[^.]*' "$OUT/apply-gate.log" | head -1)" || bad "forward failed for another reason: $(head -3 "$OUT/apply-gate.log")"
 fi
 snapshot "$DB" | diff -q - "$OUT/snap0.txt" >/dev/null && ok "catalog unchanged after the refused run" || bad "refused run changed the catalog"

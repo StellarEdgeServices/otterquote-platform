@@ -1,9 +1,9 @@
 <!--
-STATUS (gh-1438, as of 2026-10-30T13:30:00Z): NOT APPLIED
+STATUS (gh-1438, as of 2026-11-05): APPLIED to production as ledger version 20261105194055 (#3229 comment 6667513359); this file is not run
 FILE ROLE: pre-flight file of set gh3229_partner_measurement_fee (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: drafted 2026-10-30 under #3229; production read-only queries the same day (project yeszghaspzwwstvsrioa). No database was written to produce this file.
-REPO COPY: none. When applied, move to supabase/migrations_rollbacks/.
-DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+REPO COPY: forward supabase/migrations/20261105194055_gh3229_partner_measurement_fee.sql; rollback and pre-flight in supabase/migrations_rollbacks/20261105194055_gh3229_partner_measurement_fee_*.
+Pre-flight record; the forward migration is already applied.
 -->
 # Pre-flight: gh3229_partner_measurement_fee
 

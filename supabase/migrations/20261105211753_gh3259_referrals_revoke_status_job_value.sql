@@ -1,8 +1,8 @@
--- STATUS (gh-1438, as of 2026-10-30T21:00:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-05): APPLIED to production as ledger version 20261105211753 (#3259 comments 6669808019 and 6669872016)
 -- FILE ROLE: forward file of set gh3259_referrals_revoke_status_job_value (rollback and pre-flight beside it)
 -- EVIDENCE: drafted 2026-10-30 under #3259. Production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): attacl of referrals.status and referrals.job_value = {authenticated=r/postgres}; has_column_privilege('authenticated','public.referrals','job_value','SELECT') = true; relacl has no table-level SELECT for anon/authenticated ({postgres=arwdDxtm/postgres,anon=wdDxtm/postgres,authenticated=wdDxtm/postgres,service_role=arwdDxtm/postgres}); get_my_referrals() and admin_list_referrals() are SECURITY DEFINER, owned by postgres. No database was written to produce this file.
--- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- REPO COPY: this file, filed under its ledger version; rollback and pre-flight in supabase/migrations_rollbacks/20261105211753_gh3259_referrals_revoke_status_job_value_*. Header comments only differ from the draft that was applied; the SQL is unchanged.
+-- Already applied; do not run again.
 --
 -- Migration: gh3259_referrals_revoke_status_job_value
 -- GitHub: #3259 (follow-up to #3257 / PR #3258; Dustin's ruling on #3257: "Match the policy (Recommended)"). Project P18.
@@ -32,6 +32,7 @@
 --
 -- Rerun-safe: a second run (with the gate statement) revokes nothing new and passes its own assertions.
 BEGIN;
+SET LOCAL gh3259.frontend_published = 'yes';
 
 SET LOCAL lock_timeout = '5s';
 

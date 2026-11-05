@@ -1,8 +1,8 @@
--- STATUS (gh-1438, as of 2026-10-30T18:00:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-05): APPLIED to production as ledger version 20261105211705 (#3257 comments 6669790662 and 6669871613)
 -- FILE ROLE: forward file of set gh3257_get_my_referrals_privacy (pre-flight is gh3257_get_my_referrals_privacy_pre-flight.md)
 -- EVIDENCE: drafted 2026-10-30 under #3257. Production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): get_my_referrals() is still the gh3217a body (md5(prosrc) = e63684bf6ce7d5b2da454ee00b31a9e9), i.e. gh3241 (PR #3255) is NOT applied yet; referrals.status is NOT NULL DEFAULT 'clicked' with 0 NULL rows; 1 referral has a job_value; 0 referrals are linked to an opted-out claim. No database was written to produce this file.
--- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- REPO COPY: this file, filed under its ledger version; rollback and pre-flight in supabase/migrations_rollbacks/20261105211705_gh3257_get_my_referrals_privacy_*. Header comments only differ from the draft that was applied; the SQL is unchanged.
+-- Already applied; do not run again.
 --
 -- Migration: gh3257_get_my_referrals_privacy
 -- GitHub: #3257 (Dustin's ruling "Match the policy (Recommended)", 2026-10-30). Project P18. R-134 protective-only.
