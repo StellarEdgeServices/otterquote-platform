@@ -4,6 +4,7 @@
 // Wording: none added. The existing "Shingle:" label prints the value. Bad-decking / non-recoverable-depreciation initials and payment terms
 // have no approved text and are deliberately NOT built here (see #3288 Q:).
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { redactSowTextOrRefuse, RedactionUnavailableError } from "../_shared/homeowner-text-redact.ts";
 
 const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
 function grab(name: string): string {
@@ -40,6 +41,47 @@ Deno.test("legacy PC data is kept for history and fills what the selection lacks
 });
 
 Deno.test("the retail/insurance Scope of Work input is built from the merged selections", () => {
-  assert(src.includes("claimData.project_confirmation = mergeSowSelections(claimData.project_confirmation, claimData)"), "SOW builder must merge claim colour selection");
+  assert(src.includes("claimData.project_confirmation = mergeSowSelections(claimData.project_confirmation, claimData, bidBrand)"), "SOW builder must merge claim colour selection");
   assert(src.includes("projectConfirmation: d390Pc"), "SOW still receives the merged object");
+});
+
+// ---- review 6668152181: run the real handler block (merge + D-390 redaction) against a claim --------------------------------------------------
+const bStart = src.indexOf("if (claimData) claimData.project_confirmation = mergeSowSelections(");
+const bEnd = src.indexOf("        : null;", bStart) + "        : null;".length;
+assert(bStart > -1 && bEnd > bStart, "handler block moved; update this test's anchors");
+const blockSrc = "// @ts-nocheck\n" + grab("mergeSowSelections").replace("function mergeSowSelections", "export function mergeSowSelections") +
+  "\nexport function build(claimData, bidBrand, d390FeeCollected, redactSowTextOrRefuse) {\n" + src.slice(bStart, bEnd) + "\nreturn d390Pc;\n}\n";
+// deno-lint-ignore no-explicit-any
+const { build } = await import("data:application/typescript," + encodeURIComponent(blockSrc)) as any;
+const PHONE = "317-555-0142", EMAIL = "jane@example.com";
+
+Deno.test("F1: a phone number and e-mail typed into the colour are removed before the fee and print after it", () => {
+  const claim = () => ({ color_brand: "GAF", color_name: `Charcoal call ${PHONE} ${EMAIL}`, project_confirmation: null });
+  const before = build(claim(), "GAF", false, redactSowTextOrRefuse);
+  assert(!before.shingleColor.includes(PHONE) && !before.shingleColor.includes(EMAIL), `unredacted: ${before.shingleColor}`);
+  assert(before.shingleColor.startsWith("Charcoal call"));
+  assertEquals(build(claim(), "GAF", true, redactSowTextOrRefuse).shingleColor, `Charcoal call ${PHONE} ${EMAIL}`);
+});
+
+Deno.test("F1: the saved brand is redacted too", () => {
+  const out = build({ color_brand: `GAF ${PHONE}`, color_name: "Slate", project_confirmation: null }, "GAF", false, redactSowTextOrRefuse);
+  assert(!out.shingleManufacturer.includes(PHONE));
+});
+
+Deno.test("F1: a redaction failure still refuses (never prints raw)", () => {
+  const boom = () => { throw new RedactionUnavailableError("boom"); };
+  let threw = false;
+  try { build({ color_name: "Slate", project_confirmation: null }, null, false, boom); } catch (e) { threw = e instanceof RedactionUnavailableError; }
+  assert(threw);
+});
+
+Deno.test("F2: a saved brand that disagrees with the bid brand prints no Shingle selection", () => {
+  assertEquals(mergeSowSelections(null, { color_brand: "GAF", color_name: "Charcoal" }, "Owens Corning"), null);
+  assertEquals(build({ color_brand: "GAF", color_name: "Charcoal", project_confirmation: null }, "Owens Corning", true, redactSowTextOrRefuse), null);
+});
+
+Deno.test("F2: matching, containing or unknown bid brands still print the selection", () => {
+  assertEquals(mergeSowSelections(null, { color_brand: "GAF", color_name: "Charcoal" }, "GAF Timberline")?.shingleColor, "Charcoal");
+  assertEquals(mergeSowSelections(null, { color_brand: "gaf", color_name: "Charcoal" }, "GAF")?.shingleColor, "Charcoal");
+  assertEquals(mergeSowSelections(null, { color_brand: "GAF", color_name: "Charcoal" }, null)?.shingleColor, "Charcoal");
 });
