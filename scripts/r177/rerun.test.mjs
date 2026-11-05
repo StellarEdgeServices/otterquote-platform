@@ -17,6 +17,8 @@ const require = createRequire(import.meta.url);
 const runCjs = require('./run.cjs');
 const rerunStaleGate = runCjs.rerunStaleGate;
 const SHA = 'a'.repeat(40);
+const SAME = { full_name: 'o/r' };
+const run = (o) => ({ head_repository: SAME, ...o });
 
 function fake(runs, { rerunError, failedError } = {}) {
   const calls = { list: [], failedJobs: [], full: [] };
@@ -39,8 +41,8 @@ describe('rerunStaleGate', () => {
   it('is exported', () => assert.equal(typeof rerunStaleGate, 'function'));
 
   it('re-runs the failed pull_request run on the head sha', async () => {
-    const f = fake([{ id: 11, status: 'completed', conclusion: 'failure' }]);
-    await rerunStaleGate({ ...f, ...ctx, headSha: SHA });
+    const f = fake([run({ id: 11, status: 'completed', conclusion: 'failure' })]);
+    await rerunStaleGate({ ...f, ...ctx, headSha: SHA, trusted: true });
     assert.equal(f.calls.list[0].workflow_id, 'r177-pair-gate.yml');
     assert.equal(f.calls.list[0].event, 'pull_request');
     assert.equal(f.calls.list[0].head_sha, SHA);
@@ -48,42 +50,73 @@ describe('rerunStaleGate', () => {
   });
 
   it('re-runs a cancelled run (a burst of comments can cancel a pending run)', async () => {
-    const f = fake([{ id: 12, status: 'completed', conclusion: 'cancelled' }]);
-    await rerunStaleGate({ ...f, ...ctx, headSha: SHA });
+    const f = fake([run({ id: 12, status: 'completed', conclusion: 'cancelled' })]);
+    await rerunStaleGate({ ...f, ...ctx, headSha: SHA, trusted: true });
     assert.deepEqual([...f.calls.failedJobs, ...f.calls.full].map((c) => c.run_id), [12]);
   });
 
   it('does nothing when the latest run is already green', async () => {
-    const f = fake([{ id: 13, status: 'completed', conclusion: 'success' }]);
-    await rerunStaleGate({ ...f, ...ctx, headSha: SHA });
+    const f = fake([run({ id: 13, status: 'completed', conclusion: 'success' })]);
+    await rerunStaleGate({ ...f, ...ctx, headSha: SHA, trusted: true });
     assert.equal(f.calls.failedJobs.length + f.calls.full.length, 0);
   });
 
   it('does nothing while the latest run is still queued or in progress', async () => {
     for (const status of ['queued', 'in_progress', 'waiting', 'pending']) {
-      const f = fake([{ id: 14, status, conclusion: null }]);
-      await rerunStaleGate({ ...f, ...ctx, headSha: SHA });
+      const f = fake([run({ id: 14, status, conclusion: null })]);
+      await rerunStaleGate({ ...f, ...ctx, headSha: SHA, trusted: true });
       assert.equal(f.calls.failedJobs.length + f.calls.full.length, 0, status);
     }
   });
 
   it('does nothing when there is no pull_request run on that head', async () => {
     const f = fake([]);
-    await rerunStaleGate({ ...f, ...ctx, headSha: SHA });
+    await rerunStaleGate({ ...f, ...ctx, headSha: SHA, trusted: true });
     assert.equal(f.calls.failedJobs.length + f.calls.full.length, 0);
   });
 
   it('never throws: a rerun API error is a warning, not a failed comment job', async () => {
-    const f = fake([{ id: 15, status: 'completed', conclusion: 'failure' }], { failedError: Object.assign(new Error('503'), { status: 503 }) });
-    await rerunStaleGate({ ...f, ...ctx, headSha: SHA });
+    const f = fake([run({ id: 15, status: 'completed', conclusion: 'failure' })], { failedError: Object.assign(new Error('503'), { status: 503 }) });
+    await rerunStaleGate({ ...f, ...ctx, headSha: SHA, trusted: true });
     assert.ok(f.infos.some(([k]) => k === 'warning'));
   });
 
   it('never throws when listing runs fails', async () => {
     const f = fake([]);
     f.github.rest.actions.listWorkflowRuns = async () => { throw new Error('boom'); };
-    await rerunStaleGate({ ...f, ...ctx, headSha: SHA });
+    await rerunStaleGate({ ...f, ...ctx, headSha: SHA, trusted: true });
     assert.ok(f.infos.some(([k]) => k === 'warning'));
+  });
+});
+
+describe('rerunStaleGate refusals (review 6669589037)', () => {
+  const none = (f) => f.calls.failedJobs.length + f.calls.full.length;
+  it('untrusted commenter: no re-run and no API call at all', async () => {
+    for (const trusted of [false, undefined, 'yes']) {
+      const f = fake([run({ id: 21, status: 'completed', conclusion: 'failure' })]);
+      await rerunStaleGate({ ...f, ...ctx, headSha: SHA, trusted });
+      assert.equal(none(f), 0, String(trusted));
+      assert.equal(f.calls.list.length, 0);
+    }
+  });
+  it('fork head: no re-run, even for a failure', async () => {
+    for (const hr of [{ full_name: 'outsider/r' }, null, undefined]) {
+      const f = fake([{ id: 22, status: 'completed', conclusion: 'failure', head_repository: hr }]);
+      await rerunStaleGate({ ...f, ...ctx, headSha: SHA, trusted: true });
+      assert.equal(none(f), 0, JSON.stringify(hr));
+    }
+  });
+  it('conclusions outside the allowlist are not re-run', async () => {
+    for (const c of ['action_required', 'skipped', 'neutral', 'stale', 'startup_failure', 'success', null]) {
+      const f = fake([run({ id: 23, status: 'completed', conclusion: c })]);
+      await rerunStaleGate({ ...f, ...ctx, headSha: SHA, trusted: true });
+      assert.equal(none(f), 0, String(c));
+    }
+  });
+  it('timed_out re-runs the whole run', async () => {
+    const f = fake([run({ id: 24, status: 'completed', conclusion: 'timed_out' })]);
+    await rerunStaleGate({ ...f, ...ctx, headSha: SHA, trusted: true });
+    assert.deepEqual(f.calls.full.map((c) => c.run_id), [24]);
   });
 });
 
@@ -94,6 +127,7 @@ describe('run.cjs wiring', () => {
     assert.notEqual(i, -1);
     const block = src.slice(i);
     assert.match(block, /if \(res\.ok\)[^]*rerunStaleGate\(/);
+    assert.match(block, /trusted:\s*gate\.isHumanComment\(context\.payload\.comment\)/);
     assert.ok(block.indexOf('checks.create') < block.indexOf('rerunStaleGate('), 'rerun must come after the check run is posted');
   });
 });
