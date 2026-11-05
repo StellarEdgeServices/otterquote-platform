@@ -15,7 +15,9 @@
  *   (4) COMPLETED STATE (estimate, measurements and material all done), at 1440 and 390: every .checklist-filename (the
  *       "est.pdf" / "Architectural Shingles" line shown after an upload or material choice) >= 4.5:1, and every text
  *       element in the two cards >= 4.5:1. The close review of gh-3267 found this row at 3.07:1 (--gray on the card).
- * NEGATIVE CONTROLS: (N2) put the old `color: var(--gray)` back on .checklist-filename and the filename must FAIL 4.5:1.
+ *   (5) INPUT PLACEHOLDERS in the cards, in the states that render them (referral "Their Name"/"Their Email" after the Insurance
+ *       Agent chip, and the deductible prompt): >= 4.5:1. They were --gray on the navy field (2.89:1).
+ * NEGATIVE CONTROLS: (N3) put the old `.form-input::placeholder` --gray back and the placeholders must FAIL 4.5:1. (N2) put the old `color: var(--gray)` back on .checklist-filename and the filename must FAIL 4.5:1.
  *   (N1) delete the gh-3267 `.checklist-actions .btn-secondary` rule from the live stylesheet (restoring the old
  * cascade) and re-measure: the Upload button must FAIL 4.5:1. Proves the assertion can see the bug.
  *
@@ -214,6 +216,30 @@ const removed = await page.evaluate(() => {
 });
 const oldRatio = await (await page.$(`#checklist-container button.btn-secondary >> nth=${uploadIdx[0]}`)).evaluate(MEASURE);
 ok(removed >= 1 && oldRatio < AA, `(N1) negative control: without the gh-3267 rule (${removed} removed) Upload is ${oldRatio}:1 < ${AA}:1`);
+
+// (5) Placeholders, in the states that render them. The placeholder colour is read from ::placeholder and measured as text.
+const PH = (page_) => page_.evaluate((src) => {
+  const M = eval(src);
+  return [...document.querySelectorAll('.dashboard-section input[placeholder], .dashboard-section textarea[placeholder]')]
+    .filter((e) => e.getClientRects().length)
+    .map((e) => { const keep = e.style.color; e.style.color = getComputedStyle(e, '::placeholder').color; const v = M(e); e.style.color = keep; return [e.placeholder, v]; });
+}, MEASURE.toString());
+CLAIM = { ...CLAIM, has_estimate: false, has_measurements: false, has_material_selection: false, loss_sheet_parsed_at: '2026-10-02T00:00:00Z' };
+await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
+await page.goto(BASE + '/dashboard.html?state=placeholders' + frag, { waitUntil: 'domcontentloaded' }).catch(() => {});
+await page.waitForSelector('#deductible-prompt-input', { timeout: 20000 });
+await page.addStyleTag({ content: '*{animation:none!important;transition:none!important}' });
+await page.click('.deferred-chip[data-ref="insurance_agent"]');
+await page.waitForSelector('#dash-ref-name');
+for (const w of [1440, 390]) {
+  await page.setViewportSize({ width: w, height: 900 }); await page.waitForTimeout(100);
+  const ph = await PH(page);
+  const min = Math.min(...ph.map((r) => r[1]));
+  ok(ph.length >= 3 && min >= AA, `(5) ${w}px placeholders (${ph.map((r) => r[0] + ' ' + r[1]).join(' | ')}) min ${min}:1 >= ${AA}:1`);
+}
+await page.addStyleTag({ content: '.dashboard-section .form-input::placeholder{color:#64748B !important}' });
+const oldPh = Math.min(...(await PH(page)).map((r) => r[1]));
+ok(oldPh < AA, `(N3) negative control: old --gray placeholder is ${oldPh}:1 < ${AA}:1`);
 
 await browser.close();
 server.close();
