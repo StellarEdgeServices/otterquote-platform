@@ -17,21 +17,19 @@
  * for admin callers. NO admin page calls this function yet: an admin invokes it directly with their own JWT. A page for it is a
  * follow-up (not built here).
  *
- * No `_shared/` imports: the deploy path does not resolve them, so the admin gate is inlined (PRIMARY_ADMIN_EMAIL kept in
- * sync with supabase/functions/_shared/admin.ts by eye, exactly as approve-warranty-drift does).
+ * gh-3077: the primary-admin check is _shared/admin-gate.ts requirePrimaryAdmin() (the same helper the other primary-only
+ * gates use; no local email literal), then the same DB template_review_role fallback as before. The combination lives in
+ * ./admin-check.ts so it is unit-tested. The set of callers admitted is unchanged.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { requirePrimaryAdmin } from "../_shared/admin-gate.ts";
+import { isAdminCaller } from "./admin-check.ts";
 import { hashEmailSha256 } from "./email-hash.ts";
 import { escapeLikePattern, handleRequest } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-// gh-1534: kept in sync with supabase/functions/_shared/admin.ts PRIMARY_ADMIN_EMAIL -- do not edit without updating that
-// file too (the deploy path does not resolve imports). The single primary email plus the DB template_review_role
-// fallback, the same gate approve-warranty-drift uses.
-const PRIMARY_ADMIN_EMAIL = "dustinstohler1@gmail.com";
-
 const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
 Deno.serve((req: Request) =>
@@ -41,11 +39,14 @@ Deno.serve((req: Request) =>
       if (error || !data?.user) return null;
       return { id: data.user.id, email: data.user.email ?? "" };
     },
-    isAdmin: async (userId, email) => {
-      if (email === PRIMARY_ADMIN_EMAIL) return true;
-      const { data } = await sb.from("contractors").select("template_review_role").eq("user_id", userId).maybeSingle();
-      return (data as { template_review_role?: string } | null)?.template_review_role === "admin";
-    },
+    isAdmin: (userId) =>
+      isAdminCaller(
+        () => requirePrimaryAdmin(req),
+        async () => {
+          const { data } = await sb.from("contractors").select("template_review_role").eq("user_id", userId).maybeSingle();
+          return (data as { template_review_role?: string } | null)?.template_review_role === "admin";
+        },
+      ),
     hashEmail: (email) => hashEmailSha256(email),
     suppress: async (emailSha256) => {
       // Idempotent: a repeat request for the same address is not an error and never rewrites the original row.
