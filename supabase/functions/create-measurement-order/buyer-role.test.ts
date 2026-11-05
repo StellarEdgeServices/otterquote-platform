@@ -33,7 +33,8 @@ Deno.test("alert row: validated shapes only, names the order, payment and claim,
   assertEquals(r.alert_type, BUYER_ROLE_ALERT_TYPE);
   assertEquals(r.function_name, "create-measurement-order");
   assertEquals(r.sent_at, "2026-11-05T12:00:00.000Z");
-  for (const s of [ORDER, "pi_3Abc123", CLAIM, "roof_basic", "unspecified", "ON HOLD", "referred homeowner", "#3229"]) assertStringIncludes(r.message, s);
+  assert(!r.message.includes("is owed") && !r.message.includes("CEO is filing"));
+  for (const s of [ORDER, "pi_3Abc123", CLAIM, "roof_basic", "unspecified", "ON HOLD", "held pending review", "may be owed", "referred homeowner", "#3460"]) assertStringIncludes(r.message, s);
 });
 
 Deno.test("alert row: NEGATIVE CONTROL -- hostile text in any field is replaced, never echoed", () => {

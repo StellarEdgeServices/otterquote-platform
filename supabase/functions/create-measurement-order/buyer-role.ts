@@ -13,8 +13,8 @@
  * is 'homeowner' and the fee accrues normally. Otherwise 'unspecified' is not 'homeowner' and not 'contractor'. The accrual trigger
  * partner_fee_accrue_on_order fires only WHEN NEW.requested_by_role = 'homeowner' (and re-checks IS DISTINCT FROM 'homeowner'), so an
  * 'unspecified' order accrues no fee AT INSERT: the $5 is ON HOLD for review, not forfeited (Partner Agreement v4 A4.1: earned when a
- * Referred Homeowner buys). #3229's "no silent default" stands. The trigger is not changed. If an admin establishes the buyer was the referred homeowner the fee is owed; the trigger is insert-only,
- * so releasing it needs #3229's correction process (none documented; flagged in the PR for the CEO to file).
+ * Referred Homeowner buys). #3229's "no silent default" stands. The trigger is not changed. If an admin establishes the buyer was the referred homeowner the fee may be owed; the trigger is insert-only,
+ * so releasing it is #3460's job.
  *
  * Other than the shown-homeowner case, the role is NOT guessed: a contractor_id alone does not prove who paid. The detailed-measurement
  * upgrade is contractor-only by D-317 and is handled in index.ts.
@@ -75,8 +75,8 @@ export function buildBuyerRoleAlertRow(
     function_name: "create-measurement-order",
     message:
       `Paid measurement order recorded with no usable buyer_role: order ${order}, payment_intent ${pi}, claim ${claim}, product ${product}. ` +
-      `requested_by_role was set to '${UNSPECIFIED_ROLE}', so any $5 partner fee is ON HOLD for review. An admin should confirm who bought it before the report is delivered (the ready email assumes a homeowner). ` +
-      `If the buyer proves to be the referred homeowner the $5 is owed; record it under #3229's correction process (none is documented yet: it is owed, and the CEO is filing it).`,
+      `requested_by_role was set to '${UNSPECIFIED_ROLE}', so any $5 partner fee is ON HOLD (held pending review). An admin should confirm who bought it before the report is delivered (the ready email to the buyer is suppressed for this role until it is settled). ` +
+      `The $5 may be owed if the buyer proves to be the referred homeowner; the release path is #3460.`,
     sent_at: now().toISOString(),
   };
 }
