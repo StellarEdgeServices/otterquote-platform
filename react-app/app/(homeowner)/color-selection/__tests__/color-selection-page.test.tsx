@@ -106,10 +106,10 @@ afterEach(() => {
 // ── 1. Renders the page with brand + subtitle ──────────────────────────────────
 
 describe('color-selection page — ruled copy (Ben 6584752880)', () => {
-  it('renders two option cards: no Browse Colors card, no catalog, no View Colors button (items 14-16)', async () => {
+  it('renders one option card (the visualizer): no Browse Colors card, no catalog, no View Colors button (items 14-16)', async () => {
     render(<ColorSelectionPage />);
     await screen.findByText(C.headerTitle);
-    expect(document.querySelectorAll('.oqcs-option-card').length).toBe(2);
+    expect(document.querySelectorAll('.oqcs-option-card').length).toBe(1);
     expect(document.body.textContent).not.toMatch(/Browse Colors|View Colors|color catalog/);
   });
 
@@ -118,7 +118,7 @@ describe('color-selection page — ruled copy (Ben 6584752880)', () => {
     await screen.findByText(C.headerTitle);
     const cards = Array.from(document.querySelectorAll('.oqcs-option-card'));
     expect(cards[0].textContent).toContain(C.opensInNewTabLabel);
-    expect(cards[1].textContent).not.toContain(C.opensInNewTabLabel);
+    expect(cards).toHaveLength(1);
     expect(document.querySelectorAll('.oqcs-option-note').length).toBeGreaterThanOrEqual(1);
     expect(document.body.textContent?.split(C.opensInNewTabLabel).length).toBe(2);
   });
