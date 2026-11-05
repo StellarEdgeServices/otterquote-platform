@@ -168,9 +168,8 @@ body.hr { margin: 0; font-family: var(--hr-font); color: var(--hr-ink); backgrou
   .hr-nav, .hr-phone-long, .hr-brand-tag, .hr-full { display: none; }
   .hr-short { display: inline; }
   .hr-call-short { display: inline; }
-  /* gh-3387: phone menu. Pricing moves from the header row into the menu (the row has no room for a 44px toggle); How it works, How we're paid, Pricing and FAQ open from the toggle. */
+  /* gh-3387: phone menu. How it works, How we're paid, Pricing and FAQ open from the toggle; Pricing also stays in the header row wherever it fits (436px and up, see the block after this one). */
   .hr-header { position: relative; }
-  .hr a.hr-pricing-d { display: none; }
   .hr-menu-btn { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; background: transparent; border: 2px solid var(--hr-on-navy); border-radius: 6px; cursor: pointer; }
   .hr-menu-btn span { display: block; width: 20px; height: 2px; background: var(--hr-on-navy); }
   .hr-header.hr-menu-open .hr-nav { display: flex; flex-direction: column; align-items: stretch; gap: 0; position: absolute; left: 0; right: 0; top: 100%; z-index: 60; background: var(--hr-navy); border-bottom: 1px solid var(--hr-line-navy); padding: 4px 16px 8px; }
@@ -250,3 +249,8 @@ body.hr { margin: 0; font-family: var(--hr-font); color: var(--hr-ink); backgrou
 @media (prefers-reduced-motion: reduce) {
   .hr-w, .hr-row, .hr-tab, .hr-sticky { transition: none !important; }
 }
+
+/* gh-3387: header Pricing stays visible in the phone header row beside Log In, Call and the 44px toggle wherever it fits: measured, the row needs 436px
+   (brand 101 + Pricing 54 + Log In 47 + Call 87 + toggle 44 + four 12px gaps + 32px page padding). Below that Pricing is in the menu only; from 436px the menu copy is hidden. */
+@media (max-width: 435px) { .hr a.hr-pricing-d { display: none; } }
+@media (min-width: 436px) and (max-width: 767px) { .hr-nav-m, .hr-header.hr-menu-open .hr-nav a.hr-nav-m { display: none; } }
