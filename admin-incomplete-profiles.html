@@ -676,7 +676,8 @@
                 // Fetch contractor records and last-login data in parallel.
                 // get_contractor_last_logins() is a SECURITY DEFINER RPC that replaces the
                 // revoked admin_contractor_last_logins view (Session 349 security fix, 86e11fa1g).
-                // Gated server-side to the admin allow-list via the is_admin_email() check.
+                // Gated server-side by public.is_admin_email() (reads the admin_emails table), the same check
+                // as the admin pages' RLS policies; no email list lives in this page or in the RPC body.
                 const [contractorsResult, loginResult] = await Promise.all([
                     adminSb
                         .from('contractors')

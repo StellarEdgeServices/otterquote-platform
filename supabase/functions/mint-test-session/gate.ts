@@ -113,6 +113,8 @@ export interface DbAdapter {
   getAdminSignals(
     userId: string,
   ): Promise<{ data: AdminSignals | null; error: AdapterError | null }>;
+  /** gh-3077: the email column of public.admin_emails (service role). The refusal list for adminRefusal(). */
+  getAdminEmails(): Promise<{ data: string[] | null; error: AdapterError | null }>;
   generateMagicLink(
     email: string,
   ): Promise<{ data: GenerateLinkData | null; error: AdapterError | null }>;
@@ -266,17 +268,18 @@ export function extractBearerToken(authHeader: string | null): string | null {
 }
 
 /**
- * R-134 (mint134): admin allow-list, INLINED from _shared/admin.ts ADMIN_EMAILS
- * (the deploy path does not resolve _shared/ imports; keep in sync by eye).
- * This is the FULL allow-list, deliberately wider than the single primary
- * email the caller gate accepts: a target on either address is an admin.
- * Compared case-insensitively and trimmed, because this is a refusal check
- * (the stricter reading is the safe one).
+ * gh-3077: the admin refusal list is no longer a literal in this file. It is the rows of public.admin_emails
+ * (the one admin allow-list that public.is_admin_email() and _shared/admin-gate.ts requireAdmin() read), fetched
+ * by DbAdapter.getAdminEmails() with the service role. This is the FULL admin set, deliberately wider than the
+ * single primary email the caller gate accepts: a target on any listed address is an admin. Compared
+ * case-insensitively and trimmed, because this is a refusal check (the stricter reading is the safe one).
+ * An empty target email never matches. A list that cannot be read FAILS CLOSED (ADMIN_CHECK_UNAVAILABLE).
  */
-const ADMIN_EMAILS_LOWER: readonly string[] = [
-  "dustinstohler1@gmail.com",
-  "dustin@otterquote.com",
-];
+export function emailInAdminList(list: readonly unknown[], email: string): boolean {
+  const e = email.trim().toLowerCase();
+  if (!e) return false;
+  return list.some((x) => typeof x === "string" && x.trim().toLowerCase() === e);
+}
 
 export const ADMIN_ACCOUNT_REFUSED = "ADMIN_ACCOUNT_REFUSED";
 export const ADMIN_CHECK_UNAVAILABLE = "ADMIN_CHECK_UNAVAILABLE";
@@ -303,7 +306,18 @@ async function adminRefusal(
   userId: string,
   email: string,
 ): Promise<MintResult | null> {
-  if (ADMIN_EMAILS_LOWER.includes(email.trim().toLowerCase())) {
+  let adminEmails: string[] | null = null;
+  try {
+    const { data, error } = await db.getAdminEmails();
+    if (error) console.error("[mint-test-session] admin email list read failed:", error.message);
+    else adminEmails = data;
+  } catch (e) {
+    console.error("[mint-test-session] admin email list read threw:", e);
+  }
+  if (!adminEmails || !Array.isArray(adminEmails)) {
+    return codedError(403, ADMIN_CHECK_UNAVAILABLE, "Forbidden: admin status of target could not be verified — refused");
+  }
+  if (emailInAdminList(adminEmails, email)) {
     return codedError(403, ADMIN_ACCOUNT_REFUSED, "Forbidden: target is an admin account — refused regardless of is_test");
   }
   let signals: AdminSignals | null = null;

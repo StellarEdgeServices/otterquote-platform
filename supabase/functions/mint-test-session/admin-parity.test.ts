@@ -1,77 +1,87 @@
-// gh-2410 (R-134) reviewer follow-up: the admin-REFUSAL list inlined in
-// gate.ts (ADMIN_EMAILS_LOWER) must stay equal to the canonical
-// _shared/admin.ts ADMIN_EMAILS.
-// Run: deno test --allow-read=supabase/functions supabase/functions/mint-test-session/admin-parity.test.ts
+// gh-3077 (replaces the gh-2410 parity test). mint-test-session's admin REFUSAL list used to be a literal copy
+// (ADMIN_EMAILS_LOWER) of _shared/admin.ts ADMIN_EMAILS. Both are gone: the list is now the rows of public.admin_emails,
+// read by DbAdapter.getAdminEmails(), matched by emailInAdminList().
+// Run: deno test --allow-read=supabase/functions,supabase/migrations_drafts,supabase/migrations supabase/functions/mint-test-session/admin-parity.test.ts
 //
-// Why this matters: gate.ts's adminRefusal() refuses to mint a session for
-// any target on ADMIN_EMAILS_LOWER, BEFORE it reads role signals. The
-// founder's profile is is_test = true (gh-2047), so if an admin address
-// drops out of this inlined copy, the email arm of the refusal stops
-// covering it. The address is then refused only if a DB role signal happens
-// to read 'admin', and the live evidence on #2410 shows it does not
-// (role = contractor, app_role null, contractor_roles null). The deploy path
-// does not resolve _shared/ imports, so the copy is inlined and kept in sync
-// by eye. This test makes that sync mechanical.
-//
-// _shared/admin.test.ts checks the consumers' index.ts files for the
-// PRIMARY_ADMIN_EMAIL caller gate only. It never reads gate.ts, so this
-// refusal list had no drift guard until now.
-//
-// This test reads source text only. It needs no network, environment or
-// secrets, and it does not change the deployed function.
+// What this proves:
+//   1. EQUIVALENCE: for the seed rows of admin_emails (read from the migration file, not retyped), the new matcher
+//      refuses exactly the targets the old inlined list refused, over a corpus of case/whitespace/near-miss variants.
+//   2. The email refusal still runs before the DB role-signal read, inside adminRefusal().
+//   3. NEGATIVE CONTROLS: an emptied list, or a list missing one address, FAILS the equivalence; source with the
+//      refusal call removed FAILS the structure check; and gate.ts carries no email literal.
+import { assert, assertEquals, assertFalse } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { emailInAdminList } from "./gate.ts";
 
-import { assert, assertEquals, assertThrows } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { ADMIN_EMAILS } from "../_shared/admin.ts";
+// The pre-gh-3077 behaviour, kept here verbatim as the reference the new code must equal.
+const OLD_ADMIN_EMAILS_LOWER: readonly string[] = ["dustinstohler1@gmail.com", "dustin@otterquote.com"];
+const oldRefuses = (email: string) => OLD_ADMIN_EMAILS_LOWER.includes(email.trim().toLowerCase());
 
-/** Extract the string literals of `const ADMIN_EMAILS_LOWER ... = [ ... ];` from gate.ts source. */
-function extractRefusalList(src: string): string[] {
-  const m = src.match(/const ADMIN_EMAILS_LOWER\b[^=]*=\s*\[([\s\S]*?)\];/);
-  if (!m) throw new Error("gate.ts: ADMIN_EMAILS_LOWER array literal not found");
-  return [...m[1].matchAll(/"([^"]*)"/g)].map((x) => x[1]);
+async function readSeedRows(): Promise<string[]> {
+  for (const dir of ["migrations_drafts", "migrations"]) {
+    try {
+      const sql = await Deno.readTextFile(new URL(`../../${dir}/gh3009_admin_emails_table.sql`, import.meta.url));
+      const block = sql.match(/INSERT INTO public\.admin_emails[^;]*;/);
+      if (!block) continue;
+      return [...block[0].matchAll(/\(\s*'([^']+)'\s*,/g)].map((m) => m[1]);
+    } catch (e) {
+      if (!(e instanceof Deno.errors.NotFound)) throw e;
+    }
+  }
+  throw new Error("gh3009_admin_emails_table.sql seed block not found in migrations_drafts or migrations");
 }
 
-function assertParity(refusal: string[], canonical: readonly string[]): void {
-  const want = [...canonical].map((e) => e.trim().toLowerCase()).sort();
-  const got = [...refusal].sort();
-  assertEquals(got, want, "mint-test-session/gate.ts ADMIN_EMAILS_LOWER drifted from _shared/admin.ts ADMIN_EMAILS");
-}
+const CORPUS = [
+  "dustinstohler1@gmail.com", "dustin@otterquote.com",
+  "  DustinStohler1@Gmail.com ", "DUSTIN@OTTERQUOTE.COM", "\tdustin@otterquote.com\n",
+  "dustinstohler1@gmail.com.evil.test", "xdustin@otterquote.com", "dustin@otterquote.co",
+  "dustin+tag@otterquote.com", "someone@otterquote-internal.test", "test-contractor@example.com", "", "   ",
+];
 
-const gateSrc = await Deno.readTextFile(new URL("./gate.ts", import.meta.url));
-
-Deno.test("gh-2410: gate.ts ADMIN_EMAILS_LOWER equals _shared/admin.ts ADMIN_EMAILS (lower-cased, order-insensitive)", () => {
-  assertParity(extractRefusalList(gateSrc), ADMIN_EMAILS);
+Deno.test("gh-3077: the admin_emails seed rows are exactly the old refusal list", async () => {
+  assertEquals([...(await readSeedRows())].sort(), [...OLD_ADMIN_EMAILS_LOWER].sort());
 });
 
-Deno.test("gh-2410: refusal list entries are already lower-case and trimmed (adminRefusal compares lower-cased input)", () => {
-  for (const e of extractRefusalList(gateSrc)) {
-    assertEquals(e, e.trim().toLowerCase(), `entry "${e}" must be stored lower-case/trimmed`);
+Deno.test("gh-3077: emailInAdminList(seed rows) refuses exactly what the old inlined list refused, over the whole corpus", async () => {
+  const rows = await readSeedRows();
+  for (const e of CORPUS) assertEquals(emailInAdminList(rows, e), oldRefuses(e), `target ${JSON.stringify(e)}`);
+});
+
+Deno.test("gh-3077: a non-admin is NOT refused by the email arm; an admin is", async () => {
+  const rows = await readSeedRows();
+  assertFalse(emailInAdminList(rows, "someone@otterquote-internal.test"));
+  assert(emailInAdminList(rows, "dustin@otterquote.com"));
+});
+
+Deno.test("gh-3077: adminRefusal() reads the list and refuses on it before the DB role-signal read", async () => {
+  const src = await Deno.readTextFile(new URL("./gate.ts", import.meta.url));
+  const fn = src.indexOf("async function adminRefusal(");
+  assert(fn >= 0, "adminRefusal() not found in gate.ts");
+  const listRead = src.indexOf("db.getAdminEmails(", fn);
+  const match = src.indexOf("emailInAdminList(adminEmails", fn);
+  const signalRead = src.indexOf("db.getAdminSignals(", fn);
+  assert(listRead > fn && match > listRead && signalRead > match, "order must be: list read, email refusal, role-signal read");
+});
+
+Deno.test("gh-3077: gate.ts and index.ts carry no admin email literal", async () => {
+  for (const f of ["./gate.ts", "./index.ts"]) {
+    const src = await Deno.readTextFile(new URL(f, import.meta.url));
+    assertFalse(/dustinstohler1@gmail\.com|dustin@otterquote\.com/.test(src.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "")), `${f} has an email literal in code`);
   }
 });
 
-Deno.test("gh-2410: adminRefusal still checks the email allow-list before reading DB role signals", () => {
-  const fn = gateSrc.indexOf("async function adminRefusal(");
-  assert(fn >= 0, "adminRefusal() not found in gate.ts");
-  const emailCheck = gateSrc.indexOf("ADMIN_EMAILS_LOWER.includes(", fn);
-  const signalRead = gateSrc.indexOf("db.getAdminSignals(", fn);
-  assert(emailCheck > fn && signalRead > fn, "both checks must live inside adminRefusal()");
-  assert(emailCheck < signalRead, "the email refusal must run before (and independently of) the DB role-signal read");
+// ── negative controls ──
+Deno.test("gh-3077 negative control: an emptied list refuses nobody, so the equivalence FAILS", () => {
+  assert(oldRefuses("dustin@otterquote.com"));
+  assertFalse(emailInAdminList([], "dustin@otterquote.com"), "an empty list admits the admin target: the corpus check above would fail");
 });
 
-// ── negative controls: prove the guard actually fails on the drift it targets ──
-
-Deno.test("gh-2410 negative control: a refusal list missing one admin address FAILS parity", () => {
-  const drifted = gateSrc.replace(/\s*"dustin@otterquote\.com",/, "");
-  assert(drifted !== gateSrc, "fixture mutation must change the source");
-  assertThrows(() => assertParity(extractRefusalList(drifted), ADMIN_EMAILS));
+Deno.test("gh-3077 negative control: a list missing one address FAILS the equivalence for that address", () => {
+  assert(oldRefuses("dustin@otterquote.com") !== emailInAdminList(["dustinstohler1@gmail.com"], "dustin@otterquote.com"));
 });
 
-Deno.test("gh-2410 negative control: an emptied refusal list (no email arm at all) FAILS parity", () => {
-  const emptied = gateSrc.replace(/(const ADMIN_EMAILS_LOWER\b[^=]*=\s*\[)[\s\S]*?(\];)/, "$1$2");
-  assertEquals(extractRefusalList(emptied), []);
-  assertThrows(() => assertParity(extractRefusalList(emptied), ADMIN_EMAILS));
-});
-
-Deno.test("gh-2410 negative control: source without ADMIN_EMAILS_LOWER (pre-#2411 gate.ts shape) is rejected, not silently passed", () => {
-  const preFix = gateSrc.replace(/const ADMIN_EMAILS_LOWER\b/, "const SOMETHING_ELSE");
-  assertThrows(() => extractRefusalList(preFix), Error, "ADMIN_EMAILS_LOWER array literal not found");
+Deno.test("gh-3077 negative control: gate.ts with the refusal call removed FAILS the structure check", async () => {
+  const src = await Deno.readTextFile(new URL("./gate.ts", import.meta.url));
+  const broken = src.replace("emailInAdminList(adminEmails", "false && (adminEmails");
+  assert(broken !== src);
+  assertEquals(broken.indexOf("emailInAdminList(adminEmails", broken.indexOf("async function adminRefusal(")), -1);
 });
