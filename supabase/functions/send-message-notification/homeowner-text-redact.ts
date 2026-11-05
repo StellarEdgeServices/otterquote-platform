@@ -162,16 +162,15 @@ const PRINTS_AS_PLAIN = /^[\uff01-\uff5e\u0660-\u0669\u06f0-\u06f9]$/;
 const SOFT = "\x1f"; // typed control characters can never reach `marked`: they are dropped characters themselves
 const FOLDED_DASH = "\x1e";
 const BARRIER = "\x1d";
-const QUOTE_UNIT = "\x1c"; // a folded quote or ellipsis, until joinedToAt has placed it
 const DASH_IN_VIEW = String.fromCharCode(0x2010);
 // The middle dot and the bullet are dropped characters like any other: A 6669920816 on #3461 removed the pin that let "317<middle dot>555<middle dot>0142" print.
 // A folded dash or fraction joined to a word right before the at-sign is inside the address, not beside it ("jane<em dash>@example.com" prints "jane-@example.com"), so
 // there the patterns read it as the "-" that prints. It joins only when what is before it could be a local part on its own: it touches a token with a letter in it. A number,
-// a price or a word followed by a space does not qualify ("$85<one half> at store.com", "shingles <em dash> at homedepot.com"), and a quote or ellipsis never joins
-// ("12<closing quote> at lowes.com", REVIEW 6671216392), so those lines print whole as they do on main. Walked back from each at-sign, so a long run costs one pass.
+// a price or a word followed by a space does not qualify ("$85<one half> at store.com", "shingles <em dash> at homedepot.com"), so those lines print whole as they do on main.
+// Walked back from each at-sign, so a long run costs one pass.
 const AT_SIGN = /@|[\(\[\{<][ \x1f]*[Aa]\x1f*[Tt]|(?<=[ \x1f])[Aa]\x1f*[Tt](?=[ \x1f])/g;
 const LOCAL_CHAR = /[A-Za-z0-9._%+\-]/;
-function joinedToAt(v: string, quoteElsewhere: string): string {
+function joinedToAt(v: string): string {
   const out = v.split("");
   for (const m of v.matchAll(AT_SIGN)) {
     if (m[0] === "@") { // "sheets<em dash>@75.Tear off" is a price, not an address: the domain must start with a letter
@@ -181,10 +180,6 @@ function joinedToAt(v: string, quoteElsewhere: string): string {
     }
     let k = m.index! - 1;
     while (k >= 0 && (out[k] === " " || out[k] === SOFT)) k--;
-    if (out[k] === QUOTE_UNIT) {
-      while (k >= 0 && out[k] === QUOTE_UNIT) out[k--] = BARRIER;
-      continue;
-    }
     let start = k;
     while (start >= 0 && (out[start] === DASH_IN_VIEW || out[start] === BARRIER)) start--;
     if (start === k) continue;
@@ -192,7 +187,7 @@ function joinedToAt(v: string, quoteElsewhere: string): string {
     for (let t = start; t >= 0 && LOCAL_CHAR.test(out[t]); t--) if (/[A-Za-z]/.test(out[t])) { hasLetter = true; break; }
     if (hasLetter) for (let j = start + 1; j <= k; j++) out[j] = "-";
   }
-  return out.join("").replaceAll(QUOTE_UNIT, quoteElsewhere);
+  return out.join("");
 }
 
 export function printForm(text: string): { printed: string; marked: string; view: string; to: number[] } {
@@ -225,16 +220,16 @@ export function printForm(text: string): { printed: string; marked: string; view
     printed += out;
     last = out[out.length - 1];
     const isDash = out === "-" && typed !== "-";
-    const isFold = !isDash && out !== typed && !PRINTS_AS_PLAIN.test(typed);
-    const isQuote = QUOTES_AND_ELLIPSIS.test(ch);
-    view += isDash ? DASH_IN_VIEW : isQuote ? QUOTE_UNIT.repeat(out.length) : isFold ? BARRIER.repeat(out.length) : out;
-    marked += isDash ? FOLDED_DASH : isQuote ? QUOTE_UNIT.repeat(out.length) : isFold ? BARRIER.repeat(out.length) : out;
+    // A curly quote or apostrophe and the ellipsis read exactly as the straight characters they print as, so the result never depends on which a keyboard chose.
+    const isFold = !isDash && out !== typed && !PRINTS_AS_PLAIN.test(typed) && !QUOTES_AND_ELLIPSIS.test(ch);
+    view += isDash ? DASH_IN_VIEW : isFold ? BARRIER.repeat(out.length) : out;
+    marked += isDash ? FOLDED_DASH : isFold ? BARRIER.repeat(out.length) : out;
   }
   if (printed.endsWith(" ") && marked.endsWith(SOFT)) { printed = printed.slice(0, -1); marked = marked.slice(0, -1); view = view.slice(0, -1); }
   to[text.length] = printed.length;
   // One folded dash prints and reads as a dash ("100-250", "11-15-2026"); doubled it is no separator anyone types by hand.
   marked = marked.replace(/[-\x1e]+/g, (d) => (!d.includes(FOLDED_DASH) ? d : d.length > 1 ? SOFT.repeat(d.length) : DASH_IN_VIEW));
-  return { printed, marked: joinedToAt(marked, SOFT), view: joinedToAt(view, BARRIER), to };
+  return { printed, marked: joinedToAt(marked), view: joinedToAt(view), to };
 }
 
 // ---- the second pass, on `marked` only; every match must cross a SOFT unit, because the patterns above already read the same text without one ----
@@ -250,9 +245,10 @@ const SPLIT_PHONE = new RegExp(
 );
 const SPLIT_AT = `(?:${WS}*@${WS}*|${WS}*[\\(\\[\\{<]${WS}*${gapped("at")}${WS}*[\\)\\]\\}>]${WS}*|${WS}+${gapped("at")}${WS}+)`;
 const SPLIT_DOT = `(?:${NOT_DETERMINER}(?:${WS}*[\\(\\[\\{<]${WS}*${gapped("dot")}${WS}*[\\)\\]\\}>]${WS}*|${WS}+${gapped("dot")}${WS}+)|${WS}*\\.${S}*)`;
-const SPLIT_LABEL = `[A-Za-z0-9](?:[A-Za-z0-9\\-\\u2010${S}]*[A-Za-z0-9])?`;
+// Bounded like a real address (a label is at most 63 characters), so a note of repeated "at<break>" costs one short look per "at" (REVIEW 6671850471).
+const SPLIT_LABEL = `[A-Za-z0-9](?:[A-Za-z0-9\\-\\u2010${S}]{0,62}[A-Za-z0-9])?`;
 const SPLIT_TLD = [...TLD_LIST].sort((a, b) => b.length - a.length).map(gapped).join("|");
-const SPLIT_EMAIL = new RegExp(`${LOCAL}${SPLIT_AT}${SPLIT_LABEL}(?:${SPLIT_DOT}${SPLIT_LABEL})*(${SPLIT_DOT}|${S}+)(${SPLIT_TLD})${TLD_END}`, "g");
+const SPLIT_EMAIL = new RegExp(`${LOCAL}${SPLIT_AT}${SPLIT_LABEL}(?:${SPLIT_DOT}${SPLIT_LABEL}){0,8}(${SPLIT_DOT}|${S}+)(${SPLIT_TLD})${TLD_END}`, "g");
 // A dropped character right beside the at-sign of an otherwise whole address: any lower-case last label ("jane<emoji>@proton.me").
 const BESIDE_AT = new RegExp(`${LOCAL}${S}*@${S}*[A-Za-z](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?(?:\\.${LABEL})*\\.[a-z]{2,}${TLD_END}`, "g");
 // "Tax 250.<break>300.<break>1000 total" prints "250. 300. 1000", which is two characters between the groups and no phone gap, typed or not.

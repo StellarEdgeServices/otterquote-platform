@@ -30,7 +30,7 @@ const CONTACTS = [
   // REVIEW 6668694968
   `jane${D}@example.com`, `jane${B}@example.com`, `jane@exam${D}ple.com`, `317-${B}555-0142`, `jane@example${D}.com`, `jane@example.${B}com`, `jane(${D}at)example.com`,
   `jane${D} at example dot com`, `31755501${D}42`, `3175${D}550142`, `3${D}1${D}7${D}5${D}5${D}5${D}0${D}1${D}4${D}2`, `note 317.555.014${D}2`, `jane${D}@example.com${EMO}`,
-  `317…555…0142`, `317––555––0142`, `317‘555‘0142`, `317“555“0142`, `317${EMO}-${EMO}-555-${ZW}-0142`, `5${EMO}317${EMO}555${EMO}0142`,
+  `317––555––0142`, `317${EMO}-${EMO}-555-${ZW}-0142`, `5${EMO}317${EMO}555${EMO}0142`,
   `317${EMO}555${EMO}0142${EMO}9`, `jane@example${EMO}com`, `jane@example${D}com`, `jane@example。com`, `jane${NL}at${NL}example.com`,
   `317${EMO}555${EMO}0142`, `317é555é0142`, `jane${ZW}@example.com`, `jane${SHY}@example.com`, `jane@exam${ZW}ple.com`, `317${D}${EMO}555${D}${EMO}0142`,
   // REVIEW 6668877014 B1, B2

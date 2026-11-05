@@ -55,11 +55,26 @@ const WEB_ROWS: Array<[string, string]> = [
   ["Vent 12” at lowes.com, $40", 'Vent 12" at lowes.com, $40'], ['Vent 12" at lowes.com', 'Vent 12" at lowes.com'], ["Ridge cap 33’ at gaf.com", "Ridge cap 33' at gaf.com"],
   ["GAF “Timberline” at gaf.com", 'GAF "Timberline" at gaf.com'], ["Colour “Charcoal” @gaf.com", 'Colour "Charcoal" @gaf.com'], ["Shingles $85½ at store.com", "Shingles $851/2 at store.com"],
   ["Shingles $85½ @acme.co", "Shingles $851/2 @acme.co"], ["Bundle 3¼ at gaf.com", "Bundle 31/4 at gaf.com"], ["Order shingles — at homedepot.com", "Order shingles - at homedepot.com"],
-  ["Gutters… at lowes.com", "Gutters... at lowes.com"],
-  ["Vent 12’ (at) lowes.com", "Vent 12' (at) lowes.com"], ["Bundle 3¾ (at) gaf.com", "Bundle 33/4 (at) gaf.com"], ["Price 85— at gaf.com", "Price 85- at gaf.com"], ["Gutters…@lowes.com", "Gutters...@lowes.com"],
+  ["Vent 12’ (at) lowes.com", "Vent 12' (at) lowes.com"], ["Bundle 3¾ (at) gaf.com", "Bundle 33/4 (at) gaf.com"], ["Price 85— at gaf.com", "Price 85- at gaf.com"], 
 ];
 // Same shapes on main: printed. Kept as the review says the narrowing costs, and recorded so a change is deliberate.
-const PRINT_AS_MAIN: Array<[string, string]> = [["jane’ at example.com", "jane' at example.com"], ["jane’@example.com", "jane'@example.com"], ["jane… at example.com", "jane... at example.com"]];
+const PRINT_AS_MAIN: Array<[string, string]> = [["jane’ at example.com", "jane' at example.com"], ["jane’@example.com", "jane'@example.com"]];
+// An ellipsis reads as the three dots it prints as, and dots belong in a local part, so these are cut as "Gutters... at lowes.com" typed plainly is on main (the rule in REVIEW 6671850471).
+const ELLIPSIS_ROWS: Array<[string, string]> = [["Gutters\u2026 at lowes.com", "[removed]"], ["Gutters\u2026@lowes.com", "[removed]"], ["jane\u2026 at example.com", "[removed]"], ["jane\u2026@example.com", "[removed]"]];
+
+// REVIEW 6671850471, LEGAL QUESTION 6671472704: the result never depends on which quote a keyboard chose. NEGATIVE CONTROL: at the helper of bf22d662 every row here is cut.
+const CURLY: Array<[string, string]> = [["\u2018", "'"], ["\u2019", "'"], ["\u201c", '"'], ["\u201d", '"'], ["\u2026", "..."]];
+const QUOTE_ROWS: Array<[string, string]> = [
+  ["Shingles $85 at \u201cgaf.com\u201d", 'Shingles $85 at "gaf.com"'], ["Vent 12 at \u201clowes.com\u201d $40", 'Vent 12 at "lowes.com" $40'], ["Order shingles at \u201chomedepot.com\u201d", 'Order shingles at "homedepot.com"'],
+  ["Colour \u201cCharcoal\u201d @ \u201cgaf.com\u201d", 'Colour "Charcoal" @ "gaf.com"'], ["Vent 12 \u201cat lowes.com\u201d $40", 'Vent 12 "at lowes.com" $40'], ["Vent 12\u201dat lowes.com", 'Vent 12"at lowes.com'],
+  ["Vent 12 at\u2026 lowes.com", "Vent 12 at... lowes.com"], ["Looked at\u2026 roof.com", "Looked at... roof.com"], ["Shingles $85 at \u201cstore.com\u201d", 'Shingles $85 at "store.com"'], ["Vent 12 at \u201cgaf.com\u201d", 'Vent 12 at "gaf.com"'],
+  ["GAF at \u201cgaf.com\u201d, $400 per square", 'GAF at "gaf.com", $400 per square'], ["Shingles 400 at\u2026store.com", "Shingles 400 at...store.com"], ["Shop at Lowe\u2019s.com $40", "Shop at Lowe's.com $40"], ["$40 at Lowe\u2019s.com", "$40 at Lowe's.com"],
+];
+// What the straight form gives, contact or not, the curly form must give too.
+const STRAIGHT_ROWS = [
+  ...QUOTE_ROWS.map((r) => r[1]), "jane'@example.com", 'jane"@example.com', "jane...@example.com", "jane' at example.com", "jane@o'neil.com", 'jane@example.com"', "'jane@example.com'", '"jane at example dot com"', "jane@example.com's",
+  "317'555'0142", '317"555"0142', "317...555...0142", "'317-555-0142'", "317-555-0142...", "Note...jane@example.com", "Bob's at o'neil.com", "250'500'1000'", "Ridge 25' 35' 45' 55' 65'", "$5,000' at gaf.com",
+];
 
 // REVIEW 6670618986 B1: a folded character inside the address, right before the at-sign or in the domain.
 const INSIDE_FORMS = (c: string) => [
@@ -86,16 +101,30 @@ for (const [label, H] of [["shared", Shared], ["local copy", Local]] as const) {
     }
   });
   Deno.test(`gh-3461 folds (${label}): words and prices before a web address print as on main, and the joined addresses stay removed`, () => {
+    for (const [t, want] of ELLIPSIS_ROWS) assertEquals(before(t), want, JSON.stringify(t));
     for (const [t, want] of [...WEB_ROWS, ...PRINT_AS_MAIN]) {
       assertEquals(before(t), want, JSON.stringify(t));
       assertEquals(printsAs(before(t)), want);
     }
     for (const t of ["jane—@example.com", "jane½@example.com", "jane@pro—ton.me", "jane— at example dot com", "jane–(at)example.com", "j2½@gmail.com", "jane.doe—@gmail.com"]) assertEquals(before(t), H.REMOVED_TOKEN, JSON.stringify(t));
   });
+  Deno.test(`gh-3461 folds (${label}): a curly quote, apostrophe or ellipsis gives exactly what the straight character gives, everywhere`, () => {
+    for (const r of STRAIGHT_ROWS) {
+      for (const [curly, straight] of CURLY) {
+        const typedCurly = r.replaceAll(straight, curly);
+        assertEquals(before(typedCurly), before(r), JSON.stringify(typedCurly));
+      }
+    }
+    for (const [t, want] of QUOTE_ROWS) assertEquals(before(t), want, JSON.stringify(t));
+    // the one place the two differ: main's detection cuts the second address beside an ellipsis, and a contact main removes stays removed
+    assertEquals(before("x@y.com\u2026z@w.com"), "[removed]...[removed]");
+  });
   Deno.test(`gh-3461 folds (${label}): long hostile runs finish in linear time`, () => {
     const n = 200000;
     const runs = ["\u200b".repeat(n), `end.${"\u200b".repeat(n)}x`, `\u0301`.repeat(n), `.\u0301`.repeat(n / 2), "-".repeat(n), "\u2014".repeat(n), `-\u2014`.repeat(n / 2), `a${"\u2014".repeat(n)}@b.com`, `\u2014@`.repeat(n / 2), `\u00bd`.repeat(n), `${" ".repeat(n)}@`, ` at `.repeat(n / 4), `x\u2014`.repeat(n / 2)];
     runs.push("\u201d".repeat(n), `\u201d @`.repeat(n / 3), `${"a".repeat(n)}\u2014@b`, `a\u00bd @`.repeat(n / 4));
+    // REVIEW 6671850471: the word "at" repeated, separated by a dropped or quote character
+    runs.push(...["at\n", "at\u{1f642}", "at\u2019", "at\u2026", "x\nat\n", "a at\n", "a@\n", "at\n.", "dot\n", "a\ndot\n", "at\u200b"].map((u) => u.repeat(Math.floor(n / u.length))));
     for (const t of runs) {
       const t0 = performance.now();
       before(t);
