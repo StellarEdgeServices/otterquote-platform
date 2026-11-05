@@ -164,6 +164,12 @@ serve(async (req) => {
           error: error ? { message: error.message } : null,
         };
       },
+      async getAdminEmails() {
+        // gh-3077: the admin refusal list = rows of public.admin_emails (service role; the table is locked to clients).
+        const { data, error } = await supabase.from("admin_emails").select("email");
+        if (error) return { data: null, error: { message: error.message } };
+        return { data: (data ?? []).map((r: { email: string }) => r.email), error: null };
+      },
       async getAdminSignals(userId) {
         // R-134 (mint134): all admin signals for the target, service-role reads.
         const [profile, contractors, authUser] = await Promise.all([

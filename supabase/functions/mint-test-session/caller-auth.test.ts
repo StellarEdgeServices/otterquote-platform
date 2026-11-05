@@ -47,6 +47,7 @@ function fakeDb(over: Partial<DbAdapter> = {}, logs: ActivityLogRow[] = []): DbA
       data: { id: "stub", email: "resolved@otterquote-internal.test" },
       error: null,
     }),
+    getAdminEmails: async () => ({ data: ["dustinstohler1@gmail.com", "dustin@otterquote.com"], error: null }),
     getAdminSignals: async () => ({
       data: { profile_role: "contractor", contractor_roles: [], app_metadata_role: null },
       error: null,
