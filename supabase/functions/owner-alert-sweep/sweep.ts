@@ -58,7 +58,24 @@ function xmlEscape(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
+/** Owner-only test invocation (POST {"test_call": true} with the service-role key): not a real event, never stored. */
+export const TEST_CALL_KIND = "test_call";
+const TEST_CALL_TEXT = "This is a test of the owner alert system. No customer event has happened. This is only a test.";
+
+/** True only for a JSON body whose test_call is the boolean true. Anything else (no body, bad JSON, "true", 1) is a normal sweep. */
+export async function isTestCallRequest(req: Request): Promise<boolean> {
+  try {
+    const b = await req.json() as { test_call?: unknown } | null;
+    return b !== null && typeof b === "object" && b.test_call === true;
+  } catch {
+    return false;
+  }
+}
+
 export function buildTwiml(alert: Pick<LeasedAlert, "event_kind" | "state" | "claim_id">): string {
+  if (alert.event_kind === TEST_CALL_KIND) {
+    return `<Response>${`<Say voice="alice">${TEST_CALL_TEXT}</Say><Pause length="1"/>`.repeat(2)}</Response>`;
+  }
   const phrase = EVENT_PHRASE[alert.event_kind] ?? "Owner alert";
   const st = (alert.state ?? "").trim().toUpperCase();
   const stateText = /^[A-Z]{2}$/.test(st)
