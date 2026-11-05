@@ -164,17 +164,34 @@ const FOLDED_DASH = "\x1e";
 const BARRIER = "\x1d";
 const DASH_IN_VIEW = String.fromCharCode(0x2010);
 // The middle dot and the bullet are dropped characters like any other: A 6669920816 on #3461 removed the pin that let "317<middle dot>555<middle dot>0142" print.
+// A folded dash or fraction right before the at-sign is inside the address, not beside it ("jane<em dash>@example.com" prints "jane-@example.com"), so there the
+// patterns read it as the "-" that prints. Walked back from each at-sign, so a long run costs one pass.
+const AT_SIGN = /@|[\(\[\{<][ \x1f]*[Aa]\x1f*[Tt]|(?<=[ \x1f])[Aa]\x1f*[Tt](?=[ \x1f])/g;
+function joinedToAt(v: string): string {
+  const units = [...v.matchAll(AT_SIGN)];
+  if (units.length === 0) return v;
+  const out = v.split("");
+  for (const m of units) {
+    let k = m.index! - 1;
+    while (k >= 0 && (out[k] === " " || out[k] === SOFT)) k--;
+    while (k >= 0 && (out[k] === DASH_IN_VIEW || out[k] === BARRIER)) out[k--] = "-";
+  }
+  return out.join("");
+}
+
 export function printForm(text: string): { printed: string; marked: string; view: string; to: number[] } {
   let printed = "";
   let marked = "";
   let view = "";
   const to: number[] = new Array(text.length + 1);
   let afterDropped = false;
+  let last = ""; // the last printed character: asking the growing string for it each time would flatten it each time
   const dropped = () => {
     afterDropped = true;
-    if (printed !== "" && !printed.endsWith(" ")) { printed += " "; marked += SOFT; view += " "; }
+    if (last !== "" && last !== " ") { printed += " "; marked += SOFT; view += " "; last = " "; }
   };
   let i = 0;
+  let noWidthEnd = 0; // end of the current run of no-width characters, so a long run is walked once
   for (const typed of text) {
     const at = i;
     i += typed.length;
@@ -182,14 +199,15 @@ export function printForm(text: string): { printed: string; marked: string; view
     const ch = PRINTS_AS_PLAIN.test(typed) ? foldForDetection(typed) : typed;
     const out = printOf(ch);
     if (out === "" || (out === " " && ch !== " ")) { // a no-break space counts as dropped, like the wide spaces
-      let next = i;
-      while (next < text.length && NO_WIDTH.test(text[next])) next++;
-      if (!NO_WIDTH.test(ch) || (printed.endsWith(".") && next < text.length && !/[\d\uff10-\uff19\u0660-\u0669\u06f0-\u06f9]/.test(text[next]))) dropped();
+      if (noWidthEnd < i) noWidthEnd = i;
+      while (noWidthEnd < text.length && NO_WIDTH.test(text[noWidthEnd])) noWidthEnd++;
+      if (!NO_WIDTH.test(ch) || (last === "." && noWidthEnd < text.length && !/[\d\uff10-\uff19\u0660-\u0669\u06f0-\u06f9]/.test(text[noWidthEnd]))) dropped();
       continue;
     }
-    if (out === " " && afterDropped && printed.endsWith(" ")) continue;
+    if (out === " " && afterDropped && last === " ") continue;
     afterDropped = false;
     printed += out;
+    last = out[out.length - 1];
     const isDash = out === "-" && typed !== "-";
     const isFold = !isDash && out !== typed && !PRINTS_AS_PLAIN.test(typed);
     view += isDash ? DASH_IN_VIEW : isFold ? BARRIER.repeat(out.length) : out;
@@ -198,8 +216,8 @@ export function printForm(text: string): { printed: string; marked: string; view
   if (printed.endsWith(" ") && marked.endsWith(SOFT)) { printed = printed.slice(0, -1); marked = marked.slice(0, -1); view = view.slice(0, -1); }
   to[text.length] = printed.length;
   // One folded dash prints and reads as a dash ("100-250", "11-15-2026"); doubled it is no separator anyone types by hand.
-  marked = marked.replace(/[-\x1e]*\x1e[-\x1e]*/g, (d) => (d.length > 1 ? SOFT.repeat(d.length) : DASH_IN_VIEW));
-  return { printed, marked, view, to };
+  marked = marked.replace(/[-\x1e]+/g, (d) => (!d.includes(FOLDED_DASH) ? d : d.length > 1 ? SOFT.repeat(d.length) : DASH_IN_VIEW));
+  return { printed, marked: joinedToAt(marked), view: joinedToAt(view), to };
 }
 
 // ---- the second pass, on `marked` only; every match must cross a SOFT unit, because the patterns above already read the same text without one ----
@@ -222,6 +240,13 @@ const SPLIT_EMAIL = new RegExp(`${LOCAL}${SPLIT_AT}${SPLIT_LABEL}(?:${SPLIT_DOT}
 const BESIDE_AT = new RegExp(`${LOCAL}${S}*@${S}*[A-Za-z](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?(?:\\.${LABEL})*\\.[a-z]{2,}${TLD_END}`, "g");
 // "Tax 250.<break>300.<break>1000 total" prints "250. 300. 1000", which is two characters between the groups and no phone gap, typed or not.
 const SENTENCE_FIGURES = new RegExp(`^\\d{3}\\.${S}\\d{3}\\.${S}\\d{4}$`);
+// A folded dash inside the domain of an otherwise whole address: a domain starting with a letter and a lower-case last label ("jane@pro<em dash>ton.me"), or all capitals.
+const DASH_IN_DOMAIN = new RegExp(`${LOCAL}(?:@|[ ]*[\\(\\[\\{<][ ]*${AT_W}[ ]*[\\)\\]\\}>][ ]*)[A-Za-z][A-Za-z0-9\\-\\u2010]*(?:\\.[A-Za-z0-9][A-Za-z0-9\\-\\u2010]*)*\\.[A-Za-z]{2,}${TLD_END}`, "g");
+const dashDomainCounts = (all: string): boolean => {
+  if (!all.includes(DASH_IN_VIEW)) return false;
+  const last = all.slice(all.lastIndexOf(".") + 1);
+  return last === last.toLowerCase() || !/[a-z]/.test(all);
+};
 // Listed TLDs that are also words people start a line with ("Paid at closing.<break>net 30", "Leak at front.<break>co op").
 const WORD_TLDS = /^(?:net|org|dev|ca|uk|co|pro)$/;
 // "Look at t<break>he dot com era": the determiner rule above, with the break taken out.
@@ -254,6 +279,7 @@ export function redactSowText(text: string): string {
     if (m[0].includes(SOFT) && !SENTENCE_FIGURES.test(m[0])) spans.push([m.index!, m.index! + m[0].length]);
   }
   for (const m of marked.matchAll(BESIDE_AT)) if (m[0].includes(SOFT)) spans.push([m.index!, m.index! + m[0].length]);
+  for (const m of marked.matchAll(DASH_IN_DOMAIN)) if (dashDomainCounts(m[0])) spans.push([m.index!, m.index! + m[0].length]);
   for (const m of marked.matchAll(SPLIT_EMAIL)) if (keepSplitEmail(m)) spans.push([m.index!, m.index! + m[0].length]);
   spans.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
   let out = "";

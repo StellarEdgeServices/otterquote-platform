@@ -49,8 +49,40 @@ const STAY: Array<[string, string]> = [
   ["Paid 100–250, then 500–1000", "Paid 100-250, then 500-1000"], ["Bob’s roof at noon—call", "Bob's roof at noon-call"], ["$12.​​50", "$12.50"], ["$12.​50", "$12.50"],
 ];
 
+// REVIEW 6670618986 B1: a folded character inside the address, right before the at-sign or in the domain.
+const INSIDE_FORMS = (c: string) => [
+  `jane${c}@example.com`, `Email jane${c}@gmail.com`, `jane${c}@proton.me`, `jane${c}(at)example.com`, `jane${c} at example dot com`, `jane${c} @ example.com`, `jane${c} at example.com`, `jane${c} (at) proton.me`,
+];
+const IN_DOMAIN_FORMS = (c: string) => [`jane@pro${c}ton.me`, `jane@exam${c}ple.com`, `jane@my${c}site.co.uk`, `jane(at)pro${c}ton.me`, `jane at exam${c}ple.com`, `jane @ exam${c}ple.com`, `jane at exam${c}ple dot com`, `JANE@PRO${c}TON.ME`];
+const FRACTION_REST = /1\/[24]@|3\/4@/;
+
 for (const [label, H] of [["shared", Shared], ["local copy", Local]] as const) {
   const before = (t: string) => H.redactSowTextOrRefuse(t, false) as string;
+  Deno.test(`gh-3461 folds (${label}): a dash or fraction right before the at-sign, or a dash in the domain, prints no address`, () => {
+    for (const c of [...DASHES, ...FRACTIONS]) {
+      for (const t of INSIDE_FORMS(c)) {
+        const p = printsAs(before(t));
+        assert(p.includes(H.REMOVED_TOKEN), `no token: ${JSON.stringify(t)} -> ${p}`);
+        assert(!holdsContact(p) && !FRACTION_REST.test(p), `prints: ${JSON.stringify(t)} -> ${p}`);
+      }
+    }
+    for (const c of DASHES) {
+      for (const t of IN_DOMAIN_FORMS(c)) {
+        const p = printsAs(before(t));
+        assert(p.includes(H.REMOVED_TOKEN) && !holdsContact(p), `prints: ${JSON.stringify(t)} -> ${p}`);
+      }
+    }
+  });
+  Deno.test(`gh-3461 folds (${label}): long hostile runs finish in linear time`, () => {
+    const n = 200000;
+    const runs = ["\u200b".repeat(n), `end.${"\u200b".repeat(n)}x`, `\u0301`.repeat(n), `.\u0301`.repeat(n / 2), "-".repeat(n), "\u2014".repeat(n), `-\u2014`.repeat(n / 2), `a${"\u2014".repeat(n)}@b.com`, `\u2014@`.repeat(n / 2), `\u00bd`.repeat(n), `${" ".repeat(n)}@`, ` at `.repeat(n / 4), `x\u2014`.repeat(n / 2)];
+    for (const t of runs) {
+      const t0 = performance.now();
+      before(t);
+      const ms = performance.now() - t0;
+      assert(ms < 1500, `${JSON.stringify(t.slice(0, 12))} took ${ms} ms`);
+    }
+  });
   Deno.test(`gh-3461 folds (${label}): the rows of both comments print as the earlier detection left them`, () => {
     for (const [t, want] of TABLE) {
       assertEquals(before(t), want, JSON.stringify(t));
