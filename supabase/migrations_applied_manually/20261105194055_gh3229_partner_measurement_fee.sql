@@ -6,8 +6,8 @@
 --   payout_approvals RLS: admin (is_admin_email()) all, partners read own rows by partner_id; referral_agents.agent_type has home_inspector (D-333), payments_blocked is NOT NULL;
 --   platform_settings keys: no partner_measurement_fee_cents, no partner_payout_minimum_cents; referral_attribution_window() is IMMUTABLE 30 days (PR #3226 makes it a STABLE platform_settings read; this file only calls it);
 --   apply_referral_commission() (pg_get_functiondef read) is the model for the is_test-agree, window and D-333 checks. No database was written to produce this file.
--- REPO COPY: this file, filed under its ledger version; rollback and pre-flight in supabase/migrations_rollbacks/20261105194055_gh3229_partner_measurement_fee_*. Header comments only differ from the draft that was applied; the SQL is unchanged.
--- Already applied; do not run again.
+-- REPO COPY: this file, supabase/migrations_applied_manually/20261105194055_gh3229_partner_measurement_fee.sql (ledger version 20261105194055); rollback and pre-flight in supabase/migrations_rollbacks/20261105194055_gh3229_partner_measurement_fee_*. Header comments only differ from the draft that was applied.
+-- Already applied; do not run again. NOT in the replay path (supabase/migrations/) on purpose, the gh1763 convention (PR #2233 comment 5850353019): the guard in this file checks state only production has (public.partner_v4_accepted_at(uuid), created by gh3239, itself outside the replay path), so on a fresh branch it raises and would block every later file. The statements are unchanged and were applied through the ledger, so the ledger row exists; this file is the record, never run it again.
 --
 -- Migration: gh3229_partner_measurement_fee
 -- GitHub: #3229 (PROJECT P18). Money: Tier 3B. Needs REVIEW + LEGAL-READ + R-177 pair; CTO applies after R-097.

@@ -1,7 +1,7 @@
 -- STATUS (gh-1438, as of 2026-11-05): forward APPLIED as ledger version 20261105194055; this rollback is NOT run
 -- FILE ROLE: rollback file of set gh3229_partner_measurement_fee (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: drafted 2026-10-30 under #3229. Restores the production state read 2026-10-30: payout_approvals_payout_type_check = ('commission_referral','commission_recruit'); none of the objects below exist. No database was written to produce this file.
--- REPO COPY: this file, beside the filed forward supabase/migrations/20261105194055_gh3229_partner_measurement_fee.sql.
+-- REPO COPY: this file, beside the applied forward supabase/migrations_applied_manually/20261105194055_gh3229_partner_measurement_fee.sql.
 -- Run only as a deliberate rollback.
 --
 -- Rollback of gh3229_partner_measurement_fee. It refuses (and changes nothing) while money state exists: any batched or paid fee event, or any
