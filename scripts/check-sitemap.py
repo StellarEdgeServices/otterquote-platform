@@ -58,7 +58,18 @@ for f in loc_pages:
         errs.append(f"{f}: index.html twin has no _redirects rule ({twin} {slash} 301)")
     if f"'{twin}'" not in edge_src and f'"{twin}"' not in edge_src:
         errs.append(f"{f}: index.html twin is not in the blog-guides-redirect.ts REDIRECT_MAP (the edge function is what fires)")
-cands = glob.glob("*.html") + glob.glob("blog/*.html") + glob.glob("guides/*.html") + glob.glob("contractors/*.html") + loc_pages
+# gh-3380: /guides/topics/<hub>.html pages are dual-served by Pretty URLs like every /blog/ and /guides/ content page (gh-1745),
+# so each hub needs a 301 from its extensionless path in _redirects AND an entry in the edge function map that actually fires.
+hub_pages = sorted(glob.glob("guides/topics/*.html"))
+for f in hub_pages:
+    bare = "/" + f[: -len(".html")]
+    if f not in listed and not noindex(f):
+        errs.append(f"{f}: public + indexable but missing from sitemap.xml (list it, add noindex, or add to UNLISTED_OK)")
+    if bare not in redirect_src:
+        errs.append(f"{f}: extensionless twin has no _redirects rule ({bare} {bare}.html 301)")
+    if f"'{bare}'" not in edge_src and f'"{bare}"' not in edge_src:
+        errs.append(f"{f}: extensionless twin is not in the blog-guides-redirect.ts REDIRECT_MAP (the edge function is what fires)")
+cands = glob.glob("*.html") + glob.glob("blog/*.html") + glob.glob("guides/*.html") + glob.glob("contractors/*.html") + loc_pages + hub_pages
 for f in sorted(cands):
     if f in listed or f in UNLISTED_OK or f.startswith("admin-") or f == "404.html": continue
     if noindex(f) or blocked("/" + f) or redirected("/" + f): continue

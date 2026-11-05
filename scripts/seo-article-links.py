@@ -4,7 +4,7 @@
 Mechanical only: no body sentence is changed. Topic assignments live in scripts/seo-topic-map.json.
   python3 scripts/seo-article-links.py apply [--only path ...]   write changes (idempotent)
   python3 scripts/seo-article-links.py check                      exit 1 if any rule is broken
-  python3 scripts/seo-article-links.py graph                      inbound-link counts (orphans)
+  python3 scripts/seo-article-links.py graph [-v]                 orphan counts, two measures (any link / link inside a <p>)
 Run from the repo root.
 """
 import re, sys, json, glob, os
@@ -16,6 +16,7 @@ TODAY = "2026-11-05"
 SECTION = {"guides": ("Guides", "/guides/"), "blog": ("Blog", "/blog/"), "news": (None, None),
            "partners": ("Referral Partner Program", "/partners.html")}
 HUB_DIR = "guides/topics"
+HELD = set(MAP.get("held", {}))
 
 def rd(p): return Path(p).read_text(encoding="utf-8")
 def wr(p, s): Path(p).write_text(s, encoding="utf-8", newline="")
@@ -32,14 +33,18 @@ def h1_text(path):
 
 def hub_url(tid): return f"/{HUB_DIR}/{tid}.html"
 
-def related_links(path):
-    tid, i = OF[path]; t = TOPICS[tid]; mem = t["members"]; n = len(mem)
-    out = [mem[(i + k) % n] for k in (1, 2, 3)]
-    adj = TOPICS[t["adjacent"]]["members"]
-    out.append(adj[i % len(adj)])
-    links = [(f"/{p}.html", h1_text(p)) for p in out]
-    links.append((hub_url(tid), "Browse all: " + t["title"]))
+def link_title(u):
+    if u in MAP.get("plain_titles", {}): return MAP["plain_titles"][u]
+    return h1_text(u[1:-5])
+
+def expected_links(key):
+    """The block for an article: its five hand-picked links from the map's 'related', then its topic hub."""
+    tid, _ = OF[key]
+    links = [(u, link_title(u)) for u in MAP["related"][key]]
+    links.append((hub_url(tid), "Browse all: " + TOPICS[tid]["title"]))
     return links
+
+def related_links(path): return expected_links(path)
 
 RELATED_CSS = ('<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);'
  'padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);'
@@ -304,26 +309,47 @@ def apply_hubs():
     if add: wr("sitemap.xml", sm.replace("</urlset>", add + "</urlset>"))
 
 # ---------- check / graph ----------
+def norm_href(h):
+    p = h.split("#")[0].split("?")[0]
+    if p.endswith("/"): p += "index.html"
+    return p
+
 def check():
     errs = []
     allk = set(OF)
-    for f in glob.glob("guides/*.html") + glob.glob("blog/*.html") + glob.glob("news/*.html") + glob.glob("partners/*.html"):
+    pages = glob.glob("guides/*.html") + glob.glob("blog/*.html") + glob.glob("news/*.html") + glob.glob("partners/*.html")
+    for h in HELD:
+        if h in allk: errs.append(f"{h}: held page is in a topic")
+        if h in MAP["related"]: errs.append(f"{h}: held page has a 'related' entry")
+    for f in pages:
         k = f[:-5]
-        if k.endswith("/index"): continue
+        if k.endswith("/index") or k in HELD: continue
         if k not in allk and k not in MAP["partner_articles_left_as_is"] and k not in MAP["manual"]:
             errs.append(f"{f}: not in seo-topic-map.json")
+    for k in allk:
+        rel = MAP["related"].get(k)
+        if rel is None: errs.append(f"{k}: no 'related' entry in the map"); continue
+        if len(rel) != 5 or len(set(rel)) != 5: errs.append(f"{k}: 'related' must hold five distinct links, has {len(rel)}")
+        for u in rel:
+            if u == f"/{k}.html": errs.append(f"{k}: related list links to itself")
+            if u[1:-5] in HELD: errs.append(f"{k}: related list links to held page {u}")
+    held_urls = {f"/{h}.html" for h in HELD}
     for f in articles():
         s = rd(f)
         m = BLOCK_RE.search(s)
         if not m: errs.append(f"{f}: no related block"); continue
         hrefs = re.findall(r'href=[\'"]([^\'"]+)', m.group(0))
-        if not 3 <= len(hrefs) <= 5: errs.append(f"{f}: related block has {len(hrefs)} links")
+        if not 3 <= len(hrefs) <= 6: errs.append(f"{f}: related block has {len(hrefs)} links (want 3 to 6)")
         for h in hrefs:
-            p = h.split("#")[0]
-            if p.endswith("/"): p += "index.html"
+            p = norm_href(h)
             if not p.endswith(".html") and Path(p[1:] + ".html").exists(): continue
             if not Path(p[1:]).is_file(): errs.append(f"{f}: related link does not resolve: {h}")
             if p[1:] == f: errs.append(f"{f}: links to itself")
+            if h.split("#")[0] in held_urls: errs.append(f"{f}: related block links to held page {h}")
+        key = f[:-5]
+        if key in OF:
+            want = [u for u, _ in expected_links(key)]
+            if hrefs != want: errs.append(f"{f}: related block differs from the map (run apply): {hrefs} != {want}")
         if not re.search(r'<nav[^>]*class="breadcrumb', s): errs.append(f"{f}: no visible breadcrumb")
         for lm in ld_blocks(s):
             j = json.loads(lm.group(2)); nodes = j.get("@graph", [j]) if isinstance(j, dict) else j
@@ -335,7 +361,7 @@ def check():
                         if miss: errs.append(f"{f}: Organization missing {miss}")
     # orphan control: every topic-mapped article must have an inbound link from another article
     inbound = {}
-    for f in glob.glob("guides/*.html") + glob.glob("blog/*.html") + glob.glob("news/*.html") + glob.glob("partners/*.html"):
+    for f in pages:
         if f.endswith("/index.html"): continue
         for h in re.findall(r'href=[\'"]([^\'"#]+)', re.sub(r"<script.*?</script>", "", rd(f), flags=re.S)):
             inbound.setdefault(h.lstrip("/").removesuffix(".html"), set()).add(f)
@@ -343,7 +369,18 @@ def check():
         if not {x for x in inbound.get(k, ()) if x != k + ".html"}:
             errs.append(f"{k}.html: orphan (no inbound link from another article)")
     for t in MAP["topics"]:
-        if not Path(f"{HUB_DIR}/{t['id']}.html").is_file(): errs.append(f"hub missing {t['id']}")
+        hf = Path(f"{HUB_DIR}/{t['id']}.html")
+        if not hf.is_file(): errs.append(f"hub missing {t['id']}"); continue
+        hs = rd(str(hf))
+        for h in re.findall(r'href=[\'"]([^\'"]+)', hs):
+            if h.split("#")[0] in held_urls: errs.append(f"{hf}: hub links to held page {h}")
+        for m in t["members"]:
+            if f'href="/{m}.html"' not in hs: errs.append(f"{hf}: member {m} missing from hub")
+    for idx in ("guides/index.html", "blog/index.html"):
+        if Path(idx).is_file():
+            for nm in re.finditer(r'<nav class="topic-nav".*?</nav>', rd(idx), re.S):
+                for h in re.findall(r'href="([^"]+)"', nm.group(0)):
+                    if h.split("#")[0] in held_urls: errs.append(f"{idx}: topic nav links to held page {h}")
     print("\n".join(errs) if errs else "PASS"); return 1 if errs else 0
 
 def graph():
@@ -353,29 +390,34 @@ def graph():
     sm = [re.sub(r"^https://otterquote\.com", "", u) for u in re.findall(r"<loc>(.*?)</loc>", rd("sitemap.xml"))]
     sm = [norm(u) for u in sm]
     pages = [("/" + f) for f in glob.glob("**/*.html", recursive=True) if not f.startswith(("react-app", "Archive", "otterquote-deploy", "docs", "handoffs"))]
-    inb = {}
+    inb, inp = {}, {}   # inbound from any link / inbound from a link inside a <p>
     for p in pages:
         s = re.sub(r"<script.*?</script>", "", rd(p[1:]), flags=re.S)
-        for h in re.findall(r'href=["\']([^"\'#]*)', s):
-            m = re.match(r"https://(www\.)?otterquote\.com(/.*)?$", h)
-            if h.startswith("http"):
-                if not m: continue
-                h = m.group(2) or "/"
-            elif not h.startswith("/"): h = "/" + os.path.normpath(os.path.join(os.path.dirname(p[1:]), h))
-            t = norm(h)
-            if t != p: inb.setdefault(t, set()).add(p)
+        prose = " ".join(re.findall(r"<p\b[^>]*>.*?</p>", s, flags=re.S))
+        for store, text in ((inb, s), (inp, prose)):
+            for h in re.findall(r'href=["\']([^"\'#]*)', text):
+                m = re.match(r"https://(www\.)?otterquote\.com(/.*)?$", h)
+                if h.startswith("http"):
+                    if not m: continue
+                    h = m.group(2) or "/"
+                elif not h.startswith("/"): h = "/" + os.path.normpath(os.path.join(os.path.dirname(p[1:]), h))
+                t = norm(h)
+                if t != p: store.setdefault(t, set()).add(p)
     isart = lambda x: re.match(r"/(guides|blog|partners|news)/", x) and not x.endswith("/index.html")
     isart_or_loc = lambda x: isart(x) or re.match(r"/locations/", x)
     a = [u for u in sm if not any(isart(x) for x in inb.get(u, ()))]
     b = [u for u in sm if not any(isart_or_loc(x) for x in inb.get(u, ()))]
     c = [u for u in sm if not inb.get(u)]
-    print(f"sitemap URLs {len(sm)}; no inbound link from a guide/blog/partner/news article: {len(a)}; "
-          f"from any article or location page: {len(b)}; from any page at all: {len(c)}")
+    d = [u for u in sm if not any(isart(x) for x in inp.get(u, ()))]
+    print(f"sitemap URLs {len(sm)}")
+    print(f"  builder's measure (any link on any article, incl. related blocks and breadcrumbs): {len(a)} without one")
+    print(f"  no link inside a <p> on any article (prose links only):                          {len(d)} without one")
+    print(f"  no link from any article or location page: {len(b)}; from any page at all: {len(c)}")
     arts = [u for u in sm if isart(u)]
-    print(f"article pages {len(arts)}; of those with no inbound link from another article: {len([u for u in arts if u in a])}; "
-          f"with none from any page: {len([u for u in arts if u in c])}")
+    print(f"article pages {len(arts)}; with no inbound link from another article: {len([u for u in arts if u in a])}; "
+          f"with no prose link from another article: {len([u for u in arts if u in d])}; with none from any page: {len([u for u in arts if u in c])}")
     if "-v" in sys.argv:
-        for u in a: print(" ", u)
+        for u in d: print(" ", u)
     return 0
 
 if __name__ == "__main__":
