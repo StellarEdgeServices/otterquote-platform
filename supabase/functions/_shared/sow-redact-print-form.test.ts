@@ -1,7 +1,7 @@
 // [gh-3461 / D-390] The Scope of Work PDF prints every string through esc() (create-docusign-envelope/index.ts), which DROPS characters outside
 // space..tilde AFTER the helper has redacted. A contact written with such characters between its digits or letters printed as a plain contact
 // (review 6668236698 on #3456). These tests run the REAL esc() from index.ts on the helper's output and require that nothing which prints as a
-// phone number or e-mail address survives, before the fee. NEGATIVE CONTROL: on main (helper without printForm) every "before the fee" test below fails.
+// phone number or e-mail address survives, before the fee. NEGATIVE CONTROL: on main (helper without printForm) the "before the fee" tests that carry a contact fail; the after-fee, no-contact and fail-closed tests pass there by design.
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import * as H from "./homeowner-text-redact.ts";
 

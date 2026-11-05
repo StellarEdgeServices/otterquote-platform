@@ -144,17 +144,25 @@ const printOf = (ch: string): string => {
   return cp >= 0x2010 && cp <= 0x2015 ? "-" : PRINT_FOLDS[ch] ?? (cp >= 0x20 && cp <= 0x7e ? ch : "");
 };
 // Pinned by sow-redact.test.ts (LEGAL-READ 6256737488 L4, precision over recall): the middle dot and the bullet are NOT phone separators, so a figure list
-// "250 <bullet> 500 <bullet> 1000" prints as typed and "317<middle dot>555<middle dot>0142" is a named advisory leak. A printed-form match whose ONLY
-// dropped characters are those two is therefore left alone; any other dropped character in the match (an emoji, an accent, a zero-width character) is not.
-const PINNED_NON_SEPARATORS = new Set(["\u00b7", "\u2022"]);
-function onlyPinnedDropped(original: string): boolean {
-  let any = false;
-  for (const ch of original) {
-    if (printOf(ch) !== "") continue;
-    if (!PINNED_NON_SEPARATORS.has(ch)) return false;
-    any = true;
+// "250 <bullet> 500 <bullet> 1000" prints as typed and "317<middle dot>555<middle dot>0142" is a named advisory leak. The skip is limited to exactly that
+// shape and to the phone pattern: three digits, the pinned character (optionally spaced), three digits, the pinned character, four digits. A pinned
+// character anywhere else (inside a group, beside another separator, in an e-mail address) is removed like any other dropped character (review 6668694968 F1).
+const PINNED_PHONE_FORM = /^\d{3}[ \t]*[\u00b7\u2022][ \t]*\d{3}[ \t]*[\u00b7\u2022][ \t]*\d{4}$/;
+// esc() drops line breaks and tabs, so two lines print joined. A digits-only phone match across a break deletes nothing but digits and separators, but an
+// e-mail-shaped match across one can delete words and prices both parties agreed to ("sheets@75.<break>Tear off" reads as an address; LEGAL-READ 6668719622).
+// A printed-form match from an e-mail pattern is therefore dropped when it spans a line break or tab, unless every break sits directly beside the
+// at-sign (spaces aside), which is the only place a break can hide an address ("jane@<break>example.com").
+const BREAK_CHARS = /[\r\n\t\v\f\u0085\u2028\u2029]/;
+function breaksOnlyBesideAt(seg: string): boolean {
+  for (let i = 0; i < seg.length; i++) {
+    if (!BREAK_CHARS.test(seg[i])) continue;
+    let s = i, e = i;
+    while (s > 0 && (BREAK_CHARS.test(seg[s - 1]) || seg[s - 1] === " ")) s--;
+    while (e + 1 < seg.length && (BREAK_CHARS.test(seg[e + 1]) || seg[e + 1] === " ")) e++;
+    if (seg[s - 1] !== "@" && seg[e + 1] !== "@") return false;
+    i = e;
   }
-  return any;
+  return true;
 }
 export function printForm(text: string): { printed: string; from: Array<[number, number]> } {
   let printed = "";
@@ -189,7 +197,9 @@ export function redactSowText(text: string): string {
     for (const m of printed.matchAll(re)) {
       if (m[0].length === 0) continue;
       const a = from[m.index!][0], b = from[m.index! + m[0].length - 1][1];
-      if (onlyPinnedDropped(text.slice(a, b))) continue;
+      const seg = text.slice(a, b);
+      if (re === SOW_PATTERNS[0] && PINNED_PHONE_FORM.test(seg)) continue;
+      if (re !== SOW_PATTERNS[0] && BREAK_CHARS.test(seg) && !breaksOnlyBesideAt(seg)) continue;
       spans.push([a, b]);
     }
   }
