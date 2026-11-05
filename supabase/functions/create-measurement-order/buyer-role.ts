@@ -6,19 +6,18 @@
  *
  * WHAT THIS DOES. An unrecognised role no longer stops the request. The request carries on to the normal checks (catalog, price, Stripe
  * PaymentIntent). If the payment is NOT confirmed it is refused exactly as any unpaid request is (the 402 from the payment checks).
- * If the payment IS confirmed, the order is recorded with requested_by_role = 'unspecified' and an operator alert is raised, so an admin
+ * If the payment IS confirmed, the order is recorded (role 'homeowner' where resolvePaidRole can show it, else 'unspecified' plus an operator alert), so an admin
  * sees the order in admin-measurements.html (role column reads "unspecified") and in platform_alerts_log.
  *
- * ROLE VALUE AND THE $5 PARTNER FEE (gh-3229). 'unspecified' is not 'homeowner' and not 'contractor'. The accrual trigger
+ * ROLE VALUE AND THE $5 PARTNER FEE (gh-3229). Where the PaymentIntent and claim ownership show a homeowner bought it (resolvePaidRole), the role
+ * is 'homeowner' and the fee accrues normally. Otherwise 'unspecified' is not 'homeowner' and not 'contractor'. The accrual trigger
  * partner_fee_accrue_on_order fires only WHEN NEW.requested_by_role = 'homeowner' (and re-checks IS DISTINCT FROM 'homeowner'), so an
- * 'unspecified' order accrues NO partner fee. That is the point of #3229's "no silent default": a role nobody stated never earns a
- * referrer $5. The trigger is not changed. If an admin establishes the buyer was a homeowner, setting requested_by_role to
- * 'homeowner' by hand is a separate, deliberate act (an UPDATE, which the insert-only trigger does not backfill; accrual would be
- * an operator decision, not a side effect).
+ * 'unspecified' order accrues no fee AT INSERT: the $5 is ON HOLD for review, not forfeited (Partner Agreement v4 A4.1: earned when a
+ * Referred Homeowner buys). #3229's "no silent default" stands. The trigger is not changed. If an admin establishes the buyer was the referred homeowner the fee is owed; the trigger is insert-only,
+ * so releasing it needs #3229's correction process (none documented; flagged in the PR for the CEO to file).
  *
- * The role is deliberately NOT guessed from the caller's data: a PaymentIntent carries no buyer role, and a contractor_id alone does
- * not prove who paid. Only the one case with a fixed answer is derived: the detailed-measurement upgrade is contractor-only by
- * D-317 and is handled in index.ts.
+ * Other than the shown-homeowner case, the role is NOT guessed: a contractor_id alone does not prove who paid. The detailed-measurement
+ * upgrade is contractor-only by D-317 and is handled in index.ts.
  */
 
 export const UNSPECIFIED_ROLE = "unspecified";
@@ -33,6 +32,26 @@ export interface ResolvedRole {
 export function resolveBuyerRole(raw: unknown): ResolvedRole {
   if (raw === "homeowner" || raw === "contractor") return { role: raw, unresolved: false };
   return { role: UNSPECIFIED_ROLE, unresolved: true };
+}
+
+/**
+ * [gh-3447, CEO/Tier A ruling] Resolve a missing/unknown role for a CONFIRMED payment. 'homeowner' only when it can be shown: the verified
+ * PaymentIntent is a hover_measurement, its own metadata claim_id is this claim, and the claim is owned by the caller. (create-payment-intent
+ * issues a hover_measurement charge only to the claim's owner and stores no user id on the intent, so caller == claim owner, on the
+ * intent's own claim, is the checkable form of "issued to the homeowner who owns the claim".) Anything else, including an intent with no
+ * claim_id metadata or an unreadable owner, is 'unspecified'. There is no other default.
+ */
+export function resolvePaidRole(ctx: {
+  piType: string | null;
+  piClaimId: string | null;
+  claimId: string;
+  claimOwnerId: string | null;
+  callerId: string;
+}): "homeowner" | typeof UNSPECIFIED_ROLE {
+  const shown = ctx.piType === "hover_measurement" &&
+    !!ctx.piClaimId && ctx.piClaimId === ctx.claimId &&
+    !!ctx.claimOwnerId && ctx.claimOwnerId === ctx.callerId;
+  return shown ? "homeowner" : UNSPECIFIED_ROLE;
 }
 
 export interface BuyerRoleAlertRow {
@@ -56,7 +75,8 @@ export function buildBuyerRoleAlertRow(
     function_name: "create-measurement-order",
     message:
       `Paid measurement order recorded with no usable buyer_role: order ${order}, payment_intent ${pi}, claim ${claim}, product ${product}. ` +
-      `requested_by_role was set to '${UNSPECIFIED_ROLE}' (no $5 partner fee accrues for it). An admin should confirm who bought it before the report is delivered (the ready email assumes a homeowner).`,
+      `requested_by_role was set to '${UNSPECIFIED_ROLE}', so any $5 partner fee is ON HOLD for review. An admin should confirm who bought it before the report is delivered (the ready email assumes a homeowner). ` +
+      `If the buyer proves to be the referred homeowner the $5 is owed; record it under #3229's correction process (none is documented yet: it is owed, and the CEO is filing it).`,
     sent_at: now().toISOString(),
   };
 }

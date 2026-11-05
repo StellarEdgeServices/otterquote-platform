@@ -7,6 +7,7 @@ import {
   buildBuyerRoleAlertRow,
   raiseBuyerRoleAlert,
   resolveBuyerRole,
+  resolvePaidRole,
   UNSPECIFIED_ROLE,
 } from "./buyer-role.ts";
 
@@ -32,7 +33,7 @@ Deno.test("alert row: validated shapes only, names the order, payment and claim,
   assertEquals(r.alert_type, BUYER_ROLE_ALERT_TYPE);
   assertEquals(r.function_name, "create-measurement-order");
   assertEquals(r.sent_at, "2026-11-05T12:00:00.000Z");
-  for (const s of [ORDER, "pi_3Abc123", CLAIM, "roof_basic", "unspecified", "no $5 partner fee"]) assertStringIncludes(r.message, s);
+  for (const s of [ORDER, "pi_3Abc123", CLAIM, "roof_basic", "unspecified", "ON HOLD", "referred homeowner", "#3229"]) assertStringIncludes(r.message, s);
 });
 
 Deno.test("alert row: NEGATIVE CONTROL -- hostile text in any field is replaced, never echoed", () => {
@@ -62,13 +63,13 @@ Deno.test("index.ts: REGRESSION -- no early 400 for a missing or unknown buyer_r
 Deno.test("index.ts: the role is resolved BEFORE Stripe and the paid insert carries it; the alert follows a successful insert and precedes the order email", () => {
   const paidInsert = index.indexOf('status: "awaiting_fulfillment"');
   assert(paidInsert > 0);
-  assert(index.slice(paidInsert, paidInsert + 400).includes("requested_by_role: buyerRole"), "the paid insert uses the resolved role (unspecified when unresolved)");
+  assert(index.slice(paidInsert, paidInsert + 400).includes("requested_by_role: paidRole"), "the paid insert uses the resolved role (unspecified when unresolved)");
   const verify = index.indexOf("const paid = await verifyPayment(");
-  const alertAt = index.indexOf("if (roleUnresolved) {");
+  const alertAt = index.indexOf("if (roleStillUnspecified) {");
   const notify = index.indexOf("await recordOrderCreated(supabase, supabaseUrl, order,");
   assert(verify > 0 && paidInsert > verify, "payment is verified before the insert");
   assert(alertAt > paidInsert && notify > alertAt, "alert after the insert, before the order email");
-  assertEquals(index.split("if (roleUnresolved) {").length - 1, 1, "only the paid path alerts");
+  assertEquals(index.split("if (roleStillUnspecified) {").length - 1, 1, "only the paid path alerts");
   assert(index.indexOf("insErr", paidInsert) < alertAt, "a failed insert returns its 500 before the alert runs");
 });
 
@@ -89,6 +90,34 @@ Deno.test("index.ts: upgrade -- a PAID upgrade with no usable role and no contra
   const alertAt = index.indexOf("if (upgradeRole === UNSPECIFIED_ROLE) {");
   assert(guard > 0 && verify > guard, "an unresolved role reaches the Stripe verification");
   assert(role > verify && insert > role && alertAt > insert, "verified, then recorded, then alerted");
-  assert(index.includes("requested_by_role: UNSPECIFIED_ROLE, requested_by_contractor_id: null"));
+  assert(index.includes('requested_by_role: "unspecified", requested_by_contractor_id: null'));
   assert(index.indexOf("UPGRADE_PRODUCT_CODE,\n        upgradeRole,") > 0, "the order email and activity_log carry the effective role");
+});
+
+// -- CEO/Tier A ruling: resolve to homeowner only when it can be shown --
+const OWNER = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+const SHOWN = { piType: "hover_measurement", piClaimId: CLAIM, claimId: CLAIM, claimOwnerId: OWNER, callerId: OWNER };
+
+Deno.test("resolvePaidRole: hover_measurement PI on this claim, claim owned by the caller -> homeowner (the $5 accrues normally)", () => {
+  assertEquals(resolvePaidRole(SHOWN), "homeowner");
+});
+
+Deno.test("resolvePaidRole: NEGATIVE CONTROLS -- every missing piece gives unspecified, never homeowner", () => {
+  for (const over of [
+    { piType: "measurement_order" }, { piType: null }, { piType: "measurement_upgrade" },
+    { piClaimId: null }, { piClaimId: "other-claim" },
+    { claimOwnerId: null }, { claimOwnerId: "someone-else" },
+    { callerId: "someone-else" },
+  ]) {
+    assertEquals(resolvePaidRole({ ...SHOWN, ...over }), UNSPECIFIED_ROLE, JSON.stringify(over));
+  }
+});
+
+Deno.test("index.ts: the paid path resolves an unresolved role with resolvePaidRole from the PI's own metadata and the claim owner, and alerts only when still unspecified", () => {
+  assert(index.includes("resolvePaidRole({"));
+  assert(index.includes("piType: pi.metadata?.type ?? null, piClaimId: pi.metadata?.claim_id ?? null"));
+  assert(index.includes('.from("claims").select("user_id").eq("id", claimId)'));
+  assert(index.includes("requested_by_role: paidRole,"));
+  assert(index.includes("if (roleStillUnspecified) {"));
+  assert(index.includes("productCode, paidRole, authedUser.id, paid.amount"));
 });

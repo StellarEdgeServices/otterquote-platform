@@ -49,11 +49,13 @@ import { logNotificationFailureLoud } from "./notification-failure.ts";
 import {
   buildUpgradeOrderInsert,
   UPGRADE_PRODUCT_CODE,
+  type UpgradeOrderInsertPayload,
 } from "./measurement-upgrade-order.ts";
 import {
   buildBuyerRoleAlertRow,
   raiseBuyerRoleAlert,
   resolveBuyerRole,
+  resolvePaidRole,
   UNSPECIFIED_ROLE,
 } from "./buyer-role.ts";
 import { checkMeasurementPaymentIntent, checkUpgradePaymentIntent, type PaymentCheckResult } from "./payment-intent-checks.ts";
@@ -201,7 +203,7 @@ async function verifyPayment(
   expectedAmount: number,
   claimId: string | null,
   requestOrigin: string,
-): Promise<PaymentCheckResult> {
+): Promise<PaymentCheckResult & { piType?: string | null; piClaimId?: string | null }> {
   // gh-1536: exact-match, not substring — "app-staging." falsely matched
   // app-staging.otterquote.com, a Netlify DOMAIN ALIAS on the PRODUCTION app
   // site (not staging), which selected Stripe TEST-mode keys against real
@@ -230,7 +232,9 @@ async function verifyPayment(
   }
   const pi = await piRes.json();
   // gh-2107 (Ben's step 2 on #2078): the post-fetch checks live in payment-intent-checks.ts (verbatim, plus the USD guard).
-  return checkMeasurementPaymentIntent(pi, { expectedAmount, claimId });
+  const checked = checkMeasurementPaymentIntent(pi, { expectedAmount, claimId });
+  // gh-3447: the PaymentIntent's own type and claim, for resolving an unstated buyer_role (see buyer-role.ts resolvePaidRole).
+  return { ...checked, piType: pi.metadata?.type ?? null, piClaimId: pi.metadata?.claim_id ?? null };
 }
 
 /**
@@ -501,8 +505,8 @@ serve(async (req) => {
       }
 
       // gh-3447: paid, but no usable role and no contractor_id: record it for an admin rather than refuse it.
-      const upgradePayload = upgradeRole === UNSPECIFIED_ROLE
-        ? { ...decision.insertPayload, requested_by_role: UNSPECIFIED_ROLE, requested_by_contractor_id: null }
+      const upgradePayload: UpgradeOrderInsertPayload = upgradeRole === UNSPECIFIED_ROLE
+        ? { ...decision.insertPayload, requested_by_role: "unspecified", requested_by_contractor_id: null }
         : decision.insertPayload;
       let { data: upgradeOrder, error: upgradeInsErr } = await supabase
         .from("hover_orders")
@@ -663,6 +667,28 @@ serve(async (req) => {
       return json({ error: paid.error }, paid.status, corsHeaders);
     }
 
+    // gh-3447 (CEO/Tier A ruling): a missing/unknown role resolves to 'homeowner' ONLY when the verified PaymentIntent is a hover_measurement
+    // whose metadata claim_id is this claim and the claim is owned by the caller (create-payment-intent issues that charge only to the claim's
+    // owner). Otherwise 'unspecified'. Never a default. The lookup is contained: any failure resolves to 'unspecified'.
+    let paidRole: string = buyerRole;
+    if (roleUnresolved) {
+      let claimOwnerId: string | null = null;
+      try {
+        const { data: ownerRow } = await supabase.from("claims").select("user_id").eq("id", claimId).maybeSingle();
+        claimOwnerId = ownerRow?.user_id ?? null;
+      } catch (e) {
+        console.error(`[${FUNCTION_NAME}] claim owner lookup failed:`, e);
+      }
+      paidRole = resolvePaidRole({
+        piType: paid.piType ?? null,
+        piClaimId: paid.piClaimId ?? null,
+        claimId,
+        claimOwnerId,
+        callerId: authedUser.id,
+      });
+    }
+    const roleStillUnspecified = roleUnresolved && paidRole === UNSPECIFIED_ROLE;
+
     const { data: order, error: insErr } = await supabase
       .from("hover_orders")
       .insert({
@@ -671,8 +697,8 @@ serve(async (req) => {
         status: "awaiting_fulfillment",
         product_code: productCode,
         fulfillment_mode: "manual",
-        requested_by_role: buyerRole,
-        requested_by_contractor_id: buyerRole === "contractor" ? contractorId : null,
+        requested_by_role: paidRole,
+        requested_by_contractor_id: paidRole === "contractor" ? contractorId : null,
         homeowner_stripe_payment_intent_id: paymentIntentId,
         homeowner_charge_amount: paid.amount,
         amount_charged: paid.amount / 100,
@@ -706,7 +732,7 @@ serve(async (req) => {
 
     // gh-3447: money confirmed and recorded, but nobody said who the buyer is. Tell the operator (platform_alerts_log, the surface the
     // other payment alerts use); the order row, the activity_log row and the admin email below all carry role 'unspecified'. Contained.
-    if (roleUnresolved) {
+    if (roleStillUnspecified) {
       await raiseBuyerRoleAlert(
         (row) => supabase.from("platform_alerts_log").insert(row),
         (m) => console.error(m),
@@ -715,7 +741,7 @@ serve(async (req) => {
     }
 
     // gh-1412: log + admin email ("Buy basic report — [address]").
-    await recordOrderCreated(supabase, supabaseUrl, order, claimId, productCode, buyerRole, authedUser.id, paid.amount);
+    await recordOrderCreated(supabase, supabaseUrl, order, claimId, productCode, paidRole, authedUser.id, paid.amount);
 
     return json({
       order_id: order.id,
