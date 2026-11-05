@@ -213,10 +213,15 @@ HUB_HEAD = """<!DOCTYPE html>
 <meta property="og:url" content="https://otterquote.com{url}">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Otter Quotes">
-<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
-<meta property="og:image:width" content="512">
-<meta property="og:image:height" content="512">
-<meta property="og:image:alt" content="Otter Quotes logo">
+<meta property="og:image" content="https://otterquote.com/img/social/og-default.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Otter Quotes: Contractors Compete. Homeowners Win. A cartoon otter in a hard hat.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{title} · Otter Quotes">
+<meta name="twitter:description" content="Otter Quotes guides and articles: {title}.">
+<meta name="twitter:image" content="https://otterquote.com/img/social/og-default.jpg">
+<meta name="twitter:image:alt" content="Otter Quotes: Contractors Compete. Homeowners Win. A cartoon otter in a hard hat.">
 
 <!-- GA4 -->
 <script src="/js/internal-traffic.js"></script>
