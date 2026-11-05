@@ -119,6 +119,26 @@ for (const [label, H] of [["shared", Shared], ["local copy", Local]] as const) {
     // the one place the two differ: main's detection cuts the second address beside an ellipsis, and a contact main removes stays removed
     assertEquals(before("x@y.com\u2026z@w.com"), "[removed]...[removed]");
   });
+  Deno.test(`gh-3461 folds (${label}): a short note of repeated labels and "dot" cannot blow up (REVIEW 6672373633)`, () => {
+    const heads = ["x@", "x at ", "x(at)", "x @ ", "jane@a.", "250 ", ""];
+    const gaps = ["\n", "\u{1f642}", "\u200b", "\u2014\u2014", "\u2019", " ", ".", "\t"];
+    const dots = ["dot", "d\no\nt", "DOT", "(dot)", "at", "@", ".", "\u2014"];
+    const labels = ["b", "x-y", "bb\ncc"];
+    const tails = ["", ".com", "\ncom"];
+    let worst = 0, worstShape = "";
+    for (const size of [500, 5000]) {
+      for (const h of heads) for (const g of gaps) for (const d of dots) for (const l of labels) for (const end of tails) {
+        const unit = `${l}${g}${d}${g}`;
+        const t = h + unit.repeat(Math.ceil(size / unit.length)) + end;
+        const t0 = performance.now();
+        before(t);
+        const ms = performance.now() - t0;
+        if (ms > worst) { worst = ms; worstShape = JSON.stringify(t.slice(0, 24)); }
+        assert(ms < (size === 500 ? 250 : 1000), `${size}: ${JSON.stringify(t.slice(0, 40))} took ${ms} ms`);
+      }
+    }
+    console.log(`worst ${Math.round(worst)} ms on ${worstShape}`);
+  });
   Deno.test(`gh-3461 folds (${label}): long hostile runs finish in linear time`, () => {
     const n = 200000;
     const runs = ["\u200b".repeat(n), `end.${"\u200b".repeat(n)}x`, `\u0301`.repeat(n), `.\u0301`.repeat(n / 2), "-".repeat(n), "\u2014".repeat(n), `-\u2014`.repeat(n / 2), `a${"\u2014".repeat(n)}@b.com`, `\u2014@`.repeat(n / 2), `\u00bd`.repeat(n), `${" ".repeat(n)}@`, ` at `.repeat(n / 4), `x\u2014`.repeat(n / 2)];

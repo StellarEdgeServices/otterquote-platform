@@ -244,10 +244,60 @@ const SPLIT_PHONE = new RegExp(
 );
 const SPLIT_AT = `(?:${WS}*@${WS}*|${WS}*[\\(\\[\\{<]${WS}*${gapped("at")}${WS}*[\\)\\]\\}>]${WS}*|${WS}+${gapped("at")}${WS}+)`;
 const SPLIT_DOT = `(?:${NOT_DETERMINER}(?:${WS}*[\\(\\[\\{<]${WS}*${gapped("dot")}${WS}*[\\)\\]\\}>]${WS}*|${WS}+${gapped("dot")}${WS}+)|${WS}*\\.${S}*)`;
-// Bounded like a real address (a label is at most 63 characters), so a note of repeated "at<break>" costs one short look per "at" (REVIEW 6671850471).
-const SPLIT_LABEL = `[A-Za-z0-9](?:[A-Za-z0-9\\-\\u2010${S}]{0,62}[A-Za-z0-9])?`;
 const SPLIT_TLD = [...TLD_LIST].sort((a, b) => b.length - a.length).map(gapped).join("|");
-const SPLIT_EMAIL = new RegExp(`${LOCAL}${SPLIT_AT}${SPLIT_LABEL}(?:${SPLIT_DOT}${SPLIT_LABEL}){0,8}(${SPLIT_DOT}|${S}+)(${SPLIT_TLD})${TLD_END}`, "g");
+// A split address: local part, at-sign, up to 9 labels of at most 64 characters, separator and listed TLD. A label may hold a dropped character, so "b<break>dot<break>b" reads as one label or as two
+// with a separator, and one regex would try every combination (exponential in a 200-character note, REVIEW 6672373633). So the search is by hand, in the order the regex would
+// try, and a place that has already failed is never tried again: at most (length x 9 x 64) steps.
+const SPLIT_HEAD = new RegExp(`${LOCAL}${SPLIT_AT}(?=[A-Za-z0-9])`, "g");
+const SPLIT_NEXT_DOT = new RegExp(`${SPLIT_DOT}(?=[A-Za-z0-9])`, "y");
+const SPLIT_END = new RegExp(`(${SPLIT_DOT}|${S}+)(${SPLIT_TLD})${TLD_END}`, "y");
+const MAX_LABEL_INNER = 62;
+const MAX_MORE_LABELS = 8;
+const isAlnum = (c: string | undefined) => c !== undefined && /[A-Za-z0-9]/.test(c);
+const inLabel = (c: string) => isAlnum(c) || c === "-" || c === DASH_IN_VIEW || c === SOFT;
+function findSplitEmails(marked: string): Array<{ index: number; all: string; sep: string; tld: string }> {
+  const found: Array<{ index: number; all: string; sep: string; tld: string }> = [];
+  const failed = new Set<number>();
+  type End = { end: number; sep: string; tld: string };
+  const afterLabel = (at: number, more: number): End | null => {
+    const key = at * (MAX_MORE_LABELS + 1) + more;
+    if (failed.has(key)) return null;
+    if (more < MAX_MORE_LABELS) {
+      SPLIT_NEXT_DOT.lastIndex = at;
+      if (SPLIT_NEXT_DOT.test(marked)) {
+        const r = label(SPLIT_NEXT_DOT.lastIndex, more + 1);
+        if (r) return r;
+      }
+    }
+    SPLIT_END.lastIndex = at;
+    const m = SPLIT_END.exec(marked);
+    if (m) return { end: at + m[0].length, sep: m[1], tld: m[2] };
+    failed.add(key);
+    return null;
+  };
+  const label = (start: number, more: number): End | null => {
+    if (!isAlnum(marked[start])) return null;
+    let last = start + 1;
+    while (last <= start + MAX_LABEL_INNER && last < marked.length && inLabel(marked[last])) last++;
+    for (let t = Math.min(last, marked.length - 1); t > start; t--) {
+      if (!isAlnum(marked[t])) continue;
+      const r = afterLabel(t + 1, more);
+      if (r) return r;
+    }
+    return afterLabel(start + 1, more);
+  };
+  SPLIT_HEAD.lastIndex = 0;
+  for (let h = SPLIT_HEAD.exec(marked); h; h = SPLIT_HEAD.exec(marked)) {
+    const r = label(h.index + h[0].length, 0);
+    if (r) {
+      found.push({ index: h.index, all: marked.slice(h.index, r.end), sep: r.sep, tld: r.tld });
+      SPLIT_HEAD.lastIndex = r.end;
+    } else {
+      SPLIT_HEAD.lastIndex = h.index + 1;
+    }
+  }
+  return found;
+}
 // A dropped character right beside the at-sign of an otherwise whole address: any lower-case last label ("jane<emoji>@proton.me").
 const BESIDE_AT = new RegExp(`${LOCAL}${S}*@${S}*[A-Za-z](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?(?:\\.${LABEL})*\\.[a-z]{2,}${TLD_END}`, "g");
 // "Tax 250.<break>300.<break>1000 total" prints "250. 300. 1000", which is two characters between the groups and no phone gap, typed or not.
@@ -263,16 +313,15 @@ const dashDomainCounts = (all: string): boolean => {
 const WORD_TLDS = /^(?:net|org|dev|ca|uk|co|pro)$/;
 // "Look at t<break>he dot com era": the determiner rule above, with the break taken out.
 const DETERMINER_THEN_DOT = new RegExp(`(?<![A-Za-z0-9\\-])(?:${DETERMINERS})[ ]*[\\(\\[\\{<]?[ ]*${DOT_W}`);
-function keepSplitEmail(m: RegExpMatchArray): boolean {
-  const all = m[0];
+function keepSplitEmail(all: string, sep: string, typedTld: string): boolean {
   if (!(all.includes(SOFT) || all.includes(DASH_IN_VIEW)) || DETERMINER_THEN_DOT.test(all.replaceAll(SOFT, ""))) return false;
-  const tld = m[2].replaceAll(SOFT, "");
+  const tld = typedTld.replaceAll(SOFT, "");
   const tight = all.includes("@") && !all.includes(" ");
   if (tld !== tld.toLowerCase() && (tld !== tld.toUpperCase() || /[a-z]/.test(all) || !/[@(\[{<]/.test(all))) return false;
   const word = WORD_TLDS.test(tld.toLowerCase());
-  const noDot = !/[.dD]/.test(m[1]);
+  const noDot = !/[.dD]/.test(sep);
   if (noDot && (!tight || word)) return false;
-  if (word && m[1].endsWith(SOFT) && !(tight && new RegExp(`@${S}*[A-Za-z]`).test(all))) return false;
+  if (word && sep.endsWith(SOFT) && !(tight && new RegExp(`@${S}*[A-Za-z]`).test(all))) return false;
   return true;
 }
 
@@ -292,7 +341,7 @@ export function redactSowText(text: string): string {
   }
   for (const m of marked.matchAll(BESIDE_AT)) if (m[0].includes(SOFT)) spans.push([m.index!, m.index! + m[0].length]);
   for (const m of marked.matchAll(DASH_IN_DOMAIN)) if (dashDomainCounts(m[0])) spans.push([m.index!, m.index! + m[0].length]);
-  for (const m of marked.matchAll(SPLIT_EMAIL)) if (keepSplitEmail(m)) spans.push([m.index!, m.index! + m[0].length]);
+  for (const m of findSplitEmails(marked)) if (keepSplitEmail(m.all, m.sep, m.tld)) spans.push([m.index, m.index + m.all.length]);
   spans.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
   let out = "";
   let pos = 0;
