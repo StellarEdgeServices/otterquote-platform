@@ -25,7 +25,7 @@ ok(/EXECUTE FUNCTION public\.partner_fee_accrue_on_order\(\)/.test(fwd), 'migrat
 ok(/WHEN \(OLD\.requested_by_role = 'unspecified' AND NEW\.requested_by_role = 'homeowner'\)/.test(fwd), 'migration: the trigger arm is unspecified -> homeowner only');
 ok(!/INSERT INTO public\.partner_fee_events/.test(fwd), 'migration NEGATIVE CONTROL: no second INSERT into partner_fee_events (no copy of the checks to drift)');
 ok(!/CREATE OR REPLACE FUNCTION public\.partner_fee_accrue_on_order/.test(fwd), 'migration: the accrual function is not redefined');
-ok(/auth\.role\(\), ''\) = 'service_role' OR public\.is_admin_email\(\)/.test(fwd) && /FROM PUBLIC, anon;/.test(fwd), 'migration: admin or service role only; not executable by anon');
+ok(/auth\.role\(\), ''\) = 'service_role' OR COALESCE\(public\.is_admin_email\(\), false\)/.test(fwd) && /COALESCE\(p_require_fee, true\)/.test(fwd) && /FROM PUBLIC, anon;/.test(fwd), 'migration: admin or service role only, NULL-safe guard and NULL-safe p_require_fee; not executable by anon');
 for (const f of ['supabase/migrations_drafts/gh3460_held_fee_release_rollback.sql', 'supabase/migrations_drafts/gh3460_held_fee_release_pre-flight.md',
   'supabase/tests/gh3460_held_fee_release_proof.sql', 'supabase/tests/gh3460_held_fee_release_local_run.sh', 'runbooks/held-partner-fee-release.md']) ok(fs.existsSync(path.join(ROOT, f)), 'exists: ' + f);
 ok(/NOT APPLIED/.test(fwd.split('\n')[0]), 'migration header says NOT APPLIED');

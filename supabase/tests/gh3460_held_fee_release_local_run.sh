@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # LOCAL throwaway Postgres 16 run of the gh-3460 (P18) proof. Never touches production. Same harness as gh3229_partner_measurement_fee_local_run.sh.
-# usage: gh3460_held_fee_release_local_run.sh [before|after|rollback|mutant-wide-arm|mutant-no-refusal|mutant-no-admin|mutant-copy-checks]
+# usage: gh3460_held_fee_release_local_run.sh [before|after|rollback|mutant-wide-arm|mutant-no-refusal|mutant-no-admin|mutant-null-guard|mutant-null-require|mutant-copy-checks]
 #   before            : gh3229 NOT applied, gh3460 NOT applied, proof alone -> rows DIFF (negative control)
 #   after             : gh3229 body + gh3460 body spliced into the proof -> every row OK
 #   rollback          : both applied for real, then the gh3460 rollback; prints leftovers (want 0) and that gh3229's trigger is intact, then the proof against gh3229-only (settle rows DIFF)
 #   mutant-wide-arm   : the new trigger fires on any role change (drop the OLD='unspecified' condition)      -> T2 must go DIFF
 #   mutant-no-refusal : the function never refuses a settlement that accrued no fee (require_fee ignored)     -> R1-R7 must go DIFF
 #   mutant-no-admin   : the admin check is off                                                               -> G1 must go DIFF (G2 stays OK: anon has no EXECUTE grant)
+#   mutant-null-guard : the OLD guard restored (`OR public.is_admin_email()` without COALESCE)                  -> G8, G9, G10 must go DIFF (the NULL bypass)
+#   mutant-null-require: `IF NOT FOUND AND p_require_fee` restored (no COALESCE)                             -> R9 must go DIFF
 #   mutant-copy-checks: the accrual function loses the excluded-state check (a drifted copy would do this)    -> R1, T1(MS) go DIFF on BOTH paths: one function, one place
 # Needs PG16 binaries (PGBIN, default /usr/lib/postgresql/16/bin) and a user that may run initdb (PGRUN_AS, default postgres).
 set -euo pipefail
@@ -37,11 +39,13 @@ case "$MODE" in
   before) echo "== BEFORE (no migrations): negative control"; run_proof "$PROOF" ;;
   after)  echo "== AFTER gh3229 + gh3460"; splice > "$D/after.sql"; run_proof "$D/after.sql" ;;
   mutant-wide-arm)   mutate "s/WHEN (OLD.requested_by_role = 'unspecified' AND NEW.requested_by_role = 'homeowner')/WHEN (NEW.requested_by_role = 'homeowner')/" "trigger arm fires on any role change" ;;
-  mutant-no-refusal) mutate "s/IF NOT FOUND AND p_require_fee THEN/IF false THEN/" "settlement never refused" ;;
+  mutant-no-refusal) mutate "s/IF NOT FOUND AND COALESCE(p_require_fee, true) THEN/IF false THEN/" "settlement never refused" ;;
   mutant-no-admin)   splice > "$D/orig.sql"
-                     awk 'BEGIN{n=0} /IF NOT \(COALESCE\(auth.role\(\), .*\) = .service_role. OR public.is_admin_email\(\)\) THEN/ { n++; if (n==2) { sub(/IF NOT \(.*\) THEN/, "IF false THEN") } } { print }' "$D/orig.sql" > "$D/mut.sql"
+                     awk 'BEGIN{n=0} /IF NOT \(COALESCE\(auth.role\(\), .*\) = .service_role. OR .*is_admin_email\(\).*\) THEN/ { n++; if (n==2) { sub(/IF NOT \(.*\) THEN/, "IF false THEN") } } { print }' "$D/orig.sql" > "$D/mut.sql"
                      cmp -s "$D/orig.sql" "$D/mut.sql" && { echo "mutant did not change the SQL" >&2; exit 1; }
                      echo "== MUTANT: admin check off in admin_settle_order_buyer_role"; run_proof "$D/mut.sql" ;;
+  mutant-null-guard) mutate "s/OR COALESCE(public.is_admin_email(), false)) THEN/OR public.is_admin_email()) THEN/" "old NULL-unsafe admin guard restored" ;;
+  mutant-null-require) mutate "s/IF NOT FOUND AND COALESCE(p_require_fee, true) THEN/IF NOT FOUND AND p_require_fee THEN/" "NULL p_require_fee skips the refusal" ;;
   mutant-copy-checks) mutate "s/IF upper(btrim(v_state)) IN ('OK', 'AR', 'KS', 'NE', 'MS') THEN/IF false THEN/" "excluded-state check removed from the single accrual function" ;;
   rollback)
     $P -f "$F29"; $P -f "$FWD"

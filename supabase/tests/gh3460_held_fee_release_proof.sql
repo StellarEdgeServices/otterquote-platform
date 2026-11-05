@@ -13,6 +13,7 @@
 --   R1-R7 NON-QUALIFYING orders are refused, role stays 'unspecified', zero fee rows: excluded state (OK), home inspector, no credited referral, click outside the window,
 --         is_test mismatch, partner never accepted v4, payment already carried a fee on another order
 --   R8  p_require_fee => false records the homeowner role on a non-qualifying order with no fee (the role is settled, nothing owed)
+--   G8-G13 (REVIEW 6668719903) NULL-safe admin guard: no email claim, empty claims, bare superuser session, non-admin email refused; the runbook's set_config path works and names the admin; re-settle after a void; R9 NULL p_require_fee still refuses
 --   G1-G6 admin only: a partner session and anon are refused; service_role works; bad role, unknown order, a settled order with a different role, contractor without id, homeowner with a contractor id are refused
 --   C1  contractor settlement sets the role and contractor id and accrues nothing
 --   T1  hand SQL UPDATE unspecified->homeowner on a qualifying order accrues once (the checks run in the trigger); on a non-qualifying order accrues nothing
@@ -67,6 +68,18 @@ BEGIN
   INSERT INTO hover_orders(id, claim_id, user_id, requested_by_role, homeowner_stripe_payment_intent_id, homeowner_charge_amount, created_at)
   VALUES (v_id, p_claim, pg_temp.u(399), p_role, coalesce(p_pi, 'pi_' || v_id::text), 1500, now());
   RETURN v_id;
+END $f$;
+
+-- run as a given role with RAW claims text (possibly empty); role_name NULL = stay the current (superuser) session, which is what the dashboard SQL editor / execute_sql is
+CREATE FUNCTION pg_temp.as_claims(p_role text, p_claims text, p_sql text) RETURNS text LANGUAGE plpgsql AS $f$
+DECLARE v text;
+BEGIN
+  PERFORM set_config('request.jwt.claims', p_claims, true);
+  IF p_role IS NOT NULL THEN EXECUTE format('SET LOCAL ROLE %I', p_role); END IF;
+  BEGIN EXECUTE p_sql INTO v; EXCEPTION WHEN OTHERS THEN v := 'ERR ' || SQLSTATE; END;
+  IF p_role IS NOT NULL THEN RESET ROLE; END IF;
+  PERFORM set_config('request.jwt.claims', '', true);
+  RETURN coalesce(v, '<NULL>');
 END $f$;
 
 -- settle as the admin; returns the function's jsonb->>'fee_cents'/'already_settled' or 'ERR <sqlstate>'
@@ -147,6 +160,31 @@ SELECT pg_temp.chk('G4 contractor without contractor id refused / homeowner with
 SELECT pg_temp.chk('G5 service_role may settle', pg_temp.as_sess('service_role', NULL, NULL, format($$ SELECT (r->>'fee_cents') FROM (SELECT admin_settle_order_buyer_role(%L::uuid, 'homeowner') r) x $$, (SELECT id FROM o WHERE k='g1'))), '500');
 SELECT pg_temp.chk('G6 a settled homeowner order cannot be re-settled to contractor (55000)', pg_temp.settle((SELECT id FROM o WHERE k='g1'), 'contractor', pg_temp.u(500)), 'ERR 55000');
 SELECT pg_temp.chk('G7 anon has no EXECUTE', pg_temp.q($$ SELECT has_function_privilege('anon', 'public.admin_settle_order_buyer_role(uuid,text,uuid,text,boolean)', 'EXECUTE')::text $$), 'false');
+
+-- G8-G12 NULL-safe guard (REVIEW 6668719903): a session that is not clearly an admin or the service role is refused, including NULL cases
+INSERT INTO c VALUES ('n', pg_temp.mk_claim(1));
+INSERT INTO o SELECT 'n1', pg_temp.mk_order((SELECT id FROM c WHERE k='n'));
+SELECT pg_temp.chk('G8 authenticated with a sub but NO email claim: refused (42501), role unspecified, 0 fees', pg_temp.as_claims('authenticated', json_build_object('sub', pg_temp.u(201), 'role', 'authenticated')::text,
+  format($$ SELECT admin_settle_order_buyer_role(%L::uuid, 'homeowner')::text $$, (SELECT id FROM o WHERE k='n1'))) || '/' || pg_temp.role_of((SELECT id FROM o WHERE k='n1')) || '/' || pg_temp.fees((SELECT id FROM o WHERE k='n1')), 'ERR 42501/unspecified/0');
+SELECT pg_temp.chk('G9 authenticated, claims empty (no role, no email): refused (42501), 0 fees', pg_temp.as_claims('authenticated', '',
+  format($$ SELECT admin_settle_order_buyer_role(%L::uuid, 'homeowner')::text $$, (SELECT id FROM o WHERE k='n1'))) || '/' || pg_temp.fees((SELECT id FROM o WHERE k='n1')), 'ERR 42501/0');
+SELECT pg_temp.chk('G10 superuser session with NO claims (the bare SQL editor): refused (42501), role unspecified, 0 fees', pg_temp.as_claims(NULL, '',
+  format($$ SELECT admin_settle_order_buyer_role(%L::uuid, 'homeowner')::text $$, (SELECT id FROM o WHERE k='n1'))) || '/' || pg_temp.role_of((SELECT id FROM o WHERE k='n1')) || '/' || pg_temp.fees((SELECT id FROM o WHERE k='n1')), 'ERR 42501/unspecified/0');
+SELECT pg_temp.chk('G11 authenticated with an email that is not an admin: refused (42501)', pg_temp.as_claims('authenticated', json_build_object('sub', pg_temp.u(201), 'role', 'authenticated', 'email', 'someone@example.invalid')::text,
+  format($$ SELECT admin_settle_order_buyer_role(%L::uuid, 'homeowner')::text $$, (SELECT id FROM o WHERE k='n1'))), 'ERR 42501');
+-- G12 the RUNBOOK path, exactly: a superuser SQL-editor session sets the claims line (transaction-local) with an admin email, then calls the function
+SELECT pg_temp.chk('G12 runbook path (set_config claims with an admin email, then the call): settles, 500', pg_temp.as_claims(NULL, '{"role":"authenticated","email":"dustin@otterquote.com"}',
+  format($$ SELECT (r->>'fee_cents') FROM (SELECT admin_settle_order_buyer_role(%L::uuid, 'homeowner', NULL, 'runbook path') r) x $$, (SELECT id FROM o WHERE k='n1'))), '500');
+SELECT pg_temp.chk('G12 audit line names the admin email', pg_temp.q(format($$ SELECT (admin_notes LIKE '%%by dustin@otterquote.com at %%') FROM hover_orders WHERE id = %L $$, (SELECT id FROM o WHERE k='n1'))), 'true');
+-- G13 a settled order whose fee was voided: re-settle reports the void fee (the admin follows the runbook note; nothing is re-opened by this function)
+SELECT pg_temp.x(format($$ UPDATE partner_fee_events SET status = 'void', voided_at = now() WHERE hover_order_id = %L $$, (SELECT id FROM o WHERE k='n1')));
+SELECT pg_temp.chk('G13 re-settle after the fee was voided: already_settled, fee_status void, still one row', pg_temp.as_sess('authenticated', pg_temp.u(299), 'dustin@otterquote.com',
+  format($$ SELECT (r->>'already_settled') || '/' || (r->>'fee_status') FROM (SELECT admin_settle_order_buyer_role(%L::uuid, 'homeowner') r) x $$, (SELECT id FROM o WHERE k='n1'))) || '/' || pg_temp.fees((SELECT id FROM o WHERE k='n1')), 'true/void/1');
+-- R9 an explicit NULL p_require_fee means "require": the excluded-state order is still refused
+INSERT INTO c VALUES ('r9', pg_temp.mk_claim(1, false, false, interval '1 day', 'KS'));
+INSERT INTO o SELECT 'r9', pg_temp.mk_order((SELECT id FROM c WHERE k='r9'));
+SELECT pg_temp.chk('R9 p_require_fee passed as NULL on a non-qualifying order: refused, still unspecified, 0 fees', pg_temp.as_sess('authenticated', pg_temp.u(299), 'dustin@otterquote.com',
+  format($$ SELECT admin_settle_order_buyer_role(%L::uuid, 'homeowner', NULL, 'x', NULL)::text $$, (SELECT id FROM o WHERE k='r9'))) || '/' || pg_temp.role_of((SELECT id FROM o WHERE k='r9')) || '/' || pg_temp.fees((SELECT id FROM o WHERE k='r9')), 'ERR 22023/unspecified/0');
 
 -- C contractor ------------------------------------------------------------------------------------------------------------------------------
 INSERT INTO c VALUES ('c', pg_temp.mk_claim(1));

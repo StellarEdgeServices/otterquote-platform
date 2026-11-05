@@ -39,6 +39,13 @@ Check 2 matters: if a non-admin role can UPDATE `hover_orders.requested_by_role`
 - Lock: `CREATE TRIGGER` takes SHARE ROW EXCLUSIVE on `hover_orders` (small table, seconds); `lock_timeout` is 5s.
 - No Edge Function or page needs to deploy first. `admin-measurements.html` in the same PR changes only when the ready email is re-sent.
 
+## Rollback order with gh3229
+`gh3229_partner_measurement_fee_rollback.sql` does `DROP FUNCTION public.partner_fee_accrue_on_order()` without CASCADE. While `partner_fee_accrue_on_role_settled` exists it depends on that function, so gh3229's rollback FAILS. Roll back gh3460 first, then gh3229. The same holds for any later migration that replaces or drops that function.
+
+## Admin guard
+`admin_settle_order_buyer_role` refuses anything that is not clearly an admin email or `service_role` (NULL-safe: a JWT with no email claim, empty claims and a bare superuser session are all refused, 42501). The proof covers those cases (G8-G12). The dashboard SQL editor and MCP `execute_sql` carry no JWT, so use the `set_config` line in the runbook. Note the proof uses a stub of `is_admin_email()`; before apply, confirm on production that `SELECT public.is_admin_email()` returns an admin-only true for the claims line the runbook sets, and NULL/false otherwise.
+(The same NULL-unsafe guard shape exists in gh3229's `create_monthly_fee_batch`; out of scope here, noted by the reviewer for its own issue.)
+
 ## Verify
 Run `supabase/tests/gh3460_held_fee_release_proof.sql` (single rolled-back batch). Local: `supabase/tests/gh3460_held_fee_release_local_run.sh before|after|rollback|mutant-*`.
 After the apply, in the SQL editor as an admin session: `SELECT admin_settle_order_buyer_role('<held order id>', 'homeowner', NULL, '<why>')`. See `runbooks/held-partner-fee-release.md`.

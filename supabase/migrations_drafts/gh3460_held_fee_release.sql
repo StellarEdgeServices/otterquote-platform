@@ -25,6 +25,7 @@
 --      records the role only (the buyer is a homeowner but not a credited one: no fee is owed; it exists so the ready email can be sent).
 --      Idempotent: a repeat call on an order already settled to the same role changes nothing and returns already_settled; the table's UNIQUE(hover_order_id) and
 --      UNIQUE(payment_ref) keys stop a second fee even under a race.
+--   NULL handling: the admin guard and p_require_fee are forced to non-NULL booleans (a JWT with no email claim, no claims at all, or an explicit NULL p_require_fee all fail closed).
 --   The ready email is NOT sent by SQL. After settling, re-save the order in admin-measurements.html (this PR makes a re-save of an already delivered order send it).
 --   Nothing is backfilled and no fee is created at apply time.
 
@@ -72,7 +73,9 @@ DECLARE
   v_who     text;
   v_note    text;
 BEGIN
-  IF NOT (COALESCE(auth.role(), '') = 'service_role' OR public.is_admin_email()) THEN
+  -- NULL-safe: is_admin_email() is NULL (not false) when the JWT has no email claim, and `NOT (false OR NULL)` is NULL, which IF treats as false (the guard would be skipped).
+  -- So this is a positive match with every operand forced to a non-NULL boolean; anything that is not a clear yes is refused.
+  IF NOT (COALESCE(auth.role(), '') = 'service_role' OR COALESCE(public.is_admin_email(), false)) THEN
     RAISE EXCEPTION 'admin_settle_order_buyer_role: admin or service role only' USING ERRCODE = '42501';
   END IF;
   IF p_order_id IS NULL OR p_role IS NULL OR p_role NOT IN ('homeowner', 'contractor') THEN
@@ -114,7 +117,7 @@ BEGIN
 
   IF p_role = 'homeowner' THEN
     SELECT * INTO v_fee FROM public.partner_fee_events WHERE hover_order_id = p_order_id;
-    IF NOT FOUND AND p_require_fee THEN
+    IF NOT FOUND AND COALESCE(p_require_fee, true) THEN     -- an explicit NULL means 'require' (NULL would otherwise skip the refusal)
       -- the trigger's checks refused it (no credited partner, outside the window, excluded state, inspector, v4, test mismatch, payment already paid a fee...).
       -- Undo the role change: the order stays 'unspecified' and the $5 stays held.
       RAISE EXCEPTION 'admin_settle_order_buyer_role: order % does not qualify for the partner fee under the accrual checks; role not changed (use p_require_fee => false to record the role without a fee)', p_order_id

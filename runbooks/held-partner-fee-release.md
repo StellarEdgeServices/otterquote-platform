@@ -9,16 +9,24 @@ Prerequisite: the migration `gh3460_held_fee_release` (and `gh3229_partner_measu
 ## 1. Decide who bought it
 Look at the order, its claim and the PaymentIntent in Stripe (the alert names the order, payment_intent and claim). Settle on one of: the claim's homeowner, a contractor (note which), or unknown. If unknown, stop; the order stays held and the ready email stays suppressed.
 
-## 2. Set the role (SQL editor, signed in as an admin; or the service role)
+## 2. Set the role
+The function refuses (SQLSTATE 42501) any session that is not a clear admin or the service role. The dashboard SQL editor and MCP `execute_sql` run as a database superuser with NO JWT, so a bare call from there is refused on purpose. Two ways in:
+
+**A. SQL editor / `execute_sql`: set the admin claims in the same transaction, then call.** Use your own admin email (the one `is_admin_email()` accepts); it is written to the audit line. `set_config(..., true)` lasts only for the transaction, so send BEGIN ... COMMIT as one run.
 ```sql
+BEGIN;
+SELECT set_config('request.jwt.claims', '{"role":"authenticated","email":"<your admin email>"}', true);
 -- the buyer is the referred homeowner: records the role AND accrues the $5 through the same checks as a normal order
 SELECT public.admin_settle_order_buyer_role('<order uuid>', 'homeowner', NULL, '<one line: how you confirmed it>');
 -- the buyer is a contractor: records role + contractor, no fee
-SELECT public.admin_settle_order_buyer_role('<order uuid>', 'contractor', '<contractor uuid>', '<note>');
+-- SELECT public.admin_settle_order_buyer_role('<order uuid>', 'contractor', '<contractor uuid>', '<note>');
 -- the buyer is the homeowner but the claim has no credited partner / the fee does not apply: records the role only, no fee
-SELECT public.admin_settle_order_buyer_role('<order uuid>', 'homeowner', NULL, '<note>', false);
+-- SELECT public.admin_settle_order_buyer_role('<order uuid>', 'homeowner', NULL, '<note>', false);
+COMMIT;
 ```
-Result is JSON: `fee_cents` / `fee_status` for a homeowner settlement that accrued; `already_settled: true` if it had been done (running it again is safe, a second fee is never created).
+**B. Service-role RPC** (`POST /rest/v1/rpc/admin_settle_order_buyer_role` with the service-role key, body `{"p_order_id": "...", "p_role": "homeowner", "p_note": "..."}`); the audit line then names `service_role`, so put who you are in `p_note`.
+
+Result is JSON: `fee_cents` / `fee_status` for a homeowner settlement that accrued; `already_settled: true` if it had been done (running it again is safe, a second fee is never created). If `already_settled` comes back with `fee_status: "void"`, the fee for that order was voided earlier and this function does not reopen it: do not insert a new one; raise it with the CTO as a manual correction.
 
 A refusal (SQLSTATE 22023, "does not qualify for the partner fee under the accrual checks") means the accrual checks said no (no credited referral, click outside the attribution window, excluded state, home inspector partner, partner had not accepted v4 by the order, is_test mismatch, or that payment already carried a fee). Nothing was changed: the order is still `unspecified` and the $5 is still held. If the buyer really is a homeowner and no fee is owed, use the third form. Do not insert into `partner_fee_events` by hand.
 
