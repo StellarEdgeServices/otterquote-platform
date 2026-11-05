@@ -248,6 +248,13 @@
 @media (max-width: 600px) {
   .compare-grid { grid-template-columns: 1fr; }
 }
+/* Tables scroll inside their own box on narrow screens instead of widening the page */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .line-item-table, .table-wrap .warranty-table { margin: 0; }
 </style>
 <style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
 </head>
@@ -291,6 +298,7 @@
         <h2>The Anatomy of a Roofing Estimate</h2>
         <p>A legitimate roofing estimate is not a single number — it's a line-item breakdown that accounts for labor, materials, disposal, and miscellaneous costs. Here's what a complete estimate includes:</p>
 
+        <div class="table-wrap">
         <table class="line-item-table">
           <thead>
             <tr>
@@ -372,6 +380,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
 
         <div class="highlight-box">
           <strong>A complete estimate isn't necessarily a long estimate.</strong> Some contractors use concise formats that bundle related items. What matters is that every major cost category above is either explicitly covered or you've confirmed it's included in a bundled line. "Complete roof replacement" with a single price and no detail is not a complete estimate.
@@ -465,6 +474,7 @@
 
         <p>Manufacturer warranty tiers work on a system/certification basis: the highest tiers are available only when specific products are used together as a system (underlayment, shingles, ridge cap, ventilation from the same manufacturer or approved line) and installed by a contractor the manufacturer has certified and trained. Here's how the major manufacturers tier their warranties:</p>
 
+        <div class="table-wrap">
         <table class="warranty-table">
           <thead>
             <tr>
@@ -499,6 +509,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
 
         <div class="highlight-box">
           <strong>Verify the warranty tier, not just the brand.</strong> A contractor who "installs GAF" but is not a GAF Master Elite contractor cannot offer a Golden Pledge warranty regardless of which GAF products they use. Ask specifically: "What warranty tier will I receive, and what is the basis for offering that tier?" A legitimate contractor will tell you their certification status without hesitation. You can also verify most manufacturer certifications directly on the manufacturer's website by searching the contractor by name or zip code.

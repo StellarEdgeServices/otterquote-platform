@@ -294,6 +294,13 @@
   color: var(--gray);
   font-size: 0.85rem;
 }
+/* Tables scroll inside their own box on narrow screens instead of widening the page */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; }
 </style>
 <style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
 </head>
@@ -338,6 +345,7 @@
         <h2>Read Your Policy Before the Adjuster Shows Up</h2>
         <p>The single most important thing you can do before any negotiation is know what your policy actually covers. Many homeowners have never read their declarations page carefully, which means they don't know whether they have Actual Cash Value (ACV) coverage or Replacement Cost Value (RCV) coverage &mdash; and that distinction controls how much you receive.</p>
 
+        <div class="table-wrap">
         <table class="definition-table">
           <thead>
             <tr>
@@ -359,6 +367,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
 
         <p>If you have RCV coverage, your insurer will typically issue an initial payment equal to the ACV of the damage &mdash; the replacement cost minus a depreciation holdback. Once the repair work is completed and documented, you submit proof of completion and the insurer releases the withheld depreciation. This second payment is called the <strong>recoverable depreciation</strong>, and many homeowners don't know to ask for it.</p>
 

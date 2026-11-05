@@ -329,6 +329,13 @@
 .toc li a:hover {
   color: var(--amber);
 }
+/* Tables scroll inside their own box on narrow screens instead of widening the page */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; }
 </style>
 <style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
 </head>
@@ -390,6 +397,7 @@
         <h2>Should You File a Claim? The Math That Matters</h2>
         <p>Not every property damage event is worth filing a claim for. Filing when it doesn't make financial sense can raise your premium, affect your claims history, and &mdash; in extreme cases &mdash; result in your policy being non-renewed. Before you call your insurer, run through this quick analysis:</p>
 
+        <div class="table-wrap">
         <table class="definition-table">
           <thead>
             <tr>
@@ -412,6 +420,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
 
         <p>A rough rule: if the repair estimate from a licensed contractor is at least two to three times your deductible, filing typically makes sense. Below that threshold, the premium impact often erodes the benefit over time.</p>
 
@@ -549,6 +558,7 @@
         <h2>How Long Does the Property Damage Claim Process Take? A Step-by-Step Timeline</h2>
         <p>Every insurer and claim is different, so treat the ranges below as general guidance, not a promise about your specific claim — a regional catastrophe event can push every stage out by weeks as insurers work through a backlog. Roughly how the process tends to unfold:</p>
 
+        <div class="table-wrap">
         <table class="definition-table">
           <thead>
             <tr>
@@ -570,6 +580,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
 
         <p>A regional catastrophe event can extend the inspection and estimate stages considerably as adjusters work through claim volume. Filing promptly and documenting thoroughly won't guarantee a faster outcome, but it keeps your claim ready to move as soon as your insurer has capacity.</p>
       </div>
@@ -581,6 +592,7 @@
 
         <p>Most insurance estimates are generated using estimating software (commonly Xactimate) that prices labor and materials against a regional database, which can lag current market costs and may not capture every step a code-compliant repair requires locally. A contractor's bid reflects what that specific contractor would charge today, based on their own labor rates and read of local code requirements.</p>
 
+        <div class="table-wrap">
         <table class="definition-table">
           <thead>
             <tr>
@@ -607,6 +619,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
 
       </div>
 
