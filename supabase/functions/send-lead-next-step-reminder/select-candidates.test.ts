@@ -211,8 +211,44 @@ Deno.test("gh-2378: ho6 still needs role='homeowner', and a synthetic ho6 lead i
     { send: false, skip_reason: "synthetic_lead" });
 });
 
-Deno.test("gh-2378: eligible variants are exactly f, HO-2, ho6", () => {
-  assertEquals([...REMINDER_ELIGIBLE_VARIANTS], ["f", "HO-2", "ho6"]);
+Deno.test("gh-3420: eligible variants are exactly f, HO-2, ho6, d", () => {
+  assertEquals([...REMINDER_ELIGIBLE_VARIANTS], ["f", "HO-2", "ho6", "d"]);
+});
+
+// -- gh-3420: the live front-door arm 'd' (start.html LIVE_VARIANTS, gh-3136) --
+
+Deno.test("gh-3420: sends for a 'd' homeowner lead aged 25h", () => {
+  const lead = baseLead({ variant: "d", created_at: new Date(NOW - 25 * H).toISOString() });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: true });
+});
+
+Deno.test("gh-3420: sends for a 'd' homeowner lead aged 6d23h (inside the 7d window)", () => {
+  const lead = baseLead({ variant: "d", created_at: new Date(NOW - (7 * 24 - 1) * H).toISOString() });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: true });
+});
+
+Deno.test("gh-3420: negative control -- a 'd' lead aged 8d is too_old", () => {
+  const lead = baseLead({ variant: "d", created_at: new Date(NOW - 8 * 24 * H).toISOString() });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "too_old" });
+});
+
+Deno.test("gh-3420: negative control -- a 'd' lead aged 23h is too_young", () => {
+  const lead = baseLead({ variant: "d", created_at: new Date(NOW - 23 * H).toISOString() });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "too_young" });
+});
+
+Deno.test("gh-3420: 'd' still honors role, goal, sent, opt-out and kill switch", () => {
+  assertEquals(selectLeadForReminder(baseLead({ variant: "d", role: "contractor" }), true, NOW).skip_reason, "not_reminder_eligible_variant");
+  assertEquals(selectLeadForReminder(baseLead({ variant: "d", has_goal_event: true }), true, NOW).skip_reason, "goal_recorded");
+  assertEquals(selectLeadForReminder(baseLead({ variant: "d", next_step_reminder_sent_at: "2026-09-25T00:00:00Z" }), true, NOW).skip_reason, "already_sent");
+  assertEquals(selectLeadForReminder(baseLead({ variant: "d", next_step_reminder_opted_out_at: "2026-09-25T00:00:00Z" }), true, NOW).skip_reason, "opted_out");
+  assertEquals(selectLeadForReminder(baseLead({ variant: "d" }), false, NOW).skip_reason, "disabled");
+});
+
+Deno.test("gh-3420: variant match stays exact -- 'D', 'dd', 'd ' and the other arms 'a'-'c','e' stay excluded", () => {
+  for (const v of ["D", "dd", "d ", "a", "b", "c", "e"]) {
+    assertEquals(selectLeadForReminder(baseLead({ variant: v }), true, NOW), { send: false, skip_reason: "not_reminder_eligible_variant" });
+  }
 });
 
 Deno.test("gh-2300: skips a synthetic HO-2 lead (synthetic check still wins)", () => {
