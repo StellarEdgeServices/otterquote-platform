@@ -80,7 +80,7 @@ export function foldForDetection(text: string): string {
 }
 
 // Phone group gap: at most ONE separator character (a run of plain spaces counts as one). A dash, dot or hyphen with spaces around it ("250 - 500 - 1000")
-// is two characters and is not a phone gap, so a figure list survives. "/", "_", the middle dot and the bullet are NOT separators (precision over
+// is two characters and is not a phone gap, so a figure list survives. "/" and "_" are NOT separators (precision over
 // recall on the signed SOW: "Limits 250/500/1000" is a figure list; "317/555-0142" is an accepted advisory leak).
 // Zero-width and soft-hyphen characters are ignored around a gap.
 const ZW = "[\\u00ad\\u200b-\\u200d\\u2060\\ufeff]*";
@@ -163,18 +163,8 @@ const SOFT = "\x1f"; // typed control characters can never reach `marked`: they 
 const FOLDED_DASH = "\x1e";
 const BARRIER = "\x1d";
 const DASH_IN_VIEW = String.fromCharCode(0x2010);
-// Pinned by sow-redact.test.ts (LEGAL-READ 6256737488 L4), with Ben as a ruling (Q 6668703638 on #3461): exactly the shapes "317<middle dot>555<middle dot>0142",
-// "250 <bullet> 500 <bullet> 1000" and "250 <middle dot> 500 <middle dot> 1000", the same character twice with even spacing, and not with a leading 1 or a
-// further group, and ASCII digits only: it runs on the typed text, never a folded copy (LEGAL-READ 6669633277). These two characters stay in the output as typed, so THIS IS THE ONE PLACE esc() STILL DROPS SOMETHING: the unspaced form prints as ten digits
-// until the ruling comes. Everywhere else they are dropped characters like any other.
-const PINNED_FIGURES =
-  /(?<!\p{N})(?<!(?<!\p{N})[+\uff0b]?[1\uff11\u0661\u06f1][\s.\-\u00b7\u2022]*)(?:[0-9]{3}\u00b7[0-9]{3}\u00b7[0-9]{4}|[0-9]{3} ([\u00b7\u2022]) [0-9]{3} \1 [0-9]{4})(?!\p{N})(?![.,]\p{N})(?! ?[\u00b7\u2022] ?\p{N})/gu;
-
+// The middle dot and the bullet are dropped characters like any other: A 6669920816 on #3461 removed the pin that let "317<middle dot>555<middle dot>0142" print.
 export function printForm(text: string): { printed: string; marked: string; view: string; to: number[] } {
-  const pinned = new Set<number>();
-  for (const m of text.matchAll(PINNED_FIGURES)) {
-    for (let k = m.index!; k < m.index! + m[0].length; k++) if (text[k] === "\u00b7" || text[k] === "\u2022") pinned.add(k);
-  }
   let printed = "";
   let marked = "";
   let view = "";
@@ -189,7 +179,6 @@ export function printForm(text: string): { printed: string; marked: string; view
     const at = i;
     i += typed.length;
     for (let k = at; k < i; k++) to[k] = printed.length;
-    if (pinned.has(at)) { printed += typed; marked += typed; view += typed; continue; }
     const ch = PRINTS_AS_PLAIN.test(typed) ? foldForDetection(typed) : typed;
     const out = printOf(ch);
     if (out === "" || (out === " " && ch !== " ")) { // a no-break space counts as dropped, like the wide spaces
@@ -277,8 +266,8 @@ export function redactSowText(text: string): string {
     cut = true;
   }
   out += printed.slice(pos);
-  // Printed equals redacted: anything esc() would still drop, other than the pinned characters, refuses the envelope rather than prints.
-  if (/[^ -~·•]/.test(out)) throw new Error("output is not the printed form");
+  // Printed equals redacted: anything esc() would still drop refuses the envelope rather than prints.
+  if (/[^ -~]/.test(out)) throw new Error("output is not the printed form");
   return out;
 }
 

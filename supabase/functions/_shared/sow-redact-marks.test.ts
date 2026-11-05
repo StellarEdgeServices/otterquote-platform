@@ -77,8 +77,8 @@ for (const [label, H] of [["shared", Shared], ["local copy", Local]] as const) {
       assert(!/\d{3}/.test(p), `digits print: ${JSON.stringify(t)} -> ${p}`);
     }
   });
-  Deno.test(`gh-3461 marks (${label}): the three pinned ASCII forms are unchanged, and after the fee everything is as typed`, () => {
-    for (const t of [`317${D}555${D}0142`, `250 ${B} 500 ${B} 1000`, `250 ${D} 500 ${D} 1000`]) assertEquals(before(t), t);
+  Deno.test(`gh-3461 marks (${label}): the forms once pinned are removed in ASCII digits too (ruling 6669920816), and after the fee everything is as typed`, () => {
+    for (const t of [`317${D}555${D}0142`, `250 ${B} 500 ${B} 1000`, `250 ${D} 500 ${D} 1000`]) assertEquals(before(t), H.REMOVED_TOKEN);
     for (const t of [...PRICES.map((r) => r[0]), ...NON_ASCII_PINS]) assertEquals(H.redactSowTextOrRefuse(t, true), t);
   });
   Deno.test(`gh-3461 marks (${label}): a contact in compatibility or full-width characters still prints no contact`, () => {

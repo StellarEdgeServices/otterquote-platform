@@ -57,8 +57,6 @@ const SURVIVE = [
   "Limits 250/500/1000",
   "Bids 850/900/1200",
   "Coverage 250_500_1000",
-  "Line items 250 \u2022 500 \u2022 1000",
-  "250 \u00b7 500 \u00b7 1000",
   "Shingles @ 400.Total due",
   "Gutter guards @ 6.LF",
   "Labor @ 75.hr",
@@ -199,7 +197,7 @@ const prevModel3 = (t: string) => SOW_PATTERNS_P3.reduce((o, re) => o.replace(re
 
 Deno.test("NEGATIVE CONTROL 3 (head 1ac6f859): its patterns damage the fix2880e must-survive rows; the current patterns do not", () => {
   const rows = [
-    "Limits 250/500/1000", "Bids 850/900/1200", "Coverage 250_500_1000", "Line items 250 \u2022 500 \u2022 1000", "250 \u00b7 500 \u00b7 1000",
+    "Limits 250/500/1000", "Bids 850/900/1200", "Coverage 250_500_1000",
     "Shingles @ 400.Total due", "Gutter guards @ 6.LF", "Labor @ 75.hr", "Arrive @ 8.AM", "Paid @ closing.Net $5000", "meet @ gate.Then call", "Done @ noon.OK?",
     "Leak at chimney.it leaks", "Leak at front.in the valley", "Work at back.me too", "We met at noon.IT guy came",
   ];
@@ -337,8 +335,16 @@ Deno.test("KNOWN RESIDUAL (iii): spelled at...dot with a word domain is removed"
   assertEquals(redactSowText("Starter @ ridge dot net"), "[removed]");
 });
 
+// A 6669920816 on #3461 (Ben): D-390 overrides the pin. These printed as typed until that ruling. NEGATIVE CONTROL: the helper of 3a861ef7 keeps all three.
+Deno.test("Ruling 6669920816: a phone or phone-shaped list written with a middle dot or bullet is removed before the fee", () => {
+  for (const t of ["317\u00b7555\u00b70142", "317\u2022555\u20220142", "250 \u2022 500 \u2022 1000", "250 \u00b7 500 \u00b7 1000"]) assertEquals(redactSowText(t), "[removed]", t);
+  assertEquals(redactSowText("Ring 317\u00b7555\u00b70142 today"), "Ring [removed] today");
+  assertEquals(redactSowText("Line items 250 \u2022 500 \u2022 1000"), "Line items [removed]");
+  assertEquals(redactSowText("Limits 250 \u2022 500"), "Limits 250 500"); // two figures are no phone
+});
+
 Deno.test("ADVISORY LEAKS: contact shapes the SOW path deliberately does not remove", () => {
-  for (const t of ["317/555-0142", "317_555_0142", "317\u00b7555\u00b70142", "jane at proton.me", "call me 555-0142", "+44 20 7946 0958"]) assertEquals(redactSowText(t), t, t);
+  for (const t of ["317/555-0142", "317_555_0142", "jane at proton.me", "call me 555-0142", "+44 20 7946 0958"]) assertEquals(redactSowText(t), t, t);
 });
 
 Deno.test("SOW redaction: no truncation (a 50000-character note is redacted whole and finishes quickly)", () => {

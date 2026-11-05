@@ -137,12 +137,13 @@ for (const [label, H] of [["shared", Shared], ["local copy", Local]] as const) {
     try { H.redactSowTextOrRefuse(CONTACTS[0], false, () => { throw new Error("boom"); }); } catch (e) { code = (e as InstanceType<typeof H.RedactionUnavailableError>).code; }
     assertEquals(code, "d390_redaction_unavailable");
   });
-  Deno.test(`gh-3461 printed (${label}): the three pinned forms stay as typed, and only those three`, () => {
-    for (const t of [`317${D}555${D}0142`, `250 ${B} 500 ${B} 1000`, `250 ${D} 500 ${D} 1000`, `Ring 317${D}555${D}0142 today`, `Line items 250 ${B} 500 ${B} 1000${NL}Next`]) {
-      assert(before(t).includes(t.replace(`${NL}Next`, "")), t);
-      assert(!before(t).includes(H.REMOVED_TOKEN), t);
+  Deno.test(`gh-3461 printed (${label}): the forms once pinned print no digits, and esc() has nothing left to drop (ruling 6669920816)`, () => {
+    for (const t of [`317${D}555${D}0142`, `250 ${B} 500 ${B} 1000`, `250 ${D} 500 ${D} 1000`, `Ring 317${D}555${D}0142 today`, `Line items 250 ${B} 500 ${B} 1000${NL}Next`, `317${B}555${B}0142`, `317 ${B}555 ${B}0142`, `317  ${D}  555  ${D}  0142`, `317${D}555${D}0142${D}9`, `1${ZW}317${D}555${D}0142`, `+1${SHY}317${D}555${D}0142`, `1\u2013317${D}555${D}0142`, `(1)317${D}555${D}0142`, `jane@317${D}555${D}0142.com`, `jane at 317${D}555${D}0142.com`]) {
+      const out = before(t);
+      assert(out.includes(H.REMOVED_TOKEN), t);
+      assertEquals(printsAs(out), out, t);
+      assert(!/\d{10}/.test(out), `${t} -> ${out}`);
     }
-    for (const t of [`317${B}555${B}0142`, `317 ${B}555 ${B}0142`, `317  ${D}  555  ${D}  0142`, `317${D}555${D}0142${D}9`]) assert(before(t).includes(H.REMOVED_TOKEN), t);
   });
   Deno.test(`gh-3461 printed (${label}): a long hostile note stays quick`, () => {
     const t0 = performance.now();

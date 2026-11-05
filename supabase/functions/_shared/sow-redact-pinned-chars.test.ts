@@ -1,4 +1,5 @@
-// [gh-3461 / D-390 / review 6668694968 F1] sow-redact.test.ts pins the middle dot and the bullet as NON-separators for phone numbers only
+// [gh-3461 / D-390 / review 6668694968 F1, ruling A 6669920816] The middle dot and the bullet are dropped characters, and the pin that once kept
+// ("317·555·0142", "250 • 500 • 1000", "250 · 500 · 1000") is gone.
 // ("317·555·0142", "250 • 500 • 1000", "250 · 500 · 1000"). esc() drops both characters, so anywhere else they are just dropped characters and the
 // contact they hide must be removed. Runs against BOTH copies of the helper (the shared one and send-message-notification's local copy) and
 // through the REAL esc() from create-docusign-envelope/index.ts. NEGATIVE CONTROL: at head 85418643 the e-mail forms and the phone forms with a
@@ -36,7 +37,7 @@ const MUST_REMOVE = [
   `317 ${D}555${D} 0142`, `317${D} 555${D} 0142`, `317 ${D}555 ${D}0142`, `317${D}555${B}0142`, `317\t${D}\t555\t${D}\t0142`, `317${B}555${B}0142`,
   `+1 317${D}555${D}0142`, `1${D}317${D}555${D}0142`, `(317)${D}555${D}0142`,
 ];
-const MUST_STAY = [`317${D}555${D}0142`, `Line items 250 ${B} 500 ${B} 1000`, `Line items 250 ${D} 500 ${D} 1000`, `Ring 317${D}555${D}0142 today`];
+const WAS_PINNED = [`317${D}555${D}0142`, `Line items 250 ${B} 500 ${B} 1000`, `Line items 250 ${D} 500 ${D} 1000`, `Ring 317${D}555${D}0142 today`];
 
 for (const [label, H] of [["shared", Shared], ["local copy", Local]] as const) {
   Deno.test(`gh-3461 F1 (${label}): a contact hidden with a middle dot or bullet outside the pinned phone shape is removed before the fee`, () => {
@@ -48,10 +49,10 @@ for (const [label, H] of [["shared", Shared], ["local copy", Local]] as const) {
       assert(!/\d{10}|example\.?com|example dot com/i.test(p.replaceAll(" ", "")), `contact prints: ${JSON.stringify(t)} -> ${p}`);
     }
   });
-  Deno.test(`gh-3461 F1 (${label}): the three pinned phone forms still print as typed (pin kept, ruling is F2)`, () => {
-    for (const t of MUST_STAY) assertEquals(H.redactSowTextOrRefuse(t, false), t);
+  Deno.test(`gh-3461 F1 (${label}): the forms once pinned are removed (ruling 6669920816)`, () => {
+    for (const t of WAS_PINNED) assert((H.redactSowTextOrRefuse(t, false) as string).includes(H.REMOVED_TOKEN), t);
   });
   Deno.test(`gh-3461 F1 (${label}): after the fee everything prints as typed`, () => {
-    for (const t of [...MUST_REMOVE, ...MUST_STAY]) assertEquals(H.redactSowTextOrRefuse(t, true), t);
+    for (const t of [...MUST_REMOVE, ...WAS_PINNED]) assertEquals(H.redactSowTextOrRefuse(t, true), t);
   });
 }

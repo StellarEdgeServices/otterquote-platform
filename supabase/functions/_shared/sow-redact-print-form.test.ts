@@ -89,9 +89,9 @@ Deno.test("gh-3461: only the contact is cut out; the words around it still print
   assertEquals(before(`a ${U(0xbd)} jane${ZW}@example.com b`), `a 1/2 ${H.REMOVED_TOKEN} b`);
 });
 
-Deno.test("gh-3461: the two characters sow-redact.test.ts pins as non-separators (middle dot, bullet) stay as typed alone, but not mixed with others", () => {
-  assertEquals(before(`317${U(0xb7)}555${U(0xb7)}0142`), `317${U(0xb7)}555${U(0xb7)}0142`);
-  assertEquals(before(`Line items 250 ${U(0x2022)} 500 ${U(0x2022)} 1000`), `Line items 250 ${U(0x2022)} 500 ${U(0x2022)} 1000`);
+Deno.test("gh-3461: the middle dot and the bullet are dropped characters like any other (ruling 6669920816)", () => {
+  assertEquals(before(`317${U(0xb7)}555${U(0xb7)}0142`), H.REMOVED_TOKEN);
+  assertEquals(before(`Line items 250 ${U(0x2022)} 500 ${U(0x2022)} 1000`), `Line items ${H.REMOVED_TOKEN}`);
   assert(!survives(before(`317${U(0xb7)}${EMO}555${U(0xb7)}${EMO}0142`)));
 });
 
