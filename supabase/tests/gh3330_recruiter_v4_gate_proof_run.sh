@@ -14,7 +14,7 @@ D=supabase/migrations_drafts; T=supabase/tests
 RP=supabase/migrations/20260927235229_gh2154_register_partner_rate_limit_fix.sql
 ARC=supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql
 FWD=$D/gh3330_recruiter_v4_gate.sql; RB=$D/gh3330_recruiter_v4_gate_rollback.sql
-OLD=2eba9b9601c731cb20f45ef5a18c742b; NEW=82c4f0a13589236016b4ec4e1a22d428
+OLD=2eba9b9601c731cb20f45ef5a18c742b; NEW=7b9bc6957cb15534514f1e1ab9e32bbf
 DB=gh3330_proof; rc=0
 fail() { echo "EXPECT FAIL: $*"; rc=1; }
 sed -n '318,622p' "$RP" > "$OUT/register_partner_live.sql"
@@ -31,7 +31,14 @@ mkdb() {  # $1 db name, $2 = "live" (gh3245 applied: the production body) or "au
   if [ "$2" = live ]; then psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$D/gh3245_customer_fee_v4_gate.sql" >/dev/null 2>&1 || exit 2; fi
   psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$T/gh3245_throwaway_trigger.sql" >/dev/null || exit 2
 }
-pass() { psql -q -At -d "$2" -f "$T/gh3330_recruiter_v4_gate_proof.sql" 2> "$OUT/$1.err" | grep -E '[|](PASS|FAIL)$|^FAILING=' > "$OUT/$1.txt"; echo "== $1"; cat "$OUT/$1.txt"; grep -v '^$' "$OUT/$1.err" | grep -v 'NOTICE' || true; }
+# query W: the fenced sql block under "## Query W" in the pre-flight, run verbatim as CREATE TEMP TABLE w_rows AS <W>
+python3 - "$D/gh3330_recruiter_v4_gate_pre-flight.md" "$OUT/w_rows.sql" <<'PY' || { echo "query W block not found in the pre-flight"; exit 2; }
+import re,sys
+t=open(sys.argv[1]).read(); t=t[t.index("## Query W"):]
+m=re.search(r"```sql\n(.*?)```",t,re.S); q=m.group(1).strip().rstrip(";")
+open(sys.argv[2],"w").write("CREATE TEMP TABLE w_rows AS "+q+";\n")
+PY
+pass() { psql -q -At -v wfile="$OUT/w_rows.sql" -d "$2" -f "$T/gh3330_recruiter_v4_gate_proof.sql" 2> "$OUT/$1.err" | grep -E '[|](PASS|FAIL)$|^FAILING=' > "$OUT/$1.txt"; echo "== $1"; cat "$OUT/$1.txt"; grep -v '^$' "$OUT/$1.err" | grep -v 'NOTICE' || true; }
 mkdb "$DB" live
 md=$(psql -At -d "$DB" -c "SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure")
 [ "$md" = "$OLD" ] || fail "throwaway base body md5 $md is not the production body $OLD"
@@ -44,7 +51,7 @@ psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "$RB" >/dev/null 2>&1 || fail "rollback n
 pass 3-ROLLBACK "$DB"
 psql -q -d "$DB" -v ON_ERROR_STOP=1 -f "$FWD" >/dev/null 2>&1 || fail "forward after rollback failed"
 pass 4-REAPPLIED "$DB"
-for ph in 1-BASELINE 2-AFTER 3-ROLLBACK 4-REAPPLIED; do grep -q '^FAILING=0 of 11$' "$OUT/$ph.txt" || fail "$ph must report FAILING=0 of 11"; done
+for ph in 1-BASELINE 2-AFTER 3-ROLLBACK 4-REAPPLIED; do grep -q '^FAILING=0 of 14$' "$OUT/$ph.txt" || fail "$ph must report FAILING=0 of 14"; done
 grep -q '|before|' "$OUT/1-BASELINE.txt" && grep -q '|after|' "$OUT/2-AFTER.txt" || fail "phase detection"
 diff "$OUT/1-BASELINE.txt" "$OUT/3-ROLLBACK.txt" >/dev/null || fail "ROLLBACK differs from BASELINE"
 diff "$OUT/2-AFTER.txt" "$OUT/4-REAPPLIED.txt" >/dev/null || fail "REAPPLIED differs from AFTER"

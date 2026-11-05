@@ -1,15 +1,16 @@
 -- STATUS (gh-1438, as of 2026-11-02): NOT APPLIED
 -- FILE ROLE: forward file of set gh3330_recruiter_v4_gate (rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-11-02 under #3330; production read-only SELECT of pg_get_functiondef('public.apply_referral_commission()') the same day
---   (project yeszghaspzwwstvsrioa): md5(prosrc) = 2eba9b9601c731cb20f45ef5a18c742b, 12965 bytes, SECURITY DEFINER, search_path public, pg_temp; that is
+--   (project yeszghaspzwwstvsrioa): md5(prosrc) = 2eba9b9601c731cb20f45ef5a18c742b, 12965 characters (13009 bytes), SECURITY DEFINER, search_path public, pg_temp; that is
 --   the gh3245 body (draft gh3245_customer_fee_v4_gate.sql), so gh3245 and gh3239 are live. No database was written to produce this file.
 -- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and
 --   pre-flight to supabase/migrations_rollbacks/.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- Migration: gh3330_recruiter_v4_gate
--- GitHub: #3330. Money: Tier 3B (CREATE OR REPLACE of a SECURITY DEFINER money trigger function). Ruled: Ben, 2026-11-02T17:12Z
---   (comment 6583394572): a recruiter must hold Partner Agreement v4 to earn the $50, withheld rather than dropped.
+-- GitHub: #3330. Money: Tier 3B (CREATE OR REPLACE of a SECURITY DEFINER money trigger function). Ruled: Dustin, 2026-11-02 13:17 ET
+--   (recorded on #3330, comment 6584786600): asked whether a recruiter who has not accepted v4 earns the $50 bonus, "No." Withheld rather than
+--   dropped. (Ben's earlier answer 6583394572 was retracted at 6584765173; its D-405 premise was wrong. The ruling stands on Dustin's word.)
 --   Needs REVIEW + LEGAL-READ + R-177 pair; CTO applies after R-097.
 -- DEPENDS ON gh3239 (partner_v4_accepted_at()) and gh3245 (the body this restates). Refuses to run on any other body.
 -- Rollback: gh3330_recruiter_v4_gate_rollback.sql   Pre-flight: gh3330_recruiter_v4_gate_pre-flight.md
@@ -35,7 +36,7 @@ BEGIN
   END IF;
   SELECT md5(prosrc) INTO v_md5 FROM pg_proc WHERE oid = to_regprocedure('public.apply_referral_commission()');
   IF v_md5 IS NULL OR v_md5 NOT IN ('2eba9b9601c731cb20f45ef5a18c742b',    -- audited body (production 2026-11-02, the gh3245 body)
-                                    '82c4f0a13589236016b4ec4e1a22d428') THEN -- this file's body (re-run)
+                                    '7b9bc6957cb15534514f1e1ab9e32bbf') THEN -- this file's body (re-run)
     RAISE EXCEPTION 'gh3330 guard: apply_referral_commission() body drifted (md5 %); re-audit before applying', v_md5;
   END IF;
 END
@@ -231,9 +232,11 @@ BEGIN
       FROM public.referral_agents
       WHERE id = v_referrer.recruited_by_id;
 
-    -- ── gh-3330 (#3330; Ben, 2026-11-02T17:12Z): a recruiter earns the $50 only if the RECRUITER holds Partner Agreement v4
-    -- (partner_v4_accepted_at(recruiter) IS NOT NULL). The Recruit Bonus was introduced with the v4 terms (D-405). No cutoff and no
-    -- timing test: the recruiter must hold v4 when the referral completes. A recruiter without it is WITHHELD, not dropped:
+    -- ── gh-3330 (#3330; Dustin, 2026-11-02 13:17 ET, asked "should a recruiter who hasn't accepted the v4 agreement earn the $50
+    -- bonus?": "No."): a recruiter earns the $50 only if the RECRUITER holds Partner Agreement v4
+    -- (partner_v4_accepted_at(recruiter) IS NOT NULL). The Recruit Bonus predates v4 (v3 Section 4, D-139; D-401 item 7 keeps it);
+    -- this condition is Dustin's ruling, not a v3 term. No cutoff and no timing test: the recruiter must hold v4 when the referral
+    -- completes. A recruiter without it is WITHHELD, not dropped:
     -- nothing is accrued or paid now (recruit_commission_amount stays 0, no recruit_earnings, no payout row), the referral still
     -- completes and the referrer still gets the $200, and the case is logged here. It stays recoverable by query (pre-flight
     -- query W). There is NO release path yet: a recruiter who accepts v4 later is not paid automatically (see pre-flight).
@@ -347,7 +350,7 @@ $function$;
 
 DO $check$
 BEGIN
-  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure) <> '82c4f0a13589236016b4ec4e1a22d428' THEN
+  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure) <> '7b9bc6957cb15534514f1e1ab9e32bbf' THEN
     RAISE EXCEPTION 'gh3330 forward: body check failed after CREATE OR REPLACE';
   END IF;
 END

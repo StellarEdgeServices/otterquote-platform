@@ -15,7 +15,7 @@ DECLARE
   v_md5 text;
 BEGIN
   SELECT md5(prosrc) INTO v_md5 FROM pg_proc WHERE oid = to_regprocedure('public.apply_referral_commission()');
-  IF v_md5 IS NULL OR v_md5 NOT IN ('82c4f0a13589236016b4ec4e1a22d428', '2eba9b9601c731cb20f45ef5a18c742b') THEN
+  IF v_md5 IS NULL OR v_md5 NOT IN ('7b9bc6957cb15534514f1e1ab9e32bbf', '2eba9b9601c731cb20f45ef5a18c742b') THEN
     RAISE EXCEPTION 'gh3330 rollback guard: apply_referral_commission() body is neither the gh3330 nor the gh3245 body (md5 %); re-audit', v_md5;
   END IF;
 END

@@ -1,7 +1,7 @@
 -- gh-3330 proof: the $50 recruit bonus is gated on the RECRUITER holding Partner Agreement v4, withheld rather than dropped.
 -- THROWAWAY Postgres only (see the _run.sh). Phase-aware: BEFORE = the live apply_referral_commission() (the gh3245 body; BASELINE /
 -- ROLLBACK), AFTER = the gh3330 body (AFTER / REAPPLIED). The BEFORE rows are the negative controls: a recruiter with no v4 is paid $50.
--- Runs inside BEGIN ... ROLLBACK. Output: "name|phase|expected|actual|PASS or FAIL" per check, then "FAILING=<n> of <m>".
+-- Needs -v wfile=<path of the query W file the runner extracts>. Runs inside BEGIN ... ROLLBACK. Output: "name|phase|expected|actual|PASS or FAIL" per check, then "FAILING=<n> of <m>".
 \set ON_ERROR_STOP on
 BEGIN;
 SELECT (position('gh-3330' IN (SELECT prosrc FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure)) > 0)::text AS after \gset
@@ -26,12 +26,21 @@ INSERT INTO public.referral_agents (id, agent_type, first_name, last_name, email
   ('dddddddd-0000-0000-0000-0000000000a3', 're_agent',       'Rec', 'NoV4',   'n@proof.invalid',  'v3-2026-09', '2026-09-26T12:00:00Z', '{"v3-2026-09": {}}'),
   ('dddddddd-0000-0000-0000-0000000000a4', 'customer',       'Rec', 'Cust',   'c@proof.invalid',  NULL, NULL, '{}'),
   ('dddddddd-0000-0000-0000-0000000000a5', 'home_inspector', 'Rec', 'Insp',   'i@proof.invalid',  'v3-2026-09', '2026-09-26T12:00:00Z', '{"v3-2026-09": {}}'),
-  ('dddddddd-0000-0000-0000-0000000000a6', 're_agent',       'Rec', 'Later',  'l@proof.invalid',  'v3-2026-09', '2026-09-26T12:00:00Z', '{"v3-2026-09": {}}');
+  ('dddddddd-0000-0000-0000-0000000000a6', 're_agent',       'Rec', 'Later',  'l@proof.invalid',  'v3-2026-09', '2026-09-26T12:00:00Z', '{"v3-2026-09": {}}'),
+  -- a7: never accepted, its referral is later moved to commission_paid (approve-payout); a8: never accepted, its referrer is a home_inspector;
+  -- a9: never accepted, its referrer is a v4-gated customer (no fee, no bonus: a different rule, so W must NOT list it)
+  ('dddddddd-0000-0000-0000-0000000000a7', 're_agent',       'Rec', 'Paid200','p@proof.invalid',  'v3-2026-09', '2026-09-26T12:00:00Z', '{"v3-2026-09": {}}'),
+  ('dddddddd-0000-0000-0000-0000000000a8', 're_agent',       'Rec', 'InspRef','bi@proof.invalid', 'v3-2026-09', '2026-09-26T12:00:00Z', '{"v3-2026-09": {}}'),
+  ('dddddddd-0000-0000-0000-0000000000a9', 're_agent',       'Rec', 'CustRef','bc@proof.invalid', 'v3-2026-09', '2026-09-26T12:00:00Z', '{"v3-2026-09": {}}');
 -- one referrer per recruiter (re_agent on v3, never gated), recruited 2026-10-01
 INSERT INTO public.referral_agents (id, agent_type, first_name, last_name, email, partner_agreement_version, partner_agreement_accepted_at, partner_agreement_attestation, recruited_by_id, recruited_at)
 SELECT ('eeeeeeee-0000-0000-0000-0000000000' || right(r.id::text, 2))::uuid, 're_agent', 'Ref', 'of ' || right(r.id::text, 2), 'ref' || right(r.id::text, 2) || '@proof.invalid',
        'v3-2026-09', '2026-09-26T12:00:00Z', '{"v3-2026-09": {}}', r.id, '2026-10-01T00:00:00Z'
   FROM public.referral_agents r WHERE r.id::text LIKE 'dddddddd-%';
+
+UPDATE public.referral_agents SET agent_type = 'home_inspector' WHERE id = 'eeeeeeee-0000-0000-0000-0000000000a8';
+UPDATE public.referral_agents SET agent_type = 'customer', partner_agreement_version = NULL, partner_agreement_accepted_at = NULL, partner_agreement_attestation = '{}'
+ WHERE id = 'eeeeeeee-0000-0000-0000-0000000000a9';
 
 CREATE FUNCTION pg_temp.mk(p_case text, p_recruiter_suffix text) RETURNS uuid LANGUAGE plpgsql AS $f$
 DECLARE v_ref uuid; v_claim uuid; v_ctr uuid := gen_random_uuid();
@@ -62,6 +71,10 @@ UPDATE public.referral_agents SET partner_agreement_version = 'v4-2026-10', part
        partner_agreement_attestation = jsonb_build_object('v4-2026-10', jsonb_build_object('accepted_at', now()))
  WHERE id = 'dddddddd-0000-0000-0000-0000000000a6';
 SELECT pg_temp.mk('l2', 'a6');  -- the same recruiter L, after accepting v4
+SELECT pg_temp.mk('p',  'a7');  -- recruiter never accepted; then approve-payout moves the referral to commission_paid
+UPDATE public.referrals SET status = 'commission_paid' WHERE id = current_setting('proof.ref_p')::uuid;
+SELECT pg_temp.mk('bi', 'a8');  -- referrer is a home_inspector (no $200 and no commission_amount), recruiter never accepted
+SELECT pg_temp.mk('bc', 'a9');  -- referrer is a customer who never accepted v4 (v4-gated: no fee, no bonus)
 
 SELECT pg_temp.chk('A recruiter holds v4: $200 to the referrer and $50 to the recruiter (control)', '200|50|1|50', '200|50|1|50', pg_temp.outcome('v', 'a1'));
 SELECT pg_temp.chk('B recruiter holds v4 through the flat columns only: $50 (control)', '200|50|1|50', '200|50|1|50', pg_temp.outcome('vf', 'a2'));
@@ -70,18 +83,17 @@ SELECT pg_temp.chk('D customer recruiter without v4: $50 withheld', '200|50|1|50
 SELECT pg_temp.chk('E home_inspector recruiter, no v4: no bonus before or after (D-333, unchanged)', '200|0|0|0', '200|0|0|0', pg_temp.outcome('i', 'a5'));
 SELECT pg_temp.chk('F recruiter L, referral completed BEFORE accepting v4: withheld, and NOT released by the later acceptance (L''s earnings are only the later paid referral)', '200|50|1|100', '200|0|0|50', pg_temp.outcome('l1', 'a6'));
 SELECT pg_temp.chk('G recruiter L, referral completed AFTER accepting v4: $50 (earnings count only the paid one)', '200|50|1|100', '200|50|1|50', pg_temp.outcome('l2', 'a6'));
-SELECT pg_temp.chk('H the withheld referrals are recoverable by query W (pre-flight): C, D, F listed (n, c, l1); A, B, E, G not', '0|', '3|c,l1,n',
-  (SELECT count(*)::text || '|' || COALESCE(string_agg(k, ',' ORDER BY k), '') FROM (
-     SELECT x.k FROM (VALUES ('v'),('vf'),('n'),('c'),('i'),('l1'),('l2')) x(k)
-       JOIN public.referrals r ON r.id = current_setting('proof.ref_' || x.k)::uuid
-       JOIN public.referral_agents rf ON rf.id = r.referral_agent_id
-       JOIN public.referral_agents rc ON rc.id = rf.recruited_by_id
-      WHERE r.status = 'job_completed' AND r.commission_amount = 200 AND COALESCE(r.recruit_commission_amount, 0) = 0
-        AND r.created_at >= rf.recruited_at AND rc.agent_type IS DISTINCT FROM 'home_inspector'
-   ) q(k)));
+-- query W is the block in the pre-flight, extracted verbatim by the runner into :wfile (CREATE TEMP TABLE w_rows AS <W>)
+\i :wfile
+SELECT pg_temp.chk('H query W (pre-flight, verbatim) lists the withheld referrals: n, c, l1, p (already commission_paid), bi (inspector referrer); not v, vf, l2 (paid), i (inspector recruiter), bc (v4-gated customer referrer)', '0|', '5|bi,c,l1,n,p',
+  (SELECT count(*)::text || '|' || COALESCE(string_agg(x.k, ',' ORDER BY x.k), '')
+     FROM w_rows w JOIN (VALUES ('v'),('vf'),('n'),('c'),('i'),('l1'),('l2'),('p'),('bi'),('bc')) x(k) ON w.referral = current_setting('proof.ref_' || x.k)::uuid));
 SELECT pg_temp.chk('I fee email (send-partner-status-email) still sent for the withheld case: the referrer''s $200 is real', '1', '1',
   (SELECT count(*)::text FROM net.proof_calls c WHERE c.url LIKE '%/send-partner-status-email' AND c.body ->> 'referral_id' = current_setting('proof.ref_n')));
-SELECT pg_temp.chk('J apply_referral_commission body md5', '2eba9b9601c731cb20f45ef5a18c742b', '82c4f0a13589236016b4ec4e1a22d428',
+SELECT pg_temp.chk('L recruiter never accepted, the referrer''s $200 already moved to commission_paid: $50 withheld (the case the first query W lost)', '200|50|1|50', '200|0|0|0', pg_temp.outcome('p', 'a7'));
+SELECT pg_temp.chk('M home_inspector referrer, recruiter never accepted: no $200 (D-333) and the $50 withheld (before: $50 paid)', 'none|50|1|50', 'none|0|0|0', pg_temp.outcome('bi', 'a8'));
+SELECT pg_temp.chk('N v4-gated customer referrer: no $200 and no $50 before or after (gh-3245, not this gate)', 'none|0|0|0', 'none|0|0|0', pg_temp.outcome('bc', 'a9'));
+SELECT pg_temp.chk('J apply_referral_commission body md5', '2eba9b9601c731cb20f45ef5a18c742b', '7b9bc6957cb15534514f1e1ab9e32bbf',
   (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure));
 SELECT pg_temp.chk('K still SECURITY DEFINER with search_path public, pg_temp', 'true|search_path=public, pg_temp', 'true|search_path=public, pg_temp',
   (SELECT prosecdef::text || '|' || array_to_string(proconfig, ',') FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure));
