@@ -65,7 +65,7 @@ describe('stored return (get-started to auth-callback)', () => {
 
   it('keeps a valid token and hands it over once', () => {
     expect(captureReturnFromUrl('?return=measurements&v=d')).toBe('measurements');
-    expect(sessionStorage.getItem(RETURN_STORAGE_KEY)).toBe('measurements');
+    expect(sessionStorage.getItem(RETURN_STORAGE_KEY)).toMatch(/^measurements\|\d+$/);
     expect(takeStoredReturn()).toBe('measurements');
     expect(takeStoredReturn()).toBeNull();
   });
