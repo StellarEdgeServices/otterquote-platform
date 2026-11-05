@@ -76,6 +76,7 @@ check('gh-3463: help modal has no "unsure -> choose RCV" steering sentence', () 
   assert.ok(!/still unsure/i.test(modal), 'modal still says: still unsure');
   assert.ok(!/choose\s*<strong>Insurance \(RCV\)/i.test(modal), 'modal still steers to RCV');
   assert.ok(!/most common and can be updated later/i.test(modal));
+  assert.ok(!/most common/i.test(modal), 'modal still has a most-common popularity cue');
 });
 check('gh-3463: help modal still lists all four options and closes its list', () => {
   const modal = between('window.showJobTypeHelp = function() {', 'window.showHelpModal');
