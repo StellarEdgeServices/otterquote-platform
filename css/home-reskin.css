@@ -36,6 +36,7 @@ body.hr { margin: 0; font-family: var(--hr-font); color: var(--hr-ink); backgrou
 .hr-phone { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; }
 .hr .hr-btn-outline { border: 2px solid var(--hr-on-navy); color: var(--hr-on-navy); font-weight: 800; font-size: 16px; padding: 12px 18px; border-radius: 6px; text-decoration: none; min-height: 48px; display: inline-flex; align-items: center; }
 .hr-call-short { display: none; }
+.hr-menu-btn, .hr-nav-m { display: none; }
 
 /* slice 3: the third header link (How we're paid) made the single row too wide between 768 and 1099 px; tighter gaps keep it one row down to 900 px.
    The design specifies 1280 and 390 only; the narrow-tablet header is slice 4/10's to finish (review condition m2 of #2716). */
@@ -167,6 +168,14 @@ body.hr { margin: 0; font-family: var(--hr-font); color: var(--hr-ink); backgrou
   .hr-nav, .hr-phone-long, .hr-brand-tag, .hr-full { display: none; }
   .hr-short { display: inline; }
   .hr-call-short { display: inline; }
+  /* gh-3387: phone menu. Pricing moves from the header row into the menu (the row has no room for a 44px toggle); How it works, How we're paid, Pricing and FAQ open from the toggle. */
+  .hr-header { position: relative; }
+  .hr a.hr-pricing-d { display: none; }
+  .hr-menu-btn { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; background: transparent; border: 2px solid var(--hr-on-navy); border-radius: 6px; cursor: pointer; }
+  .hr-menu-btn span { display: block; width: 20px; height: 2px; background: var(--hr-on-navy); }
+  .hr-header.hr-menu-open .hr-nav { display: flex; flex-direction: column; align-items: stretch; gap: 0; position: absolute; left: 0; right: 0; top: 100%; z-index: 60; background: var(--hr-navy); border-bottom: 1px solid var(--hr-line-navy); padding: 4px 16px 8px; }
+  .hr-header.hr-menu-open .hr-nav a { display: flex; align-items: center; min-height: 44px; padding: 0; }
+  .hr-nav-m { display: flex; }
   .hr-header .hr-wrap { padding: 8px 16px; flex-wrap: nowrap; gap: 12px; }
   .hr-brand { gap: 10px; }
   .hr-brand { min-height: 44px; }

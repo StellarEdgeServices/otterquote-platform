@@ -121,6 +121,15 @@
     a.addEventListener('click', function () { track('phone_click', { cta_location: a.getAttribute('data-hr-phone') }); });
   });
 
+  /* ---------- phone menu (gh-3387): the toggle opens .hr-nav as a dropdown under the header ---------- */
+  var menuBtn = $('#hr-menu-btn'), menuHdr = $('.hr-header');
+  if (menuBtn && menuHdr) {
+    var setMenu = function (open) { menuHdr.classList.toggle('hr-menu-open', open); menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); };
+    menuBtn.addEventListener('click', function () { setMenu(!menuHdr.classList.contains('hr-menu-open')); });
+    if (d.addEventListener) { d.addEventListener('keydown', function (e) { if (e.key === 'Escape') { setMenu(false); } }); }
+    $$('#hr-nav a').forEach(function (a) { a.addEventListener('click', function () { setMenu(false); }); });
+  }
+
   /* ---------- phone sticky bar: shown once the hero button has scrolled out of view ---------- */
   var sticky = $('#hr-sticky'), heroBtn = $('#hr-hero-go');
   if (sticky && heroBtn && 'IntersectionObserver' in window) {
