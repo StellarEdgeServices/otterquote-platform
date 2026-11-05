@@ -48,7 +48,7 @@ import {
   postDisputeEvidence,
 } from "./dispute-routing.ts";
 import { assembleTextEvidence, claimRecordLines, formatAcceptedFeeDollars } from "./dispute-evidence-fields.ts";
-import { pickFeeAcceptanceForBid, type SelectedBid } from "./fee-acceptance-select.ts";
+import { describeMissingFeeAcceptance, loadFeeAcceptanceForDispute, type AcceptancePickReason } from "./fee-acceptance-select.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 import {
@@ -243,10 +243,11 @@ async function createClickUpTask(params: {
   dispute: StripeDispute;
   claim: ClaimRow | null;
   feeAcceptance: FeeAcceptanceRow | null;
+  feeAcceptanceMissingReason?: AcceptancePickReason | null;
   disputeUrl: string;
   clickupKey: string;
 }): Promise<{ taskId: string | null; taskUrl: string | null; error?: string }> {
-  const { dispute, claim, feeAcceptance, disputeUrl, clickupKey } = params;
+  const { dispute, claim, feeAcceptance, feeAcceptanceMissingReason, disputeUrl, clickupKey } = params;
   const amountDollars = (dispute.amount / 100).toFixed(2);
   const isNonDelivery = NON_DELIVERY_REASONS.has(dispute.reason);
 
@@ -272,7 +273,7 @@ async function createClickUpTask(params: {
         `**Fee Text Shown:** ${feeAcceptance.fee_text_displayed}`,
         `**Invoice URL:** ${feeAcceptance.invoice_url ?? "None"}`,
       ].join("\n")
-    : "⚠️ No fee_acceptances record found — manual evidence gathering required.";
+    : `⚠️ ${describeMissingFeeAcceptance(feeAcceptanceMissingReason)}`;
 
   const description = [
     `## Dispute Requires Manual Review`,
@@ -341,8 +342,9 @@ function buildEvidencePayload(params: {
   dispute: StripeDispute;
   claim: ClaimRow | null;
   feeAcceptance: FeeAcceptanceRow | null;
+  feeAcceptanceMissingReason?: AcceptancePickReason | null;
 }): Record<string, string> {
-  const { dispute, claim, feeAcceptance } = params;
+  const { dispute, claim, feeAcceptance, feeAcceptanceMissingReason } = params;
 
   const productDescription = [
     "Otter Quotes is a platform that facilitates roofing and exterior repair contracts.",
@@ -372,7 +374,7 @@ function buildEvidencePayload(params: {
     );
   } else {
     serviceDocLines.push(
-      "FEE ACCEPTANCE RECORD: Not found in database — manual lookup required.",
+      `FEE ACCEPTANCE RECORD: Not found in database — manual lookup required. (${describeMissingFeeAcceptance(feeAcceptanceMissingReason)})`,
       "",
     );
   }
@@ -451,6 +453,7 @@ async function handleDisputeCreated(
   let claim: ClaimRow | null = null;
   let quote: QuoteRow | null = null;
   let feeAcceptance: FeeAcceptanceRow | null = null;
+  let feeAcceptanceMissingReason: AcceptancePickReason | null = null;
 
   const { data: claimRows } = await supabase
     .from("claims")
@@ -491,41 +494,18 @@ async function handleDisputeCreated(
   if (claim) {
     const contractorId = claim.selected_contractor_id ?? quote?.contractor_id;
     if (contractorId) {
-      // gh-3409 (REVIEW 6668449870 B1): the evidence row is the acceptance of the bid being charged (the selected bid),
-      // and only when its fee equals that bid's current fee. The newest row for (claim, contractor) could name a
-      // second bid or a superseded price. Anything else is not evidence: feeAcceptance stays null and the dispute
-      // goes to a person ("manual evidence gathering").
-      const paidQuote = quote as QuoteRow | null; // resolved from the payment intent above, when the claim came from it
-      let selectedBid: SelectedBid | null = paidQuote && paidQuote.claim_id === claim.id
-        ? { id: paidQuote.id, fee_amount: paidQuote.fee_amount }
-        : null;
-      if (!selectedBid) {
-        const { data: selRows } = await supabase
-          .from("quotes")
-          .select("id, fee_amount")
-          .eq("claim_id", claim.id)
-          .eq("contractor_id", contractorId)
-          .eq("status", "selected")
-          .order("created_at", { ascending: false })
-          .limit(1);
-        const sel = (selRows ?? []) as { id: string; fee_amount: number | null }[];
-        if (sel.length > 0) selectedBid = { id: sel[0].id, fee_amount: sel[0].fee_amount };
-      }
-      const { data: feeRows } = await supabase
-        .from("fee_acceptances")
-        .select(
-          "id, contractor_id, claim_id, bid_id, fee_pct, fee_amount, fee_text_displayed, accepted_at, ip_address, user_agent, invoice_url",
-        )
-        .eq("claim_id", claim.id)
-        .eq("contractor_id", contractorId)
-        .is("rescinded_at", null)
-        .order("created_at", { ascending: false })
-        .limit(20);
-
-      const picked = pickFeeAcceptanceForBid(feeRows as FeeAcceptanceRow[] | null, selectedBid);
+      // gh-3409 (REVIEW 6668449870 B1, 6669057587 B2): the evidence row is the acceptance of the bid being charged (the
+      // selected bid), and only when its fee equals that bid's current fee. See fee-acceptance-select.ts.
+      const picked = await loadFeeAcceptanceForDispute<FeeAcceptanceRow>(
+        supabase,
+        claim,
+        contractorId,
+        quote as QuoteRow | null, // resolved from the payment intent above, when the claim came from it
+      );
       if (picked.row) {
         feeAcceptance = picked.row;
       } else {
+        feeAcceptanceMissingReason = picked.reason;
         console.warn(`[${FN_NAME}] gh-3409: no usable fee acceptance for claim ${claim.id} (${picked.reason}); manual evidence gathering`);
       }
     }
@@ -604,7 +584,7 @@ async function handleDisputeCreated(
   const disputeRowId = disputeRows?.id ?? null;
 
   if (!routeToManualQueue) {
-    const evidencePayload = buildEvidencePayload({ dispute, claim, feeAcceptance });
+    const evidencePayload = buildEvidencePayload({ dispute, claim, feeAcceptance, feeAcceptanceMissingReason });
 
     console.log(`[${FN_NAME}] Submitting evidence for dispute ${dispute.id} via Stripe API`);
 
@@ -739,6 +719,7 @@ async function handleDisputeCreated(
         dispute,
         claim,
         feeAcceptance,
+        feeAcceptanceMissingReason,
         disputeUrl,
         clickupKey,
       });

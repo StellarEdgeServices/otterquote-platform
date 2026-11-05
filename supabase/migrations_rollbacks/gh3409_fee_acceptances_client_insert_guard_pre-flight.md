@@ -1,4 +1,4 @@
-# gh-3409 pre-flight: fee_acceptances client-insert guard (revised after REVIEW 6668449870 and LEGAL-READ 6668344412)
+# gh-3409 pre-flight: fee_acceptances client-insert guard (revised after REVIEW 6668449870, LEGAL-READ 6668344412 and REVIEW 6669057587)
 
 Forward: `supabase/migrations_drafts/gh3409_fee_acceptances_client_insert_guard.sql`. Rollback: `gh3409_fee_acceptances_client_insert_guard_rollback.sql` (this directory). Tier 3B. Nothing here is applied.
 
@@ -6,7 +6,15 @@ Forward: `supabase/migrations_drafts/gh3409_fee_acceptances_client_insert_guard.
 
 **Order with PR #3406 (gh-3320).** Independent. This file adds a BEFORE INSERT trigger, three functions and one new table (public.fee_acceptance_quarantine); #3406 drops one UPDATE policy and revokes UPDATE/DELETE. Neither reads nor writes what the other changes. Apply #3406 first (smaller, reviewed), then this file. The runner proves both orders and independent rollback (`C-A`, `C-B`).
 
-Read-only SELECTs only. Run each as one statement against project `yeszghaspzwwstvsrioa`.
+**Ship order (REVIEW 6669057587 B1).** The contractor-bid-form.html change in this PR (no `.single()` on the fee_acceptances insert) must be LIVE before this migration is applied. With the old form live, a diverted acceptance makes PostgREST answer 406 PGRST116 and roll the request back, taking the quarantine row with it (proved against a real PostgREST 12.2.3 and supabase-js 2.116.0: runner case P4). A genuine acceptance is unaffected by the old form (case P1), so the exposure is only the diverted rows, which are logged (a WARNING with the shown text) but not kept in the table. Order: merge and deploy the form, run check 0, then apply #3406, then this file.
+
+Read-only SELECTs only (check 0 is a read of the public page). Run each SQL check as one statement against project `yeszghaspzwwstvsrioa`.
+
+## 0. The deployed HTML form has no `.single()` on the fee_acceptances insert (blocks the apply)
+```bash
+curl -s "<production origin>/contractor-bid-form.html" -o /tmp/live-bid-form.html && node supabase/tests/gh3409_form_shape_check.mjs /tmp/live-bid-form.html
+```
+Expect `FORMSHAPE|insert ends with .select('id') and no .single()/.maybeSingle()|OK`. `FAIL` means the old form is still being served (or a CDN copy is stale): do not apply. Also confirm no other client inserts into `fee_acceptances` with `.single()` (`grep -rn "from('fee_acceptances')" --include=*.html --include=*.ts --include=*.tsx .`; on this head the only inserts are the two bid forms).
 
 ## 1. Today's state (re-read at apply time; the closes-on needs this beside the post-apply read)
 ```sql
@@ -46,7 +54,7 @@ SELECT count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM public.fee_acceptances f
 Measured 2026-11-05: 4 of 12. These are not changed by this file (the form's insert is non-fatal and the change-bid flow writes none, by design, ADR-010). After apply, a client can no longer add an acceptance to such an old bid (rule 3). If Legal wants a way to record a late acceptance, it is a service_role path, a separate ticket.
 
 ## 5. Watch after apply, STANDING (not a one-week check)
-A genuine acceptance is never refused and never lost: when the screen and the server disagree, or a form's wording is not yet mirrored in `fee_acceptance_text_check()`, the row is kept in `public.fee_acceptance_quarantine` and is NOT added to `fee_acceptances`. The client sees a success (the HTML form's `.single()` then reports a zero-row error to Sentry; the React form ignores the result and reports nothing). So the quarantine table is the alert, and it must be read on a schedule (daily, and on every `Fee acceptance record failed` Sentry event):
+A genuine acceptance is never refused and never lost: when the screen and the server disagree, or a form's wording is not yet mirrored in `fee_acceptance_text_check()`, the row is kept in `public.fee_acceptance_quarantine` and is NOT added to `fee_acceptances`. The client sees a success: the HTML form gets an empty array and reports `[D-215] Fee acceptance diverted to quarantine` to Sentry (warning); the React form sends no returning clause and reports nothing. Each diversion also writes a server log WARNING (`gh-3409 fee acceptance quarantined: bid ... reasons ... shown ...`, the shown text capped at 700 characters) that survives even if a client rolls its request back. The quarantine keeps the row exactly as sent (own id, created_at, accepted_at; text capped at 4000, original length in `fee_text_length`) and takes at most 25 rows an hour per caller, past which it only logs (a flood cap so a contractor session cannot fill the table). So the quarantine table is the alert, and it must be read on a schedule (daily, and on every Sentry event above or `Fee acceptance record failed`):
 ```sql
 SELECT quarantined_at, reasons, bid_id, contractor_id, server_fee_pct, server_fee_amount, fee_pct, fee_amount, left(fee_text_displayed, 80) AS shown
   FROM public.fee_acceptance_quarantine ORDER BY quarantined_at DESC;
@@ -54,6 +62,8 @@ SELECT q.id, q.created_at FROM public.quotes q WHERE q.created_at > '<apply time
    AND NOT EXISTS (SELECT 1 FROM public.fee_acceptances f WHERE f.bid_id = q.id) ORDER BY q.created_at;
 ```
 Reasons: `displayed_fee_differs` (the figure on the screen is not the bid's fee: state-specific `platform_fee_config` row, a rate change while a form was open, an out-of-order refresh), `text_not_form_wording` (a wording change not yet mirrored here: update `fee_acceptance_text_check()` in the same release as the form), `duplicate_bid`, `bid_has_no_fee`. A change-bid save writes no row by design (ADR-010); exclude those. Wire this into the ATC or ops sweep; the apply is not complete until someone owns the check (Q on #3409).
+
+Rows inserted between check 3 and the apply are not re-checked by this file: re-run check 3 right after the apply and read any row that fails a rule.
 
 ## 6. After apply (read again, paste beside check 1)
 Re-run check 1: expect the trigger `fee_acceptances_guard_client_insert O`, functions 3, quarantine_table `fee_acceptance_quarantine`, policies and grants of `fee_acceptances` unchanged (except what #3406 changes if applied). Then: `SELECT has_table_privilege('anon','public.fee_acceptance_quarantine','SELECT,INSERT,UPDATE,DELETE'), has_table_privilege('authenticated','public.fee_acceptance_quarantine','SELECT,INSERT,UPDATE,DELETE')` expects `false, false`; and `SELECT pg_get_functiondef('public.fee_acceptances_guard_client_insert()'::regprocedure)` equals the forward file's function body (the closes-on's live read, I-7).
@@ -70,4 +80,6 @@ Re-run check 1: expect the trigger `fee_acceptances_guard_client_insert O`, func
 - The forms read the rate with `contractor.state` (no such column on production; the server uses `address_state`) and the HTML form's fee refresh is not sequenced. Those make the screen and server disagree; this file keeps the record when they do. Fixing the forms to read `quotes_platform_fee_for` and sequencing the refresh is a separate code change (LEGAL-READ item 3).
 - The React form ignores the insert result; with diversion that no longer loses anything, but a refusal (A in the file header) is silent there.
 - Which figure stands when the screen and the server disagree (D-267 points to the accepted figure; gh-2519 sets the charged one), and the React sentence "deducted from your bid amount ... You will receive $X" against D-226, are Tier C questions for Ben and Legal.
-- A CI job for the proof runner is not added in this PR (it needs a Postgres service); until then the runner is run by hand.
+- A CI job for the proof runner is not added in this PR (it needs a Postgres service, the PostgREST binary and supabase-js); until then the runner is run by hand (`PGRST_BIN` and `SUPABASE_JS_DIR` set, or the PostgREST section reports SKIPPED and does not count as proved).
+- The PostgREST proof ran PostgREST 12.2.3 with supabase-js 2.116.0 (the version the form pins). The PostgREST version Supabase runs for this project was not checked; the `.single()` behaviour (406 PGRST116 and rollback on a count other than one) is long-standing PostgREST behaviour, but confirm the live version if it matters.
+- A revised bid (ADR-010: a change-bid writes no new acceptance row) whose fee moved no longer matches its old acceptance: the webhook treats that as no evidence and the dispute packet says to gather it manually (Q on #3409).

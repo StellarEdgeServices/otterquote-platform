@@ -5433,7 +5433,10 @@
             // Runs AFTER quote insert so bid_id (insertedQuote.id) is available.
             // Non-fatal: quote is already committed; log failures for compliance audit.
             if (!changeBidMode) {
-              const { error: feeAccError } = await sb.from('fee_acceptances').insert({
+              // gh-3409: NO .single() here. Asking PostgREST for exactly one row makes it roll the whole request back (406 PGRST116) when the
+              // server diverts a mismatching acceptance to review (zero rows returned), which would delete the record of what was shown.
+              // .select('id') without .single() returns an array; an empty array means "kept for review, not recorded".
+              const { data: feeAccRows, error: feeAccError } = await sb.from('fee_acceptances').insert({
                 contractor_id: currentContractor.id,
                 claim_id: currentClaim.id,
                 bid_id: insertedQuote.id,
@@ -5442,14 +5445,22 @@
                 fee_amount: _feeAmount,
                 fee_text_displayed: _exactFeeText,
                 accepted_at: _acceptedAt,
-                ip_address: _contractorIP,
+                ip_address: (_contractorIP && _contractorIP !== 'unknown') ? _contractorIP : null, // 'unknown' is not an inet value and made the whole insert fail
                 user_agent: _userAgent,
-              }).select('id').single();
+              }).select('id');
 
               if (feeAccError) {
                 console.error('[D-215] Fee acceptance record failed (non-fatal, quote committed):', feeAccError.message);
                 if (typeof Sentry !== 'undefined') {
                   Sentry.captureException(feeAccError, {
+                    extra: { bid_id: insertedQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
+                  });
+                }
+              } else if (!feeAccRows || feeAccRows.length === 0) {
+                console.warn('[D-215] Fee acceptance kept for review instead of recorded (non-fatal, quote committed)');
+                if (typeof Sentry !== 'undefined') {
+                  Sentry.captureMessage('[D-215] Fee acceptance diverted to quarantine', {
+                    level: 'warning',
                     extra: { bid_id: insertedQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
                   });
                 }

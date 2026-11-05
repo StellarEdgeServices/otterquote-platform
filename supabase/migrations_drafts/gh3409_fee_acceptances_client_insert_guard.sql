@@ -18,7 +18,7 @@
 -- Each inserts the contractor's bid (quotes) first, then one fee_acceptances row naming that bid. The two forms send DIFFERENT disclosure wording, so both are recognised. service_role (stripe-webhook and
 -- get-business-lines-dashboard read it, e2e teardown deletes) and owner-level SECURITY DEFINER code are not client callers and are untouched.
 --
--- DESIGN RULE (Legal read 6668344412, D-214 "the amount displayed", D-215, D-267): a genuine acceptance is NEVER refused and NEVER lost, and no row that is not a true record reaches the table stripe-webhook reads.
+-- DESIGN RULE (Legal read 6668344412, D-214 "the amount displayed", D-215, D-267): this guard never refuses and never drops a genuine acceptance, and no row that is not a true record reaches the table stripe-webhook reads.
 -- The two are reconciled by DIVERTING, not refusing. For a CLIENT caller only (current_user anon or authenticated, JWT role not service_role), an INSERT does one of three things:
 --   A. REFUSED 42501, only for what no genuine form insert can be: contractor_id that is not the caller's own contractor row, or a bid_id that is not one of the caller's own bids on the claim named by claim_id.
 --      (The form inserts the bid first and uses its returned id, so the genuine path always satisfies this. The bid is committed before the acceptance, so a refusal here never refuses a bid.)
@@ -26,11 +26,15 @@
 --      formats a float and the server rounds half up; in the React wording the net equals total minus fee to two cents), and the bid has no acceptance yet. The server writes fee_pct, fee_basis and fee_amount from the
 --      bid, created_at = now(), and NULLs invoice_url, rescinded_at and rescission_reason; accepted_at is kept unless the device clock is more than 15 minutes off. Age and status of the bid do NOT matter (a slow
 --      IP lookup, a late retry or a bid already selected still records the true values); a bid whose created_at is forged is harmless because nothing depends on it.
---   C. QUARANTINED, otherwise: the whole row exactly as the browser sent it, plus the reasons (text_not_form_wording, displayed_fee_differs, duplicate_bid, bid_has_no_fee), the server's rate and fee and the caller,
---      go into public.fee_acceptance_quarantine and NO row is added to fee_acceptances (so stripe-webhook cannot pick it), a WARNING is logged, and the client sees a normal success. The record of what the contractor
+--   C. QUARANTINED, otherwise: the whole row exactly as the browser sent it (every column, including its own id, created_at and accepted_at; text capped at 4000 characters), plus the reasons (text_not_form_wording, displayed_fee_differs, duplicate_bid, bid_has_no_fee), the server's rate and fee and the caller,
+--      go into public.fee_acceptance_quarantine and NO row is added to fee_acceptances (so stripe-webhook cannot pick it), a WARNING carrying the shown text is logged, and a client that does not demand exactly one row back (next paragraph) sees a normal success. The record of what the contractor
 --      was shown is kept for a person to read; which figure stands when the screen and the server disagree is a Tier C decision (question on #3409), not made here.
 -- Cases that land in C legitimately: the form's rate lookup differs from the server's (the forms read contractors.state, a column production does not have, the server reads address_state, so the first state-specific
 --   row in platform_fee_config would do it), a rate change while a form is open, an out-of-order fee refresh on a keystroke, and any wording change not yet mirrored here. Every one is KEPT, none lost.
+-- SHIP ORDER, READ THIS (REVIEW 6669057587 B1, proven against a real PostgREST 12.2.3 and supabase-js in supabase/tests/gh3409_postgrest_proof.mjs): the HTML bid form inserts with `.select('id').single()`, which asks
+--   PostgREST for exactly one row. A diverted row returns zero rows, so PostgREST answers 406 PGRST116 and ROLLS THE WHOLE REQUEST BACK, taking the quarantine row with it: the record of what was shown is lost
+--   (only the log line below survives). contractor-bid-form.html in this PR drops `.single()` (it keeps `.select('id')`) and treats an empty result as a diversion to report. THAT FORM CHANGE MUST BE LIVE BEFORE
+--   THIS MIGRATION IS APPLIED (pre-flight check 0 reads the deployed page). The React form sends no returning clause and is unaffected. Any other client that uses `.single()` on this insert would lose the quarantine row.
 -- Quarantine table: RLS on, no policy, no privilege for anon or authenticated (service_role and the SQL editor only). It is written by one SECURITY DEFINER function that refuses to run outside a trigger.
 --
 -- STILL OPEN IN THE DATA PATH, and fixed in the webhook, not here (REVIEW 6668449870 B1): a contractor can submit a second bid, or move a bid's price down and back, and each acceptance row is true at its own
@@ -41,7 +45,7 @@
 --   gh-2519's business (gh-2519 sets them server-side; this file RELIES ON gh-2519 being applied and refuses to run without it). The React form's sentence "deducted from your bid amount ... You will receive $X"
 --   is recognised as the React form's own wording because it is on main; Legal's note that it sits badly with D-226 is a wording question for Legal (Tier C) and is not decided here.
 -- WORDING DRIFT, a deliberate coupling: the recognised texts live in public.fee_acceptance_text_check(). A new wording is quarantined (kept, not lost) until that function is updated in the same release. The runner
---   renders the texts from the two form source files; supabase/tests/gh3409_*.mjs and the runner should be run in CI (a workflow is proposed in the PR, not added here).
+--   renders the texts from the two form source files; supabase/tests/gh3409_*.mjs and the runner should be run in CI (no workflow is added here; the runner is run by hand until a Postgres-service job exists).
 -- ORDER WITH PR #3406 (gh-3320, UPDATE/DELETE revoke + admin UPDATE policy drop): independent. This file touches only the INSERT path (a trigger, three functions, one new table); #3406 touches only UPDATE/DELETE
 --   grants and one UPDATE policy on fee_acceptances. Recommended order: #3406 first, then this file; the runner proves both orders and independent rollback.
 
@@ -71,6 +75,9 @@ CREATE TABLE IF NOT EXISTS public.fee_acceptance_quarantine (
   caller_user_id uuid,
   server_fee_pct numeric(5,2),
   server_fee_amount numeric(12,2),
+  -- the row exactly as the browser sent it (text and user agent capped at 4000 and 500 characters; fee_text_length is the original length)
+  client_row_id uuid,
+  client_created_at timestamptz,
   contractor_id uuid,
   claim_id uuid,
   bid_id uuid,
@@ -78,9 +85,13 @@ CREATE TABLE IF NOT EXISTS public.fee_acceptance_quarantine (
   fee_basis text,
   fee_amount numeric(10,2),
   fee_text_displayed text,
+  fee_text_length integer,
   accepted_at timestamptz,
   ip_address inet,
-  user_agent text
+  user_agent text,
+  invoice_url text,
+  rescinded_at timestamptz,
+  rescission_reason text
 );
 ALTER TABLE public.fee_acceptance_quarantine ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.fee_acceptance_quarantine FROM PUBLIC, anon, authenticated;
@@ -134,8 +145,15 @@ BEGIN
   IF pg_trigger_depth() < 1 THEN
     RAISE EXCEPTION 'fee_acceptance_quarantine_add runs only inside the fee_acceptances guard trigger (gh-3409)' USING ERRCODE = '42501';
   END IF;
-  INSERT INTO public.fee_acceptance_quarantine (reasons, caller_user_id, server_fee_pct, server_fee_amount, contractor_id, claim_id, bid_id, fee_pct, fee_basis, fee_amount, fee_text_displayed, accepted_at, ip_address, user_agent)
-  VALUES (p_reasons, auth.uid(), p_server_pct, p_server_fee, p_row.contractor_id, p_row.claim_id, p_row.bid_id, p_row.fee_pct, p_row.fee_basis, p_row.fee_amount, p_row.fee_text_displayed, p_row.accepted_at, p_row.ip_address, p_row.user_agent);
+  -- Flood cap: a genuine caller diverts about one row per bid, so 25 an hour per caller is far above real use. Past it the row is only logged (the trigger logs every diversion with the shown text).
+  IF (SELECT count(*) FROM public.fee_acceptance_quarantine x WHERE x.caller_user_id IS NOT DISTINCT FROM auth.uid() AND x.quarantined_at > now() - interval '1 hour') >= 25 THEN
+    RAISE WARNING 'gh-3409 quarantine cap reached for caller %; row not stored (logged only)', auth.uid();
+    RETURN;
+  END IF;
+  INSERT INTO public.fee_acceptance_quarantine (reasons, caller_user_id, server_fee_pct, server_fee_amount, client_row_id, client_created_at, contractor_id, claim_id, bid_id, fee_pct, fee_basis, fee_amount,
+                                                fee_text_displayed, fee_text_length, accepted_at, ip_address, user_agent, invoice_url, rescinded_at, rescission_reason)
+  VALUES (p_reasons, auth.uid(), p_server_pct, p_server_fee, p_row.id, p_row.created_at, p_row.contractor_id, p_row.claim_id, p_row.bid_id, p_row.fee_pct, p_row.fee_basis, p_row.fee_amount,
+          left(p_row.fee_text_displayed, 4000), length(p_row.fee_text_displayed), p_row.accepted_at, p_row.ip_address, left(p_row.user_agent, 500), p_row.invoice_url, p_row.rescinded_at, p_row.rescission_reason);
 END
 $qa$;
 REVOKE ALL ON FUNCTION public.fee_acceptance_quarantine_add(public.fee_acceptances, text[], numeric, numeric) FROM PUBLIC;
@@ -181,18 +199,19 @@ BEGIN
     v_reasons := array_append(v_reasons, 'duplicate_bid');
   END IF;
 
+  IF cardinality(v_reasons) > 0 THEN
+    -- the row exactly as the browser sent it (before any server-side change below). The log line is a second copy that survives even if the caller's request is rolled back afterwards.
+    PERFORM public.fee_acceptance_quarantine_add(NEW, v_reasons, v_pct, v_amt);
+    RAISE WARNING 'gh-3409 fee acceptance quarantined: bid % reasons % server fee % shown %', NEW.bid_id, v_reasons, v_amt, left(format('%L', NEW.fee_text_displayed), 700);
+    RETURN NULL;
+  END IF;
+
   NEW.created_at        := now();
   NEW.invoice_url       := NULL;
   NEW.rescinded_at      := NULL;
   NEW.rescission_reason := NULL;
   IF NEW.accepted_at IS NULL OR NEW.accepted_at < now() - interval '15 minutes' OR NEW.accepted_at > now() + interval '5 minutes' THEN
     NEW.accepted_at := now();
-  END IF;
-
-  IF cardinality(v_reasons) > 0 THEN
-    PERFORM public.fee_acceptance_quarantine_add(NEW, v_reasons, v_pct, v_amt);
-    RAISE WARNING 'gh-3409 fee acceptance quarantined: bid % reasons %', NEW.bid_id, v_reasons;
-    RETURN NULL;
   END IF;
 
   NEW.fee_pct    := v_pct;
