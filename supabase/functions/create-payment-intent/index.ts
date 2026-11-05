@@ -401,13 +401,14 @@ serve(async (req) => {
       const priorUpgradeLookup = buildPriorUpgradeLookupQuery({
         claimId: metadata.claim_id,
         contractorId: contractor_id,
+        buyerUserId: callerId,
       });
       const { data: priorUpgradeForThisContractor, error: priorUpgradeErr } = await supabase
         .from(priorUpgradeLookup.table)
         .select(priorUpgradeLookup.select)
         .eq(priorUpgradeLookup.eq[0][0], priorUpgradeLookup.eq[0][1])
         .eq(priorUpgradeLookup.eq[1][0], priorUpgradeLookup.eq[1][1])
-        .eq(priorUpgradeLookup.eq[2][0], priorUpgradeLookup.eq[2][1])
+        .or(priorUpgradeLookup.or)
         .limit(1)
         .maybeSingle();
 
