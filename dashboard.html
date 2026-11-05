@@ -1698,6 +1698,14 @@
             }
           }
 
+          // gh-3471 (D-419): a homeowner who signed up from the measurement link carries ?return=measurements. It is read only here, AFTER
+          // the sign-in check and the D-344 state gate above, so neither is skipped; only an allowlisted token (Auth.returnTarget) is followed.
+          const returnPath = (currentUser && !CONFIG.DEMO_MODE) ? Auth.returnTarget(window.location.search) : null;
+          if (returnPath) {
+            window.location.replace(returnPath);
+            return;
+          }
+
           // 2. Render UI
           renderWelcome();
           renderClaimInfo();

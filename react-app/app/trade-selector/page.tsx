@@ -32,6 +32,7 @@ import { isAdSharingOptedOut } from '@/lib/ad-optout';
 import { readFreshSignupRaw } from '@/lib/signup-storage';
 import { PAYMENT_QUESTION, paymentDestination } from './payment-route';
 import { CLAIM_INTAKE_COLUMNS, claimFinishedIntake } from '@/lib/claim-intake';
+import { readReturnFromUrl, withReturn } from '@/lib/return-target';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -530,7 +531,7 @@ export default function TradeSelectorPage() {
           .limit(1)
           .maybeSingle();
         if (claimFinishedIntake(existingClaim)) {
-          window.location.href = DASHBOARD_URL;
+          window.location.href = withReturn(DASHBOARD_URL, readReturnFromUrl(window.location.search));
         }
       } catch (e) {
         console.warn('[trade-selector] returning-user guard failed:', e);
@@ -1172,6 +1173,11 @@ export default function TradeSelectorPage() {
       }
       if (savedClaimId) {
         redirectUrl += `?claim_id=${encodeURIComponent(savedClaimId)}`;
+      }
+      // gh-3471 (D-419): the return token rides on to the project-info page (which hands it to the dashboard). Not on the repair
+      // route: repair-intake is the end of that path and is left as it is.
+      if (!hasRepair) {
+        redirectUrl = withReturn(redirectUrl, readReturnFromUrl(window.location.search));
       }
       // gh-2070: the claim itself saved fine — only the loss-sheet attach
       // failed — so this does not throw into the catch block below (which
