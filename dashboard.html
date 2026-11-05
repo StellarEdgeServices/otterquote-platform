@@ -3612,6 +3612,9 @@
             });
             // gh-3443: success text only after the send succeeded; a non-2xx falls to the catch below.
             if (!resp.ok) throw new Error('send-support-email HTTP ' + resp.status);
+          } else {
+            // gh-3443: no request can be made (no client or claim): same failure path, never the success text.
+            throw new Error('switch survey: no client or claim id');
           }
 
           document.getElementById('switch-survey-step').classList.add('hidden');
