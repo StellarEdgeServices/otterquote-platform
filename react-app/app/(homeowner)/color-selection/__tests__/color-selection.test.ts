@@ -18,8 +18,6 @@ import {
   COLOR_COPY,
   subtitleBrandKnown,
   subtitleBrandUnconfirmed,
-  colorBoardPhoneSuffix,
-  colorBoardMailtoBody,
 } from '../copy';
 import {
   COLOR_CONFIRMATION_DOC_TYPE,
@@ -44,15 +42,8 @@ const STATIC = {
   subtitleStaticPlaceholder:
     "Your contractor uses [Brand]. Let's pick the perfect color for your home.",
   optionVisualizeTitle: 'See It On Your House',
-  optionInPersonTitle: "I'd Rather See Colors In Person",
-  optionInPersonDescription: 'Request physical color boards for a closer look at your options.',
   optionVisualizeButton: 'Start Visualizing',
-  optionInPersonButton: 'Request Visit',
   opensInNewTabLabel: 'Opens in new tab',
-  inPersonTitle: 'Prefer to See Colors In Person?',
-  inPersonDescription:
-    "Request physical color boards.",
-  inPersonButton: 'Request In-Person Color Samples',
   confirmationTitle: 'What Color Did You Choose?',
   confirmationSubtitle: 'Tell us the color you selected from the tool above or physical boards.',
   brandLabel: 'Brand',
@@ -62,14 +53,9 @@ const STATIC = {
     "✓ Color confirmed! We've saved your selection.",
   addendumFallbackBase:
     'Your color choice is saved. Please confirm it with your contractor.',
-  colorBoardAlreadyRequested: '✓ Already requested. Please mention it to your contractor too.',
-  colorBoardVisitRequested: '✓ Visit requested. Please mention it to your contractor too.',
-  colorBoardAlreadyRequestedAlert:
-    "You've already requested a color board visit. Your contractor will reach out soon.",
-  colorBoardMailtoSubject: 'Color Board Visit Request',
   brandUnknownTitle: 'Brand Not Yet Confirmed',
   brandUnknownText:
-    "Your contractor hasn't specified a shingle brand yet. Once confirmed, the right color visualization tool will appear here. In the meantime, you can request in-person color samples below.",
+    "Your contractor hasn't specified a shingle brand yet. Once confirmed, the right color visualization tool will appear here.",
   ocLeadParagraph:
     'Upload a photo of your home and try on different Owens Corning shingle colors in real time.',
   ocLauncherButton: '🎨 Click to Preview Colors',
@@ -125,10 +111,9 @@ describe('verbatim homeowner copy (byte-for-byte)', () => {
       expect(COLOR_COPY).not.toHaveProperty(k);
     }
     expect(Object.values(COLOR_COPY).join(' ')).not.toMatch(/Browse Colors|View Colors|color catalog/);
-    expect(COLOR_COPY.optionInPersonTitle).toBe(STATIC.optionInPersonTitle);
-    expect(COLOR_COPY.optionInPersonIcon).toBe('👁️');
-    expect(COLOR_COPY.optionInPersonDescription).toBe(STATIC.optionInPersonDescription);
-    expect(COLOR_COPY.optionInPersonButton).toBe(STATIC.optionInPersonButton);
+    for (const k of ['optionInPersonTitle', 'optionInPersonIcon', 'optionInPersonDescription', 'optionInPersonButton']) {
+      expect(COLOR_COPY).not.toHaveProperty(k);
+    }
     expect(COLOR_COPY.externalLinkIcon).toBe('↗');
     expect(COLOR_COPY.opensInNewTabLabel).toBe(STATIC.opensInNewTabLabel);
   });
@@ -146,12 +131,11 @@ describe('verbatim homeowner copy (byte-for-byte)', () => {
     expect(d['Owens Corning']).not.toBe(COLOR_COPY.ocLeadParagraph);
   });
 
-  it('in-person + confirmation section copy match exactly', () => {
+  it('confirmation section copy matches exactly; the in-person request section is gone (Ben 6668689264)', () => {
     expect(COLOR_COPY.visualizerSectionTitle).toBe(STATIC.optionVisualizeTitle);
-    expect(COLOR_COPY.inPersonIcon).toBe('🏠');
-    expect(COLOR_COPY.inPersonTitle).toBe(STATIC.inPersonTitle);
-    expect(COLOR_COPY.inPersonDescription).toBe(STATIC.inPersonDescription);
-    expect(COLOR_COPY.inPersonButton).toBe(STATIC.inPersonButton);
+    for (const k of ['inPersonIcon', 'inPersonTitle', 'inPersonDescription', 'inPersonButton']) {
+      expect(COLOR_COPY).not.toHaveProperty(k);
+    }
     expect(COLOR_COPY.confirmationTitle).toBe(STATIC.confirmationTitle);
     expect(COLOR_COPY.confirmationSubtitle).toBe(STATIC.confirmationSubtitle);
     expect(COLOR_COPY.brandLabel).toBe(STATIC.brandLabel);
@@ -184,16 +168,12 @@ describe('verbatim homeowner copy (byte-for-byte)', () => {
     expect(COLOR_COPY.claimNotFoundTitle).toBe('Claim not found');
   });
 
-  it('color-board confirmation + mailto strings match exactly', () => {
-    expect(COLOR_COPY.colorBoardAlreadyRequested).toBe(STATIC.colorBoardAlreadyRequested);
-    expect(COLOR_COPY.colorBoardVisitRequested).toBe(STATIC.colorBoardVisitRequested);
-    expect(COLOR_COPY.colorBoardAlreadyRequestedAlert).toBe(STATIC.colorBoardAlreadyRequestedAlert);
-    // Ben 6584752880, items 47/49: no "within 48 hours", no promise that the contractor will reach out
-    expect(`${COLOR_COPY.colorBoardVisitRequested} ${COLOR_COPY.colorBoardAlreadyRequested}`).not.toMatch(
-      /48 hours|reach out|notified/,
-    );
-    expect(COLOR_COPY.colorBoardMailtoSubject).toBe(STATIC.colorBoardMailtoSubject);
-    expect(COLOR_COPY.colorBoardMailtoAddress).toBe('info@otterquote.com');
+  it('the color-board request copy, helpers and mailto are gone (Ben 6668689264)', () => {
+    for (const k of ['colorBoardAlreadyRequested', 'colorBoardVisitRequested', 'colorBoardAlreadyRequestedAlert', 'colorBoardMailtoSubject', 'colorBoardMailtoAddress']) {
+      expect(COLOR_COPY).not.toHaveProperty(k);
+    }
+    for (const k of ['colorBoardPhoneSuffix', 'colorBoardMailtoBody']) expect(copyModule).not.toHaveProperty(k);
+    expect(Object.values(COLOR_COPY).join(' ')).not.toMatch(/request in-person|Visit requested|Already requested|physical color boards/);
   });
 
   it('brand-unknown state copy matches exactly', () => {
@@ -262,22 +242,9 @@ describe('interpolated copy builders', () => {
     }
   });
 
-  it('visit-requested confirmation has no promise; the phone suffix still joins', () => {
-    expect(COLOR_COPY.colorBoardVisitRequested).toBe(
-      '✓ Visit requested. Please mention it to your contractor too.',
-    );
-    expect(colorBoardPhoneSuffix('317-555-0100')).toBe(' To reach them directly: 317-555-0100');
-  });
-
   it('the fallback note has no phone or contact clause helpers', () => {
     expect(copyModule).not.toHaveProperty('addendumFallbackWithPhone');
     expect(copyModule).not.toHaveProperty('addendumFallbackNoPhone');
-  });
-
-  it('mailto body matches verbatim, with newline separators', () => {
-    expect(colorBoardMailtoBody('ABCD1234', 'Hoosier Roofing Co.')).toBe(
-      'I would like to request an in-person color board visit.\n\nJob #ABCD1234\nContractor: Hoosier Roofing Co.',
-    );
   });
 });
 

@@ -24,7 +24,6 @@ vi.mock('../use-color-selection-data', () => ({
   useColorSelectionData: vi.fn(),
   saveColorSelection: vi.fn(() => Promise.resolve()),
   createColorAddendumEnvelope: vi.fn(),
-  requestColorBoardVisit: vi.fn(),
 }));
 
 // Mock docusign-embed so runSigningReturnBridge is a spy and the iframe is inspectable.
@@ -44,14 +43,12 @@ import {
   useColorSelectionData,
   saveColorSelection,
   createColorAddendumEnvelope,
-  requestColorBoardVisit,
 } from '../use-color-selection-data';
 import { runSigningReturnBridge, isSigningCompleteReturn } from '@/components/docusign-embed';
 import {
   COLOR_COPY as C,
   subtitleBrandKnown,
   subtitleBrandUnconfirmed,
-  colorBoardPhoneSuffix,
 } from '../copy';
 import ColorSelectionPage from '../page';
 
@@ -99,7 +96,6 @@ beforeEach(() => {
   (useAuthReady as unknown as Fn).mockReturnValue(authed());
   (useColorSelectionData as unknown as Fn).mockReturnValue(readyData());
   (runSigningReturnBridge as unknown as Fn).mockReturnValue(false);
-  (requestColorBoardVisit as unknown as Fn).mockResolvedValue({ status: 'created' });
   window.history.replaceState({}, '', '/color-selection?claim_id=c1');
 });
 
@@ -151,14 +147,14 @@ describe('color-selection page — ruled copy (Ben 6584752880)', () => {
     ).toBeTruthy();
   });
 
-  it('shows the in-person description in the ruled words (item 45)', async () => {
+
+  it('offers no in-person visit request: no panel, button or confirmation (Ben 6668689264)', async () => {
     render(<ColorSelectionPage />);
-    expect(
-      await screen.findByText(
-        "Request physical color boards.",
-      ),
-    ).toBeTruthy();
-    expect(screen.queryByText(/shingle samples/)).toBeNull();
+    await screen.findByText(C.confirmationTitle);
+    const text = document.body.textContent ?? '';
+    expect(text).not.toMatch(/Request Visit|In Person|In-Person|physical color boards|shingle samples|Visit requested|Already requested/);
+    expect(screen.queryByRole('button', { name: /request/i })).toBeNull();
+    expect(document.querySelectorAll('.oqcs-option-card')).toHaveLength(1);
   });
 
   it('shows only the ruled save-error words when saving fails, never a raw database message (item 67)', async () => {
@@ -357,30 +353,6 @@ describe('color-selection page — return bridge', () => {
   it('calls runSigningReturnBridge on mount', async () => {
     render(<ColorSelectionPage />);
     await waitFor(() => expect(runSigningReturnBridge as unknown as Fn).toHaveBeenCalled());
-  });
-});
-
-// ── 9. In-person color board request → inline confirmation ─────────────────────
-
-describe('color-selection page — in-person request', () => {
-  it('shows the visit-requested confirmation (with phone) on a created request', async () => {
-    render(<ColorSelectionPage />);
-    const btn = (await screen.findByText(C.inPersonButton)) as HTMLButtonElement;
-    fireEvent.click(btn);
-
-    const expected = C.colorBoardVisitRequested + colorBoardPhoneSuffix('555-1234');
-    expect(await screen.findByText(expected)).toBeTruthy();
-    // Ben 6584752880, items 47/49: saving the request notifies nobody, so no promise is made.
-    expect(document.body.textContent).not.toMatch(/48 hours|reach out|notified/);
-  });
-
-  it('shows the already-requested copy when a request already exists', async () => {
-    (requestColorBoardVisit as unknown as Fn).mockResolvedValue({ status: 'already' });
-    render(<ColorSelectionPage />);
-    const btn = (await screen.findByText(C.inPersonButton)) as HTMLButtonElement;
-    fireEvent.click(btn);
-    expect(await screen.findByText(C.colorBoardAlreadyRequested)).toBeTruthy();
-    expect(document.body.textContent).not.toMatch(/reach out/);
   });
 });
 

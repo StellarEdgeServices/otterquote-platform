@@ -14,8 +14,8 @@
  *     not HTML:  &mdash;→—  (the iframe title and OC sub-note use a literal em-dash, kept).
  *   • Inline <strong> markup is presentation-only and flattened to plain text (the words are
  *     what is locked). e.g. "<strong>Note:</strong> Your color…" → "Note: Your color…".
- *   • Strings that interpolate runtime values (subtitle, visit-requested confirmation, the
- *     addendum fallback, the mailto body) are exposed as small pure builder functions below
+ *   • Strings that interpolate runtime values (subtitle, the
+ *     addendum fallback) are exposed as small pure builder functions below
  *     the data object. The fixed boilerplate inside each is still byte-for-byte from the
  *     static and asserted by the parity test.
  *   • Two near-identical Owens Corning sentences are intentionally DISTINCT and both
@@ -56,23 +56,12 @@ export const COLOR_COPY = {
   optionVisualizeTitle: 'See It On Your House',
   optionVisualizeIcon: '🏡',
   optionVisualizeButton: 'Start Visualizing',
-  optionInPersonTitle: "I'd Rather See Colors In Person",
-  optionInPersonIcon: '👁️',
-  optionInPersonDescription: 'Request physical color boards for a closer look at your options.',
-  optionInPersonButton: 'Request Visit',
   // external-link-indicator on the option card for link-out brands (static:754-756)
   externalLinkIcon: '↗',
   opensInNewTabLabel: 'Opens in new tab',
 
   // ── Visualizer section title (color-selection.html:468) ──
   visualizerSectionTitle: 'See It On Your House',
-
-  // ── In-person section (color-selection.html:476-482) ──
-  inPersonIcon: '🏠',
-  inPersonTitle: 'Prefer to See Colors In Person?',
-  inPersonDescription:
-    "Request physical color boards.",
-  inPersonButton: 'Request In-Person Color Samples',
 
   // ── Color confirmation section (color-selection.html:490-512) ──
   confirmationTitle: 'What Color Did You Choose?',
@@ -114,25 +103,11 @@ export const COLOR_COPY = {
   addendumFallbackBase:
     'Your color choice is saved. Please confirm it with your contractor.',
 
-  // ── Color-board request confirmations (color-selection.html:1014-1017) ──
-  // gh-3287 (Ben, 6584752880, items 47/49): saving the request notifies nobody (the
-  // 'color_board_request' notifications row has no reader anywhere in the repo), so the
-  // "no" wording applies.
-  colorBoardAlreadyRequested:
-    '✓ Already requested. Please mention it to your contractor too.',
-  colorBoardVisitRequested:
-    '✓ Visit requested. Please mention it to your contractor too.',
-  colorBoardAlreadyRequestedAlert:
-    "You've already requested a color board visit. Your contractor will reach out soon.",
-  // mailto fallback (static:1055-1057)
-  colorBoardMailtoSubject: 'Color Board Visit Request',
-  colorBoardMailtoAddress: 'info@otterquote.com',
-
   // ── Brand-unknown state (color-selection.html:813-815) ──
   brandUnknownIcon: '🔍',
   brandUnknownTitle: 'Brand Not Yet Confirmed',
   brandUnknownText:
-    "Your contractor hasn't specified a shingle brand yet. Once confirmed, the right color visualization tool will appear here. In the meantime, you can request in-person color samples below.",
+    "Your contractor hasn't specified a shingle brand yet. Once confirmed, the right color visualization tool will appear here.",
 
   // ── OC Design EyeQ widget (color-selection.html:855-881) ──
   // Lead paragraph is identical for desktop (869) and mobile (855). NOTE the word "shingle"
@@ -227,20 +202,3 @@ export function subtitleBrandUnconfirmed(contractorName: string): string {
   return `${who} will confirm the brand. Let's pick the perfect color for your home.`;
 }
 
-/**
- * Phone clause appended to the visit-requested confirmation when a contractor phone is
- * known (color-selection.html:1038). Leading space is intentional — it joins the base
- * sentence above.
- */
-export function colorBoardPhoneSuffix(phone: string): string {
-  return ` To reach them directly: ${phone}`;
-}
-
-/**
- * mailto body for the color-board fallback (color-selection.html:1056). `jobNumber` comes
- * from utils.jobNumberFromClaimId; `contractorName` is the caller's resolved name (the
- * static applies its own 'unknown' fallback before calling).
- */
-export function colorBoardMailtoBody(jobNumber: string, contractorName: string): string {
-  return `I would like to request an in-person color board visit.\n\nJob #${jobNumber}\nContractor: ${contractorName}`;
-}

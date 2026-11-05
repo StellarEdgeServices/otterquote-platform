@@ -82,19 +82,13 @@ check('control: the contact clause coming back is detected', !clauseNote['G: no 
 
 // H (gh-3287, Ben's one ruling 6584752880 on list 6584500871): the ruled changes on the static page, in his words.
 const H_ITEM27 = '<strong>After visualizing:</strong> Come back here and enter the color you selected.';
-const H_ITEM45 = "Request physical color boards.";
-const H_ITEM47 = '<strong>✓ Visit requested.</strong> Please mention it to your contractor too.';
-const H_ITEM49 = '<strong>✓ Already requested.</strong> Please mention it to your contractor too.';
 const rulingGuards = (h) => ({
   'H14-16: no Browse Colors card, catalog text or View Colors button': !/Browse Colors|View Colors|color catalog|option: 'browse'/.test(h),
   'H20: the new-tab note is built for the visualizer card only': /\$\{opt\.id === 'visualize' && \(this\.brand === 'GAF' \|\|/.test(h),
   'H2-3: the subtitle drops the contractor name when the name is missing': /const who = contractor\?\.company_name \? `Your contractor \$\{this\.contractorName\}` : 'Your contractor';/.test(h)
     && /`\$\{who\} uses \$\{this\.brand\}\./.test(h) && /`\$\{who\} will confirm the brand\./.test(h),
   'H27: the OC desktop note is the ruled sentence (same as item 29)': h.includes(H_ITEM27) && !/Once you've found a color you like/.test(h),
-  'H45: the in-person description is the ruled sentence, with no shingle-samples promise': h.includes(H_ITEM45) && !/shingle samples/.test(h),
-  'H47: the visit-requested confirmation is the ruled "no notification" wording': h.includes(H_ITEM47),
-  'H49: the already-requested confirmation is the ruled "no notification" wording': h.includes(H_ITEM49),
-  'H47-49: no "within 48 hours", no "We\'ve notified", no "reach out" promise in the two confirmations': !/within 48 hours|We've notified|will reach out soon with physical color samples/.test(h),
+  'H45-49: the Request Visit panel is gone (card, section, button, handler, confirmations, mailto) and nothing replaces it (Ben 6668689264)': !/Request Visit|In-Person Color Samples|Prefer to See Colors In Person|Rather See Colors In Person|physical color boards|shingle samples|requestColorBoardVisit|inperson|color_board_request|Visit requested|Already requested|reach out within|in-person color samples/i.test(h),
   'H69-71: the colour signing panel is gone (heading, body, frame title, builder)': !/Sign Color Addendum|Almost done|Color Addendum — E-Sign|showAddendumSigningIframe/.test(h),
 });
 const htmlNoComments = stripComments(html);
@@ -105,10 +99,10 @@ hc('the Browse Colors card coming back is detected', htmlNoComments + " title: '
 hc('the new-tab note on every card is detected', htmlNoComments.replace("${opt.id === 'visualize' && (this.brand === 'GAF' ||", "${(this.brand === 'GAF' ||"), 'H20: the new-tab note is built for the visualizer card only');
 hc('the name coming back into the subtitle is detected', htmlNoComments.replace("const who = contractor?.company_name ? `Your contractor ${this.contractorName}` : 'Your contractor';", "const who = `Your contractor ${this.contractorName}`;"), 'H2-3: the subtitle drops the contractor name when the name is missing');
 hc('the old fragment (item 27) coming back is detected', htmlNoComments.replace(H_ITEM27, "<strong>After visualizing:</strong> Once you've found a color you like."), 'H27: the OC desktop note is the ruled sentence (same as item 29)');
-hc('the dropped shingle-samples sentence (item 45) coming back is detected', htmlNoComments.replace(H_ITEM45, H_ITEM45 + " We'll ask your contractor to bring shingle samples so you can see the real colors in your own lighting and against your exterior."), 'H45: the in-person description is the ruled sentence, with no shingle-samples promise');
-hc('the "within 48 hours" promise (item 47) coming back is detected', htmlNoComments.replace(H_ITEM47, "<strong>✓ Visit requested!</strong> We've notified X to schedule a color board visit. They'll reach out within 48 hours."), 'H47: the visit-requested confirmation is the ruled "no notification" wording');
-hc('the reach-out promise (item 49) coming back is detected', htmlNoComments.replace(H_ITEM49, '<strong>✓ Already requested.</strong> Your contractor will reach out soon with physical color samples.'), 'H49: the already-requested confirmation is the ruled "no notification" wording');
-hc('the promise strings anywhere are detected', htmlNoComments + " They'll reach out within 48 hours.", 'H47-49: no "within 48 hours", no "We\'ve notified", no "reach out" promise in the two confirmations');
+hc('the Request Visit button coming back is detected', htmlNoComments + ' <button>Request Visit</button>', 'H45-49: the Request Visit panel is gone (card, section, button, handler, confirmations, mailto) and nothing replaces it (Ben 6668689264)');
+hc('the in-person section coming back is detected', htmlNoComments + ' <h3>Prefer to See Colors In Person?</h3>', 'H45-49: the Request Visit panel is gone (card, section, button, handler, confirmations, mailto) and nothing replaces it (Ben 6668689264)');
+hc('the request handler coming back is detected', htmlNoComments + ' async requestColorBoardVisit() {}', 'H45-49: the Request Visit panel is gone (card, section, button, handler, confirmations, mailto) and nothing replaces it (Ben 6668689264)');
+hc('the shingle-samples sentence coming back is detected', htmlNoComments + " We'll ask your contractor to bring shingle samples.", 'H45-49: the Request Visit panel is gone (card, section, button, handler, confirmations, mailto) and nothing replaces it (Ben 6668689264)');
 hc('the signing panel coming back is detected', htmlNoComments + ' <h3>Sign Color Addendum</h3>', 'H69-71: the colour signing panel is gone (heading, body, frame title, builder)');
 
 // ---- the draft RPC migration ----

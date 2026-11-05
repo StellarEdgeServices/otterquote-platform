@@ -28,8 +28,6 @@ import {
   COLOR_COPY as C,
   subtitleBrandKnown,
   subtitleBrandUnconfirmed,
-  colorBoardPhoneSuffix,
-  colorBoardMailtoBody,
 } from './copy';
 import {
   hasVisualizer,
@@ -37,13 +35,11 @@ import {
   getVisualizerDescription,
   resolveLinkOut,
   canCreateAddendum,
-  jobNumberFromClaimId,
 } from './utils';
 import {
   useColorSelectionData,
   saveColorSelection,
   createColorAddendumEnvelope,
-  requestColorBoardVisit,
 } from './use-color-selection-data';
 
 // ── Top-level page: tri-state boot ────────────────────────────────────────────
@@ -157,7 +153,7 @@ function PageBody({
   userId: string;
   signedReturn: boolean;
 }) {
-  const { brand, contractorName, contractorPhone, contractorId, signerEmail, zipCode } = data;
+  const { brand, contractorName, contractorId, signerEmail, zipCode } = data;
 
   // ── Phase ──
   const [phase, setPhase] = useState<'page' | 'done'>('page');
@@ -172,10 +168,6 @@ function PageBody({
   // ── Addendum state ──
   // gh-3287 (Ben 6584752880, items 69-71): the signing panel is removed; only the saved note remains.
   const [addendum, setAddendum] = useState<'none' | 'fallback'>('none');
-
-  // ── In-person request state ──
-  const [inPersonMsg, setInPersonMsg] = useState<string | null>(null);
-  const [inPersonDisabled, setInPersonDisabled] = useState(false);
 
   // ── Visualizer scroll target ──
   const visualizerRef = useRef<HTMLDivElement>(null);
@@ -232,39 +224,16 @@ function PageBody({
     setAddendum('fallback');
   }, [colorInput, claimId, userId, brand, contractorId, signerEmail]);
 
-  // ── In-person color board request ──
-  const handleInPerson = useCallback(async () => {
-    const res = await requestColorBoardVisit({ claimId, userId });
-    if (res.status === 'already') {
-      setInPersonMsg(C.colorBoardAlreadyRequested);
-      return;
-    }
-    if (res.status === 'created') {
-      let msg: string = C.colorBoardVisitRequested;
-      if (contractorPhone) msg += colorBoardPhoneSuffix(contractorPhone);
-      setInPersonMsg(msg);
-      setInPersonDisabled(true);
-      return;
-    }
-    // error → mailto fallback (static 1054-1057)
-    const subject = encodeURIComponent(C.colorBoardMailtoSubject);
-    const body = encodeURIComponent(
-      colorBoardMailtoBody(jobNumberFromClaimId(claimId), contractorName || 'unknown'),
-    );
-    window.location.href = `mailto:${C.colorBoardMailtoAddress}?subject=${subject}&body=${body}`;
-  }, [claimId, userId, contractorName, contractorPhone]);
-
   // ── Option-card click ──
   const handleOptionClick = useCallback(
-    (id: 'visualize' | 'inperson') => {
+    (id: 'visualize') => {
       if (id === 'visualize') {
         visualizerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } else if (id === 'inperson') {
-        void handleInPerson();
       }
       // gh-3287 (Ben 6584752880, items 14-16): the 'browse' card is removed.
+      // gh-3287 (Ben 6668689264): the in-person visit request is removed.
     },
-    [handleInPerson],
+    [],
   );
 
   // ── Done screen (after addendum signing completes or a signed=true return) ──
@@ -290,7 +259,7 @@ function PageBody({
   const showLinkOutNote = isLinkOutBrand(brand);
 
   const OPTIONS: {
-    id: 'visualize' | 'inperson';
+    id: 'visualize';
     title: string;
     icon: string;
     description: string;
@@ -304,14 +273,6 @@ function PageBody({
       description: getVisualizerDescription(brand),
       primary: true,
       button: C.optionVisualizeButton,
-    },
-    {
-      id: 'inperson',
-      title: C.optionInPersonTitle,
-      icon: C.optionInPersonIcon,
-      description: C.optionInPersonDescription,
-      primary: false,
-      button: C.optionInPersonButton,
     },
   ];
 
@@ -355,24 +316,6 @@ function PageBody({
       <div className="oqcs-visualizer" ref={visualizerRef}>
         <div className="oqcs-visualizer-title">{C.visualizerSectionTitle}</div>
         <Visualizer brand={brand} zip={zipCode} />
-      </div>
-
-      {/* In-person color samples */}
-      <div className="oqcs-inperson">
-        <div className="oqcs-inperson-icon">{C.inPersonIcon}</div>
-        <div className="oqcs-inperson-content">
-          <h3 className="oqcs-inperson-title">{C.inPersonTitle}</h3>
-          <p className="oqcs-inperson-desc">{C.inPersonDescription}</p>
-          <button
-            type="button"
-            className="oqcs-btn oqcs-btn-secondary"
-            onClick={() => void handleInPerson()}
-            disabled={inPersonDisabled}
-          >
-            {C.inPersonButton}
-          </button>
-          {inPersonMsg && <div className="oqcs-inperson-confirm">{inPersonMsg}</div>}
-        </div>
       </div>
 
       {/* Confirmation */}
@@ -641,12 +584,6 @@ const STYLES = `
   .oqcs-brand-unknown-icon { font-size:2.5rem; margin-bottom:.75rem; }
   .oqcs-brand-unknown-title { font-size:1rem; font-weight:600; margin-bottom:.5rem; }
   .oqcs-brand-unknown-text { color:var(--slate,#94a3b8); font-size:.9rem; max-width:480px; margin:0 auto; line-height:1.6; }
-  .oqcs-inperson { display:flex; align-items:flex-start; gap:1.5rem; background:rgba(224,123,0,0.06); border:1px solid rgba(224,123,0,0.25); border-left:4px solid #E07B00; border-radius:12px; padding:1.75rem; margin-bottom:2rem; }
-  .oqcs-inperson-icon { font-size:2.2rem; flex-shrink:0; line-height:1; }
-  .oqcs-inperson-content { flex:1; }
-  .oqcs-inperson-title { font-size:1.1rem; font-weight:600; margin:0 0 .5rem; }
-  .oqcs-inperson-desc { color:var(--slate,#94a3b8); margin:0 0 1.25rem; font-size:.95rem; line-height:1.6; }
-  .oqcs-inperson-confirm { margin-top:1.25rem; background:var(--green-light,#D1FAE5); color:#065F46; padding:1.25rem; border-radius:12px; border-left:4px solid var(--green,#10b981); }
   .oqcs-confirm { background:var(--navy-2,rgba(255,255,255,0.03)); border:1px solid rgba(255,255,255,0.06); border-radius:12px; padding:1.75rem; margin-bottom:2rem; }
   .oqcs-confirm-head { margin-bottom:1.5rem; padding-bottom:1.5rem; border-bottom:1px solid rgba(255,255,255,0.06); }
   .oqcs-confirm-title { font-size:1.25rem; margin:0 0 .5rem; }
@@ -683,5 +620,5 @@ const STYLES = `
   .oqcs-error-icon { font-size:2rem; margin-bottom:.5rem; }
   .oqcs-error-title { color:#ef4444; font-weight:600; margin:0 0 .35rem; }
   .oqcs-error-detail { color:var(--slate,#94a3b8); font-size:.9rem; margin:0; }
-  @media (max-width:768px){ .oqcs-wrap{ padding:1.5rem 1rem 2.5rem; } .oqcs-form-row{ grid-template-columns:1fr; } .oqcs-options{ grid-template-columns:1fr; } .oqcs-inperson{ flex-direction:column; gap:1rem; } }
+  @media (max-width:768px){ .oqcs-wrap{ padding:1.5rem 1rem 2.5rem; } .oqcs-form-row{ grid-template-columns:1fr; } .oqcs-options{ grid-template-columns:1fr; } }
 `;
