@@ -88,9 +88,13 @@ const rulingGuards = (h) => ({
   'H2-3: the subtitle drops the contractor name when the name is missing': /const who = contractor\?\.company_name \? `Your contractor \$\{this\.contractorName\}` : 'Your contractor';/.test(h)
     && /`\$\{who\} uses \$\{this\.brand\}\./.test(h) && /`\$\{who\} will confirm the brand\./.test(h),
   'H27: the OC desktop note is the ruled sentence (same as item 29)': h.includes(H_ITEM27) && !/Once you've found a color you like/.test(h),
-  'H45-49: the Request Visit panel is gone (card, section, button, handler, confirmations, mailto) and nothing replaces it (Ben 6668689264)': !/Request Visit|In-Person Color Samples|Prefer to See Colors In Person|Rather See Colors In Person|physical color boards|shingle samples|requestColorBoardVisit|inperson|color_board_request|Visit requested|Already requested|reach out within|in-person color samples/i.test(h),
+  'H45-49: the Request Visit panel is gone (card, section, button, handler, confirmations, mailto) and nothing replaces it (Ben 6668689264)': !/Request Visit|In-Person Color Samples|Prefer to See Colors In Person|Rather See Colors In Person|physical color boards|shingle samples|requestColorBoardVisit|inperson|color_board_request|Visit requested|Already requested|reach out within|in-person color samples|physical boards/i.test(h),
   'H69-71: the colour signing panel is gone (heading, body, frame title, builder)': !/Sign Color Addendum|Almost done|Color Addendum — E-Sign|showAddendumSigningIframe/.test(h),
 });
+import { readFileSync as __rf } from 'node:fs';
+const __faq = __rf(new URL('../faq.html', import.meta.url), 'utf8');
+check('FAQ: no "request a contractor visit" or physical-color-boards text (Ben 6669908503)', !/contractor visit|physical color boards/i.test(__faq));
+check('control: the FAQ sentence coming back is detected', /contractor visit|physical color boards/i.test(__faq + ' Or you can request a contractor visit with physical color boards.'));
 const htmlNoComments = stripComments(html);
 for (const [label, ok] of Object.entries(rulingGuards(htmlNoComments))) check(label, ok);
 // negative controls: each ruled change put back must be detected
@@ -99,6 +103,7 @@ hc('the Browse Colors card coming back is detected', htmlNoComments + " title: '
 hc('the new-tab note on every card is detected', htmlNoComments.replace("${opt.id === 'visualize' && (this.brand === 'GAF' ||", "${(this.brand === 'GAF' ||"), 'H20: the new-tab note is built for the visualizer card only');
 hc('the name coming back into the subtitle is detected', htmlNoComments.replace("const who = contractor?.company_name ? `Your contractor ${this.contractorName}` : 'Your contractor';", "const who = `Your contractor ${this.contractorName}`;"), 'H2-3: the subtitle drops the contractor name when the name is missing');
 hc('the old fragment (item 27) coming back is detected', htmlNoComments.replace(H_ITEM27, "<strong>After visualizing:</strong> Once you've found a color you like."), 'H27: the OC desktop note is the ruled sentence (same as item 29)');
+hc('"or physical boards" coming back is detected', htmlNoComments + ' from the tool above or physical boards.', 'H45-49: the Request Visit panel is gone (card, section, button, handler, confirmations, mailto) and nothing replaces it (Ben 6668689264)');
 hc('the Request Visit button coming back is detected', htmlNoComments + ' <button>Request Visit</button>', 'H45-49: the Request Visit panel is gone (card, section, button, handler, confirmations, mailto) and nothing replaces it (Ben 6668689264)');
 hc('the in-person section coming back is detected', htmlNoComments + ' <h3>Prefer to See Colors In Person?</h3>', 'H45-49: the Request Visit panel is gone (card, section, button, handler, confirmations, mailto) and nothing replaces it (Ben 6668689264)');
 hc('the request handler coming back is detected', htmlNoComments + ' async requestColorBoardVisit() {}', 'H45-49: the Request Visit panel is gone (card, section, button, handler, confirmations, mailto) and nothing replaces it (Ben 6668689264)');

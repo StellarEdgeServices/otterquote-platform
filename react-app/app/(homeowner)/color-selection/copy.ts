@@ -65,7 +65,7 @@ export const COLOR_COPY = {
 
   // ── Color confirmation section (color-selection.html:490-512) ──
   confirmationTitle: 'What Color Did You Choose?',
-  confirmationSubtitle: 'Tell us the color you selected from the tool above or physical boards.',
+  confirmationSubtitle: 'Tell us the color you selected from the tool above.',
   brandLabel: 'Brand',
   colorNameLabel: 'Color Name',
   colorNamePlaceholder: 'e.g., Estate Gray, Charcoal, Weathered Wood',
