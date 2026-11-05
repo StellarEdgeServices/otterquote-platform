@@ -218,3 +218,15 @@ export function hideToolbarTrigger() {
     }
   };
 }
+
+// gh-3389 (D-409): the ONE custom event HeyCatch may receive from the marketing site. Name-allowlisted and sent with
+// NO properties: the tracker takes a name and nothing else, so a caller cannot attach a lead id, event id, step,
+// email or any other value even by mistake. Anything not on the list is dropped. The page gate
+// (HEYCATCH_ALLOWED_PATHS in js/ga-gate.js) is untouched; this only runs where the SDK was already loaded.
+var TRACKABLE_EVENTS = ['lead_saved'];
+export function makeEventTracker(trackEvent) {
+  return function (name) {
+    if (TRACKABLE_EVENTS.indexOf(name) === -1) return false;
+    try { trackEvent(name); return true; } catch (e) { return false; }
+  };
+}
