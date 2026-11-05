@@ -155,9 +155,10 @@ describe('color-selection page — ruled copy (Ben 6584752880)', () => {
     render(<ColorSelectionPage />);
     expect(
       await screen.findByText(
-        "Request physical color boards. We'll ask your contractor to bring shingle samples so you can see the real colors in your own lighting and against your exterior.",
+        "Request physical color boards.",
       ),
     ).toBeTruthy();
+    expect(screen.queryByText(/shingle samples/)).toBeNull();
   });
 
   it('shows only the ruled save-error words when saving fails, never a raw database message (item 67)', async () => {

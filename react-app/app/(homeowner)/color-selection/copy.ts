@@ -71,7 +71,7 @@ export const COLOR_COPY = {
   inPersonIcon: '🏠',
   inPersonTitle: 'Prefer to See Colors In Person?',
   inPersonDescription:
-    "Request physical color boards. We'll ask your contractor to bring shingle samples so you can see the real colors in your own lighting and against your exterior.",
+    "Request physical color boards.",
   inPersonButton: 'Request In-Person Color Samples',
 
   // ── Color confirmation section (color-selection.html:490-512) ──

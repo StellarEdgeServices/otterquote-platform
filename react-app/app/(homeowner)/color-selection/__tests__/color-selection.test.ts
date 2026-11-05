@@ -51,7 +51,7 @@ const STATIC = {
   opensInNewTabLabel: 'Opens in new tab',
   inPersonTitle: 'Prefer to See Colors In Person?',
   inPersonDescription:
-    "Request physical color boards. We'll ask your contractor to bring shingle samples so you can see the real colors in your own lighting and against your exterior.",
+    "Request physical color boards.",
   inPersonButton: 'Request In-Person Color Samples',
   confirmationTitle: 'What Color Did You Choose?',
   confirmationSubtitle: 'Tell us the color you selected from the tool above or physical boards.',
