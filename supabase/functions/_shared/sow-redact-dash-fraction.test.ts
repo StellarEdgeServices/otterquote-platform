@@ -49,6 +49,18 @@ const STAY: Array<[string, string]> = [
   ["Paid 100–250, then 500–1000", "Paid 100-250, then 500-1000"], ["Bob’s roof at noon—call", "Bob's roof at noon-call"], ["$12.​​50", "$12.50"], ["$12.​50", "$12.50"],
 ];
 
+// REVIEW 6671216392: a quote, ellipsis, fraction or dash before "at" or "@" and a web address does not join a number, a price, a closing quote or a word set off by a space.
+// Each prints whole, as on main. NEGATIVE CONTROL: at the helper of 0b5d62ce every row but the plain-quote one is cut.
+const WEB_ROWS: Array<[string, string]> = [
+  ["Vent 12” at lowes.com, $40", 'Vent 12" at lowes.com, $40'], ['Vent 12" at lowes.com', 'Vent 12" at lowes.com'], ["Ridge cap 33’ at gaf.com", "Ridge cap 33' at gaf.com"],
+  ["GAF “Timberline” at gaf.com", 'GAF "Timberline" at gaf.com'], ["Colour “Charcoal” @gaf.com", 'Colour "Charcoal" @gaf.com'], ["Shingles $85½ at store.com", "Shingles $851/2 at store.com"],
+  ["Shingles $85½ @acme.co", "Shingles $851/2 @acme.co"], ["Bundle 3¼ at gaf.com", "Bundle 31/4 at gaf.com"], ["Order shingles — at homedepot.com", "Order shingles - at homedepot.com"],
+  ["Gutters… at lowes.com", "Gutters... at lowes.com"],
+  ["Vent 12’ (at) lowes.com", "Vent 12' (at) lowes.com"], ["Bundle 3¾ (at) gaf.com", "Bundle 33/4 (at) gaf.com"], ["Price 85— at gaf.com", "Price 85- at gaf.com"], ["Gutters…@lowes.com", "Gutters...@lowes.com"],
+];
+// Same shapes on main: printed. Kept as the review says the narrowing costs, and recorded so a change is deliberate.
+const PRINT_AS_MAIN: Array<[string, string]> = [["jane’ at example.com", "jane' at example.com"], ["jane’@example.com", "jane'@example.com"], ["jane… at example.com", "jane... at example.com"]];
+
 // REVIEW 6670618986 B1: a folded character inside the address, right before the at-sign or in the domain.
 const INSIDE_FORMS = (c: string) => [
   `jane${c}@example.com`, `Email jane${c}@gmail.com`, `jane${c}@proton.me`, `jane${c}(at)example.com`, `jane${c} at example dot com`, `jane${c} @ example.com`, `jane${c} at example.com`, `jane${c} (at) proton.me`,
@@ -73,9 +85,17 @@ for (const [label, H] of [["shared", Shared], ["local copy", Local]] as const) {
       }
     }
   });
+  Deno.test(`gh-3461 folds (${label}): words and prices before a web address print as on main, and the joined addresses stay removed`, () => {
+    for (const [t, want] of [...WEB_ROWS, ...PRINT_AS_MAIN]) {
+      assertEquals(before(t), want, JSON.stringify(t));
+      assertEquals(printsAs(before(t)), want);
+    }
+    for (const t of ["jane—@example.com", "jane½@example.com", "jane@pro—ton.me", "jane— at example dot com", "jane–(at)example.com", "j2½@gmail.com", "jane.doe—@gmail.com"]) assertEquals(before(t), H.REMOVED_TOKEN, JSON.stringify(t));
+  });
   Deno.test(`gh-3461 folds (${label}): long hostile runs finish in linear time`, () => {
     const n = 200000;
     const runs = ["\u200b".repeat(n), `end.${"\u200b".repeat(n)}x`, `\u0301`.repeat(n), `.\u0301`.repeat(n / 2), "-".repeat(n), "\u2014".repeat(n), `-\u2014`.repeat(n / 2), `a${"\u2014".repeat(n)}@b.com`, `\u2014@`.repeat(n / 2), `\u00bd`.repeat(n), `${" ".repeat(n)}@`, ` at `.repeat(n / 4), `x\u2014`.repeat(n / 2)];
+    runs.push("\u201d".repeat(n), `\u201d @`.repeat(n / 3), `${"a".repeat(n)}\u2014@b`, `a\u00bd @`.repeat(n / 4));
     for (const t of runs) {
       const t0 = performance.now();
       before(t);

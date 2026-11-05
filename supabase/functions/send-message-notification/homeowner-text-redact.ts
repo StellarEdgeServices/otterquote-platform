@@ -162,16 +162,18 @@ const PRINTS_AS_PLAIN = /^[\uff01-\uff5e\u0660-\u0669\u06f0-\u06f9]$/;
 const SOFT = "\x1f"; // typed control characters can never reach `marked`: they are dropped characters themselves
 const FOLDED_DASH = "\x1e";
 const BARRIER = "\x1d";
+const QUOTE_UNIT = "\x1c"; // a folded quote or ellipsis, until joinedToAt has placed it
 const DASH_IN_VIEW = String.fromCharCode(0x2010);
 // The middle dot and the bullet are dropped characters like any other: A 6669920816 on #3461 removed the pin that let "317<middle dot>555<middle dot>0142" print.
-// A folded dash or fraction right before the at-sign is inside the address, not beside it ("jane<em dash>@example.com" prints "jane-@example.com"), so there the
-// patterns read it as the "-" that prints. Walked back from each at-sign, so a long run costs one pass.
+// A folded dash or fraction joined to a word right before the at-sign is inside the address, not beside it ("jane<em dash>@example.com" prints "jane-@example.com"), so
+// there the patterns read it as the "-" that prints. It joins only when what is before it could be a local part on its own: it touches a token with a letter in it. A number,
+// a price or a word followed by a space does not qualify ("$85<one half> at store.com", "shingles <em dash> at homedepot.com"), and a quote or ellipsis never joins
+// ("12<closing quote> at lowes.com", REVIEW 6671216392), so those lines print whole as they do on main. Walked back from each at-sign, so a long run costs one pass.
 const AT_SIGN = /@|[\(\[\{<][ \x1f]*[Aa]\x1f*[Tt]|(?<=[ \x1f])[Aa]\x1f*[Tt](?=[ \x1f])/g;
-function joinedToAt(v: string): string {
-  const units = [...v.matchAll(AT_SIGN)];
-  if (units.length === 0) return v;
+const LOCAL_CHAR = /[A-Za-z0-9._%+\-]/;
+function joinedToAt(v: string, quoteElsewhere: string): string {
   const out = v.split("");
-  for (const m of units) {
+  for (const m of v.matchAll(AT_SIGN)) {
     if (m[0] === "@") { // "sheets<em dash>@75.Tear off" is a price, not an address: the domain must start with a letter
       let d = m.index! + 1;
       while (d < v.length && (v[d] === " " || v[d] === SOFT)) d++;
@@ -179,9 +181,18 @@ function joinedToAt(v: string): string {
     }
     let k = m.index! - 1;
     while (k >= 0 && (out[k] === " " || out[k] === SOFT)) k--;
-    while (k >= 0 && (out[k] === DASH_IN_VIEW || out[k] === BARRIER)) out[k--] = "-";
+    if (out[k] === QUOTE_UNIT) {
+      while (k >= 0 && out[k] === QUOTE_UNIT) out[k--] = BARRIER;
+      continue;
+    }
+    let start = k;
+    while (start >= 0 && (out[start] === DASH_IN_VIEW || out[start] === BARRIER)) start--;
+    if (start === k) continue;
+    let hasLetter = false;
+    for (let t = start; t >= 0 && LOCAL_CHAR.test(out[t]); t--) if (/[A-Za-z]/.test(out[t])) { hasLetter = true; break; }
+    if (hasLetter) for (let j = start + 1; j <= k; j++) out[j] = "-";
   }
-  return out.join("");
+  return out.join("").replaceAll(QUOTE_UNIT, quoteElsewhere);
 }
 
 export function printForm(text: string): { printed: string; marked: string; view: string; to: number[] } {
@@ -215,14 +226,15 @@ export function printForm(text: string): { printed: string; marked: string; view
     last = out[out.length - 1];
     const isDash = out === "-" && typed !== "-";
     const isFold = !isDash && out !== typed && !PRINTS_AS_PLAIN.test(typed);
-    view += isDash ? DASH_IN_VIEW : isFold ? BARRIER.repeat(out.length) : out;
-    marked += isDash ? FOLDED_DASH : QUOTES_AND_ELLIPSIS.test(ch) ? SOFT.repeat(out.length) : isFold ? BARRIER.repeat(out.length) : out;
+    const isQuote = QUOTES_AND_ELLIPSIS.test(ch);
+    view += isDash ? DASH_IN_VIEW : isQuote ? QUOTE_UNIT.repeat(out.length) : isFold ? BARRIER.repeat(out.length) : out;
+    marked += isDash ? FOLDED_DASH : isQuote ? QUOTE_UNIT.repeat(out.length) : isFold ? BARRIER.repeat(out.length) : out;
   }
   if (printed.endsWith(" ") && marked.endsWith(SOFT)) { printed = printed.slice(0, -1); marked = marked.slice(0, -1); view = view.slice(0, -1); }
   to[text.length] = printed.length;
   // One folded dash prints and reads as a dash ("100-250", "11-15-2026"); doubled it is no separator anyone types by hand.
   marked = marked.replace(/[-\x1e]+/g, (d) => (!d.includes(FOLDED_DASH) ? d : d.length > 1 ? SOFT.repeat(d.length) : DASH_IN_VIEW));
-  return { printed, marked: joinedToAt(marked), view: joinedToAt(view), to };
+  return { printed, marked: joinedToAt(marked, SOFT), view: joinedToAt(view, BARRIER), to };
 }
 
 // ---- the second pass, on `marked` only; every match must cross a SOFT unit, because the patterns above already read the same text without one ----
