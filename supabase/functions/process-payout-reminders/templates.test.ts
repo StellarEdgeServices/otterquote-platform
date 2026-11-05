@@ -3,7 +3,7 @@
 // Run: deno test supabase/functions/process-payout-reminders/templates.test.ts
 
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { buildEmail, reminderDigestBodyHtml, reminderDigestBodyText } from "./templates.ts";
+import { buildEmail, reminderDigestBodyHtml, reminderDigestBodyText, formatPayoutType } from "./templates.ts";
 import { POSTAL_ADDRESS } from "./email-footer.ts";
 
 // created_at is deliberately null (renders "—", TZ-independent) -- an
@@ -241,4 +241,11 @@ Deno.test("gh-1824 process-payout-reminders: buildEmail(reminderDigestBodyHtml(.
 
 Deno.test("gh-1824 process-payout-reminders: reminderDigestBodyText(...) exact-matches the pinned golden text for the Recruit Bonus branch", () => {
   assertEquals(reminderDigestBodyText([ROW2], 200, URL), GOLDEN_TEXT_RECRUIT);
+});
+
+// gh-3229 (P18): the monthly measurement-fee payout has its own label; the existing two are unchanged.
+Deno.test("formatPayoutType labels measurement_fees_monthly and leaves the existing types alone (gh-3229)", () => {
+  assertEquals(formatPayoutType("measurement_fees_monthly"), "Measurement Referral Fees");
+  assertEquals(formatPayoutType("commission_referral"), "Referral");
+  assertEquals(formatPayoutType("commission_recruit"), "Recruit Bonus");
 });
