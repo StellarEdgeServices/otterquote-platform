@@ -3107,8 +3107,12 @@
               updates.funding_type = 'cash';
               updates.policy_type = null;
             } else if (selectedType === 'repair') {
-              updates.funding_type = 'cash';
-              updates.policy_type = null;
+              // gh-3398 (D-407): a stored 'idk' reaches Repair Only with funding_type 'insurance'.
+              // Saving the untouched pre-selection must leave policy_type and funding_type alone.
+              if (!(currentClaim.policy_type === 'idk' && window.selectedJobTypeIsPreselect === true)) {
+                updates.funding_type = 'cash';
+                updates.policy_type = null;
+              }
             }
             // Conditional fields per job type
             if (selectedType === 'repair') {
