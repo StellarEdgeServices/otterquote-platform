@@ -30,6 +30,7 @@ import { parseAddress, fullAddress, isValidZip, hasFullAddress, type ParsedAddre
 import { gtagEventBeforeNavigation } from '@/lib/ga-events';
 import { isAdSharingOptedOut } from '@/lib/ad-optout';
 import { readFreshSignupRaw } from '@/lib/signup-storage';
+import { PAYMENT_QUESTION, paymentDestination } from './payment-route';
 import { CLAIM_INTAKE_COLUMNS, claimFinishedIntake } from '@/lib/claim-intake';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -39,9 +40,8 @@ const REPAIR_INTAKE_URL = 'https://otterquote.com/repair-intake.html';
 // gh-1276: dedicated project-information page per payment path (mirrors the
 // pre-existing repair-intake.html split) — RCV/ACV/Cash previously all
 // landed on DASHBOARD_URL directly with no guided collection step.
-const PROJECT_INFO_RCV_URL = 'https://otterquote.com/project-info-rcv.html';
-const PROJECT_INFO_ACV_URL = 'https://otterquote.com/project-info-acv.html';
-const PROJECT_INFO_CASH_URL = 'https://otterquote.com/project-info-cash.html';
+// D-407 1/8 (gh-3282): the per-path destinations now live in ./payment-route.ts
+// (PAYMENT_DESTINATIONS) so the routing table is unit-tested.
 const GET_STARTED_URL = '/get-started';
 // gh-2070: single versioned sessionStorage key for a loss sheet staged before
 // a claim id exists — read by attachPendingLossSheetToClaim once
@@ -1165,10 +1165,10 @@ export default function TradeSelectorPage() {
       let redirectUrl: string;
       if (hasRepair) {
         redirectUrl = REPAIR_INTAKE_URL;
-      } else if (fundingType === 'insurance') {
-        redirectUrl = policyType === 'acv' ? PROJECT_INFO_ACV_URL : PROJECT_INFO_RCV_URL;
       } else {
-        redirectUrl = PROJECT_INFO_CASH_URL;
+        // D-407 1/8 (gh-3282): null only if the wizard was somehow completed
+        // unanswered; fall back to the dashboard rather than a wrong path.
+        redirectUrl = paymentDestination(fundingType, policyType) ?? DASHBOARD_URL;
       }
       if (savedClaimId) {
         redirectUrl += `?claim_id=${encodeURIComponent(savedClaimId)}`;
@@ -1542,7 +1542,7 @@ export default function TradeSelectorPage() {
           {currentStepId === 'funding' && (
             <>
               <div className="ts-header">
-                <h1>How is this job being funded?</h1>
+                <h1>{PAYMENT_QUESTION}</h1>
                 <p className="ts-subtitle">
                   Let us know how you&apos;re planning to pay for your project so we can match you with the right contractors.
                 </p>
