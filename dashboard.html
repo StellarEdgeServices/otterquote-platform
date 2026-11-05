@@ -3602,7 +3602,7 @@
         try {
           if (sb && currentClaim?.id) {
             const reasonText = reasons.length > 0 ? reasons.join(', ') : 'No reason provided';
-            await fetch(CONFIG.SUPABASE_URL + '/functions/v1/send-support-email', { // gh-2477: Supabase URL (no Netlify proxy for /functions/v1)
+            const resp = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/send-support-email', { // gh-2477: Supabase URL (no Netlify proxy for /functions/v1)
               method:  'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -3616,6 +3616,11 @@
                 message:    `Job #${currentClaim.id.slice(-8).toUpperCase()}\nReasons: ${reasonText}\nNotes: ${notes || '(none)'}`
               })
             });
+            // gh-3443: success text only after the send succeeded; a non-2xx falls to the catch below.
+            if (!resp.ok) throw new Error('send-support-email HTTP ' + resp.status);
+          } else {
+            // gh-3443: no request can be made (no client or claim): same failure path, never the success text.
+            throw new Error('switch survey: no client or claim id');
           }
 
           document.getElementById('switch-survey-step').classList.add('hidden');
