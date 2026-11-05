@@ -74,8 +74,8 @@ export interface UpgradeOrderInsertPayload {
   status: string;
   product_code: string;
   fulfillment_mode: string;
-  requested_by_role: "contractor";
-  requested_by_contractor_id: string;
+  requested_by_role: "contractor" | "unspecified";
+  requested_by_contractor_id: string | null;
   homeowner_stripe_payment_intent_id: string;
   homeowner_charge_amount: number;
   amount_charged: number;
