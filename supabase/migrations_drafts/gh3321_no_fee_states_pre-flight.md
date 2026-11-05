@@ -68,10 +68,11 @@ SELECT p.referral_id AS referral, p.id AS payout, p.payout_type, p.amount, p.sta
   JOIN public.claims c ON c.referral_id = r.id
  WHERE p.payout_type IN ('commission_referral', 'commission_recruit')
    AND p.status NOT IN ('rejected', 'paid')
-   AND btrim(COALESCE(c.property_state, '')) = ''
+   AND (btrim(COALESCE(c.property_state, '')) = ''
+        OR upper(btrim(c.property_state)) IN ('OK', 'AR', 'KS', 'NE', 'MS'))   -- blank now, or blank at completion and filled in as a no-fee state since
  ORDER BY p.created_at;
 ```
-For each row the reviewer finds the property's real state and, if it is one of the five, rejects the payout by hand. B also catches the other gap: a claim completed with a blank state whose state was filled in later.
+For each row the reviewer finds the property's real state and, if it is one of the five, rejects the payout by hand. B also catches the other gap: a claim completed with a blank state whose state was filled in later as one of the five (fixed after LEGAL-READ 6667606960, which found the first B dropped such a row; proof fixture `filled`). Run on the pre-apply database, B also lists any payable row already attached to a claim in the five states, the same rows query A counts.
 
 ## Query C: referrals ledgered with no fee in the five states (audit, and the list to read before a rollback)
 ```sql
@@ -106,6 +107,14 @@ SELECT r.id AS referral, r.created_at, r.job_value, r.status, COALESCE(r.is_test
  ORDER BY r.created_at;
 ```
 
+## Fee-promising email: the second sender (LEGAL-READ 6667606960)
+The trigger's own call to `send-partner-status-email` is skipped in the five states, but `mark-job-complete/index.ts` (line 448, called from `contractor-dashboard.html`) calls the same Edge Function directly after writing `completion_date`, and that function read neither `property_state` nor `commission_amount`.
+Stage 5 ("Payment for this referral is on its way.") is the only stage with payment language. **Fixed in this PR, Edge Function only, no migration:** `send-partner-status-email` selects `claims.property_state` and skips stage 5 when it is one of the five
+(`isStageBlockedForState` in `templates.ts`, same shape as the D-333 `isStageBlockedForAgentType` gate, skipped before the stage stamp so nothing is burned). It is the one place every sender passes through. Stages 1 to 4 and a blank or NULL state are unchanged.
+Callers checked on main (`git grep send-partner-status-email`): `mark-job-complete` (direct call); the `apply_referral_commission` trigger (skipped in the five states by this migration); the `claims_advance_referral` trigger (gh916; catch-up mode, so it also lands on the gate). No page or other function calls it.
+Deploy order: this Edge Function is independent of the migration and safe to deploy first (it only withholds an email in the five states). Not in scope: a blank-state partner still gets stage 5 before the batch review, as Dustin's blank-accrues answer implies.
+Proof for the Edge Function: Deno unit tests in `templates.test.ts` (each of the five states blocked, padded and lower case blocked, IN/TX/FL/CA not blocked, blank/NULL not blocked, stages 1 to 4 never blocked) and a wiring test that the handler selects `property_state` and applies the gate before the stage stamp. Proof check N in the SQL proof still covers only the trigger's own calls.
+
 ## Rollback
 `gh3321_no_fee_states_rollback.sql`: restores the gh3330 body (md5 `7b9bc6957cb15534514f1e1ab9e32bbf`); runs only over the gh3321 body or the gh3330 body; writes no data. Referrals completed while the exclusion was on keep their no-fee ledger; list them with query C.
 
@@ -114,4 +123,4 @@ SELECT r.id AS referral, r.created_at, r.job_value, r.status, COALESCE(r.is_test
 BASELINE is the gh3330 body, whose rows are the negative controls (a job in OK earns $200 and $50 today). The tests the ruling asks for: a job in each of OK, AR, KS, NE, MS earns no fee and no $50 (checks A to E);
 Indiana and Texas earn both (G, H); a blank and a NULL state accrue both (I, J). Further: the padded/lower-case form (F), inspector referrers (K, L), the no-fee ledger (M), no fee email (N), and the pre-flight queries A, B, C, W2 run verbatim (O, P, Q, R).
 Mutants (each killed by a named check): the state test removed from the $200 branch only; removed from the $50 branch only; blank treated as excluded (fail closed); the COALESCE removed so a NULL state fails closed (the bug the first draft had, caught by check J); MS missing from the list; the withhold `RAISE LOG` deleted (killed by a log assertion that counts the lines on a `client_min_messages=log` re-run).
-A forward run over any body other than the gh3330 body must refuse. The AFTER expectations judged against the unchanged gh3330 body fail 11 of 20 (A, B, C, D, E, F, K, N, O, Q, S).
+A forward run over any body other than the gh3330 body must refuse. The AFTER expectations judged against the unchanged gh3330 body fail 12 of 20 (A, B, C, D, E, F, K, N, O, P, Q, S).

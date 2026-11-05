@@ -63,6 +63,8 @@ SELECT pg_temp.mk('insp_ok', 11, 'OK', 'home_inspector'); -- inspector referrer 
 SELECT pg_temp.mk('insp_in', 12, 'IN', 'home_inspector'); -- inspector referrer in IN: no $200, recruiter's $50 as today (control)
 SELECT pg_temp.mk('wi_ok', 13, 'OK', 'home_inspector', false);  -- recruiter without v4, inspector referrer, OK: not a release candidate (excluded by the agreement)
 SELECT pg_temp.mk('wi_in', 14, 'IN', 'home_inspector', false);  -- recruiter without v4, inspector referrer, IN: a gh3330 withhold, a release candidate
+SELECT pg_temp.mk('filled', 15, NULL);                   -- completed with a NULL state (accrues), then the state is filled in as OK: LEGAL-READ 6667606960, query B must still list it
+UPDATE public.claims SET property_state = 'OK' WHERE referral_id = current_setting('proof.ref_filled')::uuid;
 
 SELECT pg_temp.chk('A Oklahoma: no $200 fee and no $50 bonus (nothing accrued, no payout rows, no earnings); before: $200 and $50', '200|50|1|1|50', 'none|0|0|0|0', pg_temp.outcome('ok'));
 SELECT pg_temp.chk('B Arkansas: no fee and no bonus', '200|50|1|1|50', 'none|0|0|0|0', pg_temp.outcome('ar'));
@@ -84,12 +86,12 @@ SELECT pg_temp.chk('N fee email (send-partner-status-email): none for Oklahoma, 
        || (SELECT count(*) FROM net.proof_calls c WHERE c.url LIKE '%/send-partner-status-email' AND c.body ->> 'referral_id' = current_setting('proof.ref_in'))::text));
 -- pre-flight queries, extracted verbatim by the runner: A pre-apply count, B blank-state batch review, C excluded-state ledger, W2 withheld-bonus release candidates
 \i :afile
-SELECT pg_temp.chk('O pre-apply count A (pre-flight, verbatim): unpaid commission rows attached to claims in the five states (rows|dollars); before: the 6 excluded cases paid $250 each, plus the inspector case''s $50 (wi_ok has none: its recruiter has no v4)', '13|1550', '0|0',
+SELECT pg_temp.chk('O pre-apply count A (pre-flight, verbatim): unpaid commission rows attached to claims in the five states (rows|dollars); before: the 6 excluded cases paid $250 each, plus the inspector case''s $50 (wi_ok has none: its recruiter has no v4), plus the blank-then-filled case''s $250; after: only that one, accrued while blank', '15|1800', '2|250',
   (SELECT rows_unpaid::text || '|' || dollars_unpaid::int::text FROM a_rows));
 \i :bfile
-SELECT pg_temp.chk('P query B (pre-flight, verbatim): pending commission rows on blank or NULL state claims, the batch-review list (blank and null cases, $200 + $50 each)', '4|blank,null', '4|blank,null',
+SELECT pg_temp.chk('P query B (pre-flight, verbatim): pending commission rows on blank or NULL state claims, the batch-review list: blank, NULL and blank-then-filled-as-OK ($200 + $50 each); before the gate a claim in OK is listed too, after it earns nothing and drops off', '8|blank,filled,null,ok', '6|blank,filled,null',
   (SELECT count(*)::text || '|' || COALESCE(string_agg(DISTINCT x.k, ',' ORDER BY x.k), '')
-     FROM b_rows b JOIN (VALUES ('blank'),('null'),('in'),('ok')) x(k) ON b.referral = current_setting('proof.ref_' || x.k)::uuid));
+     FROM b_rows b JOIN (VALUES ('blank'),('null'),('filled'),('in'),('ok')) x(k) ON b.referral = current_setting('proof.ref_' || x.k)::uuid));
 \i :cfile
 SELECT pg_temp.chk('Q query C (pre-flight, verbatim): completed referrals ledgered with no fee in the five states', '2|insp_ok,wi_ok', '8|ar,insp_ok,ks,ms,ne,ok,okpad,wi_ok',
   (SELECT count(*)::text || '|' || COALESCE(string_agg(x.k, ',' ORDER BY x.k), '')
