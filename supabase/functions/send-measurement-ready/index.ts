@@ -299,6 +299,33 @@ serve(async (req: Request) => {
       return json({ success: true, skipped: true, reason: "contractor_requested" }, 200, corsHeaders);
     }
 
+    // gh-3447 (#3447 comment 6668223064): an order whose buyer role was never established ('unspecified', see create-measurement-order/buyer-role.ts)
+    // must not get "the report you ordered is ready": the record does not support that sentence, and no other wording exists. Suppress the
+    // send and tell the operator instead. Settle the role on the order (release path: #3460) and re-save to send.
+    if (order.requested_by_role === "unspecified") {
+      console.error(`[${FUNCTION_NAME}] order ${orderId} has requested_by_role 'unspecified' — ready email suppressed, operator alerted`);
+      try {
+        const { data: priorAlert } = await sb
+          .from("platform_alerts_log")
+          .select("id")
+          .eq("alert_type", "ready_email_suppressed_unspecified_role")
+          .ilike("message", `%${orderId}%`)
+          .limit(1);
+        if (!priorAlert || priorAlert.length === 0) {
+          const { error: alertErr } = await sb.from("platform_alerts_log").insert({
+            alert_type: "ready_email_suppressed_unspecified_role",
+            function_name: FUNCTION_NAME,
+            message: `Measurement order ${order.id} is delivered but its buyer role is 'unspecified', so the ready email was NOT sent. Confirm who bought it, set the role on the order (release path for any held $5: #3460), then re-save the order to send.`,
+            sent_at: new Date().toISOString(),
+          });
+          if (alertErr) console.error(`[${FUNCTION_NAME}] suppression alert insert failed`);
+        }
+      } catch {
+        console.error(`[${FUNCTION_NAME}] suppression alert insert failed`);
+      }
+      return json({ success: true, skipped: true, reason: "role_unspecified" }, 200, corsHeaders);
+    }
+
     const { data: profile } = await sb
       .from("profiles")
       .select("email, full_name")

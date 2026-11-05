@@ -11,8 +11,12 @@
  *   (1) every Upload button: >= 4.5:1, at rest and on hover;
  *   (2) every text element in the Project Information and Complete Your Project Details cards (emoji icons excepted),
  *       plus the "Project Details Complete N%" label: >= 4.5:1, and the disabled referral Save >= 4.5:1;
- *   (3) the progress label has a visible gap between "Project Details Complete" and the percentage.
- * NEGATIVE CONTROL: delete the gh-3267 `.checklist-actions .btn-secondary` rule from the live stylesheet (restoring the old
+ *   (3) the progress label has a visible gap between "Project Details Complete" and the percentage;
+ *   (4) COMPLETED STATE (estimate, measurements and material all done), at 1440 and 390: every .checklist-filename (the
+ *       "est.pdf" / "Architectural Shingles" line shown after an upload or material choice) >= 4.5:1, and every text
+ *       element in the two cards >= 4.5:1. The close review of gh-3267 found this row at 3.07:1 (--gray on the card).
+ * NEGATIVE CONTROLS: (N2) put the old `color: var(--gray)` back on .checklist-filename and the filename must FAIL 4.5:1.
+ *   (N1) delete the gh-3267 `.checklist-actions .btn-secondary` rule from the live stylesheet (restoring the old
  * cascade) and re-measure: the Upload button must FAIL 4.5:1. Proves the assertion can see the bug.
  *
  * Usage: node tests/gh3267-dashboard-contrast.mjs [repoRoot]      Exit 0 = pass.
@@ -47,7 +51,7 @@ const USER = { id: '22222222-2222-4222-8222-222222222222', aud: 'authenticated',
 const jwt = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: USER.id, role: 'authenticated', email: USER.email, exp: NOW + 3600 })}.sig`;
 const SESSION = { access_token: jwt, refresh_token: 'RT-1', expires_in: 3600, expires_at: NOW + 3600, token_type: 'bearer', user: USER };
 const PROFILE = { id: USER.id, full_name: 'Test Homeowner', role: 'homeowner' };
-const CLAIM = { id: '33333333-3333-4333-8333-333333333333', user_id: USER.id, status: 'draft', created_at: '2026-10-01T00:00:00Z',
+let CLAIM = { id: '33333333-3333-4333-8333-333333333333', user_id: USER.id, status: 'draft', created_at: '2026-10-01T00:00:00Z',
   funding_type: 'insurance', job_type: 'insurance_rcv', damage_type: 'roof', trades: ['roofing'], has_estimate: false,
   has_measurements: false, has_material_selection: false, referral_source: null, referral_code: null, referral_id: null,
   project_confirmation: null, deductible_amount: null };
@@ -166,6 +170,38 @@ const gapPx = await page.$eval('.welcome-progress .progress-label', (el) => {
   const [a, b] = el.children; return b.getBoundingClientRect().left - a.getBoundingClientRect().right;
 });
 ok(gapPx >= 4, `(3) "Project Details Complete" and the percentage are ${gapPx.toFixed(1)}px apart (>= 4px)`);
+
+// (4) Completed state: estimate + measurements + material all done, so the filename row renders. Both widths.
+CLAIM = { ...CLAIM, has_estimate: true, has_measurements: true, has_material_selection: true,
+  estimate_filename: 'est.pdf', measurements_filename: 'm.pdf', material_category: 'shingles', shingle_type: 'architectural' };
+await page.goto(BASE + '/dashboard.html?state=complete' + frag, { waitUntil: 'domcontentloaded' }).catch(() => {}); // new query string: a fragment-only change would not reload
+await page.waitForSelector('#checklist-container .checklist-filename', { timeout: 20000 });
+await page.addStyleTag({ content: '*{animation:none!important;transition:none!important}' });
+for (const w of [1440, 390]) {
+  await page.setViewportSize({ width: w, height: 900 });
+  await page.waitForTimeout(100);
+  const fn = await page.$$eval('#checklist-container .checklist-filename', (els) => els.map((e) => e.textContent.trim()));
+  ok(fn.length === 3, `(4a) ${w}px: three filename rows render in the completed state (${fn.join(' | ')})`);
+  const res = await page.evaluate((measureSrc) => {
+    const M = eval(measureSrc);
+    const fnR = [...document.querySelectorAll('.checklist-filename')].map((e) => [e.textContent.trim(), M(e)]);
+    const roots = [...document.querySelectorAll('.dashboard-section')].filter((s) => /Project Information|Complete Your Project Details/.test(s.querySelector('h2')?.textContent || ''));
+    const bad = []; let n = 0;
+    for (const r of roots) for (const el of r.querySelectorAll('*')) {
+      const own = [...el.childNodes].filter((x) => x.nodeType === 3).map((x) => x.textContent).join('').trim();
+      if (!own || !el.getClientRects().length || el.classList.contains('checklist-icon')) continue;
+      n++; const v = M(el); if (v < 4.5) bad.push(`${el.tagName.toLowerCase()}.${el.className} "${own.slice(0, 30)}" ${v}:1`);
+    }
+    return { fnR, n, bad };
+  }, MEASURE.toString());
+  const minFn = Math.min(...res.fnR.map((r) => r[1]));
+  ok(minFn >= AA, `(4b) ${w}px completed: filename rows ${res.fnR.map((r) => r[1]).join(' / ')}:1, min ${minFn}:1 >= ${AA}:1`);
+  ok(res.bad.length === 0, `(4c) ${w}px completed: all ${res.n} text elements in the cards >= 4.5:1${res.bad.length ? ' -- failing: ' + res.bad.join('; ') : ''}`);
+}
+// N2: the old colour must fail.
+await page.addStyleTag({ content: '.checklist-filename{color:#64748B !important}' });
+const oldFn = await (await page.$('#checklist-container .checklist-filename')).evaluate(MEASURE);
+ok(oldFn < AA, `(N2) negative control: old --gray colour on the filename is ${oldFn}:1 < ${AA}:1`);
 
 // NEGATIVE CONTROL: remove the gh-3267 rule -> the old cascade -> Upload must fail.
 const removed = await page.evaluate(() => {

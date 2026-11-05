@@ -52,7 +52,7 @@ ok(loader.includes("'expected with the ' + monthName + ' batch, after approval'"
 ok(!/Commission payments/.test(dash) && !/\$600/.test(dash) && /Referral fee payments are held until/.test(dash), 'W-9 card says referral fee payments and states no dollar threshold');
 {
   const cmo = fs.readFileSync(path.join(ROOT, 'supabase/functions/create-measurement-order/index.ts'), 'utf8');
-  ok(!/body\.buyer_role === "contractor" \? "contractor" : "homeowner"/.test(cmo) && /buyer_role must be 'homeowner' or 'contractor'/.test(cmo), 'create-measurement-order has no silent homeowner default for buyer_role');
+  ok(!/body\.buyer_role === "contractor" \? "contractor" : "homeowner"/.test(cmo) && /resolveBuyerRole\(body\.buyer_role\)/.test(cmo) && /return \{ role: raw, unresolved: false \}/.test(fs.readFileSync(path.join(ROOT, 'supabase/functions/create-measurement-order/buyer-role.ts'), 'utf8')) && /UNSPECIFIED_ROLE = "unspecified"/.test(fs.readFileSync(path.join(ROOT, 'supabase/functions/create-measurement-order/buyer-role.ts'), 'utf8')), 'create-measurement-order has no silent homeowner default for buyer_role (gh-3447: an unusable role resolves to unspecified, never homeowner)');
 }
 // Partner Agreement v4 A4.4 says the excluded-state list is on the partner dashboard; this must fail if the list goes missing.
 {

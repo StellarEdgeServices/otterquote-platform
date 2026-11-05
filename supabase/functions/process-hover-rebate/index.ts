@@ -134,6 +134,13 @@ async function rebateOne(
   }
   const stripeSecretKey = keyChoice.key;
 
+  // gh-3452: reuse a refund Stripe already holds for this order instead of creating another.
+  const existing = await findExistingRebateRefund(stripeSecretKey, order);
+  if (!existing.ok) {
+    return { ...base, status: "failed", detail: existing.detail };
+  }
+  const repairedFrom = existing.refund;
+
   // Stripe refund — idempotency key prevents double refund on retry.
   const basicAuth = btoa(`${stripeSecretKey}:`);
   const form = new URLSearchParams();
@@ -145,7 +152,7 @@ async function rebateOne(
   form.append("metadata[hover_order_id]", order.id);
 
   const idempotencyKey = `hover_rebate_${order.id}`;
-  const refundRes = await fetch(`${STRIPE_API_BASE}/refunds`, {
+  const refundRes = repairedFrom ? null : await fetch(`${STRIPE_API_BASE}/refunds`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${basicAuth}`,
@@ -155,7 +162,7 @@ async function rebateOne(
     body: form.toString(),
   });
 
-  if (!refundRes.ok) {
+  if (refundRes && !refundRes.ok) {
     const err = await refundRes.text();
     console.error("[rebate] Stripe refund failed:", order.id, refundRes.status, err);
     // Log to activity_log for visibility; leave rebate_due=true for retry.
@@ -176,7 +183,7 @@ async function rebateOne(
     return { ...base, status: "failed", detail: `Stripe refund error (HTTP ${refundRes.status}): ${err}` };
   }
 
-  const refund = await refundRes.json();
+  const refund = repairedFrom ?? await refundRes!.json();
 
   // Mark rebated — idempotent via rebate_paid_at guard on the update.
   const { error: updErr, data: updRows } = await supabase
@@ -251,6 +258,18 @@ async function rebateOne(
     } catch { /* non-fatal */ }
   }
 
+  if (repairedFrom && !updErr) {
+    try {
+      await supabase.from("activity_log").insert({
+        event_type: "hover_rebate_repaired",
+        title: "hover_rebate_repaired",
+        user_id: claimUserId,
+        is_test: claimIsTest,
+        metadata: { hover_order_id: order.id, claim_id: order.claim_id, stripe_refund_id: refund.id },
+      });
+    } catch { /* non-fatal */ }
+  }
+
   console.log("[rebate] Rebated order", order.id, "refund:", refund.id, "amount:", order.homeowner_charge_amount);
   return {
     ...base,
@@ -258,6 +277,36 @@ async function rebateOne(
     refund_id: refund.id,
     amount: order.homeowner_charge_amount,
   };
+}
+
+/**
+ * gh-3452 repair path. A refund that already succeeded at Stripe but whose hover_orders write failed leaves
+ * rebate_paid_at null, so the homeowner could buy a second report (D-413) and the scan would try to refund again once
+ * Stripe's 24-hour idempotency key had expired. Before creating any refund, look up the PaymentIntent's refunds and
+ * reuse the one tagged with this hover_order_id (metadata set at creation below). Read-only at Stripe.
+ * ok:false means the lookup could not be trusted, so the caller must NOT create a refund.
+ */
+async function findExistingRebateRefund(
+  stripeSecretKey: string,
+  order: any,
+): Promise<{ ok: true; refund: any | null } | { ok: false; detail: string }> {
+  try {
+    const res = await fetch(
+      `${STRIPE_API_BASE}/refunds?payment_intent=${encodeURIComponent(order.homeowner_stripe_payment_intent_id)}&limit=100`,
+      { method: "GET", headers: { Authorization: `Basic ${btoa(`${stripeSecretKey}:`)}` } },
+    );
+    if (!res.ok) return { ok: false, detail: `Refund lookup failed (HTTP ${res.status}); no refund created.` };
+    const list = await res.json();
+    if (!Array.isArray(list?.data)) return { ok: false, detail: "Refund lookup returned no data array; no refund created." };
+    const hit = list.data.find((r: any) =>
+      r?.metadata?.type === "hover_measurement_rebate" &&
+      r?.metadata?.hover_order_id === order.id &&
+      r?.status !== "failed" && r?.status !== "canceled"
+    );
+    return { ok: true, refund: hit ?? null };
+  } catch (e: any) {
+    return { ok: false, detail: `Refund lookup threw (${e?.message ?? e}); no refund created.` };
+  }
 }
 
 // gh-2462: exported so caller-gate.test.ts can drive the REAL handler (gh-2309 precedent:
