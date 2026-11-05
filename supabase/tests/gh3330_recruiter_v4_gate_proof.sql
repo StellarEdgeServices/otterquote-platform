@@ -88,11 +88,22 @@ SELECT pg_temp.chk('G recruiter L, referral completed AFTER accepting v4: $50 (e
 SELECT pg_temp.chk('H query W (pre-flight, verbatim) lists the withheld referrals: n, c, l1, p (already commission_paid), bi (inspector referrer); not v, vf, l2 (paid), i (inspector recruiter), bc (v4-gated customer referrer)', '0|', '5|bi,c,l1,n,p',
   (SELECT count(*)::text || '|' || COALESCE(string_agg(x.k, ',' ORDER BY x.k), '')
      FROM w_rows w JOIN (VALUES ('v'),('vf'),('n'),('c'),('i'),('l1'),('l2'),('p'),('bi'),('bc')) x(k) ON w.referral = current_setting('proof.ref_' || x.k)::uuid));
+\i :efile
+SELECT pg_temp.chk('E pre-apply count E (pre-flight, verbatim): unpaid commission_recruit rows owed to recruiters without v4 (rows|dollars); before the gate four of the five withheld cases were paid to a recruiter still without v4 (the fifth, l1, accepted since)', '4|200', '0|0',
+  (SELECT rows_unpaid::text || '|' || dollars_unpaid::int::text FROM e_rows));
 SELECT pg_temp.chk('I fee email (send-partner-status-email) still sent for the withheld case: the referrer''s $200 is real', '1', '1',
   (SELECT count(*)::text FROM net.proof_calls c WHERE c.url LIKE '%/send-partner-status-email' AND c.body ->> 'referral_id' = current_setting('proof.ref_n')));
 SELECT pg_temp.chk('L recruiter never accepted, the referrer''s $200 already moved to commission_paid: $50 withheld (the case the first query W lost)', '200|50|1|50', '200|0|0|0', pg_temp.outcome('p', 'a7'));
 SELECT pg_temp.chk('M home_inspector referrer, recruiter never accepted: no $200 (D-333) and the $50 withheld (before: $50 paid)', 'none|50|1|50', 'none|0|0|0', pg_temp.outcome('bi', 'a8'));
 SELECT pg_temp.chk('N v4-gated customer referrer: no $200 and no $50 before or after (gh-3245, not this gate)', 'none|0|0|0', 'none|0|0|0', pg_temp.outcome('bc', 'a9'));
+-- re-fire (clear and re-stamp completion_date): bi (inspector referrer, recruiter a8) accepts v4, then both bi and p (recruiter a7, also accepts v4) are re-fired
+UPDATE public.referral_agents SET partner_agreement_version = 'v4-2026-10', partner_agreement_accepted_at = now(),
+       partner_agreement_attestation = jsonb_build_object('v4-2026-10', jsonb_build_object('accepted_at', now()))
+ WHERE id IN ('dddddddd-0000-0000-0000-0000000000a8', 'dddddddd-0000-0000-0000-0000000000a7');
+UPDATE public.claims SET completion_date = NULL WHERE referral_id IN (current_setting('proof.ref_bi')::uuid, current_setting('proof.ref_p')::uuid);
+UPDATE public.claims SET completion_date = now() WHERE referral_id IN (current_setting('proof.ref_bi')::uuid, current_setting('proof.ref_p')::uuid);
+SELECT pg_temp.chk('O re-fire, home_inspector referrer, recruiter has since accepted v4: returns at the gh-2479 status check (the first completion left the referral job_completed), so a withheld $50 is NOT released (before: paid once at first completion, not paid twice)', 'none|50|1|50', 'none|0|0|0', pg_temp.outcome('bi', 'a8'));
+SELECT pg_temp.chk('P re-fire, non-inspector referrer, recruiter has since accepted v4: returns at the commission_amount check, so a withheld $50 is NOT released (before: paid once at first completion)', '200|50|1|50', '200|0|0|0', pg_temp.outcome('p', 'a7'));
 SELECT pg_temp.chk('J apply_referral_commission body md5', '2eba9b9601c731cb20f45ef5a18c742b', '7b9bc6957cb15534514f1e1ab9e32bbf',
   (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure));
 SELECT pg_temp.chk('K still SECURITY DEFINER with search_path public, pg_temp', 'true|search_path=public, pg_temp', 'true|search_path=public, pg_temp',

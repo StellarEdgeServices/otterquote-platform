@@ -27,6 +27,23 @@ SELECT rf.id AS referrer, rc.id AS recruiter, rc.agent_type, public.partner_v4_a
   FROM public.referral_agents rf JOIN public.referral_agents rc ON rc.id = rf.recruited_by_id;
 ```
 
+## Pre-apply count E: accrued-and-unpaid recruit bonuses owed to recruiters without v4 (REVIEW 6667117215 note 1)
+The gate stops NEW accruals only; it does not touch rows that already exist. A `commission_recruit` row accrued before the apply for a recruiter who has no v4 is
+still paid by `approve-payout` / `mark-payout-paid` after the apply. Run E immediately before the apply. **Expected at drafting: 0 rows, $0** (#3330 read 2026-11-02: 0 `commission_recruit`
+rows ever). A non-zero result is a decision for Ben before the apply (pay, reject, or hold those rows by hand), not something this migration does. "Unpaid" here is
+status not in ('rejected', 'paid'): the `approve-payout` / `mark-payout-paid` Edge Functions move a row through `approved` to `paid`.
+```sql
+SELECT count(*)::int AS rows_unpaid, COALESCE(sum(p.amount), 0) AS dollars_unpaid,
+       count(*) FILTER (WHERE COALESCE(p.is_test, false)) AS rows_test
+  FROM public.payout_approvals p
+  JOIN public.referral_agents rc ON rc.id = p.partner_id
+ WHERE p.payout_type = 'commission_recruit'
+   AND p.status NOT IN ('rejected', 'paid')
+   AND rc.agent_type IS DISTINCT FROM 'home_inspector'
+   AND public.partner_v4_accepted_at(rc.id) IS NULL;
+```
+Proof check E runs this exact text. BEFORE the gate it returns `4|200` (four of the five withheld cases were paid to a recruiter who still has no v4; the fifth, L, has accepted since; the negative control); AFTER it returns `0|0`.
+
 ## Post-apply checks
 ```sql
 -- expect 7b9bc6957cb15534514f1e1ab9e32bbf, true, {search_path=public, pg_temp}
@@ -61,6 +78,17 @@ Rows whose `recruiter_v4_at` is now NOT NULL are the ones owed once a release pa
 shipped with a zero bonus for some other reason. Run it once before the apply and keep the referral ids; rows that appear afterwards are the gate's. At drafting the production count of
 ever-accrued bonuses is 0 and the only recruited agent is a test row, so the expected pre-apply result is 0 rows.
 
+## Re-fire of `completion_date` (REVIEW 6667117215 note 2)
+The trigger fires on `completion_date` NULL to NOT NULL, so someone who clears and re-stamps the date runs the function a second time on the same claim. The review expected an inspector referrer to
+re-evaluate the gate on that second run because `commission_amount` is never set for it. **The proof shows it does not**, and the reason is a different early return:
+- **Non-inspector referrer:** `commission_amount > 0` after the first firing, so the function returns at its first idempotency check.
+- **Home_inspector referrer:** `commission_amount` stays NULL, so that check does not trip, but the first completion leaves the referral at `status = 'job_completed'` and the gh-2479 status check
+  (`NOT IN ('claim_submitted','bid_received','contract_signed')`) returns before the recruit branch. A withheld $50 is not released by a re-fire even after the recruiter accepts v4. (Proof checks O and P: recruiter has accepted v4, claim re-fired, outcome `0` accrued in both cases.)
+- The only way a re-fire could pay is if someone first moves the referral's `status` back to an attributed status by hand. `reverse_referral_commission()` does not do that (it acts only when `commission_amount > 0`).
+
+**Matches Ben's ruling (6667102434)?** Yes. Nobody without v4 is ever paid, and a withheld bonus is not released by any automatic path, which is what "the release path requires v4" needs: the release is the admin release at payout time that
+Ben's ruling leaves to the apply with #3326, not a side effect. No code change was needed; the function body and its md5 are unchanged by this commit.
+
 ## What the apply writes
 Nothing but the function body. No referral, payout or agent row is touched; the gate acts only when a claim is completed afterwards.
 
@@ -92,8 +120,13 @@ acceptance or an admin action; and should the withhold leave a durable ledger ro
 `gh3330_recruiter_v4_gate_rollback.sql`: restores the gh3245 body (md5 `2eba9b9601c731cb20f45ef5a18c742b`); runs only over the gh3330 body or the gh3245 body; writes no data.
 Referrals withheld while the gate was on stay withheld; list them with query W.
 
+## Withhold log assertion (REVIEW 6667117215 note 3)
+The withhold writes one `RAISE LOG` and nothing else, so the log line is part of the record. The proof runner asserts it: after phase 2-AFTER it re-runs the proof transaction with `client_min_messages=log`
+and requires exactly five `gh-3330 recruiter ... WITHHELD` lines (n, c, l1, p, bi) and one naming recruiter `dddddddd-...a3`, none for the holders or the inspector recruiter; BASELINE must show none. A mutant that deletes the `RAISE LOG` is killed by it.
+It asserts the message through the client message stream, not the server log file (a throwaway server's log file is not under the runner's control).
+
 ## Proof
 `PGHOST=... PGPORT=... PGUSER=postgres bash supabase/tests/gh3330_recruiter_v4_gate_proof_run.sh` on a throwaway Postgres 16: BASELINE / AFTER / ROLLBACK /
-REAPPLIED, 14 checks each (BASELINE is the production body: its rows document today's behavior, including $50 to a recruiter with no v4), three mutants
+REAPPLIED, 17 checks each (BASELINE is the production body: its rows document today's behavior, including $50 to a recruiter with no v4), three mutants
 (gate removed, inverted, gate on the referrer instead of the recruiter) each killed by a named check, and a forward run over the pre-gh3245 body that must refuse.
-The AFTER expectations judged against the unchanged production body fail 8 of 14 (C, D, F, G, H, J, L, M).
+The AFTER expectations judged against the unchanged production body fail 11 of 17 (C, D, E, F, G, H, J, L, M, O, P).
