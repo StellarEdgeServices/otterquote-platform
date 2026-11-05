@@ -132,6 +132,10 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/competitive-roof-bids-vs-single-referral.html',
   '/guides/otter-quotes-vs-thumbtack-angi':
     '/guides/otter-quotes-vs-thumbtack-angi.html',
+  '/guides/exterior-projects-one-contractor-or-separate-bids':
+    '/guides/exterior-projects-one-contractor-or-separate-bids.html',
+  '/guides/metal-roof-vs-asphalt-shingle-bids':
+    '/guides/metal-roof-vs-asphalt-shingle-bids.html',
   '/guides/hail-damaged-windows-gutters-bids':
     '/guides/hail-damaged-windows-gutters-bids.html',
   '/guides/gutter-replacement-cost-factors':
