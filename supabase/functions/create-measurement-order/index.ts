@@ -178,7 +178,7 @@ async function detectPriceDrift(
     measurement_products_cents: catalogPrice,
     hover_measurement_price_cents: legacy,
   });
-  return "This report is temporarily unavailable — its price is misconfigured. Nothing has been charged. Please contact support.";
+  return "This report is temporarily unavailable — its price is misconfigured. Please contact support.";
 }
 
 /**
