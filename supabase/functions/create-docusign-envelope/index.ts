@@ -2218,14 +2218,15 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
       const d390SowNotes = redactSowTextOrRefuse(claimData?.homeowner_notes ?? null, d390FeeCollected);
       // project_confirmation: the SOW reads homeownerNotes and workNotBeingDone; the form saves projectNotes and exclusions (key mismatch, not
       // changed here). All four free-text keys are wrapped, so aligning the keys later cannot print unredacted text.
-      const sowSelections = mergeSowSelections(claimData?.project_confirmation, claimData);
-      const d390Pc = sowSelections
+      // [gh-3288 / D-407] In-memory only (never written back): fold the saved colour selection into the PC-shaped object the SOW reads.
+      if (claimData) claimData.project_confirmation = mergeSowSelections(claimData.project_confirmation, claimData);
+      const d390Pc = claimData?.project_confirmation
         ? {
-          ...sowSelections,
-          homeownerNotes: redactSowTextOrRefuse(sowSelections.homeownerNotes ?? null, d390FeeCollected),
-          workNotBeingDone: redactSowTextOrRefuse(sowSelections.workNotBeingDone ?? null, d390FeeCollected),
-          projectNotes: redactSowTextOrRefuse(sowSelections.projectNotes ?? null, d390FeeCollected),
-          exclusions: redactSowTextOrRefuse(sowSelections.exclusions ?? null, d390FeeCollected)
+          ...claimData.project_confirmation,
+          homeownerNotes: redactSowTextOrRefuse(claimData.project_confirmation.homeownerNotes ?? null, d390FeeCollected),
+          workNotBeingDone: redactSowTextOrRefuse(claimData.project_confirmation.workNotBeingDone ?? null, d390FeeCollected),
+          projectNotes: redactSowTextOrRefuse(claimData.project_confirmation.projectNotes ?? null, d390FeeCollected),
+          exclusions: redactSowTextOrRefuse(claimData.project_confirmation.exclusions ?? null, d390FeeCollected)
         }
         : null;
       scopeOfWorkBase64 = generateRetailScopeOfWorkPdf({

@@ -40,6 +40,6 @@ Deno.test("legacy PC data is kept for history and fills what the selection lacks
 });
 
 Deno.test("the retail/insurance Scope of Work input is built from the merged selections", () => {
-  assert(src.includes("mergeSowSelections(claimData?.project_confirmation, claimData)"), "SOW builder must merge claim colour selection");
+  assert(src.includes("claimData.project_confirmation = mergeSowSelections(claimData.project_confirmation, claimData)"), "SOW builder must merge claim colour selection");
   assert(src.includes("projectConfirmation: d390Pc"), "SOW still receives the merged object");
 });
