@@ -554,6 +554,16 @@ async function fetchHoverMeasurements(supabase, claimId) {
 // exists (gh-1245: roof_basic == RoofScope X) but the PDF-parse path is the
 // canonical one today and writes no product code at all, so keying off it would
 // mis-shape every claim measured through the path we actually use.
+// [gh-3288 / D-407 7/8] One signed document per job: what a Project Confirmation used to carry is read by the Scope of Work (Exhibit A) from
+// where the homeowner's selections now live. Nothing writes claims.project_confirmation any more (PC front end gone, #3300), so the shingle
+// line must come from the colour the homeowner saved on the colour page (claims.color_brand / claims.color_name). The PC columns are kept for
+// history (D-407): they still fill any field the selection does not carry. No new wording: the existing "Shingle:" line prints this value.
+function mergeSowSelections(pc: any, claim: any) {
+  const name = typeof claim?.color_name === "string" ? claim.color_name.trim() : "";
+  if (!name) return pc ?? null;
+  const brand = typeof claim?.color_brand === "string" ? claim.color_brand.trim() : "";
+  return { ...(pc ?? {}), shingleColor: name, shingleManufacturer: brand || pc?.shingleManufacturer || null };
+}
 function resolveMeasurementShape(measurements: any) {
   const m = measurements || {};
   const LINEAR = ["ridgeHipLf", "valleyLf", "rakeLf", "eaveLf", "dripEdgeLf", "stepFlashingLf", "flashingLf"];
@@ -2208,13 +2218,14 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
       const d390SowNotes = redactSowTextOrRefuse(claimData?.homeowner_notes ?? null, d390FeeCollected);
       // project_confirmation: the SOW reads homeownerNotes and workNotBeingDone; the form saves projectNotes and exclusions (key mismatch, not
       // changed here). All four free-text keys are wrapped, so aligning the keys later cannot print unredacted text.
-      const d390Pc = claimData?.project_confirmation
+      const sowSelections = mergeSowSelections(claimData?.project_confirmation, claimData);
+      const d390Pc = sowSelections
         ? {
-          ...claimData.project_confirmation,
-          homeownerNotes: redactSowTextOrRefuse(claimData.project_confirmation.homeownerNotes ?? null, d390FeeCollected),
-          workNotBeingDone: redactSowTextOrRefuse(claimData.project_confirmation.workNotBeingDone ?? null, d390FeeCollected),
-          projectNotes: redactSowTextOrRefuse(claimData.project_confirmation.projectNotes ?? null, d390FeeCollected),
-          exclusions: redactSowTextOrRefuse(claimData.project_confirmation.exclusions ?? null, d390FeeCollected)
+          ...sowSelections,
+          homeownerNotes: redactSowTextOrRefuse(sowSelections.homeownerNotes ?? null, d390FeeCollected),
+          workNotBeingDone: redactSowTextOrRefuse(sowSelections.workNotBeingDone ?? null, d390FeeCollected),
+          projectNotes: redactSowTextOrRefuse(sowSelections.projectNotes ?? null, d390FeeCollected),
+          exclusions: redactSowTextOrRefuse(sowSelections.exclusions ?? null, d390FeeCollected)
         }
         : null;
       scopeOfWorkBase64 = generateRetailScopeOfWorkPdf({
