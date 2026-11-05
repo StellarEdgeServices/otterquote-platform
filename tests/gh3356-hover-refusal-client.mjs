@@ -235,26 +235,36 @@ if (staleVar && stateFn && outcomeFn && confirmSrc && purchaseSrc) {
     ok(run(outcomeFn).kind === 'stale' && run(noRegex).kind === 'paid', 'NC7: another intent\'s id is refused by the shipped check and accepted without it'); }
 }
 
-// C8 -- the price-drift answer of create-measurement-order (LEGAL-READ FAIL at 2bb700a4, Ben's ruling on #3322 comment 6642630135).
-// That answer is only reached from a page that has already seen the PaymentIntent succeed, so it must not say "Nothing has been charged";
-// it says only that the report is already paid for (the PR's own wording in ALREADY_PAID_ERROR: "has already been paid for").
+// C8 -- the price-drift answer of create-measurement-order (LEGAL-READ: FAIL 6643004568 and REVIEW: FAIL 6643059729 at 4288f233).
+// The drift check runs BEFORE verifyPayment, so the server has read nothing from Stripe when it answers. It must therefore make no
+// payment or charge statement at all ("paid", "charged", "refund"): such a sentence is false for an unpaid or invented id and
+// misleading after a full refund. It says only that the report is unavailable and sends the buyer to support (the e276ba83 text).
 {
   const orderSrc = fs.readFileSync(path.join(root, 'supabase', 'functions', 'create-measurement-order', 'index.ts'), 'utf8');
   const driftFn = extractFn(orderSrc, 'detectPriceDrift');
-  const DRIFT_TEXT = 'This report is temporarily unavailable — its price is misconfigured. The report has already been paid for. Please contact support.';
+  const DRIFT_TEXT = 'This report is temporarily unavailable \u2014 its price is misconfigured. Please contact support.';
   const driftReturns = driftFn ? [...driftFn.matchAll(/return "([^"\n]*)";/g)].map((m) => m[1]) : [];
-  ok(!!driftFn && driftReturns.includes(DRIFT_TEXT), 'C8 the price-drift answer is exactly the approved sentence (it says the report has already been paid for)');
-  ok(!/not been charged|nothing has been charged|no charge/i.test(driftReturns.join('\n')), 'C8 the price-drift answer makes no statement that nothing was charged');
-  ok(!/refund|\$|will be|within|guarantee|free/i.test(DRIFT_TEXT) && /contact support/.test(DRIFT_TEXT), 'C8 the price-drift answer adds no refund, price, time or other promise, and still sends the buyer to support');
-  ok(!/nothing has been charged/i.test(orderSrc.replace(/^\s*(\/\/|\*|\/\*).*$/gm, '')), 'C8 create-measurement-order carries no "Nothing has been charged" outside comments');
-  // negative control: the same function with the sentence put back (the 2bb700a4 text) must fail the same checks
-  const OLD_TEXT = 'This report is temporarily unavailable — its price is misconfigured. Nothing has been charged. Please contact support.';
-  const oldFn = driftFn && driftFn.replace(DRIFT_TEXT, OLD_TEXT);
-  const oldReturns = oldFn ? [...oldFn.matchAll(/return "([^"\n]*)";/g)].map((m) => m[1]) : [];
-  ok(!!oldFn && oldFn !== driftFn && oldReturns.includes(OLD_TEXT) && !oldReturns.includes(DRIFT_TEXT) && /nothing has been charged/i.test(oldReturns.join('\n')),
-    'NC8: with the old sentence put back the same checks fail (the text carries "Nothing has been charged" and not the approved sentence)');
-  // and the e276ba83 text (sentence dropped, nothing said about payment) is not the approved sentence either
-  ok(!['This report is temporarily unavailable — its price is misconfigured. Please contact support.'].includes(DRIFT_TEXT), 'NC8b: the dropped-only text of e276ba83 is not the approved sentence');
+  const claimsPayment = (t) => /paid|charged|charge|refund|payment|\$/i.test(t);
+  ok(!!driftFn && driftReturns.includes(DRIFT_TEXT), 'C8 the price-drift answer is exactly the no-payment-claim text of e276ba83');
+  ok(driftReturns.length === 1 && !claimsPayment(driftReturns.join('\n')), 'C8 the price-drift answer states no payment, charge or refund fact (the server has not checked one)');
+  ok(/contact support/.test(DRIFT_TEXT), 'C8 the price-drift answer still sends the buyer to support');
+  // the drift check must stay ahead of verifyPayment in the handler, and nothing in it may read Stripe (so no payment fact can be known)
+  ok(!/stripe|verifyPayment|paymentIntent|payment_intent/i.test(driftFn || 'stripe'), 'C8 detectPriceDrift reads no Stripe or payment data, so it cannot know a payment fact');
+  // negative controls: the 4288f233 sentence and the 2bb700a4 sentence must both fail the same check
+  const PAID_TEXT = 'This report is temporarily unavailable \u2014 its price is misconfigured. The report has already been paid for. Please contact support.';
+  const OLD_TEXT = 'This report is temporarily unavailable \u2014 its price is misconfigured. Nothing has been charged. Please contact support.';
+  ok(claimsPayment(PAID_TEXT) && claimsPayment(OLD_TEXT) && !claimsPayment(DRIFT_TEXT), 'NC8: the "already been paid for" text (4288f233) and the "Nothing has been charged" text (2bb700a4) both fail the no-payment-claim check');
+  const paidFn = driftFn && driftFn.replace(DRIFT_TEXT, PAID_TEXT);
+  const paidReturns = paidFn ? [...paidFn.matchAll(/return "([^"\n]*)";/g)].map((m) => m[1]) : [];
+  ok(!!paidFn && paidFn !== driftFn && claimsPayment(paidReturns.join('\n')), 'NC8b: the function with the 4288f233 sentence put back is caught by the same check');
+}
+
+// C9 -- the API `error` text of the already-paid refusal (LEGAL-READ: FAIL 6643004568, sentence 7). On the superseded-race path a new
+// unpaid PaymentIntent does exist, so "no new payment was created" is not true there. The text says only what is known.
+{
+  const gateSrc = fs.readFileSync(path.join(root, 'supabase', 'functions', 'create-payment-intent', 'measurement-paid-gate.ts'), 'utf8');
+  const m = gateSrc.match(/export const ALREADY_PAID_ERROR = "([^"\n]*)";/);
+  ok(!!m && m[1] === 'A report has already been paid for on this claim.', 'C9 the already-paid error says the claim has paid and makes no "no payment was created" claim');
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

@@ -58,7 +58,7 @@ export const PAID_CHECK_UNAVAILABLE_CODE = "MEASUREMENT_PAYMENT_CHECK_UNAVAILABL
 export const CANCELLED_REPLAY_CODE = "MEASUREMENT_PAYMENT_CANNOT_START";
 
 /** Technical text for logs and the `error` field. The customer-facing sentences live in help-measurements.html, keyed by `code`. */
-export const ALREADY_PAID_ERROR = "A report has already been paid for on this claim; no new payment was created.";
+export const ALREADY_PAID_ERROR = "A report has already been paid for on this claim.";
 export const PAID_CHECK_UNAVAILABLE_ERROR = "Could not confirm whether this claim has already paid for its report; no payment was created. Retry shortly.";
 export const REFUNDED_REPLAY_ERROR = "The payment for this report that the idempotency key returns was fully refunded; no new payment was created.";
 export const CANCELLED_REPLAY_ERROR = "The payment for this report that the idempotency key returns has been cancelled; no new payment was created.";
