@@ -172,6 +172,11 @@ function joinedToAt(v: string): string {
   if (units.length === 0) return v;
   const out = v.split("");
   for (const m of units) {
+    if (m[0] === "@") { // "sheets<em dash>@75.Tear off" is a price, not an address: the domain must start with a letter
+      let d = m.index! + 1;
+      while (d < v.length && (v[d] === " " || v[d] === SOFT)) d++;
+      if (!/[A-Za-z]/.test(v[d] ?? "")) continue;
+    }
     let k = m.index! - 1;
     while (k >= 0 && (out[k] === " " || out[k] === SOFT)) k--;
     while (k >= 0 && (out[k] === DASH_IN_VIEW || out[k] === BARRIER)) out[k--] = "-";

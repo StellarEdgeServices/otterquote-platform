@@ -45,7 +45,7 @@ const TABLE: Array<[string, string]> = [
 // Not contacts: all print.
 const STAY: Array<[string, string]> = [
   ["$850–$900", "$850-$900"], ["100–250", "100-250"], ["11–15–2026", "11-15-2026"], ["250 – 500 – 1000", "250 - 500 - 1000"], ["Price 1,250–2,500", "Price 1,250-2,500"],
-  ["12½ squares", "121/2 squares"], ["sheets@75—Tear off", "sheets@75-Tear off"], ["Drip edge 10pcs@12–14.Gutters excluded", "Drip edge 10pcs@12-14.Gutters excluded"],
+  ["12½ squares", "121/2 squares"], ["sheets@75—Tear off", "sheets@75-Tear off"], ["sheets—@75.Tear off", "sheets-@75.Tear off"], ["Drip edge 10pcs–@12.Gutters excluded", "Drip edge 10pcs-@12.Gutters excluded"], ["Decking ½@75.Tear off", "Decking 1/2@75.Tear off"], ["Drip edge 10pcs@12–14.Gutters excluded", "Drip edge 10pcs@12-14.Gutters excluded"],
   ["Paid 100–250, then 500–1000", "Paid 100-250, then 500-1000"], ["Bob’s roof at noon—call", "Bob's roof at noon-call"], ["$12.​​50", "$12.50"], ["$12.​50", "$12.50"],
 ];
 
