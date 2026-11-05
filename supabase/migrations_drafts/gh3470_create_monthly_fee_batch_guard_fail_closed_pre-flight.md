@@ -5,9 +5,9 @@ EVIDENCE: drafted 2026-11-05 under #3470; production read-only SELECTs the same 
 REPO COPY: none. When applied, move to supabase/migrations_rollbacks/.
 DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 -->
-# Pre-flight: gh3470_create_monthly_fee_batch_guard_fail_closed (Tier 3B, money path, R-134 fast path)
+# Pre-flight: gh3470_create_monthly_fee_batch_guard_fail_closed (Tier 3B, money path, hardening with a normal notice)
 
-NOT APPLIED. Refs #3470. CTO ruling (#3470 comment "A:", CTO RUN 96): Tier 3B on the R-134 fast path because the whole effect is restoring an auth check; REVIEW, LEGAL-READ and Ben's signature still apply (bound 4). R-097 notice posted for the record; execution does not wait the window.
+NOT APPLIED. Refs #3470. Tier 3B (money path). This is hardening, not an R-134 fast path: the CTO correction (#3470 comment 6671253977) records that the live `is_admin_email()` already fails closed, so nothing is exposed during a notice window. It takes a normal R-097 24-hour notice and window before apply, plus REVIEW, LEGAL-READ and Ben's signature (bound 4). No notice has been posted by this PR.
 
 ## What it does
 Replaces `public.create_monthly_fee_batch(date)` (SECURITY DEFINER, `search_path = public, pg_temp`) with the identical definition except the first guard line:

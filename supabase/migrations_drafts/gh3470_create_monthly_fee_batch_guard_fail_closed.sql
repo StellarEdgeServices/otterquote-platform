@@ -6,7 +6,7 @@
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- Migration: gh3470_create_monthly_fee_batch_guard_fail_closed
--- GitHub: #3470. Tier 3B (CTO ruling, #3470 comment 'A:'), R-134 fast path: the only effect is restoring an auth check. REVIEW + LEGAL-READ + Ben's signature still apply (money path).
+-- GitHub: #3470. Tier 3B (money path): hardening with a normal R-097 notice and window, NOT the R-134 fast path (CTO correction, #3470 comment 6671253977: the live is_admin_email() already fails closed). REVIEW + LEGAL-READ + Ben's signature apply.
 -- Rollback: gh3470_create_monthly_fee_batch_guard_fail_closed_rollback.sql   Pre-flight: gh3470_create_monthly_fee_batch_guard_fail_closed_pre-flight.md
 -- Proof: supabase/tests/gh3470_create_monthly_fee_batch_guard_proof.sql   Local run: supabase/tests/gh3470_create_monthly_fee_batch_guard_local_run.sh
 --
