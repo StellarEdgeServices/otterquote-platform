@@ -53,6 +53,16 @@ describe('gh-3488 one definition, three copies, no drift', () => {
     expect(body(read('react-app/constants/platform-fee.ts'))).toBe(edge);
     expect(body(read('contractor-bid-form.html'))).toBe(edge);
   });
+  it('the inline HTML block is plain JavaScript (no TypeScript syntax) and runs: $1,296.10 at 5% is 6481 cents', () => {
+    const m = read('contractor-bid-form.html').match(/\/\/ BEGIN platform-fee shared definition[\s\S]*?\/\/ END platform-fee shared definition/);
+    expect(m).not.toBeNull();
+    // eslint-disable-next-line no-new-func
+    const run = new Function(`${m![0]}\nreturn { platformFeeCents, platformFeeDollars };`)() as {
+      platformFeeCents: (b: number, p: number) => number; platformFeeDollars: (b: number, p: number) => number;
+    };
+    expect(run.platformFeeCents(1296.1, 5)).toBe(6481);
+    expect(run.platformFeeDollars(1296.1, 5)).toBe(64.81);
+  });
   it('the HTML form no longer computes the fee with a float expression', () => {
     const html = read('contractor-bid-form.html');
     expect(html).toContain('platformFeeDollars(bidAmount, feePct)');
