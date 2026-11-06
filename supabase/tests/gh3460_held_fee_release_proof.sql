@@ -14,6 +14,7 @@
 --         is_test mismatch, partner never accepted v4, payment already carried a fee on another order
 --   R8  p_require_fee => false removes only the refusal: on a non-qualifying order the role is recorded with no fee; R8b on a QUALIFYING order the fee still accrues (500/false), one row
 --   U1-U5 (LEGAL-READ 6673369791 blocker 1) the contractor-only upgrade (roof_upgrade_detailed, D-317) can never earn the $5: refused by the admin function (also with p_require_fee => false), no fee on a hand UPDATE, still settleable to a contractor, and a non-upgrade product on the same claim still accrues
+--   Z1-Z3, Z6 (LEGAL-READ 6673714107) missing fee setting refused with the corrected text, role-only third form, no fee after the setting returns; bare call 42501.  K1-K5 (REVIEW 6673791847) contractor id must be contractors.id, differing repeat refused.  D1-D2 hand-set homeowner with no fee reports role_set_without_fee; recovery.
 --   G8-G13 (REVIEW 6668719903) NULL-safe admin guard: no email claim, empty claims, bare superuser session, non-admin email refused; the runbook's set_config path works and names the admin; re-settle after a void; R9 NULL p_require_fee still refuses
 --   G1-G6 admin only: a partner session and anon are refused; service_role works; bad role, unknown order, a settled order with a different role, contractor without id, homeowner with a contractor id are refused
 --   C1  contractor settlement sets the role and contractor id and accrues nothing
@@ -228,6 +229,37 @@ SELECT pg_temp.chk('T2 contractor->homeowner by hand: no fee (arm is unspecified
 INSERT INTO hover_orders(id, claim_id, user_id, requested_by_role, homeowner_charge_amount) VALUES ('3460f000-0000-4000-8000-000000000001', (SELECT id FROM c WHERE k='t3'), pg_temp.u(399), NULL, 1500);
 SELECT pg_temp.x($$ UPDATE hover_orders SET requested_by_role = 'homeowner', homeowner_stripe_payment_intent_id = 'pi_gh3460_late' WHERE id = '3460f000-0000-4000-8000-000000000001' $$);
 SELECT pg_temp.chk('T2 NULL-role older order edited to homeowner: no fee', pg_temp.fees('3460f000-0000-4000-8000-000000000001'), '0');
+
+-- Z1-Z3 (LEGAL-READ 6673714107 blocker 1) a missing fee setting is refused (the fee may still be owed), the role stays unspecified; p_require_fee false then ends the hold with no fee; restoring the setting does not bring it back
+INSERT INTO c VALUES ('z', pg_temp.mk_claim(1));
+INSERT INTO o SELECT 'z1', pg_temp.mk_order((SELECT id FROM c WHERE k='z'));
+SELECT pg_temp.x($$ DELETE FROM platform_settings WHERE key = 'partner_measurement_fee_cents' $$);
+SELECT pg_temp.chk('Z1 fee setting missing: settle refused (22023), still unspecified, 0 fees', pg_temp.settle((SELECT id FROM o WHERE k='z1')) || '/' || pg_temp.role_of((SELECT id FROM o WHERE k='z1')) || '/' || pg_temp.fees((SELECT id FROM o WHERE k='z1')), 'ERR 22023/unspecified/0');
+SELECT pg_temp.chk('Z1c message check: accrued no partner fee / not "does not qualify"', pg_temp.q(format($$ DO $d$ BEGIN PERFORM set_config('request.jwt.claims', '{"role":"authenticated","email":"dustin@otterquote.com"}', true); PERFORM admin_settle_order_buyer_role(%L::uuid, 'homeowner'); EXCEPTION WHEN SQLSTATE '22023' THEN IF SQLERRM LIKE '%%accrued no partner fee%%' AND SQLERRM NOT LIKE '%%does not qualify%%' THEN RAISE EXCEPTION 'MSGOK' USING ERRCODE = 'P0U02'; END IF; RAISE EXCEPTION 'MSGBAD'; END $d$; SELECT 1 $$, (SELECT id FROM o WHERE k='z1'))), 'ERR P0U02');
+SELECT pg_temp.chk('Z2 same order, p_require_fee => false: role recorded, no fee', pg_temp.settle((SELECT id FROM o WHERE k='z1'), 'homeowner', NULL, false) || '/' || pg_temp.role_of((SELECT id FROM o WHERE k='z1')) || '/' || pg_temp.fees((SELECT id FROM o WHERE k='z1')), 'none/false/homeowner/0');
+INSERT INTO platform_settings(key, value) VALUES ('partner_measurement_fee_cents', to_jsonb(500)) ON CONFLICT (key) DO NOTHING;
+SELECT pg_temp.chk('Z3 setting restored, default call again: no fee for good, and the result says so (role_set_without_fee), not plain success', pg_temp.as_sess('authenticated', pg_temp.u(299), 'dustin@otterquote.com',
+  format($$ SELECT (r->>'result') || '/' || (r->>'fee_missing') || '/' || (r->>'already_settled') FROM (SELECT admin_settle_order_buyer_role(%L::uuid, 'homeowner') r) x $$, (SELECT id FROM o WHERE k='z1'))) || '/' || pg_temp.fees((SELECT id FROM o WHERE k='z1')), 'role_set_without_fee/true/true/0');
+-- Z6 the bare call the pre-flight Verify step now uses: random uuid, no claims -> 42501, nothing changed
+SELECT pg_temp.chk('Z6 bare call with a random uuid and no claims (pre-flight Verify): 42501', pg_temp.as_claims(NULL, '', $$ SELECT public.admin_settle_order_buyer_role(gen_random_uuid(), 'homeowner')::text $$), 'ERR 42501');
+
+-- K1-K5 (REVIEW 6673791847 defect 1) the contractor id must be a real contractors.id, and a different id on a repeat is refused
+INSERT INTO c VALUES ('k', pg_temp.mk_claim(1));
+INSERT INTO o SELECT 'k1', pg_temp.mk_order((SELECT id FROM c WHERE k='k'), 'unspecified', NULL, 'roof_upgrade_detailed');
+SELECT pg_temp.chk('K1 contractor settlement with the contractor''s USER id (not contractors.id): refused 22023, still unspecified', pg_temp.settle((SELECT id FROM o WHERE k='k1'), 'contractor', pg_temp.u(501)) || '/' || pg_temp.role_of((SELECT id FROM o WHERE k='k1')), 'ERR 22023/unspecified');
+SELECT pg_temp.chk('K2 a random unknown uuid: refused 22023', pg_temp.settle((SELECT id FROM o WHERE k='k1'), 'contractor', gen_random_uuid()), 'ERR 22023');
+SELECT pg_temp.chk('K3 the real contractors.id settles: contractor, id stored', pg_temp.settle((SELECT id FROM o WHERE k='k1'), 'contractor', pg_temp.u(500)) || '/' || pg_temp.q(format($$ SELECT requested_by_contractor_id = %L FROM hover_orders WHERE id = %L $$, pg_temp.u(500), (SELECT id FROM o WHERE k='k1'))), 'none/false/true');
+SELECT pg_temp.chk('K4 same call again (same id): already_settled, still the stored id', pg_temp.settle((SELECT id FROM o WHERE k='k1'), 'contractor', pg_temp.u(500)), 'none/true');
+INSERT INTO contractors(id, user_id) VALUES (pg_temp.u(502), pg_temp.u(503));
+SELECT pg_temp.chk('K5 a repeat with a DIFFERENT (real) contractor id: refused 55000, stored id unchanged', pg_temp.settle((SELECT id FROM o WHERE k='k1'), 'contractor', pg_temp.u(502)) || '/' || pg_temp.q(format($$ SELECT requested_by_contractor_id = %L FROM hover_orders WHERE id = %L $$, pg_temp.u(500), (SELECT id FROM o WHERE k='k1'))), 'ERR 55000/true');
+
+-- D1 (REVIEW 6673791847 defect 2) a homeowner role set BY HAND while the order was still held (before gh3460) leaves no fee; the default call must not report plain success
+INSERT INTO c VALUES ('d', pg_temp.mk_claim(1));
+INSERT INTO o SELECT 'd1', pg_temp.mk_order((SELECT id FROM c WHERE k='d'));
+SELECT pg_temp.x(format($$ ALTER TABLE hover_orders DISABLE TRIGGER partner_fee_accrue_on_role_settled; UPDATE hover_orders SET requested_by_role = 'homeowner' WHERE id = %L; ALTER TABLE hover_orders ENABLE TRIGGER partner_fee_accrue_on_role_settled $$, (SELECT id FROM o WHERE k='d1')));
+SELECT pg_temp.chk('D1 hand-set homeowner (trigger not yet there), 0 fees: default call returns role_set_without_fee / fee_missing, not plain success', pg_temp.as_sess('authenticated', pg_temp.u(299), 'dustin@otterquote.com',
+  format($$ SELECT (r->>'result') || '/' || (r->>'fee_missing') || '/' || coalesce(r->>'fee_cents','none') FROM (SELECT admin_settle_order_buyer_role(%L::uuid, 'homeowner') r) x $$, (SELECT id FROM o WHERE k='d1'))) || '/' || pg_temp.fees((SELECT id FROM o WHERE k='d1')), 'role_set_without_fee/true/none/0');
+SELECT pg_temp.chk('D2 recovery named in the runbook: CTO sets it back to unspecified, step 2 again accrues once', (SELECT pg_temp.x(format($$ UPDATE hover_orders SET requested_by_role = 'unspecified' WHERE id = %L $$, (SELECT id FROM o WHERE k='d1')))) || '/' || pg_temp.settle((SELECT id FROM o WHERE k='d1')) || '/' || pg_temp.fees((SELECT id FROM o WHERE k='d1')), 'ok/500/false/1');
 
 DO $f$
 DECLARE s text; n_ok int; n_diff int;

@@ -73,7 +73,7 @@ DECLARE
   v_who     text;
   v_note    text;
 BEGIN
-  -- NULL-safe: is_admin_email() is NULL (not false) when the JWT has no email claim, and `NOT (false OR NULL)` is NULL, which IF treats as false (the guard would be skipped).
+  -- NULL-safe: on production is_admin_email() is an EXISTS and returns false with no email claim; the COALESCE keeps this guard closed if a NULL-returning body ever replaces it (NOT (false OR NULL) is NULL, which IF treats as false).
   -- So this is a positive match with every operand forced to a non-NULL boolean; anything that is not a clear yes is refused.
   IF NOT (COALESCE(auth.role(), '') = 'service_role' OR COALESCE(public.is_admin_email(), false)) THEN
     RAISE EXCEPTION 'admin_settle_order_buyer_role: admin or service role only' USING ERRCODE = '42501';
@@ -87,6 +87,11 @@ BEGIN
   IF p_role = 'homeowner' AND p_contractor_id IS NOT NULL THEN
     RAISE EXCEPTION 'admin_settle_order_buyer_role: a homeowner order takes no p_contractor_id' USING ERRCODE = '22023';
   END IF;
+  -- REVIEW 6673791847 defect 1: hover_orders.requested_by_contractor_id has no foreign key, and the repeat-upgrade lookup matches it to contractors.id.
+  -- A wrong id (for example a contractors.user_id) would be stored and the paying contractor could be charged again, so only a real contractors.id is accepted.
+  IF p_role = 'contractor' AND NOT EXISTS (SELECT 1 FROM public.contractors WHERE id = p_contractor_id) THEN
+    RAISE EXCEPTION 'admin_settle_order_buyer_role: % is not a contractors.id (use contractors.id, not user_id)', p_contractor_id USING ERRCODE = '22023';
+  END IF;
 
   SELECT * INTO v_order FROM public.hover_orders WHERE id = p_order_id FOR UPDATE;   -- two clicks serialize here
   IF NOT FOUND THEN
@@ -95,7 +100,16 @@ BEGIN
 
   -- idempotent: already settled to this role -> nothing changes, report what exists
   IF v_order.requested_by_role IS NOT DISTINCT FROM p_role THEN
+    -- REVIEW 6673791847 defect 1: a repeat with a DIFFERENT contractor id must not report success having changed nothing
+    IF p_role = 'contractor' AND v_order.requested_by_contractor_id IS DISTINCT FROM p_contractor_id THEN
+      RAISE EXCEPTION 'admin_settle_order_buyer_role: order % is already settled to contractor %; this function does not change it to %. Raise it with the CTO.', p_order_id, COALESCE(v_order.requested_by_contractor_id::text, '<NULL>'), p_contractor_id USING ERRCODE = '55000';
+    END IF;
     SELECT * INTO v_fee FROM public.partner_fee_events WHERE hover_order_id = p_order_id;
+    -- REVIEW 6673791847 defect 2: a homeowner order with NO fee row (role set by hand, or settled earlier with p_require_fee false) is not "done": say so with a distinct result
+    IF p_role = 'homeowner' AND v_fee.id IS NULL THEN
+      RETURN jsonb_build_object('order_id', p_order_id, 'role', p_role, 'already_settled', true, 'result', 'role_set_without_fee', 'fee_missing', true,
+        'fee_event_id', NULL, 'fee_cents', NULL, 'fee_status', NULL);
+    END IF;
     RETURN jsonb_build_object('order_id', p_order_id, 'role', p_role, 'already_settled', true,
       'fee_event_id', v_fee.id, 'fee_cents', v_fee.amount_cents, 'fee_status', v_fee.status);
   END IF;
@@ -123,9 +137,9 @@ BEGIN
   IF p_role = 'homeowner' THEN
     SELECT * INTO v_fee FROM public.partner_fee_events WHERE hover_order_id = p_order_id;
     IF NOT FOUND AND COALESCE(p_require_fee, true) THEN     -- an explicit NULL means 'require' (NULL would otherwise skip the refusal)
-      -- the trigger's checks refused it (no credited partner, outside the window, excluded state, inspector, v4, test mismatch, payment already paid a fee...).
+      -- no fee row: the trigger's checks refused it (no credited partner, outside the window, excluded state, inspector, v4, test mismatch, payment already paid a fee...), or a missing fee setting or a swallowed fee-side error stopped it.
       -- Undo the role change: the order stays 'unspecified' and the $5 stays held.
-      RAISE EXCEPTION 'admin_settle_order_buyer_role: order % does not qualify for the partner fee under the accrual checks; role not changed (p_require_fee => false removes only this refusal: a qualifying order still accrues, and the role can then never be re-settled)', p_order_id
+      RAISE EXCEPTION 'admin_settle_order_buyer_role: order % accrued no partner fee; role not changed and the fee stays held. The accrual checks may have said no, or a missing fee setting or a fee-side error may have stopped it, in which case the fee may still be owed. p_require_fee => false removes only this refusal: a qualifying order still accrues, but the hold then ends for good and a fee that did not accrue cannot accrue later. Follow runbooks/held-partner-fee-release.md step 2 first.', p_order_id
         USING ERRCODE = '22023';
     END IF;
   END IF;

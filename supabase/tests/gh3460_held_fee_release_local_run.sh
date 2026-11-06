@@ -10,6 +10,9 @@
 #   mutant-null-guard : the OLD guard restored (`OR public.is_admin_email()` without COALESCE)                  -> G8, G9, G10 must go DIFF (the NULL bypass)
 #   mutant-null-require: `IF NOT FOUND AND p_require_fee` restored (no COALESCE)                             -> R9 must go DIFF
 #   mutant-no-upgrade : the D-317 upgrade exclusion removed from BOTH the trigger WHEN and the admin function -> U1, U2, U3 must go DIFF
+#   mutant-no-contractor-check  : contractor id not validated against contractors.id -> K1, K2 DIFF
+#   mutant-no-contractor-repeat : a repeat with a different contractor id is accepted -> K5 DIFF
+#   mutant-no-missing-fee       : a homeowner repeat with no fee reports plain success -> D1, Z3 DIFF
 #   mutant-copy-checks: the accrual function loses the excluded-state check (a drifted copy would do this)    -> R1, T1(MS) go DIFF on BOTH paths: one function, one place
 # Needs PG16 binaries (PGBIN, default /usr/lib/postgresql/16/bin) and a user that may run initdb (PGRUN_AS, default postgres).
 set -euo pipefail
@@ -48,6 +51,9 @@ case "$MODE" in
   mutant-null-guard) mutate "s/OR COALESCE(public.is_admin_email(), false)) THEN/OR public.is_admin_email()) THEN/" "old NULL-unsafe admin guard restored" ;;
   mutant-null-require) mutate "s/IF NOT FOUND AND COALESCE(p_require_fee, true) THEN/IF NOT FOUND AND p_require_fee THEN/" "NULL p_require_fee skips the refusal" ;;
   mutant-no-upgrade) mutate "s/ AND NEW.product_code IS DISTINCT FROM 'roof_upgrade_detailed')/)/; s/IF p_role = 'homeowner' AND v_order.product_code IS NOT DISTINCT FROM 'roof_upgrade_detailed' THEN/IF false THEN/" "upgrade exclusion removed (trigger and function)" ;;
+  mutant-no-contractor-check)  mutate "s/IF p_role = 'contractor' AND NOT EXISTS (SELECT 1 FROM public.contractors WHERE id = p_contractor_id) THEN/IF false THEN/" "contractor id not validated" ;;
+  mutant-no-contractor-repeat) mutate "s/IF p_role = 'contractor' AND v_order.requested_by_contractor_id IS DISTINCT FROM p_contractor_id THEN/IF false THEN/" "differing contractor id on a repeat accepted" ;;
+  mutant-no-missing-fee)       mutate "s/IF p_role = 'homeowner' AND v_fee.id IS NULL THEN/IF false THEN/" "fee-less homeowner repeat reports plain success" ;;
   mutant-copy-checks) mutate "s/IF upper(btrim(v_state)) IN ('OK', 'AR', 'KS', 'NE', 'MS') THEN/IF false THEN/" "excluded-state check removed from the single accrual function" ;;
   rollback)
     $P -f "$F29"; $P -f "$FWD"

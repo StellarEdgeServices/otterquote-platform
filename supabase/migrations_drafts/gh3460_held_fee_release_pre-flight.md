@@ -1,7 +1,7 @@
 <!--
 STATUS (gh-1438, as of 2026-11-05T20:30:30Z): NOT APPLIED
 FILE ROLE: pre-flight file of set gh3460_held_fee_release (the STATUS is the set's; it describes the forward migration)
-EVIDENCE: drafted 2026-11-05 under #3460 from the repo only. No production query was run to write it; the queries below are for the CTO to run read-only before the apply.
+EVIDENCE: drafted 2026-11-05 under #3460 from the repo; check 2 was read on production (read-only, section below). The queries below are for the CTO to run read-only before the apply.
 REPO COPY: none. When applied, move to supabase/migrations_rollbacks/.
 DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 -->
@@ -19,6 +19,8 @@ No table, column, setting or existing function is altered. No data is written at
 - `is_admin_email()`.
 PR #3455 (Edge Function change that creates `unspecified` orders) does not have to be applied first: with no `unspecified` rows the trigger and function do nothing.
 
+**Order with #3455 (recorded on #3460, 6673369791 and 6673383780).** Preferred: #3468 merged and gh3460 applied before, or in the same session as, the #3455 functions. If #3455 goes first, nobody sets the role on an `unspecified` order by hand until gh3460 is applied: a hand UPDATE moves it off `unspecified` with no accrual, the new trigger arm can never fire for it, and the function then reports `role_set_without_fee` (not success). #3455's own alert says "set the role on the order"; do not follow that line by hand. Check 5 finds any such order before the apply.
+
 ## Read-only checks before the apply
 ```sql
 -- 1. the accrual function is the gh3229 body and the insert trigger exists
@@ -30,6 +32,8 @@ SELECT polname, polcmd, pg_get_expr(polqual, polrelid) FROM pg_policy WHERE polr
 SELECT grantee, privilege_type FROM information_schema.role_table_grants WHERE table_schema='public' AND table_name='hover_orders' AND privilege_type IN ('UPDATE','INSERT');
 -- 3. how many held orders exist today (informational)
 SELECT id, claim_id, created_at, homeowner_stripe_payment_intent_id FROM public.hover_orders WHERE requested_by_role = 'unspecified' ORDER BY created_at;
+-- 5. (REVIEW 6673791847 defect 2) a held order whose role was already set by hand has no fee and is not listed by check 3. want 0 rows. Any row: do not settle it; raise it with the CTO (runbook step 2, `role_set_without_fee`).
+SELECT a.sent_at, o.id AS order_id, o.requested_by_role FROM public.platform_alerts_log a JOIN public.hover_orders o ON o.id::text = substring(a.message FROM 'order ([0-9a-f-]{36})') WHERE a.alert_type = 'buyer_role_unresolved' AND o.requested_by_role IS DISTINCT FROM 'unspecified' AND NOT EXISTS (SELECT 1 FROM public.partner_fee_events f WHERE f.hover_order_id = o.id) ORDER BY a.sent_at;
 -- 4. names free
 SELECT 1 FROM pg_trigger WHERE tgname = 'partner_fee_accrue_on_role_settled';
 SELECT 1 FROM pg_proc WHERE proname = 'admin_settle_order_buyer_role';
@@ -59,7 +63,7 @@ It passes for the reason that is true: RLS is on, the only policy that allows UP
 
 ## Verify
 Run `supabase/tests/gh3460_held_fee_release_proof.sql` (single rolled-back batch). Local: `supabase/tests/gh3460_held_fee_release_local_run.sh before|after|rollback|mutant-*`.
-After the apply, in the SQL editor as an admin session: `SELECT admin_settle_order_buyer_role('<held order id>', 'homeowner', NULL, '<why>')`. See `runbooks/held-partner-fee-release.md`.
+After the apply, re-run check 4 (each query now returns one row), then make a bare call in the SQL editor: `SELECT public.admin_settle_order_buyer_role(gen_random_uuid(), 'homeowner');`. Want SQLSTATE 42501 and nothing changed. Do not settle a real held order to verify the migration: that is the runbook's job (`runbooks/held-partner-fee-release.md`), after its step 1, and it ends the hold for good.
 
 ## Rollback
 `gh3460_held_fee_release_rollback.sql`. Drops the trigger and function only; accrued fee rows and settled roles stay.

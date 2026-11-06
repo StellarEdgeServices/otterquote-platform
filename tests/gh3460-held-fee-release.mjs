@@ -27,6 +27,10 @@ ok(/IF p_role = 'homeowner' AND v_order\.product_code IS NOT DISTINCT FROM 'roof
 ok(!/records the role only/.test(fwd) && /It cannot withhold an earned fee/.test(fwd), 'migration NEGATIVE CONTROL: the false "records the role only, no fee" wording is gone');
 ok(!/INSERT INTO public\.partner_fee_events/.test(fwd), 'migration NEGATIVE CONTROL: no second INSERT into partner_fee_events (no copy of the checks to drift)');
 ok(!/CREATE OR REPLACE FUNCTION public\.partner_fee_accrue_on_order/.test(fwd), 'migration: the accrual function is not redefined');
+ok(!/does not qualify/.test(fwd) && /a fee that did not accrue cannot accrue later/.test(fwd), 'migration NEGATIVE CONTROL: the refusal no longer says "does not qualify"; a missing setting or fee-side error may leave a fee owed');
+ok(/NOT EXISTS \(SELECT 1 FROM public\.contractors WHERE id = p_contractor_id\)/.test(fwd) && /already settled to contractor/.test(fwd), 'migration: a contractor settlement needs a real contractors.id, and a repeat with a different id is refused');
+ok(/'result', 'role_set_without_fee'/.test(fwd), 'migration: a homeowner repeat with no fee row returns role_set_without_fee, not plain success');
+ok(/At each monthly batch review/.test(rd('runbooks/held-partner-fee-release.md')) && /Do not settle a real held order to verify/.test(rd('supabase/migrations_drafts/gh3460_held_fee_release_pre-flight.md')), 'runbook lists held orders at each monthly batch review; pre-flight Verify no longer settles a real order');
 ok(/auth\.role\(\), ''\) = 'service_role' OR COALESCE\(public\.is_admin_email\(\), false\)/.test(fwd) && /COALESCE\(p_require_fee, true\)/.test(fwd) && /FROM PUBLIC, anon;/.test(fwd), 'migration: admin or service role only, NULL-safe guard and NULL-safe p_require_fee; not executable by anon');
 for (const f of ['supabase/migrations_drafts/gh3460_held_fee_release_rollback.sql', 'supabase/migrations_drafts/gh3460_held_fee_release_pre-flight.md',
   'supabase/tests/gh3460_held_fee_release_proof.sql', 'supabase/tests/gh3460_held_fee_release_local_run.sh', 'runbooks/held-partner-fee-release.md']) ok(fs.existsSync(path.join(ROOT, f)), 'exists: ' + f);
