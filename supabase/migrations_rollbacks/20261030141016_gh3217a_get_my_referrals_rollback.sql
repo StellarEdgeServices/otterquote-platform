@@ -1,8 +1,8 @@
--- STATUS (gh-1438, as of 2026-10-30T13:30:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-05): APPLIED to production as ledger version 20261030141016 (#3217 (ledger row read-only 2026-11-05)); this rollback is NOT run
 -- FILE ROLE: rollback file of PART A (gh3217a_get_my_referrals)
 -- EVIDENCE: drafted 2026-10-30 under #3217. Production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): policy "Agents can read own referrals" (SELECT, roles={public}) returns whole rows to the signed-in partner; relacl = {postgres=arwdDxtm/postgres,anon=rwdDxtm/postgres,authenticated=rwdDxtm/postgres,service_role=arwdDxtm/postgres} (table-level SELECT, no column ACLs); get_my_referrals() absent; admin_list_referrals() is SECURITY DEFINER. No database was written to produce this file.
--- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- REPO COPY: this file, beside the filed forward supabase/migrations/20261030141016_gh3217a_get_my_referrals.sql.
+-- Run only as a deliberate rollback.
 --
 -- Rollback of gh3217a_get_my_referrals. USE ONLY BEFORE THE FRONTEND OF PR #3225 DEPLOYS (or after the frontend is reverted):
 -- the new dashboards call get_my_referrals(), so dropping it while they are live breaks the partner and refer-a-friend referral lists.

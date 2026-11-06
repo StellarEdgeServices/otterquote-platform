@@ -1,8 +1,8 @@
--- STATUS (gh-1438, as of 2026-10-30T16:30:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-05): APPLIED to production as ledger version 20261031181159 (#3241 (ledger row read-only 2026-11-05))
 -- FILE ROLE: forward file of set gh3241_get_my_referrals_opt_out (pre-flight is gh3241_get_my_referrals_opt_out_pre-flight.md)
 -- EVIDENCE: drafted 2026-10-30 under #3241. Production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): get_my_referrals() is live with the body of supabase/migrations_drafts/gh3217a_get_my_referrals.sql byte for byte (md5(prosrc) = e63684bf6ce7d5b2da454ee00b31a9e9, 1164 chars), proacl {postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}, and does not read claims.referrer_updates_opt_out. claims.referrer_updates_opt_out is boolean, nullable, no default; 3 claims are opted out (all is_test=false) and 0 referrals are linked to an opted-out claim by either claims.referral_id or referrals.claim_id. No database was written to produce this file.
--- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- REPO COPY: this file, filed under its ledger version; rollback and pre-flight in supabase/migrations_rollbacks/20261031181159_*. Header comments only differ from the draft.
+-- Already applied; do not run again.
 --
 -- Migration: gh3241_get_my_referrals_opt_out
 -- GitHub: #3241 (follow-up (b) of Ben's R-177 SIGNED on #3225, 6524259012). Project P18. R-134 protective-only.
@@ -77,6 +77,5 @@ AS $function$
   )
   ORDER BY r.created_at DESC;
 $function$;
-
 REVOKE ALL ON FUNCTION public.get_my_referrals() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_my_referrals() TO authenticated, service_role;

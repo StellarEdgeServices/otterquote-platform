@@ -1,7 +1,7 @@
-<!-- STATUS (gh-1438, as of 2026-10-30T21:00:00Z): NOT APPLIED -->
+<!-- STATUS (gh-1438, as of 2026-11-05): APPLIED to production as ledger version 20261105211753 (#3259 comments 6669808019 and 6669872016); this file is not run -->
 <!-- FILE ROLE: pre-flight of set gh3259_referrals_revoke_status_job_value (forward and rollback beside it) -->
 <!-- EVIDENCE: drafted 2026-10-30 under #3259; production read-only (SELECT) the same day, project yeszghaspzwwstvsrioa; no database was written. -->
-<!-- REPO COPY: none. DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md -->
+<!-- REPO COPY: forward supabase/migrations/20261105211753_gh3259_referrals_revoke_status_job_value.sql; rollback and pre-flight in supabase/migrations_rollbacks/20261105211753_gh3259_referrals_revoke_status_job_value_*. Pre-flight record; the forward migration is already applied. -->
 
 # Pre-flight: gh3259_referrals_revoke_status_job_value (#3259)
 

@@ -1,8 +1,8 @@
--- STATUS (gh-1438, as of 2026-10-30T15:00:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-05): forward APPLIED as ledger version 20261030165458; this rollback is NOT run
 -- FILE ROLE: rollback file of set gh3239_partner_agreement_v4 (forward and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-10-30 under #3239; production read-only SELECTs (see the forward file). No database was written.
--- REPO COPY: none. When applied, move to supabase/migrations_rollbacks/.
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- REPO COPY: this file, beside the applied forward supabase/migrations_applied_manually/20261030165458_gh3239_partner_agreement_v4.sql.
+-- Run only as a deliberate rollback.
 --
 -- Exact rollback of gh3239_partner_agreement_v4.sql:
 --   - register_partner() goes back to the audited v3 body; the file checks md5(prosrc) = 042da30fdc75423c32383035b27f2fa4 afterwards

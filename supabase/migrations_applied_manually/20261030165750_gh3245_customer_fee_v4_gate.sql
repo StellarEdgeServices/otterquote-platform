@@ -1,14 +1,27 @@
--- STATUS (gh-1438, as of 2026-10-30T16:00:00Z): NOT APPLIED
--- FILE ROLE: rollback file of set gh3245_customer_fee_v4_gate (forward and pre-flight are siblings in this directory)
--- EVIDENCE: drafted 2026-10-30 under #3245; production read-only SELECTs (see the forward file). No database was written.
--- REPO COPY: none. When applied, move to supabase/migrations_rollbacks/.
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- STATUS (gh-1438, as of 2026-11-05): APPLIED to production as ledger version 20261030165750 (ledger row read-only 2026-11-05; statements sha256 prefix 03246b5595527928 = this file as drafted)
+-- FILE ROLE: forward file of set gh3245_customer_fee_v4_gate (rollback and pre-flight are siblings in this directory)
+-- EVIDENCE: drafted 2026-10-30 under #3245 (refs #3243); production read-only SELECTs the same day (project yeszghaspzwwstvsrioa). No database was written.
+-- REPO COPY: this file, supabase/migrations_applied_manually/20261030165750_gh3245_customer_fee_v4_gate.sql (ledger version 20261030165750); rollback and pre-flight in supabase/migrations_rollbacks/20261030165750_gh3245_customer_fee_v4_gate_*. Header comments only differ from the draft that was applied.
+-- Already applied; do not run again. NOT in the replay path (supabase/migrations/) on purpose, the gh1763 convention (PR #2233 comment 5850353019): the guard in this file checks state only production has (public.partner_v4_accepted_at(uuid), created by gh3239, itself outside the replay path), so on a fresh branch it raises and would block every later file. The statements are unchanged and were applied through the ledger, so the ledger row exists; this file is the record, never run it again.
+-- Evidence detail (production read-only 2026-10-30): apply_referral_commission() is SECURITY DEFINER, search_path public, pg_temp, fired by
+--   after_claim_completed (AFTER UPDATE OF completion_date ON claims); md5(prosrc) = 7f7d0419c59b9853d4082a713258ddd6, byte-identical to
+--   supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql lines 399-658 (the newest definition in the repo). platform_settings
+--   (key text PK, value jsonb NOT NULL, updated_at) has no partner_agreement_v4_published_at key. 2 customer referral_agents, 5 customer referrals.
 --
--- Exact rollback of gh3245_customer_fee_v4_gate.sql: apply_referral_commission() is restated as the audited body
--- (supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql lines 399-658) and checked against md5 7f7d0419..., and the
--- platform_settings key the forward seeded is deleted, after a NOTICE that prints its value (record it: pre-flight "Rollback"). Referrals already ledgered by the gated branch (job_completed, no fee) are NOT
--- re-accrued by a rollback: after_claim_completed fires only on completion_date NULL -> NOT NULL. List them with the pre-flight query G.
--- Roll this back BEFORE gh3239 (it calls partner_v4_accepted_at()).
+-- Migration: gh3245_customer_fee_v4_gate
+-- GitHub: #3245, refs #3243 (Dustin "YES", chat 2026-10-30 10:45 ET). Money: Tier 3B. Needs REVIEW + LEGAL-READ + R-177 pair; CTO applies after R-097.
+-- DEPENDS ON gh3239_partner_agreement_v4 (PR #3242): partner_v4_accepted_at(). Apply gh3239 first; this file refuses to run without it.
+-- Rollback: gh3245_customer_fee_v4_gate_rollback.sql   Pre-flight: gh3245_customer_fee_v4_gate_pre-flight.md
+-- Proof: supabase/tests/gh3245_customer_fee_v4_gate_proof.sql   Runner: supabase/tests/gh3245_customer_fee_v4_gate_proof_run.sh
+--
+-- What this file does
+--   1. platform_settings 'partner_agreement_v4_published_at' = the moment this file is applied (to_jsonb(now())), ON CONFLICT DO NOTHING.
+--      Apply it in the #3242 publish window; if it is applied later, set the key to the v4 publish time first (pre-flight step 2), or every
+--      customer referral between publication and apply is honoured under the old program.
+--   2. apply_referral_commission(): for agent_type 'customer' only, a referral created on or after that cutoff accrues the $200 only when
+--      partner_v4_accepted_at(customer) IS NOT NULL AND <= claims.created_at of the claim carrying it (Ben, reading (b), Agreement Section 9.3). Otherwise the referral is ledgered as job_completed with no
+--      fee, no recruit bonus and no fee email (the D-333 branch). A missing/unreadable cutoff gates customer referrals (fails closed) and logs it.
+--      Non-customer referrers and the rest of the body are unchanged (the full body is restated below; the diff is the gh-3245 lines).
 
 BEGIN;
 
@@ -18,12 +31,20 @@ DO $guard$
 DECLARE
   v_md5 text;
 BEGIN
+  IF to_regprocedure('public.partner_v4_accepted_at(uuid)') IS NULL THEN
+    RAISE EXCEPTION 'gh3245 guard: partner_v4_accepted_at(uuid) is missing; apply gh3239_partner_agreement_v4 first';
+  END IF;
   SELECT md5(prosrc) INTO v_md5 FROM pg_proc WHERE oid = to_regprocedure('public.apply_referral_commission()');
-  IF v_md5 IS NULL OR v_md5 NOT IN ('2eba9b9601c731cb20f45ef5a18c742b', '7f7d0419c59b9853d4082a713258ddd6') THEN
-    RAISE EXCEPTION 'gh3245 rollback: apply_referral_commission() is neither the gh3245 body nor the audited body (md5 %); restore by hand', v_md5;
+  IF v_md5 IS NULL OR v_md5 NOT IN ('7f7d0419c59b9853d4082a713258ddd6',    -- audited body (production 2026-10-30)
+                                    '2eba9b9601c731cb20f45ef5a18c742b') THEN -- this file's body (re-run)
+    RAISE EXCEPTION 'gh3245 guard: apply_referral_commission() body drifted (md5 %); re-audit before applying', v_md5;
   END IF;
 END
 $guard$;
+
+INSERT INTO public.platform_settings (key, value)
+VALUES ('partner_agreement_v4_published_at', to_jsonb(now()))
+ON CONFLICT (key) DO NOTHING;
 
 CREATE OR REPLACE FUNCTION public.apply_referral_commission()
  RETURNS trigger
@@ -40,6 +61,9 @@ DECLARE
   v_service_role_key    TEXT;
   v_quote_id            UUID;
   v_total_price         NUMERIC;
+  v_v4_gated            BOOLEAN := false;  -- gh-3245 (#3243)
+  v_v4_cutoff           TIMESTAMPTZ;       -- gh-3245
+  v_v4_at               TIMESTAMPTZ;       -- gh-3245
 BEGIN
   IF NEW.referral_id IS NULL THEN
     RETURN NEW;
@@ -117,8 +141,36 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  -- ── gh-3245 (#3243, Dustin "YES" 2026-10-30; Ben ruling on PR #3249, reading (b)): a refer-a-friend customer earns the
+  -- $200 on a referral created on or after the Partner Agreement v4 publication cutoff only if the customer had accepted v4
+  -- at or before the claim carrying the referral was filed (NEW.created_at: Agreement Section 9.3, "A project starts when the
+  -- homeowner's claim is filed on Otter Quotes"). A referral created before the
+  -- cutoff is honoured under the old program. Every other agent_type is untouched. A missing or unreadable cutoff gates
+  -- (fails closed) and says so in the log. A gated referral is ledgered like the D-333 branch: job_completed, no fee,
+  -- no recruit bonus, no "your fee is on its way" email.
+  IF v_referrer.agent_type = 'customer' THEN
+    BEGIN
+      SELECT (s.value #>> '{}')::timestamptz INTO v_v4_cutoff
+        FROM public.platform_settings s
+       WHERE s.key = 'partner_agreement_v4_published_at';
+    EXCEPTION WHEN OTHERS THEN
+      v_v4_cutoff := NULL;
+    END;
+    IF v_v4_cutoff IS NULL THEN
+      v_v4_gated := true;
+      RAISE LOG 'apply_referral_commission: gh-3245 partner_agreement_v4_published_at missing or invalid, customer referral gated for referral_id=%', v_referral.id;
+    ELSIF v_referral.created_at >= v_v4_cutoff THEN
+      v_v4_at := public.partner_v4_accepted_at(v_referrer.id);
+      IF v_v4_at IS NULL OR v_v4_at > NEW.created_at THEN
+        v_v4_gated := true;
+        RAISE LOG 'apply_referral_commission: gh-3245 customer % had not accepted Partner Agreement v4 when claim % (referral %) was filed (accepted_at=% claim.created_at=%), no referral fee accrued',
+          v_referrer.id, NEW.id, v_referral.id, v_v4_at, NEW.created_at;
+      END IF;
+    END IF;
+  END IF;
+
   -- ── D-333 guard 1: no referral fee to a home_inspector referrer. ──
-  IF v_referrer.agent_type IS DISTINCT FROM 'home_inspector' THEN
+  IF v_referrer.agent_type IS DISTINCT FROM 'home_inspector' AND NOT v_v4_gated THEN
 
     UPDATE public.referrals
        SET commission_amount = 200,
@@ -150,7 +202,7 @@ BEGIN
   ELSE
     -- D-333: home_inspector referrer — mark the job completed with no
     -- commission so the referral ledger still reflects reality, but accrue
-    -- and pay nothing.
+    -- and pay nothing. gh-3245: also a customer referral gated on Partner Agreement v4.
     UPDATE public.referrals
        SET job_value = v_total_price,
            status     = CASE
@@ -160,8 +212,8 @@ BEGIN
                         END
      WHERE id = v_referral.id;
 
-    RAISE LOG 'apply_referral_commission: D-333 no-fee — referrer % is agent_type=home_inspector, no referral fee accrued for referral_id=%',
-      v_referrer.id, v_referral.id;
+    RAISE LOG 'apply_referral_commission: D-333/gh-3245 no-fee — referrer % (agent_type=%, v4 gate=%), no referral fee accrued for referral_id=%',
+      v_referrer.id, v_referrer.agent_type, v_v4_gated, v_referral.id;
   END IF;
 
   -- Recruit bonus: gated on the RECRUITER's own agent_type (D-333), not the
@@ -177,7 +229,8 @@ BEGIN
   IF v_referrer.recruited_by_id IS NOT NULL
      AND v_referrer.recruited_at IS NOT NULL
      AND v_referral.created_at   >= v_referrer.recruited_at
-     AND COALESCE(v_referral.recruit_commission_amount, 0) = 0 THEN
+     AND COALESCE(v_referral.recruit_commission_amount, 0) = 0
+     AND NOT v_v4_gated THEN                                   -- gh-3245: no Job Referral Fee, no Recruit Bonus (Section 4, A4.3)
 
     SELECT * INTO v_recruiter
       FROM public.referral_agents
@@ -246,7 +299,7 @@ BEGIN
   -- not trigger send-partner-status-email, which tells the partner "your
   -- referral fee/payment is on its way" — an inspector accrues no fee and
   -- gets no such message. A non-inspector referral is unaffected (control).
-  IF v_referrer.agent_type IS DISTINCT FROM 'home_inspector' THEN
+  IF v_referrer.agent_type IS DISTINCT FROM 'home_inspector' AND NOT v_v4_gated THEN   -- gh-3245: no fee, no fee email
     BEGIN
       IF v_service_role_key IS NULL THEN
         SELECT decrypted_secret INTO v_service_role_key
@@ -272,8 +325,8 @@ BEGIN
           v_referral.id, SQLSTATE, SQLERRM;
     END;
   ELSE
-    RAISE LOG 'apply_referral_commission: D-333 no-fee — referrer % is agent_type=home_inspector, skipping send-partner-status-email for referral_id=%',
-      v_referrer.id, v_referral.id;
+    RAISE LOG 'apply_referral_commission: D-333/gh-3245 no-fee — referrer % (agent_type=%, v4 gate=%), skipping send-partner-status-email for referral_id=%',
+      v_referrer.id, v_referrer.agent_type, v_v4_gated, v_referral.id;
   END IF;
 
   RETURN NEW;
@@ -285,26 +338,5 @@ EXCEPTION
     RETURN NEW;
 END;
 $function$;
-
-DO $check$
-BEGIN
-  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure) <> '7f7d0419c59b9853d4082a713258ddd6' THEN
-    RAISE EXCEPTION 'gh3245 rollback: restore did not produce the audited body';
-  END IF;
-END
-$check$;
-
--- Record the cutoff before it goes (a hand-set v4 publish time would otherwise be lost; the pre-flight says to copy this
--- NOTICE onto the issue so a re-apply can restore it).
-DO $notice$
-DECLARE
-  v_value jsonb;
-BEGIN
-  SELECT value INTO v_value FROM public.platform_settings WHERE key = 'partner_agreement_v4_published_at';
-  RAISE NOTICE 'gh3245 rollback: deleting platform_settings.partner_agreement_v4_published_at = %', COALESCE(v_value::text, '(absent)');
-END
-$notice$;
-
-DELETE FROM public.platform_settings WHERE key = 'partner_agreement_v4_published_at';
 
 COMMIT;

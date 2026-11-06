@@ -1,9 +1,9 @@
 <!--
-STATUS (gh-1438, as of 2026-10-30T16:00:00Z): NOT APPLIED
+STATUS (gh-1438, as of 2026-11-05): APPLIED to production as ledger version 20261030165750; this file is not run
 FILE ROLE: pre-flight file of set gh3245_customer_fee_v4_gate (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: drafted 2026-10-30 under #3245; production read-only queries the same day (project yeszghaspzwwstvsrioa). No database was written to produce this file.
-REPO COPY: none. When applied, move to supabase/migrations_rollbacks/.
-DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+REPO COPY: forward supabase/migrations_applied_manually/20261030165750_gh3245_customer_fee_v4_gate.sql; this pre-flight is in supabase/migrations_rollbacks/.
+Pre-flight record; the forward migration is already applied.
 -->
 # Pre-flight: gh3245_customer_fee_v4_gate
 

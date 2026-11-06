@@ -1,8 +1,8 @@
--- STATUS (gh-1438, as of 2026-10-30T18:00:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-05): forward APPLIED as ledger version 20261105211705; this rollback is NOT run
 -- FILE ROLE: rollback file of set gh3257_get_my_referrals_privacy
 -- EVIDENCE: drafted 2026-10-30 under #3257. The body below is the forward body of gh3241_get_my_referrals_opt_out.sql (PR #3255 head e042a4a8) byte for byte; the proof runner checks its prosrc md5 and diffs the catalog against the pre-forward snapshot. No database was written to produce this file.
--- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- REPO COPY: this file, beside the filed forward supabase/migrations/20261105211705_gh3257_get_my_referrals_privacy.sql.
+-- Run only as a deliberate rollback.
 --
 -- Rollback of gh3257_get_my_referrals_privacy. Re-creates get_my_referrals() with the gh3241 body and grants.
 -- WARNING: opted-out referrals show their progress status again, and job_value is returned again for every row.

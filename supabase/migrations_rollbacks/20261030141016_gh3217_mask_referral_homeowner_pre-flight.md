@@ -1,9 +1,9 @@
 <!--
-STATUS (gh-1438, as of 2026-10-30T12:30:00Z): NOT APPLIED
+STATUS (gh-1438, as of 2026-11-05): APPLIED to production as ledger version 20261030141016 and 20261030141726 (#3217); this file is not run
 FILE ROLE: pre-flight file of set gh3217_mask_referral_homeowner (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: drafted 2026-10-30 under #3217; production read-only queries the same day (project yeszghaspzwwstvsrioa). No database was written to produce this file.
-REPO COPY: none. When applied, move to supabase/migrations_rollbacks/.
-DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+REPO COPY: forward supabase/migrations/20261030141016 and 20261030141726_gh3217a_get_my_referrals.sql; this pre-flight is in supabase/migrations_rollbacks/.
+Pre-flight record; the forward migration is already applied.
 -->
 # Pre-flight: gh3217_mask_referral_homeowner
 

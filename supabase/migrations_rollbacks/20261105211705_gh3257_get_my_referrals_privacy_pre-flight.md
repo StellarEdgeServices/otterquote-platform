@@ -1,9 +1,9 @@
 <!--
-STATUS (gh-1438, as of 2026-10-30T18:00:00Z): NOT APPLIED
+STATUS (gh-1438, as of 2026-11-05): APPLIED to production as ledger version 20261105211705 (#3257 comments 6669790662 and 6669871613); this file is not run
 FILE ROLE: pre-flight file of set gh3257_get_my_referrals_privacy (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: drafted 2026-10-30 under #3257; production read-only queries the same day (project yeszghaspzwwstvsrioa). No database was written to produce this file.
-REPO COPY: none. When applied, move to supabase/migrations_rollbacks/.
-DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+REPO COPY: forward supabase/migrations/20261105211705_gh3257_get_my_referrals_privacy.sql; rollback and pre-flight in supabase/migrations_rollbacks/20261105211705_gh3257_get_my_referrals_privacy_*.
+Pre-flight record; the forward migration is already applied.
 -->
 # Pre-flight: gh3257_get_my_referrals_privacy
 
