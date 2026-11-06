@@ -46,3 +46,26 @@ for (const [name, H] of [["shared", Shared], ["local", Local]] as const) {
 Deno.test("[gh-3506] both copies agree on every row", () => {
   for (const [typed] of [...KEEPS_YEAR, ...STILL_REMOVED]) assertEquals(Local.redactSowText(typed), Shared.redactSowText(typed), JSON.stringify(typed));
 });
+
+// [ruling 6689811189 / Dustin "Accept (Recommended)" / D-390 best effort] ACCEPTED, NOT PROTECTED: a 201-209 area-code phone whose first four digits are typed straight after a written
+// date (as though they were the year), with the rest after line breaks, prints. It is digit for digit the same as "Start 11/15/2026<break>1200<break>50", the row #3506 requires to print, so no
+// pattern can keep one and remove the other. These rows pin today's output so a later change shows up; they are not a promise that such a phone is removed. 99/99/2025 is pinned too: the date is not checked for being real.
+// Q1 of the same ruling: a bare year and a middle-dot date stay [removed].
+const ACCEPTED_PRINTS: Array<[string, string]> = [
+  ["Start 11/15/2025\n551\n234", "Start 11/15/2025 551 234"], ["Nov 15, 2025\n551\n234", "Nov 15, 2025 551 234"], ["Nov 15 2025\n551\n234", "Nov 15 2025 551 234"],
+  ["Due 1/2/2032\n555\n014", "Due 1/2/2032 555 014"], ["Nov 1, 2025\n55\n0142", "Nov 1, 2025 55 0142"], ["11/1/2025\n55\n0142", "11/1/2025 55 0142"],
+  ["Start 11/15/2065\n55\n0142", "Start 11/15/2065 55 0142"], ["May 3 2025\n550\n142", "May 3 2025 550 142"], ["Nov 1, 2025\n550142", "Nov 1, 2025 550142"],
+  ["99/99/2025\n55\n0142", "99/99/2025 55 0142"],
+];
+const Q1_STAYS_REMOVED: Array<[string, string]> = [["Start 2026\n1120\n50", "Start [removed]"], ["Start 3\u00b715\u00b72026\u00b7130", "Start [removed]"]];
+for (const [name, H] of [["shared", Shared], ["local", Local]] as const) {
+  Deno.test(`[gh-3506 / ruling 6689811189] ${name}: the accepted best-effort phone shapes print as pinned`, () => {
+    for (const [typed, want] of ACCEPTED_PRINTS) assertEquals(printsAs(H.redactSowText(typed)), want, JSON.stringify(typed));
+  });
+  Deno.test(`[gh-3506 / ruling 6689811189 Q1] ${name}: a bare year and a middle-dot date stay [removed]`, () => {
+    for (const [typed, want] of Q1_STAYS_REMOVED) assertEquals(printsAs(H.redactSowText(typed)), want, JSON.stringify(typed));
+  });
+}
+Deno.test("[gh-3506 / ruling 6689811189] both copies agree on the accepted rows", () => {
+  for (const [typed] of [...ACCEPTED_PRINTS, ...Q1_STAYS_REMOVED]) assertEquals(Local.redactSowText(typed), Shared.redactSowText(typed), JSON.stringify(typed));
+});
