@@ -4690,48 +4690,41 @@
     let _feeAcceptanceCheckbox = document.getElementById('feeAcceptanceCheckbox');
     let _submitBtn = document.getElementById('submitBtn');
 
+    // gh-3497 (LEGAL-READ 6675181967): the rate is read through quotes_platform_fee_for(), the function the server
+    // trigger uses (SECURITY DEFINER; `authenticated` can execute it). platform_fee_config itself is admin-only under
+    // RLS, so a table read as a contractor returns 0 rows, which is not an error and used to fall back to 5.00.
+    // Returns the configured rate, or NULL when there is no answer (error, timeout, no row, unusable value). Callers
+    // keep showing the rate already on screen, but a NULL means the submit must not go ahead.
     async function fetchPlatformFeePercentage() {
-      // Fetch fee percentage from platform_fee_config based on contractor state + trade
       try {
-        if (!currentContractor || !currentClaim) return _platformFeePct;
+        if (!currentContractor || !currentClaim) return null;
 
-        const contractorState = (currentContractor.address_state || '').toUpperCase(); // gh-3488: the column quotes_platform_fee_for reads
-        const tradeType = (currentClaim.trades?.[0] || 'roofing').toLowerCase();
-
-        // Query: SELECT fee_pct FROM platform_fee_config 
-        //        WHERE (state IS NULL OR state = ?) AND (trade IS NULL OR trade = ?) 
-        //        ORDER BY state NULLS LAST, trade NULLS LAST LIMIT 1
         // gh-3488 (REVIEW 6674889982): a lookup that never returns must not hold the form. After FEE_LOOKUP_TIMEOUT_MS it
-        // ends the same way a failed lookup does (the rate already on screen), and a late answer is ignored.
+        // counts as no answer, and a late answer is ignored.
         let timedOut = false;
-        const lookup = sb
-          .from('platform_fee_config')
-          .select('fee_pct')
-          .or(`state.is.null,state.eq.${contractorState}`)
-          .or(`trade.is.null,trade.eq.${tradeType}`)
-          .order('state', { ascending: false, nullsFirst: false })
-          .order('trade', { ascending: false, nullsFirst: false })
-          .limit(1);
+        const lookup = sb.rpc('quotes_platform_fee_for', { p_contractor_id: currentContractor.id, p_claim_id: currentClaim.id });
         const { data, error } = await Promise.race([
           lookup,
           new Promise((resolve) => setTimeout(() => { timedOut = true; resolve({ data: null, error: new Error('fee lookup timed out') }); }, FEE_LOOKUP_TIMEOUT_MS)),
         ]);
-        if (timedOut) { console.warn('[D-215] Fee lookup timed out'); return _platformFeePct; }
+        if (timedOut) { console.warn('[D-215] Fee lookup timed out'); return null; }
 
         if (error) {
           console.warn('[D-215] Fee lookup error:', error);
-          return _platformFeePct;
+          return null;
         }
 
-        if (data && data.length > 0) {
-          const feePct = parseFloat(data[0].fee_pct) || _platformFeePct;
+        // the function returns a table: [{ fee_pct, fee_basis }]
+        const row = Array.isArray(data) ? data[0] : data;
+        const feePct = row ? parseFloat(row.fee_pct) : NaN;
+        if (Number.isFinite(feePct) && feePct > 0) {
           _platformFeePct = feePct;
           return feePct;
         }
       } catch (e) {
         console.error('[D-215] Exception during fee lookup:', e);
       }
-      return _platformFeePct;
+      return null;
     }
 
     // BEGIN platform-fee shared definition (gh-3488, D-267). Byte-identical in three places (parity test:
@@ -4774,6 +4767,7 @@
     // corrects them if the configured rate differs. Only the newest lookup may write, and submit waits for it.
     let _feeDisclosureSeq = 0;
     let _feeLookupInFlight = null;
+    let _feeLookupAnswered = false; // gh-3497: true only when the newest rate lookup came back with a rate
     function paintFeeDisclosure(feePct, bidAmount) {
       const feeAmount = platformFeeDollars(bidAmount, feePct); // whole cents, the figure the webhook charges
 
@@ -4811,7 +4805,9 @@
       const run = (async () => {
         const feePct = await fetchPlatformFeePercentage();
         if (seq !== _feeDisclosureSeq) return;
-        paintFeeDisclosure(feePct, currentBid());
+        // gh-3497: remember whether the newest lookup was answered; submit stops when it was not.
+        _feeLookupAnswered = feePct !== null;
+        paintFeeDisclosure(feePct !== null ? feePct : currentFeePct(), currentBid());
       })();
       _feeLookupInFlight = run;
       try { await run; } finally { if (_feeLookupInFlight === run) _feeLookupInFlight = null; }
@@ -5203,6 +5199,12 @@
           // gh-3488 (LEGAL-READ 6674806511): a fresh rate lookup at every submit; the server decides the rate it stores
           // and the webhook charges, so a rate that moved since the last lookup is caught here and re-accepted.
           await updateFeeDisclosure();
+          // gh-3497: no answer from quotes_platform_fee_for means no submit. The rate on screen is not evidence of what
+          // the server will store, so nothing is filed. The form keeps the contractor's entries (the finally below
+          // unlocks the inputs) and the existing 'Error submitting bid: ' alert reports it, as the other stops do.
+          if (!_feeLookupAnswered) {
+            throw new Error('fee_rate_unavailable: the platform fee rate could not be read, so nothing was submitted');
+          }
           const _bidAmount = _snapBid;
           const _feePct = window._feePct || _platformFeePct;
           const _feeAmount = platformFeeDollars(_bidAmount, _feePct);
@@ -5695,6 +5697,13 @@
         alert('Error submitting bid: ' + (err.message || 'Unknown error'));
         submitBtn.disabled = false;
         submitBtn.textContent = renewMode ? 'Renew Bid' : (changeBidMode ? 'Update Bid' : 'Submit Bid');
+        // gh-3497: the server refused the bid because the rate shown differs from the configured one (quotes trigger,
+        // fee_rate_mismatch). Nothing was saved and the entries above are still here. The acceptance was given to the
+        // old figure, so clear it and re-read the rate: the page then shows the configured figure to be accepted again.
+        if (/fee_rate_mismatch/.test(String((err && err.message) || ''))) {
+          if (_feeAcceptanceCheckbox) _feeAcceptanceCheckbox.checked = false;
+          setTimeout(() => { updateFeeDisclosure().catch(() => {}); }, 0); // after the finally below has unlocked the form
+        }
       } finally {
         _submitInFlight = false;
         unlockBidInputs(); // gh-3488: the lock lasts only while this submit is running

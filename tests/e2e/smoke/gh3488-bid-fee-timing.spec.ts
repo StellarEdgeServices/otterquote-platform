@@ -9,6 +9,10 @@
  * This spec loads the REAL page in Chromium. Only the Supabase client, Auth and ipify are replaced (by route
  * fulfilment and an init script); every function exercised is the page's own. "Charge" below is the shared
  * platformFeeCents applied to the stored total_price, exactly what docusign-webhook does.
+ *
+ * gh-3497 (LEGAL-READ 6675181967): the fake models what production does to a CONTRACTOR session. platform_fee_config is
+ * admin-only under RLS, so a table read returns 0 rows (not an error); rpc('quotes_platform_fee_for') answers, resolving
+ * the contractor's state itself. `rpcMode` switches that RPC to 'empty' | 'error' | 'hang' for the no-answer cases.
  */
 import { test, expect, type Page } from '@playwright/test';
 
@@ -16,7 +20,7 @@ const PAGE = '/contractor-bid-form.html?claim_id=claim-1';
 
 const FAKE_SUPABASE = `
 (() => {
-  const t = (window.__t = { calls: [], inserts: [], feeCalls: 0, feeWaiters: [], feeMode: 'immediate', feePct: '5.00', feeByState: {}, feeQueries: [] });
+  const t = (window.__t = { calls: [], inserts: [], feeCalls: 0, feeWaiters: [], feeMode: 'immediate', feePct: '5.00', feeByState: {}, feeQueries: [], rpcMode: 'rate', tableReads: 0, rpcArgs: [], insertError: null });
   const claim = { id: 'claim-1', trades: ['roofing'], selected_trades: ['roofing'], job_type: 'retail', funding_type: 'retail',
     damage_type: 'hail', material_category: 'shingle', is_test: true, rcv_amount: null, parsed_line_items: null, state: 'IN' };
   const contractor = { id: 'c-1', user_id: 'u-1', status: 'active', attestation_accepted_at: '2026-01-01T00:00:00Z',
@@ -27,21 +31,16 @@ const FAKE_SUPABASE = `
     // gh-3491: a call named in __t.hang never answers (armed by the test once the form is filled)
     if (t.hang && t.hang.includes(s.table + ':' + s.op)) { t.hung = (t.hung || 0) + 1; await new Promise(() => {}); }
     if (s.table === 'quotes' && s.op === 'select' && t.changeMode) return { data: existing, error: null };
+    if (s.op === 'insert' && s.table === 'quotes' && t.insertError) {   // gh-3497: the quotes trigger refuses (no row is stored)
+      const msg = t.insertError; t.insertError = null; t.feePct = '7.50';   // refused once; the configured rate had moved
+      return { data: null, error: { message: msg, code: 'P0001' } };
+    }
     if (s.op === 'insert' || s.op === 'update' || s.op === 'upsert') {
       t.inserts.push({ table: s.table, op: s.op, payload: JSON.parse(JSON.stringify(s.payload)) });
       const row = Object.assign({ id: s.table + '-1' }, s.payload && !Array.isArray(s.payload) ? s.payload : {});
       return { data: s.single ? row : [row], error: null };
     }
-    if (s.table === 'platform_fee_config') {
-      t.feeCalls++;
-      const i = t.feeCalls - 1;
-      t.feeQueries.push((s.ors || []).join(' | '));
-      if (t.feeMode === 'hang') await new Promise(() => {});
-      if (t.feeMode === 'deferred') await new Promise((res) => { t.feeWaiters[i] = (pct) => res(pct); }).then((pct) => { t.feePct = pct; });
-      const st = ((s.ors || [])[0] || '').match(/state\.eq\.([A-Za-z]*)/);
-      const stateKey = st ? st[1].toUpperCase() : '';
-      return { data: [{ fee_pct: t.feeByState[stateKey] !== undefined ? t.feeByState[stateKey] : t.feePct }], error: null };
-    }
+    if (s.table === 'platform_fee_config') { t.tableReads++; return { data: [], error: null }; }   // RLS: 0 rows for a contractor
     if (s.table === 'bidder_claim_summary') return { data: claim, error: null };
     if (s.table === 'contractors') return { data: contractor, error: null };
     return { data: s.single ? null : [], error: null };
@@ -60,7 +59,22 @@ const FAKE_SUPABASE = `
   const user = { id: 'u-1', email: 'c@example.test' };
   const client = {
     from: builder,
-    rpc: async (name) => { t.calls.push(name); return { data: name === 'bid_can_submit' ? { can_submit: true } : null, error: null }; },
+    rpc: async (name, args) => {
+      t.calls.push(name);
+      if (name === 'quotes_platform_fee_for') {
+        t.feeCalls++;
+        const i = t.feeCalls - 1;
+        t.rpcArgs.push(args);
+        if (t.rpcMode === 'hang') await new Promise(() => {});
+        if (t.rpcMode === 'empty') return { data: [], error: null };
+        if (t.rpcMode === 'error') return { data: null, error: { message: 'permission denied for function quotes_platform_fee_for' } };
+        if (t.feeMode === 'hang') await new Promise(() => {});
+        if (t.feeMode === 'deferred') await new Promise((res) => { t.feeWaiters[i] = (pct) => res(pct); }).then((pct) => { t.feePct = pct; });
+        const stateKey = 'IN';   // the server reads contractors.address_state itself
+        return { data: [{ fee_pct: t.feeByState[stateKey] !== undefined ? t.feeByState[stateKey] : t.feePct, fee_basis: 'bid_amount' }], error: null };
+      }
+      return { data: name === 'bid_can_submit' ? { can_submit: true } : null, error: null };
+    },
     functions: { invoke: async (name, o) => { t.calls.push('fn:' + name); (t.fnBodies = t.fnBodies || {})[name] = o && o.body; return { data: {}, error: null }; } },
     auth: { getUser: async () => ({ data: { user }, error: null }), getSession: async () => ({ data: { session: { user } }, error: null }),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) },
@@ -307,13 +321,15 @@ test.describe('gh-3488 contractor-bid-form.html fee timing (real page, Chromium)
     expect((await inserted(page, 'fee_acceptances'))[0].payload.fee_amount).toBe(1875);
   });
 
-  test('(LEGAL) the fee lookup uses the contractor\'s address_state, the column the server reads', async ({ page }) => {
+  test('(LEGAL) the fee lookup goes through quotes_platform_fee_for with the contractor and claim, and shows a state-specific rate', async ({ page }) => {
     await openForm(page);
-    await page.evaluate(() => { (window as any).__t.feeByState = { IN: '7.50' }; });   // a state-specific row for IN
+    await page.evaluate(() => { (window as any).__t.feeByState = { IN: '7.50' }; });   // a state-specific row for IN, resolved by the server
     await typeBid(page, '25000');
     await expect.poll(() => page.evaluate(() => document.getElementById('feePercentDisplay')!.textContent)).toBe('7.50');
-    const queries: string[] = await page.evaluate(() => (window as any).__t.feeQueries);
-    expect(queries.some((q) => q.includes('state.eq.IN'))).toBe(true);        // 3fc20d19: state.eq. (blank)
+    const args = await page.evaluate(() => (window as any).__t.rpcArgs);
+    expect(args.length).toBeGreaterThan(0);
+    expect(args[0]).toEqual({ p_contractor_id: 'c-1', p_claim_id: 'claim-1' });
+    expect(await page.evaluate(() => (window as any).__t.tableReads)).toBe(0);         // never the admin-only table
   });
 
   test('(LEGAL) a tick is cleared when the bid changes', async ({ page }) => {
@@ -326,7 +342,7 @@ test.describe('gh-3488 contractor-bid-form.html fee timing (real page, Chromium)
     expect(await page.evaluate(() => (document.getElementById('submitBtn') as HTMLButtonElement).disabled)).toBe(true);
   });
 
-  test('(REVIEW) a fee lookup that never returns times out and the bid still files, with no stuck form', async ({ page }) => {
+  test('(REVIEW) a fee lookup that never returns times out: no stuck form, and (gh-3497) no bid is filed without an answer', async ({ page }) => {
     test.setTimeout(40000);
     await openForm(page);
     await fillRequired(page);
@@ -334,11 +350,15 @@ test.describe('gh-3488 contractor-bid-form.html fee timing (real page, Chromium)
     await typeBid(page, '18500');                                  // a lookup is open (and stays open)
     expect((await disclosure(page)).disclosure).toBe('$925.00');   // the figure on screen is already right
     await acceptFee(page);
+    const dialogs: string[] = [];
+    page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
     await clickSubmit(page);
-    await expect.poll(async () => (await inserted(page, 'quotes')).length, { timeout: 20000 }).toBe(1);   // 3fc20d19: stuck on "Submitting…"
-    expect((await inserted(page, 'quotes'))[0].payload.total_price).toBe(18500);
-    await expect.poll(async () => (await inserted(page, 'fee_acceptances')).length, { timeout: 10000 }).toBe(1);
-    expect((await inserted(page, 'fee_acceptances'))[0].payload.fee_amount).toBe(925);
+    // 3fc20d19: stuck on "Submitting…". bab62017: filed at the rate on screen. gh-3497: the timeout ends the submit, nothing is filed.
+    await expect.poll(() => dialogs.length, { timeout: 25000 }).toBe(1);
+    expect(dialogs[0]).toContain('fee_rate_unavailable');
+    expect((await inserted(page, 'quotes')).length).toBe(0);
+    expect((await inserted(page, 'fee_acceptances')).length).toBe(0);
+    await expect.poll(() => page.evaluate(() => (document.getElementById('submitBtn') as HTMLButtonElement).textContent)).toContain('Submit Bid');
   });
 
   test('(REVIEW) an ipify call that never returns times out and records no IP (null, never the string unknown: fee_acceptances.ip_address is inet)', async ({ page }) => {
@@ -433,5 +453,90 @@ test.describe('gh-3488 contractor-bid-form.html fee timing (real page, Chromium)
     await expect.poll(async () => (await inserted(page, 'quotes')).length, { timeout: 10000 }).toBe(1);
     expect((await inserted(page, 'quotes'))[0].op).toBe('update');
     expect((await inserted(page, 'quotes'))[0].payload.total_price).toBe(18500);
+  });
+});
+
+// ── gh-3497 part 1 ────────────────────────────────────────────────────────────────────────────────────────────────
+test.describe('gh-3497 contractor-bid-form.html reads the rate through quotes_platform_fee_for and stops with no answer', () => {
+  test('a contractor session sees the CONFIGURED rate (the table read returns 0 rows and used to show 5.00)', async ({ page }) => {
+    await openForm(page);
+    await page.evaluate(() => { (window as any).__t.feePct = '7.50'; });
+    await typeBid(page, '25000');
+    await expect.poll(() => page.evaluate(() => document.getElementById('feePercentDisplay')!.textContent)).toBe('7.50');
+    expect((await disclosure(page)).disclosure).toBe('$1,875.00');
+    expect(await page.evaluate(() => (window as any).__t.tableReads)).toBe(0);
+  });
+
+  test('configured 7.50, accepted on screen: the bid files at 7.50 with the matching acceptance', async ({ page }) => {
+    await openForm(page);
+    await page.evaluate(() => { (window as any).__t.feePct = '7.50'; });
+    await fillRequired(page);
+    await typeBid(page, '25000');
+    await expect.poll(() => page.evaluate(() => document.getElementById('feePercentDisplay')!.textContent)).toBe('7.50');
+    await acceptFee(page);
+    await clickSubmit(page);
+    await expect.poll(async () => (await inserted(page, 'fee_acceptances')).length).toBe(1);
+    const q = (await inserted(page, 'quotes'))[0].payload;
+    expect(q.platform_fee_pct).toBe(7.5);
+    expect((await inserted(page, 'fee_acceptances'))[0].payload.fee_amount).toBe(1875);
+  });
+
+  for (const mode of ['empty', 'error', 'hang']) {
+    test(`no answer (${mode}): nothing is filed, the existing error alert names the reason, and the entries and the tick survive`, async ({ page }) => {
+      test.setTimeout(40000);
+      await openForm(page);
+      await fillRequired(page);
+      await typeBid(page, '25000');
+      await expect.poll(async () => (await disclosure(page)).disclosure).toBe('$1,250.00');
+      await acceptFee(page);
+      await page.evaluate((m) => { (window as any).__t.rpcMode = m; }, mode);       // from here the RPC gives no answer
+      const dialogs: string[] = [];
+      page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
+      await clickSubmit(page);
+      await expect.poll(() => dialogs.length, { timeout: 20000 }).toBe(1);
+      expect(dialogs[0]).toContain('Error submitting bid: fee_rate_unavailable');
+      expect((await inserted(page, 'quotes')).length).toBe(0);
+      expect((await inserted(page, 'fee_acceptances')).length).toBe(0);
+      expect(await page.locator('#retailBidPrice').inputValue()).toBe('25000');        // the bid is not lost
+      await expect.poll(() => page.evaluate(() => (document.getElementById('submitBtn') as HTMLButtonElement).textContent)).toContain('Submit Bid');
+      expect(await page.evaluate(() => {
+        const el = document.getElementById('retailBidPrice') as HTMLInputElement;
+        return el.readOnly || el.disabled;
+      })).toBe(false);                                                                   // and the form is editable again
+      // the rate comes back: the same page files the bid at the configured rate
+      await page.evaluate(() => { (window as any).__t.rpcMode = 'rate'; (window as any).__t.feePct = '5.00'; });
+      await acceptFee(page);
+      await clickSubmit(page);
+      await expect.poll(async () => (await inserted(page, 'quotes')).length).toBe(1);
+    });
+  }
+
+  test('the server refuses a stale displayed rate (fee_rate_mismatch): the bid is not lost, the new rate is shown, the tick is cleared, and the re-accepted bid files', async ({ page }) => {
+    test.setTimeout(40000);
+    await openForm(page);
+    await fillRequired(page);
+    await typeBid(page, '25000');
+    await expect.poll(async () => (await disclosure(page)).disclosure).toBe('$1,250.00');
+    await acceptFee(page);
+    // the rate moves between the form's fresh lookup and the insert: the trigger refuses the 5.00 bid (and the fake moves the rate to 7.50)
+    await page.evaluate(() => { (window as any).__t.insertError = 'quotes: fee_rate_mismatch: the fee rate shown with this bid is 5.00 percent but the configured rate is 7.50 percent, so the bid was not saved (gh-3497)'; });
+    const dialogs: string[] = [];
+    page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
+    await clickSubmit(page);
+    await expect.poll(() => dialogs.length, { timeout: 15000 }).toBe(1);
+    expect(dialogs[0]).toContain('Error submitting bid: quotes: fee_rate_mismatch');
+    expect((await inserted(page, 'quotes')).length).toBe(0);
+    expect((await inserted(page, 'fee_acceptances')).length).toBe(0);
+    expect(await page.locator('#retailBidPrice').inputValue()).toBe('25000');                    // the bid is not lost
+    await expect.poll(() => page.evaluate(() => document.getElementById('feePercentDisplay')!.textContent)).toBe('7.50');   // the configured rate is now shown
+    expect((await disclosure(page)).disclosure).toBe('$1,875.00');
+    expect(await page.evaluate(() => (document.getElementById('feeAcceptanceCheckbox') as HTMLInputElement).checked)).toBe(false);
+    expect(await page.evaluate(() => (document.getElementById('submitBtn') as HTMLButtonElement).disabled)).toBe(true);   // until it is accepted again
+    await acceptFee(page);
+    await clickSubmit(page);
+    await expect.poll(async () => (await inserted(page, 'quotes')).length).toBe(1);
+    expect((await inserted(page, 'quotes'))[0].payload.platform_fee_pct).toBe(7.5);
+    await expect.poll(async () => (await inserted(page, 'fee_acceptances')).length).toBe(1);
+    expect((await inserted(page, 'fee_acceptances'))[0].payload.fee_amount).toBe(1875);
   });
 });
