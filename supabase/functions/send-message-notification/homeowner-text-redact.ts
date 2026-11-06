@@ -239,9 +239,16 @@ const gapped = (w: string) => [...w].map((c) => `[${c.toUpperCase()}${c.toLowerC
 const SPLIT_GAP = `(?:[ ]+|[.\\-\\u2010${S}]*)`;
 const SPLIT_D = `\\d${S}*`;
 const SPLIT_GROUP3 = `[2-9]${S}*\\d${S}*\\d`;
+// [gh-3506 / D-390 Amendment 1] A written date keeps its year. "Start 11/15/2026<break>1200<break>50" reads as the phone 202-612-0050 across the breaks and used to print
+// "Start 11/15/[removed]". The year of a written date (M/D/YYYY, or "Nov 15, 2026" / "Nov 15 2026") is not where a split phone can begin; the match is tried again from the next
+// place, so "11/15/2026<break>317<break>555<break>0142" still removes the phone. Only a 19xx/20xx year right after the date prefix counts, so "11/15/317<break>555<break>0142" is unchanged.
+const MONTH = "(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
+// The year is checked first and the gaps are bounded, so a long run of spaces or break marks costs nothing extra (the linear-time tests in sow-redact-dash-fraction.test.ts).
+const DATE_PREFIX = `(?:\\d{1,2}/\\d{1,2}/|(?<![A-Za-z])${MONTH}\\.?${WS}{1,4}\\d{1,2},?${WS}{1,4})`;
+const NOT_DATE_YEAR = `(?!(?=(?:19|20)\\d\\d(?!\\d))(?<=${DATE_PREFIX}))`;
 const SPLIT_PHONE = new RegExp(
-  `(?<!\\d)(?<!\\d[.,\\-])(?:\\+?1${SPLIT_GAP})?(?:\\(${WS}*${SPLIT_GROUP3}${WS}*\\)|${SPLIT_GROUP3})${SPLIT_GAP}${SPLIT_GROUP3}${SPLIT_GAP}${SPLIT_D}${SPLIT_D}${SPLIT_D}\\d(?!\\d)(?![.,]\\d)`,
-  "g",
+  `${NOT_DATE_YEAR}(?<!\\d)(?<!\\d[.,\\-])(?:\\+?1${SPLIT_GAP})?(?:\\(${WS}*${SPLIT_GROUP3}${WS}*\\)|${SPLIT_GROUP3})${SPLIT_GAP}${SPLIT_GROUP3}${SPLIT_GAP}${SPLIT_D}${SPLIT_D}${SPLIT_D}\\d(?!\\d)(?![.,]\\d)`,
+  "gi",
 );
 const SPLIT_AT = `(?:${WS}*@${WS}*|${WS}*[\\(\\[\\{<]${WS}*${gapped("at")}${WS}*[\\)\\]\\}>]${WS}*|${WS}+${gapped("at")}${WS}+)`;
 const SPLIT_DOT = `(?:${NOT_DETERMINER}(?:${WS}*[\\(\\[\\{<]${WS}*${gapped("dot")}${WS}*[\\)\\]\\}>]${WS}*|${WS}+${gapped("dot")}${WS}+)|${WS}*\\.${S}*)`;
