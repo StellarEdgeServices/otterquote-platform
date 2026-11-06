@@ -485,6 +485,19 @@ ALLOWLIST = [
         "contractor program, cited to GAF's own page -- not a claim about contractors "
         "on the OtterQuote platform. CRO RUN 65, gh-2904.",
     ),
+    (
+        "blog/storm-chaser-roofing-scams.html",
+        "advises dealing with licensed and insured contractors",
+        "Generic consumer advice to verify your own contractor's insurance and any "
+        "license your area requires, sourced to the FTC (2003); no claim about "
+        "marketplace contractors.",
+    ),
+    (
+        "blog/storm-chaser-roofing-scams.html",
+        "deal only with licensed and insured contractors; take your time before signing",
+        "Sources blurb summarizing the FTC (2003) release; generic consumer advice, "
+        "no claim about marketplace contractors.",
+    ),
 ]
 
 
