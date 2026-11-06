@@ -36,7 +36,6 @@ const SURVIVE = [
   "Work at front.Back slope is fine",
   "Shingles @ 400 per square",
   "Install by 11/15/2026, $1,250.00, 8/12 pitch, 2400 sq ft",
-  "café — 40 ft² and ½ inch gap",
   "Call after 5 pm; ask for the 555-0142 line",
   // fix2880d B1 (item@price) and B2 (figure lists with spaced separators)
   "3 bundles@32.50 each",
@@ -58,8 +57,6 @@ const SURVIVE = [
   "Limits 250/500/1000",
   "Bids 850/900/1200",
   "Coverage 250_500_1000",
-  "Line items 250 \u2022 500 \u2022 1000",
-  "250 \u00b7 500 \u00b7 1000",
   "Shingles @ 400.Total due",
   "Gutter guards @ 6.LF",
   "Labor @ 75.hr",
@@ -119,6 +116,11 @@ const REDACT: Array<[string, string]> = [
 
 Deno.test("SOW redaction: every must-survive row prints verbatim", () => {
   for (const t of SURVIVE) assertEquals(redactSowText(t), t, t);
+});
+
+// [gh-3461] Before the fee the helper returns the string the document prints, so a row with characters esc() folds or drops comes back as it prints.
+Deno.test("gh-3461: before the fee a no-contact row comes back as the document prints it", () => {
+  assertEquals(redactSowText("café — 40 ft² and ½ inch gap"), "caf - 40 ft2 and 1/2 inch gap");
 });
 
 Deno.test("SOW redaction: every must-redact row has the contact detail cut out and nothing else changed", () => {
@@ -195,7 +197,7 @@ const prevModel3 = (t: string) => SOW_PATTERNS_P3.reduce((o, re) => o.replace(re
 
 Deno.test("NEGATIVE CONTROL 3 (head 1ac6f859): its patterns damage the fix2880e must-survive rows; the current patterns do not", () => {
   const rows = [
-    "Limits 250/500/1000", "Bids 850/900/1200", "Coverage 250_500_1000", "Line items 250 \u2022 500 \u2022 1000", "250 \u00b7 500 \u00b7 1000",
+    "Limits 250/500/1000", "Bids 850/900/1200", "Coverage 250_500_1000",
     "Shingles @ 400.Total due", "Gutter guards @ 6.LF", "Labor @ 75.hr", "Arrive @ 8.AM", "Paid @ closing.Net $5000", "meet @ gate.Then call", "Done @ noon.OK?",
     "Leak at chimney.it leaks", "Leak at front.in the valley", "Work at back.me too", "We met at noon.IT guy came",
   ];
@@ -333,8 +335,16 @@ Deno.test("KNOWN RESIDUAL (iii): spelled at...dot with a word domain is removed"
   assertEquals(redactSowText("Starter @ ridge dot net"), "[removed]");
 });
 
+// A 6669920816 on #3461 (Ben): D-390 overrides the pin. These printed as typed until that ruling. NEGATIVE CONTROL: the helper of 3a861ef7 keeps all three.
+Deno.test("Ruling 6669920816: a phone or phone-shaped list written with a middle dot or bullet is removed before the fee", () => {
+  for (const t of ["317\u00b7555\u00b70142", "317\u2022555\u20220142", "250 \u2022 500 \u2022 1000", "250 \u00b7 500 \u00b7 1000"]) assertEquals(redactSowText(t), "[removed]", t);
+  assertEquals(redactSowText("Ring 317\u00b7555\u00b70142 today"), "Ring [removed] today");
+  assertEquals(redactSowText("Line items 250 \u2022 500 \u2022 1000"), "Line items [removed]");
+  assertEquals(redactSowText("Limits 250 \u2022 500"), "Limits 250 500"); // two figures are no phone
+});
+
 Deno.test("ADVISORY LEAKS: contact shapes the SOW path deliberately does not remove", () => {
-  for (const t of ["317/555-0142", "317_555_0142", "317\u00b7555\u00b70142", "jane at proton.me", "call me 555-0142", "+44 20 7946 0958"]) assertEquals(redactSowText(t), t, t);
+  for (const t of ["317/555-0142", "317_555_0142", "jane at proton.me", "call me 555-0142", "+44 20 7946 0958"]) assertEquals(redactSowText(t), t, t);
 });
 
 Deno.test("SOW redaction: no truncation (a 50000-character note is redacted whole and finishes quickly)", () => {
@@ -388,7 +398,7 @@ Deno.test("gh-2881: a phone typed in Arabic-Indic or Extended Arabic-Indic digit
   assertEquals(redactSowText(ar), "Call [removed] after 5");
   assertEquals(redactSowText(arDashed), "Call [removed] after 5");
   assertEquals(redactSowText(fa), "Call [removed] after 5");
-  assertEquals(redactSowText(`Ref ${AR("2026")} and ${AR("12500")}.${AR("00")} stay`), `Ref ${AR("2026")} and ${AR("12500")}.${AR("00")} stay`); // short runs / figures are not phones
+  assertEquals(redactSowText(`Ref ${AR("2026")} and ${AR("12500")}.${AR("00")} stay`), "Ref 2026 and 12500.00 stay"); // short runs / figures are not phones; [gh-3461] returned as they print
   assertEquals(foldForDetection(AR("0123456789")).length, 10);
   assertEquals(foldForDetection(AR("0123456789")), "0123456789");
 });

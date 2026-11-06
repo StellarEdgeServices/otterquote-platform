@@ -49,8 +49,24 @@ import { logNotificationFailureLoud } from "./notification-failure.ts";
 import {
   buildUpgradeOrderInsert,
   UPGRADE_PRODUCT_CODE,
+  type UpgradeOrderInsertPayload,
 } from "./measurement-upgrade-order.ts";
+import {
+  buildBuyerRoleAlertRow,
+  raiseBuyerRoleAlert,
+  decidePaidRole,
+  resolveBuyerRole,
+  UNSPECIFIED_ROLE,
+} from "./buyer-role.ts";
 import { checkMeasurementPaymentIntent, checkUpgradePaymentIntent, type PaymentCheckResult } from "./payment-intent-checks.ts";
+import {
+  buildClockAlertRow,
+  chargeIdOf,
+  decideGuaranteeClock,
+  isMissingColumnError,
+  paymentSucceededAt,
+  raiseClockAlert,
+} from "./guarantee-clock.ts";
 import {
   NON_USD_ALERT_SEND_TIMEOUT_MS,
   NON_USD_ALERT_TYPE,
@@ -195,7 +211,7 @@ async function verifyPayment(
   expectedAmount: number,
   claimId: string | null,
   requestOrigin: string,
-): Promise<PaymentCheckResult> {
+): Promise<PaymentCheckResult & { piType?: string | null; piClaimId?: string | null; paidAt?: Date | null; livemode?: boolean | null }> {
   // gh-1536: exact-match, not substring — "app-staging." falsely matched
   // app-staging.otterquote.com, a Netlify DOMAIN ALIAS on the PRODUCTION app
   // site (not staging), which selected Stripe TEST-mode keys against real
@@ -210,8 +226,9 @@ async function verifyPayment(
   }
 
   const basicAuth = btoa(`${stripeSecretKey}:`);
+  // gh-3471: latest_charge is expanded so the charge's own created time (when the payment succeeded) comes back in the same call.
   const piRes = await fetch(
-    `${STRIPE_API_BASE}/payment_intents/${encodeURIComponent(paymentIntentId)}`,
+    `${STRIPE_API_BASE}/payment_intents/${encodeURIComponent(paymentIntentId)}?expand%5B%5D=latest_charge`,
     { headers: { Authorization: `Basic ${basicAuth}` } },
   );
   if (!piRes.ok) {
@@ -223,8 +240,13 @@ async function verifyPayment(
     };
   }
   const pi = await piRes.json();
+  // gh-3471: expanding latest_charge turns pi.latest_charge into an object; the checks (and stripe_payment_id) still get the charge id string, as before.
+  const paidAt = paymentSucceededAt(pi);
+  const forChecks = pi.latest_charge && typeof pi.latest_charge === "object" ? { ...pi, latest_charge: chargeIdOf(pi.latest_charge) } : pi;
   // gh-2107 (Ben's step 2 on #2078): the post-fetch checks live in payment-intent-checks.ts (verbatim, plus the USD guard).
-  return checkMeasurementPaymentIntent(pi, { expectedAmount, claimId });
+  const checked = checkMeasurementPaymentIntent(forChecks, { expectedAmount, claimId });
+  // gh-3447: the PaymentIntent's own type and claim, for resolving an unstated buyer_role (see buyer-role.ts resolvePaidRole).
+  return { ...checked, piType: pi.metadata?.type ?? null, piClaimId: pi.metadata?.claim_id ?? null, paidAt, livemode: typeof pi.livemode === "boolean" ? pi.livemode : null };
 }
 
 /**
@@ -398,7 +420,8 @@ function nonUsdAlertDeps(supabase: any, supabaseUrl: string): NonUsdAlertDeps {
   };
 }
 
-serve(async (req) => {
+// gh-3471: the handler is a named const so a test can drive the real code path; the server still starts on import unless a test sets the flag.
+const handler = async (req: Request): Promise<Response> => {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed." }, 405, corsHeaders);
@@ -415,13 +438,11 @@ serve(async (req) => {
     const claimId: string | null = body.claim_id ?? null;
     const productCode: string = body.product_code ?? "";
     const paymentIntentId: string | undefined = body.payment_intent_id;
-    // gh-3229 (P18): no silent default. A missing/unknown buyer_role used to become "homeowner", which would let a contractor
-    // purchase that omitted the field be recorded as homeowner-paid (and earn a referrer's $5). Both callers (js/services.js,
-    // contractor-opportunities.html) already send it explicitly.
-    if (body.buyer_role !== "homeowner" && body.buyer_role !== "contractor") {
-      return json({ error: "buyer_role must be 'homeowner' or 'contractor'." }, 400, corsHeaders);
-    }
-    const buyerRole: string = body.buyer_role;
+    // gh-3229 (P18): no silent default. A missing/unknown buyer_role must never be recorded as "homeowner" (it would earn a referrer's $5).
+    // gh-3447: but it is no longer refused up front either: this handler runs AFTER the buyer has paid, so a 400 here was money taken, no
+    // order. An unresolved role carries on to the payment checks (an unpaid request is still refused there) and, once payment is confirmed,
+    // the order is recorded as requested_by_role='unspecified' (no $5 accrual) with an operator alert. See buyer-role.ts.
+    const { role: buyerRole, unresolved: roleUnresolved } = resolveBuyerRole(body.buyer_role);
     const contractorId: string | null = body.contractor_id ?? null;
     const note: string | null = typeof body.note === "string" ? body.note.slice(0, 2000) : null;
 
@@ -432,7 +453,10 @@ serve(async (req) => {
     // Not a catalog SKU (see the file header note) — handled entirely here,
     // before the generic loadProduct() flow below.
     if (productCode === UPGRADE_PRODUCT_CODE) {
-      if (buyerRole !== "contractor" || !contractorId) {
+      // gh-3447: the upgrade is contractor-only by D-317, so a missing/unknown role plus a contractor_id is derived as the contractor it must be.
+      // A missing/unknown role with NO contractor_id goes on to verify the payment and is then recorded as 'unspecified' with an alert (below),
+      // so a paid upgrade is never answered with a 400. An explicit 'homeowner', or an explicit 'contractor' with no contractor_id, is still refused.
+      if (!roleUnresolved && (buyerRole !== "contractor" || !contractorId)) {
         return json({ error: "The detailed-measurement upgrade may only be purchased by a contractor." }, 400, corsHeaders);
       }
       if (!paymentIntentId || typeof paymentIntentId !== "string") {
@@ -474,11 +498,12 @@ serve(async (req) => {
         return json({ error: paidUpgrade.error }, paidUpgrade.status, corsHeaders);
       }
 
+      const upgradeRole = roleUnresolved && !contractorId ? UNSPECIFIED_ROLE : "contractor";
       const decision = buildUpgradeOrderInsert(
         paidUpgrade,
         claimId,
         authedUser.id,
-        contractorId,
+        contractorId ?? "",
         paymentIntentId,
         isFirstBuyer,
         note,
@@ -492,9 +517,13 @@ serve(async (req) => {
         return json({ error: decision.error, payment_captured: true }, decision.status, corsHeaders);
       }
 
+      // gh-3447: paid, but no usable role and no contractor_id: record it for an admin rather than refuse it.
+      const upgradePayload: UpgradeOrderInsertPayload = upgradeRole === UNSPECIFIED_ROLE
+        ? { ...decision.insertPayload, requested_by_role: "unspecified", requested_by_contractor_id: null }
+        : decision.insertPayload;
       let { data: upgradeOrder, error: upgradeInsErr } = await supabase
         .from("hover_orders")
-        .insert(decision.insertPayload)
+        .insert(upgradePayload)
         .select("id, status")
         .single();
 
@@ -509,7 +538,7 @@ serve(async (req) => {
           `[${FUNCTION_NAME}] hover_orders.vendor_credit_expected_cents missing (migration not yet applied) — retrying without it:`,
           upgradeInsErr,
         );
-        const { vendor_credit_expected_cents: _omit, ...payloadWithoutVendorCredit } = decision.insertPayload;
+        const { vendor_credit_expected_cents: _omit, ...payloadWithoutVendorCredit } = upgradePayload;
         const retry = await supabase
           .from("hover_orders")
           .insert(payloadWithoutVendorCredit)
@@ -541,6 +570,14 @@ serve(async (req) => {
         first_buyer: isFirstBuyer,
       });
 
+      if (upgradeRole === UNSPECIFIED_ROLE) {
+        await raiseBuyerRoleAlert(
+          (row) => supabase.from("platform_alerts_log").insert(row),
+          (m) => console.error(m),
+          buildBuyerRoleAlertRow({ orderId: upgradeOrder.id, paymentIntentId, claimId, productCode: UPGRADE_PRODUCT_CODE }),
+        );
+      }
+
       // gh-1412: same log + admin email path every other paid order uses.
       await recordOrderCreated(
         supabase,
@@ -548,7 +585,7 @@ serve(async (req) => {
         upgradeOrder,
         claimId,
         UPGRADE_PRODUCT_CODE,
-        "contractor",
+        upgradeRole,
         authedUser.id,
         paidUpgrade.amount,
       );
@@ -643,27 +680,79 @@ serve(async (req) => {
       return json({ error: paid.error }, paid.status, corsHeaders);
     }
 
-    const { data: order, error: insErr } = await supabase
-      .from("hover_orders")
-      .insert({
+    // gh-3471: the 100-hour clock for a real (non-test) payment. Test orders and unreadable payment times get no clock. Contained: never throws.
+    const clock = await decideGuaranteeClock({
+      livemode: paid.livemode,
+      paidAt: paid.paidAt ?? null,
+      buyerId: authedUser.id,
+      lookupClaim: async () => {
+        const { data, error } = await supabase.from("claims").select("is_test, user_id").eq("id", claimId).maybeSingle();
+        if (error) throw new Error("claim lookup returned an error");
+        return data ?? null;
+      },
+      lookupProfile: async (id: string) => {
+        const { data, error } = await supabase.from("profiles").select("is_test, email").eq("id", id).maybeSingle();
+        if (error) throw new Error("profile lookup returned an error");
+        return data ?? null;
+      },
+      dbSaysInternal: async (email: string) => {
+        const { data } = await supabase.rpc("is_internal_test_email", { p_email: email });
+        return data === true;
+      },
+      log: (m) => console.error(m),
+    });
+
+    // gh-3447 (CEO/Tier A ruling): a missing/unknown role resolves to 'homeowner' ONLY when the verified PaymentIntent is a hover_measurement
+    // whose metadata claim_id is this claim and the claim is owned by the caller (create-payment-intent issues that charge only to the claim's
+    // owner). Otherwise 'unspecified'. Never a default. The lookup is contained: any failure resolves to 'unspecified'.
+    // gh-3459: the same proof applies to an explicit client-sent 'homeowner' (buyer_role is client text). Not shown -> 'unspecified' + alert;
+    // the order is still recorded because the buyer has paid. An explicit 'contractor' is not looked up.
+    const decidedRole = await decidePaidRole({
+      requestedRole: buyerRole,
+      piType: paid.piType ?? null,
+      piClaimId: paid.piClaimId ?? null,
+      claimId,
+      callerId: authedUser.id,
+      lookupClaimOwner: async () => {
+        const { data: ownerRow } = await supabase.from("claims").select("user_id").eq("id", claimId).maybeSingle();
+        return ownerRow?.user_id ?? null;
+      },
+      log: (m) => console.error(m),
+    });
+    const paidRole: string = decidedRole.role;
+    const roleStillUnspecified = paidRole === UNSPECIFIED_ROLE;
+
+    const orderPayload = {
         claim_id: claimId,
         user_id: authedUser.id,
         status: "awaiting_fulfillment",
         product_code: productCode,
         fulfillment_mode: "manual",
-        requested_by_role: buyerRole,
-        requested_by_contractor_id: buyerRole === "contractor" ? contractorId : null,
+        requested_by_role: paidRole,
+        requested_by_contractor_id: paidRole === "contractor" ? contractorId : null,
         homeowner_stripe_payment_intent_id: paymentIntentId,
         homeowner_charge_amount: paid.amount,
         amount_charged: paid.amount / 100,
         stripe_payment_id: paid.stripeChargeId,
         rebate_due: product.rebate_on_close === true,
         admin_notes: note,
-      })
-      .select("id, status")
-      .single();
+        // gh-3471: the clock is a homeowner promise, so a contractor-role order never carries one; a test order or an unreadable payment time has no fields.
+        ...(paidRole === "contractor" ? {} : clock.fields),
+    };
+    let { data: order, error: insErr } = await supabase.from("hover_orders").insert(orderPayload).select("id, status").single();
 
-    if (insErr) {
+    // gh-3471: if the clock columns are not in this database yet (migration not applied), a paid order must still be recorded: retry without them and alert.
+    let clockColumnsMissing = false;
+    if (isMissingColumnError(insErr) && "guarantee_started_at" in orderPayload) {
+      console.error(`[${FUNCTION_NAME}] hover_orders guarantee clock columns missing (migration not yet applied) -- retrying without them:`, insErr);
+      const { guarantee_started_at: _s, guarantee_deadline_at: _d, ...withoutClock } = orderPayload as Record<string, unknown>;
+      const retry = await supabase.from("hover_orders").insert(withoutClock).select("id, status").single();
+      order = retry.data;
+      insErr = retry.error;
+      clockColumnsMissing = true;
+    }
+
+    if (insErr || !order) {
       // The buyer's money has already moved. Never tell them the order failed
       // in a way that invites a second payment — this is a support case.
       console.error(`[${FUNCTION_NAME}] order insert failed AFTER successful payment:`, {
@@ -684,8 +773,27 @@ serve(async (req) => {
       amount: paid.amount,
     });
 
+    // gh-3471: a real payment whose clock could not be stored (time unreadable, or columns not applied) is an operator alert, never a silent gap. Contained.
+    if (clockColumnsMissing || (!clock.stored && clock.reason === "no_payment_time" && paidRole !== "contractor")) {
+      await raiseClockAlert(
+        (row) => supabase.from("platform_alerts_log").insert(row),
+        (m) => console.error(m),
+        buildClockAlertRow({ reason: clockColumnsMissing ? "column_missing" : "no_payment_time", orderId: order.id, paymentIntentId, claimId }),
+      );
+    }
+
+    // gh-3447: money confirmed and recorded, but nobody said who the buyer is. Tell the operator (platform_alerts_log, the surface the
+    // other payment alerts use); the order row, the activity_log row and the admin email below all carry role 'unspecified'. Contained.
+    if (roleStillUnspecified) {
+      await raiseBuyerRoleAlert(
+        (row) => supabase.from("platform_alerts_log").insert(row),
+        (m) => console.error(m),
+        buildBuyerRoleAlertRow({ orderId: order.id, paymentIntentId, claimId, productCode }),
+      );
+    }
+
     // gh-1412: log + admin email ("Buy basic report — [address]").
-    await recordOrderCreated(supabase, supabaseUrl, order, claimId, productCode, buyerRole, authedUser.id, paid.amount);
+    await recordOrderCreated(supabase, supabaseUrl, order, claimId, productCode, paidRole, authedUser.id, paid.amount);
 
     return json({
       order_id: order.id,
@@ -697,4 +805,7 @@ serve(async (req) => {
     console.error(`[${FUNCTION_NAME}] unhandled:`, err);
     return json({ error: "Something went wrong recording your order." }, 500, corsHeaders);
   }
-});
+};
+// deno-lint-ignore no-explicit-any
+const g = globalThis as any;
+if (g.__OQ_NO_SERVE) g.__oqCreateMeasurementOrderHandler = handler; else serve(handler);

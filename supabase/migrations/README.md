@@ -16,6 +16,8 @@ branch is created. That means:
   here, because replaying it on a fresh branch would create schema that
   production does not have (new drift in the other direction).
 
+Applied files whose guard only passes against production (a body md5, a row-count) are the exception: they are filed in `supabase/migrations_applied_manually/` under their real applied timestamp even when a ledger row exists (gh1763 ruling, PR #2233 comment 5850353019; gh3239, gh3229 and gh3245_customer_fee, PR #3479), so a fresh replay is not blocked.
+
 Sibling directories (added 2026-08-07, issue #385):
 
 - `supabase/migrations_rollbacks/` — rollback scripts and pre-flight

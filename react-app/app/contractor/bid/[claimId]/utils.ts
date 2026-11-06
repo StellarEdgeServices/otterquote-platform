@@ -554,8 +554,32 @@ export interface FeeAcceptanceInput {
   feeAmount: number;
   feeTextDisplayed: string;
   acceptedAtIso: string;
-  ipAddress: string;
+  /** What the IP lookup returned; anything that is not an IPv4/IPv6 literal (the old 'unknown', an empty string) is sent as null. */
+  ipAddress: string | null | undefined;
   userAgent: string;
+}
+
+/**
+ * gh-3409: fee_acceptances.ip_address is an inet column. The lookup used to fall back to the string 'unknown', which Postgres refuses (22P02) before the
+ * guard runs, so the whole acceptance was lost with no trace. A missing IP must never cost the acceptance: send null instead.
+ */
+export function ipForInet(raw: string | null | undefined): string | null {
+  if (typeof raw !== 'string') return null;
+  const v = raw.trim();
+  const v4 = /^(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(?:\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}$/;
+  const v6 = /^[0-9a-fA-F:]+(?:%[0-9A-Za-z]+)?$/;
+  if (v4.test(v)) return v;
+  if (v.includes(':') && v.length <= 45 && v6.test(v.replace(/%.*$/, '')) && !/:::/.test(v)) return v.replace(/%.*$/, '');
+  return null;
+}
+
+/**
+ * gh-3409: what happened to the fee_acceptances insert (made with .select('id'), never .single()). 'diverted' = the server kept the row for review
+ * instead of recording it (zero rows come back); 'failed' = the insert errored; both must be reported, neither may be silent.
+ */
+export function feeAcceptanceOutcome(res: { data?: unknown; error?: { message?: string; code?: string } | null }): 'recorded' | 'diverted' | 'failed' {
+  if (res.error) return 'failed';
+  return Array.isArray(res.data) && res.data.length > 0 ? 'recorded' : 'diverted';
 }
 
 /** fee_acceptances INSERT — D-215 UETA Layer 1 evidence (:5420-5431). */
@@ -569,7 +593,7 @@ export function buildFeeAcceptanceInsert(input: FeeAcceptanceInput): Record<stri
     fee_amount: input.feeAmount,
     fee_text_displayed: input.feeTextDisplayed,
     accepted_at: input.acceptedAtIso,
-    ip_address: input.ipAddress,
+    ip_address: ipForInet(input.ipAddress),
     user_agent: input.userAgent,
   };
 }

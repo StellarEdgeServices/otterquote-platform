@@ -8,6 +8,7 @@
  *      kind, the state and the claim id, repeated three times. No name, address, phone or e-mail is read, spoken, stored or logged.
  *   3. rpc owner_alert_mark(): called, or retryable (30 s x attempt), or failed_final after 3 attempts. A failure is reported to Sentry.
  *
+ * Test call: POST {"test_call": true} with the service-role key places ONE Twilio call whose spoken text says it is a test; it reads and writes no row.
  * It does NOT touch stripe-webhook, create-measurement-order, or any payment table: the only table it writes is public.owner_alerts.
  * A fault anywhere in here returns a JSON error to pg_cron and nothing else.
  *
@@ -17,7 +18,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
-import { authorizeServiceOnly, MAX_ATTEMPTS, placeCall, runSweep, type LeasedAlert } from "./sweep.ts";
+import { authorizeServiceOnly, isTestCallRequest, MAX_ATTEMPTS, placeCall, runSweep, TEST_CALL_KIND, type LeasedAlert } from "./sweep.ts";
 
 const FUNCTION_NAME = "owner-alert-sweep";
 
@@ -79,6 +80,17 @@ Deno.serve(async (req: Request) => {
         .filter(([, v]) => !v).map(([n]) => n);
       await reportToSentry(new Error("owner alert secrets missing"), { fn: FUNCTION_NAME, op: "config", extra: { missing } });
       return json({ ok: false, error: "Alert channel not configured", missing }, 503);
+    }
+
+    // Owner-only test call (gh-3428, Ben ruling 6668057340). Past the exact-key gate above; before any Supabase client exists, so no rpc, no table, no row.
+    if (await isTestCallRequest(req)) {
+      try {
+        const sid = await placeCall({ accountSid, authToken, from, to },
+          { id: "test", event_kind: TEST_CALL_KIND, claim_id: "", state: null, attempts: 0 }, fetch);
+        return json({ ok: true, test_call: true, sid }, 200);
+      } catch (e) {
+        return json({ ok: false, test_call: true, error: (e as { code?: string })?.code ?? "call_failed" }, 502);
+      }
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });

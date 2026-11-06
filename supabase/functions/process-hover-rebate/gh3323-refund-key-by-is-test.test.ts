@@ -23,9 +23,11 @@ async function run(claim: Record<string, unknown>, env: Env, origin?: string) {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (url.includes("api.stripe.com")) {
       const auth = String((init?.headers as Record<string, string> | undefined)?.Authorization ?? "");
-      stripe.push({ url, key: atob(auth.replace("Basic ", "")).replace(/:$/, "") });
+      if (init?.method === "POST") stripe.push({ url, key: atob(auth.replace("Basic ", "")).replace(/:$/, "") }); // gh-3452: count refunds created, not the lookup GET
     }
-    return Promise.resolve(new Response(JSON.stringify({ id: "re_1" }), { status: 200 }));
+    // gh-3452: the pre-refund lookup is a GET and expects a list; the POST creates the refund.
+    const isList = (init?.method ?? "GET") === "GET";
+    return Promise.resolve(new Response(JSON.stringify(isList ? { data: [] } : { id: "re_1" }), { status: 200 }));
   }) as typeof fetch;
   try {
     const r = req("https://x.supabase.co/functions/v1/process-hover-rebate", { claim_id: CLAIM }, `Bearer ${SERVICE_KEY}`);
