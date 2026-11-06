@@ -12,7 +12,7 @@
  *   5. Retire the quote (status = 'declined', bid_status = 'superseded', cancelled_at = NOW())
  *   6. Reset the claim (status = 'bidding', selected_contractor_id = NULL,
  *      increment contractor_switch_count, set contractor_switched_at)
- *   7. If the quote has a succeeded Stripe PaymentIntent, issue a full refund
+ *   7. If the quote has a succeeded Stripe PaymentIntent, refund the platform fee only (gh-3438)
  *   7b. Persist D-171 survey payload to claims.switch_reason_survey
  *   8. Send email to the original contractor notifying them of the switch
  *      and confirming their platform fee refund
@@ -65,11 +65,43 @@ function buildCorsHeaders(req: Request): Record<string, string> {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/** Issue a Stripe refund for a given PaymentIntent. Returns true on success. */
+/**
+ * gh-3438: the platform fee to refund, in cents, from PaymentIntent metadata. Returns null (=> no refund) unless the value
+ * is a plain positive integer string/number and, when the charge amount is known, does not exceed it.
+ */
+export function parsePlatformFeeCents(raw: unknown, chargeAmount?: unknown): number | null {
+  const str = typeof raw === "number" ? String(raw) : typeof raw === "string" ? raw.trim() : "";
+  if (!/^[0-9]+$/.test(str)) return null;
+  const cents = Number(str);
+  if (!Number.isSafeInteger(cents) || cents <= 0) return null;
+  if (typeof chargeAmount === "number" && Number.isFinite(chargeAmount) && cents > chargeAmount) return null;
+  return cents;
+}
+
+/** gh-3438: refundedCents / keptCents let the contractor email name the amounts (Ben's ruling 6669903256). */
+export type RefundResult = { success: boolean; refundId?: string; error?: string; refundedCents?: number; keptCents?: number };
+
+/** "$175.00" from 17500 cents. */
+export function formatUsd(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+/**
+ * Ben's ruling 6669903256 on PR #3450: the switch email names the amounts and does not say "refunded in full".
+ * Wording is Ben's: "We refunded your $175.00 platform fee. The remaining $5.54 [processing fee] is not refundable."
+ * keptCents > 0 only on a card charge; a bank-transfer charge has no card fee, so nothing remains to name.
+ * The last sentence is the existing 5-10 business days promise, kept as it was.
+ */
+export function refundedEmailLine(refundedCents: number, keptCents: number): string {
+  const kept = keptCents > 0 ? ` The remaining ${formatUsd(keptCents)} processing fee is not refundable.` : "";
+  return `We refunded your ${formatUsd(refundedCents)} platform fee.${kept} The refund will appear in your account within 5–10 business days.`;
+}
+
+/** Issue a Stripe refund of the platform fee only (gh-3438) for a given PaymentIntent. */
 async function stripeRefund(
   stripeKey: string,
   paymentIntentId: string
-): Promise<{ success: boolean; refundId?: string; error?: string }> {
+): Promise<RefundResult> {
   try {
     // 1. Retrieve the PaymentIntent to get the charge ID
     const piRes = await fetch(
@@ -95,9 +127,20 @@ async function stripeRefund(
       };
     }
 
-    // 2. Issue a full refund on the charge
+    // 2. gh-3438 (Dustin: "Fee only"): refund the platform fee ONLY, never the whole charge. Agreement 6.4 excludes any
+    // card processing fee, so a card charge of 18054 (17500 fee + 554 card fee) refunds 17500. The amount comes from the
+    // PaymentIntent metadata `platform_fee_cents`. If it is missing or not a sane amount we refund NOTHING (fail closed,
+    // never fall back to the whole charge) and raise an OPS alert; the refund is then owed and done by hand.
+    const feeCents = parsePlatformFeeCents(pi.metadata?.platform_fee_cents, pi.amount_received ?? pi.amount);
+    if (feeCents === null) {
+      console.error(
+        `[switch-contractor] OPS: refund NOT issued -- PaymentIntent ${paymentIntentId} has no usable metadata.platform_fee_cents (got ${JSON.stringify(pi.metadata?.platform_fee_cents ?? null)}; charge amount ${pi.amount_received ?? pi.amount ?? "unknown"}). No whole-charge fallback by design (gh-3438). The platform-fee refund is owed and must be done by hand.`,
+      );
+      return { success: false, error: "platform_fee_cents missing or invalid on PaymentIntent -- no refund issued" };
+    }
     const refundFormData = new URLSearchParams();
     refundFormData.append("charge", chargeId);
+    refundFormData.append("amount", String(feeCents));
     refundFormData.append("reason", "requested_by_customer");
     refundFormData.append("metadata[reason]", "homeowner_switched_contractor");
 
@@ -118,7 +161,9 @@ async function stripeRefund(
 
     const refund = await refundRes.json();
     console.log("[switch-contractor] Stripe refund issued:", refund.id, "status:", refund.status);
-    return { success: true, refundId: refund.id };
+    const chargeCents = pi.amount_received ?? pi.amount;
+    const keptCents = typeof chargeCents === "number" && Number.isFinite(chargeCents) ? Math.max(0, chargeCents - feeCents) : 0;
+    return { success: true, refundId: refund.id, refundedCents: feeCents, keptCents };
   } catch (err) {
     console.error("[switch-contractor] stripeRefund threw:", err);
     return { success: false, error: String(err) };
@@ -383,7 +428,7 @@ export async function handler(
 
     // ── 8. Stripe refund ──────────────────────────────────────────────────
     // gh-3323: widened to the stripeRefund() return shape so the module type-checks now that tests import it.
-    let refundResult: { success: boolean; refundId?: string; error?: string } = { success: false, refundId: undefined, error: "No payment found" };
+    let refundResult: RefundResult = { success: false, refundId: undefined, error: "No payment found" };
 
     // gh-3323 (Ben's ruling 6578880344): key by the claim's is_test, server-side from the row loaded above. An is_test
     // claim never gets the live key; one that holds a (possibly) live charge gets NO automatic refund at all.
@@ -434,7 +479,7 @@ export async function handler(
     let emailSent = false;
     if (contractorEmail && mailgunKey && mailgunDomain) {
       const refundLine = refundResult.success && refundResult.refundId
-        ? "Your platform fee has been refunded in full and will appear in your account within 5–10 business days."
+        ? refundedEmailLine(refundResult.refundedCents ?? 0, refundResult.keptCents ?? 0) // gh-3438: names the amounts (ruling 6669903256)
         : refundResult.success
           ? "No platform fee had been charged on this project, so no refund is necessary."
           : "We will process your platform fee refund separately. Please contact support at support@otterquote.com if you have questions.";
