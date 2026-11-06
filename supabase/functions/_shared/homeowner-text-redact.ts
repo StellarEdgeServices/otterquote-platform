@@ -83,7 +83,7 @@ export function foldForDetection(text: string): string {
 // recall on the signed SOW: "Limits 250/500/1000" is a figure list; "317/555-0142" is an accepted advisory leak).
 // Zero-width and soft-hyphen characters are ignored around a gap.
 const ZW = "[\\u00ad\\u200b-\\u200d\\u2060\\ufeff]*";
-const GAP = `${ZW}(?:[ \\t\\u00a0]+|[.\\-\\u2010-\\u2015])?${ZW}`;
+const GAP = `${ZW}(?:(?:[ \\t\\u00a0]+|[.\\-\\u2010-\\u2015])${ZW})?`; // same language as ZW, optional separator, ZW, without two runs that can split one run every way
 const ci = (w: string) => [...w].map((c) => `[${c.toUpperCase()}${c.toLowerCase()}]`).join("");
 const AT_W = ci("at");
 const DOT_W = ci("dot");
@@ -312,7 +312,7 @@ const dashDomainCounts = (all: string): boolean => {
 // Listed TLDs that are also words people start a line with ("Paid at closing.<break>net 30", "Leak at front.<break>co op").
 const WORD_TLDS = /^(?:net|org|dev|ca|uk|co|pro)$/;
 // "Look at t<break>he dot com era": the determiner rule above, with the break taken out.
-const DETERMINER_THEN_DOT = new RegExp(`(?<![A-Za-z0-9\\-])(?:${DETERMINERS})[ ]*[\\(\\[\\{<]?[ ]*${DOT_W}`);
+const DETERMINER_THEN_DOT = new RegExp(`(?<![A-Za-z0-9\\-])(?:${DETERMINERS})[ ]*(?:[\\(\\[\\{<][ ]*)?${DOT_W}`);
 function keepSplitEmail(all: string, sep: string, typedTld: string): boolean {
   if (!(all.includes(SOFT) || all.includes(DASH_IN_VIEW)) || DETERMINER_THEN_DOT.test(all.replaceAll(SOFT, ""))) return false;
   const tld = typedTld.replaceAll(SOFT, "");

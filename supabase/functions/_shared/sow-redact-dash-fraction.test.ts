@@ -139,6 +139,19 @@ for (const [label, H] of [["shared", Shared], ["local copy", Local]] as const) {
     }
     console.log(`worst ${Math.round(worst)} ms on ${worstShape}`);
   });
+  Deno.test(`gh-3461 folds (${label}): long runs of spaces and zero-width characters stay linear, and output does not change (REVIEW 6672775058)`, () => {
+    const n = 160000;
+    const rows: Array<[string, string]> = [
+      ["x@\nthe" + " ".repeat(n) + ".com", H.REMOVED_TOKEN], ["250" + "\u200b".repeat(n) + "x", "250x"], ["250" + "\u200b".repeat(n) + "-" + "\u200b".repeat(n) + "555-0142", H.REMOVED_TOKEN],
+      ["250" + "\u200b".repeat(n) + "500" + "\u200b".repeat(n) + "1000", H.REMOVED_TOKEN], ["x@the" + " ".repeat(n) + "dot com", H.REMOVED_TOKEN],
+    ];
+    for (const [t, want] of rows) {
+      const t0 = performance.now();
+      assertEquals(before(t), want, JSON.stringify(t.slice(0, 20)));
+      const ms = performance.now() - t0;
+      assert(ms < 1000, `${JSON.stringify(t.slice(0, 20))} took ${ms} ms`);
+    }
+  });
   Deno.test(`gh-3461 folds (${label}): long hostile runs finish in linear time`, () => {
     const n = 200000;
     const runs = ["\u200b".repeat(n), `end.${"\u200b".repeat(n)}x`, `\u0301`.repeat(n), `.\u0301`.repeat(n / 2), "-".repeat(n), "\u2014".repeat(n), `-\u2014`.repeat(n / 2), `a${"\u2014".repeat(n)}@b.com`, `\u2014@`.repeat(n / 2), `\u00bd`.repeat(n), `${" ".repeat(n)}@`, ` at `.repeat(n / 4), `x\u2014`.repeat(n / 2)];
