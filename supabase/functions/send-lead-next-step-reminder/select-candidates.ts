@@ -34,7 +34,12 @@ export const REMINDER_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 // gh-2378 (CRO51): the /ho6 landing page (PR #2384, js/oq-lead-core.js create
 // ({ variant: 'ho6' })) writes leads.variant = 'ho6'. Exact match only, like
 // the others. ho6 leads get their own copy (Variant A, email-content.ts).
-export const REMINDER_ELIGIBLE_VARIANTS: readonly string[] = ["f", "HO-2", "ho6"];
+//
+// gh-3420: 'd' is the live front-door router arm (start.html LIVE_VARIANTS,
+// gh-3136) -- 23 of 29 homeowner leads in the 30 days to 2026-11-05 -- and was
+// never reminded. Exact match only. 'd' leads get the default (non-ho6) copy;
+// that copy still needs the R-177 read the issue calls for before deploy.
+export const REMINDER_ELIGIBLE_VARIANTS: readonly string[] = ["f", "HO-2", "ho6", "d"];
 
 export type SkipReason =
   | "disabled"
@@ -114,7 +119,7 @@ export function selectLeadForReminder(
     return { send: false, skip_reason: "synthetic_lead" };
   }
   // Fix round 1, must-fix 6 (widened by gh-2300): homeowner role, and
-  // variant must be one of REMINDER_ELIGIBLE_VARIANTS ('f', 'HO-2' or 'ho6').
+  // variant must be one of REMINDER_ELIGIBLE_VARIANTS ('f', 'HO-2', 'ho6' or 'd').
   if (
     lead.role !== "homeowner" ||
     lead.variant === null ||
