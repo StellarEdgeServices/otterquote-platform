@@ -4634,11 +4634,11 @@
         return { can_submit: false, reason: 'Cannot determine contractor identity. Please refresh and try again.', status: null };
       }
       try {
-        const { data, error } = await sb.rpc('bid_can_submit', {
+        const { data, error } = await callWithTimeout(GATE_TIMEOUT_MS, (signal) => withAbortSignal(sb.rpc('bid_can_submit', {
           p_contractor_id: contractorId,
           p_trade: trade,
           p_funding_type: fundingType,
-        });
+        }), signal)); // gh-3498: a gate that never answers ends in the catch below (existing network-error message)
         if (error) {
           console.warn('[D-199] bid_can_submit RPC error:', error);
           return { can_submit: false, reason: 'Could not verify your contract template status. Please refresh and try again.', status: null };
@@ -4674,6 +4674,40 @@
     var _submitInFlight = false, _submitDone = false; // var: read by updateFeeCheckboxState, which can run before this line
     var FEE_LOOKUP_TIMEOUT_MS = 5000; // gh-3488: bound on the rate lookup
     var IP_LOOKUP_TIMEOUT_MS = 3000;  // gh-3488: bound on the ipify call (best-effort, falls back to 'unknown')
+    // gh-3498 (REVIEW 6675274132): the bid_can_submit gate and the quote insert are bounded too, so a stalled connection
+    // ends in the existing catch (message shown, button restored, inputs unlocked) instead of a locked "Submitting…".
+    // Both are longer than the lookups above; the insert is the longest because a landed insert must not be cut short early.
+    var GATE_TIMEOUT_MS = 10000;
+    var INSERT_TIMEOUT_MS = 20000;
+    // Runs start(signal) and gives up after ms: the request is aborted and the promise rejects with the abort reason
+    // (no new wording; callers show it through their existing error paths). A builder without abortSignal still races.
+    function callWithTimeout(ms, start) {
+      const ctl = new AbortController();
+      let timer;
+      const limit = new Promise((_, reject) => { timer = setTimeout(() => { ctl.abort(); reject(ctl.signal.reason); }, ms); });
+      return Promise.race([Promise.resolve().then(() => start(ctl.signal)), limit]).finally(() => clearTimeout(timer));
+    }
+    function withAbortSignal(builder, signal) {
+      return (builder && typeof builder.abortSignal === 'function') ? builder.abortSignal(signal) : builder;
+    }
+    // gh-3498: ONE idempotency key per bid being filed. It is generated at the first insert and kept across retries of the
+    // same bid (a retry after a timed-out insert must carry the same key, or the unique index cannot see it is the same bid);
+    // it is dropped when the bid's content changes or the bid is filed.
+    var _bidIdemKey = null, _bidIdemFp = null;
+    function bidIdempotencyKey(fingerprint) {
+      if (!_bidIdemKey || _bidIdemFp !== fingerprint) {
+        _bidIdemKey = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+          : 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+        _bidIdemFp = fingerprint;
+      }
+      return _bidIdemKey;
+    }
+    function isIdemViolation(err) {
+      return !!err && err.code === '23505' && /quotes_idempotency_key_uidx/.test((err.message || '') + ' ' + (err.details || ''));
+    }
+    function isIdemColumnMissing(err) { // migration not applied yet: the column is unknown to PostgREST
+      return !!err && /idempotency_key/.test(err.message || '') && (err.code === 'PGRST204' || err.code === '42703');
+    }
     let _feeAcceptanceCheckbox = document.getElementById('feeAcceptanceCheckbox');
     let _submitBtn = document.getElementById('submitBtn');
 
@@ -5558,11 +5592,20 @@
 
           } else {
 
-            const { data: insertedQuote, error } = await sb
-              .from('quotes')
-              .insert(quoteData)
-              .select('id')
-              .single();
+            // gh-3498: the insert carries an idempotency key and is bounded. If a timed-out insert actually landed, the retry
+            // (same key) hits the unique index and the existing row is read back as the result, so no second bid is filed.
+            quoteData.idempotency_key = bidIdempotencyKey([currentClaim.id, currentContractor.id, quoteData.trade_type, quoteData.total_price].join('|'));
+            const _insertOnce = () => callWithTimeout(INSERT_TIMEOUT_MS, (signal) => withAbortSignal(sb.from('quotes').insert(quoteData).select('id').single(), signal));
+            let { data: insertedQuote, error } = await _insertOnce();
+            if (error && isIdemColumnMissing(error)) { // the column is not in this database yet: file the bid as before
+              delete quoteData.idempotency_key;
+              ({ data: insertedQuote, error } = await _insertOnce());
+            }
+            if (error && isIdemViolation(error)) {
+              const { data: existingByKey, error: readBackErr } = await callWithTimeout(INSERT_TIMEOUT_MS, (signal) => withAbortSignal(
+                sb.from('quotes').select('id').eq('idempotency_key', quoteData.idempotency_key).maybeSingle(), signal));
+              if (!readBackErr && existingByKey && existingByKey.id) { insertedQuote = existingByKey; error = null; }
+            }
 
             if (error) throw error;
 
@@ -5659,6 +5702,7 @@
         }
         successState.classList.add('show');
         _submitDone = true; // gh-3488: the button stays disabled on the success screen
+        _bidIdemKey = null; _bidIdemFp = null; // gh-3498: this bid is filed; its key is spent
         // Clear wizard localStorage state on successful submission
         clearWizardState();
       } catch (err) {
