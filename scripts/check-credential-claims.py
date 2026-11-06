@@ -487,7 +487,7 @@ ALLOWLIST = [
     ),
     (
         "blog/storm-chaser-roofing-scams.html",
-        "advises dealing with licensed and insured contractors",
+        "FTC, 2003</a>, advises dealing with licensed and insured contractors",
         "Generic consumer advice to verify your own contractor's insurance and any "
         "license your area requires, sourced to the FTC (2003); no claim about "
         "marketplace contractors.",
