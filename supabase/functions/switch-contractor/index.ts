@@ -388,6 +388,8 @@ export async function handler(
     // set) is left untouched as the record of what was signed.
     const clearUnsignedColourEnvelope =
       !!claim.color_confirmation_envelope_id && !claim.color_confirmed_at;
+    // gh-3493: compare-and-swap on the status read at step 2 (.eq("status", claim.status) below). Of two concurrent requests
+    // only one matches; the loser's returned row count is 0 (checkRowsWritten) and it stops at the existing 500, before any refund or email.
     const { error: claimUpdateError, data: claimUpdateRows } = await sb
       .from("claims")
       .update({
@@ -398,8 +400,6 @@ export async function handler(
         ...(clearUnsignedColourEnvelope ? { color_confirmation_envelope_id: null } : {}),
       })
       .eq("id", claim_id)
-      // gh-3493: compare-and-swap on the status read at step 2. Of two concurrent requests only one matches; the other
-      // writes zero rows and stops at the existing 500 below, before any refund or email.
       .eq("status", claim.status)
       .select("id");
 
