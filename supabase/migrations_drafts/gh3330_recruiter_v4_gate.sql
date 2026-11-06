@@ -8,9 +8,15 @@
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- Migration: gh3330_recruiter_v4_gate
--- GitHub: #3330. Money: Tier 3B (CREATE OR REPLACE of a SECURITY DEFINER money trigger function). Ruled: Dustin, 2026-11-02 13:17 ET
---   (recorded on #3330, comment 6584786600): asked whether a recruiter who has not accepted v4 earns the $50 bonus, "No." Withheld rather than
---   dropped. (Ben's earlier answer 6583394572 was retracted at 6584765173; its D-405 premise was wrong. The ruling stands on Dustin's word.)
+-- GitHub: #3330. Money: Tier 3B (CREATE OR REPLACE of a SECURITY DEFINER money trigger function).
+-- Authority: D-417, registered at #3330 comment 6667313714: "A recruiter must have accepted Partner Agreement v4 to earn the $50 recruit bonus, and the
+--   release path requires v4 (a recruiter who has not accepted v4 does not get the $50 released) (#3330)." Its annotation of 2026-11-05 (#3330 comment
+--   6668603250): the v4 requirement applies to partners who signed v3; no $50 accrues to any partner until they accept Partner Agreement v4.
+--   Dustin's words, as recorded on #3330: "No." (2026-11-02 13:17 ET, comment 6584786600) and "Yes, v3 signers must accept v4 (Recommended)"
+--   (2026-11-05, comment 6668571465). The record does not attribute "withheld rather than dropped" to him: that phrase came from Marty's proposal 6582010408
+--   and Ben's answer 6583394572, which Ben withdrew at 6584765173. The code withholds only in the sense that it writes no bonus (see below).
+-- Open, not decided here: whether a recruiter who accepts v4 later is paid for a referral that completed before they accepted. The code pays nothing
+--   for it, and the question is open on #3330 (Marty's Q 6673399375, item 1).
 --   Needs REVIEW + LEGAL-READ + R-177 pair; CTO applies after R-097.
 -- DEPENDS ON gh3239 (partner_v4_accepted_at()) and gh3245 (the body this restates). Refuses to run on any other body.
 -- Rollback: gh3330_recruiter_v4_gate_rollback.sql   Pre-flight: gh3330_recruiter_v4_gate_pre-flight.md
