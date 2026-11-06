@@ -69,3 +69,28 @@ for (const [name, H] of [["shared", Shared], ["local", Local]] as const) {
 Deno.test("[gh-3506 / ruling 6689811189] both copies agree on the accepted rows", () => {
   for (const [typed] of [...ACCEPTED_PRINTS, ...Q1_STAYS_REMOVED]) assertEquals(Local.redactSowText(typed), Shared.redactSowText(typed), JSON.stringify(typed));
 });
+
+// [LEGAL-READ 6689982421 A] The date prefix is anchored on its left: digits after something that is not a written date are still removed, as on main.
+const NOT_A_DATE_REMOVED: Array<[string, string]> = [
+  ["1234/5/2025\n55\n0142", "1234/5/[removed]"], ["111/11/2025\n55\n0142", "111/11/[removed]"], ["x/1/1/2025\n55\n0142", "x/1/1/[removed]"], ["7may 3 2025\n55\n0142", "7may 3 [removed]"],
+  ["Date:11/15/2026\n1500\n25", "Date:11/15/2026 1500 25"], ["(11/15/2026\n1200\n50)", "(11/15/2026 1200 50)"],
+];
+// [ruling 6689811189; PENDING Ben's Q 6689995307] ACCEPTED CURRENT BEHAVIOUR, NOT PROTECTED: the same phone split by a tab, a middle dot or a bullet instead of a line break, by \r\n, or by doubled breaks. The redactor reads
+// all of these as the same dropped-character mark (ruling A 6669920816), so they are digit for digit the dates "Nov 15, 2026<mark>1200<mark>50" that must print. If Ben's answer is no, these rows change with it. Years 2000-2009 read
+// as area code 200, which is unassigned, so "Nov 1, 2005<break>55<break>0142" prints too and is not a real phone.
+const PENDING_Q_PRINTS: Array<[string, string]> = [
+  ["Nov 1, 2025\u00b755\u00b70142", "Nov 1, 2025 55 0142"], ["11/1/2025\u202255\u20220142", "11/1/2025 55 0142"], ["Nov 1, 2025\t55\t0142", "Nov 1, 2025 55 0142"],
+  ["Nov 1, 2025\r\n55\r\n0142", "Nov 1, 2025 55 0142"], ["Nov 1, 2025\n\n55\n\n0142", "Nov 1, 2025 55 0142"], ["Nov 15, 2026\u00b71200\u00b750", "Nov 15, 2026 1200 50"],
+  ["Nov 1, 2005\n55\n0142", "Nov 1, 2005 55 0142"],
+];
+for (const [name, H] of [["shared", Shared], ["local", Local]] as const) {
+  Deno.test(`[gh-3506 / LEGAL-READ 6689982421] ${name}: a prefix that is not a written date gets no exemption`, () => {
+    for (const [typed, want] of NOT_A_DATE_REMOVED) assertEquals(printsAs(H.redactSowText(typed)), want, JSON.stringify(typed));
+  });
+  Deno.test(`[gh-3506 / ruling 6689811189, Q 6689995307 pending] ${name}: tab, middle dot, bullet, \\r\\n and doubled breaks print as pinned`, () => {
+    for (const [typed, want] of PENDING_Q_PRINTS) assertEquals(printsAs(H.redactSowText(typed)), want, JSON.stringify(typed));
+  });
+}
+Deno.test("[gh-3506 / 6689982421, 6689995307] both copies agree on the new rows", () => {
+  for (const [typed] of [...NOT_A_DATE_REMOVED, ...PENDING_Q_PRINTS]) assertEquals(Local.redactSowText(typed), Shared.redactSowText(typed), JSON.stringify(typed));
+});
