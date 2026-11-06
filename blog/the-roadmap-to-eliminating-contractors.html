@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>The Roadmap to Eliminating Contractors · Otter Quotes</title>
+<meta name="description" content="I ran roofing companies for 15 years. Here is my prediction: within a year, the roofing contractor as we know it disappears.">
+<link rel="canonical" href="https://otterquote.com/blog/the-roadmap-to-eliminating-contractors.html">
+<meta property="og:title" content="The Roadmap to Eliminating Contractors · Otter Quotes">
+<meta property="og:description" content="I ran roofing companies for 15 years. Here is my prediction: within a year, the roofing contractor as we know it disappears.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/blog/the-roadmap-to-eliminating-contractors.html">
+<meta property="og:image" content="https://otterquote.com/img/social/og-default.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Otter Quotes: Contractors Compete. Homeowners Win. A cartoon otter in a hard hat.">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:author" content="Dustin Stohler">
+<meta property="article:published_time" content="2026-11-06">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script src="/js/linkedin-insight-gate.js"></script>
+<script src="/js/reddit-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+.page-hero { padding: var(--sp-16) 0 var(--sp-12); text-align: center; background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%); }
+.page-hero h1 { margin-bottom: var(--sp-4); }
+.page-hero .subtitle { max-width: 700px; margin: 0 auto; font-size: 1.1rem; color: var(--dark-gray); }
+.page-hero .meta { font-size: 0.9rem; color: var(--gray); margin-top: var(--sp-4); }
+.article-body { max-width: 760px; margin: 0 auto; padding: 0 var(--sp-6); }
+.article-intro { background: rgba(224, 123, 0, 0.06); border-left: 4px solid var(--amber); padding: var(--sp-6); margin-bottom: var(--sp-10); border-radius: var(--radius-md); }
+.article-intro p { font-size: 1.05rem; color: var(--dark-gray); line-height: 1.8; }
+.step { margin-bottom: var(--sp-10); padding-bottom: var(--sp-8); border-bottom: 1px solid rgba(255,255,255,0.06); }
+.step:last-of-type { border-bottom: none; }
+.step h2 { margin-bottom: var(--sp-3); margin-top: var(--sp-2); }
+.step p { color: var(--dark-gray); margin-bottom: var(--sp-4); line-height: 1.8; }
+.step ul { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step li { margin-bottom: var(--sp-3); color: var(--dark-gray); line-height: 1.7; }
+.step li strong { color: var(--navy); }
+.step em { color: var(--amber); font-style: italic; }
+.highlight-box { background: rgba(245, 158, 11, 0.08); border-left: 4px solid #E07B00; padding: var(--sp-4) var(--sp-6); margin: var(--sp-6) 0; border-radius: var(--radius-md); }
+.highlight-box strong { color: var(--navy); }
+.highlight-box, .highlight-box p { color: var(--dark-gray); line-height: 1.7; }
+.warning-box { background: rgba(239, 68, 68, 0.08); border-left: 4px solid var(--red); padding: var(--sp-4) var(--sp-6); margin: var(--sp-6) 0; border-radius: var(--radius-md); }
+.warning-box strong { color: var(--navy); }
+.warning-box, .warning-box p { color: var(--dark-gray); line-height: 1.7; }
+.cta-box { background: var(--navy-2); border: 1px solid rgba(224, 123, 0, 0.2); padding: var(--sp-10); border-radius: var(--radius-lg); margin: var(--sp-10) 0; text-align: center; }
+.cta-box h3 { color: var(--white); margin-bottom: var(--sp-4); }
+.cta-box p { color: var(--slate); margin-bottom: var(--sp-6); line-height: 1.6; }
+.related-links { background: var(--navy-2); border: 1px solid rgba(255,255,255,0.06); padding: var(--sp-6) var(--sp-8); border-radius: var(--radius-lg); margin: var(--sp-10) 0; }
+.related-links h3 { color: var(--white); margin-bottom: var(--sp-4); font-size: 1.05rem; }
+.related-links ul { margin-left: var(--sp-6); }
+.related-links li { margin-bottom: var(--sp-2); line-height: 1.7; }
+.faq-section { background: var(--navy-2); padding: var(--sp-10) var(--sp-8); border-radius: var(--radius-lg); margin-top: var(--sp-12); border: 1px solid rgba(255,255,255,0.06); }
+.faq-section h2 { margin-bottom: var(--sp-8); text-align: center; color: var(--white); }
+.faq-item { margin-bottom: var(--sp-6); border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: var(--sp-6); }
+.faq-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.faq-item h3 { color: var(--white); font-family: var(--font-body); font-size: 1.05rem; font-weight: 600; margin-bottom: var(--sp-3); cursor: pointer; display: flex; align-items: center; user-select: none; transition: color var(--duration) var(--ease); }
+.faq-item h3:hover { color: var(--amber); }
+.faq-item h3::before { content: "\25B6"; color: var(--amber); margin-right: var(--sp-3); font-size: 0.8rem; transition: transform 0.3s var(--ease); }
+.faq-item.active h3::before { transform: rotate(90deg); }
+.faq-answer { color: var(--slate); line-height: 1.8; display: none; padding-left: var(--sp-6); }
+.faq-item.active .faq-answer { display: block; }
+.back-link { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--link-on-light, #A85C00); font-size: 0.9rem; font-weight: 500; margin-bottom: var(--sp-8); transition: color var(--duration) var(--ease); }
+.back-link:hover { color: var(--link-on-light-deep, #7A4200); text-decoration: none; }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.table-wrap { overflow-x: auto; margin-bottom: var(--sp-6); }
+.step table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+.step th, .step td { text-align: left; vertical-align: top; padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid rgba(255,255,255,0.06); color: var(--dark-gray); line-height: 1.6; }
+.step th { color: var(--navy); font-weight: 600; }
+@media (max-width: 768px) { .article-body { padding: 0 var(--sp-4); } .cta-box { padding: var(--sp-6) var(--sp-4); } .faq-section { padding: var(--sp-6) var(--sp-4); } }
+</style>
+<style id="breadcrumb-css">.breadcrumb ol{list-style:none;display:flex;flex-wrap:wrap;gap:.25rem .5rem;justify-content:inherit;margin:0 0 var(--sp-4);padding:0;font-size:.85rem}.breadcrumb li+li:before{content:"\203A";margin-right:.5rem;opacity:.7}.breadcrumb a{color:inherit;text-decoration:underline}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <nav class="breadcrumb" data-seo-crumb="1" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/blog/">Blog</a></li><li aria-current="page">The Roadmap to Eliminating Contractors</li></ol></nav>
+      <h1>The Roadmap to Eliminating Contractors</h1>
+    <p class="meta">By <a href="/about.html" style="color:inherit;text-decoration:underline">Dustin Stohler</a> · November 6, 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/blog/" class="back-link">&#8592; All Articles</a>
+
+    <section class="step">
+      <h2>The contractor is a bundle, and bundles come apart</h2>
+      <p>I ran roofing companies for 15 years. Here is my prediction: within a year, the roofing contractor as we know it disappears.</p>
+      <p>The roofer doesn't disappear. Someone will always climb the ladder, tear off the old shingles and nail down new ones. What disappears is everything stacked on top of that crew: the office manager, the sales manager, the production manager, the canvassers, the commissions, the wrapped trucks and the overhead that pays for all of it.</p>
+      <p>Americans spend more than $80 billion a year replacing roofs, siding, windows and doors (Harvard Joint Center for Housing Studies). By my math, $25 billion of that pays for things that add nothing to their homes. In every job we did, labor and materials were 60 to 70% of the price. The rest was the cost of being a contractor.</p>
+      <p>A contractor is really a bundle of four jobs: keep track of everything, sell the job, run the install, and close it out (callbacks and collections). AI is now good enough to take each of those jobs one at a time. Here is the roadmap, piece by piece: what we're building at Otter Quotes, and what a lot of very smart people at other companies are building toward the same end.</p>
+    </section>
+
+    <section class="step">
+      <h2>I. The CRM is the hub</h2>
+      <p>Replacing a contractor takes more than a CRM with AI sprinkled on top. It takes a CRM that <em>is</em> the office: every call in, every call out, every callback, every payment, every photo, all in one record that the AI works from and writes back to.</p>
+      <h3>What we're building: OQ CRM</h3>
+      <p>OQ CRM is built around one idea. The office manager, the sales manager and the production manager collapse into one person who supervises the machines. Each of our voice services takes a slice of one of those three jobs, and every one of them reads from and writes to the same CRM:</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Service</th><th>The job it takes</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td>Inbound Manager</td><td>Office manager</td><td>Answers every call, any hour, qualifies the caller and books the appointment</td></tr>
+          <tr><td>File Manager</td><td>Office manager</td><td>Keeps every job file complete: documents, photos, insurance paperwork</td></tr>
+          <tr><td>Cold Lead Manager</td><td>Sales manager</td><td>Works old and stale leads until they book or opt out</td></tr>
+          <tr><td>Outbound Sales Engine</td><td>Sales manager</td><td>Calls the prospects a team never gets to, and logs every call</td></tr>
+          <tr><td>Callback Manager</td><td>Production manager</td><td>Takes the warranty call, lists the parts, routes the crew, texts the homeowner an ETA</td></tr>
+          <tr><td>Collections</td><td>Production manager</td><td>Chases deductibles, insurance checks, mortgage endorsements and supplements</td></tr>
+        </tbody>
+      </table></div>
+      <p>Here is where it's headed. A storm hits at 2 a.m. Inbound Manager answers 600 calls, and nobody is on hold. Every caller is qualified, booked and texted a confirmation before sunrise. The measurement report lands on the job automatically. The proposal goes out the same morning. When the homeowner signs, the materials are ordered, the crew is scheduled and the homeowner gets an ETA. After the install, the drone's photos are on the job, Collections is already working the insurance check, and Callback Manager is waiting for the call that hopefully never comes. One person watches the dashboard and steps in only when something breaks.</p>
+      <p><strong>How the pricing works.</strong> The core CRM is free, with unlimited users: contacts, the job pipeline, estimates, invoices, scheduling, photos and team management. Each AI service is bought on its own. Take one, take all six, or turn one off next month. You pay for what you use, metered per call and billed at cost plus a margin. Setup is self-service, with no implementation call. Our plan is to get in the door with one service and earn the next one.</p>
+      <h3>Where everyone else is</h3>
+      <p>Every major contractor CRM is racing toward the same place. Here's where the biggest names stand today:</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Company</th><th>What's shipped</th><th>Still in progress</th></tr></thead>
+        <tbody>
+          <tr><td><a href="https://www.fool.com/earnings/call-transcripts/2026/06/05/servicetitan-ttan-q1-2027-earnings-transcript/" target="_blank" rel="noopener">ServiceTitan</a></td><td>AI voice agents that book onto the dispatch board, recently including outbound calls; "Max" fully automates over 10% of jobs at some customers</td><td>Atlas co-pilot shown as a prototype; mostly HVAC and plumbing; setup still manual</td></tr>
+          <tr><td><a href="https://www.rooferscoffeeshop.com/post/the-industrys-first-ai-answering-service-is-here" target="_blank" rel="noopener">JobNimbus</a></td><td>AssistAI answers roofing calls 24/7 and books into the calendar</td><td><a href="https://www.fieldtechnologiesonline.com/doc/jobnimbus-unveils-scout-a-mobile-ai-assistant-designed-for-real-time-field-work-0001" target="_blank" rel="noopener">Scout</a> field assistant in closed beta; <a href="https://www.utahbusiness.com/press-releases/2026/08/05/jobnimbus-launches-nimbuslabs-early-access-program-new-features/" target="_blank" rel="noopener">NimbusLabs</a> early access</td></tr>
+          <tr><td><a href="https://roofr.com/ai-receptionist" target="_blank" rel="noopener">Roofr</a></td><td>AI Receptionist with instant ballpark quotes, $99/month with 200 minutes</td><td>AI websites, reporting and agents on the roadmap</td></tr>
+          <tr><td><a href="https://www.pmmag.com/articles/106754-jobber-launches-ai-powered-receptionist" target="_blank" rel="noopener">Jobber</a></td><td>AI Receptionist answering calls and texts; AI-drafted quotes; voice commands</td><td>A companion that drafts quotes during your call is "coming soon"</td></tr>
+          <tr><td><a href="https://help.housecallpro.com/en/articles/9311875-ai-team-overview" target="_blank" rel="noopener">Housecall Pro</a></td><td>Five AI "teammates," including an AI CSR that books jobs</td><td>Text answering "coming soon"</td></tr>
+          <tr><td><a href="https://www.rooferscoffeeshop.com/post/acculynx-launches-new-ai-powered-lead-intelligence-feature-to-help-roofing-companies-improve-sales" target="_blank" rel="noopener">AccuLynx</a></td><td>AI lead scoring</td><td>Positioned as a data layer that outside AI plugs into</td></tr>
+        </tbody>
+      </table></div>
+      <p>And there's a new crop of AI-first startups going straight at roofing. <a href="https://www.roofingcontractor.com/articles/101559-netic-ai-for-roofing-receives-23m-in-series-b-funding" target="_blank" rel="noopener">Netic</a> raised $23 million from Founders Fund. <a href="https://www.pulse.bot/saas/news/xbuild-raises-19m-to-launch-ai-powered-residential-roofing-contract-estimation-product-77a3578c-3877-4d41-9ad8-4b798f18e68a" target="_blank" rel="noopener">XBuild</a> raised $19 million from Andreessen Horowitz and N47 to write roofing estimates with AI.</p>
+      <p>The pattern is easy to see. Inbound answering is solved. Outbound is just starting. Follow-up after the first call is thin almost everywhere. Most tools are metered by the minute and bolted onto a CRM that was designed before any of this existed.</p>
+      <p>I don't say that as a knock. These are great companies with great people, and with today's AI tools they'll close those gaps fast. That's my point: this isn't a pipe dream in my head. The whole industry is building the same machine, and it's going to get built.</p>
+    </section>
+
+    <section class="step">
+      <h2>II. Sales: eliminating the entire sales force</h2>
+      <p>The sales force is hands down the biggest value contractors bring to the table. It's also the biggest line item on a contractor's P&amp;L. That makes it the most lucrative and the most challenging part of the industry to automate. But there are a lot of players with a lot of solutions.</p>
+      <p>At Otter Quotes, we eliminate that expense. We generate a scope of work for the homeowner, send it to multiple contractors, and let them bid on our platform. A contractor can open his laptop, submit a bid and win the job. No sales rep, no truck, no wrap, none of the hundreds of other expenses that go into getting a piece of paper signed.</p>
+      <p>The sales manager's job is a funnel: answer the phone, qualify the homeowner, measure the roof, price it, follow up and close. Every step but the last is already automated somewhere, and the money says investors believe the last one is next.</p>
+      <p>Two of our voice services take this seat too. <strong>Cold Lead Manager</strong> works old and stale leads until they book or opt out. Our <strong>Outbound Sales Engine</strong> calls the people a contractor's team never gets to, within the consent rules, and logs every call in the CRM.</p>
+      <p>There's no shortage of companies building toward the same thing:</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Company</th><th>What it automates</th><th>Where it stands</th></tr></thead>
+        <tbody>
+          <tr><td><a href="https://fortune.com/2026/04/27/avoca-ai-agents-missed-calls-hvac-plumbing-roofing-kleiner-perkins-chen-shrivastava-braswell/" target="_blank" rel="noopener">Avoca</a></td><td>AI answers calls, books jobs and follows up on estimates for HVAC, plumbing and roofing</td><td>$1 billion valuation and $125M+ raised (April 2026); 800+ customers</td></tr>
+          <tr><td>Hatch</td><td>AI text, email and voice that engage and qualify leads and reactivate old ones</td><td>Yelp bought it for about $270 million (January 2026); about $37M in annual recurring revenue, up 55%</td></tr>
+          <tr><td>Netic</td><td>AI intake and booking for roofers and other trades</td><td>$23M Series B at a $450M valuation (November 2025); one roofer handled 600+ storm calls in 90 minutes</td></tr>
+          <tr><td>Sameday AI</td><td>AI phone answering and booking, including after hours</td><td>Founded by former roofing and pest-control operators; names a roofing company as a customer</td></tr>
+          <tr><td>Rilla</td><td>Records and scores in-home sales appointments, then coaches the rep</td><td>Home Depot deal (January 2026); about $70M in annual revenue (Sacra estimate)</td></tr>
+          <tr><td>Siro</td><td>Records and coaches field sales conversations</td><td>$50M Series B (May 2025); claims 36% higher close rates</td></tr>
+          <tr><td>Roofle (SalesRabbit)</td><td>Instant online roof quote on the contractor's site, with financing and material ordering</td><td>Bought by SalesRabbit (January 2026); sold through QXO</td></tr>
+          <tr><td>Roofr</td><td>Measurement reports, instant estimates and proposals</td><td>Series B led by TCV with ABC Supply (April 2025); 12,000+ contractors</td></tr>
+          <tr><td>Hover</td><td>Phone photos into a 3D model, estimate and signed proposal</td><td>Relaunched as one platform (January 2026); 300,000+ contractors</td></tr>
+        </tbody>
+      </table></div>
+      <p>The gap is the close. A homeowner can already get an honest price at midnight without talking to anyone. I couldn't find a roofing company that signs a full replacement online with no human in the loop yet. Rilla and Siro are making salespeople better, not removing them. And outbound AI calling runs into the FCC's 2024 ruling that AI voices count as "artificial" under the TCPA, so marketing calls need written consent first.</p>
+      <p>None of that worries me. The answering, qualifying, measuring and quoting are already solved, and closing is just the last conversation. My prediction: the companies above figure it out within the next year, and the commissioned in-home salesman becomes the exception, not the rule.</p>
+    </section>
+
+    <section class="step">
+      <h2>III. Production: a drone on every job</h2>
+      <h3>Pre-install</h3>
+      <p>The hardest part of a production manager's job has got to be dealing with incomplete paperwork from sales reps. An AI caller could easily find the missing data and get it from the sales rep, the homeowner or the adjuster. That's the job our <strong>File Manager</strong> is built for. Once the data on each job is clean, the rest of the ordering process is simple. When I used AccuLynx and JobNimbus back in 2022, they had already automated most of it.</p>
+      <h3>Install</h3>
+      <p>A lot of contractors will talk about the value they add by overseeing the crew and the quality of the work. But think about how inefficient the current system is. The sub has a manager running the crew. The contractor has a production manager watching the crew. The sales rep is there to talk to the customer. The inefficiency and the games of telephone this creates are insane.</p>
+      <p>When subs deal directly with homeowners, the rational business decision is to invest more in the crew manager and remove the production manager and the sales rep from the equation. Get someone who can manage the crew, has the people skills to work directly with the homeowner, and makes sure his guys do high-quality work so he doesn't have to come back for repairs.</p>
+      <h3>Oversight</h3>
+      <p>The production manager's real job is to be a second set of eyes. He drives from roof to roof, checks the crew, and catches the mistakes that turn into leaks and callbacks two years later. He can't be on every roof at once, and he can't see much from the driveway.</p>
+      <p>A drone can. Drones already find hail and wind damage well enough that insurers and contractors use them every day:</p>
+      <ul>
+        <li><a href="https://www.newswire.com/news/imging-becomes-first-drone-platform-with-on-site-roof-measurements-20845602" target="_blank" rel="noopener">Loveland Innovations' IMGING</a> flags hail hits and wind-blown shingles from automated drone flights.</li>
+        <li><a href="https://www.eagleview.com/eagleview/eagleview-assess-expands-drone-roof-inspection-solution" target="_blank" rel="noopener">EagleView Assess</a>, flown on Skydio drones, captures the roof autonomously and flags damage with AI. EagleView's own launch coverage said the imagery could support "checking the quality of completed work" (<a href="https://dronedj.com/2022/10/24/eagleview-assess-roof-inspection-drone/" target="_blank" rel="noopener">DroneDJ</a>).</li>
+        <li><a href="https://www.zeitview.com/resource/5-advantages-of-ai-powered-roof-inspections-for-hail-damage" target="_blank" rel="noopener">Zeitview</a> flags hail, ponding and rust from aerial imagery.</li>
+        <li>In the UK, <a href="https://rcimag.co.uk/news/checktrade-drones-and-ai-tipped-to-improve-roofing-standards" target="_blank" rel="noopener">Checkatrade</a> is piloting drone surveys that AI scores for workmanship, at under £100 a survey.</li>
+      </ul>
+      <p>Now point that drone at the install instead of the damage. Program it to fly the roof after each course goes down, and it can check the things a human misses from the ground or skips at 4 p.m. on a Friday:</p>
+      <ul>
+        <li>Every nail inside the nail strip, at the right count per shingle, and none high or overdriven.</li>
+        <li>Shingle exposure and alignment, course by course.</li>
+        <li>Starter strip, drip edge and ice-and-water shield in the right places before they're covered.</li>
+        <li>Flashing at every wall, chimney and valley.</li>
+        <li>A timestamped photo record of every step, attached to the job in the CRM for the warranty.</li>
+      </ul>
+      <p>This is the one place a machine beats a person outright. Nails get covered by the next course, so nobody checks them after the fact. A drone that flies during the work sees every one.</p>
+      <p>Nobody is selling this yet. I couldn't find a product, pilot or paper that inspects nail placement automatically. The closest work is academic: a <a href="https://www.frontiersin.org/journals/built-environment/articles/10.3389/fbuil.2022.1026225/full" target="_blank" rel="noopener">study</a> that detects missing shingles from drone photos at 81% accuracy. Damage-detection vendors don't publish accuracy numbers either, and most contractors still verify by hand.</p>
+      <p>Meanwhile, the install itself is starting to automate. <a href="https://roofingcontractor.com/articles/100025-renovate-robotics-partners-with-certainteed-to-innovate-robotic-roofing-technology" target="_blank" rel="noopener">Renovate Robotics' Rufus</a> is a robot that places and nails asphalt shingles. CertainTeed's parent, Saint-Gobain, invested in it. Recent coverage says it is doing paid re-roofs in New Jersey and Pennsylvania at about three times a human's pace (<a href="https://www.startupselfie.net/2026/06/10/rufus-roofing-robot-shingle-installation/" target="_blank" rel="noopener">StartupSelfie</a>). A crew still runs the ground, and the robot doesn't tear off or flash.</p>
+      <p>My prediction: drone-verified installs become a warranty requirement before they become a regulation. The first manufacturer to say "we'll double your warranty if a drone signed off on every course" changes the industry overnight. Then the production manager's clipboard is a dashboard.</p>
+    </section>
+
+    <section class="step">
+      <h2>IV. After the install: callbacks and collections</h2>
+      <p>Once the last shingle is down, the job comes down to two things: fixing what the homeowner calls about, and getting paid. Both are repetitive, both are mostly phone calls, and both are where good companies quietly lose money.</p>
+      <h3>Callbacks: OQ Callback Manager</h3>
+      <p>OQ Callback Manager answers the homeowner's call, any hour. It records the problem and the photos in the CRM, and drafts a shopping list of the materials the tech will likely need (the tech always confirms it). It then builds the callback crew's day in the order that drives the fewest miles, and texts each homeowner an ETA. That's the production manager's least favorite job, done every day without being asked.</p>
+      <p>The pieces exist elsewhere, but nobody has put them together for callbacks:</p>
+      <ul>
+        <li><a href="https://www.servicetitan.com/blog/pantheon-2025-pro-products-automation" target="_blank" rel="noopener">ServiceTitan</a>'s AI voice agent books calls straight onto the dispatch board using live tech availability. ServiceTitan reports a 10% lift in bookings and 15% fewer abandoned calls. It still can't attach call notes to the job it books (<a href="https://help.servicetitan.com/roofing/docs/ai-voice-agent-for-basic-phones-and-phones-pro-faq.md" target="_blank" rel="noopener">FAQ</a>).</li>
+        <li><a href="https://www.getjobber.com/ai-receptionist/" target="_blank" rel="noopener">Jobber Receptionist</a> answers calls and texts, then creates the work request. It handled 200,000+ conversations in its first months (<a href="https://www.pmmag.com/articles/106754-jobber-launches-ai-powered-receptionist" target="_blank" rel="noopener">PM Magazine</a>).</li>
+        <li><a href="https://www.rooferscoffeeshop.com/post/the-industrys-first-ai-answering-service-is-here" target="_blank" rel="noopener">JobNimbus AssistAI</a> answers roofing calls 24/7 and books them into the calendar.</li>
+        <li><a href="https://www.zuper.co/blog/best-roofing-crm-2026" target="_blank" rel="noopener">Zuper</a> says one roofer absorbed a 458% call spike after a storm with its AI agent.</li>
+        <li>Route optimizers like <a href="https://www.worktruckonline.com/news/optimoroute-raises-65-million-powers-ahead" target="_blank" rel="noopener">OptimoRoute</a> have solved the driving puzzle for years.</li>
+      </ul>
+      <p>What I couldn't find is anyone treating the warranty callback as its own workflow. Today it's an ordinary service call run through a generic stack. My prediction: someone wires intake, parts and routing together for callbacks within the next year. I'd like it to be us.</p>
+      <h3>Collections: OQ Collections</h3>
+      <p>Collections is the most repetitive job in roofing. Call the homeowner for the deductible, call the insurer for the depreciation check, call the mortgage company for the endorsement, call the adjuster about the supplement. Then call them all again next week. Collections doesn't stall because it's hard. It stalls because the person whose job is to make the call doesn't make it.</p>
+      <p>OQ Collections is an outbound AI caller that makes those calls on schedule, logs every answer in the CRM and escalates only what needs a person. It takes the chasing off contractors and subs entirely.</p>
+      <p>AI collections already works, just not for us yet:</p>
+      <ul>
+        <li><a href="https://yourstory.com/2025/12/prodigal-ai-debt-collection-loan-servicing-platform-funding" target="_blank" rel="noopener">Prodigal</a> runs voice, text and email collections for 100+ lenders, and reports up to 12% more payments.</li>
+        <li><a href="https://www.smartcustomerservice.com/Articles/News-Briefs/Skit.ai-Launches-Multichannel-Offerings-for-Debt-Collections-163087.aspx" target="_blank" rel="noopener">Skit.ai</a> and <a href="https://www.newswire.ca/news-releases/debt-collection-enters-a-new-era-powered-by-vodex-s-voice-ai-agents-864754151.html" target="_blank" rel="noopener">Vodex</a> make outbound collection calls for agencies at a volume no human team matches.</li>
+        <li><a href="https://www.paystand.com/blog/meet-the-digital-employees-joining-the-paystand-network" target="_blank" rel="noopener">Paystand</a> has a collections agent in private beta, and Zuper lists an AR agent as "coming soon."</li>
+        <li>Contractor tools like <a href="https://acculynx.com/managing-insurance-restoration-roofing-jobs/" target="_blank" rel="noopener">AccuLynx</a> track mortgage checks and supplements, but a human still logs and chases each one.</li>
+      </ul>
+      <p>The gap is obvious. AI that collects consumer debt for banks works today, and I haven't found anyone pointing it at a stuck insurance check yet. It will be. When it is, the last reason a roofing company needs an office disappears.</p>
+    </section>
+
+    <section class="step">
+      <h2>What's left of the contractor</h2>
+      <p>Put the four pieces together. The CRM runs the office. AI answers, qualifies, quotes and follows up. A drone checks every course. AI makes the callbacks and the collection calls. What's left is the part the homeowner actually pays for: skilled people on the roof, and one person watching over the whole thing.</p>
+      <p>That isn't the end of the roofer. It's the end of the 30 to 40% the homeowner pays for everything else. And when the bundle comes apart, it stops making sense to buy the bundle. Homeowners will hire the crew and the platform separately, and the crews will compete on the one thing that matters: the work.</p>
+      <p>That's why I built Otter Quotes. Homeowners bring us their scope of work, contractors compete to win it, and every piece of overhead we can automate is money back in the homeowner's pocket. My goal is to put $25 billion back where it belongs.</p>
+      <p>If you run a roofing company, you can fight this or get ahead of it. I know which one I'd pick.</p>
+      <p><em>Agree? Think I'm crazy? Tell me in the comments. And if you're building any of this, I want to talk to you.</em></p>
+    </section>
+
+    <section class="step">
+      <h2>Sources</h2>
+      <ul>
+        <li><strong>Market size:</strong> <a href="https://www.jchs.harvard.edu/sites/default/files/reports/files/Harvard_JCHS_Improving_Americas_Housing_2025.pdf" target="_blank" rel="noopener">Harvard Joint Center for Housing Studies, <em>Improving America's Housing 2025</em>, Table A-1</a>. Exterior replacements were $81.3B in 2023.</li>
+        <li><strong>CRM:</strong> <a href="https://www.fool.com/earnings/call-transcripts/2026/06/05/servicetitan-ttan-q1-2027-earnings-transcript/" target="_blank" rel="noopener">ServiceTitan Q1 FY2027 earnings call (June 2026)</a> · <a href="https://www.servicetitan.com/blog/pantheon-2025-pro-products-automation" target="_blank" rel="noopener">ServiceTitan Pantheon 2025</a> · <a href="https://www.rooferscoffeeshop.com/post/the-industrys-first-ai-answering-service-is-here" target="_blank" rel="noopener">JobNimbus AssistAI</a> · <a href="https://www.fieldtechnologiesonline.com/doc/jobnimbus-unveils-scout-a-mobile-ai-assistant-designed-for-real-time-field-work-0001" target="_blank" rel="noopener">JobNimbus Scout</a> · <a href="https://www.utahbusiness.com/press-releases/2026/08/05/jobnimbus-launches-nimbuslabs-early-access-program-new-features/" target="_blank" rel="noopener">JobNimbus NimbusLabs</a> · <a href="https://roofr.com/ai-receptionist" target="_blank" rel="noopener">Roofr AI Receptionist</a> · <a href="https://www.pmmag.com/articles/106754-jobber-launches-ai-powered-receptionist" target="_blank" rel="noopener">Jobber Receptionist</a> · <a href="https://help.housecallpro.com/en/articles/9311875-ai-team-overview" target="_blank" rel="noopener">Housecall Pro AI Team</a> · <a href="https://www.rooferscoffeeshop.com/post/acculynx-launches-new-ai-powered-lead-intelligence-feature-to-help-roofing-companies-improve-sales" target="_blank" rel="noopener">AccuLynx Lead Intelligence</a> · <a href="https://www.roofingcontractor.com/articles/101559-netic-ai-for-roofing-receives-23m-in-series-b-funding" target="_blank" rel="noopener">Netic Series B</a> · <a href="https://www.pulse.bot/saas/news/xbuild-raises-19m-to-launch-ai-powered-residential-roofing-contract-estimation-product-77a3578c-3877-4d41-9ad8-4b798f18e68a" target="_blank" rel="noopener">XBuild Series A</a></li>
+        <li><strong>Sales:</strong> <a href="https://fortune.com/2026/04/27/avoca-ai-agents-missed-calls-hvac-plumbing-roofing-kleiner-perkins-chen-shrivastava-braswell/" target="_blank" rel="noopener">Avoca (Fortune)</a> · <a href="https://ppc.land/yelp-bets-270m-on-ai-with-hatch-acquisition-to-automate-services-leads/" target="_blank" rel="noopener">Yelp buys Hatch (PPC Land)</a> · <a href="https://www.sec.gov/Archives/edgar/data/0001345016/000134501626000072/yelpq32026ex992lettertos.htm" target="_blank" rel="noopener">Yelp Q3 2026 shareholder letter</a> · <a href="https://www.insurancejournal.com/news/national/2025/11/13/847406.htm" target="_blank" rel="noopener">Netic (Insurance Journal)</a> · <a href="https://finviz.com/news/275509/the-home-depot-to-advance-customer-experience-using-rillas-ai-powered-coaching" target="_blank" rel="noopener">Home Depot and Rilla</a> · <a href="https://www.businesswire.com/news/home/20251013361011/en" target="_blank" rel="noopener">Neighborly and Rilla</a> · <a href="https://pulse2.com/siro-50-million-series-b-raised-for-bringing-ai-to-in-person-sales/" target="_blank" rel="noopener">Siro Series B</a> · <a href="https://salesrabbit.com/insights/salesrabbit-acquires-roofle" target="_blank" rel="noopener">SalesRabbit acquires Roofle</a> · <a href="https://www.digitalcommerce360.com/2025/04/14/roofr-series-b-funding-expand-roofing-software/" target="_blank" rel="noopener">Roofr Series B</a> · <a href="https://www.businesswire.com/news/home/20260113669531/en" target="_blank" rel="noopener">Hover platform launch</a> · <a href="https://www.orrick.com/Insights/2024/02/Did-the-FCC-Really-Ban-AI-Generated-Voice-Calls-No-But-Restrictions-Apply" target="_blank" rel="noopener">FCC ruling on AI voices (Orrick)</a></li>
+        <li><strong>Production:</strong> <a href="https://www.newswire.com/news/imging-becomes-first-drone-platform-with-on-site-roof-measurements-20845602" target="_blank" rel="noopener">Loveland IMGING</a> · <a href="https://www.eagleview.com/eagleview/eagleview-assess-expands-drone-roof-inspection-solution" target="_blank" rel="noopener">EagleView Assess</a> · <a href="https://dronedj.com/2022/10/24/eagleview-assess-roof-inspection-drone/" target="_blank" rel="noopener">EagleView on Skydio (DroneDJ)</a> · <a href="https://www.zeitview.com/resource/5-advantages-of-ai-powered-roof-inspections-for-hail-damage" target="_blank" rel="noopener">Zeitview</a> · <a href="https://rcimag.co.uk/news/checktrade-drones-and-ai-tipped-to-improve-roofing-standards" target="_blank" rel="noopener">Checkatrade drone surveys</a> · <a href="https://www.frontiersin.org/journals/built-environment/articles/10.3389/fbuil.2022.1026225/full" target="_blank" rel="noopener">Missing-shingle detection study</a> · <a href="https://roofingcontractor.com/articles/100025-renovate-robotics-partners-with-certainteed-to-innovate-robotic-roofing-technology" target="_blank" rel="noopener">Renovate Robotics and CertainTeed</a> · <a href="https://www.startupselfie.net/2026/06/10/rufus-roofing-robot-shingle-installation/" target="_blank" rel="noopener">Rufus on paid jobs (StartupSelfie)</a></li>
+        <li><strong>After the install:</strong> <a href="https://help.servicetitan.com/roofing/docs/ai-voice-agent-for-basic-phones-and-phones-pro-faq.md" target="_blank" rel="noopener">ServiceTitan voice agent FAQ</a> · <a href="https://www.getjobber.com/ai-receptionist/" target="_blank" rel="noopener">Jobber Receptionist page</a> · <a href="https://www.zuper.co/blog/best-roofing-crm-2026" target="_blank" rel="noopener">Zuper</a> · <a href="https://www.worktruckonline.com/news/optimoroute-raises-65-million-powers-ahead" target="_blank" rel="noopener">OptimoRoute</a> · <a href="https://yourstory.com/2025/12/prodigal-ai-debt-collection-loan-servicing-platform-funding" target="_blank" rel="noopener">Prodigal</a> · <a href="https://www.smartcustomerservice.com/Articles/News-Briefs/Skit.ai-Launches-Multichannel-Offerings-for-Debt-Collections-163087.aspx" target="_blank" rel="noopener">Skit.ai</a> · <a href="https://www.newswire.ca/news-releases/debt-collection-enters-a-new-era-powered-by-vodex-s-voice-ai-agents-864754151.html" target="_blank" rel="noopener">Vodex</a> · <a href="https://www.paystand.com/blog/meet-the-digital-employees-joining-the-paystand-network" target="_blank" rel="noopener">Paystand</a> · <a href="https://acculynx.com/managing-insurance-restoration-roofing-jobs/" target="_blank" rel="noopener">AccuLynx insurance jobs</a></li>
+      </ul>
+      <p><em>Verify before posting:</em> the Rufus paid-job figures rest on one article. The Rilla revenue figure is a Sacra estimate. Most performance numbers are vendor-reported.</p>
+    </section>
+
+
+      <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/blog/why-roofers-quote-different-prices.html">Why Two Roofers Quote Different Prices for the Same Job</a></li>
+        <li><a href="/blog/roofing-estimate-red-flags.html">7 Red Flags in a Roofing Contractor Estimate</a></li>
+        <li><a href="/guides/how-to-choose-contractor.html">How to Choose a Contractor for Insurance Repairs</a></li>
+        <li><a href="/guides/hire-roofer-paying-out-of-pocket.html">How to Hire a Roofer and Get the Best Deal When You're Paying Out of Pocket</a></li>
+        <li><a href="/how-it-works.html">How Otter Quotes Works for Homeowners</a></li>
+        <li><a href="/guides/topics/choosing-contractor.html">Browse all: Choosing a Contractor and Reading the Contract</a></li>
+      </ul>
+    </div>
+
+    </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "The Roadmap to Eliminating Contractors",
+    "description": "I ran roofing companies for 15 years. Here is my prediction: within a year, the roofing contractor as we know it disappears.",
+    "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+    "author": {"@type": "Person", "name": "Dustin Stohler", "url": "https://otterquote.com/about.html", "sameAs": ["https://www.linkedin.com/in/dustinstohler/"]},
+    "datePublished": "2026-11-06",
+    "dateModified": "2026-11-06",
+    "publisher": {
+        "@type": "Organization", "url": "https://otterquote.com/", "sameAs": ["https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ", "https://www.linkedin.com/company/otter-quotes", "https://www.facebook.com/OtterQuote", "https://www.instagram.com/otterquote/"],
+        "name": "Otter Quotes",
+        "logo": { "@type": "ImageObject", "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png" }
+    },
+    "mainEntityOfPage": { "@type": "WebPage", "@id": "https://otterquote.com/blog/the-roadmap-to-eliminating-contractors.html" }
+}
+</script>
+
+
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://otterquote.com/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": "https://otterquote.com/blog/"},
+        {"@type": "ListItem", "position": 3, "name": "The Roadmap to Eliminating Contractors", "item": "https://otterquote.com/blog/the-roadmap-to-eliminating-contractors.html"}
+    ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<!-- FAQ Interactivity -->
+<script>
+document.querySelectorAll('.faq-item h3').forEach(item => {
+    item.addEventListener('click', function() {
+        this.parentElement.classList.toggle('active');
+    });
+});
+</script>
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>
