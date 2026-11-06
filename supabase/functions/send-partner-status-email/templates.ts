@@ -185,6 +185,27 @@ export function isStageBlockedForAgentType(
   return agentType === "home_inspector" && stage === 5;
 }
 
+// ── gh-3321 gate: no stage-5 "payment is on its way" email for a claim in a
+// no-partner-fee state ──────────────────────────────────────────────────────
+// D-401 item 7 / D-387 / D-392 / Partner Agreement v4 A4.4: no partner fee in
+// OK, AR, KS, NE or MS. apply_referral_commission() (gh3321 migration) accrues
+// neither the $200 nor the $50 there and skips its own email call, but
+// mark-job-complete calls this function directly, so the stage-5 copy would
+// still promise a payment that was never accrued. Same shape as the D-333
+// gate above and for the same reason: gate it here, the one place both
+// senders pass through. Only stage 5 carries payment language. A NULL or blank
+// state is NOT blocked (Dustin, #3321 comment 6664032518: blank accrues). The
+// list is the same constant as the migration's; keep the two in step.
+export const NO_PARTNER_FEE_STATES = ["OK", "AR", "KS", "NE", "MS"] as const;
+
+export function isStageBlockedForState(
+  propertyState: string | null | undefined,
+  stage: Stage,
+): boolean {
+  if (stage !== 5 || typeof propertyState !== "string") return false;
+  return (NO_PARTNER_FEE_STATES as readonly string[]).includes(propertyState.trim().toUpperCase());
+}
+
 /**
  * Internal: builds one of the 5 stage emails before the gh-1824 postal-
  * address suffix is appended by the exported renderStageEmail() below.
