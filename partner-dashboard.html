@@ -1030,7 +1030,7 @@
                 <button type="button" class="task-tile" data-target="refer-partner">
                     <span class="task-tile-icon" aria-hidden="true">🤝</span>
                     <span class="task-tile-title">Refer a partner</span>
-                    <span class="task-tile-subtitle" id="feeSubtitleReferPartner" style="display:none;">Get $50 when they refer a qualifying job.</span>
+                    <span class="task-tile-subtitle" id="feeSubtitleReferPartner" style="display:none;">Get $50 when they refer a qualifying job (requires Partner Agreement v4).</span>
                 </button>
                 <button type="button" class="task-tile" data-target="pipeline">
                     <span class="task-tile-icon" aria-hidden="true">📊</span>
@@ -1098,7 +1098,7 @@
                 </div>
                 <!-- gh-2155 HI-0c: default-hidden, fail closed -- same
                      mechanism as above. -->
-                <p class="link-hint" id="recruitFeeHint" style="display:none;">Share this with other professionals. When they sign up and their referrals close jobs, you earn $50 per job.</p>
+                <p class="link-hint" id="recruitFeeHint" style="display:none;">Share this with other professionals. When they sign up and their referrals close jobs, you earn $50 per job. To earn the $50 recruit bonus, you must have accepted Partner Agreement v4.</p>
             </div>
 
         </div>
@@ -2626,10 +2626,14 @@ Let me know if you have any questions!
                 box.innerHTML = '';
                 return;
             }
+            // gh-3330 copy: the $50 sentence below follows D-417 and its 2026-11-05 annotation. NOT RULED, so not in the copy:
+            // whether a recruiter who accepts v4 later is paid for earlier recruits (#3330 Q 6673399375 item 1). Candidates, pick one only after Dustin rules:
+            //   [A pay]    'Once you accept, a recruit bonus that came due before you accepted is paid at the next monthly payout review.'
+            //   [B forfeit] 'The recruit bonus applies to recruits whose referrals complete after you accept.'
             // static strings only; nothing stored is interpolated
             box.innerHTML =
                 '<h3>We updated the Partner Agreement</h3>' +
-                '<p>Version v4-2026-10 adds a $5 referral fee for each paid roof measurement by a homeowner you refer, credit for 90 days from your link click, monthly payouts once your balance reaches $25, and rules on telling people you are paid and on your content and messages. Until you accept, your current agreement stays in place.</p>' +
+                '<p>Version v4-2026-10 adds a $5 referral fee for each paid roof measurement by a homeowner you refer, credit for 90 days from your link click, monthly payouts once your balance reaches $25, and rules on telling people you are paid and on your content and messages. Until you accept, your current agreement stays in place, except that the $50 recruit bonus requires that you have accepted Partner Agreement v4.</p>' +
                 '<p><strong id="agreementV4FeePrompt"></strong></p>' +
                 '<div class="agreement-v4-actions">' +
                     '<a href="/partner-agreement.html" id="agreementV4Link" target="_blank" rel="noopener">Read the updated Partner Agreement (v4-2026-10)</a>' +
