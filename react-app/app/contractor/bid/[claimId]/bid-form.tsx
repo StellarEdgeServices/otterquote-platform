@@ -233,6 +233,33 @@ async function fetchConfiguredFeePct(contractor: ContractorRecord, claim: Record
   } catch { return null; } finally { if (timer) clearTimeout(timer); }
 }
 
+// gh-3498 (REVIEW 6675274132): the bid_can_submit gate and the quote insert are bounded, so a stalled connection ends in
+// the existing error paths (message shown, form unlocked) instead of a permanent "Submitting…". Both exceed the lookups.
+const GATE_TIMEOUT_MS = 10000;
+const INSERT_TIMEOUT_MS = 20000;
+// Widened closes-on (REVIEW 6688103147): every write AFTER the bid has landed is bounded too. The bid is already filed, so a
+// timeout there is logged by the existing non-fatal catch and the submit goes on to the success screen.
+const POST_WRITE_TIMEOUT_MS = 8000;
+// Runs start(signal), aborts it after ms and rejects with the abort reason (no new wording).
+function callWithTimeout<T>(ms: number, start: (signal: AbortSignal) => PromiseLike<T> | T): Promise<T> {
+  const ctl = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<never>((_, reject) => { timer = setTimeout(() => { ctl.abort(); reject(ctl.signal.reason); }, ms); });
+  return Promise.race([Promise.resolve().then(() => start(ctl.signal)), limit]).finally(() => { if (timer) clearTimeout(timer); });
+}
+function withAbortSignal<B>(builder: B, signal: AbortSignal): B {
+  const b = builder as unknown as { abortSignal?: (s: AbortSignal) => B };
+  return typeof b.abortSignal === 'function' ? b.abortSignal(signal) : builder;
+}
+type DbErr = { code?: string; message?: string; details?: string } | null;
+const isIdemViolation = (e: DbErr) => !!e && e.code === '23505' && /quotes_idempotency_key_uidx/.test(`${e.message || ''} ${e.details || ''}`);
+// The column is not in this database yet (migration not applied): the bid is filed as before.
+const isIdemColumnMissing = (e: DbErr) => !!e && /idempotency_key/.test(e.message || '') && (e.code === 'PGRST204' || e.code === '42703');
+function newIdempotencyKey(): string {
+  const c = (typeof crypto !== 'undefined' ? crypto : undefined) as Crypto | undefined;
+  return c && typeof c.randomUUID === 'function' ? c.randomUUID() : `k${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+}
+
 function track(event: string, params: Record<string, unknown>): void {
   try {
     const g = (window as unknown as { gtag?: (...a: unknown[]) => void }).gtag;
@@ -296,6 +323,8 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
   const bidAmount = wholeCentDollars(parseFloat(form.bidPrice) || 0); // gh-3488: shown, stored and charged bid is whole cents
   // A tick belongs to the figure it was given under: a different rate or a different bid is a different disclosure.
   useEffect(() => { setFeeAccepted(false); }, [feePct, bidAmount]);
+  // gh-3498: one idempotency key per bid being filed, kept across retries of the same bid, dropped when its content changes.
+  const idemRef = useRef<{ key: string; fp: string } | null>(null);
   const submitInFlight = useRef(false); // gh-3488: set synchronously, so nothing can file a second bid while one is running
   const disclosure = computeDisclosureFee(bidAmount, feePct);
 
@@ -329,7 +358,16 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
 
       // D-199 bid-time validation gate (bid_can_submit RPC, contract unchanged).
       const gateParams = bidGateRpcParams(form.tradeType, claim, contractor.id);
-      const { data: gateData, error: gateErr } = await supabase.rpc('bid_can_submit', gateParams);
+      let gateData: unknown = null;
+      let gateErr: unknown = null;
+      try {
+        ({ data: gateData, error: gateErr } = await callWithTimeout(GATE_TIMEOUT_MS, (signal) => withAbortSignal(supabase.rpc('bid_can_submit', gateParams), signal)));
+      } catch {
+        // gh-3498: a gate that never answers (or fails to connect) ends here with the existing network-error message
+        setErrorMsg(BID_COPY.gate.networkError);
+        setSubmitState('error');
+        return;
+      }
       const gate = interpretBidGate(gateData as never, gateErr, BID_COPY.gate);
       if (!gate.can_submit) {
         const msg = (gate.reason || BID_COPY.gate.notValidatedDefault) + BID_COPY.gate.uploadAndValidateSuffix + BID_COPY.gate.clickOkSuffix;
@@ -386,56 +424,79 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
         }
         // Homeowner "bid updated" notification + activity log + GA + contractor email (all non-fatal).
         try {
-          await supabase.from('notifications').insert(buildBidUpdatedNotification({
+          await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(supabase.from('notifications').insert(buildBidUpdatedNotification({
             claimUserId: (claim.user_id as string) || null, claimId: String(claim.id),
             previewText: BID_COPY.bidUpdatedPreview(contractor.company_name), createdAtIso: nowIso,
-          }));
+          })), signal));
         } catch (e) { console.warn('Notification insert failed (non-fatal):', e); }
         try {
-          await supabase.from('activity_log').insert({
+          await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(supabase.from('activity_log').insert({
             user_id: userId, event_type: 'bid_updated',
             title: `Bid updated for project ${String(claim.id).slice(0, 8) || '…'}`, created_at: nowIso,
             metadata: { claim_id: String(claim.id) }, // gh-2997: lets the activity_log trigger inherit is_test from the claim
-          });
+          }), signal));
         } catch (e) { console.warn('Activity log failed (non-fatal):', e); }
         // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id removed —
         // a per-homeowner database identifier must not reach GA4.
         track('bid_updated', { bid_amount: bidAmount });
         try {
-          await supabase.functions.invoke('notify-contractors', { body: buildNotifyContractorsBody(mode === 'renew', String(claim.id), contractor.id) });
+          await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => supabase.functions.invoke('notify-contractors', { body: buildNotifyContractorsBody(mode === 'renew', String(claim.id), contractor.id), signal }));
         } catch (e) { console.warn('Bid update/renewal email failed (non-fatal):', e); }
       } else {
         const insertPayload = buildQuoteInsert(common);
-        const { data: inserted, error: insErr } = await supabase.from('quotes').insert(insertPayload).select('id').single();
+        // gh-3498: the insert carries an idempotency key and is bounded. A timed-out insert that landed is found by the retry
+        // (same key -> unique violation -> read the existing row back), so no second bid is filed.
+        const fp = [String(claim.id), contractor.id, String(insertPayload.trade_type), String(insertPayload.total_price)].join('|');
+        if (!idemRef.current || idemRef.current.fp !== fp) idemRef.current = { key: newIdempotencyKey(), fp };
+        const idemKey = idemRef.current.key;
+        const payloadWithKey: Record<string, unknown> = { ...insertPayload, idempotency_key: idemKey };
+        const insertOnce = (body: Record<string, unknown>) => callWithTimeout(INSERT_TIMEOUT_MS, (signal) =>
+          withAbortSignal(supabase.from('quotes').insert(body).select('id').single(), signal));
+        let { data: inserted, error: insErr } = await insertOnce(payloadWithKey);
+        if (insErr && isIdemColumnMissing(insErr as DbErr)) {
+          ({ data: inserted, error: insErr } = await insertOnce(insertPayload));
+        }
+        if (insErr && isIdemViolation(insErr as DbErr)) {
+          const { data: existing, error: readErr } = await callWithTimeout(INSERT_TIMEOUT_MS, (signal) =>
+            withAbortSignal(supabase.from('quotes').select('id').eq('idempotency_key', idemKey).maybeSingle(), signal));
+          if (!readErr && existing && (existing as { id?: string }).id) { inserted = existing as typeof inserted; insErr = null; }
+        }
         if (insErr) throw insErr;
         const bidId = (inserted as { id: string }).id;
         // D-215 Layer 1 fee_acceptances + Layer 2 send-bid-confirmation (non-fatal; quote committed).
         try {
           const ip = await getContractorIP();
           // gh-3409: .select('id') and NEVER .single() (a diverted row returns zero rows; .single() would make PostgREST roll the quarantine row back).
-          const feeRes = await supabase.from('fee_acceptances').insert(buildFeeAcceptanceInsert({
+          const feeIns = supabase.from('fee_acceptances').insert(buildFeeAcceptanceInsert({
             contractorId: contractor.id, claimId: String(claim.id), bidId, feePct, feeAmount,
             feeTextDisplayed: exactFeeText, acceptedAtIso: nowIso, ipAddress: ip,
             userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
           })).select('id');
+          const feeRes = await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(feeIns, signal)); // gh-3498: bounded; a timeout lands in the non-fatal catch below
           const feeOutcome = feeAcceptanceOutcome(feeRes);
           if (feeOutcome !== 'recorded') {
             const feeMsg = feeOutcome === 'failed' ? '[D-215] Fee acceptance record failed (non-fatal, quote committed)' : '[D-215] Fee acceptance diverted to quarantine';
             console.error(feeMsg, feeRes.error?.message);
             Sentry.captureMessage(feeMsg, { level: feeOutcome === 'failed' ? 'error' : 'warning', extra: { bid_id: bidId, claim_id: String(claim.id), contractor_id: contractor.id, code: feeRes.error?.code, message: feeRes.error?.message } });
           }
-        } catch (e) { console.error('[D-215] fee acceptance failed (non-fatal):', e); }
+        } catch (e) {
+          // gh-3498: a timed-out (or otherwise thrown) acceptance write must leave a trace, as the HTML form does: the quote is filed, the D-215 row may not be.
+          console.error('[D-215] fee acceptance failed (non-fatal):', e);
+          Sentry.captureException(e, { extra: { bid_id: bidId, claim_id: String(claim.id), contractor_id: contractor.id } });
+        }
         try {
           const tradeLabel = wizardMode && wizard.queue.length > 0 ? wizard.queue.join(', ') : (claimTrades.length ? claimTrades.join(', ') : 'roofing');
-          await supabase.functions.invoke('send-bid-confirmation', {
+          await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => supabase.functions.invoke('send-bid-confirmation', {
             body: buildBidConfirmationBody({ quoteId: bidId, contractorId: contractor.id, bidAmount, feePct, feeAmount, trade: tradeLabel }),
-          });
+            signal,
+          }));
         } catch (e) { console.error('[D-215 Layer 2] send-bid-confirmation failed (non-fatal):', e); }
         track('bid_submit', { trade_types: claimTrades, job_type: flags.isRetailJob ? 'retail' : 'insurance', bid_amount: bidAmount });
       }
 
       // Clear wizard localStorage state on success (parity with clearWizardState).
       try { localStorage.removeItem(`oq_wizard_${claim.id}`); } catch { /* ignore */ }
+      idemRef.current = null; // gh-3498: this bid is filed; its key is spent
       setSubmitState('done');
     } catch (err) {
       console.error('Error submitting bid:', err);

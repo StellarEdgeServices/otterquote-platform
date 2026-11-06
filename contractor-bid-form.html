@@ -4646,11 +4646,11 @@
         return { can_submit: false, reason: 'Cannot determine contractor identity. Please refresh and try again.', status: null };
       }
       try {
-        const { data, error } = await sb.rpc('bid_can_submit', {
+        const { data, error } = await callWithTimeout(GATE_TIMEOUT_MS, (signal) => withAbortSignal(sb.rpc('bid_can_submit', {
           p_contractor_id: contractorId,
           p_trade: trade,
           p_funding_type: fundingType,
-        });
+        }), signal)); // gh-3498: a gate that never answers ends in the catch below (existing network-error message)
         if (error) {
           console.warn('[D-199] bid_can_submit RPC error:', error);
           return { can_submit: false, reason: 'Could not verify your contract template status. Please refresh and try again.', status: null };
@@ -4687,6 +4687,43 @@
     var FEE_LOOKUP_TIMEOUT_MS = 5000; // gh-3488: bound on the rate lookup
     var BID_UPDATE_TIMEOUT_MS = 15000; // gh-3491 (REVIEW 6688103147): bound on the Change Bid / renew UPDATE; a retry is harmless (same row, same fields)
     var IP_LOOKUP_TIMEOUT_MS = 3000;  // gh-3488: bound on the ipify call (best-effort, falls back to 'unknown')
+    // gh-3498 (REVIEW 6675274132): the bid_can_submit gate and the quote insert are bounded too, so a stalled connection
+    // ends in the existing catch (message shown, button restored, inputs unlocked) instead of a locked "Submitting…".
+    // Both are longer than the lookups above; the insert is the longest because a landed insert must not be cut short early.
+    var GATE_TIMEOUT_MS = 10000;
+    var INSERT_TIMEOUT_MS = 20000;
+    // gh-3498 (widened closes-on, REVIEW 6688103147): every write AFTER the bid has landed is bounded as well. The bid is already
+    // filed, so a timeout there is logged and the submit goes on to the success screen; it never reaches the error path.
+    var POST_WRITE_TIMEOUT_MS = 8000;
+    // Runs start(signal) and gives up after ms: the request is aborted and the promise rejects with the abort reason
+    // (no new wording; callers show it through their existing error paths). A builder without abortSignal still races.
+    function callWithTimeout(ms, start) {
+      const ctl = new AbortController();
+      let timer;
+      const limit = new Promise((_, reject) => { timer = setTimeout(() => { ctl.abort(); reject(ctl.signal.reason); }, ms); });
+      return Promise.race([Promise.resolve().then(() => start(ctl.signal)), limit]).finally(() => clearTimeout(timer));
+    }
+    function withAbortSignal(builder, signal) {
+      return (builder && typeof builder.abortSignal === 'function') ? builder.abortSignal(signal) : builder;
+    }
+    // gh-3498: ONE idempotency key per bid being filed. It is generated at the first insert and kept across retries of the
+    // same bid (a retry after a timed-out insert must carry the same key, or the unique index cannot see it is the same bid);
+    // it is dropped when the bid's content changes or the bid is filed.
+    var _bidIdemKey = null, _bidIdemFp = null;
+    function bidIdempotencyKey(fingerprint) {
+      if (!_bidIdemKey || _bidIdemFp !== fingerprint) {
+        _bidIdemKey = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+          : 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+        _bidIdemFp = fingerprint;
+      }
+      return _bidIdemKey;
+    }
+    function isIdemViolation(err) {
+      return !!err && err.code === '23505' && /quotes_idempotency_key_uidx/.test((err.message || '') + ' ' + (err.details || ''));
+    }
+    function isIdemColumnMissing(err) { // migration not applied yet: the column is unknown to PostgREST
+      return !!err && /idempotency_key/.test(err.message || '') && (err.code === 'PGRST204' || err.code === '42703');
+    }
     let _feeAcceptanceCheckbox = document.getElementById('feeAcceptanceCheckbox');
     let _submitBtn = document.getElementById('submitBtn');
 
@@ -5529,7 +5566,7 @@
             }
 
             try {
-              await sb.from('notifications').insert({
+              await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(sb.from('notifications').insert({
                 user_id: currentClaim.user_id || null,
                 claim_id: currentClaim.id,
                 channel: 'dashboard',
@@ -5537,20 +5574,20 @@
                 recipient: '',
                 message_preview: `${currentContractor.company_name || 'A contractor'} has updated their bid for your project. Please review the new figures.`,
                 created_at: new Date().toISOString(),
-              });
+              }), signal));
             } catch (notifErr) {
               console.warn('Notification insert failed (non-fatal):', notifErr);
             }
 
             try {
-              await sb.from('activity_log').insert({
+              await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(sb.from('activity_log').insert({
                 user_id: currentUser.id,
                 event_type: 'bid_updated',
                 title: `Bid updated for project ${currentClaim.id?.slice(0, 8) || '…'}`,
                 // gh-2997: claim_id in metadata lets the activity_log BEFORE INSERT trigger inherit is_test from the claim
                 metadata: { claim_id: currentClaim.id },
                 created_at: new Date().toISOString(),
-              });
+              }), signal));
             } catch (logErr) {
               console.warn('Activity log failed (non-fatal):', logErr);
             }
@@ -5564,24 +5601,34 @@
             // Send bid update confirmation email to contractor (non-fatal)
             // D-150: for renewal mode send bid_renewal_requested; otherwise bid_update_confirmed
             try {
-              await sb.functions.invoke('notify-contractors', {
+              await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => sb.functions.invoke('notify-contractors', {
                 body: {
                   event_type: renewMode ? 'bid_renewal_requested' : 'bid_update_confirmed',
                   claim_id: currentClaim.id,
                   contractor_id: currentContractor.id,
                 },
-              });
+                signal,
+              }));
             } catch (notifErr) {
               console.warn('Bid update/renewal confirmation email failed (non-fatal):', notifErr);
             }
 
           } else {
 
-            const { data: insertedQuote, error } = await sb
-              .from('quotes')
-              .insert(quoteData)
-              .select('id')
-              .single();
+            // gh-3498: the insert carries an idempotency key and is bounded. If a timed-out insert actually landed, the retry
+            // (same key) hits the unique index and the existing row is read back as the result, so no second bid is filed.
+            quoteData.idempotency_key = bidIdempotencyKey([currentClaim.id, currentContractor.id, quoteData.trade_type, quoteData.total_price].join('|'));
+            const _insertOnce = () => callWithTimeout(INSERT_TIMEOUT_MS, (signal) => withAbortSignal(sb.from('quotes').insert(quoteData).select('id').single(), signal));
+            let { data: insertedQuote, error } = await _insertOnce();
+            if (error && isIdemColumnMissing(error)) { // the column is not in this database yet: file the bid as before
+              delete quoteData.idempotency_key;
+              ({ data: insertedQuote, error } = await _insertOnce());
+            }
+            if (error && isIdemViolation(error)) {
+              const { data: existingByKey, error: readBackErr } = await callWithTimeout(INSERT_TIMEOUT_MS, (signal) => withAbortSignal(
+                sb.from('quotes').select('id').eq('idempotency_key', quoteData.idempotency_key).maybeSingle(), signal));
+              if (!readBackErr && existingByKey && existingByKey.id) { insertedQuote = existingByKey; error = null; }
+            }
 
             if (error) throw error;
 
@@ -5595,7 +5642,9 @@
               // gh-3409: NO .single() here. Asking PostgREST for exactly one row makes it roll the whole request back (406 PGRST116) when the
               // server diverts a mismatching acceptance to review (zero rows returned), which would delete the record of what was shown.
               // .select('id') without .single() returns an array; an empty array means "kept for review, not recorded".
-              const { data: feeAccRows, error: feeAccError } = await sb.from('fee_acceptances').insert({
+              let feeAccRows = null, feeAccError = null;
+              try { // gh-3498: bounded; a timeout is the same non-fatal outcome as a failed insert (the bid is already filed)
+              ({ data: feeAccRows, error: feeAccError } = await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(sb.from('fee_acceptances').insert({
                 contractor_id: currentContractor.id,
                 claim_id: currentClaim.id,
                 bid_id: insertedQuote.id,
@@ -5606,7 +5655,8 @@
                 accepted_at: _acceptedAt,
                 ip_address: (_contractorIP && _contractorIP !== 'unknown') ? _contractorIP : null, // 'unknown' is not an inet value and made the whole insert fail
                 user_agent: _userAgent,
-              }).select('id');
+              }).select('id'), signal)));
+              } catch (feeAccTimeoutErr) { feeAccError = feeAccTimeoutErr; }
 
               if (feeAccError) {
                 console.error('[D-215] Fee acceptance record failed (non-fatal, quote committed):', feeAccError.message);
@@ -5633,7 +5683,7 @@
                 const tradeLabel = wizardMode && wizardTradeQueue.length > 0
                   ? wizardTradeQueue.join(', ')
                   : (Array.isArray(currentClaim.trades) ? currentClaim.trades.join(', ') : 'roofing');
-                await sb.functions.invoke('send-bid-confirmation', {
+                await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => sb.functions.invoke('send-bid-confirmation', {
                   body: {
                     quote_id: insertedQuote.id,
                     contractor_id: currentContractor.id,
@@ -5642,7 +5692,8 @@
                     platform_fee_amount: _feeAmount,
                     trade: tradeLabel,
                   },
-                });
+                  signal,
+                }));
               } catch (emailErr) {
                 console.error('[D-215 Layer 2] send-bid-confirmation failed (non-fatal, bid committed):', emailErr);
                 if (typeof Sentry !== 'undefined') {
@@ -5689,6 +5740,7 @@
         }
         successState.classList.add('show');
         _submitDone = true; // gh-3488: the button stays disabled on the success screen
+        _bidIdemKey = null; _bidIdemFp = null; // gh-3498: this bid is filed; its key is spent
         // Clear wizard localStorage state on successful submission
         clearWizardState();
       } catch (err) {
