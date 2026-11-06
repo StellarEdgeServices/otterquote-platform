@@ -100,7 +100,7 @@ describe('gh-3488 review fixes', () => {
   it('(2) the HTML "Platform Fee Breakdown" shows the disclosure figure: $1,296.10 -> $64.81 on both lines', () => {
     const els: Els = { totalPrice: { value: '1296.1' } };
     const run = new Function('document', 'window', 'formatCurrency', 'PLATFORM_FEES', 'updateFeeDisclosure',
-      `${sharedBlock(html)}\nfunction currentFeePct() { return window._feePct || 5; }\n${fnSource(html, 'updateFeeCalculator')}\nupdateFeeCalculator();`);
+      `${sharedBlock(html)}\nfunction currentFeePct() { return window._feePct || 5; }\n${fnSource(html, 'paintFeeBreakdown')}\n${fnSource(html, 'updateFeeCalculator')}\nupdateFeeCalculator();`);
     run(stubDocument(els), { _feePct: 5 }, usd, { contractSigning: 0.05 }, undefined);
     expect(els.feeContractSigning.textContent).toBe('$64.81');
     expect(els.totalFeeAmount.textContent).toBe('$64.81');
@@ -110,7 +110,7 @@ describe('gh-3488 review fixes', () => {
   it('(2) the calculator follows the fetched rate, not a hard-coded 5%', () => {
     const els: Els = { totalPrice: { value: '1000' } };
     const run = new Function('document', 'window', 'formatCurrency', 'PLATFORM_FEES', 'updateFeeDisclosure',
-      `${sharedBlock(html)}\nfunction currentFeePct() { return window._feePct || 5; }\n${fnSource(html, 'updateFeeCalculator')}\nupdateFeeCalculator();`);
+      `${sharedBlock(html)}\nfunction currentFeePct() { return window._feePct || 5; }\n${fnSource(html, 'paintFeeBreakdown')}\n${fnSource(html, 'updateFeeCalculator')}\nupdateFeeCalculator();`);
     run(stubDocument(els), { _feePct: 7.5 }, usd, { contractSigning: 0.05 }, undefined);
     expect(els.feeContractSigning.textContent).toBe('$75.00');
   });
@@ -128,9 +128,9 @@ describe('gh-3488 review fixes', () => {
     const win: Record<string, number> = {};
     const lookups: Array<() => void> = [];
     const fetchPlatformFeePercentage = () => new Promise<number>((res) => lookups.push(() => res(5)));
-    const run = new Function('document', 'window', 'fetchPlatformFeePercentage', 'updateFeeCheckboxState',
-      `${sharedBlock(html)}\nlet _feeDisclosureSeq = 0; let _feeLookupInFlight = null;\nfunction currentFeePct() { return window._feePct || 5; }\n${fnSource(html, 'paintFeeDisclosure')}\n${fnSource(html, 'updateFeeDisclosure', true)}\nreturn updateFeeDisclosure;`);
-    const updateFeeDisclosure = run(stubDocument(els), win, fetchPlatformFeePercentage, () => {}) as () => Promise<void>;
+    const run = new Function('document', 'window', 'fetchPlatformFeePercentage', 'updateFeeCheckboxState', 'formatCurrency',
+      `${sharedBlock(html)}\nlet _feeDisclosureSeq = 0; let _feeLookupInFlight = null; let _feeAcceptanceCheckbox = null;\nfunction currentFeePct() { return window._feePct || 5; }\n${fnSource(html, 'paintFeeBreakdown')}\n${fnSource(html, 'paintFeeDisclosure')}\n${fnSource(html, 'updateFeeDisclosure', true)}\nreturn updateFeeDisclosure;`);
+    const updateFeeDisclosure = run(stubDocument(els), win, fetchPlatformFeePercentage, () => {}, usd) as () => Promise<void>;
     const older = updateFeeDisclosure();                 // bid $18,500 at call time
     els.totalPrice.value = '25000';
     const newer = updateFeeDisclosure();                 // bid $25,000

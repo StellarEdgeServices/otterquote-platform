@@ -13,7 +13,7 @@
  * UNCHANGED contracts. Fee + legal copy come VERBATIM from copy.ts. No innerHTML.
  */
 
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import type { ContractorRecord } from '../../_shell/use-contractor-record';
@@ -192,13 +192,41 @@ function initialState(claim: BidClaim, flags: TradeFlags, claimRcv: number | nul
   };
 }
 
+// gh-3488 (REVIEW 6674889982): both outside calls are bounded, so a hung one cannot hold the form.
+const IP_LOOKUP_TIMEOUT_MS = 3000;
+const FEE_LOOKUP_TIMEOUT_MS = 5000;
+
 async function getContractorIP(): Promise<string> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), IP_LOOKUP_TIMEOUT_MS);
   try {
-    const r = await fetch('https://api.ipify.org?format=json');
+    const r = await fetch('https://api.ipify.org?format=json', { signal: ctl.signal });
     if (!r.ok) return 'unknown';
     const d = await r.json();
     return d.ip || 'unknown';
-  } catch { return 'unknown'; }
+  } catch { return 'unknown'; } finally { clearTimeout(timer); }
+}
+
+/**
+ * The configured platform fee rate for this contractor and claim, or null when the lookup fails or does not answer
+ * within FEE_LOOKUP_TIMEOUT_MS (the caller then keeps the rate already on screen, as it does for any failed lookup).
+ * State is `address_state`, the column quotes_platform_fee_for reads on the server (gh-3488, LEGAL-READ 6674806511).
+ */
+async function fetchConfiguredFeePct(contractor: ContractorRecord, claim: Record<string, unknown>): Promise<number | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const { state, trade } = feeConfigLookupParams({ state: (contractor.address_state as string | null) ?? null }, claim as BidClaim);
+    const lookup = Promise.resolve(supabase
+      .from('platform_fee_config')
+      .select('fee_pct')
+      .or(`state.is.null,state.eq.${state}`)
+      .or(`trade.is.null,trade.eq.${trade}`)
+      .order('state', { ascending: false, nullsFirst: false })
+      .order('trade', { ascending: false, nullsFirst: false })
+      .limit(1)).then(({ data }) => resolveFeePct(data));
+    const timeout = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), FEE_LOOKUP_TIMEOUT_MS); });
+    return await Promise.race([lookup, timeout]);
+  } catch { return null; } finally { if (timer) clearTimeout(timer); }
 }
 
 function track(event: string, params: Record<string, unknown>): void {
@@ -254,26 +282,17 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
     let active = true;
     setFeeLookupDone(false);
     (async () => {
-      try {
-        const { state, trade } = feeConfigLookupParams({ state: (contractor.state as string | null) ?? null }, claim);
-        const { data } = await supabase
-          .from('platform_fee_config')
-          .select('fee_pct')
-          .or(`state.is.null,state.eq.${state}`)
-          .or(`trade.is.null,trade.eq.${trade}`)
-          .order('state', { ascending: false, nullsFirst: false })
-          .order('trade', { ascending: false, nullsFirst: false })
-          .limit(1);
-        if (active) setFeePct(resolveFeePct(data));
-      } catch { /* keep default */ }
-      finally { if (active) setFeeLookupDone(true); }
+      const pct = await fetchConfiguredFeePct(contractor, claim);
+      if (!active) return;
+      if (pct !== null) setFeePct(pct);
+      setFeeLookupDone(true);
     })();
     return () => { active = false; };
   }, [contractor, claim]);
-  // The disclosure the box was ticked under shows this rate; a different rate is a different disclosure.
-  useEffect(() => { setFeeAccepted(false); }, [feePct]);
-
   const bidAmount = wholeCentDollars(parseFloat(form.bidPrice) || 0); // gh-3488: shown, stored and charged bid is whole cents
+  // A tick belongs to the figure it was given under: a different rate or a different bid is a different disclosure.
+  useEffect(() => { setFeeAccepted(false); }, [feePct, bidAmount]);
+  const submitInFlight = useRef(false); // gh-3488: set synchronously, so nothing can file a second bid while one is running
   const disclosure = computeDisclosureFee(bidAmount, feePct);
   const calc = computeCalculatorFee(claim, claimRcv, bidAmount);
 
@@ -290,10 +309,21 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
   async function handleSubmit() {
     setErrorMsg(null);
     if (bidAmount <= 0) { setErrorMsg('Please enter your bid price.'); return; }
+    if (submitInFlight.current) return;
+    submitInFlight.current = true;
     setSubmitState('submitting');
     const nowIso = new Date().toISOString();
 
     try {
+      // gh-3488 (LEGAL-READ 6674806511): a fresh rate lookup at every submit. If the server's rate differs from the one
+      // on screen, show it and require acceptance again (the effect on feePct clears the tick); nothing is filed.
+      const freshPct = await fetchConfiguredFeePct(contractor, claim);
+      if (freshPct !== null && freshPct !== feePct) {
+        setFeePct(freshPct);
+        setSubmitState('idle');
+        return;
+      }
+
       // D-199 bid-time validation gate (bid_can_submit RPC, contract unchanged).
       const gateParams = bidGateRpcParams(form.tradeType, claim, contractor.id);
       const { data: gateData, error: gateErr } = await supabase.rpc('bid_can_submit', gateParams);
@@ -392,6 +422,8 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
       console.error('Error submitting bid:', err);
       setErrorMsg('Error submitting bid: ' + (err instanceof Error ? err.message : 'Unknown error'));
       setSubmitState('error');
+    } finally {
+      submitInFlight.current = false;
     }
   }
 
@@ -511,7 +543,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
           <FeeSection mode={mode} claim={claim} bidAmount={bidAmount} feePct={feePct} disclosure={disclosure} calc={calc}
             claimRcv={claimRcv} isInsuranceRcv={claim.job_type === 'insurance_rcv'}
             autoRenew={form.autoRenew} setAutoRenew={(v) => update({ autoRenew: v })}
-            feeAccepted={feeAccepted} setFeeAccepted={setFeeAccepted} />
+            feeAccepted={feeAccepted} setFeeAccepted={setFeeAccepted} locked={submitState === 'submitting'} />
 
           {errorMsg && <div className="oqb-err">{errorMsg}</div>}
           <div className="oqb-actions">
@@ -761,13 +793,13 @@ function WizardBar({ step }: { step: number }) {
   );
 }
 
-function FeeSection({ mode, claim, bidAmount, feePct, disclosure, calc, claimRcv, isInsuranceRcv, autoRenew, setAutoRenew, feeAccepted, setFeeAccepted }: {
+function FeeSection({ mode, claim, bidAmount, feePct, disclosure, calc, claimRcv, isInsuranceRcv, autoRenew, setAutoRenew, feeAccepted, setFeeAccepted, locked }: {
   mode: BidMode; claim: Record<string, unknown>; bidAmount: number; feePct: number;
   disclosure: { feeAmount: number; netAmount: number };
   calc: { totalFeePercent: string; netAmount: number };
   claimRcv: number | null; isInsuranceRcv: boolean;
   autoRenew: boolean; setAutoRenew: (v: boolean) => void;
-  feeAccepted: boolean; setFeeAccepted: (v: boolean) => void;
+  feeAccepted: boolean; setFeeAccepted: (v: boolean) => void; locked: boolean;
 }) {
   const feeInfo = isInsuranceRcv && claimRcv ? BID_COPY.fee.feeInfoInsurance(formatCurrency(claimRcv)) : BID_COPY.fee.feeInfoRetail;
   return (
@@ -784,7 +816,7 @@ function FeeSection({ mode, claim, bidAmount, feePct, disclosure, calc, claimRcv
       )}
 
       <label className="oqb-accept">
-        <input type="checkbox" checked={feeAccepted} onChange={(e) => setFeeAccepted(e.target.checked)} />
+        <input type="checkbox" checked={feeAccepted} disabled={locked} onChange={(e) => setFeeAccepted(e.target.checked)} />
         <span>I understand and agree to the platform fee of {feePct.toFixed(2)}% ({formatCurrency(disclosure.feeAmount)}), deducted from my bid amount upon contract execution.</span>
       </label>
     </Card>

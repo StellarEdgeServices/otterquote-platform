@@ -16,12 +16,12 @@ const PAGE = '/contractor-bid-form.html?claim_id=claim-1';
 
 const FAKE_SUPABASE = `
 (() => {
-  const t = (window.__t = { calls: [], inserts: [], feeCalls: 0, feeWaiters: [], feeMode: 'immediate', feePct: '5.00' });
+  const t = (window.__t = { calls: [], inserts: [], feeCalls: 0, feeWaiters: [], feeMode: 'immediate', feePct: '5.00', feeByState: {}, feeQueries: [] });
   const claim = { id: 'claim-1', trades: ['roofing'], selected_trades: ['roofing'], job_type: 'retail', funding_type: 'retail',
     damage_type: 'hail', material_category: 'shingle', is_test: true, rcv_amount: null, parsed_line_items: null, state: 'IN' };
   const contractor = { id: 'c-1', user_id: 'u-1', status: 'active', attestation_accepted_at: '2026-01-01T00:00:00Z',
     coi_file_url: 'x', coi_expires_at: '2099-01-01', cpa_version: 'v1-2026-04', needs_cpa_reattestation: false,
-    company_name: 'Acme Roofing', phone: '5551234567', trades: ['roofing'], service_area_description: 'IN', state: 'IN', is_test: true };
+    company_name: 'Acme Roofing', phone: '5551234567', trades: ['roofing'], service_area_description: 'IN', address_state: 'IN', is_test: true };
   async function run(s) {
     if (s.op === 'insert' || s.op === 'update' || s.op === 'upsert') {
       t.inserts.push({ table: s.table, op: s.op, payload: JSON.parse(JSON.stringify(s.payload)) });
@@ -31,8 +31,12 @@ const FAKE_SUPABASE = `
     if (s.table === 'platform_fee_config') {
       t.feeCalls++;
       const i = t.feeCalls - 1;
+      t.feeQueries.push((s.ors || []).join(' | '));
+      if (t.feeMode === 'hang') await new Promise(() => {});
       if (t.feeMode === 'deferred') await new Promise((res) => { t.feeWaiters[i] = (pct) => res(pct); }).then((pct) => { t.feePct = pct; });
-      return { data: [{ fee_pct: t.feePct }], error: null };
+      const st = ((s.ors || [])[0] || '').match(/state\.eq\.([A-Za-z]*)/);
+      const stateKey = st ? st[1].toUpperCase() : '';
+      return { data: [{ fee_pct: t.feeByState[stateKey] !== undefined ? t.feeByState[stateKey] : t.feePct }], error: null };
     }
     if (s.table === 'bidder_claim_summary') return { data: claim, error: null };
     if (s.table === 'contractors') return { data: contractor, error: null };
@@ -44,6 +48,7 @@ const FAKE_SUPABASE = `
       if (prop === 'then') return (res, rej) => run(s).then(res, rej);
       if (prop === 'insert' || prop === 'update' || prop === 'upsert' || prop === 'delete') return (p) => { s.op = prop; s.payload = p; return b; };
       if (prop === 'single' || prop === 'maybeSingle') return () => { s.single = true; return b; };
+      if (prop === 'or') return (arg) => { (s.ors = s.ors || []).push(arg); return b; };
       return () => b;
     } });
     return b;
@@ -68,8 +73,9 @@ window.Auth = new Proxy({ requireAuth: async () => ({ id: 'u-1', email: 'c@examp
   { get: (t, k) => (k in t ? t[k] : async () => null) });
 `;
 
-async function openForm(page: Page, opts: { ipifyGate?: boolean } = {}) {
-  const gate: { release: () => void } = { release: () => {} };
+async function openForm(page: Page, opts: { ipifyGate?: boolean; ipifyHang?: boolean } = {}) {
+  const waiting: Array<() => void> = [];
+  const gate: { release: () => void } = { release: () => { waiting.forEach((r) => r()); waiting.length = 0; } };
   await page.route('**/*', async (route) => {
     const url = route.request().url();
     if (url.startsWith('http://127.0.0.1')) {
@@ -86,7 +92,8 @@ async function openForm(page: Page, opts: { ipifyGate?: boolean } = {}) {
       return route.fulfill({ contentType: 'text/javascript', body: FAKE_SUPABASE });
     }
     if (url.includes('api.ipify.org')) {
-      if (opts.ipifyGate) await new Promise<void>((res) => { gate.release = res; });
+      if (opts.ipifyHang) await new Promise<void>(() => {});
+      if (opts.ipifyGate) await new Promise<void>((res) => { waiting.push(res); });
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ip: '203.0.113.9' }) });
     }
     return route.abort();
@@ -118,6 +125,13 @@ const disclosure = (page: Page) =>
     pct: document.getElementById('feePercentDisplay')!.textContent,
     disclosure: document.getElementById('feeDollarDisplay')!.textContent,
     checkbox: document.getElementById('feeDollarCheckbox')!.textContent,
+  }));
+const breakdown = (page: Page) =>
+  page.evaluate(() => ({
+    signing: document.getElementById('feeContractSigning')!.textContent,
+    total: document.getElementById('totalFeeAmount')!.textContent,
+    net: document.getElementById('yourNet')!.textContent,
+    netInline: document.getElementById('netToContractorBidRow')!.textContent,
   }));
 const inserted = (page: Page, table: string) =>
   page.evaluate((tb) => ((window as any).__t.inserts as any[]).filter((i) => i.table === tb), table);
@@ -216,10 +230,13 @@ test.describe('gh-3488 contractor-bid-form.html fee timing (real page, Chromium)
     await page.waitForTimeout(150);
     expect((await inserted(page, 'quotes')).length).toBe(0);   // submit waits for the lookup (93833044: already inserted)
     const lookups = await page.evaluate(() => (window as any).__t.feeCalls);
+    await page.evaluate(() => { (window as any).__t.feeMode = 'immediate'; });   // the fresh lookup at submit answers at once
     await page.evaluate((i) => (window as any).__releaseFee(i, '7.50'), lookups - 1);   // the configured rate is now 7.50
     await expect.poll(() => page.evaluate(() => document.getElementById('feePercentDisplay')!.textContent)).toBe('7.50');
     const d = await disclosure(page);
     expect(d.disclosure).toBe('$1,875.08');            // 7.5% of 25001.00, half-up
+    // LEGAL-READ 6674806511: the breakdown and both net lines carry the SAME rate's figures as the disclosure
+    expect(await breakdown(page)).toEqual({ signing: '$1,875.08', total: '$1,875.08', net: '$23,125.92', netInline: 'Net to you: $23,125.92' });
     expect(await page.evaluate(() => (document.getElementById('feeAcceptanceCheckbox') as HTMLInputElement).checked)).toBe(false);
     expect((await inserted(page, 'quotes')).length).toBe(0);
     expect((await inserted(page, 'fee_acceptances')).length).toBe(0);
@@ -244,10 +261,146 @@ test.describe('gh-3488 contractor-bid-form.html fee timing (real page, Chromium)
     await page.waitForTimeout(150);
     expect((await inserted(page, 'quotes')).length).toBe(0);
     const lookups = await page.evaluate(() => (window as any).__t.feeCalls);
+    await page.evaluate(() => { (window as any).__t.feeMode = 'immediate'; });
     await page.evaluate((i) => (window as any).__releaseFee(i, '5.00'), lookups - 1);
     await expect.poll(async () => (await inserted(page, 'fee_acceptances')).length).toBe(1);
     const fa = (await inserted(page, 'fee_acceptances'))[0].payload;
     expect(fa.fee_amount).toBe(925);
     expect(fa.fee_text_displayed).toContain('$925.00 (5.00% of your bid)');
+  });
+
+  // ── REVIEW 6674889982 / LEGAL-READ 6674806511 (head 3fc20d19) ──────────────────────────────────────────────
+
+  test('(LEGAL) a rate returned by a lookup after the price is typed updates the breakdown and net lines too', async ({ page }) => {
+    await openForm(page);
+    await page.evaluate(() => { (window as any).__t.feeMode = 'deferred'; });
+    await typeBid(page, '25000');
+    const lookups = await page.evaluate(() => (window as any).__t.feeCalls);
+    await page.evaluate(() => { (window as any).__t.feeMode = 'immediate'; });
+    await page.evaluate((i) => (window as any).__releaseFee(i, '7.50'), lookups - 1);
+    await expect.poll(() => page.evaluate(() => document.getElementById('feePercentDisplay')!.textContent)).toBe('7.50');
+    expect((await disclosure(page)).disclosure).toBe('$1,875.00');
+    expect(await breakdown(page)).toEqual({ signing: '$1,875.00', total: '$1,875.00', net: '$23,125.00', netInline: 'Net to you: $23,125.00' });
+  });
+
+  test('(LEGAL) a rate that moved since the last lookup, with nothing in flight, is caught at submit and needs re-acceptance', async ({ page }) => {
+    await openForm(page);
+    await fillRequired(page);
+    await typeBid(page, '25000');
+    await expect.poll(async () => (await disclosure(page)).disclosure).toBe('$1,250.00');
+    await acceptFee(page);
+    await page.evaluate(() => { (window as any).__t.feePct = '7.50'; });     // the server's rate moves; the page has not looked
+    await clickSubmit(page);
+    await expect.poll(() => page.evaluate(() => document.getElementById('feePercentDisplay')!.textContent)).toBe('7.50');
+    await page.waitForTimeout(300);
+    expect((await inserted(page, 'quotes')).length).toBe(0);                  // 3fc20d19: inserted with fee_pct 5, charged at 7.5
+    expect((await inserted(page, 'fee_acceptances')).length).toBe(0);
+    expect((await disclosure(page)).disclosure).toBe('$1,875.00');
+    expect(await page.evaluate(() => (document.getElementById('feeAcceptanceCheckbox') as HTMLInputElement).checked)).toBe(false);
+    await acceptFee(page);
+    await clickSubmit(page);
+    await expect.poll(async () => (await inserted(page, 'fee_acceptances')).length).toBe(1);
+    expect((await inserted(page, 'fee_acceptances'))[0].payload.fee_amount).toBe(1875);
+  });
+
+  test('(LEGAL) the fee lookup uses the contractor\'s address_state, the column the server reads', async ({ page }) => {
+    await openForm(page);
+    await page.evaluate(() => { (window as any).__t.feeByState = { IN: '7.50' }; });   // a state-specific row for IN
+    await typeBid(page, '25000');
+    await expect.poll(() => page.evaluate(() => document.getElementById('feePercentDisplay')!.textContent)).toBe('7.50');
+    const queries: string[] = await page.evaluate(() => (window as any).__t.feeQueries);
+    expect(queries.some((q) => q.includes('state.eq.IN'))).toBe(true);        // 3fc20d19: state.eq. (blank)
+  });
+
+  test('(LEGAL) a tick is cleared when the bid changes', async ({ page }) => {
+    await openForm(page);
+    await typeBid(page, '18500');
+    await acceptFee(page);
+    expect(await page.evaluate(() => (document.getElementById('feeAcceptanceCheckbox') as HTMLInputElement).checked)).toBe(true);
+    await typeBid(page, '19000');
+    expect(await page.evaluate(() => (document.getElementById('feeAcceptanceCheckbox') as HTMLInputElement).checked)).toBe(false);
+    expect(await page.evaluate(() => (document.getElementById('submitBtn') as HTMLButtonElement).disabled)).toBe(true);
+  });
+
+  test('(REVIEW) a fee lookup that never returns times out and the bid still files, with no stuck form', async ({ page }) => {
+    test.setTimeout(40000);
+    await openForm(page);
+    await fillRequired(page);
+    await page.evaluate(() => { (window as any).__t.feeMode = 'hang'; });   // every lookup from here on never returns
+    await typeBid(page, '18500');                                  // a lookup is open (and stays open)
+    expect((await disclosure(page)).disclosure).toBe('$925.00');   // the figure on screen is already right
+    await acceptFee(page);
+    await clickSubmit(page);
+    await expect.poll(async () => (await inserted(page, 'quotes')).length, { timeout: 20000 }).toBe(1);   // 3fc20d19: stuck on "Submitting…"
+    expect((await inserted(page, 'quotes'))[0].payload.total_price).toBe(18500);
+    await expect.poll(async () => (await inserted(page, 'fee_acceptances')).length, { timeout: 10000 }).toBe(1);
+    expect((await inserted(page, 'fee_acceptances'))[0].payload.fee_amount).toBe(925);
+  });
+
+  test('(REVIEW) an ipify call that never returns times out and records the IP as unknown', async ({ page }) => {
+    test.setTimeout(40000);
+    await openForm(page, { ipifyHang: true });
+    await fillRequired(page);
+    await typeBid(page, '18500');
+    await acceptFee(page);
+    await clickSubmit(page);
+    await expect.poll(async () => (await inserted(page, 'fee_acceptances')).length, { timeout: 20000 }).toBe(1);
+    const fa = (await inserted(page, 'fee_acceptances'))[0].payload;
+    expect(JSON.stringify(fa)).toContain('unknown');
+  });
+
+  test('(REVIEW) a real double click files one bid, also when a lookup returns between the two clicks', async ({ page }) => {
+    const gate = await openForm(page, { ipifyGate: true });
+    await fillRequired(page);
+    await typeBid(page, '25000');
+    await expect.poll(async () => (await disclosure(page)).disclosure).toBe('$1,250.00');
+    await page.evaluate(() => { (window as any).__t.feeMode = 'deferred'; });
+    await typeBid(page, '18500');                                  // a lookup is open
+    await acceptFee(page);
+    await page.locator('#submitBtn').scrollIntoViewIfNeeded();
+    const box = (await page.locator('#submitBtn').boundingBox())!;
+    const x = box.x + box.width / 2, y = box.y + box.height / 2;
+    await page.mouse.click(x, y);                                  // real click 1
+    const lookups = await page.evaluate(() => (window as any).__t.feeCalls);
+    await page.evaluate(() => { (window as any).__t.feeMode = 'immediate'; });
+    await page.evaluate((i) => (window as any).__releaseFee(i, '5.00'), lookups - 1);   // the lookup returns during the submit
+    await page.waitForTimeout(250);
+    await page.mouse.click(x, y);                                  // real click 2, 3fc20d19: the button is live again
+    await page.mouse.click(x, y, { clickCount: 2, delay: 20 });    // and a real double click
+    gate.release();
+    await expect.poll(async () => (await inserted(page, 'fee_acceptances')).length).toBeGreaterThan(0);
+    await page.waitForTimeout(600);
+    expect((await inserted(page, 'quotes')).length).toBe(1);
+    expect((await inserted(page, 'fee_acceptances')).length).toBe(1);
+  });
+
+  test('(REVIEW) a lookup returning mid-submit, or a tick toggle, cannot re-enable the button; the success screen stays disabled', async ({ page }) => {
+    const gate = await openForm(page, { ipifyGate: true });
+    await fillRequired(page);
+    await typeBid(page, '25000');
+    await expect.poll(async () => (await disclosure(page)).disclosure).toBe('$1,250.00');
+    await page.evaluate(() => { (window as any).__t.feeMode = 'deferred'; });
+    await typeBid(page, '18500');                                  // a lookup is now open
+    await acceptFee(page);
+    await page.locator('#submitBtn').click();                      // real click while the lookup is open
+    const lookups = await page.evaluate(() => (window as any).__t.feeCalls);
+    await page.evaluate(() => { (window as any).__t.feeMode = 'immediate'; });
+    await page.evaluate((i) => (window as any).__releaseFee(i, '5.00'), lookups - 1);   // the lookup returns during the submit
+    await page.waitForTimeout(300);
+    const mid = await page.evaluate(() => ({
+      btnDisabled: (document.getElementById('submitBtn') as HTMLButtonElement).disabled,
+      boxDisabled: (document.getElementById('feeAcceptanceCheckbox') as HTMLInputElement).disabled,
+    }));
+    expect(mid.btnDisabled).toBe(true);                            // 3fc20d19: false
+    expect(mid.boxDisabled).toBe(true);                            // 3fc20d19: false (the box was not locked)
+    await page.locator('#submitBtn').click({ force: true }).catch(() => {});
+    gate.release();
+    await expect.poll(() => page.evaluate(() => document.getElementById('successState')?.classList.contains('show'))).toBe(true);
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => (document.getElementById('submitBtn') as HTMLButtonElement).disabled)).toBe(true);
+    await page.locator('#submitBtn').click({ force: true }).catch(() => {});   // the click on the success screen
+    await page.waitForTimeout(500);
+    expect((await inserted(page, 'quotes')).length).toBe(1);
+    expect((await inserted(page, 'fee_acceptances')).length).toBe(1);
   });
 });
