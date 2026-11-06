@@ -65,6 +65,14 @@ for (const u of ['https://a.test/p?claim_id=1&utm_source=meta#f', '/p?utm_term=a
   for (const keep of [true, false]) check(`js and ts agree on scrubUrl(${u.slice(0, 40)}, ${keep})`, js.scrubUrl(u, keep) === ts.scrubUrl(u, keep));
 }
 
+// gh-3357: heatmap events never reach HeyCatch, whatever its config says
+for (const [label, m] of [['js', js], ['ts', ts]]) {
+  const hm = { event: '$$heatmap', properties: { $heatmap_data: { 'https://otterquote.com/faq?claim_id=C1': [{ x: 1, y: 2, target_fixed: true, type: 'click' }] }, $pathname: '/faq' } };
+  check(`${label}: a $$heatmap event is dropped`, m.scrubEvent(hm) === null && m.makeBeforeSend()(hm) === null);
+  const stray = m.scrubEvent({ event: '$pageview', properties: { $heatmap_data: { a: 1 }, $pathname: '/faq' }, $set_once: { $heatmap_data: 1 } });
+  check(`${label}: $heatmap_data is removed from any other event`, !JSON.stringify(stray).includes('heatmap') && stray.properties.$pathname === '/faq', JSON.stringify(stray));
+}
+
 // (b) boot order
 const boot = read('js/heycatch-boot.js');
 const code = boot.replace(/^\s*\/\/.*$/gm, '');
