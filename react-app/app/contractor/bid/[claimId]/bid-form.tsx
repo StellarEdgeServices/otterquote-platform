@@ -21,12 +21,13 @@ import type { ContractorRecord } from '../../_shell/use-contractor-record';
 import { Card, Field, TextInput, MoneyInput, TextArea, Select, Checkbox, RadioRow, formatCurrency, type Opt } from './bid-ui';
 import { BID_COPY, buildFeeDisclosureText } from './copy';
 import { HomePhotosCard } from './home-photos-card';
+import { FeeSection } from './fee-section';
 import { WarrantyCard } from './warranty-card';
 import {
   type BidClaim, type BidMode, type TradeFlags, type WarrantySelectionInput,
   type ValueAddsFormState, type ValueAddsContext, type WizardState,
   buildValueAdds, serializeWarrantySelection, applyCustomWarrantyReview,
-  feeConfigLookupParams, resolveFeePct, computeDisclosureFee, computeQuoteFeeBase, computeCalculatorFee,
+  feeConfigLookupParams, resolveFeePct, computeDisclosureFee, computeQuoteFeeBase,
   bidGateRpcParams, interpretBidGate, BID_GATE_ROUTES, DEFAULT_PLATFORM_FEE_PCT,
   buildScopeSummary, buildQuoteInsert, buildQuoteUpdate,
   buildFeeAcceptanceInsert, ipForInet, feeAcceptanceOutcome, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
@@ -269,7 +270,6 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
 
   const bidAmount = parseFloat(form.bidPrice) || 0;
   const disclosure = computeDisclosureFee(bidAmount, feePct);
-  const calc = computeCalculatorFee(claim, claimRcv, bidAmount);
 
   function buildCtx(): ValueAddsContext {
     return {
@@ -304,7 +304,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
       const valueAdds = applyCustomWarrantyReview(valueAddsRaw, warranty, nowIso);
       const feeBase = computeQuoteFeeBase(claim, bidAmount);
       const feeAmount = disclosure.feeAmount;
-      const exactFeeText = buildFeeDisclosureText(feePct, feeAmount, bidAmount);
+      const exactFeeText = buildFeeDisclosureText(feePct, feeAmount);
       const scopeSummary = buildScopeSummary({ brand: form.brandProduct, estimatedStartDate: form.startDate, estimatedCompletionTime: form.completionTime });
       const perTradeBreakdown = wizardMode
         ? Object.fromEntries(Object.entries(wizardPrices).map(([k, v]) => [k, parseFloat(v) || 0]).filter(([, v]) => (v as number) > 0))
@@ -509,7 +509,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
             </Card>
           )}
 
-          <FeeSection mode={mode} claim={claim} bidAmount={bidAmount} feePct={feePct} disclosure={disclosure} calc={calc}
+          <FeeSection mode={mode} bidAmount={bidAmount} feePct={feePct} disclosure={disclosure}
             claimRcv={claimRcv} isInsuranceRcv={claim.job_type === 'insurance_rcv'}
             autoRenew={form.autoRenew} setAutoRenew={(v) => update({ autoRenew: v })}
             feeAccepted={feeAccepted} setFeeAccepted={setFeeAccepted} />
@@ -759,35 +759,5 @@ function WizardBar({ step }: { step: number }) {
         );
       })}
     </div>
-  );
-}
-
-function FeeSection({ mode, claim, bidAmount, feePct, disclosure, calc, claimRcv, isInsuranceRcv, autoRenew, setAutoRenew, feeAccepted, setFeeAccepted }: {
-  mode: BidMode; claim: Record<string, unknown>; bidAmount: number; feePct: number;
-  disclosure: { feeAmount: number; netAmount: number };
-  calc: { totalFeePercent: string; netAmount: number };
-  claimRcv: number | null; isInsuranceRcv: boolean;
-  autoRenew: boolean; setAutoRenew: (v: boolean) => void;
-  feeAccepted: boolean; setFeeAccepted: (v: boolean) => void;
-}) {
-  const feeInfo = isInsuranceRcv && claimRcv ? BID_COPY.fee.feeInfoInsurance(formatCurrency(claimRcv)) : BID_COPY.fee.feeInfoRetail;
-  return (
-    <Card title="Platform Fee & Submission">
-      <div className="oqb-fee-box">
-        <div className="oqb-fee-row"><span>Your bid</span><span>{formatCurrency(bidAmount)}</span></div>
-        <div className="oqb-fee-row"><span>Platform fee ({feePct.toFixed(2)}%)</span><span>{formatCurrency(disclosure.feeAmount)}</span></div>
-        <div className="oqb-fee-row total"><span>Net to you upon completion</span><span>{formatCurrency(disclosure.netAmount)}</span></div>
-        <div className="oqb-fee-info">{feeInfo}</div>
-      </div>
-
-      {mode !== 'change' && (
-        <Checkbox checked={autoRenew} onChange={setAutoRenew} label="Auto-renew this bid for another 14-day window if it expires (D-150)." />
-      )}
-
-      <label className="oqb-accept">
-        <input type="checkbox" checked={feeAccepted} onChange={(e) => setFeeAccepted(e.target.checked)} />
-        <span>I understand and agree to the platform fee of {feePct.toFixed(2)}% ({formatCurrency(disclosure.feeAmount)}), deducted from my bid amount upon contract execution.</span>
-      </label>
-    </Card>
   );
 }
