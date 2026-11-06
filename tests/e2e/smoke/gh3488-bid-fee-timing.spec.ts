@@ -22,7 +22,11 @@ const FAKE_SUPABASE = `
   const contractor = { id: 'c-1', user_id: 'u-1', status: 'active', attestation_accepted_at: '2026-01-01T00:00:00Z',
     coi_file_url: 'x', coi_expires_at: '2099-01-01', cpa_version: 'v1-2026-04', needs_cpa_reattestation: false,
     company_name: 'Acme Roofing', phone: '5551234567', trades: ['roofing'], service_area_description: 'IN', address_state: 'IN', is_test: true };
+  const existing = { id: 'q-1', claim_id: 'claim-1', contractor_id: 'c-1', total_price: 18000, bid_status: 'active', platform_fee_pct: 5, scope_summary: '{}', trade_type: 'roofing' };
   async function run(s) {
+    // gh-3491: a call named in __t.hang never answers (armed by the test once the form is filled)
+    if (t.hang && t.hang.includes(s.table + ':' + s.op)) { t.hung = (t.hung || 0) + 1; await new Promise(() => {}); }
+    if (s.table === 'quotes' && s.op === 'select' && t.changeMode) return { data: existing, error: null };
     if (s.op === 'insert' || s.op === 'update' || s.op === 'upsert') {
       t.inserts.push({ table: s.table, op: s.op, payload: JSON.parse(JSON.stringify(s.payload)) });
       const row = Object.assign({ id: s.table + '-1' }, s.payload && !Array.isArray(s.payload) ? s.payload : {});
@@ -73,7 +77,7 @@ window.Auth = new Proxy({ requireAuth: async () => ({ id: 'u-1', email: 'c@examp
   { get: (t, k) => (k in t ? t[k] : async () => null) });
 `;
 
-async function openForm(page: Page, opts: { ipifyGate?: boolean; ipifyHang?: boolean } = {}) {
+async function openForm(page: Page, opts: { ipifyGate?: boolean; ipifyHang?: boolean; changeMode?: boolean } = {}) {
   const waiting: Array<() => void> = [];
   const gate: { release: () => void } = { release: () => { waiting.forEach((r) => r()); waiting.length = 0; } };
   await page.route('**/*', async (route) => {
@@ -89,7 +93,7 @@ async function openForm(page: Page, opts: { ipifyGate?: boolean; ipifyHang?: boo
       return route.continue();
     }
     if (url.includes('supabase-js') || url.includes('supabase.js')) {
-      return route.fulfill({ contentType: 'text/javascript', body: FAKE_SUPABASE });
+      return route.fulfill({ contentType: 'text/javascript', body: opts.changeMode ? FAKE_SUPABASE.replace("feeMode: 'immediate'", "feeMode: 'immediate', changeMode: true") : FAKE_SUPABASE });
     }
     if (url.includes('api.ipify.org')) {
       if (opts.ipifyHang) await new Promise<void>(() => {});
@@ -337,7 +341,7 @@ test.describe('gh-3488 contractor-bid-form.html fee timing (real page, Chromium)
     expect((await inserted(page, 'fee_acceptances'))[0].payload.fee_amount).toBe(925);
   });
 
-  test('(REVIEW) an ipify call that never returns times out and records the IP as unknown', async ({ page }) => {
+  test('(REVIEW) an ipify call that never returns times out and records no IP (null, never the string unknown: fee_acceptances.ip_address is inet)', async ({ page }) => {
     test.setTimeout(40000);
     await openForm(page, { ipifyHang: true });
     await fillRequired(page);
@@ -346,7 +350,7 @@ test.describe('gh-3488 contractor-bid-form.html fee timing (real page, Chromium)
     await clickSubmit(page);
     await expect.poll(async () => (await inserted(page, 'fee_acceptances')).length, { timeout: 20000 }).toBe(1);
     const fa = (await inserted(page, 'fee_acceptances'))[0].payload;
-    expect(JSON.stringify(fa)).toContain('unknown');
+    expect(fa.ip_address).toBeNull();   // gh-3409: 'unknown' is not an inet value
   });
 
   test('(REVIEW) a real double click files one bid, also when a lookup returns between the two clicks', async ({ page }) => {
@@ -402,5 +406,32 @@ test.describe('gh-3488 contractor-bid-form.html fee timing (real page, Chromium)
     await page.waitForTimeout(500);
     expect((await inserted(page, 'quotes')).length).toBe(1);
     expect((await inserted(page, 'fee_acceptances')).length).toBe(1);
+  });
+
+  // gh-3491 (REVIEW 6688103147): the Change Bid UPDATE is the one await the submit lock made un-escapable.
+  test('(REVIEW) a Change Bid UPDATE that never answers ends with a message and an unlocked form, and a retry files once', async ({ page }) => {
+    test.setTimeout(60000);
+    const dialogs: string[] = [];
+    page.on('dialog', (d) => { dialogs.push(d.message()); void d.accept(); });
+    await openForm(page, { changeMode: true });
+    await fillRequired(page);
+    await typeBid(page, '18500');
+    await acceptFee(page);
+    await page.evaluate(() => { (window as any).__t.hang = ['quotes:update']; });
+    await clickSubmit(page);
+    // the UPDATE is held open; once its bound passes the form must be usable again
+    await expect.poll(() => dialogs.length, { timeout: 30000 }).toBe(1);
+    expect(dialogs[0]).toContain('Error submitting bid');
+    const st = await page.evaluate(() => {
+      const b = document.getElementById('submitBtn') as HTMLButtonElement; const p = document.getElementById('retailBidPrice') as HTMLInputElement;
+      return { btn: b.textContent!.trim(), disabled: b.disabled, priceLocked: p.readOnly || p.disabled, updates: ((window as any).__t.inserts as any[]).filter((i) => i.table === 'quotes').length };
+    });
+    expect(st).toEqual({ btn: 'Update Bid', disabled: false, priceLocked: false, updates: 0 });   // bab62017: Submitting…, disabled, locked, no message
+    // retry with the connection back: one UPDATE, success screen
+    await page.evaluate(() => { (window as any).__t.hang = []; });
+    await clickSubmit(page);
+    await expect.poll(async () => (await inserted(page, 'quotes')).length, { timeout: 10000 }).toBe(1);
+    expect((await inserted(page, 'quotes'))[0].op).toBe('update');
+    expect((await inserted(page, 'quotes'))[0].payload.total_price).toBe(18500);
   });
 });

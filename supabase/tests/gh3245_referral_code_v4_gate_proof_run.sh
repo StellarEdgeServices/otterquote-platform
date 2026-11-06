@@ -23,7 +23,7 @@ mkdb() {  # $1 db name, $2 = "with3239" or "no3239"
   psql -q -d postgres -c "DROP DATABASE IF EXISTS $1" -c "CREATE DATABASE $1" >/dev/null 2>&1 || exit 2
   psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$T/gh3239_throwaway_schema.sql" >/dev/null || exit 2
   psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$OUT/register_partner_live.sql" >/dev/null || exit 2
-  if [ "$2" = with3239 ]; then psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$D/gh3239_partner_agreement_v4.sql" >/dev/null 2>&1 || exit 2; fi
+  if [ "$2" = with3239 ]; then psql -q -d "$1" -v ON_ERROR_STOP=1 -f "supabase/migrations_applied_manually/20261030165458_gh3239_partner_agreement_v4.sql" >/dev/null 2>&1 || exit 2; fi
   psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$OUT/get_or_create_live.sql" >/dev/null || exit 2
   psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$T/gh3245_referral_code_throwaway_schema.sql" >/dev/null || exit 2
 }

@@ -54,6 +54,40 @@ export function resolvePaidRole(ctx: {
   return shown ? "homeowner" : UNSPECIFIED_ROLE;
 }
 
+/**
+ * [gh-3459] The role to RECORD for a confirmed payment, for every non-contractor request: a missing/unknown role (gh-3447) AND an explicit
+ * client-sent 'homeowner'. buyer_role is client text, so 'homeowner' is only honoured when resolvePaidRole shows it from server-side facts
+ * (the verified PaymentIntent, the claim owner read from the database, the caller from the verified JWT). A caller who does not own the claim
+ * and sends "homeowner" is recorded as 'unspecified' (no $5 accrual at insert, operator alert), never 'homeowner'. The buyer has already
+ * paid, so the order is still recorded: a downgrade is never a refusal. An explicit 'contractor' is left alone (no lookup).
+ * The owner lookup is contained: a throw or an empty result resolves to 'unspecified'.
+ */
+export async function decidePaidRole(ctx: {
+  requestedRole: "homeowner" | "contractor" | typeof UNSPECIFIED_ROLE;
+  piType: string | null;
+  piClaimId: string | null;
+  claimId: string;
+  callerId: string;
+  lookupClaimOwner: () => PromiseLike<string | null>;
+  log?: (m: string) => void;
+}): Promise<{ role: "homeowner" | "contractor" | typeof UNSPECIFIED_ROLE; clientHomeownerNotShown: boolean }> {
+  if (ctx.requestedRole === "contractor") return { role: "contractor", clientHomeownerNotShown: false };
+  let claimOwnerId: string | null = null;
+  try {
+    claimOwnerId = (await ctx.lookupClaimOwner()) ?? null;
+  } catch {
+    try { (ctx.log ?? (() => {}))("[create-measurement-order] claim owner lookup failed"); } catch { /* never throw */ }
+  }
+  const role = resolvePaidRole({
+    piType: ctx.piType,
+    piClaimId: ctx.piClaimId,
+    claimId: ctx.claimId,
+    claimOwnerId,
+    callerId: ctx.callerId,
+  });
+  return { role, clientHomeownerNotShown: ctx.requestedRole === "homeowner" && role === UNSPECIFIED_ROLE };
+}
+
 export interface BuyerRoleAlertRow {
   alert_type: typeof BUYER_ROLE_ALERT_TYPE;
   function_name: "create-measurement-order";

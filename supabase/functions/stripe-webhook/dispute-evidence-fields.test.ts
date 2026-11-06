@@ -58,7 +58,9 @@ Deno.test("gh-1759 NEGATIVE CONTROL: the pre-fix payload shape is detected as fi
 });
 
 Deno.test("gh-1759: index.ts builds its evidence through assembleTextEvidence and names no file field", async () => {
-  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  // gh-3409: buildEvidencePayload moved from index.ts to dispute-fee-evidence.ts so a test can run it; index.ts must still name no file field.
+  const indexSrc = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const src = indexSrc + await Deno.readTextFile(new URL("./dispute-fee-evidence.ts", import.meta.url));
   assert(/assembleTextEvidence\(\{/.test(src), "buildEvidencePayload must use assembleTextEvidence");
   for (const f of FILE_TYPED_EVIDENCE_FIELDS) {
     assert(
@@ -84,7 +86,7 @@ Deno.test("gh-1759: a livemode=false dispute never reaches createClickUpTask (Be
 });
 
 Deno.test("gh-1759 REVIEW-FIX: evidence prose carries no vendor name, no 'homeowner pays nothing', no measurements-in-fee, no net-new build, no invented email terms", async () => {
-  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const src = await Deno.readTextFile(new URL("./dispute-fee-evidence.ts", import.meta.url)); // gh-3409: moved from index.ts
   const start = src.indexOf("function buildEvidencePayload");
   const end = src.indexOf("maySubmitFinalEvidence({", start);
   const body = src.slice(start, end);
@@ -127,8 +129,8 @@ Deno.test("gh-2794: full assembled evidence payload contains no name or address"
   }
 });
 
-Deno.test("gh-2794: buildEvidencePayload in index.ts never reads homeowner_name / property_address", async () => {
-  const src = stripComments(await Deno.readTextFile(new URL("./index.ts", import.meta.url)));
+Deno.test("gh-2794: buildEvidencePayload (now in dispute-fee-evidence.ts) never reads homeowner_name / property_address", async () => {
+  const src = stripComments(await Deno.readTextFile(new URL("./dispute-fee-evidence.ts", import.meta.url)));
   const start = src.indexOf("function buildEvidencePayload(");
   const end = src.indexOf("\n}\n", start);
   assert(start > 0 && end > start);

@@ -485,6 +485,13 @@ ALLOWLIST = [
         "contractor program, cited to GAF's own page -- not a claim about contractors "
         "on the OtterQuote platform. CRO RUN 65, gh-2904.",
     ),
+    (
+        "guides/metal-roof-vs-asphalt-shingle-bids.html",
+        "It advises checking that an installer is licensed, insured and carries workers' compensation coverage",
+        "Attributed statement of what the Metal Roofing Alliance's buyer's guide advises the "
+        "HOMEOWNER to check about any installer, cited to that guide -- not a claim about "
+        "contractors on the OtterQuote platform. gh-3415.",
+    ),
 ]
 
 
