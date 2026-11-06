@@ -285,7 +285,8 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.create-setup-intent]
-verify_jwt = false
+# gh-3507: user session required; in-handler check also enforces contractors.user_id = caller.
+verify_jwt = true
 
 # gh-2019: notify-admin-new-homeowner is deployed verify_jwt=false (Supabase
 # Management API /functions, 2026-09-30) but had NO stanza here, so a flagless

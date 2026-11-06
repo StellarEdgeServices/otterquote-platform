@@ -4,12 +4,16 @@
  * Supports both credit/debit card and ACH bank account (us_bank_account) flows.
  * If the contractor doesn't have a Stripe Customer yet, creates one first.
  *
+ * Auth (gh-3507): requires the caller's user session; refuses (401/403) unless
+ * contractors.user_id = the session's auth user id.
+ *
  * Request body:
  *   contractor_id  (required)  UUID of the contractor
  *   payment_type   (optional)  'card' (default) or 'us_bank_account'
  *
  * Environment variables:
  *   SUPABASE_URL
+ *   SUPABASE_ANON_KEY (caller JWT verification, gh-3507)
  *   SUPABASE_SERVICE_ROLE_KEY
  *   STRIPE_SECRET_KEY
  */
@@ -60,6 +64,30 @@ export async function handler(
   const supabase = makeClient(supabaseUrl, supabaseKey);
 
   try {
+    // ── Caller identity (gh-3507) ──
+    // The caller must hold a real user session. The identity comes from the JWT, never from
+    // the request body. Same pattern as verify-payment-method (the second half of this card-add
+    // flow). verify_jwt=true in config.toml rejects a missing/malformed token at the gateway;
+    // this is the in-code check that also rejects the anon key, which is a valid JWT.
+    const authHeader = req.headers.get("Authorization") || "";
+    if (!authHeader.startsWith("Bearer ")) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized. A valid user session is required." }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const userClient = makeClient(supabaseUrl, getEnv("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: userData, error: userErr } = await userClient.auth.getUser();
+    const callerId = userData?.user?.id;
+    if (userErr || !callerId) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized. Session invalid or expired." }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { contractor_id, payment_type } = await req.json();
 
     if (!contractor_id) {
@@ -96,6 +124,20 @@ export async function handler(
           status: 404,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
+      );
+    }
+
+    // gh-3507: the session must belong to THIS contractor. Checked before any Stripe key is
+    // selected, so a refused caller never reaches Customer or SetupIntent creation.
+    // (No admin path: verify-payment-method has none, and an admin has no reason to mint a
+    // client_secret for a contractor's card.)
+    if (contractor.user_id !== callerId) {
+      console.error(
+        `create-setup-intent: caller ${callerId} is not the owner of contractor ${contractor_id}`
+      );
+      return new Response(
+        JSON.stringify({ error: "Forbidden" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
