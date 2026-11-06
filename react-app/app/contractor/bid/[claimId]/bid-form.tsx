@@ -19,6 +19,7 @@ import { supabase } from '@/lib/supabase';
 import type { ContractorRecord } from '../../_shell/use-contractor-record';
 import { Card, Field, TextInput, MoneyInput, TextArea, Select, Checkbox, RadioRow, formatCurrency, type Opt } from './bid-ui';
 import { BID_COPY, buildFeeDisclosureText } from './copy';
+import { wholeCentDollars } from '../../../../constants/platform-fee';
 import { HomePhotosCard } from './home-photos-card';
 import { WarrantyCard } from './warranty-card';
 import {
@@ -266,7 +267,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
     return () => { active = false; };
   }, [contractor, claim]);
 
-  const bidAmount = parseFloat(form.bidPrice) || 0;
+  const bidAmount = wholeCentDollars(parseFloat(form.bidPrice) || 0); // gh-3488: shown, stored and charged bid is whole cents
   const disclosure = computeDisclosureFee(bidAmount, feePct);
   const calc = computeCalculatorFee(claim, claimRcv, bidAmount);
 

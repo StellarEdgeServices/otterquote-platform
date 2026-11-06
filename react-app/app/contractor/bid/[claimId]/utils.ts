@@ -27,7 +27,7 @@
  */
 
 import { CUSTOM_WARRANTY_TAIL } from './copy';
-import { platformFeeDollars } from '../../../../constants/platform-fee';
+import { platformFeeDollars, wholeCentDollars } from '../../../../constants/platform-fee';
 
 // ── Flat platform fee rate (contractor-bid-form.html:2431-2433) ──────────────
 export const PLATFORM_FEE_CONTRACT_SIGNING = 0.05; // 5%
@@ -239,7 +239,7 @@ export function computeDisclosureFee(
   // gh-3488 / D-267: whole-cent fee from the one shared definition (constants/platform-fee.ts); the figure shown,
   // recorded in fee_acceptances / quotes and charged by the Edge Functions is this same value.
   const feeAmount = platformFeeDollars(bidAmount, feePct);
-  return { feeAmount, netAmount: Math.round((bidAmount - feeAmount) * 100) / 100 };
+  return { feeAmount, netAmount: Math.round((wholeCentDollars(bidAmount) - feeAmount) * 100) / 100 };
 }
 
 /**

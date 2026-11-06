@@ -3176,7 +3176,7 @@
       if (!rowsEl || !grandEl) return;
 
       const tradeLabels = { roofing: '🏠 Roofing', gutters: '💧 Gutters', siding: '🧱 Siding' };
-      const feeRate = PLATFORM_FEES.contractSigning; // 0.05
+      const feePct = currentFeePct(); // gh-3488: same rate and whole-cent rounding as the disclosure
 
       let grandTotal = 0;
       let html = '';
@@ -3185,7 +3185,7 @@
         const price = wizardTradePrices[trade];
         const label = tradeLabels[trade] || trade;
         if (price != null && price > 0) {
-          const net = price * (1 - feeRate);
+          const net = Math.round((wholeCentDollars(price) - platformFeeDollars(price, feePct)) * 100) / 100;
           grandTotal += price;
           html += `<div class="wizard-summary-row">
             <span class="wizard-summary-trade">${label}</span>
@@ -3205,7 +3205,7 @@
       rowsEl.innerHTML = html;
       grandEl.textContent = formatCurrency(grandTotal);
       if (grandTotal > 0 && grandNetEl) {
-        const grandNet = grandTotal * (1 - feeRate);
+        const grandNet = Math.round((wholeCentDollars(grandTotal) - platformFeeDollars(grandTotal, feePct)) * 100) / 100;
         grandNetEl.textContent = 'Net to you: ' + formatCurrency(grandNet);
       }
     }
@@ -4260,17 +4260,19 @@
       // accepted the fee (E2E walk fix 2026-07-07). updateFeeDisclosure is
       // async; fire-and-forget is fine for display refresh.
       if (typeof updateFeeDisclosure === 'function') { try { updateFeeDisclosure(); } catch (e) { /* non-fatal */ } }
-      const bidAmount = parseFloat(document.getElementById('totalPrice').value) || 0;
+      const bidAmount = wholeCentDollars(parseFloat(document.getElementById('totalPrice').value) || 0);
 
       // #487 (CEO decision 2026-07-08): fee base is the bid amount for every
       // job type — aligned with the D-215 disclosure, fee_acceptances.fee_basis
       // ('bid_amount'), and the actual charge (docusign-webhook × total_price).
       const feeBase = bidAmount;
 
-      const contractSigningFee = feeBase * PLATFORM_FEES.contractSigning;
+      // gh-3488 / D-267: the same whole-cent figure the disclosure shows and the webhook charges (this line used
+      // feeBase * 0.05 on a float, which showed $64.80 beside a $64.81 disclosure for a $1,296.10 bid).
+      const contractSigningFee = platformFeeDollars(feeBase, currentFeePct());
       const totalFee = contractSigningFee;
       const totalFeePercent = feeBase > 0 ? (totalFee / feeBase * 100).toFixed(1) : 0;
-      const netAmount = bidAmount - totalFee;
+      const netAmount = Math.round((bidAmount - totalFee) * 100) / 100;
 
       document.getElementById('displayBid').textContent = formatCurrency(bidAmount);
       // Net-to-contractor inline display (86e10t292)
@@ -4705,17 +4707,26 @@
     }
 
     // BEGIN platform-fee shared definition (gh-3488, D-267). Byte-identical in three places (parity test:
-    // react-app/app/contractor/bid/[claimId]/__tests__/platform-fee-parity.test.ts): this file,
+    // react-app/app/contractor/bid/[claimId]/__tests__/gh3488-fee-one-rounding.test.ts): this file,
     // react-app/constants/platform-fee.ts and the inline copy in contractor-bid-form.html.
     // The fee the contractor is SHOWN and the fee that is CHARGED are this one figure, in whole cents,
     // rounded half-up on the exact decimal product (bid cents x pct hundredths / 10000), integers only.
     // It equals round(pct/100 * total_price, 2) in Postgres numeric (quotes.fee_amount, gh-2519 trigger).
+    // A typed bid is first normalised to whole cents the way Postgres numeric(12,2) stores it (half-up on
+    // the decimal text), so a bid typed with a fraction of a cent shows and charges the same fee.
+    function wholeCents(amount) {
+      const n = Number(amount);
+      if (!Number.isFinite(n) || n <= 0) return 0;
+      const viaText = Math.round(Number(n + 'e2'));
+      return Number.isFinite(viaText) ? viaText : Math.round(n * 100);
+    }
+    function wholeCentDollars(amount) {
+      return wholeCents(amount) / 100;
+    }
     function platformFeeCents(bidAmount, feePct) {
-      const bid = Number(bidAmount);
-      const pct = Number(feePct);
-      if (!Number.isFinite(bid) || !Number.isFinite(pct) || bid <= 0 || pct <= 0) return 0;
-      const bidCents = Math.round(bid * 100);
-      const pctHundredths = Math.round(pct * 100);
+      const bidCents = wholeCents(bidAmount);
+      const pctHundredths = wholeCents(feePct);
+      if (bidCents <= 0 || pctHundredths <= 0) return 0;
       const t = bidCents * pctHundredths + 5000;
       return (t - (t % 10000)) / 10000;
     }
@@ -4724,17 +4735,27 @@
     }
     // END platform-fee shared definition
 
+    // gh-3488: the rate every on-page fee figure uses (the same one the disclosure uses). _platformFeePct is a
+    // `let` further down the script, so a call before it is initialised falls back to the 5% default.
+    function currentFeePct() {
+      try { return window._feePct || _platformFeePct; } catch (e) { return 5.0; }
+    }
+
+    let _feeDisclosureSeq = 0;
     async function updateFeeDisclosure() {
       // Recalculate and display fee based on bid amount + percentage
       const bidAmountEl = document.getElementById('totalPrice');
       if (!bidAmountEl) return;
 
-      const bidAmount = parseFloat(bidAmountEl.value) || 0;
-      
+      // gh-3488: lookups can return out of order. Only the newest call may write the display, and the bid is read
+      // AFTER the lookup, so an older response can never leave an old bid's fee beside a newer bid.
+      const seq = ++_feeDisclosureSeq;
+
       // Fetch fee percentage
       const feePct = await fetchPlatformFeePercentage();
+      if (seq !== _feeDisclosureSeq) return;
+      const bidAmount = wholeCentDollars(parseFloat(bidAmountEl.value) || 0);
       const feeAmount = platformFeeDollars(bidAmount, feePct); // gh-3488 / D-267: whole cents, same figure the webhook charges
-      const netAmount = bidAmount - feeAmount;
 
       // Update display fields
       document.getElementById('feePercentDisplay').textContent = feePct.toFixed(2);
@@ -5079,9 +5100,14 @@
         const formData = new FormData(bidForm);
 
           // ── D-214/D-215: Fee Acceptance Capture ──
-          const _bidAmount = parseFloat(document.getElementById('totalPrice').value) || 0;
+          // gh-3488 / D-267: the accepted figure is derived here from the bid being submitted (whole cents), never
+          // from whatever an earlier fee lookup left in window._feeAmount; window values are set first so the
+          // recorded sentence (generateExactFeeText) carries the same figure.
+          const _bidAmount = wholeCentDollars(parseFloat(document.getElementById('totalPrice').value) || 0);
           const _feePct = window._feePct || _platformFeePct;
-          const _feeAmount = window._feeAmount || platformFeeDollars(_bidAmount, _feePct);
+          const _feeAmount = platformFeeDollars(_bidAmount, _feePct);
+          window._feePct = _feePct;
+          window._feeAmount = _feeAmount;
           const _exactFeeText = generateExactFeeText();
           const _contractorIP = await getContractorIP();
           const _userAgent = navigator.userAgent;
@@ -5125,7 +5151,7 @@
               return;
             }
           }
-          const totalPrice = parseFloat(document.getElementById('totalPrice').value) || 0;
+          const totalPrice = wholeCentDollars(parseFloat(document.getElementById('totalPrice').value) || 0); // gh-3488: stored bid = shown bid, whole cents
           const feePercentage = 5.0;
 
           // #487 (CEO decision 2026-07-08): the platform fee basis is the BID
