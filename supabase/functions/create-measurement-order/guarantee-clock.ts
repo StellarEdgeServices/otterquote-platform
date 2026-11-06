@@ -54,6 +54,7 @@ export function paymentSucceededAt(pi: any, now: Date = new Date()): Date | null
   if (pi.status !== "succeeded" || charge.status !== "succeeded" || charge.paid !== true) return null;
   if (!Number.isInteger(charge.created) || charge.created <= 0) return null;
   const at = new Date(charge.created * 1000);
+  if (Number.isNaN(at.getTime())) return null; // an integer beyond Date's range is an Invalid Date, not a payment time
   if (at.getTime() > now.getTime() + FUTURE_SKEW_MS) return null;
   return at;
 }
@@ -136,7 +137,13 @@ export async function decideGuaranteeClock(deps: ClockDeps): Promise<ClockDecisi
     return { stored: false, reason: "is_test", fields: {} };
   }
   if (!deps.paidAt) return { stored: false, reason: "no_payment_time", fields: {} };
-  return { stored: true, fields: buildGuaranteeClock(deps.paidAt) };
+  try {
+    return { stored: true, fields: buildGuaranteeClock(deps.paidAt) };
+  } catch {
+    // Never throws: a paid order must be recorded even if the time cannot be turned into a clock (it falls through to the no_payment_time alert).
+    deps.log("[create-measurement-order] guarantee clock: could not build the clock from the payment time");
+    return { stored: false, reason: "no_payment_time", fields: {} };
+  }
 }
 
 export interface ClockAlertRow {

@@ -1,5 +1,8 @@
 // gh-3471 -- the REAL handler (index.ts), driven end to end with Stripe, Supabase Auth and PostgREST answered by a stub `fetch`.
-// Nothing here re-implements index.ts: it imports it. A change to index.ts that breaks the clock, the retry or the alert fails a test below.
+// Nothing here re-implements index.ts: it imports it. What these tests pin (each line was checked by deleting or flipping the code it names, results on #3471):
+// the stored start/deadline; the is_test / livemode / contractor gates; the missing-column retry and its alerts (PGRST204, 42703); the no_payment_time alert;
+// a claim or profile read that returns an error; the idempotent replay; the stripe_payment_id normalisation; the no-flag branch that serves. Not pinned: the optional
+// is_internal_test_email rpc result (unit-tested in guarantee-clock.test.ts) and the exact text of the log lines.
 // Run: deno test --allow-read=supabase/functions supabase/functions/create-measurement-order/guarantee-clock-handler.test.ts
 import { assert, assertEquals, assertFalse, assertStringIncludes } from "https://deno.land/std@0.208.0/assert/mod.ts";
 
@@ -32,7 +35,11 @@ interface World {
   clockInsert: "ok" | "PGRST204" | "42703";
   hoverPosts: Json[];
   alerts: Json[];
+  existing?: Json;
+  claimFail?: boolean;
+  profileFail?: boolean;
 }
+const logs: string[] = [];
 
 function pi(over: Json = {}): Json {
   return {
@@ -74,9 +81,11 @@ function install(w: World) {
         const key = url.searchParams.get("key");
         return reply(key === "eq.measurement_products" ? [{ value: { roof_basic: { homeowner_price_cents: 2263, active: true, rebate_on_close: false } } }] : [], accept);
       }
-      if (table === "claims") return reply([w.claim], accept);
-      if (table === "profiles") return reply([w.profile], accept);
-      return reply([], accept); // hover_orders idempotency lookup etc.: no existing row
+      const dbErr = () => new Response(JSON.stringify({ code: "XX000", message: "boom" }), { status: 500, headers: json });
+      if (table === "claims") return w.claimFail ? dbErr() : reply([w.claim], accept);
+      if (table === "profiles") return w.profileFail ? dbErr() : reply([w.profile], accept);
+      if (table === "hover_orders" && w.existing) return reply([w.existing], accept); // idempotency lookup finds the order
+      return reply([], accept);
     }
     const body = await req.json().catch(() => null);
     if (table === "hover_orders") {
@@ -99,13 +108,13 @@ await import("./index.ts");
 // deno-lint-ignore no-explicit-any
 const handler = (globalThis as any).__oqCreateMeasurementOrderHandler as (r: Request) => Promise<Response>;
 
-async function purchase(w: World): Promise<{ status: number; body: Json }> {
+async function purchase(w: World, over: Json = {}): Promise<{ status: number; body: Json }> {
   install(w);
   try {
     const res = await handler(new Request("https://x.supabase.co/functions/v1/create-measurement-order", {
       method: "POST",
       headers: { Authorization: "Bearer t", "Content-Type": "application/json", Origin: "https://otterquote.com" },
-      body: JSON.stringify({ claim_id: CLAIM, product_code: "roof_basic", payment_intent_id: "pi_3Abc123", buyer_role: "homeowner" }),
+      body: JSON.stringify({ claim_id: CLAIM, product_code: "roof_basic", payment_intent_id: "pi_3Abc123", buyer_role: "homeowner", ...over }),
     }));
     return { status: res.status, body: await res.json() };
   } finally {
@@ -113,7 +122,8 @@ async function purchase(w: World): Promise<{ status: number; body: Json }> {
   }
 }
 const quiet = (fn: () => Promise<void>) => async () => {
-  const e = console.error, l = console.log; console.error = () => {}; console.log = () => {};
+  logs.length = 0;
+  const e = console.error, l = console.log; console.error = (...a: unknown[]) => { logs.push(a.map(String).join(" ")); }; console.log = () => {};
   try { await fn(); } finally { console.error = e; console.log = l; }
 };
 
@@ -184,4 +194,96 @@ Deno.test("handler: an unrelated insert error still fails loudly (no silent retr
   assertEquals(res.status, 500);
   assertEquals(w.hoverPosts.length, 1, "no retry for an unrelated error");
   assertEquals((await res.json()).payment_captured, true);
+}));
+
+const NO_CLOCK = (row: Json) => assertFalse("guarantee_started_at" in row || "guarantee_deadline_at" in row);
+const clockAlerts = (w: World) => w.alerts.filter((a) => a.alert_type === "guarantee_clock_not_stored");
+
+Deno.test("handler: a real order whose payment time is unreadable is RECORDED without a clock and raises exactly one no_payment_time alert; contractor and is_test raise none", quiet(async () => {
+  for (const bad of [
+    pi({ latest_charge: "ch_3Abc123" }), // not expanded
+    pi({ latest_charge: null }),
+    pi({ latest_charge: { id: "ch_1", status: "succeeded", paid: false, created: PAID_UNIX } }),
+    pi({ latest_charge: { id: "ch_1", status: "succeeded", paid: true, created: Math.floor(Date.now() / 1000) + 3600 } }), // an hour ahead of the real clock
+    pi({ latest_charge: { id: "ch_1", status: "succeeded", paid: true, created: 1e13 } }), // beyond Date's range: Invalid Date (F2)
+  ]) {
+    const w = world({ pi: bad });
+    const r = await purchase(w);
+    assertEquals(r.status, 200, "the order is recorded");
+    assertEquals(w.hoverPosts.length, 1);
+    NO_CLOCK(w.hoverPosts[0]);
+    assertEquals(clockAlerts(w).length, 1, "one alert");
+    assertStringIncludes(clockAlerts(w)[0].message, "Stripe did not show when the payment succeeded");
+  }
+  const unreadable = pi({ latest_charge: null });
+  const contractor = world({ pi: unreadable });
+  assertEquals((await purchase(contractor, { buyer_role: "contractor", contractor_id: "cccccccc-0000-4000-8000-000000000001" })).status, 200);
+  NO_CLOCK(contractor.hoverPosts[0]);
+  assertEquals(contractor.hoverPosts[0].requested_by_role, "contractor");
+  assertEquals(contractor.alerts.length, 0, "a contractor order is not an alert");
+  const test = world({ pi: unreadable, claim: { is_test: true, user_id: OWNER } });
+  assertEquals((await purchase(test)).status, 200);
+  assertEquals(test.alerts.length, 0, "a test order is not an alert");
+  // a contractor-role order with a READABLE time also gets no clock
+  const c2 = world();
+  await purchase(c2, { buyer_role: "contractor", contractor_id: "cccccccc-0000-4000-8000-000000000001" });
+  NO_CLOCK(c2.hoverPosts[0]);
+}));
+
+Deno.test("handler: charge.created beyond the Date range (1e13) -> HTTP 200, exactly one INSERT, exactly one alert (the order is never lost to a bad time)", quiet(async () => {
+  const w = world({ pi: pi({ latest_charge: { id: "ch_1", status: "succeeded", paid: true, created: 1e13 } }) });
+  const r = await purchase(w);
+  assertEquals(r.status, 200);
+  assertEquals(w.hoverPosts.length, 1);
+  assertEquals(w.alerts.length, 1);
+  assertEquals(w.hoverPosts[0].stripe_payment_id, "ch_1");
+}));
+
+Deno.test("handler: a replay of an already-recorded PaymentIntent returns the existing order with idempotent:true and writes NOTHING", quiet(async () => {
+  const w = world({ existing: { id: "99999999-2222-4333-8444-555555555555", status: "awaiting_fulfillment", product_code: "roof_basic" } });
+  const r = await purchase(w);
+  assertEquals(r.status, 200);
+  assertEquals(r.body.idempotent, true);
+  assertEquals(r.body.order_id, "99999999-2222-4333-8444-555555555555");
+  assertEquals(w.hoverPosts.length, 0, "no second order, no restarted clock");
+  assertEquals(w.alerts.length, 0);
+}));
+
+Deno.test("handler: a claim read or a profile read that RETURNS AN ERROR still records the order, keeps the clock (treated as real), and logs", quiet(async () => {
+  for (const [name, over, line] of [
+    ["claim", { claimFail: true }, "claim is_test lookup failed"],
+    ["profile", { profileFail: true }, "profile test-flag lookup failed"],
+  ] as const) {
+    logs.length = 0;
+    const w = world(over);
+    const r = await purchase(w);
+    assertEquals(r.status, 200, name);
+    assertEquals(w.hoverPosts.length, 1, name);
+    assertEquals(w.hoverPosts[0].guarantee_started_at, PAID_ISO, `${name}: a failed read counts as real`);
+    assertEquals(w.alerts.length, 0, name);
+    assert(logs.some((l) => l.includes(line)), `${name}: logged (${logs.join(" | ")})`);
+  }
+}));
+
+Deno.test("module: WITHOUT the test flag, index.ts starts the server (the production branch); WITH it, it only exposes the handler", quiet(async () => {
+  // deno-lint-ignore no-explicit-any
+  const g = globalThis as any;
+  const realListen = Deno.listen;
+  const listens: unknown[] = [];
+  // deno-lint-ignore no-explicit-any
+  (Deno as any).listen = (opts: unknown) => { listens.push(opts); return { addr: { transport: "tcp", hostname: "0.0.0.0", port: 8000 }, accept: () => new Promise(() => {}), close() {}, [Symbol.asyncIterator]() { return { next: () => new Promise(() => {}) }; } }; };
+  const flag = g.__OQ_NO_SERVE;
+  try {
+    g.__OQ_NO_SERVE = true;
+    await import("./index.ts?withflag");
+    assertEquals(listens.length, 0, "flag set: nothing listens");
+    delete g.__OQ_NO_SERVE;
+    await import("./index.ts?noflag");
+    await new Promise((r) => setTimeout(r, 50));
+    assertEquals(listens.length, 1, "no flag: the server starts");
+  } finally {
+    g.__OQ_NO_SERVE = flag;
+    // deno-lint-ignore no-explicit-any
+    (Deno as any).listen = realListen;
+  }
 }));
