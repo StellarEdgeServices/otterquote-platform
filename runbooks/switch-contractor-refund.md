@@ -4,11 +4,10 @@
 **Owner:** Dustin, until contractors go live (Dustin, chat with Ben, 2026-11-04, answering "Do you own that email until contractors go live?": "Yes, I own it (Recommended)"; recorded on #3355, comment 6642594524)
 **Applies to:** A homeowner's request to switch contractors after a contract is signed
 **Sources:** Agreement 6.4 (`contractor-agreement.html`), Terms 8.4 and 8.5 (`terms.html`), D-410 (Central time), `supabase/functions/switch-contractor/cutoff.ts`, `supabase/functions/switch-contractor/index.ts`, `supabase/functions/_shared/stripe-key-select.ts`, `supabase/functions/process-dunning/retry-pass.ts`
-**Last updated:** 2026-11-04 (gh-3355, revised after REVIEW 6643087597 and QUESTION 6643116510 on PR #3399)
+**Last updated:** 2026-11-05 (gh-3355, revised after REVIEW 6643087597 and QUESTION 6643116510 on PR #3399, then for the "Fee only" ruling on #3403 and PR #3450)
 
-**Two things hold this runbook back from being fully usable:**
+**One thing holds this runbook back from being fully usable:**
 
-- **Step 5's amount is not decided.** Whether the refund is the platform fee only or the whole card charge is Dustin's ruling, open as #3403 (the [ASK] under #3355). Do not issue a card refund until it is ruled.
 - **It should merge after #3400**, the PR that writes Central time into Terms 8.5 and Agreement 6.4. Until #3400 is live, those documents do not yet name Central time (see "Local clock times" in Step 2).
 
 **Who decides what.** You (Dustin) are the reader and the owner. Anything this runbook calls a "Tier C decision" (money, a contract term, a case 6.4 does not settle) is yours to decide. Ben and Marty can give a recommendation, but they do not rule on it for you.
@@ -21,7 +20,7 @@
 
 - The homeowner's "switch" form (React dashboard `submitSwitchSurvey`, legacy `dashboard.html`) only calls the `send-support-email` Edge Function. It emails **dustinstohler1@gmail.com** with the subject `[Otter Quotes Support] Switch Contractor Request` and inserts one `support_tickets` row (`source = 'form'`, `status = 'open'`). Body: `Job #<8 characters>`, `Reasons: ...`, `Notes: ...`.
 - The form is **public**. The function stores `from_email` and the message exactly as typed. Nothing proves the sender owns the job reference they typed (Step 1 checks this).
-- It changes **no** claim, quote or Stripe state. The `switch-contractor` Edge Function (the only code that refunds a contractor's platform fee) is not called by any page, and it must not be called for a hand refund: it refunds on the call with no confirmation step and no begun-work check, and it refunds the whole charge.
+- It changes **no** claim, quote or Stripe state. The `switch-contractor` Edge Function (the only code that refunds a contractor's platform fee) is not called by any page, and it must not be called for a hand refund: it refunds on the call with no confirmation step and no begun-work check, and, as deployed from main 28c147fa, it refunds the whole charge (PR #3450, not merged at this head, changes it to refund the platform fee only). The amount to refund by hand is in Step 5.
 - So the refund exists only if a person issues it. That person is you. The Agreement (6.4) and the FAQ promise it.
 
 ## When this fires
@@ -97,7 +96,7 @@ order by q.created_at desc;
 - **Stop unless exactly one row comes back.** Zero rows: no winning quote; tell Marty. More than one: the one-selected-bid index covers only `selected` plus `active`, so two rows are possible; stop and tell Marty which rows you see.
 - **If the row is already retired** (`declined`, `superseded`, `homeowner_switched_contractor`): the switch was already processed. Stop; check Step 5's "already refunded" branch only to confirm the state, and go to Step 6.
 - `scope_summary` is stored as JSON text or as JSON; if the cast fails, read the `estimated_start_date` key out of the column by eye.
-- `fee_amount` and `card_fee_cents` are for Step 5. Check their units against the payment's own figures in Stripe before you use them (the payment carries `metadata.platform_fee_cents` and, for cards, `metadata.card_fee_cents`, both in cents).
+- The refund amount in Step 5 is read from the payment's `metadata.platform_fee_cents` in Stripe (cents). `fee_amount` and `card_fee_cents` here are for cross-checking only; their units are unverified, so do not refund from them.
 
 **1d. The contractor's contact details.**
 
@@ -183,18 +182,13 @@ Contact the homeowner at the address on file (`account_email`, Step 1b). The hom
 
 ## Step 5 - Refund in the Stripe dashboard
 
-**THE AMOUNT IS AWAITING DUSTIN'S RULING. Do not issue a card refund until it is ruled.** The question is open as the [ASK] #3403 (under #3355): is the refund the platform fee only, or the whole card charge?
+**Ruled on #3403 (Dustin, 2026-11-05, "Fee only (Recommended)", comment 6664114820): the by-hand refund is the platform fee only, never the card processing fee.** On a card payment of $180.54 the refund is $175.00. A bank-transfer payment has no card fee, so the refund equals the whole charge. Read the fee from `metadata.platform_fee_cents`.
 
-Agreement 6.4 refunds the fee "in full, excluding any card processing fee". The `switch-contractor` code refunds the whole charge. The contractor FAQ says the fee is "reversed in full". These do not agree on a card payment. Using the reviewer's example (the `create-payment-intent` formula, 2.9% + $0.30):
+Agreement 6.4 refunds the fee "in full, excluding any card processing fee", and the ruling follows it. PR #3450 (not merged or deployed at this head) changes `switch-contractor` to send `amount` = `metadata.platform_fee_cents` instead of refunding the whole charge, and changes `contractor-faq.html:320` to the 6.4 wording. Until it is live, the function would refund the whole charge on a card payment, which is another reason not to call it for a hand refund. The card fee uses the `create-payment-intent` formula, 2.9% + $0.30.
 
-| If the ruling is | The refund is | Note |
-|---|---|---|
-| Fee only | **$175.00** | Matches the 6.4 text as written. The contractor is not refunded the $5.54 card fee. |
-| Whole charge | **$180.54** | More than 6.4 owes; Otter Quotes likely bears the $5.54 (Stripe generally keeps its own fee on a refund; general knowledge, not checked on this account). 6.4 would need rewording. |
+Here the fee is $175.00, the card charge is $180.54, and the card fee is $5.54. These are the reviewer's example figures, not a real payment; read the real fee from the payment (`metadata.platform_fee_cents`; `metadata.card_fee_cents` shows the card fee on a card payment).
 
-Here the fee is $175.00, the card charge is $180.54, and the card fee is $5.54. These are the reviewer's example figures, not a real payment; read the real ones from the payment (`metadata.platform_fee_cents`, `metadata.card_fee_cents`) and from `fee_amount` and `card_fee_cents` in Step 1c.
-
-A refund in Stripe cannot be taken back. A short refund can be topped up later; an over-refund cannot be recovered. A bank-transfer (ACH) charge carries no surcharge (Agreement: "ACH transfers incur no additional processing fee"), so on a bank payment the fee and the charge are the same amount and there is no question to rule on.
+A refund in Stripe cannot be taken back. A short refund can be topped up later; an over-refund cannot be recovered. A bank-transfer (ACH) charge carries no surcharge (Agreement: "ACH transfers incur no additional processing fee"), so on a bank payment the fee and the charge are the same amount and the refund equals the whole charge.
 
 Only when Step 2 is open **and** Step 3 is a clear no **and** Step 4 is done:
 
@@ -219,13 +213,13 @@ Only when Step 2 is open **and** Step 3 is a clear no **and** Step 4 is done:
 
 **5.3 Open the payment.** In the Stripe dashboard, in that mode, search for the quote's `payment_intent_id` (the `pi_...` value from Step 1c) and open the payment. Check it shows **Succeeded** and has no refund yet. If it already shows refunded, stop: the refund is done. Go to Step 6.
 
-**5.4 Check the amount against the ruling.** If the payment is a card payment (`payment_method_type` is a card, or the payment has `metadata.card_fee_cents`), the refund amount is whichever of the two figures above the ruling on #3403 says. **If #3403 is not yet ruled, stop here.** If it is a bank payment, refund the full amount.
+**5.4 Set the amount.** The refund is the platform fee only (`metadata.platform_fee_cents`, in cents: $175.00 is 17500), never the card processing fee. On a card payment (`payment_method_type` is a card, or the payment has `metadata.card_fee_cents`) that is less than the charge. On a bank payment the fee equals the charge, so the amount is the full charge. **If `metadata.platform_fee_cents` is missing or empty, stop: do not refund the whole charge. Tell Marty.**
 
 **5.5 Refund.** Choose **Refund**, enter the amount from 5.4, pick the reason "Requested by customer", and add a note: `homeowner_switched_contractor, claim <job ref>`.
 
 **5.6 Record the refund id.** Copy the refund id (`re_...`) shown after you confirm. Re-open the payment and check it now shows the refund, and for what amount.
 
-Contractor-facing wording used by the function, for reference: "Your platform fee has been refunded in full and will appear in your account within 5-10 business days." Do not send that wording on a card payment if you refunded the fee only; say what you actually refunded.
+Contractor-facing wording used by the function, for reference. Card payment, with that charge's amounts: "We refunded your $175.00 platform fee. The remaining $5.54 processing fee is not refundable. The refund will appear in your account within 5–10 business days." Bank payment: the same without the middle sentence. Use the same wording for a refund by hand. Do not say "refunded in full".
 
 ## Step 6 - Record it
 
@@ -239,12 +233,12 @@ Do both:
    where id = '<ticket id>';
    ```
 
-   Check first what `status` values the table already uses (`select distinct status from support_tickets;`) and use the matching resolved value. If the case is **held** (Step 3, Step 5 stop, or a Tier C decision still open), leave the ticket `open` and put the reason in `resolution_notes` instead. The notes contain: the request time (UTC and Central), `estimated_start_date`, the date-check result, whether `from_email` matched the account email, who you asked about begun work and each answer (work, materials, permit), the deposit answer, the outcome (refunded / not refunded / held, and why), the amount refunded and which ruling it followed, and the Stripe refund id and date.
+   Check first what `status` values the table already uses (`select distinct status from support_tickets;`) and use the matching resolved value. If the case is **held** (Step 3, Step 5 stop, or a Tier C decision still open), leave the ticket `open` and put the reason in `resolution_notes` instead. The notes contain: the request time (UTC and Central), `estimated_start_date`, the date-check result, whether `from_email` matched the account email, who you asked about begun work and each answer (work, materials, permit), the deposit answer, the outcome (refunded / not refunded / held, and why), the amount refunded (the platform fee only, per the #3403 ruling), and the Stripe refund id and date.
 2. **Tell Marty** the claim job ref and refund id (or the stop reason), in a comment on #3355 or a message to the CTO. Nothing in the repo updates the quote after a hand refund: `quotes.payment_status` stays `succeeded`, and the claim stays `contract_signed`/`awarded`. Marty files the reviewed write that marks the quote refunded and returns the claim to bidding. Do not edit those rows by hand.
 
 ## Not covered by this runbook (open points, with owners)
 
-- **The refund amount on a card payment** is Dustin's ruling, open as #3403 (see Step 5). If the ruling is "fee only", `switch-contractor` (which refunds the whole charge) and `contractor-faq.html:320` ("reversed in full -- you're not out a dollar") also need follow-up changes. Owner: Dustin to rule, Marty to follow up.
+- **Code and FAQ follow-up for the "Fee only" ruling.** The amount is ruled (Dustin, #3403, comment 6664114820). The `switch-contractor` change (refund `metadata.platform_fee_cents`; the contractor email names the amounts) and `contractor-faq.html:320` are in PR #3450, not merged or deployed at this head. Owner: Marty.
 - **Fee falling due again.** 6.4 says that if the contractor begins work before the homeowner signs with a replacement, the fee is due again and Otter Quotes may charge it to the payment method on file. Nothing watches for this after a hand refund and no step charges it. A new charge is a money decision (Tier C) that needs its own reviewed path. Who watches, and for how long, is not assigned: Dustin to decide.
 - **Deposit return.** The Agreement obliges the contractor to return any deposit once the homeowner signs with a replacement. Nothing records or enforces it. Whether Otter Quotes follows up is not in the Agreement; Dustin's call.
 - **"Begun work".** 6.4 does not define it, and does not say what a contractor's silence means. Step 3 records the facts and holds; each such case is a Tier C decision for Dustin until a D-number settles it.
@@ -254,7 +248,7 @@ Do both:
 
 ## Resolution criteria
 
-- The ticket is resolved (or held with the reason written down), with the notes above; the refund (if any) appears in Stripe against the payment for the amount ruled on #3403; and Marty has the job ref and refund id.
+- The ticket is resolved (or held with the reason written down), with the notes above; the refund (if any) appears in Stripe against the payment for the platform fee amount (`metadata.platform_fee_cents`); and Marty has the job ref and refund id.
 
 ## Auto-resolve eligible: no
 
