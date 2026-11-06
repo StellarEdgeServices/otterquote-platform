@@ -479,7 +479,11 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
             console.error(feeMsg, feeRes.error?.message);
             Sentry.captureMessage(feeMsg, { level: feeOutcome === 'failed' ? 'error' : 'warning', extra: { bid_id: bidId, claim_id: String(claim.id), contractor_id: contractor.id, code: feeRes.error?.code, message: feeRes.error?.message } });
           }
-        } catch (e) { console.error('[D-215] fee acceptance failed (non-fatal):', e); }
+        } catch (e) {
+          // gh-3498: a timed-out (or otherwise thrown) acceptance write must leave a trace, as the HTML form does: the quote is filed, the D-215 row may not be.
+          console.error('[D-215] fee acceptance failed (non-fatal):', e);
+          Sentry.captureException(e, { extra: { bid_id: bidId, claim_id: String(claim.id), contractor_id: contractor.id } });
+        }
         try {
           const tradeLabel = wizardMode && wizard.queue.length > 0 ? wizard.queue.join(', ') : (claimTrades.length ? claimTrades.join(', ') : 'roofing');
           await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => supabase.functions.invoke('send-bid-confirmation', {

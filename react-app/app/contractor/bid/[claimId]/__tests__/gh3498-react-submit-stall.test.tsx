@@ -80,6 +80,8 @@ const h = vi.hoisted(() => {
 });
 
 vi.mock('@/lib/supabase', () => ({ supabase: h.supabase }));
+const sentry = vi.hoisted(() => ({ captureException: vi.fn(), captureMessage: vi.fn() }));
+vi.mock('@sentry/nextjs', () => sentry);
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: () => {} }) }));
 
 import { BidForm } from '../bid-form';
@@ -98,6 +100,7 @@ afterEach(() => {
   cleanup(); vi.useRealTimers();
   Object.assign(h.state, { gate: 'ok', insert: 'ok', aborted: 0, readbacks: 0, feeAcceptances: 0, hung: 0, updates: 0 });
   h.state.hang.length = 0;
+  sentry.captureException.mockClear(); sentry.captureMessage.mockClear();
   h.state.rows.length = 0; h.state.keyed.length = 0;
 });
 
@@ -190,6 +193,10 @@ describe('gh-3498 React bid form: stalled submit', () => {
       expect(container.textContent).not.toContain('Error submitting bid');
       expect(h.state.rows.length).toBe(1);
       expect(h.state.aborted).toBe(1);
+      if (call === 'fee_acceptances:insert') { // a lost D-215 acceptance must leave a trace (REVIEW 6692292671)
+        expect(sentry.captureException).toHaveBeenCalledTimes(1);
+        expect(sentry.captureException.mock.calls[0][1]).toEqual({ extra: { bid_id: 'quote-1', claim_id: 'claim-1', contractor_id: 'c1' } });
+      }
     });
   }
 
