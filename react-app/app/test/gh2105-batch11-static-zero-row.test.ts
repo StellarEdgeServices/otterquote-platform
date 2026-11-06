@@ -67,7 +67,8 @@ describe('contractor-bid-form.html change/renew bid update (gh-2105 batch 11)', 
   });
 
   it("chains .select('id') on the quotes update", () => {
-    expect(block).toContain(".eq('id', existingQuote.id)\n              .select('id')");
+    // Whitespace/line-break tolerant: the chain may sit on one line or several.
+    expect(block).toMatch(/\.eq\(\s*'id'\s*,\s*existingQuote\.id\s*\)\s*\.select\(\s*'id'\s*\)/);
   });
 
   it('throws bid_update_zero_rows on a zero-row match, after the existing error check', () => {
