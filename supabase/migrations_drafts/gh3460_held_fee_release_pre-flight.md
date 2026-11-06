@@ -10,7 +10,7 @@ DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 Issue #3460 (P18), parent #3447, owed by PR #3455. Money: Tier 3B. Needs REVIEW + LEGAL-READ + R-177 pair; CTO applies after R-097.
 
 ## What it changes
-1. New trigger `partner_fee_accrue_on_role_settled` on `hover_orders`: `AFTER UPDATE OF requested_by_role ... WHEN (OLD = 'unspecified' AND NEW = 'homeowner')`, running the existing `partner_fee_accrue_on_order()` (not modified, not copied).
+1. New trigger `partner_fee_accrue_on_role_settled` on `hover_orders`: `AFTER UPDATE OF requested_by_role ... WHEN (OLD = 'unspecified' AND NEW = 'homeowner' AND NEW.product_code IS DISTINCT FROM 'roof_upgrade_detailed')` (the contractor-only upgrade, D-317, never accrues), running the existing `partner_fee_accrue_on_order()` (not modified, not copied).
 2. New function `admin_settle_order_buyer_role(uuid, text, uuid, text, boolean)`: admin or service role only (`is_admin_email()` / `service_role`, the check `create_monthly_fee_batch` uses). Not executable by anon.
 No table, column, setting or existing function is altered. No data is written at apply time.
 
@@ -24,7 +24,8 @@ PR #3455 (Edge Function change that creates `unspecified` orders) does not have 
 -- 1. the accrual function is the gh3229 body and the insert trigger exists
 SELECT tgname, tgenabled FROM pg_trigger WHERE tgrelid = 'public.hover_orders'::regclass AND NOT tgisinternal;
 SELECT pg_get_functiondef('public.partner_fee_accrue_on_order()'::regprocedure) ILIKE '%partner_v4_accepted_at%' AS has_v4_gate;
--- 2. nobody but an admin can UPDATE hover_orders (the new arm must not become a client-reachable accrual path); want: only hover_orders_admin_all for UPDATE, no UPDATE grant to anon
+-- 2. nobody but an admin can UPDATE hover_orders (the new arm must not become a client-reachable accrual path). want: relrowsecurity true and hover_orders_admin_all as the only policy allowing UPDATE. anon and authenticated DO hold a table-level UPDATE grant on production, and RLS is what stops them, so do not judge by the grant alone.
+SELECT relrowsecurity FROM pg_class WHERE oid = 'public.hover_orders'::regclass;
 SELECT polname, polcmd, pg_get_expr(polqual, polrelid) FROM pg_policy WHERE polrelid = 'public.hover_orders'::regclass;
 SELECT grantee, privilege_type FROM information_schema.role_table_grants WHERE table_schema='public' AND table_name='hover_orders' AND privilege_type IN ('UPDATE','INSERT');
 -- 3. how many held orders exist today (informational)
@@ -33,7 +34,17 @@ SELECT id, claim_id, created_at, homeowner_stripe_payment_intent_id FROM public.
 SELECT 1 FROM pg_trigger WHERE tgname = 'partner_fee_accrue_on_role_settled';
 SELECT 1 FROM pg_proc WHERE proname = 'admin_settle_order_buyer_role';
 ```
-Check 2 matters: if a non-admin role can UPDATE `hover_orders.requested_by_role`, add a column guard before applying (the insert path has the same trust today, but this arm adds a second way to reach accrual).
+Check 2 matters: if RLS is off or any policy other than hover_orders_admin_all allows UPDATE, add a column guard before applying (the insert path has the same trust today, but this arm adds a second way to reach accrual).
+
+## Check 2 read on production (read-only SELECT, Supabase MCP, project yeszghaspzwwstvsrioa, read after stamp 2026-11-06T00:41:41Z)
+```
+relrowsecurity                      | true
+policy hover_orders_admin_all cmd=* | is_admin_email()
+policy hover_user_read cmd=r        | (user_id = ( SELECT auth.uid() AS uid))
+grant authenticated UPDATE / INSERT | table-level
+grant anon UPDATE / INSERT          | table-level
+```
+It passes for the reason that is true: RLS is on, the only policy that allows UPDATE is `hover_orders_admin_all` (`is_admin_email()`; `hover_user_read` is SELECT only), and the table-level UPDATE grants to `anon` and `authenticated` are stopped by RLS. The earlier wording ("no UPDATE grant to anon") fails on this same output (`grant anon UPDATE`).
 
 ## Apply notes
 - Lock: `CREATE TRIGGER` takes SHARE ROW EXCLUSIVE on `hover_orders` (small table, seconds); `lock_timeout` is 5s.

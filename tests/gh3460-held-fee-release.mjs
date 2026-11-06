@@ -22,7 +22,9 @@ ok(/shouldFlipMeasurementShapeOnDeliver\(row, delivering\)/.test(page), 'page NE
 
 const fwd = rd('supabase/migrations_drafts/gh3460_held_fee_release.sql');
 ok(/EXECUTE FUNCTION public\.partner_fee_accrue_on_order\(\)/.test(fwd), 'migration: the new trigger runs the existing accrual function');
-ok(/WHEN \(OLD\.requested_by_role = 'unspecified' AND NEW\.requested_by_role = 'homeowner'\)/.test(fwd), 'migration: the trigger arm is unspecified -> homeowner only');
+ok(/WHEN \(OLD\.requested_by_role = 'unspecified' AND NEW\.requested_by_role = 'homeowner' AND NEW\.product_code IS DISTINCT FROM 'roof_upgrade_detailed'\)/.test(fwd), 'migration: the trigger arm is unspecified -> homeowner only, and never for the contractor-only upgrade (D-317)');
+ok(/IF p_role = 'homeowner' AND v_order\.product_code IS NOT DISTINCT FROM 'roof_upgrade_detailed' THEN\s*RAISE EXCEPTION/.test(fwd), 'migration: the admin function refuses to settle an upgrade order to a homeowner (22023)');
+ok(!/records the role only/.test(fwd) && /It cannot withhold an earned fee/.test(fwd), 'migration NEGATIVE CONTROL: the false "records the role only, no fee" wording is gone');
 ok(!/INSERT INTO public\.partner_fee_events/.test(fwd), 'migration NEGATIVE CONTROL: no second INSERT into partner_fee_events (no copy of the checks to drift)');
 ok(!/CREATE OR REPLACE FUNCTION public\.partner_fee_accrue_on_order/.test(fwd), 'migration: the accrual function is not redefined');
 ok(/auth\.role\(\), ''\) = 'service_role' OR COALESCE\(public\.is_admin_email\(\), false\)/.test(fwd) && /COALESCE\(p_require_fee, true\)/.test(fwd) && /FROM PUBLIC, anon;/.test(fwd), 'migration: admin or service role only, NULL-safe guard and NULL-safe p_require_fee; not executable by anon');

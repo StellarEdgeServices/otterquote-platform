@@ -22,7 +22,7 @@
 --   2. public.admin_settle_order_buyer_role(order, role, contractor, note, require_fee): admin or service role only. Moves one 'unspecified' order to 'homeowner' or
 --      'contractor', appends an audit line to hover_orders.admin_notes, and for 'homeowner' reports the fee event the trigger created. With p_require_fee (default true)
 --      a 'homeowner' settlement that does not accrue a fee is REFUSED (the whole call rolls back, the order stays 'unspecified', the fee stays held). p_require_fee = false
---      records the role only (the buyer is a homeowner but not a credited one: no fee is owed; it exists so the ready email can be sent).
+--      removes that refusal only: the role is recorded, and a qualifying order still accrues through the trigger. It cannot withhold an earned fee. It exists so the ready email can be sent when the buyer is a homeowner and the checks refuse.
 --      Idempotent: a repeat call on an order already settled to the same role changes nothing and returns already_settled; the table's UNIQUE(hover_order_id) and
 --      UNIQUE(payment_ref) keys stop a second fee even under a race.
 --   NULL handling: the admin guard and p_require_fee are forced to non-NULL booleans (a JWT with no email claim, no claims at all, or an explicit NULL p_require_fee all fail closed).
@@ -52,7 +52,7 @@ CREATE TRIGGER partner_fee_accrue_on_role_settled
   AFTER UPDATE OF requested_by_role
   ON public.hover_orders
   FOR EACH ROW
-  WHEN (OLD.requested_by_role = 'unspecified' AND NEW.requested_by_role = 'homeowner')
+  WHEN (OLD.requested_by_role = 'unspecified' AND NEW.requested_by_role = 'homeowner' AND NEW.product_code IS DISTINCT FROM 'roof_upgrade_detailed')
   EXECUTE FUNCTION public.partner_fee_accrue_on_order();
 
 -- 2. admin function --------------------------------------------------------------------------------------------------------------------
@@ -104,6 +104,11 @@ BEGIN
       USING ERRCODE = '55000';
   END IF;
 
+  -- D-317: the upgrade is contractor-only and is not a Paid Measurement (Partner Agreement v4 definitions), so it can never be settled to a homeowner.
+  IF p_role = 'homeowner' AND v_order.product_code IS NOT DISTINCT FROM 'roof_upgrade_detailed' THEN
+    RAISE EXCEPTION 'admin_settle_order_buyer_role: order % is a contractor upgrade (D-317); it cannot be settled to homeowner', p_order_id USING ERRCODE = '22023';
+  END IF;
+
   v_who := COALESCE(NULLIF(auth.jwt() ->> 'email', ''), COALESCE(auth.role(), 'unknown'));
   v_note := 'role settled unspecified -> ' || p_role || ' by ' || v_who || ' at ' || to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
             || ' (gh-3460)' || CASE WHEN NULLIF(btrim(p_note), '') IS NOT NULL THEN ': ' || left(btrim(p_note), 500) ELSE '' END;
@@ -120,7 +125,7 @@ BEGIN
     IF NOT FOUND AND COALESCE(p_require_fee, true) THEN     -- an explicit NULL means 'require' (NULL would otherwise skip the refusal)
       -- the trigger's checks refused it (no credited partner, outside the window, excluded state, inspector, v4, test mismatch, payment already paid a fee...).
       -- Undo the role change: the order stays 'unspecified' and the $5 stays held.
-      RAISE EXCEPTION 'admin_settle_order_buyer_role: order % does not qualify for the partner fee under the accrual checks; role not changed (use p_require_fee => false to record the role without a fee)', p_order_id
+      RAISE EXCEPTION 'admin_settle_order_buyer_role: order % does not qualify for the partner fee under the accrual checks; role not changed (p_require_fee => false removes only this refusal: a qualifying order still accrues, and the role can then never be re-settled)', p_order_id
         USING ERRCODE = '22023';
     END IF;
   END IF;
@@ -131,7 +136,7 @@ END;
 $function$;
 
 COMMENT ON FUNCTION public.admin_settle_order_buyer_role(uuid, text, uuid, text, boolean) IS
-  'gh-3460 (P18): admin or service role only. Settles one unspecified hover_orders row to homeowner or contractor. For homeowner the update fires partner_fee_accrue_on_role_settled, which runs partner_fee_accrue_on_order() (the single copy of the attribution, window, is_test, inspector, excluded-state and v4 checks); with p_require_fee (default true) a settlement that accrues no fee is refused and rolled back. Idempotent. Does not send the ready email: re-save the order in admin-measurements.html.';
+  'gh-3460 (P18): admin or service role only. Settles one unspecified hover_orders row to homeowner or contractor. For homeowner the update fires partner_fee_accrue_on_role_settled, which runs partner_fee_accrue_on_order() (the single copy of the attribution, window, is_test, inspector, excluded-state and v4 checks); with p_require_fee (default true) a settlement that accrues no fee is refused and rolled back; p_require_fee false removes only that refusal, and a qualifying order still accrues. Idempotent. Does not send the ready email: re-save the order in admin-measurements.html.';
 
 REVOKE ALL ON FUNCTION public.admin_settle_order_buyer_role(uuid, text, uuid, text, boolean) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_settle_order_buyer_role(uuid, text, uuid, text, boolean) TO authenticated, service_role;

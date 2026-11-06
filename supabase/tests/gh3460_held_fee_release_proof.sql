@@ -12,7 +12,8 @@
 --   H3  the same call again, and a direct homeowner->homeowner update: still one row (idempotent), already_settled = true
 --   R1-R7 NON-QUALIFYING orders are refused, role stays 'unspecified', zero fee rows: excluded state (OK), home inspector, no credited referral, click outside the window,
 --         is_test mismatch, partner never accepted v4, payment already carried a fee on another order
---   R8  p_require_fee => false records the homeowner role on a non-qualifying order with no fee (the role is settled, nothing owed)
+--   R8  p_require_fee => false removes only the refusal: on a non-qualifying order the role is recorded with no fee; R8b on a QUALIFYING order the fee still accrues (500/false), one row
+--   U1-U5 (LEGAL-READ 6673369791 blocker 1) the contractor-only upgrade (roof_upgrade_detailed, D-317) can never earn the $5: refused by the admin function (also with p_require_fee => false), no fee on a hand UPDATE, still settleable to a contractor, and a non-upgrade product on the same claim still accrues
 --   G8-G13 (REVIEW 6668719903) NULL-safe admin guard: no email claim, empty claims, bare superuser session, non-admin email refused; the runbook's set_config path works and names the admin; re-settle after a void; R9 NULL p_require_fee still refuses
 --   G1-G6 admin only: a partner session and anon are refused; service_role works; bad role, unknown order, a settled order with a different role, contractor without id, homeowner with a contractor id are refused
 --   C1  contractor settlement sets the role and contractor id and accrues nothing
@@ -62,11 +63,11 @@ BEGIN
   RETURN v_claim;
 END $f$;
 
-CREATE FUNCTION pg_temp.mk_order(p_claim uuid, p_role text DEFAULT 'unspecified', p_pi text DEFAULT NULL) RETURNS uuid LANGUAGE plpgsql AS $f$
+CREATE FUNCTION pg_temp.mk_order(p_claim uuid, p_role text DEFAULT 'unspecified', p_pi text DEFAULT NULL, p_product text DEFAULT NULL) RETURNS uuid LANGUAGE plpgsql AS $f$
 DECLARE v_id uuid := gen_random_uuid();
 BEGIN
-  INSERT INTO hover_orders(id, claim_id, user_id, requested_by_role, homeowner_stripe_payment_intent_id, homeowner_charge_amount, created_at)
-  VALUES (v_id, p_claim, pg_temp.u(399), p_role, coalesce(p_pi, 'pi_' || v_id::text), 1500, now());
+  INSERT INTO hover_orders(id, claim_id, user_id, requested_by_role, homeowner_stripe_payment_intent_id, homeowner_charge_amount, created_at, product_code)
+  VALUES (v_id, p_claim, pg_temp.u(399), p_role, coalesce(p_pi, 'pi_' || v_id::text), 1500, now(), p_product);
   RETURN v_id;
 END $f$;
 
@@ -147,6 +148,25 @@ SELECT pg_temp.chk('R7 second order, same PaymentIntent: refused, still unspecif
   pg_temp.q(format($$ SELECT count(*) FROM partner_fee_events WHERE referral_agent_id = %L $$, pg_temp.u(106))), 'ERR 22023/unspecified/1');
 -- R8 role only
 SELECT pg_temp.chk('R8 p_require_fee false on the excluded-state order: role recorded, no fee', pg_temp.settle((SELECT id FROM o WHERE k='r1'), 'homeowner', NULL, false) || '/' || pg_temp.role_of((SELECT id FROM o WHERE k='r1')) || '/' || pg_temp.fees((SELECT id FROM o WHERE k='r1')), 'none/false/homeowner/0');
+
+-- R8b (LEGAL-READ 6673369791 blocker 3) p_require_fee => false does NOT withhold an earned fee: on a QUALIFYING order the trigger still accrues
+INSERT INTO c VALUES ('r8b', pg_temp.mk_claim(1));
+INSERT INTO o SELECT 'r8b', pg_temp.mk_order((SELECT id FROM c WHERE k='r8b'));
+SELECT pg_temp.chk('R8b p_require_fee false on a QUALIFYING order: the fee still accrues (500/false), one fee row', pg_temp.settle((SELECT id FROM o WHERE k='r8b'), 'homeowner', NULL, false) || '/' || pg_temp.fees((SELECT id FROM o WHERE k='r8b')), '500/false/1');
+
+-- U1-U5 (LEGAL-READ 6673369791 blocker 1) the contractor-only upgrade (D-317) is not a Paid Measurement and can never earn the $5, by any path
+INSERT INTO c VALUES ('u', pg_temp.mk_claim(1));
+INSERT INTO o SELECT 'u1', pg_temp.mk_order((SELECT id FROM c WHERE k='u'), 'unspecified', NULL, 'roof_upgrade_detailed');
+SELECT pg_temp.chk('U1 upgrade order held (unspecified) settled to homeowner by the admin function: refused, still unspecified, 0 fees', pg_temp.settle((SELECT id FROM o WHERE k='u1')) || '/' || pg_temp.role_of((SELECT id FROM o WHERE k='u1')) || '/' || pg_temp.fees((SELECT id FROM o WHERE k='u1')), 'ERR 22023/unspecified/0');
+INSERT INTO o SELECT 'u2', pg_temp.mk_order((SELECT id FROM c WHERE k='u'), 'unspecified', NULL, 'roof_upgrade_detailed');
+SELECT pg_temp.chk('U2 another upgrade order with p_require_fee => false: refused, still unspecified, 0 fees', pg_temp.settle((SELECT id FROM o WHERE k='u2'), 'homeowner', NULL, false) || '/' || pg_temp.role_of((SELECT id FROM o WHERE k='u2')) || '/' || pg_temp.fees((SELECT id FROM o WHERE k='u2')), 'ERR 22023/unspecified/0');
+INSERT INTO o SELECT 'u3', pg_temp.mk_order((SELECT id FROM c WHERE k='u'), 'unspecified', NULL, 'roof_upgrade_detailed');
+SELECT pg_temp.x(format($$ UPDATE hover_orders SET requested_by_role = 'homeowner' WHERE id = %L $$, (SELECT id FROM o WHERE k='u3')));
+SELECT pg_temp.chk('U3 hand UPDATE unspecified->homeowner on an upgrade order: 0 fees (the trigger arm does not fire)', pg_temp.fees((SELECT id FROM o WHERE k='u3')), '0');
+INSERT INTO o SELECT 'u4', pg_temp.mk_order((SELECT id FROM c WHERE k='u'), 'unspecified', NULL, 'roof_upgrade_detailed');
+SELECT pg_temp.chk('U4 upgrade order settled to a CONTRACTOR is allowed: role contractor, 0 fees', pg_temp.settle((SELECT id FROM o WHERE k='u4'), 'contractor', pg_temp.u(500)) || '/' || pg_temp.role_of((SELECT id FROM o WHERE k='u4')) || '/' || pg_temp.fees((SELECT id FROM o WHERE k='u4')), 'none/false/contractor/0');
+INSERT INTO o SELECT 'u5', pg_temp.mk_order((SELECT id FROM c WHERE k='u'), 'unspecified', NULL, 'roof_measurement_basic');
+SELECT pg_temp.chk('U5 NEGATIVE CONTROL: a different product (not the upgrade) on the same claim still accrues once through the admin function', pg_temp.settle((SELECT id FROM o WHERE k='u5')) || '/' || pg_temp.fees((SELECT id FROM o WHERE k='u5')), '500/false/1');
 
 -- G admin only and argument checks ------------------------------------------------------------------------------------------------------------
 INSERT INTO c VALUES ('g', pg_temp.mk_claim(1));

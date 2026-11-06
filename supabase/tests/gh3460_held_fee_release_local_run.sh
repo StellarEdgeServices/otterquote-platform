@@ -9,6 +9,7 @@
 #   mutant-no-admin   : the admin check is off                                                               -> G1 must go DIFF (G2 stays OK: anon has no EXECUTE grant)
 #   mutant-null-guard : the OLD guard restored (`OR public.is_admin_email()` without COALESCE)                  -> G8, G9, G10 must go DIFF (the NULL bypass)
 #   mutant-null-require: `IF NOT FOUND AND p_require_fee` restored (no COALESCE)                             -> R9 must go DIFF
+#   mutant-no-upgrade : the D-317 upgrade exclusion removed from BOTH the trigger WHEN and the admin function -> U1, U2, U3 must go DIFF
 #   mutant-copy-checks: the accrual function loses the excluded-state check (a drifted copy would do this)    -> R1, T1(MS) go DIFF on BOTH paths: one function, one place
 # Needs PG16 binaries (PGBIN, default /usr/lib/postgresql/16/bin) and a user that may run initdb (PGRUN_AS, default postgres).
 set -euo pipefail
@@ -38,7 +39,7 @@ mutate() { splice > "$D/orig.sql"; sed "$1" "$D/orig.sql" > "$D/mut.sql"
 case "$MODE" in
   before) echo "== BEFORE (no migrations): negative control"; run_proof "$PROOF" ;;
   after)  echo "== AFTER gh3229 + gh3460"; splice > "$D/after.sql"; run_proof "$D/after.sql" ;;
-  mutant-wide-arm)   mutate "s/WHEN (OLD.requested_by_role = 'unspecified' AND NEW.requested_by_role = 'homeowner')/WHEN (NEW.requested_by_role = 'homeowner')/" "trigger arm fires on any role change" ;;
+  mutant-wide-arm)   mutate "s/WHEN (OLD.requested_by_role = 'unspecified' AND NEW.requested_by_role = 'homeowner' AND/WHEN (NEW.requested_by_role = 'homeowner' AND/" "trigger arm fires on any role change" ;;
   mutant-no-refusal) mutate "s/IF NOT FOUND AND COALESCE(p_require_fee, true) THEN/IF false THEN/" "settlement never refused" ;;
   mutant-no-admin)   splice > "$D/orig.sql"
                      awk 'BEGIN{n=0} /IF NOT \(COALESCE\(auth.role\(\), .*\) = .service_role. OR .*is_admin_email\(\).*\) THEN/ { n++; if (n==2) { sub(/IF NOT \(.*\) THEN/, "IF false THEN") } } { print }' "$D/orig.sql" > "$D/mut.sql"
@@ -46,6 +47,7 @@ case "$MODE" in
                      echo "== MUTANT: admin check off in admin_settle_order_buyer_role"; run_proof "$D/mut.sql" ;;
   mutant-null-guard) mutate "s/OR COALESCE(public.is_admin_email(), false)) THEN/OR public.is_admin_email()) THEN/" "old NULL-unsafe admin guard restored" ;;
   mutant-null-require) mutate "s/IF NOT FOUND AND COALESCE(p_require_fee, true) THEN/IF NOT FOUND AND p_require_fee THEN/" "NULL p_require_fee skips the refusal" ;;
+  mutant-no-upgrade) mutate "s/ AND NEW.product_code IS DISTINCT FROM 'roof_upgrade_detailed')/)/; s/IF p_role = 'homeowner' AND v_order.product_code IS NOT DISTINCT FROM 'roof_upgrade_detailed' THEN/IF false THEN/" "upgrade exclusion removed (trigger and function)" ;;
   mutant-copy-checks) mutate "s/IF upper(btrim(v_state)) IN ('OK', 'AR', 'KS', 'NE', 'MS') THEN/IF false THEN/" "excluded-state check removed from the single accrual function" ;;
   rollback)
     $P -f "$F29"; $P -f "$FWD"
