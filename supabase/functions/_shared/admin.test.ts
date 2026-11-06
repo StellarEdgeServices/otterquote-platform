@@ -1,77 +1,12 @@
-// Deno unit tests for the gh-1534 canonical admin allow-list.
-// Run: deno test supabase/functions/_shared/admin.test.ts
+// Deno structural tests for the Edge Function admin gates (gh-1534, reworked in gh-3077).
+// Run: deno test --allow-read=supabase/functions supabase/functions/_shared/admin.test.ts
 //
-// This file exercises the canonical source of truth directly (isAdminEmail /
-// isPrimaryAdminEmail / requireAdmin). The Edge Functions that consume it
-// INLINE their own copy (see admin.ts's header comment for why — the EF
-// body-deploy path does not resolve `_shared/` imports), so this file
-// cannot catch drift between a consumer's inlined copy and this canonical
-// version by itself. The second Deno.test block below does that structural
-// check directly against each consumer's source text, one assertion per
-// function, per the gh-1534 work order.
+// _shared/admin.ts (the gh-1534 reference allow-list) was deleted in gh-3077: every gate now reads
+// _shared/admin-gate.ts (behaviour tests in admin-gate.test.ts). This file reads each consumer's source and
+// asserts it still calls the helper matching the set it accepted before (requireAdmin: both addresses via
+// is_admin_email(); requirePrimaryAdmin: primary only) and carries no email list of its own.
 
-import {
-  assert,
-  assertEquals,
-  assertFalse,
-} from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import {
-  ADMIN_EMAILS,
-  isAdminEmail,
-  isPrimaryAdminEmail,
-  PRIMARY_ADMIN_EMAIL,
-  requireAdmin,
-} from "./admin.ts";
-
-const NON_ADMIN_EMAIL = "not-an-admin@example.com";
-const DIFFERENT_CASE_ADMIN = "Dustinstohler1@Gmail.com";
-
-// ── canonical predicate behavior ───────────────────────────────────────────
-
-Deno.test("ADMIN_EMAILS is the expected two-email union", () => {
-  assertEquals(ADMIN_EMAILS, ["dustinstohler1@gmail.com", "dustin@otterquote.com"]);
-});
-
-Deno.test("PRIMARY_ADMIN_EMAIL is the single canonical identity", () => {
-  assertEquals(PRIMARY_ADMIN_EMAIL, "dustinstohler1@gmail.com");
-});
-
-Deno.test("isAdminEmail / requireAdmin: accept every email in ADMIN_EMAILS", () => {
-  for (const email of ADMIN_EMAILS) {
-    assert(isAdminEmail(email), `expected ${email} to be admin`);
-    assert(requireAdmin(email), `expected requireAdmin(${email}) to be true`);
-  }
-});
-
-Deno.test("isAdminEmail / requireAdmin: reject a non-admin JWT email", () => {
-  assertFalse(isAdminEmail(NON_ADMIN_EMAIL));
-  assertFalse(requireAdmin(NON_ADMIN_EMAIL));
-});
-
-Deno.test("isAdminEmail / requireAdmin: reject null/undefined (unverified caller)", () => {
-  assertFalse(isAdminEmail(null));
-  assertFalse(isAdminEmail(undefined));
-  assertFalse(requireAdmin(null));
-  assertFalse(requireAdmin(undefined));
-});
-
-Deno.test("isAdminEmail: case-sensitive — does not normalize case", () => {
-  assertFalse(
-    isAdminEmail(DIFFERENT_CASE_ADMIN),
-    "case-sensitive exact match is the strictest of the two pre-consolidation behaviors (gh-1534)",
-  );
-});
-
-Deno.test("isPrimaryAdminEmail: accepts only the single primary email, not the full union", () => {
-  assert(isPrimaryAdminEmail(PRIMARY_ADMIN_EMAIL));
-  assertFalse(
-    isPrimaryAdminEmail("dustin@otterquote.com"),
-    "the secondary admin email must NOT satisfy the primary-only gate — this is the deliberate non-widening split documented in admin.ts",
-  );
-  assertFalse(isPrimaryAdminEmail(NON_ADMIN_EMAIL));
-  assertFalse(isPrimaryAdminEmail(null));
-});
-
+import { assert } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 // ── structural regression: every consumer still gates identically ─────────
 // One assertion per function (gh-1534 work order pt. 4). Reads each
 // consumer's inlined source and asserts it still contains the expected
@@ -127,3 +62,14 @@ for (const fn of PRIMARY_ONLY_CONSUMERS) {
   });
 }
 
+
+Deno.test("gh-3077: _shared/admin.ts stays deleted (its literal list must not come back)", async () => {
+  let exists = true;
+  try {
+    await Deno.stat(new URL("admin.ts", import.meta.url));
+  } catch (e) {
+    if (e instanceof Deno.errors.NotFound) exists = false;
+    else throw e;
+  }
+  assert(!exists, "_shared/admin.ts was deleted by gh-3077; admin gates read _shared/admin-gate.ts");
+});

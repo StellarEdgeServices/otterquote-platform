@@ -4,11 +4,11 @@ BEGIN;
 SELECT 'before' AS phase,
   count(*) FILTER (WHERE is_test=false) AS ra_false, count(*) AS ra_total,
   count(*) FILTER (WHERE id='503f015b-c52f-4e35-a8f9-26243709f32f' AND is_test=false) AS carlos_false,
-  count(*) FILTER (WHERE id = ANY (ARRAY['1927861f-8836-49ce-a528-08c432cc69cc'::uuid,'0a934e11-5cac-4607-a63c-7446fe446f81'::uuid,'bdfe2bbf-bbc6-42b9-9213-02b36ebb46fa'::uuid,'f05146f5-f397-4e68-9720-e4394e9c7bd4'::uuid,'9320942a-90c0-4517-b5b7-919f8b2652b8'::uuid,'1280cf58-d89d-4311-b016-c1ff06f29477'::uuid,'0db676cc-0c3f-4c9b-bd25-65952572d6df'::uuid,'5f9ea879-255d-499c-879d-806a9f84eb04'::uuid,'1a61675f-b972-4dd4-a483-d5aa0d9757dc'::uuid]) AND is_test=false) AS target_false
+  count(*) FILTER (WHERE id = ANY (ARRAY['56c1319a-6376-4405-8ccc-88a574d7ede4'::uuid,'0a934e11-5cac-4607-a63c-7446fe446f81'::uuid,'bdfe2bbf-bbc6-42b9-9213-02b36ebb46fa'::uuid,'f05146f5-f397-4e68-9720-e4394e9c7bd4'::uuid,'9320942a-90c0-4517-b5b7-919f8b2652b8'::uuid,'1280cf58-d89d-4311-b016-c1ff06f29477'::uuid,'0db676cc-0c3f-4c9b-bd25-65952572d6df'::uuid,'5f9ea879-255d-499c-879d-806a9f84eb04'::uuid,'1a61675f-b972-4dd4-a483-d5aa0d9757dc'::uuid]) AND is_test=false) AS target_false
 FROM public.referral_agents;   -- expect 10 | 69 | 1 | 9
 DO $$
 DECLARE
-  v_ids uuid[] := ARRAY['1927861f-8836-49ce-a528-08c432cc69cc'::uuid,'0a934e11-5cac-4607-a63c-7446fe446f81'::uuid,'bdfe2bbf-bbc6-42b9-9213-02b36ebb46fa'::uuid,'f05146f5-f397-4e68-9720-e4394e9c7bd4'::uuid,'9320942a-90c0-4517-b5b7-919f8b2652b8'::uuid,'1280cf58-d89d-4311-b016-c1ff06f29477'::uuid,'0db676cc-0c3f-4c9b-bd25-65952572d6df'::uuid,'5f9ea879-255d-499c-879d-806a9f84eb04'::uuid,'1a61675f-b972-4dd4-a483-d5aa0d9757dc'::uuid];
+  v_ids uuid[] := ARRAY['56c1319a-6376-4405-8ccc-88a574d7ede4'::uuid,'0a934e11-5cac-4607-a63c-7446fe446f81'::uuid,'bdfe2bbf-bbc6-42b9-9213-02b36ebb46fa'::uuid,'f05146f5-f397-4e68-9720-e4394e9c7bd4'::uuid,'9320942a-90c0-4517-b5b7-919f8b2652b8'::uuid,'1280cf58-d89d-4311-b016-c1ff06f29477'::uuid,'0db676cc-0c3f-4c9b-bd25-65952572d6df'::uuid,'5f9ea879-255d-499c-879d-806a9f84eb04'::uuid,'1a61675f-b972-4dd4-a483-d5aa0d9757dc'::uuid];
   v_carlos constant uuid := '503f015b-c52f-4e35-a8f9-26243709f32f'::uuid;
   v_updated uuid[];
 BEGIN
@@ -43,7 +43,7 @@ $$;
 SELECT 'inside' AS phase,
   count(*) FILTER (WHERE is_test=false) AS ra_false, count(*) AS ra_total,
   count(*) FILTER (WHERE id='503f015b-c52f-4e35-a8f9-26243709f32f' AND is_test=false) AS carlos_false,
-  count(*) FILTER (WHERE id = ANY (ARRAY['1927861f-8836-49ce-a528-08c432cc69cc'::uuid,'0a934e11-5cac-4607-a63c-7446fe446f81'::uuid,'bdfe2bbf-bbc6-42b9-9213-02b36ebb46fa'::uuid,'f05146f5-f397-4e68-9720-e4394e9c7bd4'::uuid,'9320942a-90c0-4517-b5b7-919f8b2652b8'::uuid,'1280cf58-d89d-4311-b016-c1ff06f29477'::uuid,'0db676cc-0c3f-4c9b-bd25-65952572d6df'::uuid,'5f9ea879-255d-499c-879d-806a9f84eb04'::uuid,'1a61675f-b972-4dd4-a483-d5aa0d9757dc'::uuid]) AND is_test=false) AS target_false
+  count(*) FILTER (WHERE id = ANY (ARRAY['56c1319a-6376-4405-8ccc-88a574d7ede4'::uuid,'0a934e11-5cac-4607-a63c-7446fe446f81'::uuid,'bdfe2bbf-bbc6-42b9-9213-02b36ebb46fa'::uuid,'f05146f5-f397-4e68-9720-e4394e9c7bd4'::uuid,'9320942a-90c0-4517-b5b7-919f8b2652b8'::uuid,'1280cf58-d89d-4311-b016-c1ff06f29477'::uuid,'0db676cc-0c3f-4c9b-bd25-65952572d6df'::uuid,'5f9ea879-255d-499c-879d-806a9f84eb04'::uuid,'1a61675f-b972-4dd4-a483-d5aa0d9757dc'::uuid]) AND is_test=false) AS target_false
 FROM public.referral_agents;   -- expect 1 | 69 | 1 | 0
 ROLLBACK;
 SELECT 'after' AS phase,

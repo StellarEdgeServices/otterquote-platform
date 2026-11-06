@@ -200,7 +200,7 @@ Deno.test("wiring: index.ts gates on the verified admin BEFORE any read/write", 
   // scope; it is asserted in tests/gh2019-arme-referral-out.mjs.
 });
 
-Deno.test("PRIMARY_ADMIN_EMAIL stays in sync with _shared/admin.ts", async () => {
-  const shared = await Deno.readTextFile(new URL("../_shared/admin.ts", import.meta.url));
+Deno.test("PRIMARY_ADMIN_EMAIL stays in sync with _shared/admin-gate.ts", async () => {
+  const shared = await Deno.readTextFile(new URL("../_shared/admin-gate.ts", import.meta.url));
   assert(shared.includes(`export const PRIMARY_ADMIN_EMAIL = "${PRIMARY_ADMIN_EMAIL}";`));
 });

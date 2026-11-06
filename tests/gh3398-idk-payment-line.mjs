@@ -52,7 +52,21 @@ check('POINT 2: preselect sets flag after selectJobType; a click clears it', () 
   assert.match(between('window.selectJobType = function(type) {', 'window.showJobTypeHelp'), /selectedJobTypeIsPreselect = false/);
 });
 
+// POINT 2 (repair path): wizard stores idk + job_type repair + funding_type insurance; Edit then Save must not null it
+const idkRepair = { job_type: 'repair', funding_type: 'insurance', policy_type: 'idk' };
+check('POINT 2: idk on the repair path, Edit then Save, keeps policy_type and funding_type', () => {
+  const u = save(idkRepair, 'repair', true);
+  assert.ok(!('policy_type' in u), 'save wrote policy_type=' + u.policy_type);
+  assert.ok(!('funding_type' in u), 'save wrote funding_type=' + u.funding_type);
+});
+
 let u;
+u = save({ job_type: 'repair', funding_type: 'cash', policy_type: null }, 'repair', true);
+assert.equal(u.funding_type, 'cash'); assert.equal(u.policy_type, null);
+ok('control: repair on a non-idk claim still writes cash and null policy_type');
+u = save(idkRepair, 'repair', false);
+assert.equal(u.funding_type, 'cash'); assert.equal(u.policy_type, null);
+ok('control: an explicit Repair click by an idk homeowner is still honored');
 // NEGATIVE CONTROLS: rcv unchanged
 assert.equal(label(rcvClaim), 'Insurance (RCV)');
 ok('control: stored rcv still shows the Insurance (RCV) line');

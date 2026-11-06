@@ -498,6 +498,13 @@ ALLOWLIST = [
         "Sources blurb summarizing the FTC (2003) release; generic consumer advice, "
         "no claim about marketplace contractors.",
     ),
+    (
+        "guides/metal-roof-vs-asphalt-shingle-bids.html",
+        "It advises checking that an installer is licensed, insured and carries workers' compensation coverage",
+        "Attributed statement of what the Metal Roofing Alliance's buyer's guide advises the "
+        "HOMEOWNER to check about any installer, cited to that guide -- not a claim about "
+        "contractors on the OtterQuote platform. gh-3415.",
+    ),
 ]
 
 
