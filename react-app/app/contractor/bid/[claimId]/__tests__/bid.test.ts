@@ -487,9 +487,12 @@ describe('React route helpers (copy.ts)', () => {
     expect(rescindBidRoutePath('claim-1')).toBe('/contractor/bid/claim-1?action=rescind');
     expect(bidRoutePath('a/b')).toBe('/contractor/bid/a%2Fb'); // encoded
   });
-  it('fee info copy', () => {
-    expect(BID_COPY.fee.feeInfoInsurance('$20,000.00')).toBe('ℹ A flat 5% platform fee based on the RCV ($20,000.00) applies upon contract signing.');
-    expect(BID_COPY.fee.feeInfoRetail).toBe('ℹ A flat 5% platform fee applies to all projects upon contract signing.');
+  it('fee explainer is the GC-approved #547 item 1B text, verbatim', () => {
+    expect(BID_COPY.fee.feeExplainer).toBe(
+      'A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission.',
+    );
+    expect('feeInfoInsurance' in BID_COPY.fee).toBe(false);
+    expect('feeInfoRetail' in BID_COPY.fee).toBe(false);
   });
 });
 

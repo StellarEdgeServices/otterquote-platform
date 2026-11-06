@@ -7,28 +7,32 @@
  * fee_acceptances.fee_text_displayed. The checkbox label is the HTML form's
  * ("I understand and agree to the platform fee of X% ($Y)"). No net, payout or
  * "deducted" wording: nothing is disbursed to the contractor (D-229).
+ * The lead is bold as approved (#547 item 1A; <strong> at contractor-bid-form.html:2352);
+ * the info line is the #547 item 1B explainer, never a "flat 5%" or RCV-basis line (D-267).
  */
 import { Card, Checkbox, formatCurrency } from './bid-ui';
-import { BID_COPY, buildFeeDisclosureText } from './copy';
+import { BID_COPY, splitFeeDisclosureText } from './copy';
 import type { BidMode } from './utils';
 
-export function FeeSection({ mode, bidAmount, feePct, disclosure, claimRcv, isInsuranceRcv, autoRenew, setAutoRenew, feeAccepted, setFeeAccepted }: {
+export function FeeSection({ mode, bidAmount, feePct, disclosure, autoRenew, setAutoRenew, feeAccepted, setFeeAccepted }: {
   mode: BidMode; bidAmount: number; feePct: number;
   disclosure: { feeAmount: number };
-  claimRcv: number | null; isInsuranceRcv: boolean;
+  // Accepted but unused: the fee explainer is the same #547 item 1B text for every job
+  // type (D-267: no RCV or other basis on this card).
+  claimRcv?: number | null; isInsuranceRcv?: boolean;
   autoRenew: boolean; setAutoRenew: (v: boolean) => void;
   feeAccepted: boolean; setFeeAccepted: (v: boolean) => void;
 }) {
-  const feeInfo = isInsuranceRcv && claimRcv ? BID_COPY.fee.feeInfoInsurance(formatCurrency(claimRcv)) : BID_COPY.fee.feeInfoRetail;
+  const { lead, rest } = splitFeeDisclosureText(feePct, disclosure.feeAmount);
   return (
     <Card title="Platform Fee & Submission">
       <div className="oqb-fee-box">
         <div className="oqb-fee-row"><span>Your bid</span><span>{formatCurrency(bidAmount)}</span></div>
         <div className="oqb-fee-row"><span>Platform fee ({feePct.toFixed(2)}%)</span><span>{formatCurrency(disclosure.feeAmount)}</span></div>
-        <div className="oqb-fee-info">{feeInfo}</div>
+        <div className="oqb-fee-info"><span aria-hidden="true">ℹ </span>{BID_COPY.fee.feeExplainer}</div>
       </div>
 
-      <p id="feeDisclosureText" data-testid="fee-disclosure-text">{buildFeeDisclosureText(feePct, disclosure.feeAmount)}</p>
+      <p id="feeDisclosureText" data-testid="fee-disclosure-text"><strong>{lead}</strong> {rest}</p>
 
       {mode !== 'change' && (
         <Checkbox checked={autoRenew} onChange={setAutoRenew} label="Auto-renew this bid for another 14-day window if it expires (D-150)." />

@@ -9,8 +9,8 @@
  * D-214/D-215/D-230/D-244):
  *   - buildFeeDisclosureText      : D-214/D-215 UETA fee-acceptance disclosure
  *                                   (contractor-bid-form.html:5035 generateExactFeeText)
- *   - BID_COPY.fee.feeInfo*       : flat-5% fee-basis notes
- *                                   (contractor-bid-form.html:4368/4370)
+ *   - BID_COPY.fee.feeExplainer   : #547 item 1B fee explainer
+ *                                   (contractor-bid-form.html:2295/4288)
  *   - CUSTOM_WARRANTY_TAIL        : D-204 "not verified / not the warrantor" tail
  *                                   (contractor-bid-form.html:4683)
  * The remaining strings are non-legal UX copy (gate prompts, rescind status,
@@ -53,11 +53,11 @@ export const BID_COPY = {
 
   // ── D-214/D-215 fee framework (VERBATIM — Tier-3) ──────────────────────────
   fee: {
-    // Flat-5% basis notes (contractor-bid-form.html:4368/4370). `rcvFormatted` is
-    // the already-formatted RCV currency string; the page passes it in.
-    feeInfoInsurance: (rcvFormatted: string): string =>
-      `ℹ A flat 5% platform fee based on the RCV (${rcvFormatted}) applies upon contract signing.`,
-    feeInfoRetail: 'ℹ A flat 5% platform fee applies to all projects upon contract signing.',
+    // GC-approved #547 item 1B explainer (VERBATIM, D-219; replaces the retired
+    // "flat 5%" / "based on the RCV" notes). Same text for every job type: D-267 says
+    // no fee computation references RCV or any other basis. HTML form: contractor-bid-form.html:2295.
+    feeExplainer:
+      'A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission.',
   },
 
   // ── D-199 bid-time validation gate prompts (contractor-bid-form.html) ──────
@@ -119,7 +119,23 @@ export function buildFeeDisclosureText(
   feePct: number,
   feeAmount: number,
 ): string {
-  return `Platform fee for this job: ${feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} (${feePct.toFixed(2)}% of your bid). By submitting this bid, you agree to pay Otter Quotes this fee if the homeowner selects your bid and a contract is signed. The fee is due upon contract execution and will be charged to your card on file. Submitting this bid constitutes your acceptance of this fee.`;
+  const { lead, rest } = splitFeeDisclosureText(feePct, feeAmount);
+  return `${lead} ${rest}`;
+}
+
+/**
+ * The same #547 item 1A sentence in two parts so the card can set the approved
+ * bold lead (`<strong>` in contractor-bid-form.html:2352) without changing a
+ * character: buildFeeDisclosureText(...) === `${lead} ${rest}`.
+ */
+export function splitFeeDisclosureText(
+  feePct: number,
+  feeAmount: number,
+): { lead: string; rest: string } {
+  return {
+    lead: `Platform fee for this job: ${feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} (${feePct.toFixed(2)}% of your bid).`,
+    rest: 'By submitting this bid, you agree to pay Otter Quotes this fee if the homeowner selects your bid and a contract is signed. The fee is due upon contract execution and will be charged to your card on file. Submitting this bid constitutes your acceptance of this fee.',
+  };
 }
 
 /**

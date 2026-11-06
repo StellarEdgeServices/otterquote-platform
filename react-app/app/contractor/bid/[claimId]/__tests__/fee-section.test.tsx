@@ -6,7 +6,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it, expect } from 'vitest';
 import { FeeSection } from '../fee-section';
-import { buildFeeDisclosureText } from '../copy';
+import { BID_COPY, buildFeeDisclosureText, splitFeeDisclosureText } from '../copy';
 
 function render(mode: 'submit' | 'change' | 'renew' = 'submit', insurance = false): { html: string; text: string } {
   const html = renderToStaticMarkup(
@@ -26,7 +26,35 @@ describe('FeeSection rendered output (gh-3480)', () => {
       'Platform fee for this job: $750.00 (7.50% of your bid). By submitting this bid, you agree to pay Otter Quotes this fee if the homeowner selects your bid and a contract is signed. ' +
       'The fee is due upon contract execution and will be charged to your card on file. Submitting this bid constitutes your acceptance of this fee.',
     );
-    expect(html).toContain(`>${stored}</p>`);
+    const { lead, rest } = splitFeeDisclosureText(7.5, 750);
+    expect(`${lead} ${rest}`).toBe(stored);
+    // Approved bold lead (#547 item 1A; <strong> at contractor-bid-form.html:2352).
+    expect(html).toContain(`<p id="feeDisclosureText" data-testid="fee-disclosure-text"><strong>${lead}</strong> ${rest}</p>`);
+    expect(html).toContain('<strong>Platform fee for this job: $750.00 (7.50% of your bid).</strong>');
+  });
+
+  it('shows the #547 item 1B explainer, verbatim, and never the retired flat-5% / RCV-basis lines', () => {
+    const item1B =
+      'A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission.';
+    expect(BID_COPY.fee.feeExplainer).toBe(item1B);
+    // Every card state: all three modes, retail and insurance_rcv (RCV $20,000 vs bid $18,000).
+    for (const mode of ['submit', 'change', 'renew'] as const) {
+      for (const insurance of [false, true]) {
+        const html = renderToStaticMarkup(
+          <FeeSection mode={mode} bidAmount={18000} feePct={5} disclosure={{ feeAmount: 900 }}
+            claimRcv={insurance ? 20000 : null} isInsuranceRcv={insurance}
+            autoRenew={false} setAutoRenew={() => {}} feeAccepted={false} setFeeAccepted={() => {}} />,
+        );
+        const text = html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/\s+/g, ' ');
+        expect(text).toContain(item1B);
+        expect(text).not.toMatch(/flat 5%/i);
+        expect(text).not.toMatch(/based on the RCV/i);
+        expect(text).not.toMatch(/\bRCV\b/);
+        expect(text).not.toContain('$20,000.00');
+        // The fee shown is the one figure computed on the bid ($900.00 = 5.00% of $18,000).
+        expect(text).toContain('Platform fee for this job: $900.00 (5.00% of your bid).');
+      }
+    }
   });
 
   it('uses the HTML form checkbox label and no net, payout or deduction wording', () => {
