@@ -751,6 +751,21 @@
       "stack": "react+static cookies",
       "status": "excluded",
       "reason": "Long-lived (1 year) opt-out / internal-traffic toggles: staleness is the intended behaviour. Unit-tested in react-app/app/lib/__tests__/ad-optout.test.ts."
+    },
+    {
+      "key": "oq_return",
+      "stack": "react (sessionStorage; static pages carry the token in the URL only)",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/lib/__tests__/return-target.test.ts",
+          "contains": "oq_return older than the 30 minute TTL, untimestamped or future-dated is stale"
+        },
+        {
+          "file": "react-app/app/lib/__tests__/return-target.test.ts",
+          "contains": "never stores an invalid token, and a visit without one clears an old one"
+        }
+      ]
     }
   ],
   "excluded": [

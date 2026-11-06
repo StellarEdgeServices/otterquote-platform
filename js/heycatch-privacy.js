@@ -41,6 +41,13 @@ var REFERRER_KEY = /referrer$/i;
 var OPAQUE_SCHEME = /^(mailto|tel|sms|javascript|data|blob):/i;
 var MAX_DEPTH = 10;
 
+// gh-3357 (from the #3352 heatmap check): heatmaps are off today only because HeyCatch's config says so
+// ("heatmaps": false), and HeyCatch can change that for every customer. The SDK would send the click and
+// scroll buffer as an event named "$$heatmap" with a "$heatmap_data" property. Drop both here so the
+// #3352 protection does not depend on their setting.
+var HEATMAP_EVENT = '$$heatmap';
+var HEATMAP_PROP = '$heatmap_data';
+
 // The one value rule for a kept campaign value, in a URL or as a standalone property: 1 to 100
 // characters, and no "@" (or fullwidth "@") at any level of percent-decoding, so "x%2540y.com" is caught.
 function valueOk(raw) {
@@ -122,6 +129,7 @@ function isPlain(v) {
 
 function walk(v, key, depth) {
   if (depth > MAX_DEPTH) return undefined;
+  if (key === HEATMAP_PROP) return undefined;
   if (key) {
     var base = campaignBase(key);
     if (CAMPAIGN_DROP.indexOf(base) !== -1) return undefined;
@@ -154,6 +162,7 @@ function walk(v, key, depth) {
 export function scrubEvent(event) {
   try {
     if (!event || typeof event !== 'object') return null;
+    if (event.event === HEATMAP_EVENT) return null;
     return walk(event, '', 0);
   } catch (e) {
     return null;
@@ -216,5 +225,17 @@ export function hideToolbarTrigger() {
         }
       } catch (e) { /* leave the address without the fragment */ }
     }
+  };
+}
+
+// gh-3389 (D-409): the ONE custom event HeyCatch may receive from the marketing site. Name-allowlisted and sent with
+// NO properties: the tracker takes a name and nothing else, so a caller cannot attach a lead id, event id, step,
+// email or any other value even by mistake. Anything not on the list is dropped. The page gate
+// (HEYCATCH_ALLOWED_PATHS in js/ga-gate.js) is untouched; this only runs where the SDK was already loaded.
+var TRACKABLE_EVENTS = ['lead_saved'];
+export function makeEventTracker(trackEvent) {
+  return function (name) {
+    if (TRACKABLE_EVENTS.indexOf(name) === -1) return false;
+    try { trackEvent(name); return true; } catch (e) { return false; }
   };
 }

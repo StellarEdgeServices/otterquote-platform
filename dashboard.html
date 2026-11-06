@@ -382,9 +382,11 @@
       gap: var(--sp-2);
     }
 
+    /* gh-3267: --gray (#64748B) measured 3.07:1 on the completed row (13.6px, weight 400, so AA needs 4.5:1).
+       --slate is the colour the card's descriptions already use. */
     .checklist-filename {
       font-size: 0.85rem;
-      color: var(--gray);
+      color: var(--slate);
       font-family: var(--font-mono);
       word-break: break-all;
     }
@@ -1247,6 +1249,10 @@
       .deferred-card-sub { font-size: 0.875rem; color: rgba(255,255,255,0.75); margin-bottom: 10px; }
       .deferred-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
       .deferred-row .form-input { max-width: 220px; }
+      /* gh-3267: the shared .form-input::placeholder is --gray (2.89:1 on the navy field); scoped here so other pages keep it. */
+      .dashboard-section .form-input::placeholder { color: var(--slate); opacity: 1; }
+      /* gh-3267: the done-state check mark is a text character (✓, 19.2px, not large text): --green on its 15% green tint is 4.47:1. */
+      .dashboard-section .checklist-icon.done { color: #34D399; }
       .deferred-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
       .deferred-chip { border: 1px solid rgba(255,255,255,0.5); background: transparent; color: var(--white); border-radius: 999px; padding: 8px 14px; font-size: 0.875rem; cursor: pointer; min-height: 40px; }
       .deferred-chip.active { border-color: #E07B00; background: #E07B00; color: var(--navy); } /* gh-3267: white on amber is 3.0:1; navy is 5.77:1 */
@@ -1533,7 +1539,7 @@
           <div class="switch-success-icon">✅</div>
           <h3>We've got you.</h3>
           <p>An Otter Quotes team member will reach out shortly to get you matched with a new contractor from our network.</p>
-          <p style="font-size: 0.85rem; color: var(--slate); opacity: 0.8;">We've received your request. An Otter Quotes team member will contact you shortly to confirm the switch and get you matched with a new contractor. You do not need to contact them directly.</p>
+          <p style="font-size: 0.85rem; color: var(--slate); opacity: 0.8;">We've received your request. An Otter Quotes team member will contact you shortly to confirm the switch and get you matched with a new contractor.</p>
         </div>
         <div class="switch-modal-actions" style="justify-content: center;">
           <button class="btn btn-secondary" onclick="closeSwitchModal()">Close</button>
@@ -1690,6 +1696,14 @@
               showStateGateCard(currentClaim.property_state);
               return;
             }
+          }
+
+          // gh-3471 (D-419): a homeowner who signed up from the measurement link carries ?return=measurements. It is read only here, AFTER
+          // the sign-in check and the D-344 state gate above, so neither is skipped; only an allowlisted token (Auth.returnTarget) is followed.
+          const returnPath = (currentUser && !CONFIG.DEMO_MODE) ? Auth.returnTarget(window.location.search) : null;
+          if (returnPath) {
+            window.location.replace(returnPath);
+            return;
           }
 
           // 2. Render UI
@@ -2111,7 +2125,10 @@
           retail:        'Cash / Out-of-Pocket',
           repair:        'Repair Only',
         };
-        const fundingLabel = JOB_TYPE_LABELS[currentClaim.job_type]
+        // gh-3398 (D-407): a homeowner who answered "not sure" (policy_type 'idk') must not be
+        // told RCV. No replacement wording exists yet, so the payment-type line is hidden.
+        const fundingLabel = currentClaim.policy_type === 'idk' ? null
+          : JOB_TYPE_LABELS[currentClaim.job_type]
           || (currentClaim.funding_type === 'insurance'
                 ? (currentClaim.policy_type === 'acv' ? 'Insurance (ACV)' : 'Insurance (RCV)')
                 : currentClaim.funding_type === 'cash' ? 'Cash / Out-of-Pocket'
@@ -2981,6 +2998,7 @@
             );
             if (jobType) {
               window.selectJobType(jobType);
+              window.selectedJobTypeIsPreselect = true;  // gh-3398: set after the call; a user click clears it
               // Pre-populate conditional fields
               if (jobType === 'repair') {
                 if (currentClaim.repair_squares) document.querySelector('[name="repairSquares"]').value = currentClaim.repair_squares;
@@ -3091,7 +3109,11 @@
             updates.job_type = selectedType;
             if (selectedType === 'insurance_rcv') {
               updates.funding_type = 'insurance';
-              updates.policy_type = 'rcv';
+              // gh-3398 (D-407): edit mode pre-selects RCV for a stored 'idk'. Saving that
+              // untouched pre-selection must not rewrite 'idk' to 'rcv'. An explicit click can.
+              if (!(currentClaim.policy_type === 'idk' && window.selectedJobTypeIsPreselect === true)) {
+                updates.policy_type = 'rcv';
+              }
             } else if (selectedType === 'insurance_acv') {
               updates.funding_type = 'insurance';
               updates.policy_type = 'acv';
@@ -3099,8 +3121,12 @@
               updates.funding_type = 'cash';
               updates.policy_type = null;
             } else if (selectedType === 'repair') {
-              updates.funding_type = 'cash';
-              updates.policy_type = null;
+              // gh-3398 (D-407): a stored 'idk' reaches Repair Only with funding_type 'insurance'.
+              // Saving the untouched pre-selection must leave policy_type and funding_type alone.
+              if (!(currentClaim.policy_type === 'idk' && window.selectedJobTypeIsPreselect === true)) {
+                updates.funding_type = 'cash';
+                updates.policy_type = null;
+              }
             }
             // Conditional fields per job type
             if (selectedType === 'repair') {
@@ -3195,6 +3221,7 @@
           // Close edit mode
           isEditingClaim = false;
           window.selectedJobType = null;
+          window.selectedJobTypeIsPreselect = false;
           document.getElementById('claim-display').style.display = 'grid';
           document.getElementById('claim-edit-form').style.display = 'none';
           document.getElementById('job-type-section').style.display = 'none';
@@ -3512,6 +3539,7 @@
       // onclick="..." attribute, which needs global scope, not IIFE scope).
       window.selectJobType = function(type) {
         window.selectedJobType = type;
+        window.selectedJobTypeIsPreselect = false;  // gh-3398
         document.querySelectorAll('.job-type-btn').forEach(btn => {
           btn.classList.toggle('selected', btn.dataset.type === type);
         });
@@ -3586,7 +3614,7 @@
         try {
           if (sb && currentClaim?.id) {
             const reasonText = reasons.length > 0 ? reasons.join(', ') : 'No reason provided';
-            await fetch(CONFIG.SUPABASE_URL + '/functions/v1/send-support-email', { // gh-2477: Supabase URL (no Netlify proxy for /functions/v1)
+            const resp = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/send-support-email', { // gh-2477: Supabase URL (no Netlify proxy for /functions/v1)
               method:  'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -3600,6 +3628,11 @@
                 message:    `Job #${currentClaim.id.slice(-8).toUpperCase()}\nReasons: ${reasonText}\nNotes: ${notes || '(none)'}`
               })
             });
+            // gh-3443: success text only after the send succeeded; a non-2xx falls to the catch below.
+            if (!resp.ok) throw new Error('send-support-email HTTP ' + resp.status);
+          } else {
+            // gh-3443: no request can be made (no client or claim): same failure path, never the success text.
+            throw new Error('switch survey: no client or claim id');
           }
 
           document.getElementById('switch-survey-step').classList.add('hidden');

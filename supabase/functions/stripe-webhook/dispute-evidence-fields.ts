@@ -87,3 +87,15 @@ export function claimRecordLines(claim: {
     `  Contract Signed At: ${claim.contract_signed_at ?? "Not yet signed"}`,
   ];
 }
+
+/**
+ * gh-3408 - `fee_acceptances.fee_amount` is DOLLARS (numeric(10,2)), not cents.
+ * Every writer stores dollars: contractor-bid-form.html:4726 (`feeAmount =
+ * (bidAmount * feePct) / 100`) and react-app bid-form.tsx via utils.ts
+ * `computeFeeDisclosure` (`(bidAmount * feePct) / 100`). A $175.00 fee is stored
+ * as 175.00. Only Stripe amounts (dispute.amount) are cents. PostgREST may hand
+ * numeric back as a number or a string, so coerce; never divide by 100.
+ */
+export function formatAcceptedFeeDollars(feeAmount: number | string): string {
+  return `$${Number(feeAmount).toFixed(2)}`;
+}

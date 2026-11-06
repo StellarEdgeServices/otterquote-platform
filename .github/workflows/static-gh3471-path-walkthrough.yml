@@ -1,0 +1,59 @@
+name: gh-3471 Path Walkthrough
+
+# gh-3471 (D-419) -- the homeowner path to the measurement checkout: the homepage walkthrough with its negative control, the signed-out
+# "Measurements" click that must come back to help-measurements.html after sign-up, and the return-flag allowlist checks.
+# `pull_request` only, no secrets, read-only token, path-filtered. Supabase and Stripe are stubbed; nothing leaves the runner.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'js/auth.js'
+      - 'dashboard.html'
+      - 'project-info-*.html'
+      - 'help-measurements.html'
+      - 'index.html'
+      - 'start.html'
+      - 'js/nav.js'
+      - 'react-app/app/get-started/**'
+      - 'react-app/app/auth-callback/**'
+      - 'react-app/app/trade-selector/**'
+      - 'react-app/app/lib/return-target.ts'
+      - 'tests/gh3471-*.mjs'
+      - '.github/workflows/static-gh3471-path-walkthrough.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3471-path-walkthrough-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  walkthrough:
+    name: Path to the measurement checkout, real Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Return-flag allowlist parity (gh3471-return-flag-allowlist)
+        run: node tests/gh3471-return-flag-allowlist.mjs
+      - name: Install e2e dependencies
+        working-directory: tests/e2e
+        run: npm ci
+      - name: Install react-app dependencies
+        working-directory: react-app
+        run: npm ci --ignore-scripts
+      - name: Install Chromium
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+      - name: Walkthrough A, B and C (gh3471-path-walkthrough)
+        run: node tests/gh3471-path-walkthrough.mjs

@@ -742,7 +742,12 @@ async function saveFulfillment() {
     // just re-saving the order. Admin-gated with this same session's JWT.
     // A notification failure must not un-deliver the order — the save above
     // already stands — so this is a warning, never a throw.
-    if (delivering) {
+    // [gh-3460] A re-save of an order that is ALREADY delivered also calls send-measurement-ready, even when this save
+    // carries no new PDF or number (a numbers-only order has no report_url and the form does not reload the numbers, so
+    // `delivering` is false on a plain re-save). That is how the ready email goes out after an unspecified buyer role is
+    // settled (runbooks/held-partner-fee-release.md). The function is idempotent per order and suppresses an 'unspecified' role itself.
+    var notifyReady = delivering || row.status === 'completed';
+    if (notifyReady) {
       try {
         var sess = await sb.auth.getSession();
         var token = sess && sess.data && sess.data.session ? sess.data.session.access_token : null;

@@ -523,6 +523,12 @@
   .nav-phone { gap: 0; min-height: 44px; padding: 0 4px; }
   .nav-links .nav-link { padding-left: 8px; padding-right: 8px; }
 }
+/* gh-3387: the homeowner guest nav gained a Pricing link (~60px). Reclaim it at 769-1099px (where the guest header otherwise wraps up to 949px against the 889px budget)
+   by tightening link padding and gap only; font size unchanged. */
+@media (min-width: 769px) and (max-width: 1099px) {
+  .nav-links { gap: 0; }
+  .nav-links .nav-link { padding-left: 4px; padding-right: 4px; }
+}
 /* /gh-2598-nav-compact-band */
 @media (max-width: 768px) {
   .nav-phone { margin-left: auto; margin-right: var(--sp-2); padding: 0 14px; border: 2px solid var(--white); border-radius: 6px; }

@@ -75,6 +75,7 @@ function ctaButton(text: string, url: string): string {
 // the amount is no longer rendered in this function's partner-facing email.
 
 export function formatPayoutType(type: string): string {
+  if (type === "measurement_fees_monthly") return "Measurement Referral Fees"; // gh-3229 (P18)
   return type === "commission_referral" ? "Referral Fee" : "Recruit Bonus";
 }
 
