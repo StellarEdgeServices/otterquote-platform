@@ -15,6 +15,7 @@
 
 import { useEffect, useMemo, useReducer, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import * as Sentry from '@sentry/nextjs';
 import { supabase } from '@/lib/supabase';
 import type { ContractorRecord } from '../../_shell/use-contractor-record';
 import { Card, Field, TextInput, MoneyInput, TextArea, Select, Checkbox, RadioRow, formatCurrency, type Opt } from './bid-ui';
@@ -28,7 +29,7 @@ import {
   feeConfigLookupParams, resolveFeePct, computeDisclosureFee, computeQuoteFeeBase, computeCalculatorFee,
   bidGateRpcParams, interpretBidGate, BID_GATE_ROUTES, DEFAULT_PLATFORM_FEE_PCT,
   buildScopeSummary, buildQuoteInsert, buildQuoteUpdate,
-  buildFeeAcceptanceInsert, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
+  buildFeeAcceptanceInsert, ipForInet, feeAcceptanceOutcome, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
   computeWizardEligibility, wizardReducer, wroteRow, claimLocationLabel,
 } from './utils';
 
@@ -191,13 +192,13 @@ function initialState(claim: BidClaim, flags: TradeFlags, claimRcv: number | nul
   };
 }
 
-async function getContractorIP(): Promise<string> {
+async function getContractorIP(): Promise<string | null> {
   try {
     const r = await fetch('https://api.ipify.org?format=json');
-    if (!r.ok) return 'unknown';
+    if (!r.ok) return null;
     const d = await r.json();
-    return d.ip || 'unknown';
-  } catch { return 'unknown'; }
+    return ipForInet(d.ip);
+  } catch { return null; } // gh-3409: null, not 'unknown' (an inet column refuses the string and the acceptance was lost)
 }
 
 function track(event: string, params: Record<string, unknown>): void {
@@ -363,11 +364,18 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
         // D-215 Layer 1 fee_acceptances + Layer 2 send-bid-confirmation (non-fatal; quote committed).
         try {
           const ip = await getContractorIP();
-          await supabase.from('fee_acceptances').insert(buildFeeAcceptanceInsert({
+          // gh-3409: .select('id') and NEVER .single() (a diverted row returns zero rows; .single() would make PostgREST roll the quarantine row back).
+          const feeRes = await supabase.from('fee_acceptances').insert(buildFeeAcceptanceInsert({
             contractorId: contractor.id, claimId: String(claim.id), bidId, feePct, feeAmount,
             feeTextDisplayed: exactFeeText, acceptedAtIso: nowIso, ipAddress: ip,
             userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
-          }));
+          })).select('id');
+          const feeOutcome = feeAcceptanceOutcome(feeRes);
+          if (feeOutcome !== 'recorded') {
+            const feeMsg = feeOutcome === 'failed' ? '[D-215] Fee acceptance record failed (non-fatal, quote committed)' : '[D-215] Fee acceptance diverted to quarantine';
+            console.error(feeMsg, feeRes.error?.message);
+            Sentry.captureMessage(feeMsg, { level: feeOutcome === 'failed' ? 'error' : 'warning', extra: { bid_id: bidId, claim_id: String(claim.id), contractor_id: contractor.id, code: feeRes.error?.code, message: feeRes.error?.message } });
+          }
         } catch (e) { console.error('[D-215] fee acceptance failed (non-fatal):', e); }
         try {
           const tradeLabel = wizardMode && wizard.queue.length > 0 ? wizard.queue.join(', ') : (claimTrades.length ? claimTrades.join(', ') : 'roofing');

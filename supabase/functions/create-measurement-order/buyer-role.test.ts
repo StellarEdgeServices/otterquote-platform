@@ -5,6 +5,7 @@ import { assert, assertEquals, assertStringIncludes } from "https://deno.land/st
 import {
   BUYER_ROLE_ALERT_TYPE,
   buildBuyerRoleAlertRow,
+  decidePaidRole,
   raiseBuyerRoleAlert,
   resolveBuyerRole,
   resolvePaidRole,
@@ -114,11 +115,58 @@ Deno.test("resolvePaidRole: NEGATIVE CONTROLS -- every missing piece gives unspe
   }
 });
 
-Deno.test("index.ts: the paid path resolves an unresolved role with resolvePaidRole from the PI's own metadata and the claim owner, and alerts only when still unspecified", () => {
-  assert(index.includes("resolvePaidRole({"));
-  assert(index.includes("piType: pi.metadata?.type ?? null, piClaimId: pi.metadata?.claim_id ?? null"));
+Deno.test("index.ts: the paid path decides the role with decidePaidRole from the PI's own metadata and the claim owner, and alerts whenever the recorded role is unspecified", () => {
+  assert(index.includes("decidePaidRole({"));
+  assert(index.includes("piType: paid.piType ?? null, piClaimId: paid.piClaimId ?? null") || (index.includes("piType: paid.piType ?? null,") && index.includes("piClaimId: paid.piClaimId ?? null,")));
   assert(index.includes('.from("claims").select("user_id").eq("id", claimId)'));
   assert(index.includes("requested_by_role: paidRole,"));
-  assert(index.includes("if (roleStillUnspecified) {"));
+  assert(index.includes("const roleStillUnspecified = paidRole === UNSPECIFIED_ROLE;"));
   assert(index.includes("productCode, paidRole, authedUser.id, paid.amount"));
+});
+
+// -- gh-3459: an explicit client-sent 'homeowner' needs the same proof --
+const owner = () => Promise.resolve(OWNER as string | null);
+const base = { piType: "hover_measurement", piClaimId: CLAIM, claimId: CLAIM, callerId: OWNER, lookupClaimOwner: owner };
+
+Deno.test("decidePaidRole: explicit homeowner who OWNS the claim, on a hover_measurement PI for it -> homeowner (the $5 accrues; no change for a real homeowner)", async () => {
+  assertEquals(await decidePaidRole({ ...base, requestedRole: "homeowner" }), { role: "homeowner", clientHomeownerNotShown: false });
+});
+
+Deno.test("decidePaidRole: explicit homeowner who does NOT own the claim -> unspecified, flagged; the paid order is kept, not refused", async () => {
+  const r = await decidePaidRole({ ...base, requestedRole: "homeowner", callerId: "someone-else" });
+  assertEquals(r, { role: UNSPECIFIED_ROLE, clientHomeownerNotShown: true });
+});
+
+Deno.test("decidePaidRole: NEGATIVE CONTROLS -- an explicit homeowner with any missing proof is never homeowner", async () => {
+  for (const over of [
+    { piType: "measurement_order" }, { piType: null }, { piType: "measurement_upgrade" },
+    { piClaimId: null }, { piClaimId: "other-claim" },
+    { lookupClaimOwner: () => Promise.resolve(null) },
+    { lookupClaimOwner: () => Promise.resolve("someone-else") },
+    { lookupClaimOwner: () => { throw new Error("db down"); } },
+    { lookupClaimOwner: () => Promise.reject(new Error("db down")) },
+  ]) {
+    const r = await decidePaidRole({ ...base, requestedRole: "homeowner", ...over });
+    assertEquals(r.role, UNSPECIFIED_ROLE, JSON.stringify(Object.keys(over)));
+    assertEquals(r.clientHomeownerNotShown, true);
+  }
+});
+
+Deno.test("decidePaidRole: a missing/unknown role behaves as in gh-3447 (owner on the PI's claim -> homeowner, else unspecified, never flagged as a client claim)", async () => {
+  assertEquals((await decidePaidRole({ ...base, requestedRole: UNSPECIFIED_ROLE })).role, "homeowner");
+  assertEquals(await decidePaidRole({ ...base, requestedRole: UNSPECIFIED_ROLE, callerId: "x" }), { role: UNSPECIFIED_ROLE, clientHomeownerNotShown: false });
+});
+
+Deno.test("decidePaidRole: an explicit contractor is recorded as contractor and the owner is not even looked up", async () => {
+  let looked = 0;
+  const r = await decidePaidRole({ ...base, requestedRole: "contractor", callerId: "x", lookupClaimOwner: () => { looked++; return Promise.resolve(null); } });
+  assertEquals(r.role, "contractor");
+  assertEquals(looked, 0);
+});
+
+Deno.test("decidePaidRole: a failing owner lookup logs fixed text, never throws", async () => {
+  const logs: string[] = [];
+  await decidePaidRole({ ...base, requestedRole: "homeowner", lookupClaimOwner: () => { throw new Error("secret detail"); }, log: (m) => logs.push(m) });
+  assertEquals(logs.length, 1);
+  assert(!logs[0].includes("secret detail"));
 });
