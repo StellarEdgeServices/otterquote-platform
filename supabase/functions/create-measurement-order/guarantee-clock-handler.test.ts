@@ -260,7 +260,7 @@ Deno.test("handler: a claim read or a profile read that RETURNS AN ERROR still r
     assertEquals(r.status, 200, name);
     assertEquals(w.hoverPosts.length, 1, name);
     assertEquals(w.hoverPosts[0].guarantee_started_at, PAID_ISO, `${name}: a failed read counts as real`);
-    assertEquals(w.alerts.length, 0, name);
+    assertEquals(clockAlerts(w).length, 0, name);
     assert(logs.some((l) => l.includes(line)), `${name}: logged (${logs.join(" | ")})`);
   }
 }));
