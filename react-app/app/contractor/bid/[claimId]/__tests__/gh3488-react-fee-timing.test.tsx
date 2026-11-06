@@ -15,14 +15,17 @@ const h = vi.hoisted(() => {
     rate: 5,            // what any lookup after the first answers
     deferFirst: true,   // the first lookup is held until releaseFee
     hangAll: false,     // every lookup never returns
+    hangUpdate: false,  // gh-3491: a quotes UPDATE never returns
     lookups: 0,
     queries: [] as string[],
   };
   function builder(table: string) {
     const ors: string[] = [];
+    let op = 'select';
     const b: Record<string, unknown> = {};
     const chain = () => b;
-    for (const k of ['select', 'order', 'eq', 'limit', 'update']) b[k] = chain;
+    for (const k of ['select', 'order', 'eq', 'limit', 'abortSignal']) b[k] = chain;
+    b.update = (row: Record<string, unknown>) => { op = 'update'; state.inserts.push({ table: table + ':update', row }); return b; };
     b.or = (a: string) => { ors.push(a); return b; };
     b.insert = (row: Record<string, unknown>) => { state.inserts.push({ table, row }); return b; };
     b.single = async () => ({ data: { id: 'quote-1' }, error: null });
@@ -35,6 +38,10 @@ const h = vi.hoisted(() => {
           return new Promise((r) => { state.releaseFee = (rows) => { state.rate = rows[0].fee_pct; r({ data: rows, error: null }); }; }).then(res, rej);
         }
         return Promise.resolve({ data: [{ fee_pct: state.rate }], error: null }).then(res, rej);
+      }
+      if (table === 'quotes' && op === 'update') {
+        if (state.hangUpdate) return new Promise(() => {}).then(res, rej);
+        return Promise.resolve({ data: [{ id: 'q-1' }], error: null }).then(res, rej);
       }
       return Promise.resolve({ data: [], error: null }).then(res, rej);
     };
@@ -66,13 +73,13 @@ function mount() {
 const priceInput = (c: HTMLElement) => c.querySelector('.oqb-money input') as HTMLInputElement;
 const feeBox = (c: HTMLElement) => Array.from(c.querySelectorAll('input[type="checkbox"]'))
   .find((el) => /platform fee/.test(el.parentElement?.textContent || '')) as HTMLInputElement;
-const submitBtn = (c: HTMLElement) => Array.from(c.querySelectorAll('button')).find((b) => /Submit|Submitting/.test(b.textContent || '')) as HTMLButtonElement;
+const submitBtn = (c: HTMLElement) => Array.from(c.querySelectorAll('button')).find((b) => /Submit|Submitting|Update Bid|Renew Bid/.test(b.textContent || '')) as HTMLButtonElement;
 const inserted = (t: string) => h.state.inserts.filter((i) => i.table === t);
 
 afterEach(() => {
   cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals();
   h.state.inserts.length = 0; h.state.releaseFee = null; h.state.rate = 5; h.state.deferFirst = true;
-  h.state.hangAll = false; h.state.lookups = 0; h.state.queries.length = 0;
+  h.state.hangAll = false; h.state.hangUpdate = false; h.state.lookups = 0; h.state.queries.length = 0;
 });
 
 async function ready(c: HTMLElement, bid = '18500', rate = 5) {
@@ -126,7 +133,7 @@ describe('gh-3488 React bid form: timing windows', () => {
     expect(feeBox(container).checked).toBe(true);
   }, 15000);
 
-  it('(REVIEW) an ipify call that never returns times out; the bid files with the IP unknown', async () => {
+  it('(REVIEW) an ipify call that never returns times out; the bid files with no IP (null, not the string unknown)', async () => {
     const { container } = mount();
     await ready(container);
     vi.stubGlobal('fetch', (_u: string, init?: { signal?: AbortSignal }) => new Promise((_res, rej) => {
@@ -134,7 +141,7 @@ describe('gh-3488 React bid form: timing windows', () => {
     }));
     fireEvent.click(submitBtn(container));
     await waitFor(() => expect(inserted('fee_acceptances').length).toBe(1), { timeout: 8000 });   // 3fc20d19: never
-    expect(inserted('fee_acceptances')[0].row.ip_address).toBe('unknown');
+    expect(inserted('fee_acceptances')[0].row.ip_address).toBeNull();   // gh-3409: never 'unknown' (inet column)
   }, 15000);
 
   it('(REVIEW) a double click in the same tick files one bid, and the fee box is locked while submitting', async () => {
@@ -179,4 +186,32 @@ describe('gh-3488 React bid form: timing windows', () => {
     fireEvent.change(priceInput(container), { target: { value: '19000' } });
     expect(feeBox(container).checked).toBe(false);
   });
+
+  // gh-3491 (REVIEW 6688103147): the Change Bid UPDATE is the one await the submit lock made un-escapable.
+  it('(REVIEW) a Change Bid UPDATE that never returns ends with a message and an unlocked form; a retry files once', async () => {
+    h.state.deferFirst = false;
+    h.state.hangUpdate = true;
+    const existing = { id: 'q-1', bid_status: 'active', renewals_count: 0, total_price: 18000 };
+    const { container } = render(
+      <BidForm mode="change" claim={claim as never} contractor={contractor as never} existingQuote={existing as never}
+        flags={flags} claimRcv={null} userId="u1" />,
+    );
+    await waitFor(() => expect(h.state.lookups).toBeGreaterThan(0));
+    fireEvent.change(priceInput(container), { target: { value: '18500' } });
+    fireEvent.click(feeBox(container));
+    await waitFor(() => expect(submitBtn(container).disabled).toBe(false));
+    fireEvent.click(submitBtn(container));
+    await waitFor(() => expect(submitBtn(container).textContent).toContain('Submitting'));
+    // bab62017: stays "Submitting…" with the fee box locked and no message, forever
+    await waitFor(() => expect(container.querySelector('.oqb-err')?.textContent).toContain('Error submitting bid'), { timeout: 20000 });
+    expect(submitBtn(container).disabled).toBe(false);
+    expect(submitBtn(container).textContent).not.toContain('Submitting');
+    expect(feeBox(container).disabled).toBe(false);
+    // the connection is back: the retry files the same UPDATE once and reaches the success screen
+    h.state.hangUpdate = false;
+    fireEvent.click(submitBtn(container));
+    await waitFor(() => expect(container.textContent).toContain('Bid updated'));
+    expect(inserted('quotes:update').length).toBe(2);   // the first (hung) attempt and the retry; one row, same fields
+    expect(inserted('quotes:update')[1].row.total_price).toBe(18500);
+  }, 40000);
 });

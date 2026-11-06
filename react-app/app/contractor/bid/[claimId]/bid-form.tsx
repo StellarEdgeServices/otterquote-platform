@@ -15,21 +15,23 @@
 
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import * as Sentry from '@sentry/nextjs';
 import { supabase } from '@/lib/supabase';
 import type { ContractorRecord } from '../../_shell/use-contractor-record';
 import { Card, Field, TextInput, MoneyInput, TextArea, Select, Checkbox, RadioRow, formatCurrency, type Opt } from './bid-ui';
 import { BID_COPY, buildFeeDisclosureText } from './copy';
 import { wholeCentDollars } from '../../../../constants/platform-fee';
 import { HomePhotosCard } from './home-photos-card';
+import { FeeSection } from './fee-section';
 import { WarrantyCard } from './warranty-card';
 import {
   type BidClaim, type BidMode, type TradeFlags, type WarrantySelectionInput,
   type ValueAddsFormState, type ValueAddsContext, type WizardState,
   buildValueAdds, serializeWarrantySelection, applyCustomWarrantyReview,
-  feeConfigLookupParams, resolveFeePct, computeDisclosureFee, computeQuoteFeeBase, computeCalculatorFee,
+  feeConfigLookupParams, resolveFeePct, computeDisclosureFee, computeQuoteFeeBase,
   bidGateRpcParams, interpretBidGate, BID_GATE_ROUTES, DEFAULT_PLATFORM_FEE_PCT,
   buildScopeSummary, buildQuoteInsert, buildQuoteUpdate,
-  buildFeeAcceptanceInsert, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
+  buildFeeAcceptanceInsert, ipForInet, feeAcceptanceOutcome, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
   computeWizardEligibility, wizardReducer, wroteRow, claimLocationLabel,
 } from './utils';
 
@@ -195,16 +197,18 @@ function initialState(claim: BidClaim, flags: TradeFlags, claimRcv: number | nul
 // gh-3488 (REVIEW 6674889982): both outside calls are bounded, so a hung one cannot hold the form.
 const IP_LOOKUP_TIMEOUT_MS = 3000;
 const FEE_LOOKUP_TIMEOUT_MS = 5000;
+// gh-3491 (REVIEW 6688103147): bound on the Change Bid / renew UPDATE; a retry is harmless (same row, same fields).
+const BID_UPDATE_TIMEOUT_MS = 15000;
 
-async function getContractorIP(): Promise<string> {
+async function getContractorIP(): Promise<string | null> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), IP_LOOKUP_TIMEOUT_MS);
   try {
     const r = await fetch('https://api.ipify.org?format=json', { signal: ctl.signal });
-    if (!r.ok) return 'unknown';
+    if (!r.ok) return null;
     const d = await r.json();
-    return d.ip || 'unknown';
-  } catch { return 'unknown'; } finally { clearTimeout(timer); }
+    return ipForInet(d.ip);
+  } catch { return null; } finally { clearTimeout(timer); } // gh-3409: null, not 'unknown' (an inet column refuses the string and the acceptance was lost)
 }
 
 /**
@@ -320,7 +324,6 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
   const idemRef = useRef<{ key: string; fp: string } | null>(null);
   const submitInFlight = useRef(false); // gh-3488: set synchronously, so nothing can file a second bid while one is running
   const disclosure = computeDisclosureFee(bidAmount, feePct);
-  const calc = computeCalculatorFee(claim, claimRcv, bidAmount);
 
   function buildCtx(): ValueAddsContext {
     return {
@@ -375,7 +378,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
       const valueAdds = applyCustomWarrantyReview(valueAddsRaw, warranty, nowIso);
       const feeBase = computeQuoteFeeBase(claim, bidAmount);
       const feeAmount = disclosure.feeAmount;
-      const exactFeeText = buildFeeDisclosureText(feePct, feeAmount, bidAmount);
+      const exactFeeText = buildFeeDisclosureText(feePct, feeAmount);
       const scopeSummary = buildScopeSummary({ brand: form.brandProduct, estimatedStartDate: form.startDate, estimatedCompletionTime: form.completionTime });
       const perTradeBreakdown = wizardMode
         ? Object.fromEntries(Object.entries(wizardPrices).map(([k, v]) => [k, parseFloat(v) || 0]).filter(([, v]) => (v as number) > 0))
@@ -396,7 +399,16 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
           existingRenewalsCount: (existingQuote?.renewals_count as number) ?? 0, now: new Date(),
           existingBidStatus: (existingQuote?.bid_status as string | null) ?? null,
         });
-        const { data: upRows, error: upErr } = await supabase.from('quotes').update(updatePayload).eq('id', existingQuote!.id).select('id');
+        // gh-3491: an UPDATE that never answers ends through the catch below (message, form unlocked). Abort the request and stop waiting.
+        const updCtl = new AbortController();
+        let updTimer: ReturnType<typeof setTimeout> | undefined;
+        let upRows: unknown, upErr: unknown;
+        try {
+          ({ data: upRows, error: upErr } = await Promise.race([
+            supabase.from('quotes').update(updatePayload).eq('id', existingQuote!.id).select('id').abortSignal(updCtl.signal),
+            new Promise<never>((_, reject) => { updTimer = setTimeout(() => { updCtl.abort(); reject(new Error('bid_update_timed_out: the quote update did not answer')); }, BID_UPDATE_TIMEOUT_MS); }),
+          ]));
+        } finally { if (updTimer) clearTimeout(updTimer); }
         if (upErr) throw upErr;
         // gh-2105 (decision a, money — HIGH PRIORITY): `.update()` without
         // `.select()` reports success even on a zero-row RLS/id-mismatch
@@ -451,11 +463,18 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
         // D-215 Layer 1 fee_acceptances + Layer 2 send-bid-confirmation (non-fatal; quote committed).
         try {
           const ip = await getContractorIP();
-          await supabase.from('fee_acceptances').insert(buildFeeAcceptanceInsert({
+          // gh-3409: .select('id') and NEVER .single() (a diverted row returns zero rows; .single() would make PostgREST roll the quarantine row back).
+          const feeRes = await supabase.from('fee_acceptances').insert(buildFeeAcceptanceInsert({
             contractorId: contractor.id, claimId: String(claim.id), bidId, feePct, feeAmount,
             feeTextDisplayed: exactFeeText, acceptedAtIso: nowIso, ipAddress: ip,
             userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
-          }));
+          })).select('id');
+          const feeOutcome = feeAcceptanceOutcome(feeRes);
+          if (feeOutcome !== 'recorded') {
+            const feeMsg = feeOutcome === 'failed' ? '[D-215] Fee acceptance record failed (non-fatal, quote committed)' : '[D-215] Fee acceptance diverted to quarantine';
+            console.error(feeMsg, feeRes.error?.message);
+            Sentry.captureMessage(feeMsg, { level: feeOutcome === 'failed' ? 'error' : 'warning', extra: { bid_id: bidId, claim_id: String(claim.id), contractor_id: contractor.id, code: feeRes.error?.code, message: feeRes.error?.message } });
+          }
         } catch (e) { console.error('[D-215] fee acceptance failed (non-fatal):', e); }
         try {
           const tradeLabel = wizardMode && wizard.queue.length > 0 ? wizard.queue.join(', ') : (claimTrades.length ? claimTrades.join(', ') : 'roofing');
@@ -592,7 +611,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
             </Card>
           )}
 
-          <FeeSection mode={mode} claim={claim} bidAmount={bidAmount} feePct={feePct} disclosure={disclosure} calc={calc}
+          <FeeSection mode={mode} bidAmount={bidAmount} feePct={feePct} disclosure={disclosure}
             claimRcv={claimRcv} isInsuranceRcv={claim.job_type === 'insurance_rcv'}
             autoRenew={form.autoRenew} setAutoRenew={(v) => update({ autoRenew: v })}
             feeAccepted={feeAccepted} setFeeAccepted={setFeeAccepted} locked={submitState === 'submitting'} />
@@ -842,35 +861,5 @@ function WizardBar({ step }: { step: number }) {
         );
       })}
     </div>
-  );
-}
-
-function FeeSection({ mode, claim, bidAmount, feePct, disclosure, calc, claimRcv, isInsuranceRcv, autoRenew, setAutoRenew, feeAccepted, setFeeAccepted, locked }: {
-  mode: BidMode; claim: Record<string, unknown>; bidAmount: number; feePct: number;
-  disclosure: { feeAmount: number; netAmount: number };
-  calc: { totalFeePercent: string; netAmount: number };
-  claimRcv: number | null; isInsuranceRcv: boolean;
-  autoRenew: boolean; setAutoRenew: (v: boolean) => void;
-  feeAccepted: boolean; setFeeAccepted: (v: boolean) => void; locked: boolean;
-}) {
-  const feeInfo = isInsuranceRcv && claimRcv ? BID_COPY.fee.feeInfoInsurance(formatCurrency(claimRcv)) : BID_COPY.fee.feeInfoRetail;
-  return (
-    <Card title="Platform Fee & Submission">
-      <div className="oqb-fee-box">
-        <div className="oqb-fee-row"><span>Your bid</span><span>{formatCurrency(bidAmount)}</span></div>
-        <div className="oqb-fee-row"><span>Platform fee ({feePct.toFixed(2)}%)</span><span>{formatCurrency(disclosure.feeAmount)}</span></div>
-        <div className="oqb-fee-row total"><span>Net to you upon completion</span><span>{formatCurrency(disclosure.netAmount)}</span></div>
-        <div className="oqb-fee-info">{feeInfo}</div>
-      </div>
-
-      {mode !== 'change' && (
-        <Checkbox checked={autoRenew} onChange={setAutoRenew} label="Auto-renew this bid for another 14-day window if it expires (D-150)." />
-      )}
-
-      <label className="oqb-accept">
-        <input type="checkbox" checked={feeAccepted} disabled={locked} onChange={(e) => setFeeAccepted(e.target.checked)} />
-        <span>I understand and agree to the platform fee of {feePct.toFixed(2)}% ({formatCurrency(disclosure.feeAmount)}), deducted from my bid amount upon contract execution.</span>
-      </label>
-    </Card>
   );
 }

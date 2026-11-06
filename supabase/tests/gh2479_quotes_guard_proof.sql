@@ -9,7 +9,7 @@
 -- (a block that raises P0U01 and catches it), so one group's writes never feed the next.
 -- Everything touched is is_test (the FIXTURES line prints it): homeowner f6c14b57 and its claims, the
 -- quotes ff1f8323 / 0a334300 / be305d7c / 6e3d1807, contractors 986ce2b6, bb07fc40 and 2bc792be, referral 770c7bd8,
--- agents 02fbf1c3 and 1927861f. The one is_test=false quote (403940dc) is never addressed.
+-- agents 02fbf1c3 and 56c1319a (otq-test-partner@otterquote.com, gh-3203). The one is_test=false quote (403940dc) is never addressed.
 --
 -- Expected BEFORE (the bugs): V2 ACCEPTED and V3 RESULT commission=200.00; P1, P2, P3, P3b, P4 ACCEPTED;
 --   K4, K5 ACCEPTED; A1 ACCEPTED.
@@ -95,7 +95,7 @@ DECLARE
   k3   constant uuid := '2bc792be-b677-4ac1-bc68-94b1561d9757'; -- is_test contractor with has_payment_method = true
   q2   constant uuid := '6e3d1807-b96c-4595-8153-ad7e39dc4aa7'; -- selected 15000 on o's contract_signed claim
   rx   constant uuid := '770c7bd8-532b-4f75-8a82-dfca275fcd98'; -- another agent's referral, clicked
-  insp_agent constant uuid := '1927861f-8836-49ce-a528-08c432cc69cc'; insp_user constant uuid := '3ea4d929-b916-4cc9-a285-d052df397992';
+  insp_agent constant uuid := '56c1319a-6376-4405-8ccc-88a574d7ede4'; insp_user constant uuid := 'ac869f4e-9afe-4244-a390-0fff42cdc6e9'; -- otq-test-partner@otterquote.com (re_agent; gh-3203)
   c3 uuid := gen_random_uuid(); c4 uuid := gen_random_uuid();
   v text := ''; t text; rnew uuid;
 BEGIN
@@ -206,6 +206,9 @@ BEGIN
 
   -- A: referral_agents.agent_type (the column the D-333 no-fee rule reads).
   BEGIN
+    -- gh-3203 fixture (superuser, rolled back with the batch): the dedicated test partner is a re_agent, and A1 only
+    -- tests the guard when the row starts as home_inspector (on a re_agent row the UPDATE is a no-op and passes vacuously).
+    UPDATE public.referral_agents SET agent_type = 'home_inspector' WHERE id = insp_agent;
     v := v || E'\nA1 home_inspector PARTNER UPDATE own agent_type=re_agent: ' || pg_temp.try_as('authenticated', insp_user, format('UPDATE public.referral_agents SET agent_type=''re_agent'' WHERE id=%L', insp_agent));
     v := v || format(' -> agent_type=%s', (SELECT agent_type FROM referral_agents WHERE id = insp_agent));
     v := v || E'\nA2 LEGIT PARTNER profile save (name, phone, bio; agent_type re-sent unchanged): ' || pg_temp.try_as('authenticated', insp_user, format('UPDATE public.referral_agents SET first_name=first_name, phone=''3175550100'', bio=''gh2479 proof'', agent_type=agent_type WHERE user_id=%L', insp_user));

@@ -3711,10 +3711,22 @@
         va.gutter_guards_retail.forEach(g => addGutterGuardEntry(g));
       }
       // Restore retail bid price (roofing retail or roofing+siding retail)
+      // gh-3496: init() calls this function BEFORE startUp() runs applyJobTypeCustomizations(), so isRetailJob,
+      // gutterTradeActive and sidingTradeActive are still false here. Derive them from the claim, as that function does.
       const _restoreTrades = Array.isArray(currentClaim?.trades) ? currentClaim.trades : [];
-      if (isRetailJob && !gutterTradeActive && !sidingTradeActive && quote.total_price) {
+      const _restoreRetail = !!currentClaim && (currentClaim.job_type === 'retail' || currentClaim.funding_type === 'cash');
+      const _restoreRoofing = _restoreTrades.includes('roofing');
+      const _restoreSiding = _restoreRetail && _restoreTrades.includes('siding');
+      const _restoreGutterOnly = _restoreTrades.includes('gutters') && !_restoreRoofing && !_restoreTrades.includes('siding');
+      // A claim that will enter the D-162 wizard (initWizard's rule: 2+ queued trades after the D-165 siding gate) keeps
+      // today's behaviour: the wizard has no roofing price field, so a pre-fill would let a submit write a total that
+      // disagrees with the review step. The wizard's grand total is a separate issue (#3495).
+      const _restoreQueued = ['roofing', 'gutters', 'siding'].filter(t => _restoreTrades.includes(t))
+        .filter(t => t !== 'siding' || currentClaim?.siding_bid_released_at != null);
+      const _restoreWizard = _restoreRetail && _restoreQueued.length >= 2;
+      if (!_restoreWizard && _restoreRetail && !_restoreGutterOnly && !_restoreSiding && quote.total_price) {
         setVal('retailBidPrice', quote.total_price);
-      } else if (isRetailJob && sidingTradeActive && _restoreTrades.includes('roofing') && quote.total_price) {
+      } else if (!_restoreWizard && _restoreRetail && _restoreSiding && _restoreRoofing && quote.total_price) {
         setVal('retailBidPrice', quote.total_price);
       }
 
@@ -4673,6 +4685,7 @@
     let _platformFeePct = 5.0;  // Default; will be fetched from platform_fee_config
     var _submitInFlight = false, _submitDone = false; // var: read by updateFeeCheckboxState, which can run before this line
     var FEE_LOOKUP_TIMEOUT_MS = 5000; // gh-3488: bound on the rate lookup
+    var BID_UPDATE_TIMEOUT_MS = 15000; // gh-3491 (REVIEW 6688103147): bound on the Change Bid / renew UPDATE; a retry is harmless (same row, same fields)
     var IP_LOOKUP_TIMEOUT_MS = 3000;  // gh-3488: bound on the ipify call (best-effort, falls back to 'unknown')
     // gh-3498 (REVIEW 6675274132): the bid_can_submit gate and the quote insert are bounded too, so a stalled connection
     // ends in the existing catch (message shown, button restored, inputs unlocked) instead of a locked "Submitting…".
@@ -5528,11 +5541,17 @@
                 } : {}),
                 updated_at: new Date().toISOString(),
             };
-            const { data: updatedRows, error: updateError } = await sb
-              .from('quotes')
-              .update(_changeBidPayload)
-              .eq('id', existingQuote.id)
-              .select('id');
+            // gh-3491: an UPDATE that never answers must end through the catch below (button restored, inputs
+            // unlocked), as it did before the submit lock existed. Abort the request and stop waiting for it.
+            const _updCtl = new AbortController();
+            let _updTimer;
+            let updatedRows, updateError;
+            try {
+              ({ data: updatedRows, error: updateError } = await Promise.race([
+                sb.from('quotes').update(_changeBidPayload).eq('id', existingQuote.id).select('id').abortSignal(_updCtl.signal),
+                new Promise((_, reject) => { _updTimer = setTimeout(() => { _updCtl.abort(); reject(new Error('bid_update_timed_out: the quote update did not answer')); }, BID_UPDATE_TIMEOUT_MS); }),
+              ]));
+            } finally { clearTimeout(_updTimer); }
 
             if (updateError) throw updateError;
             // gh-2105 (decision a, money): a zero-row RLS/id-mismatch match used to
@@ -5616,7 +5635,10 @@
             // Runs AFTER quote insert so bid_id (insertedQuote.id) is available.
             // Non-fatal: quote is already committed; log failures for compliance audit.
             if (!changeBidMode) {
-              const { error: feeAccError } = await sb.from('fee_acceptances').insert({
+              // gh-3409: NO .single() here. Asking PostgREST for exactly one row makes it roll the whole request back (406 PGRST116) when the
+              // server diverts a mismatching acceptance to review (zero rows returned), which would delete the record of what was shown.
+              // .select('id') without .single() returns an array; an empty array means "kept for review, not recorded".
+              const { data: feeAccRows, error: feeAccError } = await sb.from('fee_acceptances').insert({
                 contractor_id: currentContractor.id,
                 claim_id: currentClaim.id,
                 bid_id: insertedQuote.id,
@@ -5625,14 +5647,22 @@
                 fee_amount: _feeAmount,
                 fee_text_displayed: _exactFeeText,
                 accepted_at: _acceptedAt,
-                ip_address: _contractorIP,
+                ip_address: (_contractorIP && _contractorIP !== 'unknown') ? _contractorIP : null, // 'unknown' is not an inet value and made the whole insert fail
                 user_agent: _userAgent,
-              }).select('id').single();
+              }).select('id');
 
               if (feeAccError) {
                 console.error('[D-215] Fee acceptance record failed (non-fatal, quote committed):', feeAccError.message);
                 if (typeof Sentry !== 'undefined') {
                   Sentry.captureException(feeAccError, {
+                    extra: { bid_id: insertedQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
+                  });
+                }
+              } else if (!feeAccRows || feeAccRows.length === 0) {
+                console.warn('[D-215] Fee acceptance kept for review instead of recorded (non-fatal, quote committed)');
+                if (typeof Sentry !== 'undefined') {
+                  Sentry.captureMessage('[D-215] Fee acceptance diverted to quarantine', {
+                    level: 'warning',
                     extra: { bid_id: insertedQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
                   });
                 }

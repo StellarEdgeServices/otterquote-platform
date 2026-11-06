@@ -101,8 +101,15 @@ function isPlain(v: object): boolean {
   return p === Object.prototype || p === null;
 }
 
+// gh-3357: heatmaps are off today only because HeyCatch's config says so, and HeyCatch can change that for
+// every customer. The SDK would send the buffer as an event named "$$heatmap" with a "$heatmap_data" property;
+// both are dropped here. Mirror of js/heycatch-privacy.js.
+const HEATMAP_EVENT = "$$heatmap";
+const HEATMAP_PROP = "$heatmap_data";
+
 function walk(v: unknown, key: string, depth: number): unknown {
   if (depth > MAX_DEPTH) return undefined;
+  if (key === HEATMAP_PROP) return undefined;
   if (key) {
     const base = campaignBase(key);
     if (CAMPAIGN_DROP.includes(base)) return undefined;
@@ -130,6 +137,7 @@ function walk(v: unknown, key: string, depth: number): unknown {
 export function scrubEvent<T>(event: T): T | null {
   try {
     if (!event || typeof event !== "object") return null;
+    if ((event as { event?: unknown }).event === HEATMAP_EVENT) return null;
     return walk(event, "", 0) as T;
   } catch {
     return null;

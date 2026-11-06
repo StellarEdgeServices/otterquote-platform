@@ -1,0 +1,49 @@
+name: Static gh-3496 Retail Change Bid Tests
+
+# gh-3496 -- retail Change Bid and Renew on contractor-bid-form.html must load the saved price into the visible
+# retail price field. Real Chromium against the real page with a stubbed Supabase client. `pull_request` only,
+# no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'contractor-bid-form.html'
+      - 'js/auth.js'
+      - 'js/config.js'
+      - 'js/supabase-client.js'
+      - 'tests/gh3496-retail-change-bid-price.mjs'
+      - 'tests/e2e/package.json'
+      - 'tests/e2e/package-lock.json'
+      - '.github/workflows/static-gh3496-retail-change-bid-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3496-retail-change-bid-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  retail-change-bid-chromium:
+    name: Retail Change Bid and Renew load the saved price, real Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Install e2e dependencies
+        working-directory: tests/e2e
+        run: npm ci
+      - name: Install Chromium
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+      - name: Retail Change Bid and Renew (gh3496-retail-change-bid-price)
+        run: node tests/gh3496-retail-change-bid-price.mjs

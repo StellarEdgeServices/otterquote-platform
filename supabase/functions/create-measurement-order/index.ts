@@ -54,8 +54,8 @@ import {
 import {
   buildBuyerRoleAlertRow,
   raiseBuyerRoleAlert,
+  decidePaidRole,
   resolveBuyerRole,
-  resolvePaidRole,
   UNSPECIFIED_ROLE,
 } from "./buyer-role.ts";
 import { checkMeasurementPaymentIntent, checkUpgradePaymentIntent, type PaymentCheckResult } from "./payment-intent-checks.ts";
@@ -670,24 +670,22 @@ serve(async (req) => {
     // gh-3447 (CEO/Tier A ruling): a missing/unknown role resolves to 'homeowner' ONLY when the verified PaymentIntent is a hover_measurement
     // whose metadata claim_id is this claim and the claim is owned by the caller (create-payment-intent issues that charge only to the claim's
     // owner). Otherwise 'unspecified'. Never a default. The lookup is contained: any failure resolves to 'unspecified'.
-    let paidRole: string = buyerRole;
-    if (roleUnresolved) {
-      let claimOwnerId: string | null = null;
-      try {
+    // gh-3459: the same proof applies to an explicit client-sent 'homeowner' (buyer_role is client text). Not shown -> 'unspecified' + alert;
+    // the order is still recorded because the buyer has paid. An explicit 'contractor' is not looked up.
+    const decidedRole = await decidePaidRole({
+      requestedRole: buyerRole,
+      piType: paid.piType ?? null,
+      piClaimId: paid.piClaimId ?? null,
+      claimId,
+      callerId: authedUser.id,
+      lookupClaimOwner: async () => {
         const { data: ownerRow } = await supabase.from("claims").select("user_id").eq("id", claimId).maybeSingle();
-        claimOwnerId = ownerRow?.user_id ?? null;
-      } catch (e) {
-        console.error(`[${FUNCTION_NAME}] claim owner lookup failed:`, e);
-      }
-      paidRole = resolvePaidRole({
-        piType: paid.piType ?? null,
-        piClaimId: paid.piClaimId ?? null,
-        claimId,
-        claimOwnerId,
-        callerId: authedUser.id,
-      });
-    }
-    const roleStillUnspecified = roleUnresolved && paidRole === UNSPECIFIED_ROLE;
+        return ownerRow?.user_id ?? null;
+      },
+      log: (m) => console.error(m),
+    });
+    const paidRole: string = decidedRole.role;
+    const roleStillUnspecified = paidRole === UNSPECIFIED_ROLE;
 
     const { data: order, error: insErr } = await supabase
       .from("hover_orders")
