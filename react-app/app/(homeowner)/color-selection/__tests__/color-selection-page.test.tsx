@@ -24,7 +24,6 @@ vi.mock('../use-color-selection-data', () => ({
   useColorSelectionData: vi.fn(),
   saveColorSelection: vi.fn(() => Promise.resolve()),
   createColorAddendumEnvelope: vi.fn(),
-  requestColorBoardVisit: vi.fn(),
 }));
 
 // Mock docusign-embed so runSigningReturnBridge is a spy and the iframe is inspectable.
@@ -44,14 +43,12 @@ import {
   useColorSelectionData,
   saveColorSelection,
   createColorAddendumEnvelope,
-  requestColorBoardVisit,
 } from '../use-color-selection-data';
-import { runSigningReturnBridge } from '@/components/docusign-embed';
+import { runSigningReturnBridge, isSigningCompleteReturn } from '@/components/docusign-embed';
 import {
   COLOR_COPY as C,
   subtitleBrandKnown,
-  colorBoardVisitRequested,
-  colorBoardPhoneSuffix,
+  subtitleBrandUnconfirmed,
 } from '../copy';
 import ColorSelectionPage from '../page';
 
@@ -99,7 +96,6 @@ beforeEach(() => {
   (useAuthReady as unknown as Fn).mockReturnValue(authed());
   (useColorSelectionData as unknown as Fn).mockReturnValue(readyData());
   (runSigningReturnBridge as unknown as Fn).mockReturnValue(false);
-  (requestColorBoardVisit as unknown as Fn).mockResolvedValue({ status: 'created' });
   window.history.replaceState({}, '', '/color-selection?claim_id=c1');
 });
 
@@ -108,6 +104,73 @@ afterEach(() => {
 });
 
 // ── 1. Renders the page with brand + subtitle ──────────────────────────────────
+
+describe('color-selection page — ruled copy (Ben 6584752880)', () => {
+  it('renders one option card (the visualizer): no Browse Colors card, no catalog, no View Colors button (items 14-16)', async () => {
+    render(<ColorSelectionPage />);
+    await screen.findByText(C.headerTitle);
+    expect(document.querySelectorAll('.oqcs-option-card').length).toBe(1);
+    expect(document.body.textContent).not.toMatch(/Browse Colors|View Colors|color catalog/);
+  });
+
+  it('shows the new-tab note on the visualizer card only (item 20)', async () => {
+    render(<ColorSelectionPage />);
+    await screen.findByText(C.headerTitle);
+    const cards = Array.from(document.querySelectorAll('.oqcs-option-card'));
+    expect(cards[0].textContent).toContain(C.opensInNewTabLabel);
+    expect(cards).toHaveLength(1);
+    expect(document.querySelectorAll('.oqcs-option-note').length).toBeGreaterThanOrEqual(1);
+    expect(document.body.textContent?.split(C.opensInNewTabLabel).length).toBe(2);
+  });
+
+  it('drops the name from the subtitle when the contractor name is missing (items 2/3)', async () => {
+    (useColorSelectionData as unknown as Fn).mockReturnValue(
+      readyData({ contractorName: C.contractorNameFallback }),
+    );
+    render(<ColorSelectionPage />);
+    expect(
+      await screen.findByText("Your contractor uses GAF. Let's pick the perfect color for your home."),
+    ).toBeTruthy();
+    expect(document.body.textContent).not.toContain('Your contractor Your Contractor');
+  });
+
+  it('drops the name from the brand-unconfirmed subtitle too (item 3)', async () => {
+    (useColorSelectionData as unknown as Fn).mockReturnValue(
+      readyData({ brand: null, contractorName: C.contractorNameFallback }),
+    );
+    render(<ColorSelectionPage />);
+    expect(
+      await screen.findByText(subtitleBrandUnconfirmed(C.contractorNameFallback)),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Your contractor will confirm the brand. Let's pick the perfect color for your home."),
+    ).toBeTruthy();
+  });
+
+
+  it('offers no in-person visit request: no panel, button or confirmation (Ben 6668689264)', async () => {
+    render(<ColorSelectionPage />);
+    await screen.findByText(C.confirmationTitle);
+    const text = document.body.textContent ?? '';
+    expect(text).not.toMatch(/Request Visit|In Person|In-Person|physical color boards|shingle samples|Visit requested|Already requested/);
+    expect(screen.queryByRole('button', { name: /request/i })).toBeNull();
+    expect(document.querySelectorAll('.oqcs-option-card')).toHaveLength(1);
+  });
+
+  it('shows only the ruled save-error words when saving fails, never a raw database message (item 67)', async () => {
+    (saveColorSelection as unknown as Fn).mockRejectedValueOnce(
+      new Error('Failed to save color selection: permission denied for table claims'),
+    );
+    render(<ColorSelectionPage />);
+    await screen.findByText(C.confirmationTitle);
+    fireEvent.change(document.getElementById('color-input') as HTMLInputElement, {
+      target: { value: 'Charcoal' },
+    });
+    fireEvent.click(document.getElementById('confirmBtn') as HTMLButtonElement);
+    expect(await screen.findByText('Error saving color. Please try again.')).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/permission denied|Failed to save color selection/);
+  });
+});
 
 describe('color-selection page — render', () => {
   it('renders the header, the brand-known subtitle, and the brand display', async () => {
@@ -141,6 +204,16 @@ describe('color-selection page — gate panels', () => {
     expect(document.getElementById('confirmBtn')).toBeNull();
   });
 
+  it('titles the panel "Claim not found" when the claim lookup failed (Ben 6584752880, items 76/78)', async () => {
+    (useColorSelectionData as unknown as Fn).mockReturnValue(
+      readyData({ gate: 'missing-claim', error: 'Claim not found. Please return to your dashboard.' }),
+    );
+    render(<ColorSelectionPage />);
+    expect(await screen.findByText('Claim not found')).toBeTruthy();
+    expect(screen.getByText('Claim not found. Please return to your dashboard.')).toBeTruthy();
+    expect(screen.queryByText('Missing claim ID')).toBeNull();
+  });
+
   it('shows the access-denied panel with no confirm button', async () => {
     (useColorSelectionData as unknown as Fn).mockReturnValue(
       readyData({ gate: 'access-denied', error: null }),
@@ -166,10 +239,10 @@ describe('color-selection page — empty color guard', () => {
   });
 });
 
-// ── 4. Two-stage: save FIRST → success → THEN create the addendum envelope ──────
+// ── 4. Two-stage: save FIRST → success → THEN the saved note (no signing panel) ──
 
 describe('color-selection page — two-stage confirm', () => {
-  it('saves the color, shows success, then calls createColorAddendumEnvelope and renders the embed', async () => {
+  it('saves the color, shows success, then shows the saved note and NO signing panel, even if the call returns a signing URL', async () => {
     (createColorAddendumEnvelope as unknown as Fn).mockResolvedValue({
       signingUrl: 'https://ds/sign?token=color',
       envelopeId: 'env-1',
@@ -194,19 +267,11 @@ describe('color-selection page — two-stage confirm', () => {
     // Inline success shown independent of signing.
     expect(await screen.findByText(C.successText)).toBeTruthy();
 
-    // Envelope created with claim/contractor/origin (payload itself omits signer — utils).
-    await waitFor(() =>
-      expect(createColorAddendumEnvelope as unknown as Fn).toHaveBeenCalledTimes(1),
-    );
-    const efArg = (createColorAddendumEnvelope as unknown as Fn).mock.calls[0][0];
-    expect(efArg).toMatchObject({ claimId: 'c1', contractorId: 'ctr1' });
-    expect(efArg.origin).toBe(window.location.origin);
-
-    // Embed renders with the returned signing URL.
-    await waitFor(() => {
-      const frame = document.getElementById('docusignFrame') as HTMLIFrameElement | null;
-      expect(frame?.getAttribute('src')).toBe('https://ds/sign?token=color');
-    });
+    // gh-3287 (Ben 6584752880, items 69-71): the saved note, never a signing panel.
+    await waitFor(() => expect(document.querySelector('.oqcs-addendum-fallback')).toBeTruthy());
+    expect(document.getElementById('docusignFrame')).toBeNull();
+    expect(document.querySelector('.oqcs-addendum')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/Sign Color Addendum|Almost done|E-Sign/);
 
     // The confirm button reflects the confirmed state.
     expect((document.getElementById('confirmBtn') as HTMLButtonElement).textContent).toBe(
@@ -215,26 +280,12 @@ describe('color-selection page — two-stage confirm', () => {
   });
 });
 
-// ── 5. onComplete → done screen with /dashboard link ───────────────────────────
+// ── 5. Signed-return flag → done screen with /dashboard link (kept, items 73-75) ──
 
-describe('color-selection page — onComplete advances UI', () => {
-  it('shows the done screen with a /dashboard link after onComplete fires', async () => {
-    (createColorAddendumEnvelope as unknown as Fn).mockResolvedValue({
-      signingUrl: 'https://ds/sign?token=color',
-      envelopeId: null,
-    });
-
+describe('color-selection page — signed return', () => {
+  it('shows the done screen with a /dashboard link on a signed return', async () => {
+    (isSigningCompleteReturn as unknown as Fn).mockReturnValueOnce(true);
     render(<ColorSelectionPage />);
-    await screen.findByText(C.confirmationTitle);
-
-    fireEvent.change(document.getElementById('color-input') as HTMLInputElement, {
-      target: { value: 'Slate' },
-    });
-    fireEvent.click(document.getElementById('confirmBtn') as HTMLButtonElement);
-
-    await waitFor(() => screen.findByTestId('complete-signing'));
-    fireEvent.click(screen.getByTestId('complete-signing'));
-
     expect(await screen.findByText('Color Confirmed!')).toBeTruthy();
     const link = screen.getByRole('link', { name: /Back to Dashboard/ });
     expect(link.getAttribute('href')).toBe('/dashboard');
@@ -263,7 +314,14 @@ describe('color-selection page — graceful EF failure', () => {
       return el!;
     });
     expect(fallback.textContent).toContain(C.addendumFallbackBase);
-    expect(fallback.textContent).toContain('555-1234'); // with-phone clause
+    // gh-3287 (Ben, 2026-11-02T17:12Z, replacing 6581042504): the note is exactly this sentence
+    expect(fallback.textContent?.trim()).toBe(
+      'Your color choice is saved. Please confirm it with your contractor.',
+    );
+    expect(fallback.textContent).not.toContain('before you sign');
+    expect(fallback.textContent).not.toContain('final contract documents');
+    expect(fallback.textContent).not.toContain('555-1234'); // no phone clause
+    expect(document.body.textContent).not.toContain('already signed');
   });
 });
 
@@ -295,28 +353,6 @@ describe('color-selection page — return bridge', () => {
   it('calls runSigningReturnBridge on mount', async () => {
     render(<ColorSelectionPage />);
     await waitFor(() => expect(runSigningReturnBridge as unknown as Fn).toHaveBeenCalled());
-  });
-});
-
-// ── 9. In-person color board request → inline confirmation ─────────────────────
-
-describe('color-selection page — in-person request', () => {
-  it('shows the visit-requested confirmation (with phone) on a created request', async () => {
-    render(<ColorSelectionPage />);
-    const btn = (await screen.findByText(C.inPersonButton)) as HTMLButtonElement;
-    fireEvent.click(btn);
-
-    const expected =
-      colorBoardVisitRequested('Acme Roofing') + colorBoardPhoneSuffix('555-1234');
-    expect(await screen.findByText(expected)).toBeTruthy();
-  });
-
-  it('shows the already-requested copy when a request already exists', async () => {
-    (requestColorBoardVisit as unknown as Fn).mockResolvedValue({ status: 'already' });
-    render(<ColorSelectionPage />);
-    const btn = (await screen.findByText(C.inPersonButton)) as HTMLButtonElement;
-    fireEvent.click(btn);
-    expect(await screen.findByText(C.colorBoardAlreadyRequested)).toBeTruthy();
   });
 });
 
