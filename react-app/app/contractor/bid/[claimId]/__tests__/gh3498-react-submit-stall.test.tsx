@@ -14,6 +14,9 @@ const h = vi.hoisted(() => {
     aborted: 0,
     readbacks: 0,
     feeAcceptances: 0,
+    hang: [] as string[], // calls that never answer: 'table:op' or 'fn:name'
+    hung: 0,
+    updates: 0,
   };
   const hang = (signal: AbortSignal | null) => new Promise((_, rej) => {
     signal?.addEventListener('abort', () => { state.aborted++; rej(signal.reason); });
@@ -22,11 +25,14 @@ const h = vi.hoisted(() => {
     const s: { op: string; payload: Record<string, unknown> | null; eqs: Array<[string, unknown]>; signal: AbortSignal | null } =
       { op: 'select', payload: null, eqs: [], signal: null };
     const b: Record<string, unknown> = {};
-    for (const k of ['select', 'order', 'or', 'limit', 'single', 'maybeSingle', 'update']) b[k] = () => b;
+    for (const k of ['select', 'order', 'or', 'limit', 'single', 'maybeSingle']) b[k] = () => b;
+    b.update = (p: Record<string, unknown>) => { s.op = 'update'; s.payload = p; return b; };
     b.eq = (c: string, v: unknown) => { s.eqs.push([c, v]); return b; };
     b.abortSignal = (sig: AbortSignal) => { s.signal = sig; return b; };
     b.insert = (p: Record<string, unknown>) => { s.op = 'insert'; s.payload = p; return b; };
     const run = async (): Promise<unknown> => {
+      if (state.hang.includes(`${table}:${s.op}`)) { state.hung++; return hang(s.signal); }
+      if (table === 'quotes' && s.op === 'update') { state.updates++; return { data: [{ id: 'q-1' }], error: null }; }
       if (table === 'quotes' && s.op === 'insert') {
         const key = s.payload!.idempotency_key as string | undefined;
         if (key) state.keyed.push(key);
@@ -63,7 +69,12 @@ const h = vi.hoisted(() => {
       };
       return p;
     },
-    functions: { invoke: async () => ({ data: null, error: null }) },
+    functions: {
+      invoke: async (name: string, o?: { signal?: AbortSignal }) => {
+        if (state.hang.includes(`fn:${name}`)) { state.hung++; return hang(o?.signal ?? null); }
+        return { data: null, error: null };
+      },
+    },
   };
   return { state, supabase };
 });
@@ -80,12 +91,13 @@ const mount = () => render(<BidForm mode="new" claim={claim as never} contractor
 const priceInput = (c: HTMLElement) => c.querySelector('.oqb-money input') as HTMLInputElement;
 const feeBox = (c: HTMLElement) => Array.from(c.querySelectorAll('input[type="checkbox"]'))
   .find((el) => /platform fee/.test(el.parentElement?.textContent || '')) as HTMLInputElement;
-const submitBtn = (c: HTMLElement) => Array.from(c.querySelectorAll('button')).find((b) => /Submit|Submitting/.test(b.textContent || '')) as HTMLButtonElement;
+const submitBtn = (c: HTMLElement) => Array.from(c.querySelectorAll('button')).find((b) => /Submit|Submitting|Update Bid/.test(b.textContent || '')) as HTMLButtonElement;
 
 beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }); });
 afterEach(() => {
   cleanup(); vi.useRealTimers();
-  Object.assign(h.state, { gate: 'ok', insert: 'ok', aborted: 0, readbacks: 0, feeAcceptances: 0 });
+  Object.assign(h.state, { gate: 'ok', insert: 'ok', aborted: 0, readbacks: 0, feeAcceptances: 0, hung: 0, updates: 0 });
+  h.state.hang.length = 0;
   h.state.rows.length = 0; h.state.keyed.length = 0;
 });
 
@@ -160,4 +172,56 @@ describe('gh-3498 React bid form: stalled submit', () => {
     expect(h.state.rows[0].idempotency_key).toBeUndefined();
     expect(container.textContent).toContain('Bid submitted');
   });
+
+  // ── Widened closes-on (Marty, REVIEW 6688103147): every await between the submit lock and its finally ──
+  const existing = { id: 'q-1', bid_status: 'active', renewals_count: 0, total_price: 18000 };
+  const mountChange = () => render(<BidForm mode="change" claim={claim as never} contractor={contractor as never} existingQuote={existing as never} flags={flags} claimRcv={null} userId="u1" />);
+
+  for (const call of ['fee_acceptances:insert', 'fn:send-bid-confirmation']) {
+    it(`new bid: ${call} that never answers ends on the success screen (the bid is already filed), once`, async () => {
+      const { container } = mount();
+      await ready(container);
+      h.state.hang.push(call);
+      await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+      expect(h.state.hung).toBeGreaterThan(0);
+      expect(container.textContent).not.toContain('Bid submitted');
+      await advance(9_000);
+      expect(container.textContent).toContain('Bid submitted');
+      expect(container.textContent).not.toContain('Error submitting bid');
+      expect(h.state.rows.length).toBe(1);
+      expect(h.state.aborted).toBe(1);
+    });
+  }
+
+  it('change bid: the quotes UPDATE that never answers ends with a message and an unlocked form, and a retry updates once', async () => {
+    const { container } = mountChange();
+    await ready(container);
+    h.state.hang.push('quotes:update');
+    await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+    expect(h.state.hung).toBeGreaterThan(0);
+    await advance(16_000);
+    expect(container.textContent).toContain('Error submitting bid: ');
+    expect(submitBtn(container).textContent).not.toMatch(/Submitting/);
+    expect(feeBox(container).disabled).toBe(false);
+    h.state.hang.length = 0;
+    if (!feeBox(container).checked) fireEvent.click(feeBox(container));
+    await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+    expect(container.textContent).toContain('Bid updated');
+    expect(h.state.updates).toBe(1);
+  });
+
+  for (const call of ['notifications:insert', 'activity_log:insert', 'fn:notify-contractors']) {
+    it(`change bid: ${call} that never answers ends on the success screen (the update is already saved)`, async () => {
+      const { container } = mountChange();
+      await ready(container);
+      h.state.hang.push(call);
+      await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+      expect(h.state.hung).toBeGreaterThan(0);
+      await advance(9_000);
+      expect(container.textContent).toContain('Bid updated');
+      expect(container.textContent).not.toContain('Error submitting bid');
+      expect(h.state.updates).toBe(1);
+      expect(h.state.aborted).toBe(1);
+    });
+  }
 });

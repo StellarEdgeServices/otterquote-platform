@@ -237,6 +237,9 @@ async function fetchConfiguredFeePct(contractor: ContractorRecord, claim: Record
 // the existing error paths (message shown, form unlocked) instead of a permanent "Submitting…". Both exceed the lookups.
 const GATE_TIMEOUT_MS = 10000;
 const INSERT_TIMEOUT_MS = 20000;
+// Widened closes-on (REVIEW 6688103147): every write AFTER the bid has landed is bounded too. The bid is already filed, so a
+// timeout there is logged by the existing non-fatal catch and the submit goes on to the success screen.
+const POST_WRITE_TIMEOUT_MS = 8000;
 // Runs start(signal), aborts it after ms and rejects with the abort reason (no new wording).
 function callWithTimeout<T>(ms: number, start: (signal: AbortSignal) => PromiseLike<T> | T): Promise<T> {
   const ctl = new AbortController();
@@ -421,23 +424,23 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
         }
         // Homeowner "bid updated" notification + activity log + GA + contractor email (all non-fatal).
         try {
-          await supabase.from('notifications').insert(buildBidUpdatedNotification({
+          await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(supabase.from('notifications').insert(buildBidUpdatedNotification({
             claimUserId: (claim.user_id as string) || null, claimId: String(claim.id),
             previewText: BID_COPY.bidUpdatedPreview(contractor.company_name), createdAtIso: nowIso,
-          }));
+          })), signal));
         } catch (e) { console.warn('Notification insert failed (non-fatal):', e); }
         try {
-          await supabase.from('activity_log').insert({
+          await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(supabase.from('activity_log').insert({
             user_id: userId, event_type: 'bid_updated',
             title: `Bid updated for project ${String(claim.id).slice(0, 8) || '…'}`, created_at: nowIso,
             metadata: { claim_id: String(claim.id) }, // gh-2997: lets the activity_log trigger inherit is_test from the claim
-          });
+          }), signal));
         } catch (e) { console.warn('Activity log failed (non-fatal):', e); }
         // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id removed —
         // a per-homeowner database identifier must not reach GA4.
         track('bid_updated', { bid_amount: bidAmount });
         try {
-          await supabase.functions.invoke('notify-contractors', { body: buildNotifyContractorsBody(mode === 'renew', String(claim.id), contractor.id) });
+          await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => supabase.functions.invoke('notify-contractors', { body: buildNotifyContractorsBody(mode === 'renew', String(claim.id), contractor.id), signal }));
         } catch (e) { console.warn('Bid update/renewal email failed (non-fatal):', e); }
       } else {
         const insertPayload = buildQuoteInsert(common);
@@ -464,11 +467,12 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
         try {
           const ip = await getContractorIP();
           // gh-3409: .select('id') and NEVER .single() (a diverted row returns zero rows; .single() would make PostgREST roll the quarantine row back).
-          const feeRes = await supabase.from('fee_acceptances').insert(buildFeeAcceptanceInsert({
+          const feeIns = supabase.from('fee_acceptances').insert(buildFeeAcceptanceInsert({
             contractorId: contractor.id, claimId: String(claim.id), bidId, feePct, feeAmount,
             feeTextDisplayed: exactFeeText, acceptedAtIso: nowIso, ipAddress: ip,
             userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
           })).select('id');
+          const feeRes = await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(feeIns, signal)); // gh-3498: bounded; a timeout lands in the non-fatal catch below
           const feeOutcome = feeAcceptanceOutcome(feeRes);
           if (feeOutcome !== 'recorded') {
             const feeMsg = feeOutcome === 'failed' ? '[D-215] Fee acceptance record failed (non-fatal, quote committed)' : '[D-215] Fee acceptance diverted to quarantine';
@@ -478,9 +482,10 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
         } catch (e) { console.error('[D-215] fee acceptance failed (non-fatal):', e); }
         try {
           const tradeLabel = wizardMode && wizard.queue.length > 0 ? wizard.queue.join(', ') : (claimTrades.length ? claimTrades.join(', ') : 'roofing');
-          await supabase.functions.invoke('send-bid-confirmation', {
+          await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => supabase.functions.invoke('send-bid-confirmation', {
             body: buildBidConfirmationBody({ quoteId: bidId, contractorId: contractor.id, bidAmount, feePct, feeAmount, trade: tradeLabel }),
-          });
+            signal,
+          }));
         } catch (e) { console.error('[D-215 Layer 2] send-bid-confirmation failed (non-fatal):', e); }
         track('bid_submit', { trade_types: claimTrades, job_type: flags.isRetailJob ? 'retail' : 'insurance', bid_amount: bidAmount });
       }
