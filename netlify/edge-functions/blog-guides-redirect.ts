@@ -246,8 +246,12 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/montgomery-county-oh/roofing/',
   '/locations/montgomery-county-tn/roofing/index.html':
     '/locations/montgomery-county-tn/roofing/',
+  '/locations/morgan-county-in/roofing/index.html':
+    '/locations/morgan-county-in/roofing/',
   '/locations/rutherford-county-tn/roofing/index.html':
     '/locations/rutherford-county-tn/roofing/',
+  '/locations/shelby-county-in/roofing/index.html':
+    '/locations/shelby-county-in/roofing/',
   '/locations/shelby-county-tn/roofing/index.html':
     '/locations/shelby-county-tn/roofing/',
   '/locations/st-louis-county-mo/roofing/index.html':
