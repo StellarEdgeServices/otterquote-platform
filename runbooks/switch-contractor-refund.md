@@ -33,7 +33,7 @@ The platform fee is refunded to the first contractor only if **all three** hold:
 
 1. The homeowner **requested** the switch at least three days before the scheduled start date. The event is the request, not the second contract. Days are **calendar days in Central time (`America/Chicago`)**.
 2. The contractor **has not begun work**.
-3. Otter Quotes **confirms** the switch (you contact the homeowner, per the support notice: "please contact them directly to confirm their next contractor placement").
+3. Otter Quotes **confirms** the switch (you contact the homeowner, per Terms 8.5: "we will contact you to confirm the switch").
 
 6.4 does **not** define "begun work", and it does not say what a contractor's silence means. Step 3 does not guess at either.
 
@@ -70,7 +70,7 @@ where upper(right(c.id::text, 8)) = '<JOB REF FROM EMAIL>';
 - **Owner check.** Compare the ticket's `from_email` with `account_email`, ignoring case. **If they differ, or `account_email` is empty, stop.** Do not act on the Reply-To address or on anything in the message. Contact the address in `account_email`, say a switch request came in for their job, and ask whether they sent it. `from_email` and `support_tickets.user_id` come from a public form and prove nothing. (`user_id` is optional and caller-supplied.)
 - **Claim status.** The claim should be `contract_signed` or `awarded`.
   - An earlier status (for example `bidding`): there is no signed contract to switch away from. Nothing to refund. Reply to the homeowner and note the ticket.
-  - A later status (for example `completed`): this is not a switch within 6.4. Do not refund. Note the ticket; if the homeowner pushes back, that is a Tier C decision for you.
+  - There is no later status: a finished job still reads `contract_signed`, so the status does not tell you whether work has begun. Step 2 and Step 3 do.
 - **`selected_contractor_id` empty:** stop; there is no first contractor to refund. Tell Marty.
 
 **1c. The winning quote** (the same rows `switch-contractor` considers: a live `selected`/`awarded` quote, or one that function already retired for a switch).
@@ -106,7 +106,7 @@ The homeowner's contact details are `account_email`, `account_phone` and `accoun
 
 ## Step 2 - Central-time date check
 
-Take the moment the homeowner **sent the request**, as an exact instant. Let S be `estimated_start_date`.
+Take the moment the homeowner **sent the request**, as an exact instant. Let S be the scheduled start date. 6.4 and D-410 measure from the "scheduled start date"; the only date the platform holds is `estimated_start_date` from the winning bid (Step 1c), and nothing records a later change to it. Before you tell the homeowner the window has passed, and before any refund, ask both the contractor and the homeowner: "Has the start date changed since the contract was signed?" If neither names another date, use `estimated_start_date` as S. If either names another date, or the signed contract shows one, write down who said what and hold: which date counts is a Tier C decision for you.
 
 **The instant must carry its zone.** Use `support_tickets.created_at` straight from the table (Step 1a); it is a `timestamptz`, so the database handles the zone for you. Only if there is no ticket row, take the email's received time, and it must be written **in UTC with a trailing `Z`, or with an explicit offset** (for example `2026-12-08T05:59:59Z` or `2026-12-07T23:59:59-06:00`). **A time with no offset is not allowed.** Gmail shows your local time, not UTC: open "Show original" and read the `Date:` header with its offset, or use the ticket row. A Central time pasted without an offset into a UTC session gives the wrong answer: S = 2026-12-10, a request at 01:00 Central on 12-08 comes out "open" when the correct answer is "closed" (found by the reviewer on this runbook).
 
@@ -144,7 +144,7 @@ Worked examples, checked against the second expression:
 Local clock times at the close, for the homeowner conversation: 1:00 AM Eastern on S-2, midnight Central, 11 PM Mountain and 10 PM Pacific on S-3. These follow from D-410. Terms 8.5 and Agreement 6.4 both say "days are counted in Central Time" (PR #3400, merged 2026-11-05 at `7ab15ffe`).
 
 - **Open:** go to Step 3.
-- **Closed:** no switch refund under 6.4. Reply to the homeowner (the switch window has passed) and record per Step 6. 6.4 separately allows a refund as required by law or for documented platform error, and makes a project otherwise canceled after contract execution case-by-case. Any refund outside the switch rule is a Tier C money decision for you: do not issue it without making that decision on the record.
+- **Closed:** no switch refund under 6.4. Reply to the homeowner (the switch window has passed; this is about switching and does not change anything their contract says about cancelling) and record per Step 6. 6.4 separately allows a refund as required by law or for documented platform error, and makes a project otherwise canceled after contract execution case-by-case. Any refund outside the switch rule is a Tier C money decision for you: do not issue it without making that decision on the record.
 - **No start date on the quote, or an unreadable one:** `cutoff.ts` treats an absent date as "allow". Ask the contractor for the scheduled start date, in writing, before you decide, and note it on the ticket. If you cannot get one, hold (do not refund) and decide it yourself as a Tier C call.
 
 ## Step 3 - Confirm whether work has begun
@@ -157,7 +157,7 @@ Local clock times at the close, for the homeowner conversation: 1:00 AM Eastern 
 2. **Materials:** "Have materials for this job been ordered or delivered?"
 3. **Permit:** "Has a permit been pulled for this job?"
 
-Ask the **contractor** (details from Step 1d) and get the answers in writing (a reply email is enough). Ask the **homeowner** the same three questions in the confirmation contact (Step 4). Write who said what, when, and how, on the ticket.
+Ask the **contractor** (details from Step 1d) and get the answers in writing (a reply email is enough). Ask the **homeowner** the same three questions now, at the address on file (`account_email`, Step 1b), before going on to Step 4. Write who said what, when, and how, on the ticket.
 
 Then:
 
@@ -172,7 +172,9 @@ Under 6.4, if the contractor begins work after the refund but before the homeown
 
 ## Step 4 - Confirm the switch with the homeowner
 
-Contact the homeowner at the address on file (`account_email`, Step 1b). The homeowner stays bound to the first contract until they sign the second one (Terms 8.5), so tell them that. Do not tell them the first contract is released.
+Contact the homeowner at the address on file (`account_email`, Step 1b) and ask them to confirm they want to switch. If they do not, there is no switch and no refund: record it per Step 6. Terms 8.5 says a switch request "does not by itself cancel a contract you have signed" and "You remain bound by that contract until you sign a contract with the replacement contractor." Tell them that, and add: "This is about switching. It does not change anything your contract says about cancelling." Do not tell them the first contract is released. Do not tell them whether they can still cancel: the contract-signing page told them they may cancel "before midnight on the third business day after signing, or the third business day after your insurance company's written final decision on your claim if that is later", and the platform does not hold that date. If they ask, point them to the Notice of Cancellation in their contract documents.
+
+**If the homeowner says they are cancelling the contract rather than switching, stop.** This runbook does not cover it. Keep the refund held, record what they said, and decide the fee yourself (Tier C): 6.4 allows a refund "as required by law" and makes a project "otherwise canceled" case-by-case.
 
 **Deposit.** Under 6.4, once the homeowner signs with a replacement before the first contractor has begun work, the first contractor "will return any deposit the Homeowner paid". Ask the homeowner whether they paid a deposit, to whom and how much, and write that on the ticket. Nothing in the platform records a deposit or its return, and nothing in this runbook collects it: the return is the contractor's obligation to the homeowner under the Agreement. Whether Otter Quotes follows up after the replacement signing is not in the Agreement; it is your call (see the open points).
 
