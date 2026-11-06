@@ -39,9 +39,9 @@ describe('FeeSection rendered output (gh-3480)', () => {
     expect(BID_COPY.fee.feeExplainer).toBe(item1B);
     // Every card state: all three modes, retail and insurance_rcv (RCV $20,000 vs bid $18,000).
     for (const mode of ['submit', 'change', 'renew'] as const) {
-      for (const insurance of [false, true]) {
+      for (const insurance of [false, true]) for (const [feePct, feeAmount, shown] of [[5, 900, '$900.00 (5.00%'], [7.5, 1350, '$1,350.00 (7.50%']] as const) {
         const html = renderToStaticMarkup(
-          <FeeSection mode={mode} bidAmount={18000} feePct={5} disclosure={{ feeAmount: 900 }}
+          <FeeSection mode={mode} bidAmount={18000} feePct={feePct} disclosure={{ feeAmount }}
             claimRcv={insurance ? 20000 : null} isInsuranceRcv={insurance}
             autoRenew={false} setAutoRenew={() => {}} feeAccepted={false} setFeeAccepted={() => {}} />,
         );
@@ -51,8 +51,8 @@ describe('FeeSection rendered output (gh-3480)', () => {
         expect(text).not.toMatch(/based on the RCV/i);
         expect(text).not.toMatch(/\bRCV\b/);
         expect(text).not.toContain('$20,000.00');
-        // The fee shown is the one figure computed on the bid ($900.00 = 5.00% of $18,000).
-        expect(text).toContain('Platform fee for this job: $900.00 (5.00% of your bid).');
+        // Bold lead checked on the RAW html (tags stripped above would hide it), at both rates, both job types.
+        expect(html).toContain(`<strong>Platform fee for this job: ${shown} of your bid).</strong>`);
       }
     }
   });
