@@ -24,9 +24,15 @@ const ENV: Record<string, string> = {
 
 const contractor = {
   id: "c1", company_name: "Fixture Roofing", email: "c@example.com", notification_emails: [],
-  notification_phones: ["317-555-0101", "317-555-0102"], user_id: null, timezone: "America/New_York",
-  address_state: "IN", sms_opt_in: true, is_test: true,
+  user_id: null, timezone: "America/New_York",
+  address_state: "IN", is_test: true,
 };
+// D-391 / #2875 layer 4: the ONLY recipients are the rows contractor_textable_numbers() returns. The legacy columns
+// (notification_phones, profile phone, sms_opt_in) are not on the fixture at all: a send can only come from this list.
+let TEXTABLE: Array<{ number_id: string; phone_e164: string; is_primary: boolean }> = [
+  { number_id: "n1", phone_e164: "+13175550101", is_primary: true },
+  { number_id: "n2", phone_e164: "+13175550102", is_primary: false },
+];
 const claim = { id: "cl1", property_address: "1 Main St", status: "payment_failed" };
 function failure(over: Record<string, unknown>) {
   return {
@@ -52,6 +58,7 @@ async function twilioBodies(fn: () => Promise<Response>, activeRows: unknown[], 
     if (url.pathname.startsWith("/rest/v1/")) {
       const single = (req.headers.get("accept") ?? "").includes("vnd.pgrst.object");
       const table = url.pathname.split("/").pop();
+      if (table === "contractor_textable_numbers") return json(TEXTABLE);
       if (req.method === "GET" && table === "payment_failures") {
         if (single) return json(singleRow);
         return json(url.searchParams.get("dunning_status") === "eq.active" ? activeRows : []);
@@ -109,3 +116,33 @@ for (const choice of ["proceed", "different"]) {
     assertEquals(unbranded(bodies), []);
   });
 }
+
+Deno.test("D-391 layer 4 NEGATIVE CONTROL: legacy phone + opt-in on the contractor row but NO verified number -> zero Twilio sends", async () => {
+  const saved = TEXTABLE;
+  TEXTABLE = [];
+  const legacyContractor = { ...contractor, notification_phones: ["317-555-0101"], phone: "317-555-0199", sms_opt_in: true };
+  try {
+    const past = new Date(Date.now() - 3600_000).toISOString();
+    const future = new Date(Date.now() + 6 * 3600_000).toISOString();
+    const rows = [failure({ id: "f-hourly", dunning_status: "active", warning_at: future, next_reminder_at: past, contractors: legacyContractor })];
+    const { bodies, res } = await twilioBodies(
+      () => handler(new Request(BASE, { method: "POST", headers: { Authorization: `Bearer ${KEY}` } }), (n) => ENV[n]),
+      rows, null,
+    );
+    assertEquals(res.status, 200);
+    assertEquals(bodies.length, 0, "an unverified number must never be texted");
+  } finally {
+    TEXTABLE = saved;
+  }
+});
+
+Deno.test("D-391 layer 4: the same contractor WITH verified numbers is texted, once per verified number", async () => {
+  const past = new Date(Date.now() - 3600_000).toISOString();
+  const future = new Date(Date.now() + 6 * 3600_000).toISOString();
+  const rows = [failure({ id: "f-hourly", dunning_status: "active", warning_at: future, next_reminder_at: past })];
+  const { bodies } = await twilioBodies(
+    () => handler(new Request(BASE, { method: "POST", headers: { Authorization: `Bearer ${KEY}` } }), (n) => ENV[n]),
+    rows, null,
+  );
+  assertEquals(bodies.length, 2);
+});
