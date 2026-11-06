@@ -54,8 +54,8 @@ export async function redactContactOrRefuse(
 //     a letter, has a dot and ends in a listed lower-case TLD), and the spelled-out forms with an explicit dot token ("jane at example dot com") or a listed TLD
 //     ("jane at example.com"). Never across a sentence break ("Leak at chimney. Please ..."), never "Shingles @ 400 per square". Residuals and advisory leaks of
 //     these rules (precision over recall) are named in the pre-flight, SOW section.
-// Matching runs on a length-preserving folded copy (full-width and compatibility characters become their plain form for DETECTION only); the
-// matched spans are then cut out of the ORIGINAL text, so every unmatched character prints exactly as typed (cafe accent, ft squared, one half).
+// [gh-3461] The output IS the string the document prints (see printForm below): the patterns run on it, and what they leave is what esc() prints, so the
+// text redacted and the text printed cannot differ. Nothing is mapped back to the typed text. After the fee the typed text is returned untouched.
 // The text is never truncated. All patterns are linear: each token pattern starts only at a token boundary (lookbehind).
 // ---------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -79,11 +79,11 @@ export function foldForDetection(text: string): string {
 }
 
 // Phone group gap: at most ONE separator character (a run of plain spaces counts as one). A dash, dot or hyphen with spaces around it ("250 - 500 - 1000")
-// is two characters and is not a phone gap, so a figure list survives. "/", "_", the middle dot and the bullet are NOT separators (precision over
+// is two characters and is not a phone gap, so a figure list survives. "/" and "_" are NOT separators (precision over
 // recall on the signed SOW: "Limits 250/500/1000" is a figure list; "317/555-0142" is an accepted advisory leak).
 // Zero-width and soft-hyphen characters are ignored around a gap.
 const ZW = "[\\u00ad\\u200b-\\u200d\\u2060\\ufeff]*";
-const GAP = `${ZW}(?:[ \\t\\u00a0]+|[.\\-\\u2010-\\u2015])?${ZW}`;
+const GAP = `${ZW}(?:(?:[ \\t\\u00a0]+|[.\\-\\u2010-\\u2015])${ZW})?`; // same language as ZW, optional separator, ZW, without two runs that can split one run every way
 const ci = (w: string) => [...w].map((c) => `[${c.toUpperCase()}${c.toLowerCase()}]`).join("");
 const AT_W = ci("at");
 const DOT_W = ci("dot");
@@ -127,38 +127,237 @@ const SOW_PATTERNS: RegExp[] = [
   new RegExp(`${LOCAL}[ \\t]+${AT_W}[ \\t]+(?:${LABEL}\\.)+${TLDS}${TLD_END}`, "g"),
 ];
 
-// Returns the text with phone and e-mail spans replaced by REMOVED_TOKEN and everything else byte-for-byte as typed.
+// [gh-3461 / D-390] The Scope of Work PDF prints each string through esc() in create-docusign-envelope/index.ts, which folds dashes, quotes, the ellipsis,
+// the superscript two, the vulgar fractions and the no-break space to ASCII and then DROPS every other character outside space..tilde, so the words on
+// either side of a dropped character print joined. Matching the typed text and mapping back kept either leaking a contact or deleting agreed words
+// (reviews 6668694968 and 6668877014, legal reads 6668719622 and 6668877912). So before the fee this path produces the exact string that will print and
+// redacts THAT, and esc() has nothing left to drop:
+//   - a character with no visible width (zero-width, soft hyphen, joiner, BOM, combining mark) is removed;
+//   - every other character esc() would drop (line break, tab, emoji, symbol, accented letter) becomes one space, so nothing joins;
+//   - the characters esc() folds print as esc() folds them;
+//   - full-width forms and Arabic-Indic digits print as their plain form, because they are the character the homeowner typed. No other compatibility form does:
+//     a superscript, subscript or circled mark is a dropped character, or "$5,000<superscript one>" would print as a different price (LEGAL-READ 6669633277).
+// One zero-width exception: after a full stop and before anything but a digit it counts as a space, or "Install at 400.<zero-width>Friday" would join the
+// sentences into an address shape.
+// A folded character is a real character the printed string no longer shows. "jane@gmail.com<em dash>text" prints with a hyphen, and the patterns will not end an
+// address before a hyphen; "317-555-0142<one half>" prints with a digit, and they will not end a phone before a digit. So the patterns read `view`, the same length as
+// `printed`, where a folded dash is still a dash that is not "-" and any other folded character is a BARRIER, which no pattern reads as part of a contact. They then
+// run once more on the folded typed text, the detection every earlier version used, and `to` carries those matches to the printed string: a contact that
+// detection removes is removed here too, whatever character sits inside or beside it (reviews 6670027861, 6669938877). printForm() also returns `marked`, the same length as `printed`, with the unit SOFT wherever a dropped or folded character
+// landed. A few contact forms can only be seen by reading across those places ("jane@exam<break>ple.com"); only the second pass below does that, and it
+// keeps what it finds only on the narrow terms in keepSplitEmail(), so a sentence ending in a price and a new line stays as typed.
+const PRINT_FOLDS: Record<string, string> = {
+  "‘": "'", "’": "'", "‚": "'", "‛": "'",
+  "“": '"', "”": '"', "„": '"', "‟": '"',
+  "…": "...", "²": "2", "½": "1/2", "¼": "1/4", "¾": "3/4", " ": " ",
+};
+const printOf = (ch: string): string => {
+  const cp = ch.codePointAt(0)!;
+  return cp >= 0x2010 && cp <= 0x2015 ? "-" : PRINT_FOLDS[ch] ?? (cp >= 0x20 && cp <= 0x7e ? ch : "");
+};
+const NO_WIDTH = /^[\p{Cf}\p{Mn}\p{Me}]$/u;
+const QUOTES_AND_ELLIPSIS = /^[\u2018-\u201f\u2026]$/;
+const PRINTS_AS_PLAIN = /^[\uff01-\uff5e\u0660-\u0669\u06f0-\u06f9]$/;
+const SOFT = "\x1f"; // typed control characters can never reach `marked`: they are dropped characters themselves
+const FOLDED_DASH = "\x1e";
+const BARRIER = "\x1d";
+const DASH_IN_VIEW = String.fromCharCode(0x2010);
+// The middle dot and the bullet are dropped characters like any other: A 6669920816 on #3461 removed the pin that let "317<middle dot>555<middle dot>0142" print.
+// A folded dash or fraction joined to a word right before the at-sign is inside the address, not beside it ("jane<em dash>@example.com" prints "jane-@example.com"), so
+// there the patterns read it as the "-" that prints. It joins only when what is before it could be a local part on its own: it touches a token with a letter in it. A number,
+// a price or a word followed by a space does not qualify ("$85<one half> at store.com", "shingles <em dash> at homedepot.com"), so those lines print whole as they do on main.
+// Walked back from each at-sign, so a long run costs one pass.
+const AT_SIGN = /@|[\(\[\{<][ \x1f]*[Aa]\x1f*[Tt]|(?<=[ \x1f])[Aa]\x1f*[Tt](?=[ \x1f])/g;
+const LOCAL_CHAR = /[A-Za-z0-9._%+\-]/;
+function joinedToAt(v: string): string {
+  const out = v.split("");
+  for (const m of v.matchAll(AT_SIGN)) {
+    if (m[0] === "@") { // "sheets<em dash>@75.Tear off" is a price, not an address: the domain must start with a letter
+      let d = m.index! + 1;
+      while (d < v.length && (v[d] === " " || v[d] === SOFT)) d++;
+      if (!/[A-Za-z]/.test(v[d] ?? "")) continue;
+    }
+    let k = m.index! - 1;
+    while (k >= 0 && (out[k] === " " || out[k] === SOFT)) k--;
+    let start = k;
+    while (start >= 0 && (out[start] === DASH_IN_VIEW || out[start] === BARRIER)) start--;
+    if (start === k) continue;
+    let hasLetter = false;
+    for (let t = start; t >= 0 && LOCAL_CHAR.test(out[t]); t--) if (/[A-Za-z]/.test(out[t])) { hasLetter = true; break; }
+    if (hasLetter) for (let j = start + 1; j <= k; j++) out[j] = "-";
+  }
+  return out.join("");
+}
+
+export function printForm(text: string): { printed: string; marked: string; view: string; to: number[] } {
+  let printed = "";
+  let marked = "";
+  let view = "";
+  const to: number[] = new Array(text.length + 1);
+  let afterDropped = false;
+  let last = ""; // the last printed character: asking the growing string for it each time would flatten it each time
+  const dropped = () => {
+    afterDropped = true;
+    if (last !== "" && last !== " ") { printed += " "; marked += SOFT; view += " "; last = " "; }
+  };
+  let i = 0;
+  let noWidthEnd = 0; // end of the current run of no-width characters, so a long run is walked once
+  for (const typed of text) {
+    const at = i;
+    i += typed.length;
+    for (let k = at; k < i; k++) to[k] = printed.length;
+    const ch = PRINTS_AS_PLAIN.test(typed) ? foldForDetection(typed) : typed;
+    const out = printOf(ch);
+    if (out === "" || (out === " " && ch !== " ")) { // a no-break space counts as dropped, like the wide spaces
+      if (noWidthEnd < i) noWidthEnd = i;
+      while (noWidthEnd < text.length && NO_WIDTH.test(text[noWidthEnd])) noWidthEnd++;
+      if (!NO_WIDTH.test(ch) || (last === "." && noWidthEnd < text.length && !/[\d\uff10-\uff19\u0660-\u0669\u06f0-\u06f9]/.test(text[noWidthEnd]))) dropped();
+      continue;
+    }
+    if (out === " " && afterDropped && last === " ") continue;
+    afterDropped = false;
+    printed += out;
+    last = out[out.length - 1];
+    const isDash = out === "-" && typed !== "-";
+    // A curly quote or apostrophe and the ellipsis read exactly as the straight characters they print as, so the result never depends on which a keyboard chose.
+    const isFold = !isDash && out !== typed && !PRINTS_AS_PLAIN.test(typed) && !QUOTES_AND_ELLIPSIS.test(ch);
+    view += isDash ? DASH_IN_VIEW : isFold ? BARRIER.repeat(out.length) : out;
+    marked += isDash ? FOLDED_DASH : isFold ? BARRIER.repeat(out.length) : out;
+  }
+  if (printed.endsWith(" ") && marked.endsWith(SOFT)) { printed = printed.slice(0, -1); marked = marked.slice(0, -1); view = view.slice(0, -1); }
+  to[text.length] = printed.length;
+  // One folded dash prints and reads as a dash ("100-250", "11-15-2026"); doubled it is no separator anyone types by hand.
+  marked = marked.replace(/[-\x1e]+/g, (d) => (!d.includes(FOLDED_DASH) ? d : d.length > 1 ? SOFT.repeat(d.length) : DASH_IN_VIEW));
+  return { printed, marked: joinedToAt(marked), view: joinedToAt(view), to };
+}
+
+// ---- the second pass, on `marked` only; every match must cross a SOFT unit, because the patterns above already read the same text without one ----
+const S = "\\x1f";
+const WS = `[ ${S}]`;
+const gapped = (w: string) => [...w].map((c) => `[${c.toUpperCase()}${c.toLowerCase()}]`).join(`${S}*`);
+const SPLIT_GAP = `(?:[ ]+|[.\\-\\u2010${S}]*)`;
+const SPLIT_D = `\\d${S}*`;
+const SPLIT_GROUP3 = `[2-9]${S}*\\d${S}*\\d`;
+const SPLIT_PHONE = new RegExp(
+  `(?<!\\d)(?<!\\d[.,\\-])(?:\\+?1${SPLIT_GAP})?(?:\\(${WS}*${SPLIT_GROUP3}${WS}*\\)|${SPLIT_GROUP3})${SPLIT_GAP}${SPLIT_GROUP3}${SPLIT_GAP}${SPLIT_D}${SPLIT_D}${SPLIT_D}\\d(?!\\d)(?![.,]\\d)`,
+  "g",
+);
+const SPLIT_AT = `(?:${WS}*@${WS}*|${WS}*[\\(\\[\\{<]${WS}*${gapped("at")}${WS}*[\\)\\]\\}>]${WS}*|${WS}+${gapped("at")}${WS}+)`;
+const SPLIT_DOT = `(?:${NOT_DETERMINER}(?:${WS}*[\\(\\[\\{<]${WS}*${gapped("dot")}${WS}*[\\)\\]\\}>]${WS}*|${WS}+${gapped("dot")}${WS}+)|${WS}*\\.${S}*)`;
+const SPLIT_TLD = [...TLD_LIST].sort((a, b) => b.length - a.length).map(gapped).join("|");
+// A split address: local part, at-sign, up to 9 labels of at most 64 characters, separator and listed TLD. A label may hold a dropped character, so "b<break>dot<break>b" reads as one label or as two
+// with a separator, and one regex would try every combination (exponential in a 200-character note, REVIEW 6672373633). So the search is by hand, in the order the regex would
+// try, and a place that has already failed is never tried again: at most (length x 9 x 64) steps.
+const SPLIT_HEAD = new RegExp(`${LOCAL}${SPLIT_AT}(?=[A-Za-z0-9])`, "g");
+const SPLIT_NEXT_DOT = new RegExp(`${SPLIT_DOT}(?=[A-Za-z0-9])`, "y");
+const SPLIT_END = new RegExp(`(${SPLIT_DOT}|${S}+)(${SPLIT_TLD})${TLD_END}`, "y");
+const MAX_LABEL_INNER = 62;
+const MAX_MORE_LABELS = 8;
+const isAlnum = (c: string | undefined) => c !== undefined && /[A-Za-z0-9]/.test(c);
+const inLabel = (c: string) => isAlnum(c) || c === "-" || c === DASH_IN_VIEW || c === SOFT;
+function findSplitEmails(marked: string): Array<{ index: number; all: string; sep: string; tld: string }> {
+  const found: Array<{ index: number; all: string; sep: string; tld: string }> = [];
+  const failed = new Set<number>();
+  type End = { end: number; sep: string; tld: string };
+  const afterLabel = (at: number, more: number): End | null => {
+    const key = at * (MAX_MORE_LABELS + 1) + more;
+    if (failed.has(key)) return null;
+    if (more < MAX_MORE_LABELS) {
+      SPLIT_NEXT_DOT.lastIndex = at;
+      if (SPLIT_NEXT_DOT.test(marked)) {
+        const r = label(SPLIT_NEXT_DOT.lastIndex, more + 1);
+        if (r) return r;
+      }
+    }
+    SPLIT_END.lastIndex = at;
+    const m = SPLIT_END.exec(marked);
+    if (m) return { end: at + m[0].length, sep: m[1], tld: m[2] };
+    failed.add(key);
+    return null;
+  };
+  const label = (start: number, more: number): End | null => {
+    if (!isAlnum(marked[start])) return null;
+    let last = start + 1;
+    while (last <= start + MAX_LABEL_INNER && last < marked.length && inLabel(marked[last])) last++;
+    for (let t = Math.min(last, marked.length - 1); t > start; t--) {
+      if (!isAlnum(marked[t])) continue;
+      const r = afterLabel(t + 1, more);
+      if (r) return r;
+    }
+    return afterLabel(start + 1, more);
+  };
+  SPLIT_HEAD.lastIndex = 0;
+  for (let h = SPLIT_HEAD.exec(marked); h; h = SPLIT_HEAD.exec(marked)) {
+    const r = label(h.index + h[0].length, 0);
+    if (r) {
+      found.push({ index: h.index, all: marked.slice(h.index, r.end), sep: r.sep, tld: r.tld });
+      SPLIT_HEAD.lastIndex = r.end;
+    } else {
+      SPLIT_HEAD.lastIndex = h.index + 1;
+    }
+  }
+  return found;
+}
+// A dropped character right beside the at-sign of an otherwise whole address: any lower-case last label ("jane<emoji>@proton.me").
+const BESIDE_AT = new RegExp(`${LOCAL}${S}*@${S}*[A-Za-z](?:[A-Za-z0-9\\-]*[A-Za-z0-9])?(?:\\.${LABEL})*\\.[a-z]{2,}${TLD_END}`, "g");
+// "Tax 250.<break>300.<break>1000 total" prints "250. 300. 1000", which is two characters between the groups and no phone gap, typed or not.
+const SENTENCE_FIGURES = new RegExp(`^\\d{3}\\.${S}\\d{3}\\.${S}\\d{4}$`);
+// A folded dash inside the domain of an otherwise whole address: a domain starting with a letter and a lower-case last label ("jane@pro<em dash>ton.me"), or all capitals.
+const DASH_IN_DOMAIN = new RegExp(`${LOCAL}(?:@|[ ]*[\\(\\[\\{<][ ]*${AT_W}[ ]*[\\)\\]\\}>][ ]*)[A-Za-z][A-Za-z0-9\\-\\u2010]*(?:\\.[A-Za-z0-9][A-Za-z0-9\\-\\u2010]*)*\\.[A-Za-z]{2,}${TLD_END}`, "g");
+const dashDomainCounts = (all: string): boolean => {
+  if (!all.includes(DASH_IN_VIEW)) return false;
+  const last = all.slice(all.lastIndexOf(".") + 1);
+  return last === last.toLowerCase() || !/[a-z]/.test(all);
+};
+// Listed TLDs that are also words people start a line with ("Paid at closing.<break>net 30", "Leak at front.<break>co op").
+const WORD_TLDS = /^(?:net|org|dev|ca|uk|co|pro)$/;
+// "Look at t<break>he dot com era": the determiner rule above, with the break taken out.
+const DETERMINER_THEN_DOT = new RegExp(`(?<![A-Za-z0-9\\-])(?:${DETERMINERS})[ ]*(?:[\\(\\[\\{<][ ]*)?${DOT_W}`);
+function keepSplitEmail(all: string, sep: string, typedTld: string): boolean {
+  if (!(all.includes(SOFT) || all.includes(DASH_IN_VIEW)) || DETERMINER_THEN_DOT.test(all.replaceAll(SOFT, ""))) return false;
+  const tld = typedTld.replaceAll(SOFT, "");
+  const tight = all.includes("@") && !all.includes(" ");
+  if (tld !== tld.toLowerCase() && (tld !== tld.toUpperCase() || /[a-z]/.test(all) || !/[@(\[{<]/.test(all))) return false;
+  const word = WORD_TLDS.test(tld.toLowerCase());
+  const noDot = !/[.dD]/.test(sep);
+  if (noDot && (!tight || word)) return false;
+  if (word && sep.endsWith(SOFT) && !(tight && new RegExp(`@${S}*[A-Za-z]`).test(all))) return false;
+  return true;
+}
+
+// Returns the string the document prints, with phone and e-mail spans replaced by REMOVED_TOKEN.
 export function redactSowText(text: string): string {
+  const { printed, marked, view, to } = printForm(text);
+  if (printed.length !== marked.length || printed.length !== view.length) throw new Error("print form out of step");
   const folded = foldForDetection(text);
   if (folded.length !== text.length) throw new Error("fold changed the text length");
   const spans: Array<[number, number]> = [];
   for (const re of SOW_PATTERNS) {
-    re.lastIndex = 0;
-    for (const m of folded.matchAll(re)) {
-      if (m[0].length > 0) spans.push([m.index!, m.index! + m[0].length]);
-    }
+    for (const m of view.matchAll(re)) if (m[0].length > 0) spans.push([m.index!, m.index! + m[0].length]);
+    for (const m of folded.matchAll(re)) if (m[0].length > 0) spans.push([to[m.index!], to[m.index! + m[0].length]]);
   }
-  if (spans.length === 0) return text;
+  for (const m of marked.matchAll(SPLIT_PHONE)) {
+    if (m[0].includes(SOFT) && !SENTENCE_FIGURES.test(m[0])) spans.push([m.index!, m.index! + m[0].length]);
+  }
+  for (const m of marked.matchAll(BESIDE_AT)) if (m[0].includes(SOFT)) spans.push([m.index!, m.index! + m[0].length]);
+  for (const m of marked.matchAll(DASH_IN_DOMAIN)) if (dashDomainCounts(m[0])) spans.push([m.index!, m.index! + m[0].length]);
+  for (const m of findSplitEmails(marked)) if (keepSplitEmail(m.all, m.sep, m.tld)) spans.push([m.index, m.index + m.all.length]);
   spans.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
   let out = "";
   let pos = 0;
-  let curStart = spans[0][0];
-  let curEnd = spans[0][1];
-  const flush = () => {
-    out += text.slice(pos, curStart) + REMOVED_TOKEN;
-    pos = curEnd;
-  };
-  for (let i = 1; i < spans.length; i++) {
-    if (spans[i][0] <= curEnd) curEnd = Math.max(curEnd, spans[i][1]);
-    else {
-      flush();
-      curStart = spans[i][0];
-      curEnd = spans[i][1];
-    }
+  let cut = false;
+  for (const [a, b] of spans) {
+    if (cut && a <= pos) { pos = Math.max(pos, b); continue; }
+    out += printed.slice(pos, a) + REMOVED_TOKEN;
+    pos = b;
+    cut = true;
   }
-  flush();
-  return out + text.slice(pos);
+  out += printed.slice(pos);
+  // Printed equals redacted: anything esc() would still drop refuses the envelope rather than prints.
+  if (/[^ -~]/.test(out)) throw new Error("output is not the printed form");
+  return out;
 }
+
 
 // SOW entry point. Same refusal contract as before: anything that stops the redaction (a non-text value, an engine error, a non-string result)
 // throws RedactionUnavailableError and the caller refuses to build the envelope (503 d390_redaction_unavailable). The `engine` argument exists
