@@ -214,6 +214,20 @@ export function resolveFeePct(
 }
 
 /**
+ * gh-3497: the rate out of a quotes_platform_fee_for() answer (a table of { fee_pct, fee_basis }), or null when there is
+ * no usable rate: no row, a null or non-numeric fee_pct, or a rate that is not above zero. Unlike resolveFeePct there is
+ * NO default: a missing answer must stop the submit, not become 5.00.
+ */
+export function parseConfiguredFeePct(data: unknown): number | null {
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row !== 'object') return null;
+  const raw = (row as { fee_pct?: unknown }).fee_pct;
+  if (raw === null || raw === undefined) return null;
+  const parsed = parseFloat(String(raw));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+/**
  * Fee-calculator math (updateFeeCalculator, :4343-4353). For insurance_rcv jobs
  * the 5% fee base is the claim RCV; otherwise the bid amount.
  */

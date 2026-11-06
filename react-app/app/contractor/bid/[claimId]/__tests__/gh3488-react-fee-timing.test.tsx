@@ -3,7 +3,8 @@
 //   - acceptance older than the rate: a tick never outlives the rate or bid it was given under
 //   - a fee lookup or ipify call that never returns is bounded; the submit button cannot stay disabled forever
 //   - one submit at a time: a double click (same tick) files one bid; the fee box is locked while submitting
-//   - a fresh rate lookup at every submit, keyed on address_state (the column the server reads)
+//   - a fresh rate lookup at every submit; gh-3497: through rpc('quotes_platform_fee_for'), which resolves the state itself.
+//     The fake below models RLS: a table read of platform_fee_config as a contractor returns 0 rows.
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, cleanup, fireEvent, act, waitFor } from '@testing-library/react';
@@ -16,7 +17,8 @@ const h = vi.hoisted(() => {
     deferFirst: true,   // the first lookup is held until releaseFee
     hangAll: false,     // every lookup never returns
     lookups: 0,
-    queries: [] as string[],
+    queries: [] as string[],   // gh-3497: the rpc arguments of each lookup, as text
+    tableReads: 0,             // reads of platform_fee_config itself (a contractor sees 0 rows)
   };
   function builder(table: string) {
     const ors: string[] = [];
@@ -27,22 +29,23 @@ const h = vi.hoisted(() => {
     b.insert = (row: Record<string, unknown>) => { state.inserts.push({ table, row }); return b; };
     b.single = async () => ({ data: { id: 'quote-1' }, error: null });
     b.then = (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => {
-      if (table === 'platform_fee_config') {
-        state.lookups++;
-        state.queries.push(ors.join(' | '));
-        if (state.hangAll) return new Promise(() => {}).then(res, rej);
-        if (state.lookups === 1 && state.deferFirst) {
-          return new Promise((r) => { state.releaseFee = (rows) => { state.rate = rows[0].fee_pct; r({ data: rows, error: null }); }; }).then(res, rej);
-        }
-        return Promise.resolve({ data: [{ fee_pct: state.rate }], error: null }).then(res, rej);
-      }
+      if (table === 'platform_fee_config') state.tableReads++;   // RLS: admin-only, 0 rows for a contractor
       return Promise.resolve({ data: [], error: null }).then(res, rej);
     };
     return b;
   }
   const supabase = {
     from: (t: string) => builder(t),
-    rpc: async () => ({ data: { can_submit: true }, error: null }),
+    rpc: async (name: string, args?: Record<string, unknown>) => {
+      if (name !== 'quotes_platform_fee_for') return { data: { can_submit: true }, error: null };
+      state.lookups++;
+      state.queries.push(JSON.stringify(args));
+      if (state.hangAll) return new Promise(() => {});
+      if (state.lookups === 1 && state.deferFirst) {
+        return new Promise((r) => { state.releaseFee = (rows) => { state.rate = rows[0].fee_pct; r({ data: rows, error: null }); }; });
+      }
+      return { data: [{ fee_pct: state.rate, fee_basis: 'bid_amount' }], error: null };
+    },
     functions: { invoke: async () => ({ data: null, error: null }) },
   };
   return { state, supabase };
@@ -72,7 +75,7 @@ const inserted = (t: string) => h.state.inserts.filter((i) => i.table === t);
 afterEach(() => {
   cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals();
   h.state.inserts.length = 0; h.state.releaseFee = null; h.state.rate = 5; h.state.deferFirst = true;
-  h.state.hangAll = false; h.state.lookups = 0; h.state.queries.length = 0;
+  h.state.hangAll = false; h.state.lookups = 0; h.state.queries.length = 0; h.state.tableReads = 0;
 });
 
 async function ready(c: HTMLElement, bid = '18500', rate = 5) {
@@ -166,10 +169,11 @@ describe('gh-3488 React bid form: timing windows', () => {
     expect(inserted('fee_acceptances')[0].row.fee_amount).toBe(1387.5);
   });
 
-  it('(LEGAL) the lookup uses the contractor\'s address_state, the column the server reads', async () => {
+  it('(LEGAL) the lookup goes through quotes_platform_fee_for with the contractor and claim, not the admin-only table', async () => {
     mount();
     await waitFor(() => expect(h.state.queries.length).toBeGreaterThan(0));
-    expect(h.state.queries[0]).toContain('state.eq.IN');                          // 3fc20d19: state.eq. (blank)
+    expect(JSON.parse(h.state.queries[0])).toEqual({ p_contractor_id: 'c1', p_claim_id: 'claim-1' });   // the server resolves state and trade
+    expect(h.state.tableReads).toBe(0);
   });
 
   it('(LEGAL) a tick is cleared when the bid changes', async () => {

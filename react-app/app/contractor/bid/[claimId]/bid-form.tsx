@@ -26,7 +26,7 @@ import {
   type BidClaim, type BidMode, type TradeFlags, type WarrantySelectionInput,
   type ValueAddsFormState, type ValueAddsContext, type WizardState,
   buildValueAdds, serializeWarrantySelection, applyCustomWarrantyReview,
-  feeConfigLookupParams, resolveFeePct, computeDisclosureFee, computeQuoteFeeBase, computeCalculatorFee,
+  parseConfiguredFeePct, computeDisclosureFee, computeQuoteFeeBase, computeCalculatorFee,
   bidGateRpcParams, interpretBidGate, BID_GATE_ROUTES, DEFAULT_PLATFORM_FEE_PCT,
   buildScopeSummary, buildQuoteInsert, buildQuoteUpdate,
   buildFeeAcceptanceInsert, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
@@ -208,22 +208,21 @@ async function getContractorIP(): Promise<string> {
 }
 
 /**
- * The configured platform fee rate for this contractor and claim, or null when the lookup fails or does not answer
- * within FEE_LOOKUP_TIMEOUT_MS (the caller then keeps the rate already on screen, as it does for any failed lookup).
- * State is `address_state`, the column quotes_platform_fee_for reads on the server (gh-3488, LEGAL-READ 6674806511).
+ * The configured platform fee rate for this contractor and claim, or null when there is no answer: the lookup failed,
+ * did not answer within FEE_LOOKUP_TIMEOUT_MS, or returned no usable rate.
+ * gh-3497 (LEGAL-READ 6675181967): read through quotes_platform_fee_for(), the function the server trigger uses
+ * (SECURITY DEFINER, executable by `authenticated`). platform_fee_config itself is admin-only under RLS, so a table
+ * read as a contractor returned 0 rows, which is not an error and used to fall back to 5.00. The server resolves the
+ * contractor's address_state and the claim's first trade itself. Submit stops on null; the page keeps showing the
+ * rate it already has.
  */
 async function fetchConfiguredFeePct(contractor: ContractorRecord, claim: Record<string, unknown>): Promise<number | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const { state, trade } = feeConfigLookupParams({ state: (contractor.address_state as string | null) ?? null }, claim as BidClaim);
-    const lookup = Promise.resolve(supabase
-      .from('platform_fee_config')
-      .select('fee_pct')
-      .or(`state.is.null,state.eq.${state}`)
-      .or(`trade.is.null,trade.eq.${trade}`)
-      .order('state', { ascending: false, nullsFirst: false })
-      .order('trade', { ascending: false, nullsFirst: false })
-      .limit(1)).then(({ data }) => resolveFeePct(data));
+    const lookup = Promise.resolve(supabase.rpc('quotes_platform_fee_for', {
+      p_contractor_id: contractor.id,
+      p_claim_id: String(claim.id),
+    })).then(({ data, error }) => (error ? null : parseConfiguredFeePct(data)));
     const timeout = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), FEE_LOOKUP_TIMEOUT_MS); });
     return await Promise.race([lookup, timeout]);
   } catch { return null; } finally { if (timer) clearTimeout(timer); }
@@ -318,7 +317,13 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
       // gh-3488 (LEGAL-READ 6674806511): a fresh rate lookup at every submit. If the server's rate differs from the one
       // on screen, show it and require acceptance again (the effect on feePct clears the tick); nothing is filed.
       const freshPct = await fetchConfiguredFeePct(contractor, claim);
-      if (freshPct !== null && freshPct !== feePct) {
+      // gh-3497: no answer from quotes_platform_fee_for means no submit. The rate on screen is not evidence of what the
+      // server will store. The form keeps the contractor's entries and the existing 'Error submitting bid: ' message
+      // reports it, as the other stops do.
+      if (freshPct === null) {
+        throw new Error('fee_rate_unavailable: the platform fee rate could not be read, so nothing was submitted');
+      }
+      if (freshPct !== feePct) {
         setFeePct(freshPct);
         setSubmitState('idle');
         return;
@@ -420,8 +425,19 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
       setSubmitState('done');
     } catch (err) {
       console.error('Error submitting bid:', err);
-      setErrorMsg('Error submitting bid: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      // gh-3497: a refused insert arrives from supabase-js as a PostgrestError, which is not always an Error instance;
+      // its message (e.g. fee_rate_mismatch) must reach the contractor rather than "Unknown error".
+      const errMsg = err instanceof Error ? err.message
+        : (err && typeof (err as { message?: unknown }).message === 'string' ? (err as { message: string }).message : 'Unknown error');
+      setErrorMsg('Error submitting bid: ' + errMsg);
       setSubmitState('error');
+      // gh-3497: the server refused the bid because the rate shown differs from the configured one (quotes trigger,
+      // fee_rate_mismatch). Nothing was saved and the entries are still here. The acceptance was given to the old
+      // figure, so clear it and re-read the rate: the page then shows the configured figure to be accepted again.
+      if (/fee_rate_mismatch/.test(errMsg)) {
+        setFeeAccepted(false);
+        void fetchConfiguredFeePct(contractor, claim).then((p) => { if (p !== null) setFeePct(p); });
+      }
     } finally {
       submitInFlight.current = false;
     }
