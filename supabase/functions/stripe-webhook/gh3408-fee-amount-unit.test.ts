@@ -42,7 +42,8 @@ Deno.test("gh-3408: numeric arriving as a string, and a sub-dollar fee, format c
 });
 
 Deno.test("gh-3408: index.ts prints fee_amount through the dollar helper, never /100", () => {
-  const src = stripComments(Deno.readTextFileSync(new URL("./index.ts", import.meta.url)));
+  // gh-3409: both builders moved from index.ts to dispute-fee-evidence.ts
+  const src = stripComments(Deno.readTextFileSync(new URL("./index.ts", import.meta.url)) + Deno.readTextFileSync(new URL("./dispute-fee-evidence.ts", import.meta.url)));
   assert(!/fee_amount\s*\/\s*100/.test(src), "fee_amount must not be divided by 100");
   const uses = src.match(/formatAcceptedFeeDollars\(feeAcceptance\.fee_amount\)/g) ?? [];
   assertEquals(uses.length, 2); // dispute notice + service documentation

@@ -22,7 +22,7 @@ import {
   bidGateRpcParams, interpretBidGate,
   buildScopeSummary, buildQuoteInsert, buildQuoteUpdate, BID_RENEWAL_WINDOW_MS,
   applyCustomWarrantyReview, CUSTOM_WARRANTY_REVIEW_NOTE,
-  buildFeeAcceptanceInsert, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
+  buildFeeAcceptanceInsert, ipForInet, feeAcceptanceOutcome, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
   RESCINDABLE_STATUSES, isRescindable, buildRescindRequest, isBidSelected, readBidSelectedRefusal,
   resolveClaimId, resolveBidMode, wroteRow,
   type BidGateContractor, type BidClaim,
@@ -349,6 +349,38 @@ describe('quote + acceptance + notify payloads', () => {
       contractor_id: 'con-1', claim_id: 'claim-1', bid_id: 'bid-1', fee_pct: 6, fee_basis: 'bid_amount',
       fee_amount: 1080, fee_text_displayed: 'TEXT', accepted_at: 'T', ip_address: '1.2.3.4', user_agent: 'UA',
     });
+  });
+
+  it('gh-3409: a failed IP lookup never costs the acceptance (ip_address is inet; \'unknown\' is refused with 22P02 before the guard runs)', () => {
+    for (const bad of ['unknown', '', '   ', null, undefined, 'not an ip', '999.1.1.1', '1.2.3', '1.2.3.4.5', '<script>']) expect(ipForInet(bad as string | null | undefined)).toBeNull();
+    expect(ipForInet('203.0.113.7')).toBe('203.0.113.7');
+    expect(ipForInet(' 203.0.113.7 ')).toBe('203.0.113.7');
+    expect(ipForInet('2001:db8::1')).toBe('2001:db8::1');
+    const base = { contractorId: 'c', claimId: 'cl', bidId: 'b', feePct: 5, feeAmount: 750, feeTextDisplayed: 'T', acceptedAtIso: 'T', userAgent: 'UA' };
+    expect(buildFeeAcceptanceInsert({ ...base, ipAddress: 'unknown' }).ip_address).toBeNull();
+    expect(buildFeeAcceptanceInsert({ ...base, ipAddress: null }).ip_address).toBeNull();
+    expect(buildFeeAcceptanceInsert({ ...base, ipAddress: '203.0.113.7' }).ip_address).toBe('203.0.113.7');
+  });
+
+  it('gh-3409: the fee_acceptances result is classified so a diversion or a failure is never silent', () => {
+    expect(feeAcceptanceOutcome({ data: [{ id: 'x' }], error: null })).toBe('recorded');
+    expect(feeAcceptanceOutcome({ data: [], error: null })).toBe('diverted');
+    expect(feeAcceptanceOutcome({ data: null, error: null })).toBe('diverted');
+    expect(feeAcceptanceOutcome({ data: null, error: { message: 'invalid input syntax for type inet', code: '22P02' } })).toBe('failed');
+  });
+
+  it('gh-3409: bid-form.tsx inserts with .select(\'id\') (never .single()), reads the result and reports it, and never sends \'unknown\'', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(`${process.cwd()}/app/contractor/bid/[claimId]/bid-form.tsx`, 'utf8'); // vitest runs from react-app/
+    const at = src.indexOf(".from('fee_acceptances').insert(");
+    expect(at).toBeGreaterThan(0);
+    const stmt = src.slice(at, src.indexOf(';', src.indexOf('userAgent', at)) + 1);
+    expect(stmt).toMatch(/\.select\('id'\)\s*;$/);
+    expect(stmt).not.toMatch(/\.(single|maybeSingle)\s*\(/);
+    expect(src).toMatch(/feeAcceptanceOutcome\(feeRes\)/);
+    expect(src).toMatch(/Sentry\.captureMessage\(feeMsg/);
+    expect(src).not.toMatch(/return 'unknown'/);
+    expect(src).not.toMatch(/\|\| 'unknown'/);
   });
 
   it('buildBidConfirmationBody (D-215 Layer 2)', () => {
