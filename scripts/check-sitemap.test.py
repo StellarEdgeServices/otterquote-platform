@@ -68,6 +68,20 @@ check("REJECTED: locations page missing from the edge function map exits 1", cod
 code, out = run(loc_files, sitemap(["/", "/faq.html", "/blog/"]), redirects=loc_red)
 check("REJECTED: locations page missing from sitemap exits 1", code == 1 and "missing from sitemap" in out)
 
+# gh-3380: /guides/topics/ hubs need the same extensionless-twin 301 in _redirects and the edge map, and must be seen by the page scan.
+HUB = "guides/topics/zz-hub.html"
+hub_files = {**good, HUB: page(), EDGE: "const M = {\n  '/guides/topics/zz-hub':\n    '/guides/topics/zz-hub.html',\n};\n"}
+hub_sm = sitemap(["/", "/faq.html", "/blog/", "/guides/topics/zz-hub.html"])
+hub_red = "/blog/index.html /blog/ 301\n/guides/topics/zz-hub /guides/topics/zz-hub.html 301\n"
+code, out = run(hub_files, hub_sm, redirects=hub_red)
+check("CLEAN hub tree (rule in _redirects and edge map, hub listed) exits 0", code == 0 and "PASS" in out)
+code, out = run(hub_files, hub_sm, redirects="/blog/index.html /blog/ 301\n")
+check("REJECTED: hub with no extensionless _redirects rule exits 1", code == 1 and "no _redirects rule" in out)
+code, out = run({**hub_files, EDGE: "const M = {};\n"}, hub_sm, redirects=hub_red)
+check("REJECTED: hub missing from the edge function map exits 1", code == 1 and "REDIRECT_MAP" in out)
+code, out = run(hub_files, sitemap(["/", "/faq.html", "/blog/"]), redirects=hub_red)
+check("REJECTED: hub missing from sitemap exits 1 (page scan sees guides/topics/)", code == 1 and "missing from sitemap" in out)
+
 print()
 print("FAILED: %d" % len(FAILURES) if FAILURES else "all assertions passed")
 sys.exit(1 if FAILURES else 0)

@@ -278,7 +278,37 @@ function rescueImplicitFragment() {
   return _oqFragmentRescue;
 }
 
+/**
+ * gh-3471 (D-419): the return flag. A signed-out click on a measurement link must come back to the measurement checkout after
+ * sign-up. The flag is a TOKEN from this closed allowlist, never a URL or path: the only place a destination is built is
+ * RETURN_TARGETS, so no query value can steer a visitor anywhere else (no open redirect). Mirrored by react-app/app/lib/return-target.ts;
+ * tests/gh3471-return-flag-allowlist.mjs fails if the two lists differ.
+ */
+var RETURN_TARGETS = { measurements: '/help-measurements.html' };
+function _returnToken(value) {
+  return (typeof value === 'string' && Object.prototype.hasOwnProperty.call(RETURN_TARGETS, value)) ? value : null;
+}
+var RETURN_TOKEN_BY_PATH = { '/help-measurements.html': 'measurements', '/help-measurements': 'measurements' };
+
 window.Auth = {
+  /**
+   * gh-3471: the allowlisted return target path for a `?return=<token>` query string, or null. Only a key of RETURN_TARGETS counts.
+   * @param {string} search - e.g. window.location.search
+   */
+  returnTarget(search) {
+    try { return RETURN_TARGETS[_returnToken(new URLSearchParams(search || '').get('return'))] || null; } catch (e) { return null; }
+  },
+
+  /**
+   * gh-3471: where the project-info pages send the homeowner after Save. Always the dashboard; carries the flag when the incoming
+   * URL carried a valid one, so the dashboard (state gate first) can forward to the measurement checkout.
+   */
+  dashboardUrlWithReturn(search) {
+    var tok = null;
+    try { tok = _returnToken(new URLSearchParams(search || '').get('return')); } catch (e) {}
+    return '/dashboard.html' + (tok ? '?return=' + encodeURIComponent(tok) : '');
+  },
+
   /** Get current session - robust race-free implementation.
    *
    * Prior implementation (F-007c) had a race: when localStorage already
@@ -727,11 +757,16 @@ window.Auth = {
       const path = window.location.pathname;
       const isContractorPage = path.includes('contractor');
       const isPartnerPage = _isPartnerSurfaceFile(path); // gh-807: shared with redirectToDashboard()
+      // gh-3471: a signed-out homeowner on the measurement page signs up and comes back to it. Same destination as the
+      // /get-started.html 301, named directly so the query is not left to the redirect rule.
+      const returnTok = (!isContractorPage && !isPartnerPage) ? _returnToken(RETURN_TOKEN_BY_PATH[path]) : null;
       window.location.href = isContractorPage
         ? '/contractor-login.html'
         : isPartnerPage
           ? '/partner-login.html'
-          : '/get-started.html';
+          : returnTok
+            ? 'https://app.otterquote.com/get-started?return=' + encodeURIComponent(returnTok)
+            : '/get-started.html';
       return null;
     }
 
