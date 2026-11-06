@@ -94,3 +94,25 @@ for (const [name, H] of [["shared", Shared], ["local", Local]] as const) {
 Deno.test("[gh-3506 / 6689982421, 6689995307] both copies agree on the new rows", () => {
   for (const [typed] of [...NOT_A_DATE_REMOVED, ...PENDING_Q_PRINTS]) assertEquals(Local.redactSowText(typed), Shared.redactSowText(typed), JSON.stringify(typed));
 });
+
+// [REVIEW 6689990165 / LEGAL-READ 6690100852] Only a 20xx year is exempt. A 19xx "year" reads as +1 and a 9xx area code, which ruling 6689811189 does not cover, so these stay [removed] as on main.
+// The left anchor also rejects a letter ("a1/1/2025"), and a digit before a slash date ("123/45/2025", which the anchor of LEGAL-READ 6689982421 already cuts).
+const Y19_AND_ANCHOR_REMOVED: Array<[string, string]> = [
+  ["Start 11/15/1954\n555\n014\n2", "Start 11/15/[removed]"], ["Start 11/15/1954\n5550\n142", "Start 11/15/[removed]"], ["Start 11/15/1954\n5\n55\n0142", "Start 11/15/[removed]"],
+  ["Nov 15, 1912\n3\n456789", "Nov 15, [removed]"], ["May 3 1954\n555\n014\n2", "May 3 [removed]"], ["Nov\n15,\n1954\n555\n014\n2", "Nov 15, [removed]"],
+  ["99/99/1954\n555\n014\n2", "99/99/[removed]"], ["Nov 1, 1954\u00b7555\u00b7014\u00b72", "Nov 1, [removed]"],
+  ["a1/1/2025\n55\n0142", "a1/1/[removed]"], ["123/45/2025\n55\n0142", "123/45/[removed]"],
+];
+// Same accepted 20x shape with a dash in the tail (REVIEW 6689990165): accepted current behaviour under ruling 6689811189.
+const ACCEPTED_DASH_TAIL: Array<[string, string]> = [["Nov 1, 2025\n55-0142", "Nov 1, 2025 55-0142"], ["Start 11/15/2025\n55-0142", "Start 11/15/2025 55-0142"]];
+for (const [name, H] of [["shared", Shared], ["local", Local]] as const) {
+  Deno.test(`[gh-3506 / REVIEW 6689990165] ${name}: a 19xx year and a letter before a slash date get no exemption`, () => {
+    for (const [typed, want] of Y19_AND_ANCHOR_REMOVED) assertEquals(printsAs(H.redactSowText(typed)), want, JSON.stringify(typed));
+  });
+  Deno.test(`[gh-3506 / ruling 6689811189] ${name}: the accepted 20x shape with a dash in the tail prints as pinned`, () => {
+    for (const [typed, want] of ACCEPTED_DASH_TAIL) assertEquals(printsAs(H.redactSowText(typed)), want, JSON.stringify(typed));
+  });
+}
+Deno.test("[gh-3506 / REVIEW 6689990165] both copies agree on the 19xx, anchor and dash-tail rows", () => {
+  for (const [typed] of [...Y19_AND_ANCHOR_REMOVED, ...ACCEPTED_DASH_TAIL]) assertEquals(Local.redactSowText(typed), Shared.redactSowText(typed), JSON.stringify(typed));
+});
