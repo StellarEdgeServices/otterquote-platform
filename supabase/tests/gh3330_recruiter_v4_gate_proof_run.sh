@@ -10,7 +10,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 OUT="${1:-$(mktemp -d)}"; mkdir -p "$OUT"
-D=supabase/migrations_drafts; T=supabase/tests
+D=supabase/migrations_drafts; AM=supabase/migrations_applied_manually; T=supabase/tests
 RP=supabase/migrations/20260927235229_gh2154_register_partner_rate_limit_fix.sql
 ARC=supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql
 FWD=$D/gh3330_recruiter_v4_gate.sql; RB=$D/gh3330_recruiter_v4_gate_rollback.sql
@@ -25,10 +25,10 @@ mkdb() {  # $1 db name, $2 = "live" (gh3245 applied: the production body) or "au
   psql -q -d postgres -c "DROP DATABASE IF EXISTS $1" -c "CREATE DATABASE $1" >/dev/null 2>&1 || exit 2
   psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$T/gh3239_throwaway_schema.sql" >/dev/null || exit 2
   psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$OUT/register_partner_live.sql" >/dev/null || exit 2
-  psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$D/gh3239_partner_agreement_v4.sql" >/dev/null 2>&1 || exit 2
+  psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$AM/20261030165458_gh3239_partner_agreement_v4.sql" >/dev/null 2>&1 || exit 2
   psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$T/gh3245_throwaway_schema.sql" >/dev/null || exit 2
   psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$OUT/apply_referral_commission_audited.sql" >/dev/null || exit 2
-  if [ "$2" = live ]; then psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$D/gh3245_customer_fee_v4_gate.sql" >/dev/null 2>&1 || exit 2; fi
+  if [ "$2" = live ]; then psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$AM/20261030165750_gh3245_customer_fee_v4_gate.sql" >/dev/null 2>&1 || exit 2; fi
   psql -q -d "$1" -v ON_ERROR_STOP=1 -f "$T/gh3245_throwaway_trigger.sql" >/dev/null || exit 2
 }
 # query W: the fenced sql block under "## Query W" in the pre-flight, run verbatim as CREATE TEMP TABLE w_rows AS <W>
