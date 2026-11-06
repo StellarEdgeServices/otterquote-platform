@@ -40,15 +40,24 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
-serve(async (req) => {
+// gh-3507: exported so auth.test.ts can drive the REAL handler (same precedent as
+// process-dunning / switch-contractor: serve() is guarded by import.meta.main, which the
+// Edge runtime sets for the entry file). `getEnv`, `makeClient` and `fetchFn` default to
+// the real Deno.env.get / createClient / fetch; tests stub them (no network, no Stripe).
+export async function handler(
+  req: Request,
+  getEnv: (name: string) => string | undefined = (n) => Deno.env.get(n),
+  makeClient: typeof createClient = createClient,
+  fetchFn: typeof fetch = fetch,
+): Promise<Response> {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  const supabaseUrl = getEnv("SUPABASE_URL")!;
+  const supabaseKey = getEnv("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = makeClient(supabaseUrl, supabaseKey);
 
   try {
     const { contractor_id, payment_type } = await req.json();
@@ -99,8 +108,8 @@ serve(async (req) => {
     const isStaging = _reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
       _reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
     const stripeSecretKey = isStaging
-      ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
-      : Deno.env.get("STRIPE_SECRET_KEY");
+      ? (getEnv("STRIPE_SECRET_KEY_TEST") || getEnv("STRIPE_SECRET_KEY"))
+      : getEnv("STRIPE_SECRET_KEY");
     if (!stripeSecretKey) {
       throw new Error("Stripe secret key not configured.");
     }
@@ -158,7 +167,7 @@ serve(async (req) => {
 
       console.log("Creating Stripe Customer for contractor:", contractor_id);
 
-      const customerResponse = await fetch(`${STRIPE_API_BASE}/customers`, {
+      const customerResponse = await fetchFn(`${STRIPE_API_BASE}/customers`, {
         method: "POST",
         headers: {
           Authorization: `Basic ${basicAuth}`,
@@ -237,7 +246,7 @@ serve(async (req) => {
       selectedType
     );
 
-    const setupResponse = await fetch(`${STRIPE_API_BASE}/setup_intents`, {
+    const setupResponse = await fetchFn(`${STRIPE_API_BASE}/setup_intents`, {
       method: "POST",
       headers: {
         Authorization: `Basic ${basicAuth}`,
@@ -270,9 +279,13 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("create-setup-intent error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: (error as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-});
+}
+
+if (import.meta.main) {
+  serve((req) => handler(req));
+}
