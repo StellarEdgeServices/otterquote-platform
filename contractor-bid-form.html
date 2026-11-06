@@ -4741,21 +4741,13 @@
       try { return window._feePct || _platformFeePct; } catch (e) { return 5.0; }
     }
 
+    // gh-3488 / D-267 (REVIEW 6674426561): the disclosure, the checkbox figure and the breakdown are written
+    // SYNCHRONOUSLY from the current bid and the cached rate, so they never lag the bid; the rate lookup then
+    // corrects them if the configured rate differs. Only the newest lookup may write, and submit waits for it.
     let _feeDisclosureSeq = 0;
-    async function updateFeeDisclosure() {
-      // Recalculate and display fee based on bid amount + percentage
-      const bidAmountEl = document.getElementById('totalPrice');
-      if (!bidAmountEl) return;
-
-      // gh-3488: lookups can return out of order. Only the newest call may write the display, and the bid is read
-      // AFTER the lookup, so an older response can never leave an old bid's fee beside a newer bid.
-      const seq = ++_feeDisclosureSeq;
-
-      // Fetch fee percentage
-      const feePct = await fetchPlatformFeePercentage();
-      if (seq !== _feeDisclosureSeq) return;
-      const bidAmount = wholeCentDollars(parseFloat(bidAmountEl.value) || 0);
-      const feeAmount = platformFeeDollars(bidAmount, feePct); // gh-3488 / D-267: whole cents, same figure the webhook charges
+    let _feeLookupInFlight = null;
+    function paintFeeDisclosure(feePct, bidAmount) {
+      const feeAmount = platformFeeDollars(bidAmount, feePct); // whole cents, the figure the webhook charges
 
       // Update display fields
       document.getElementById('feePercentDisplay').textContent = feePct.toFixed(2);
@@ -4769,6 +4761,53 @@
 
       // Update checkbox state
       updateFeeCheckboxState();
+    }
+    async function updateFeeDisclosure() {
+      // Recalculate and display fee based on bid amount + percentage
+      const bidAmountEl = document.getElementById('totalPrice');
+      if (!bidAmountEl) return;
+      const currentBid = () => wholeCentDollars(parseFloat(bidAmountEl.value) || 0);
+
+      // 1. synchronous: current bid at the rate we already know
+      paintFeeDisclosure(currentFeePct(), currentBid());
+
+      // 2. asynchronous: the configured rate. Lookups can return out of order, so only the newest call may
+      //    write, and the bid is read AFTER the lookup.
+      const seq = ++_feeDisclosureSeq;
+      const run = (async () => {
+        const feePct = await fetchPlatformFeePercentage();
+        if (seq !== _feeDisclosureSeq) return;
+        paintFeeDisclosure(feePct, currentBid());
+      })();
+      _feeLookupInFlight = run;
+      try { await run; } finally { if (_feeLookupInFlight === run) _feeLookupInFlight = null; }
+    }
+    // Resolves once no fee lookup is in flight (a newer call may start while an older one settles).
+    async function settleFeeLookup() {
+      while (_feeLookupInFlight) {
+        const p = _feeLookupInFlight;
+        try { await p; } catch (e) { /* the lookup falls back to the cached rate */ }
+        if (_feeLookupInFlight === p) _feeLookupInFlight = null;
+      }
+    }
+
+    // gh-3488 (REVIEW 6674426561): from the moment submit snapshots the bid until it finishes or fails, the form's
+    // inputs are locked, so the price on screen is the price recorded, accepted and charged.
+    let _bidInputLocks = null;
+    function lockBidInputs() {
+      if (_bidInputLocks) return;
+      _bidInputLocks = [];
+      document.querySelectorAll('#bidForm input, #bidForm select, #bidForm textarea').forEach((el) => {
+        if (el.type === 'hidden' || el.type === 'submit' || el.id === 'feeAcceptanceCheckbox') return;
+        _bidInputLocks.push({ el: el, readOnly: el.readOnly, disabled: el.disabled });
+        if (el.tagName === 'SELECT' || el.type === 'checkbox' || el.type === 'radio' || el.type === 'file') el.disabled = true;
+        else el.readOnly = true;
+      });
+    }
+    function unlockBidInputs() {
+      if (!_bidInputLocks) return;
+      _bidInputLocks.forEach((l) => { l.el.readOnly = l.readOnly; l.el.disabled = l.disabled; });
+      _bidInputLocks = null;
     }
 
     function updateFeeCheckboxState() {
@@ -5093,19 +5132,36 @@
         return;
       }
 
+      // gh-3488 / D-267 (REVIEW 6674426561): ONE snapshot of the bid and of the disclosure on screen at the click.
+      // The accepted fee, the stored price and the charge basis all come from this snapshot; the form's inputs are
+      // locked until submit finishes or fails (see the finally below).
+      const _snapBid = wholeCentDollars(parseFloat(document.getElementById('totalPrice').value) || 0);
+      const _shownAtClick = { pct: window._feePct, amount: window._feeAmount };
+      const formData = new FormData(bidForm); // before the lock: disabled controls are left out of a FormData
+      lockBidInputs();
+
       submitBtn.disabled = true;
       submitBtn.textContent = 'Submitting…';
 
       try {
-        const formData = new FormData(bidForm);
 
           // ── D-214/D-215: Fee Acceptance Capture ──
           // gh-3488 / D-267: the accepted figure is derived here from the bid being submitted (whole cents), never
           // from whatever an earlier fee lookup left in window._feeAmount; window values are set first so the
           // recorded sentence (generateExactFeeText) carries the same figure.
-          const _bidAmount = wholeCentDollars(parseFloat(document.getElementById('totalPrice').value) || 0);
+          // A click while the rate lookup is in flight waits for it. If the figure it settles on differs from the
+          // disclosure the contractor had on screen, the new disclosure is shown and acceptance is required again.
+          await settleFeeLookup();
+          const _bidAmount = _snapBid;
           const _feePct = window._feePct || _platformFeePct;
           const _feeAmount = platformFeeDollars(_bidAmount, _feePct);
+          if (_feePct !== _shownAtClick.pct || _feeAmount !== _shownAtClick.amount) {
+            paintFeeDisclosure(_feePct, _bidAmount);
+            if (_feeAcceptanceCheckbox) _feeAcceptanceCheckbox.checked = false;
+            updateFeeCheckboxState();
+            submitBtn.textContent = renewMode ? 'Renew Bid' : (changeBidMode ? 'Update Bid' : 'Submit Bid');
+            return;
+          }
           window._feePct = _feePct;
           window._feeAmount = _feeAmount;
           const _exactFeeText = generateExactFeeText();
@@ -5151,7 +5207,7 @@
               return;
             }
           }
-          const totalPrice = wholeCentDollars(parseFloat(document.getElementById('totalPrice').value) || 0); // gh-3488: stored bid = shown bid, whole cents
+          const totalPrice = _snapBid; // gh-3488: the snapshot taken at the click, never a second read of the field
           const feePercentage = 5.0;
 
           // #487 (CEO decision 2026-07-08): the platform fee basis is the BID
@@ -5316,8 +5372,8 @@
             valueAdds.wizard_trade_queue = wizardTradeQueue.length > 0 ? wizardTradeQueue : null;
           }
 
-          // ── D-214/D-215: Initialize fee disclosure on form load ──
-          await updateFeeDisclosure();
+          // (gh-3488: the mid-submit `await updateFeeDisclosure()` that stood here is gone: the accepted figure is
+          // fixed by the snapshot above, and a refresh here could only repaint it from a different read of the bid.)
 
           // D-202 Phase 2 — capture warranty selection BEFORE quoteData is built (Session 463)
           const __d202Selection = getD202WarrantySelection();
@@ -5571,6 +5627,8 @@
         alert('Error submitting bid: ' + (err.message || 'Unknown error'));
         submitBtn.disabled = false;
         submitBtn.textContent = renewMode ? 'Renew Bid' : (changeBidMode ? 'Update Bid' : 'Submit Bid');
+      } finally {
+        unlockBidInputs(); // gh-3488: the lock lasts only while this submit is running
       }
     });
 

@@ -229,6 +229,8 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
 
   const [feePct, setFeePct] = useState<number>(DEFAULT_PLATFORM_FEE_PCT);
   const [feeAccepted, setFeeAccepted] = useState(false);
+  // gh-3488: submit waits for the configured rate, and an acceptance never outlives the rate it was given under.
+  const [feeLookupDone, setFeeLookupDone] = useState(false);
   const [warrantySel, setWarrantySel] = useState<WarrantySelectionInput>({ isCustom: false, workmanshipYearsRaw: '' });
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -250,6 +252,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
   // Resolve the config fee pct once (platform_fee_config, contracts unchanged).
   useEffect(() => {
     let active = true;
+    setFeeLookupDone(false);
     (async () => {
       try {
         const { state, trade } = feeConfigLookupParams({ state: (contractor.state as string | null) ?? null }, claim);
@@ -263,9 +266,12 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
           .limit(1);
         if (active) setFeePct(resolveFeePct(data));
       } catch { /* keep default */ }
+      finally { if (active) setFeeLookupDone(true); }
     })();
     return () => { active = false; };
   }, [contractor, claim]);
+  // The disclosure the box was ticked under shows this rate; a different rate is a different disclosure.
+  useEffect(() => { setFeeAccepted(false); }, [feePct]);
 
   const bidAmount = wholeCentDollars(parseFloat(form.bidPrice) || 0); // gh-3488: shown, stored and charged bid is whole cents
   const disclosure = computeDisclosureFee(bidAmount, feePct);
@@ -408,7 +414,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
   const submitLabel = submitState === 'submitting'
     ? 'Submitting…'
     : mode === 'renew' ? BID_COPY.submitBtnRenew : mode === 'change' ? BID_COPY.submitBtnChange : BID_COPY.submitBtnSubmit;
-  const submitDisabled = submitState === 'submitting' || !feeAccepted;
+  const submitDisabled = submitState === 'submitting' || !feeAccepted || !feeLookupDone;
 
   // The currently-shown wizard trade (step 2), if any.
   const wizardTrade = wizardMode && wizard.step === 2 ? wizard.queue[wizard.tradeIdx] : null;

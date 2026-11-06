@@ -129,7 +129,7 @@ describe('gh-3488 review fixes', () => {
     const lookups: Array<() => void> = [];
     const fetchPlatformFeePercentage = () => new Promise<number>((res) => lookups.push(() => res(5)));
     const run = new Function('document', 'window', 'fetchPlatformFeePercentage', 'updateFeeCheckboxState',
-      `${sharedBlock(html)}\nlet _feeDisclosureSeq = 0;\n${fnSource(html, 'updateFeeDisclosure', true)}\nreturn updateFeeDisclosure;`);
+      `${sharedBlock(html)}\nlet _feeDisclosureSeq = 0; let _feeLookupInFlight = null;\nfunction currentFeePct() { return window._feePct || 5; }\n${fnSource(html, 'paintFeeDisclosure')}\n${fnSource(html, 'updateFeeDisclosure', true)}\nreturn updateFeeDisclosure;`);
     const updateFeeDisclosure = run(stubDocument(els), win, fetchPlatformFeePercentage, () => {}) as () => Promise<void>;
     const older = updateFeeDisclosure();                 // bid $18,500 at call time
     els.totalPrice.value = '25000';
@@ -144,14 +144,16 @@ describe('gh-3488 review fixes', () => {
   });
 
   it('(4) submit derives the accepted figure from the bid being submitted, not from window._feeAmount', () => {
-    expect(html).toContain('const _feeAmount = platformFeeDollars(_bidAmount, _feePct);');
+    expect(html).toContain('_feeAmount = platformFeeDollars(_bidAmount, _feePct);');
     expect(html).not.toContain('window._feeAmount || platformFeeDollars');
     expect(html).toContain('window._feeAmount = _feeAmount;');
   });
 
   it('(3) both forms normalise the typed bid to whole cents before it is shown, stored and charged', () => {
-    expect(html).toContain("const totalPrice = wholeCentDollars(parseFloat(document.getElementById('totalPrice').value) || 0)");
-    expect(html).toContain("const _bidAmount = wholeCentDollars(parseFloat(document.getElementById('totalPrice').value) || 0)");
+    // one snapshot at submit: whole cents, taken once; accepted fee, stored price and charge basis all use it
+    expect(html).toContain("const _snapBid = wholeCentDollars(parseFloat(document.getElementById('totalPrice').value) || 0)");
+    expect(html).toContain('const _bidAmount = _snapBid;');
+    expect(html).toContain('const totalPrice = _snapBid;');
     expect(read('react-app/app/contractor/bid/[claimId]/bid-form.tsx'))
       .toContain('const bidAmount = wholeCentDollars(parseFloat(form.bidPrice) || 0)');
   });
