@@ -7,9 +7,12 @@ DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 -->
 # Pre-flight: gh3330_recruiter_v4_gate
 
-Issue #3330. Ruling: Dustin, 2026-11-02 13:17 ET (recorded on #3330, comment 6584786600), asked "should a recruiter who hasn't accepted the v4 agreement earn the
-$50 bonus?": "No." A recruiter must hold Partner Agreement v4 to earn the $50, withheld rather than dropped. (Ben's earlier answer 6583394572 was retracted at 6584765173:
-the bonus predates v4, v3 Section 4 / D-139; the gate is Dustin's ruling, not a v3 term.) Money: Tier 3B. Needs REVIEW + LEGAL-READ + R-177 pair; R-097 notice. Exposure at drafting: $0 ever accrued, one recruited agent (test).
+Issue #3330. Authority: D-417, registered at #3330 comment 6667313714: "A recruiter must have accepted Partner Agreement v4 to earn the $50 recruit bonus, and the release path requires v4 (a recruiter who has not accepted v4 does not get the $50 released) (#3330)."
+Its annotation of 2026-11-05 (comment 6668603250): the v4 requirement applies to partners who signed v3; no $50 accrues to any partner until they accept Partner Agreement v4.
+Dustin's words, as recorded on #3330: "No." (2026-11-02 13:17 ET, comment 6584786600) and "Yes, v3 signers must accept v4 (Recommended)" (2026-11-05, comment 6668571465).
+The record does not attribute "withheld rather than dropped" to him: it came from Marty's proposal 6582010408 and Ben's answer 6583394572, withdrawn at 6584765173. The code writes no bonus for a recruiter without v4 and logs it.
+Whether a recruiter who accepts v4 later is paid for a referral that completed before they accepted is open on #3330 (Marty's Q 6673399375, item 1); the code pays nothing for it.
+Money: Tier 3B. Needs REVIEW + LEGAL-READ + R-177 pair; R-097 notice. Exposure at drafting: $0 ever accrued, one recruited agent (test).
 
 ## Order
 1. gh3239 (`partner_v4_accepted_at()`) and gh3245 (the body this restates) are already live: production body md5 = `2eba9b9601c731cb20f45ef5a18c742b` (12965 characters, 13009 bytes),
@@ -27,7 +30,7 @@ SELECT rf.id AS referrer, rc.id AS recruiter, rc.agent_type, public.partner_v4_a
   FROM public.referral_agents rf JOIN public.referral_agents rc ON rc.id = rf.recruited_by_id;
 ```
 
-## Pre-apply count E: accrued-and-unpaid recruit bonuses owed to recruiters without v4 (REVIEW 6667117215 note 1)
+## Pre-apply count E: accrued-and-unpaid recruit bonus rows for recruiters without v4 (REVIEW 6667117215 note 1)
 The gate stops NEW accruals only; it does not touch rows that already exist. A `commission_recruit` row accrued before the apply for a recruiter who has no v4 is
 still paid by `approve-payout` / `mark-payout-paid` after the apply. Run E immediately before the apply. **Expected at drafting: 0 rows, $0** (#3330 read 2026-11-02: 0 `commission_recruit`
 rows ever). A non-zero result is a decision for Ben before the apply (pay, reject, or hold those rows by hand), not something this migration does. "Unpaid" here is
@@ -74,7 +77,7 @@ SELECT r.id AS referral, r.created_at, r.job_value, r.status, COALESCE(r.is_test
 ```
 Proof check H runs this exact text (the runner extracts the block above) and returns exactly the five withheld referrals in AFTER: an open $200, a $200 already moved to `commission_paid`,
 and a home_inspector referrer, besides the never-accepted and customer recruiters; and none of the paid, inspector-recruiter and v4-gated-customer cases.
-Rows whose `recruiter_v4_at` is now NOT NULL are the ones owed once a release path exists. **Limits:** W cannot tell a bonus this gate withheld from a referral completed before the gate
+Rows whose `recruiter_v4_at` is now NOT NULL are the ones whose recruiter has since accepted v4. The code pays them nothing, and whether they are paid is open on #3330 (Marty's Q 6673399375, item 1). **Limits:** W cannot tell a bonus this gate withheld from a referral completed before the gate
 shipped with a zero bonus for some other reason. Run it once before the apply and keep the referral ids; rows that appear afterwards are the gate's. At drafting the production count of
 ever-accrued bonuses is 0 and the only recruited agent is a test row, so the expected pre-apply result is 0 rows.
 
@@ -86,8 +89,8 @@ re-evaluate the gate on that second run because `commission_amount` is never set
   (`NOT IN ('claim_submitted','bid_received','contract_signed')`) returns before the recruit branch. A withheld $50 is not released by a re-fire even after the recruiter accepts v4. (Proof checks O and P: recruiter has accepted v4, claim re-fired, outcome `0` accrued in both cases.)
 - The only way a re-fire could pay is if someone first moves the referral's `status` back to an attributed status by hand. `reverse_referral_commission()` does not do that (it acts only when `commission_amount > 0`).
 
-**Matches Ben's ruling (6667102434)?** Yes. Nobody without v4 is ever paid, and a withheld bonus is not released by any automatic path, which is what "the release path requires v4" needs: the release is the admin release at payout time that
-Ben's ruling leaves to the apply with #3326, not a side effect. No code change was needed; the function body and its md5 are unchanged by this commit.
+**Matches Ben's answer 6667102434?** It says "the release path requires Partner Agreement v4" and that a recruiter without v4 does not get the $50 released. It names no release mechanism. Under this code nobody without v4 is paid, and no automatic path releases a withheld bonus
+after the recruiter accepts v4. Whether anyone pays those rows is open on #3330 (Marty's Q 6673399375, item 1). No code change was needed; the function body and its md5 are unchanged by this commit.
 
 ## What the apply writes
 Nothing but the function body. No referral, payout or agent row is touched; the gate acts only when a claim is completed afterwards.
@@ -101,19 +104,19 @@ Nothing but the function body. No referral, payout or agent row is touched; the 
 
 No cutoff date and no timing test (the ruling names none): the recruiter must hold v4 at the moment the referral completes.
 
-**Timing gap, for the release-path ruling (REVIEW 6584291693, last paragraph).** The gate reads v4 at completion, but v4 A4.3 and v3 Section 4 fire when the job is "approved for payout", and approval auto-runs about 7 days later
-(`auto_approve_at`). A recruiter who accepts v4 inside that window qualifies on the agreement's text but is withheld. Nothing here changes it; it belongs to the same ruling as the release path.
+**Timing gap, for the open release question (REVIEW 6584291693, last paragraph).** The gate reads v4 at completion, but v4 A4.3 and v3 Section 4 fire when the job is "approved for payout", and approval auto-runs about 7 days later
+(`auto_approve_at`). A recruiter who accepts v4 inside that window qualifies on the agreement's text but is withheld. Nothing here changes it; it belongs to the same open question (Marty's Q 6673399375, item 1).
 
-**Contract note from LEGAL-READ 6584296349 (not code).** Dustin's ruling settles the question the reader raised (v3 Section 4.2 / Section 17 re-acknowledgment, no D-number behind the gate, no cutoff). `faq.html` and `partner-adjusters.html:1005`
-still state the $50 without the v4 condition; this PR changes no public copy. The CEO decides whether the D-registry entry and any copy follow.
+**Contract note from LEGAL-READ 6584296349 (not code).** D-417 and its annotation (comments 6667313714, 6668603250) are the authority for the gate; they answer the v3 Section 4.2 / Section 17 re-acknowledgment question the reader raised only as far as they say: no $50 accrues to any partner until they accept v4. `faq.html` and `partner-adjusters.html:1005`
+still state the $50 without the v4 condition; this PR changes no public copy. Whether the dashboard notice and public copy change before the apply is open on #3330 (Marty's Q 6673399375, item 2).
 
-## Open: release path (NOT built, needs a ruling)
-"Withheld rather than dropped" is satisfied only as far as the data stays recoverable: the withheld referral keeps `recruit_commission_amount = 0`, so query W
-finds it. **No release path exists and none was invented.** A recruiter who accepts v4 later is NOT paid for referrals completed while they lacked it; the
+## Open: release path (NOT built, open on #3330)
+The code writes nothing for a recruiter without v4: the referral keeps `recruit_commission_amount = 0`, so query W finds it. D-417 sets a condition on any release (it requires v4) and Ben's answer 6667102434 names no mechanism.
+**The code pays nothing, and whether a recruiter who accepts v4 later is paid for those referrals is open on #3330 (Marty's Q 6673399375, item 1).** No release path exists and none was invented. A recruiter who accepts v4 later is NOT paid by this code for referrals completed while they lacked it; the
 trigger fires only on `completion_date` NULL to NOT NULL and returns early once `commission_amount > 0`, so nothing re-runs it. Proof check F pins this
-(the later acceptance pays only the later referral). To pay a withheld bonus someone must build one of: (a) a `release_withheld_recruit_bonus(recruiter)` SECURITY DEFINER
+(the later acceptance pays only the later referral). If a release is ruled, someone must build or run one of: (a) a `release_withheld_recruit_bonus(recruiter)` SECURITY DEFINER
 function that applies the same accrual to query W's rows, called from `accept_partner_agreement_v4()` (touches the gh3239 function) or by an admin; or (b) a
-manual payout per row. Open questions for the ruling: does release pay every withheld referral or only those completed after some date; is a release automatic on
+manual payout per row. Questions that ruling would answer: does release pay every withheld referral or only those completed after some date; is a release automatic on
 acceptance or an admin action; and should the withhold leave a durable ledger row (a new `payout_approvals` status needs the CHECK widened: ALTER, Tier 3B) rather than only a log line.
 
 ## Rollback
@@ -127,6 +130,6 @@ It asserts the message through the client message stream, not the server log fil
 
 ## Proof
 `PGHOST=... PGPORT=... PGUSER=postgres bash supabase/tests/gh3330_recruiter_v4_gate_proof_run.sh` on a throwaway Postgres 16: BASELINE / AFTER / ROLLBACK /
-REAPPLIED, 17 checks each (BASELINE is the production body: its rows document today's behavior, including $50 to a recruiter with no v4), three mutants
-(gate removed, inverted, gate on the referrer instead of the recruiter) each killed by a named check, and a forward run over the pre-gh3245 body that must refuse.
+REAPPLIED, 17 checks each (BASELINE is the production body: its rows document today's behavior, including $50 to a recruiter with no v4), four mutants
+(gate removed, inverted, gate on the referrer instead of the recruiter, withhold `RAISE LOG` deleted) each killed by a named check, and a forward run over the pre-gh3245 body that must refuse.
 The AFTER expectations judged against the unchanged production body fail 11 of 17 (C, D, E, F, G, H, J, L, M, O, P).
