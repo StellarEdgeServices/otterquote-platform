@@ -7,6 +7,7 @@ import {
   buildGuaranteeClock,
   chargeIdOf,
   type ClockDeps,
+  isMissingColumnError,
   decideGuaranteeClock,
   GUARANTEE_CLOCK_ALERT_TYPE,
   GUARANTEE_HOURS,
@@ -162,8 +163,15 @@ Deno.test("scope: stripe-webhook is untouched; the buyer's responses carry no gu
   // every string the function SENDS (json bodies, error text) is free of guarantee wording
   const sent = index.split("\n").filter((l) => /(error:|json\()/.test(l) && !l.trim().startsWith("//") && !l.trim().startsWith("*")).join("\n");
   assertFalse(/guarantee|100[- ]hour/i.test(sent), "no customer-visible wording");
-  // the retry for an unapplied migration exists and is limited to the undefined-column error
-  assertStringIncludes(index, 'insErr?.code === "42703" && "guarantee_started_at" in orderPayload');
+  // the retry itself is exercised against the real handler in guarantee-clock-handler.test.ts (PGRST204 and 42703); here only that it uses the shared matcher
+  assertStringIncludes(index, "isMissingColumnError(insErr)");
   // only the generic paid path writes the clock: the contractor upgrade branch and quote-only requests do not
   assertEquals(index.split("guarantee_started_at").length - 1, 2, "named only in the paid-path retry check (and its destructure)");
+});
+
+Deno.test("isMissingColumnError: matches PostgREST PGRST204 and Postgres 42703 by CODE, not by message; nothing else", () => {
+  assert(isMissingColumnError({ code: "PGRST204", message: "anything at all" }));
+  assert(isMissingColumnError({ code: "42703", message: "" }));
+  assert(isMissingColumnError({ code: "42703" }));
+  for (const e of [null, undefined, {}, { code: "23505" }, { code: "PGRST116" }, { code: "42P01" }, { message: "column does not exist" }, "42703"]) assertFalse(isMissingColumnError(e), String(e));
 });

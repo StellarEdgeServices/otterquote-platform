@@ -63,6 +63,7 @@ import {
   buildClockAlertRow,
   chargeIdOf,
   decideGuaranteeClock,
+  isMissingColumnError,
   paymentSucceededAt,
   raiseClockAlert,
 } from "./guarantee-clock.ts";
@@ -419,7 +420,8 @@ function nonUsdAlertDeps(supabase: any, supabaseUrl: string): NonUsdAlertDeps {
   };
 }
 
-serve(async (req) => {
+// gh-3471: the handler is a named const so a test can drive the real code path; the server still starts on import unless a test sets the flag.
+const handler = async (req: Request): Promise<Response> => {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed." }, 405, corsHeaders);
@@ -684,11 +686,13 @@ serve(async (req) => {
       paidAt: paid.paidAt ?? null,
       buyerId: authedUser.id,
       lookupClaim: async () => {
-        const { data } = await supabase.from("claims").select("is_test, user_id").eq("id", claimId).maybeSingle();
+        const { data, error } = await supabase.from("claims").select("is_test, user_id").eq("id", claimId).maybeSingle();
+        if (error) throw new Error("claim lookup returned an error");
         return data ?? null;
       },
       lookupProfile: async (id: string) => {
-        const { data } = await supabase.from("profiles").select("is_test, email").eq("id", id).maybeSingle();
+        const { data, error } = await supabase.from("profiles").select("is_test, email").eq("id", id).maybeSingle();
+        if (error) throw new Error("profile lookup returned an error");
         return data ?? null;
       },
       dbSaysInternal: async (email: string) => {
@@ -741,7 +745,7 @@ serve(async (req) => {
 
     // gh-3471: if the clock columns are not in this database yet (migration not applied), a paid order must still be recorded: retry without them and alert.
     let clockColumnsMissing = false;
-    if (insErr?.code === "42703" && "guarantee_started_at" in orderPayload) {
+    if (isMissingColumnError(insErr) && "guarantee_started_at" in orderPayload) {
       console.error(`[${FUNCTION_NAME}] hover_orders guarantee clock columns missing (migration not yet applied) -- retrying without them:`, insErr);
       const { guarantee_started_at: _s, guarantee_deadline_at: _d, ...withoutClock } = orderPayload as Record<string, unknown>;
       const retry = await supabase.from("hover_orders").insert(withoutClock).select("id, status").single();
@@ -803,4 +807,7 @@ serve(async (req) => {
     console.error(`[${FUNCTION_NAME}] unhandled:`, err);
     return json({ error: "Something went wrong recording your order." }, 500, corsHeaders);
   }
-});
+};
+// deno-lint-ignore no-explicit-any
+const g = globalThis as any;
+if (g.__OQ_NO_SERVE) g.__oqCreateMeasurementOrderHandler = handler; else serve(handler);

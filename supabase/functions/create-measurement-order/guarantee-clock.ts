@@ -66,6 +66,15 @@ export function chargeIdOf(latestCharge: any): string | null {
   return null;
 }
 
+/**
+ * True when a PostgREST/Postgres error says an INSERT named a column the table does not have. PostgREST rejects an unknown column in the payload from its
+ * schema cache as PGRST204 (it never reaches Postgres); Postgres itself says 42703 (undefined_column). Matched on the CODE only, never on the message text.
+ */
+export function isMissingColumnError(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null | undefined)?.code;
+  return code === "42703" || code === "PGRST204";
+}
+
 export interface ProfileRow { is_test?: boolean | null; email?: string | null }
 
 /** True for a staff / test e-mail by the #3428 rule. */

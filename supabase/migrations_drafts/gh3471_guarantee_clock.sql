@@ -5,7 +5,7 @@
 -- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3B path (migration-author, review, R-097 notice, a recorded apply). tier:3b was set by Marty on #3471.
 -- Rollback: supabase/migrations_rollbacks/gh3471_guarantee_clock_rollback.sql
 -- Pre-flight: supabase/migrations_rollbacks/gh3471_guarantee_clock_pre-flight.md
--- ORDER: apply THIS file first, THEN deploy create-measurement-order (it also tolerates the columns being absent: it retries the order insert without them on error 42703 and alerts).
+-- ORDER: apply THIS file first, THEN deploy create-measurement-order (it also tolerates the columns being absent: it retries the order insert without them when PostgREST answers PGRST204 or Postgres answers 42703, and alerts).
 -- TRANSACTION: carries its own BEGIN ... COMMIT; run it ALONE (psql -v ON_ERROR_STOP=1 -f). Never wrap it.
 --
 -- Design: the clock lives on the order row because that row is the one durable "payment reached succeeded" fact (there is no payments table for hover_measurement; #3428 comment 6667297771),
@@ -28,11 +28,14 @@ COMMENT ON COLUMN public.hover_orders.guarantee_started_at IS
 COMMENT ON COLUMN public.hover_orders.guarantee_deadline_at IS
   'gh-3471: guarantee_started_at + exactly 100 hours (CHECK hover_orders_guarantee_clock_chk). A clock only; what it promises is decided elsewhere (#3427).';
 
--- NOT VALID then VALIDATE: the constraint is enforced for new rows at once and checked against existing rows (all NULL) without holding a long lock.
+-- The pair is all-or-nothing: both NULL, or BOTH set with the deadline exactly 100 hours after the start. A start with no deadline, or a deadline with no start, is refused
+-- (a bare `deadline = start + 100h` would pass on NULL, because NULL = x is NULL and a CHECK accepts NULL). Dropped first so a re-run of this file is safe.
+-- NOT VALID then VALIDATE: new rows are enforced at once, then existing rows (all NULL) are checked. Both run inside this transaction, so the table lock is held until COMMIT (trivial here: the table is small).
+ALTER TABLE public.hover_orders DROP CONSTRAINT IF EXISTS hover_orders_guarantee_clock_chk;
 ALTER TABLE public.hover_orders
   ADD CONSTRAINT hover_orders_guarantee_clock_chk CHECK (
     (guarantee_started_at IS NULL AND guarantee_deadline_at IS NULL)
-    OR (guarantee_started_at IS NOT NULL AND guarantee_deadline_at = guarantee_started_at + interval '100 hours')
+    OR (guarantee_started_at IS NOT NULL AND guarantee_deadline_at IS NOT NULL AND guarantee_deadline_at = guarantee_started_at + interval '100 hours')
   ) NOT VALID;
 ALTER TABLE public.hover_orders VALIDATE CONSTRAINT hover_orders_guarantee_clock_chk;
 
