@@ -6,10 +6,6 @@
 **Sources:** Agreement 6.4 (`contractor-agreement.html`), Terms 8.4 and 8.5 (`terms.html`), D-410 (Central time), `supabase/functions/switch-contractor/cutoff.ts`, `supabase/functions/switch-contractor/index.ts`, `supabase/functions/_shared/stripe-key-select.ts`, `supabase/functions/process-dunning/retry-pass.ts`
 **Last updated:** 2026-11-05 (gh-3355, revised after REVIEW 6643087597 and QUESTION 6643116510 on PR #3399, then for the "Fee only" ruling on #3403 and PR #3450)
 
-**One thing holds this runbook back from being fully usable:**
-
-- **It should merge after #3400**, the PR that writes Central time into Terms 8.5 and Agreement 6.4. Until #3400 is live, those documents do not yet name Central time (see "Local clock times" in Step 2).
-
 **Who decides what.** You (Dustin) are the reader and the owner. Anything this runbook calls a "Tier C decision" (money, a contract term, a case 6.4 does not settle) is yours to decide. Ben and Marty can give a recommendation, but they do not rule on it for you.
 
 **Where the SQL runs.** Every query below is a `select`. Run them in the Supabase dashboard SQL editor for the production project, signed in as the owner. Do not run anything else there while following this runbook except the one `update` in Step 6, and never edit `claims` or `quotes` rows by hand.
@@ -20,7 +16,7 @@
 
 - The homeowner's "switch" form (React dashboard `submitSwitchSurvey`, legacy `dashboard.html`) only calls the `send-support-email` Edge Function. It emails **dustinstohler1@gmail.com** with the subject `[Otter Quotes Support] Switch Contractor Request` and inserts one `support_tickets` row (`source = 'form'`, `status = 'open'`). Body: `Job #<8 characters>`, `Reasons: ...`, `Notes: ...`.
 - The form is **public**. The function stores `from_email` and the message exactly as typed. Nothing proves the sender owns the job reference they typed (Step 1 checks this).
-- It changes **no** claim, quote or Stripe state. The `switch-contractor` Edge Function (the only code that refunds a contractor's platform fee) is not called by any page, and it must not be called for a hand refund: it refunds on the call with no confirmation step and no begun-work check, and, as deployed from main 28c147fa, it refunds the whole charge (PR #3450, not merged at this head, changes it to refund the platform fee only). The amount to refund by hand is in Step 5.
+- It changes **no** claim, quote or Stripe state. The `switch-contractor` Edge Function (the only code that refunds a contractor's platform fee) is not called by any page, and it must not be called for a hand refund: it refunds on the call with no confirmation step and no begun-work check, and, until PR #3450 is merged and deployed, it refunds the whole charge (#3450 changes it to refund the platform fee only). The amount to refund by hand is in Step 5.
 - So the refund exists only if a person issues it. That person is you. The Agreement (6.4) and the FAQ promise it.
 
 ## When this fires
@@ -31,7 +27,7 @@ An email with subject `[Otter Quotes Support] Switch Contractor Request` arrives
 
 Agreement 6.4, as approved (quoted so you can read exactly what it says):
 
-> If a Homeowner requests a switch of contractors through the Platform at least three (3) days before the scheduled start date and before Contractor has begun work, and Otter Quotes confirms the switch, Otter Quotes will refund Contractor's Platform Fee for that Job in full, excluding any card processing fee, and the project returns to open bidding. As a condition of participating on the Platform, Contractor agrees that if the Homeowner signs a contract with a replacement Otter Quotes contractor before Contractor has begun work, Contractor releases the Homeowner from the Contract with Contractor, effective on that signing, and will return any deposit the Homeowner paid. [...] If Contractor begins work under the Contract before any such signing, the Platform Fee is due again and Otter Quotes may charge it to Contractor's payment method on file.
+> If a Homeowner requests a switch of contractors through the Platform at least three (3) days before the scheduled start date (days are counted in Central Time) and before Contractor has begun work, and Otter Quotes confirms the switch, Otter Quotes will refund Contractor's Platform Fee for that Job in full, excluding any card processing fee, and the project returns to open bidding. As a condition of participating on the Platform, Contractor agrees that if the Homeowner signs a contract with a replacement Otter Quotes contractor before Contractor has begun work, Contractor releases the Homeowner from the Contract with Contractor, effective on that signing, and will return any deposit the Homeowner paid. [...] If Contractor begins work under the Contract before any such signing, the Platform Fee is due again and Otter Quotes may charge it to Contractor's payment method on file. If a project is otherwise canceled after contract execution, fee refund eligibility shall be determined on a case-by-case basis by Otter Quotes.
 
 The platform fee is refunded to the first contractor only if **all three** hold:
 
@@ -145,10 +141,10 @@ Worked examples, checked against the second expression:
 | 2026-12-10 | 2026-12-08T05:59:59Z | 23:59:59 on 12-07 (CST) | open |
 | 2026-12-10 | 2026-12-08T06:00:00Z | 00:00:00 on 12-08 (CST) | closed |
 
-Local clock times at the close, for the homeowner conversation: 1:00 AM Eastern on S-2, midnight Central, 11 PM Mountain and 10 PM Pacific on S-3. These follow from D-410. **Terms 8.5 and Agreement 6.4 name Central time only once PR #3400 is merged and live**; at this runbook's head #3400 is an open draft. Until then the documents do not say it and D-410 and `cutoff.ts` are what the rule rests on.
+Local clock times at the close, for the homeowner conversation: 1:00 AM Eastern on S-2, midnight Central, 11 PM Mountain and 10 PM Pacific on S-3. These follow from D-410. Terms 8.5 and Agreement 6.4 both say "days are counted in Central Time" (PR #3400, merged 2026-11-05 at `7ab15ffe`).
 
 - **Open:** go to Step 3.
-- **Closed:** no refund under 6.4. Reply to the homeowner (the switch window has passed) and record per Step 6. A refund outside the rule is a Tier C money decision for you: do not issue it without making that decision on the record.
+- **Closed:** no switch refund under 6.4. Reply to the homeowner (the switch window has passed) and record per Step 6. 6.4 separately allows a refund as required by law or for documented platform error, and makes a project otherwise canceled after contract execution case-by-case. Any refund outside the switch rule is a Tier C money decision for you: do not issue it without making that decision on the record.
 - **No start date on the quote, or an unreadable one:** `cutoff.ts` treats an absent date as "allow". Ask the contractor for the scheduled start date, in writing, before you decide, and note it on the ticket. If you cannot get one, hold (do not refund) and decide it yourself as a Tier C call.
 
 ## Step 3 - Confirm whether work has begun
@@ -166,7 +162,7 @@ Ask the **contractor** (details from Step 1d) and get the answers in writing (a 
 Then:
 
 - **Both say no to all three:** go on to Step 4.
-- **Both agree work has begun:** under 6.4 there is no refund. Record it. Do not refund. (The fee stays with Otter Quotes.)
+- **Both agree work has begun:** under 6.4 there is no switch refund. Record it. Do not refund it as a switch. (The fee stays with Otter Quotes unless you decide otherwise under 6.4's other paths; see "Closed" in Step 2.)
 - **The two disagree about whether work has begun:** hold. Do not refund. This is a question of fact between the parties and a Tier C decision for you.
 - **Materials or a permit only, no work:** 6.4 does not say whether that counts as "begun work". Do not treat it as begun work and do not treat it as clear. Record exactly what each side said, hold the refund, and decide it yourself (Tier C). If you decide it counts, say so on the ticket; the same question will come back on every switch, so consider asking for a D-number.
 - **Contractor silent:** 6.4 does not make the refund depend on the contractor replying, and it does not say that silence means work has begun, or that it does not. Do not treat silence as "no refund" and do not treat it as "no work". Record each attempt (date, channel, wording), keep the refund held, and decide it yourself (Tier C): whether silence after a stated number of attempts and days can be treated as "no work" is not settled anywhere I could find.
@@ -184,7 +180,7 @@ Contact the homeowner at the address on file (`account_email`, Step 1b). The hom
 
 **Ruled on #3403 (Dustin, 2026-11-05, "Fee only (Recommended)", comment 6664114820): the by-hand refund is the platform fee only, never the card processing fee.** On a card payment of $180.54 the refund is $175.00. A bank-transfer payment has no card fee, so the refund equals the whole charge. Read the fee from `metadata.platform_fee_cents`.
 
-Agreement 6.4 refunds the fee "in full, excluding any card processing fee", and the ruling follows it. PR #3450 (not merged or deployed at this head) changes `switch-contractor` to send `amount` = `metadata.platform_fee_cents` instead of refunding the whole charge, and changes `contractor-faq.html:320` to the 6.4 wording. Until it is live, the function would refund the whole charge on a card payment, which is another reason not to call it for a hand refund. The card fee uses the `create-payment-intent` formula, 2.9% + $0.30.
+Agreement 6.4 refunds the fee "in full, excluding any card processing fee", and the ruling follows it. PR #3450 changes `switch-contractor` to send `amount` = `metadata.platform_fee_cents` instead of refunding the whole charge, and changes `contractor-faq.html:320` to the 6.4 wording. Until it is live, the function would refund the whole charge on a card payment, which is another reason not to call it for a hand refund. The card fee uses the `create-payment-intent` formula, 2.9% + $0.30.
 
 Here the fee is $175.00, the card charge is $180.54, and the card fee is $5.54. These are the reviewer's example figures, not a real payment; read the real fee from the payment (`metadata.platform_fee_cents`; `metadata.card_fee_cents` shows the card fee on a card payment).
 
@@ -238,7 +234,7 @@ Do both:
 
 ## Not covered by this runbook (open points, with owners)
 
-- **Code and FAQ follow-up for the "Fee only" ruling.** The amount is ruled (Dustin, #3403, comment 6664114820). The `switch-contractor` change (refund `metadata.platform_fee_cents`; the contractor email names the amounts) and `contractor-faq.html:320` are in PR #3450, not merged or deployed at this head. Owner: Marty.
+- **Code and FAQ follow-up for the "Fee only" ruling.** The amount is ruled (Dustin, #3403, comment 6664114820). The `switch-contractor` change (refund `metadata.platform_fee_cents`; the contractor email names the amounts) and `contractor-faq.html:320` are in PR #3450. Until it is merged and deployed, the function and the FAQ line do not match the ruling. Owner: Marty.
 - **Fee falling due again.** 6.4 says that if the contractor begins work before the homeowner signs with a replacement, the fee is due again and Otter Quotes may charge it to the payment method on file. Nothing watches for this after a hand refund and no step charges it. A new charge is a money decision (Tier C) that needs its own reviewed path. Who watches, and for how long, is not assigned: Dustin to decide.
 - **Deposit return.** The Agreement obliges the contractor to return any deposit once the homeowner signs with a replacement. Nothing records or enforces it. Whether Otter Quotes follows up is not in the Agreement; Dustin's call.
 - **"Begun work".** 6.4 does not define it, and does not say what a contractor's silence means. Step 3 records the facts and holds; each such case is a Tier C decision for Dustin until a D-number settles it.
