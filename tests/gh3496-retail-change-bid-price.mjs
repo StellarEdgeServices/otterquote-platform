@@ -54,11 +54,13 @@ function serve() {
 
 // A chainable stand-in for the Supabase client. Tables return fixed rows; everything else resolves empty.
 const STUB_SDK = `
+window.__writes = [];
 window.supabase = { createClient: function () {
   var ROWS = window.__ROWS;
   function builder(table) {
     var b = {};
-    ['select','eq','neq','in','is','not','order','limit','gt','gte','lt','lte','ilike','like','or','filter','match','range','contains','update','insert','upsert','delete'].forEach(function (m) { b[m] = function () { return b; }; });
+    ['select','eq','neq','in','is','not','order','limit','gt','gte','lt','lte','ilike','like','or','filter','match','range','contains'].forEach(function (m) { b[m] = function () { return b; }; });
+    ['update','insert','upsert','delete'].forEach(function (m) { b[m] = function (payload) { window.__writes.push({ table: table, method: m, payload: payload }); return b; }; });
     var one = function () { var r = ROWS[table]; return Promise.resolve({ data: r === undefined ? null : r, error: r === undefined ? { message: 'none' } : null }); };
     b.single = one; b.maybeSingle = one;
     b.then = function (res, rej) { return Promise.resolve({ data: [], error: null }).then(res, rej); };
@@ -83,21 +85,21 @@ window.supabase = { createClient: function () {
 } };
 `;
 
-function rows(renew) {
+function rows(renew, multi) {
   const future = new Date(Date.now() + 200 * 864e5).toISOString().slice(0, 10);
   return {
-    bidder_claim_summary: { id: 'claim-1', trades: ['roofing'], job_type: 'retail', funding_type: 'cash', damage_type: 'hail', location_city: 'Zionsville', location_zip: '46077', selected_contractor_id: null },
+    bidder_claim_summary: { id: 'claim-1', trades: multi ? ['roofing', 'siding'] : ['roofing'], siding_bid_released_at: multi ? '2026-01-02T00:00:00Z' : null, job_type: 'retail', funding_type: 'cash', damage_type: 'hail', location_city: 'Zionsville', location_zip: '46077', selected_contractor_id: null },
     contractors: { id: 'contractor-1', user_id: 'user-1', status: 'active', attestation_accepted_at: '2026-01-01T00:00:00Z', coi_file_url: 'coi.pdf', coi_expires_at: future, company_name: 'Test Roofing', phone: '8445550100', trades: ['roofing'], service_area_description: 'Indiana', cpa_version: CPA_VERSION, needs_cpa_reattestation: false },
     quotes: { id: 'quote-1', claim_id: 'claim-1', contractor_id: 'contractor-1', status: 'submitted', bid_status: renew ? 'expired' : 'active', total_price: SAVED_PRICE, scope_summary: '{}', value_adds: { bid_type_option: 'other' }, notes: '', auto_renew: true }
   };
 }
 
-async function run(browser, base, label, renew) {
+async function run(browser, base, label, renew, multi) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
   const dialogs = [];
   page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
-  await page.addInitScript((r) => { window.__ROWS = r; }, rows(renew));
+  await page.addInitScript((r) => { window.__ROWS = r; }, rows(renew, multi));
   await page.route('**/*', (route) => {
     const u = new URL(route.request().url());
     if (u.hostname === 'cdn.jsdelivr.net' && u.pathname.includes('/@supabase/supabase-js@')) return route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_SDK });
@@ -117,12 +119,31 @@ async function run(browser, base, label, renew) {
   });
   console.log('     measured (' + label + '): ' + JSON.stringify(m));
   ok(m.btn === expectBtn, label + ': page is in ' + (renew ? 'Renew' : 'Change Bid') + ' mode (submit button reads "' + expectBtn + '")');
-  ok(m.retailVisible, label + ': the retail price field is visible');
-  ok(m.hidden === String(SAVED_PRICE), label + ': hidden #totalPrice holds the saved price (' + m.hidden + ')');
-  ok(m.retail === String(SAVED_PRICE), label + ': the visible retail price field holds the saved price (' + m.retail + ')');
+  if (!multi) ok(m.retailVisible, label + ': the retail price field is visible');
+  if (multi) {
+    // D-162 wizard claim: the wizard has no roofing price field, so no pre-fill; a submit must stop and write nothing.
+    ok(m.retail === '', label + ': the retail price field is NOT pre-filled for a wizard claim (' + JSON.stringify(m.retail) + ')');
+    // Clear every other gate by script (as a determined submit would) so the only thing left between a submit and a write is the price check.
+    await page.evaluate(() => {
+      document.querySelectorAll('#bidForm [required]').forEach((el) => el.removeAttribute('required'));
+      window.validateValueAddDeclarations = () => true;
+      window.checkBidCanSubmitGate = async () => ({ can_submit: true });
+    });
+  } else {
+    ok(m.hidden === String(SAVED_PRICE), label + ': hidden #totalPrice holds the saved price (' + m.hidden + ')');
+    ok(m.retail === String(SAVED_PRICE), label + ': the visible retail price field holds the saved price (' + m.retail + ')');
+  }
   await page.evaluate(() => document.getElementById('bidForm').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })));
-  await page.waitForTimeout(800);
-  ok(!dialogs.includes(NEEDLE), label + ': submit is not stopped at "' + NEEDLE + '" (alerts seen: ' + JSON.stringify(dialogs) + ')');
+  await page.waitForTimeout(1200);
+  const allWrites = await page.evaluate(() => window.__writes);
+  if (process.env.DBG) console.log('   [writes]', JSON.stringify(allWrites).slice(0, 400));
+  const writes = allWrites.filter((w) => w.table === 'quotes');
+  if (multi) {
+    ok(writes.length === 0, label + ': submit writes nothing to quotes (writes: ' + JSON.stringify(writes).slice(0, 200) + ')');
+    ok(dialogs.includes(NEEDLE), label + ': submit still stops at "' + NEEDLE + '", as on main (alerts seen: ' + JSON.stringify(dialogs) + ')');
+  } else {
+    ok(!dialogs.includes(NEEDLE), label + ': submit is not stopped at "' + NEEDLE + '" (alerts seen: ' + JSON.stringify(dialogs) + ')');
+  }
   await context.close();
 }
 
@@ -132,6 +153,8 @@ const browser = await chromium.launch();
 try {
   await run(browser, base, 'retail Change Bid', false);
   await run(browser, base, 'retail Renew', true);
+  await run(browser, base, 'retail roofing + siding Change Bid (wizard)', false, true);
+  await run(browser, base, 'retail roofing + siding Renew (wizard)', true, true);
 } finally {
   await browser.close();
   server.close();

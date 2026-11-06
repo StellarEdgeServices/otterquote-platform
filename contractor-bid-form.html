@@ -3718,9 +3718,15 @@
       const _restoreRoofing = _restoreTrades.includes('roofing');
       const _restoreSiding = _restoreRetail && _restoreTrades.includes('siding');
       const _restoreGutterOnly = _restoreTrades.includes('gutters') && !_restoreRoofing && !_restoreTrades.includes('siding');
-      if (_restoreRetail && !_restoreGutterOnly && !_restoreSiding && quote.total_price) {
+      // A claim that will enter the D-162 wizard (initWizard's rule: 2+ queued trades after the D-165 siding gate) keeps
+      // today's behaviour: the wizard has no roofing price field, so a pre-fill would let a submit write a total that
+      // disagrees with the review step. The wizard's grand total is a separate issue (#3495).
+      const _restoreQueued = ['roofing', 'gutters', 'siding'].filter(t => _restoreTrades.includes(t))
+        .filter(t => t !== 'siding' || currentClaim?.siding_bid_released_at != null);
+      const _restoreWizard = _restoreRetail && _restoreQueued.length >= 2;
+      if (!_restoreWizard && _restoreRetail && !_restoreGutterOnly && !_restoreSiding && quote.total_price) {
         setVal('retailBidPrice', quote.total_price);
-      } else if (_restoreRetail && _restoreSiding && _restoreRoofing && quote.total_price) {
+      } else if (!_restoreWizard && _restoreRetail && _restoreSiding && _restoreRoofing && quote.total_price) {
         setVal('retailBidPrice', quote.total_price);
       }
 
