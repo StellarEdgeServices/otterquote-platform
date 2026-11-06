@@ -43,4 +43,4 @@ A `contractor` settlement sends nothing: the function skips contractor orders, a
 An accrued fee joins the normal monthly batch (`create_monthly_fee_batch`, $25 minimum, admin approval, `mark-payout-paid`). Nothing else to do here.
 
 ## Audit
-Each settlement appends a line to `hover_orders.admin_notes` (who, when, your note).
+Each settlement appends a line to `hover_orders.admin_notes` (who, when, your note). The page can edit that column, and the account that placed the order can read its own row through the API, this column included. So write facts only in the note: no partner name, no other person's name or email, no suspicion about anyone. The money record is the row in `partner_fee_events`.
