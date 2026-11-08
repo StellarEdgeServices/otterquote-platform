@@ -2357,7 +2357,7 @@ export default function GetStartedPage() {
               <div className="benefit-icon">💰</div>
               <div className="benefit-text">
                 <h4>Contractors pay to earn your business</h4>
-                <p>No fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when they complete a job.</p>
+                <p>No fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when a job is completed through the platform; conditions apply.</p>
               </div>
             </div>
           </div>

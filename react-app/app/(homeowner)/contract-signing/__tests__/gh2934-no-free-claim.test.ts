@@ -19,7 +19,7 @@ const copyTs = readFileSync(resolve(here, '..', 'copy.ts'), 'utf8');
 
 const TITLE = 'No fee to use Otter Quotes';
 const BODY =
-  'There is no fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when they complete a job. The price shown in this contract is the price you pay your contractor — other than the report fee above, there are no separate fees from Otter Quotes.';
+  'There is no fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when a job is completed through the platform; conditions apply. The price shown in this contract is the price you pay your contractor — other than the report fee above, there are no separate fees from Otter Quotes.';
 const BANNED = ['100% free for Homeowners', 'No Cost to You'];
 
 describe('gh-2934 contract-signing callout carries no "free" claim beside the report fee', () => {
