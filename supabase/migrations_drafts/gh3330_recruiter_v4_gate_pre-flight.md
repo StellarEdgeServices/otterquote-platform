@@ -11,7 +11,7 @@ Issue #3330. Authority: D-417, registered at #3330 comment 6667313714: "A recrui
 Its annotation of 2026-11-05 (comment 6668603250): the v4 requirement applies to partners who signed v3; no $50 accrues to any partner until they accept Partner Agreement v4.
 Dustin's words, as recorded on #3330: "No." (2026-11-02 13:17 ET, comment 6584786600) and "Yes, v3 signers must accept v4 (Recommended)" (2026-11-05, comment 6668571465).
 The record does not attribute "withheld rather than dropped" to him: it came from Marty's proposal 6582010408 and Ben's answer 6583394572, withdrawn at 6584765173. The code writes no bonus for a recruiter without v4 and logs it.
-Whether a recruiter who accepts v4 later is paid for a referral that completed before they accepted is open on #3330 (Marty's Q 6673399375, item 1); the code pays nothing for it.
+Decided: a recruiter who accepts v4 later is NOT paid the $50 for recruits whose referrals completed before that acceptance (D-417; Dustin's "Forfeit (Recommended)", #3330 comment 6726205835). The code already does this: it pays nothing for such a referral and nothing re-fires it.
 Money: Tier 3B. Needs REVIEW + LEGAL-READ + R-177 pair; R-097 notice. Exposure at drafting: $0 ever accrued, one recruited agent (test).
 
 ## Order
@@ -49,11 +49,11 @@ Proof check E runs this exact text. BEFORE the gate it returns `4|200` (four of 
 
 ## Post-apply checks
 ```sql
--- expect 7b9bc6957cb15534514f1e1ab9e32bbf, true, {search_path=public, pg_temp}
+-- expect 50fa6642f7ca542b3b96248a01df8e4d, true, {search_path=public, pg_temp}
 SELECT md5(prosrc), prosecdef, proconfig FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure;
 ```
 
-## Query W: bonuses the gate withheld (for support, for the release decision, and for a rollback review)
+## Query W: bonuses the gate withheld (for support and for a rollback review; forfeited, not a payment queue)
 Fixed after REVIEW FAIL 6584291693 blocker 1. The first version required `status = 'job_completed' AND commission_amount = 200`, which dropped a withheld bonus once
 `approve-payout` moved the referral to `commission_paid`, and never listed a referral whose referrer is a home_inspector (no `commission_amount`). W now keys on what the
 trigger leaves behind for every completed referral: `job_value` set (the trigger writes it; `reverse_referral_commission()` nulls it), a completed status, no bonus
@@ -77,7 +77,7 @@ SELECT r.id AS referral, r.created_at, r.job_value, r.status, COALESCE(r.is_test
 ```
 Proof check H runs this exact text (the runner extracts the block above) and returns exactly the five withheld referrals in AFTER: an open $200, a $200 already moved to `commission_paid`,
 and a home_inspector referrer, besides the never-accepted and customer recruiters; and none of the paid, inspector-recruiter and v4-gated-customer cases.
-Rows whose `recruiter_v4_at` is now NOT NULL are the ones whose recruiter has since accepted v4. The code pays them nothing, and whether they are paid is open on #3330 (Marty's Q 6673399375, item 1). **Limits:** W cannot tell a bonus this gate withheld from a referral completed before the gate
+Rows whose `recruiter_v4_at` is now NOT NULL are the ones whose recruiter has since accepted v4. They are forfeited under the decided rule (D-417; #3330 comment 6726205835): the code pays them nothing and they are not to be paid. W is a support record, not a payment queue. **Limits:** W cannot tell a bonus this gate withheld from a referral completed before the gate
 shipped with a zero bonus for some other reason. Run it once before the apply and keep the referral ids; rows that appear afterwards are the gate's. At drafting the production count of
 ever-accrued bonuses is 0 and the only recruited agent is a test row, so the expected pre-apply result is 0 rows.
 
@@ -86,11 +86,10 @@ The trigger fires on `completion_date` NULL to NOT NULL, so someone who clears a
 re-evaluate the gate on that second run because `commission_amount` is never set for it. **The proof shows it does not**, and the reason is a different early return:
 - **Non-inspector referrer:** `commission_amount > 0` after the first firing, so the function returns at its first idempotency check.
 - **Home_inspector referrer:** `commission_amount` stays NULL, so that check does not trip, but the first completion leaves the referral at `status = 'job_completed'` and the gh-2479 status check
-  (`NOT IN ('claim_submitted','bid_received','contract_signed')`) returns before the recruit branch. A withheld $50 is not released by a re-fire even after the recruiter accepts v4. (Proof checks O and P: recruiter has accepted v4, claim re-fired, outcome `0` accrued in both cases.)
+  (`NOT IN ('claim_submitted','bid_received','contract_signed')`) returns before the recruit branch. A forfeited $50 is not released by a re-fire even after the recruiter accepts v4. (Proof checks O and P: recruiter has accepted v4, claim re-fired, outcome `0` accrued in both cases.)
 - The only way a re-fire could pay is if someone first moves the referral's `status` back to an attributed status by hand. `reverse_referral_commission()` does not do that (it acts only when `commission_amount > 0`).
 
-**Matches Ben's answer 6667102434?** It says "the release path requires Partner Agreement v4" and that a recruiter without v4 does not get the $50 released. It names no release mechanism. Under this code nobody without v4 is paid, and no automatic path releases a withheld bonus
-after the recruiter accepts v4. Whether anyone pays those rows is open on #3330 (Marty's Q 6673399375, item 1). No code change was needed; the function body and its md5 are unchanged by this commit.
+**Matches Ben's answer 6667102434?** It says "the release path requires Partner Agreement v4" and that a recruiter without v4 does not get the $50 released. It names no release mechanism. Under this code nobody without v4 is paid, and no path releases a bonus after the recruiter accepts v4; that is the decided forfeit rule (D-417; Dustin's "Forfeit (Recommended)", #3330 comment 6726205835). No executable SQL changed for the forfeit wording. The function body's md5 changed only because its comment block was reworded (the new value is in the post-apply check above).
 
 ## What the apply writes
 Nothing but the function body. No referral, payout or agent row is touched; the gate acts only when a claim is completed afterwards.
@@ -104,20 +103,16 @@ Nothing but the function body. No referral, payout or agent row is touched; the 
 
 No cutoff date and no timing test (the ruling names none): the recruiter must hold v4 at the moment the referral completes.
 
-**Timing gap, for the open release question (REVIEW 6584291693, last paragraph).** The gate reads v4 at completion, but v4 A4.3 and v3 Section 4 fire when the job is "approved for payout", and approval auto-runs about 7 days later
-(`auto_approve_at`). A recruiter who accepts v4 inside that window qualifies on the agreement's text but is withheld. Nothing here changes it; it belongs to the same open question (Marty's Q 6673399375, item 1).
+**Timing gap (REVIEW 6584291693, last paragraph).** The gate reads v4 at completion, but v4 A4.3 and v3 Section 4 fire when the job is "approved for payout", and approval auto-runs about 7 days later
+(`auto_approve_at`). A recruiter who accepts v4 inside that window qualifies on the agreement's text but is withheld. Nothing here changes it; under the forfeit rule that recruiter forfeits the $50 for that referral, because the rule keys on v4 held when the referral completed, not on the later approval.
 
 **Contract note from LEGAL-READ 6584296349 (not code).** D-417 and its annotation (comments 6667313714, 6668603250) are the authority for the gate; they answer the v3 Section 4.2 / Section 17 re-acknowledgment question the reader raised only as far as they say: no $50 accrues to any partner until they accept v4. `faq.html` and `partner-adjusters.html:1005`
 still state the $50 without the v4 condition; this PR changes no public copy. Whether the dashboard notice and public copy change before the apply is open on #3330 (Marty's Q 6673399375, item 2).
 
-## Open: release path (NOT built, open on #3330)
-The code writes nothing for a recruiter without v4: the referral keeps `recruit_commission_amount = 0`, so query W finds it. D-417 sets a condition on any release (it requires v4) and Ben's answer 6667102434 names no mechanism.
-**The code pays nothing, and whether a recruiter who accepts v4 later is paid for those referrals is open on #3330 (Marty's Q 6673399375, item 1).** No release path exists and none was invented. A recruiter who accepts v4 later is NOT paid by this code for referrals completed while they lacked it; the
-trigger fires only on `completion_date` NULL to NOT NULL and returns early once `commission_amount > 0`, so nothing re-runs it. Proof check F pins this
-(the later acceptance pays only the later referral). If a release is ruled, someone must build or run one of: (a) a `release_withheld_recruit_bonus(recruiter)` SECURITY DEFINER
-function that applies the same accrual to query W's rows, called from `accept_partner_agreement_v4()` (touches the gh3239 function) or by an admin; or (b) a
-manual payout per row. Questions that ruling would answer: does release pay every withheld referral or only those completed after some date; is a release automatic on
-acceptance or an admin action; and should the withhold leave a durable ledger row (a new `payout_approvals` status needs the CHECK widened: ALTER, Tier 3B) rather than only a log line.
+## Forfeit rule (decided; no release path)
+Dustin's "Forfeit (Recommended)" (#3330 comment 6726205835), annotated on D-417 (comment 6727781329): a recruiter who accepts Partner Agreement v4 later is NOT paid the $50 for recruits whose referrals completed before that acceptance. D-417 still requires v4 for the $50 and for any release; under this rule there is no release.
+The code implements it: a referral that completes while the recruiter lacks v4 keeps `recruit_commission_amount = 0` and writes no earnings or payout row, and nothing re-runs it (the trigger fires only on `completion_date` NULL to NOT NULL and returns early once `commission_amount > 0`; for a home_inspector referrer it returns at the gh-2479 status check). A later acceptance pays only referrals that complete afterwards. Proof check F pins this (the later acceptance pays only the later referral). No release function, admin action or manual payout is built or intended.
+Query W stays as a support record of the forfeited referrals; it is not a payment queue. What remains undecided is outside this migration: whether to write a durable ledger row for the forfeit (a new `payout_approvals` status needs the CHECK widened: ALTER, Tier 3B) rather than only a log line, and the public and dashboard copy (see the contract note above).
 
 ## Rollback
 `gh3330_recruiter_v4_gate_rollback.sql`: restores the gh3245 body (md5 `2eba9b9601c731cb20f45ef5a18c742b`); runs only over the gh3330 body or the gh3245 body; writes no data.

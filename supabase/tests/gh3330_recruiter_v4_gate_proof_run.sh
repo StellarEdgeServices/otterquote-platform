@@ -14,7 +14,7 @@ D=supabase/migrations_drafts; AM=supabase/migrations_applied_manually; T=supabas
 RP=supabase/migrations/20260927235229_gh2154_register_partner_rate_limit_fix.sql
 ARC=supabase/migrations/20261015205902_gh2519_quotes_server_set_fee.sql
 FWD=$D/gh3330_recruiter_v4_gate.sql; RB=$D/gh3330_recruiter_v4_gate_rollback.sql
-OLD=2eba9b9601c731cb20f45ef5a18c742b; NEW=7b9bc6957cb15534514f1e1ab9e32bbf
+OLD=2eba9b9601c731cb20f45ef5a18c742b; NEW=50fa6642f7ca542b3b96248a01df8e4d
 DB=gh3330_proof; rc=0
 fail() { echo "EXPECT FAIL: $*"; rc=1; }
 sed -n '318,622p' "$RP" > "$OUT/register_partner_live.sql"
