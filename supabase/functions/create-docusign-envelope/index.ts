@@ -2863,7 +2863,7 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   // gh-1244: bounded wait for BoldSign's async document creation to settle
   // before asking for a signing link -- see waitForBoldSignDocumentReady().
   await waitForBoldSignDocumentReady(envelopeId);
-  const defaultReturnUrl = document_type === "project_confirmation" ? `https://otterquote.com/project-confirmation.html?claim_id=${claim_id}&signed=true` : "https://otterquote.com/contract-signing.html?signed=true";
+  const defaultReturnUrl = "https://otterquote.com/contract-signing.html?signed=true";
   const signingReturnUrl = return_url || defaultReturnUrl;
   // gh-1244: camelCase param names -- see the matching fix + comment in
   // handleContractorSign above.
