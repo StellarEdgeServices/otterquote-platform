@@ -64,9 +64,24 @@ let u;
 u = save({ job_type: 'repair', funding_type: 'cash', policy_type: null }, 'repair', true);
 assert.equal(u.funding_type, 'cash'); assert.equal(u.policy_type, null);
 ok('control: repair on a non-idk claim still writes cash and null policy_type');
-u = save(idkRepair, 'repair', false);
-assert.equal(u.funding_type, 'cash'); assert.equal(u.policy_type, null);
-ok('control: an explicit Repair click by an idk homeowner is still honored');
+// gh-3463: a second click on Repair (preselect flag cleared) must not erase idk
+check('gh-3463: second Repair click on a stored idk keeps policy_type and funding_type', () => {
+  const u2 = save(idkRepair, 'repair', false);
+  assert.ok(!('policy_type' in u2), 'save wrote policy_type=' + u2.policy_type);
+  assert.ok(!('funding_type' in u2), 'save wrote funding_type=' + u2.funding_type);
+});
+// gh-3463: the help modal must not steer an unsure homeowner to RCV (wording awaits Ben/Dustin; deletion only)
+check('gh-3463: help modal has no "unsure -> choose RCV" steering sentence', () => {
+  const modal = between('window.showJobTypeHelp = function() {', 'window.showHelpModal');
+  assert.ok(!/still unsure/i.test(modal), 'modal still says: still unsure');
+  assert.ok(!/choose\s*<strong>Insurance \(RCV\)/i.test(modal), 'modal still steers to RCV');
+  assert.ok(!/most common and can be updated later/i.test(modal));
+  assert.ok(!/most common/i.test(modal), 'modal still has a most-common popularity cue');
+});
+check('gh-3463: help modal still lists all four options and closes its list', () => {
+  const modal = between('window.showJobTypeHelp = function() {', 'window.showHelpModal');
+  for (const k of ['Insurance (RCV)', 'Insurance (ACV)', 'Retail / Cash', 'Repair Only', "'</ul>'"]) assert.ok(modal.includes(k), 'missing ' + k);
+});
 // NEGATIVE CONTROLS: rcv unchanged
 assert.equal(label(rcvClaim), 'Insurance (RCV)');
 ok('control: stored rcv still shows the Insurance (RCV) line');

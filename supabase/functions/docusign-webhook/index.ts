@@ -41,6 +41,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { findCompletedContractSigner, parsePayload } from "./payload-parser.ts";
+import { classifyEnvelope } from "./envelope-kind.ts"; // [D-407 / #3287]
 import {
   counterSignNudgeHtml,
   counterSignNudgeText,
@@ -484,15 +485,27 @@ serve(async (req) => {
       );
     }
 
-    const isContract = claim.docusign_envelope_id === envelopeId;
-    const isColorConfirmation = claim.color_confirmation_envelope_id === envelopeId;
-    const isProjectConfirmation = claim.project_confirmation_envelope_id === envelopeId;
+    // [D-407 / #3287] Project Confirmation and colour envelopes are retired: create-docusign-envelope
+    // answers 410 for them and this function never creates an envelope. Ones minted earlier can still
+    // send events; they are recognised here, recorded for history, and kept out of every contract branch.
+    const envelopeKind = classifyEnvelope(claim, envelopeId);
+    const isContract = envelopeKind === "contract";
+    const isColorConfirmation = envelopeKind === "retired_color_confirmation";
+    const isProjectConfirmation = envelopeKind === "retired_project_confirmation";
 
     console.log(
       `Matched claim ${claim.id} (${
-        isContract ? "contract" : isColorConfirmation ? "color_confirmation" : "project_confirmation"
+        isContract ? "contract" : isColorConfirmation ? "retired color_confirmation (history only)" : isProjectConfirmation ? "retired project_confirmation (history only)" : "unmatched"
       })`
     );
+
+    if (envelopeKind === "unmatched") {
+      // Cannot happen after the .or() lookup above, but never fall into a confirmation branch by default.
+      return new Response(
+        JSON.stringify({ received: true, warning: "Envelope does not match a claim envelope column" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // ========== SIGNER STATUS (D-274 / #631; matcher re-keyed gh-1446) ==========
     // BoldSign's webhook payload DOES carry per-signer status directly

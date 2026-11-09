@@ -463,7 +463,7 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
       if (mode === 'change' || mode === 'renew') {
         const updatePayload = buildQuoteUpdate({
           ...common, renewMode: mode === 'renew',
-          existingRenewalsCount: (existingQuote?.renewals_count as number) ?? 0, now: new Date(),
+          now: new Date(),
           existingBidStatus: (existingQuote?.bid_status as string | null) ?? null,
         });
         // gh-3491: an UPDATE that never answers ends through the catch below (message, form unlocked). Abort the request and stop waiting.
