@@ -93,26 +93,31 @@ const ROOF_FIRST = 14250;
 const ROOF_EDITED = 15800;
 const GUTTER_PRICE = 2400;
 
-function rows() {
+function rows(trades, sidingReleased) {
   const future = new Date(Date.now() + 200 * 864e5).toISOString().slice(0, 10);
   return {
-    bidder_claim_summary: { id: 'claim-1', trades: ['roofing', 'gutters'], siding_bid_released_at: null, job_type: 'retail', funding_type: 'cash', damage_type: 'hail', location_city: 'Zionsville', location_zip: '46077', selected_contractor_id: null, is_test: true },
-    contractors: { id: 'contractor-1', user_id: 'user-1', status: 'active', attestation_accepted_at: '2026-01-01T00:00:00Z', coi_file_url: 'coi.pdf', coi_expires_at: future, company_name: 'Test Roofing', phone: '8445550100', trades: ['roofing', 'gutters'], service_area_description: 'Indiana', cpa_version: CPA_VERSION, needs_cpa_reattestation: false }
+    bidder_claim_summary: { id: 'claim-1', trades, siding_bid_released_at: sidingReleased ? '2026-01-01T00:00:00Z' : null, job_type: 'retail', funding_type: 'cash', damage_type: 'hail', location_city: 'Zionsville', location_zip: '46077', selected_contractor_id: null, is_test: true },
+    contractors: { id: 'contractor-1', user_id: 'user-1', status: 'active', attestation_accepted_at: '2026-01-01T00:00:00Z', coi_file_url: 'coi.pdf', coi_expires_at: future, company_name: 'Test Roofing', phone: '8445550100', trades, service_area_description: 'Indiana', cpa_version: CPA_VERSION, needs_cpa_reattestation: false }
     // no quotes row: this is a NEW bid
   };
 }
 
 const vis = (sel) => `(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return false; let n = e; while (n) { if (getComputedStyle(n).display === 'none') return false; n = n.parentElement; } return e.getBoundingClientRect().width > 0; })()`;
+const fmt = (v) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(v);
 
-const server = await serve();
-const base = 'http://127.0.0.1:' + server.address().port;
-const browser = await chromium.launch();
-try {
+// One NEW wizard bid through the real page.
+//   trades          the claim's trades (roofing first in the wizard queue)
+//   zeroBaseAtSubmit  REVIEW 6742800394 guard: blank the fee base (#totalPrice) right before submit while the roofing
+//                   price is still entered; the submit must refuse with the price alert and write no quotes row.
+async function scenario(browser, base, { trades, zeroBaseAtSubmit = false }) {
+  const name = trades.join(' + ') + (zeroBaseAtSubmit ? ' (fee base zeroed at submit)' : '');
+  console.log('--- ' + name);
+  const hasSiding = trades.includes('siding');
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
   const dialogs = [];
   page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
-  await page.addInitScript((r) => { window.__ROWS = r; try { localStorage.clear(); } catch (e) {} }, rows());
+  await page.addInitScript((r) => { window.__ROWS = r; try { localStorage.clear(); } catch (e) {} }, rows(trades, hasSiding));
   await page.route('**/*', (route) => {
     const u = new URL(route.request().url());
     if (u.hostname === 'cdn.jsdelivr.net' && u.pathname.includes('/@supabase/supabase-js@')) return route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_SDK });
@@ -124,18 +129,16 @@ try {
   await page.waitForFunction(() => { const c = document.getElementById('wizardStep1Card'); return c && getComputedStyle(c).display !== 'none'; }, null, { timeout: 15000 }).catch(() => {});
   await page.waitForTimeout(800);
 
-  const step1 = await page.evaluate(vis('#wizardStep1Card'));
-  ok(step1, 'new retail roofing + gutters bid opens the D-162 wizard at step 1');
+  ok(await page.evaluate(vis('#wizardStep1Card')), name + ': new retail bid opens the D-162 wizard at step 1');
 
   // Step 1 -> step 2 (roofing)
   await page.click('#wizardStep1Next');
   await page.waitForTimeout(300);
   const label = await page.evaluate(() => document.getElementById('wizardTradeLabel')?.textContent || '');
-  ok(label === 'ROOFING', 'wizard step 2 is on the roofing trade (label ' + JSON.stringify(label) + ')');
+  ok(label === 'ROOFING', name + ': wizard step 2 is on the roofing trade (label ' + JSON.stringify(label) + ')');
 
   // The acceptance test: the roofing price field is visible and can be typed into and edited.
-  const priceVisible = await page.evaluate(vis('#retailBidPrice'));
-  ok(priceVisible, 'roofing step: the roofing price field (#retailBidPrice) is visible');
+  ok(await page.evaluate(vis('#retailBidPrice')), name + ': roofing step: the roofing price field (#retailBidPrice) is visible');
   let typed = false, edited = false;
   try {
     await page.fill('#retailBidPrice', String(ROOF_FIRST), { timeout: 2000 });
@@ -143,10 +146,10 @@ try {
     await page.fill('#retailBidPrice', String(ROOF_EDITED), { timeout: 2000 });
     edited = (await page.inputValue('#retailBidPrice')) === String(ROOF_EDITED);
   } catch (e) { console.log('     fill failed: ' + e.message.split('\n')[0]); }
-  ok(typed, 'roofing step: the contractor can type a roofing price');
-  ok(edited, 'roofing step: the contractor can edit the roofing price');
+  ok(typed, name + ': roofing step: the contractor can type a roofing price');
+  ok(edited, name + ': roofing step: the contractor can edit the roofing price');
   const shownBid = await page.evaluate(() => document.getElementById('displayBid').textContent);
-  ok(edited && shownBid === '$15,800.00', 'fee calculator shows the edited roofing price as the bid (' + shownBid + ')');
+  ok(edited && shownBid === '$15,800.00', name + ': fee calculator shows the edited roofing price as the bid (' + shownBid + ')');
 
   // Other roofing-step required fields, through the UI.
   const fillIf = async (sel, v) => { if (await page.evaluate(vis(sel))) await page.fill(sel, v); };
@@ -158,40 +161,68 @@ try {
   await fillIf('#deckingPricePerSheet', '85');
   await fillIf('#fullRedeckPrice', '4200');
 
-  // Step 2 roofing -> gutters
-  await page.evaluate(() => wizardNext());
-  await page.waitForTimeout(300);
-  const label2 = await page.evaluate(() => document.getElementById('wizardTradeLabel')?.textContent || '');
-  ok(label2 === 'GUTTERS', 'wizard moves to the gutters trade (label ' + JSON.stringify(label2) + ')');
-  ok(!(await page.evaluate(vis('#retailBidPrice'))), 'gutters step: the roofing price field is not shown');
-  await fillIf('#gutter6InchPrice', String(GUTTER_PRICE));
+  // The remaining trades, in wizard order, until step 3.
+  const seen = [];
+  for (let i = 0; i < 4; i++) {
+    await page.evaluate(() => wizardNext());
+    await page.waitForTimeout(300);
+    const onStep3 = await page.evaluate(() => wizardStep === 3);
+    if (onStep3) break;
+    const l = await page.evaluate(() => document.getElementById('wizardTradeLabel')?.textContent || '');
+    seen.push(l);
+    ok(!(await page.evaluate(vis('#retailBidPrice'))), name + ': ' + l.toLowerCase() + ' step: the roofing price field is not shown');
+    if (l === 'GUTTERS') await fillIf('#gutter6InchPrice', String(GUTTER_PRICE));
+    if (l === 'SIDING') { await fillIf('#sidingInstallPerSquare', '300'); await fillIf('#sidingTrimPrice', '1000'); }
+  }
+  const expectSeen = trades.filter((t) => t !== 'roofing').map((t) => t.toUpperCase());
+  ok(JSON.stringify(seen.slice().sort()) === JSON.stringify(expectSeen.slice().sort()), name + ': wizard visits the other trades ' + JSON.stringify(seen));
 
-  // gutters -> step 3
-  await page.evaluate(() => wizardNext());
-  await page.waitForTimeout(300);
   const summary = await page.evaluate(() => document.getElementById('wizardTradeSummaryRows')?.textContent.replace(/\s+/g, ' ').trim());
   console.log('     step-3 summary: ' + summary);
-  ok(/Roofing\s*\$15,800\.00/.test(summary || ''), 'step 3 summary carries the edited roofing price');
+  ok(/Roofing\s*\$15,800\.00/.test(summary || ''), name + ': step 3 summary carries the edited roofing price');
 
+  // Leaving the siding step must not have clobbered the roofing fee base (REVIEW 6742800394 finding 1).
   const shownFee = await page.evaluate(() => document.getElementById('totalFeeAmount').textContent);
-  console.log('     fee shown at submit: ' + shownFee);
+  const shownBid3 = await page.evaluate(() => document.getElementById('displayBid').textContent);
+  console.log('     bid / fee shown at submit: ' + shownBid3 + ' / ' + shownFee);
+  if (!zeroBaseAtSubmit) {
+    ok(shownBid3 === '$15,800.00' && shownFee === '$790.00', name + ': fee box at step 3 still shows the roofing bid and its fee (' + shownBid3 + ' / ' + shownFee + ')');
+  }
 
-  await page.evaluate(() => {
+  await page.evaluate((zero) => {
     document.querySelectorAll('#bidForm [required]').forEach((el) => el.removeAttribute('required'));
     window.validateValueAddDeclarations = () => true;
     window.checkBidCanSubmitGate = async () => ({ can_submit: true });
-  });
+    if (zero) { document.getElementById('totalPrice').value = ''; updateFeeCalculator(); }
+  }, zeroBaseAtSubmit);
   await page.evaluate(() => document.getElementById('bidForm').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })));
   await page.waitForTimeout(1500);
   const allWrites = await page.evaluate(() => window.__writes);
   if (process.env.DBG) console.log('   [writes]', JSON.stringify(allWrites).slice(0, 600));
   const q = allWrites.filter((w) => w.table === 'quotes' && (w.method === 'insert' || w.method === 'upsert'));
   const row = q.length ? (Array.isArray(q[0].payload) ? q[0].payload[0] : q[0].payload) : null;
-  ok(!dialogs.includes(NEEDLE), 'submit is not stopped at "' + NEEDLE + '" (alerts seen: ' + JSON.stringify(dialogs) + ')');
-  ok(!!row, 'submit writes a new quotes row (' + (row ? 'total_price=' + row.total_price + ', fee_amount=' + row.fee_amount : 'none') + ')');
-  const fmt = (v) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(v);
-  ok(!!row && fmt(row.fee_amount) === shownFee, 'stored fee_amount equals the fee shown (' + (row ? fmt(row.fee_amount) : 'n/a') + ' vs ' + shownFee + ')');
+  const rowTxt = row ? 'total_price=' + row.total_price + ', fee_amount=' + row.fee_amount : 'none';
+  if (zeroBaseAtSubmit) {
+    ok(dialogs.includes(NEEDLE), name + ': a zero total is refused with "' + NEEDLE + '" (alerts seen: ' + JSON.stringify(dialogs) + ')');
+    ok(!row, name + ': no quotes row is written for a zero total (' + rowTxt + ')');
+  } else {
+    ok(!dialogs.includes(NEEDLE), name + ': submit is not stopped at "' + NEEDLE + '" (alerts seen: ' + JSON.stringify(dialogs) + ')');
+    ok(!!row, name + ': submit writes a new quotes row (' + rowTxt + ')');
+    ok(!!row && row.total_price > 0 && row.fee_amount > 0, name + ': stored total_price and fee_amount are nonzero (' + rowTxt + ')');
+    ok(!!row && row.total_price === ROOF_EDITED, name + ': stored total_price is the roofing price, today\'s fee base (' + rowTxt + ')');
+    ok(!!row && fmt(row.fee_amount) === shownFee, name + ': stored fee_amount equals the fee shown (' + (row ? fmt(row.fee_amount) : 'n/a') + ' vs ' + shownFee + ')');
+  }
   await context.close();
+}
+
+const server = await serve();
+const base = 'http://127.0.0.1:' + server.address().port;
+const browser = await chromium.launch();
+try {
+  await scenario(browser, base, { trades: ['roofing', 'gutters'] });
+  await scenario(browser, base, { trades: ['roofing', 'siding'] });
+  await scenario(browser, base, { trades: ['roofing', 'gutters', 'siding'] });
+  await scenario(browser, base, { trades: ['roofing', 'gutters'], zeroBaseAtSubmit: true });
 } finally {
   await browser.close();
   server.close();

@@ -2444,15 +2444,17 @@
       const trim    = parseFloat(document.getElementById('sidingTrimPrice')?.value) || 0;
       const wrap    = parseFloat(document.getElementById('sidingWindowWrapPrice')?.value) || 0;
       const demo    = parseFloat(document.getElementById('sidingTeardownPrice')?.value) || 0;
-      if (sidingWallSquares > 0) {
-        const total = (install * sidingWallSquares) + trim + wrap + demo;
-        document.getElementById('totalPrice').value = total > 0 ? total : '';
-      } else {
-        // Wall squares not yet loaded — use raw input sum as placeholder (warn in note)
-        const total = install + trim + wrap + demo;
+      // Wall squares not yet loaded — use raw input sum as placeholder (warn in note)
+      const total = (sidingWallSquares > 0)
+        ? (install * sidingWallSquares) + trim + wrap + demo
+        : install + trim + wrap + demo;
+      // gh-3569 (REVIEW 6742800394): in a wizard bid that includes roofing, #totalPrice is the
+      // roofing-derived fee base; the siding step must not overwrite it (it would zero the fee).
+      if (!(wizardMode && wizardTradeQueue.includes('roofing'))) {
         document.getElementById('totalPrice').value = total > 0 ? total : '';
       }
       updateFeeCalculator();
+      return total;
     }
 
     // Fee calculator configuration — flat 5% only (Session 216 + 226 cleanup)
@@ -2622,7 +2624,7 @@
       });
 
       // For roofing: D-163 — show valueAddsSection + secondLayerContingencySection
-      // gh-3569: show retailPriceSection too. It holds #retailBidPrice, the only roofing
+      // gh-3569: show retailPriceSection too — it holds #retailBidPrice, the only roofing
       // price input on this page: it syncs #totalPrice (the fee base), captureCurrentTradePrice()
       // reads it for the roofing row, and the retail submit check requires it > 0. Hiding it
       // left a new roofing wizard bid with no way to enter a price, so submit always stopped.
@@ -3166,8 +3168,8 @@
              || parseFloat(document.getElementById('gutter5InchPrice')?.value)
              || 0;
       } else if (trade === 'siding') {
-        syncSidingTotal();
-        price = parseFloat(document.getElementById('totalPrice')?.value) || 0;
+        const sidingTotal = syncSidingTotal(); // gh-3569: undefined when siding is not active
+        price = (sidingTotal !== undefined) ? sidingTotal : (parseFloat(document.getElementById('totalPrice')?.value) || 0);
       }
       wizardTradePrices[trade] = price > 0 ? price : null;
     }
@@ -5153,7 +5155,9 @@
       } else if (isRetailJob) {
         // Retail with roofing (or roofing+siding): validate combined total price
         const retailPrice = parseFloat(document.getElementById('retailBidPrice')?.value) || 0;
-        if (retailPrice <= 0) {
+        // gh-3569 (REVIEW 6742800394): the stored total and fee come from #totalPrice, so refuse
+        // a total <= 0 too: no quotes row with total_price=0 / fee_amount=0 can be written.
+        if (retailPrice <= 0 || totalPriceVal <= 0) {
           alert('Please enter your total bid price.');
           return;
         }
