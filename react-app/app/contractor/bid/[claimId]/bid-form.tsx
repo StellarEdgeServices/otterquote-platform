@@ -386,6 +386,9 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
   // the next submit first looks for a bid already filed for this claim before it inserts anything (cleared only on success or
   // the Change Bid switch, REVIEW 6743281622).
   const unconfirmedRef = useRef<string[]>([]);
+  // Id of the filed bid whose fee_acceptances write and confirmation email this form has already made, so a retry that finds
+  // that same bid ends on the success screen without writing them twice (REVIEW 6744510442).
+  const postWritesDoneRef = useRef<string | null>(null);
   const submitInFlight = useRef(false); // gh-3488: set synchronously, so nothing can file a second bid while one is running
   const disclosure = computeDisclosureFee(bidAmount, feePct);
 
@@ -544,7 +547,7 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
           const sameBid = bidTermsFingerprint(filed) === bidTermsFingerprint(insertPayload)
             && (!filed.idempotency_key || filed.idempotency_key === idemKey);
           if (!sameBid) {
-            idemRef.current = null; unconfirmedRef.current = [];
+            idemRef.current = null; unconfirmedRef.current = []; postWritesDoneRef.current = null;
             setFiledQuote(filed);
             setForm(initialState(claim, flags, claimRcv, filed));
             setErrorMsg(BID_COPY.bidAlreadyFiled);
@@ -554,7 +557,8 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
           inserted = filed; // the earlier attempt filed exactly this bid: finish it (acceptance, email, success)
         }
         const bidId = (inserted as { id: string }).id;
-        // D-215 Layer 1 fee_acceptances + Layer 2 send-bid-confirmation (non-fatal; quote committed).
+        // D-215 Layer 1 fee_acceptances + Layer 2 send-bid-confirmation (non-fatal; quote committed). Not twice for the same filed bid.
+        if (postWritesDoneRef.current !== bidId) {
         try {
           const ip = await getContractorIP();
           // gh-3409: .select('id') and NEVER .single() (a diverted row returns zero rows; .single() would make PostgREST roll the quarantine row back).
@@ -568,13 +572,18 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
           if (feeOutcome !== 'recorded') {
             const feeMsg = feeOutcome === 'failed' ? '[D-215] Fee acceptance record failed (non-fatal, quote committed)' : '[D-215] Fee acceptance diverted to quarantine';
             console.error(feeMsg, feeRes.error?.message);
-            Sentry.captureMessage(feeMsg, { level: feeOutcome === 'failed' ? 'error' : 'warning', extra: { bid_id: bidId, claim_id: String(claim.id), contractor_id: contractor.id, code: feeRes.error?.code, message: feeRes.error?.message } });
+            try { // gh-3498 (6744510442): Sentry reporting is best-effort and must not escape into the submit's error path
+              Sentry.captureMessage(feeMsg, { level: feeOutcome === 'failed' ? 'error' : 'warning', extra: { bid_id: bidId, claim_id: String(claim.id), contractor_id: contractor.id, code: feeRes.error?.code, message: feeRes.error?.message } });
+            } catch (se) { console.warn('[gh-3498] Sentry report failed:', se); }
           }
         } catch (e) {
           // gh-3498: a timed-out (or otherwise thrown) acceptance write must leave a trace, as the HTML form does: the quote is filed, the D-215 row may not be.
           console.error('[D-215] fee acceptance failed (non-fatal):', e);
-          Sentry.captureException(e, { extra: { bid_id: bidId, claim_id: String(claim.id), contractor_id: contractor.id } });
+          try { Sentry.captureException(e, { extra: { bid_id: bidId, claim_id: String(claim.id), contractor_id: contractor.id } }); }
+          catch (se) { console.warn('[gh-3498] Sentry report failed:', se); }
         }
+        // The acceptance write has been made or attempted (a timed-out one may still have landed): never again for this bid.
+        postWritesDoneRef.current = bidId;
         try {
           const tradeLabel = wizardMode && wizard.queue.length > 0 ? wizard.queue.join(', ') : (claimTrades.length ? claimTrades.join(', ') : 'roofing');
           await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => supabase.functions.invoke('send-bid-confirmation', {
@@ -582,13 +591,14 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
             signal,
           }));
         } catch (e) { console.error('[D-215 Layer 2] send-bid-confirmation failed (non-fatal):', e); }
+        }
         track('bid_submit', { trade_types: claimTrades, job_type: flags.isRetailJob ? 'retail' : 'insurance', bid_amount: bidAmount });
       }
 
       // Clear wizard localStorage state on success (parity with clearWizardState).
       try { localStorage.removeItem(`oq_wizard_${claim.id}`); } catch { /* ignore */ }
       idemRef.current = null; // gh-3498: this bid is filed; its key is spent
-      unconfirmedRef.current = [];
+      unconfirmedRef.current = []; postWritesDoneRef.current = null;
       setSubmitState('done');
     } catch (err) {
       console.error('Error submitting bid:', err);

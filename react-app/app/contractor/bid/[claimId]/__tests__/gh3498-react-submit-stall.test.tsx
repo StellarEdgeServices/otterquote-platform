@@ -267,8 +267,24 @@ describe('gh-3498 React bid form: stalled submit', () => {
   });
 
   // -- REVIEW 6743281622 finding 1: an error after a confirmed insert must not let an edited retry show success over the old terms,
-  // write a second acceptance or email, or file a second row. (React's track() was already guarded; the throw here is a Sentry
-  // call in the fee path, standing in for anything thrown after the insert is confirmed.) --
+  // write a second acceptance or email, or file a second row. React's track() and (since 6744510442) its Sentry calls are guarded,
+  // so the throw here comes from the email step's failure log, after the acceptance write: it stands in for anything thrown
+  // after the insert is confirmed. --
+  function throwOnceFromEmailFailureLog() {
+    let thrown = false;
+    return vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => {
+      if (!thrown && String(a[0]).startsWith('[D-215 Layer 2]')) { thrown = true; throw new Error('post-insert failure'); }
+    });
+  }
+  async function submitWithEmailStepThrowing(c: HTMLElement) {
+    h.state.hang.push('fn:send-bid-confirmation');
+    await act(async () => { fireEvent.click(submitBtn(c)); await vi.advanceTimersByTimeAsync(4000); });
+    await advance(9_000);
+    expect(c.textContent).toContain('Error submitting bid: post-insert failure');
+    expect(h.state.rows.length).toBe(1);
+    expect(h.state.feeAcceptances).toBe(1);
+    h.state.hang.length = 0;
+  }
   it('finding 1 (6743281622): a missing or throwing gtag does not turn a filed bid into an error', async () => {
     (window as unknown as { gtag?: unknown }).gtag = () => { throw new Error('gtag is not defined'); };
     const { container } = mount();
@@ -281,14 +297,10 @@ describe('gh-3498 React bid form: stalled submit', () => {
   for (const noColumn of [false, true]) {
     it(`finding 1 (6743281622): an error after a confirmed insert, then an edited retry: no success, nothing written twice (noColumn=${noColumn})`, async () => {
       h.state.noColumn = noColumn;
-      // both Sentry calls in the fee path throw once, so the error escapes the fee step's own catch
-      sentry.captureMessage.mockImplementationOnce(() => { throw new Error('post-insert failure'); });
-      sentry.captureException.mockImplementationOnce(() => { throw new Error('post-insert failure'); });
+      const spy = throwOnceFromEmailFailureLog();
       const { container } = mount();
       await ready(container);
-      await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
-      expect(container.textContent).toContain('Error submitting bid: post-insert failure');
-      expect(h.state.rows.length).toBe(1);
+      await submitWithEmailStepThrowing(container);
       const accBefore = h.state.feeAcceptances;
       fireEvent.change(priceInput(container), { target: { value: '19000' } });
       await advance(4000);
@@ -299,8 +311,43 @@ describe('gh-3498 React bid form: stalled submit', () => {
       expect(isChangeBid(container)).toBe(true);
       expect(h.state.feeAcceptances).toBe(accBefore);
       expect(h.state.emails).toBe(0);
+      spy.mockRestore();
     });
   }
+
+  // -- REVIEW 6744510442 finding 2: a Sentry call that throws after the insert must not lead to a second fee_acceptances row
+  // or a second email (the identical retry, if the first submit errors, must not write them again). --
+  for (const noColumn of [false, true]) {
+    it(`finding 2 (6744510442): Sentry throwing after the insert, then an identical retry if needed: 1 row, 1 acceptance, 1 email (noColumn=${noColumn})`, async () => {
+      h.state.noColumn = noColumn;
+      sentry.captureMessage.mockImplementation(() => { throw new Error('sentry down'); });
+      sentry.captureException.mockImplementation(() => { throw new Error('sentry down'); });
+      const { container } = mount();
+      await ready(container);
+      await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+      if (!/Bid submitted/.test(container.textContent || '')) {
+        sentry.captureMessage.mockReset(); sentry.captureException.mockReset();
+        await retry(container);
+      }
+      expect(container.textContent).toContain('Bid submitted');
+      expect(h.state.rows.length).toBe(1);
+      expect(h.state.feeAcceptances).toBe(1);
+      expect(h.state.emails).toBe(1);
+    });
+  }
+
+  it('finding 2 (6744510442): an error thrown after the acceptance write, then an identical retry: success, acceptance and email not written again', async () => {
+    const spy = throwOnceFromEmailFailureLog();
+    const { container } = mount();
+    await ready(container);
+    await submitWithEmailStepThrowing(container);
+    await retry(container);
+    expect(container.textContent).toContain('Bid submitted');
+    expect(h.state.rows.length).toBe(1);
+    expect(h.state.feeAcceptances).toBe(1);
+    expect(h.state.emails).toBe(0); // the first attempt made the email call (it hung); the retry does not make another
+    spy.mockRestore();
+  });
 
   // -- REVIEW 6743281622 finding 2: A never lands, edit to B, B lands but times out, B retried unchanged: success. --
   it('finding 2 (6743281622): A unlanded, edit to B, B landed but timed out, identical retry of B ends on success', async () => {

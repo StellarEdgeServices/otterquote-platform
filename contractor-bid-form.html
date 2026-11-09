@@ -5766,21 +5766,29 @@
                 user_agent: _userAgent,
               }).select('id'), signal)));
               } catch (feeAccTimeoutErr) { feeAccError = feeAccTimeoutErr; }
+              // gh-3498 (REVIEW 6744510442): the acceptance write for this bid has been made (or attempted: a timed-out write may
+              // still have landed). From here on a retry that finds this bid must not write it, or the email, again.
+              _bidPostWritesDoneId = insertedQuote.id;
 
+              // Sentry reporting is best-effort: a throw from it must not escape into the submit's error path (6744510442).
               if (feeAccError) {
                 console.error('[D-215] Fee acceptance record failed (non-fatal, quote committed):', feeAccError.message);
                 if (typeof Sentry !== 'undefined') {
-                  Sentry.captureException(feeAccError, {
-                    extra: { bid_id: insertedQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
-                  });
+                  try {
+                    Sentry.captureException(feeAccError, {
+                      extra: { bid_id: insertedQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
+                    });
+                  } catch (sentryErr) { console.warn('[gh-3498] Sentry report failed:', sentryErr); }
                 }
               } else if (!feeAccRows || feeAccRows.length === 0) {
                 console.warn('[D-215] Fee acceptance kept for review instead of recorded (non-fatal, quote committed)');
                 if (typeof Sentry !== 'undefined') {
-                  Sentry.captureMessage('[D-215] Fee acceptance diverted to quarantine', {
-                    level: 'warning',
-                    extra: { bid_id: insertedQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
-                  });
+                  try {
+                    Sentry.captureMessage('[D-215] Fee acceptance diverted to quarantine', {
+                      level: 'warning',
+                      extra: { bid_id: insertedQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
+                    });
+                  } catch (sentryErr) { console.warn('[gh-3498] Sentry report failed:', sentryErr); }
                 }
               }
 
@@ -5806,9 +5814,11 @@
               } catch (emailErr) {
                 console.error('[D-215 Layer 2] send-bid-confirmation failed (non-fatal, bid committed):', emailErr);
                 if (typeof Sentry !== 'undefined') {
-                  Sentry.captureException(emailErr, {
-                    extra: { bid_id: insertedQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
-                  });
+                  try {
+                    Sentry.captureException(emailErr, {
+                      extra: { bid_id: insertedQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
+                    });
+                  } catch (sentryErr) { console.warn('[gh-3498] Sentry report failed:', sentryErr); }
                 }
               }
             }

@@ -451,6 +451,67 @@ test.describe('gh-3498 contractor-bid-form.html stalled submit (real page, Chrom
     expect(dialogs.length).toBe(1);
   });
 
+  // -- REVIEW 6744510442 finding 2: a throw from Sentry (or anything else) after the acceptance write must not lead to a second
+  // fee_acceptances row or a second confirmation email when an identical retry follows. --
+  for (const noColumn of [false, true]) {
+    test(`finding 2 (6744510442): Sentry throwing after the insert, then an identical retry if needed: 1 row, 1 acceptance, 1 email (noColumn=${noColumn})`, async ({ page }) => {
+      const dialogs: string[] = [];
+      page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
+      await openForm(page);
+      await page.evaluate((nc) => {
+        (window as any).__t.noColumn = nc;
+        (window as any).__t.hang = ['fn:send-bid-confirmation']; // the email fails, so its catch reports to Sentry
+        (window as any).Sentry = { captureException() { throw new Error('sentry down'); }, captureMessage() { throw new Error('sentry down'); } };
+      }, noColumn);
+      await fillAndAccept(page);
+      await clickSubmit(page);
+      await expect.poll(() => page.evaluate(() => (window as any).__t.calls.filter((c: string) => c === 'fn:send-bid-confirmation').length)).toBe(1);
+      await page.clock.fastForward(10_000);
+      await expect.poll(async () => { const s = await state(page); return s.success || (dialogs.length > 0 && !s.btnDisabled); }).toBe(true);
+      if (!(await state(page)).success) { // the first submit errored: retry it unchanged
+        await page.evaluate(() => { (window as any).__t.hang = []; delete (window as any).Sentry; });
+        await reTick(page);
+        await clickSubmit(page);
+        await page.clock.fastForward(30_000);
+        await expect.poll(async () => { const s = await state(page); return s.success || dialogs.length > 1; }).toBe(true);
+      }
+      const s = await state(page);
+      const t = await page.evaluate(() => (window as any).__t);
+      expect(s.success).toBe(true);
+      expect(t.rows.length).toBe(1);
+      expect(feeAccCount(t)).toBe(1);
+      expect(emailCount(t)).toBe(1);
+      expect(dialogs).toEqual([]);
+    });
+  }
+
+  test('finding 2 (6744510442): an error thrown after the acceptance write, then an identical retry: acceptance and email not written again', async ({ page }) => {
+    const dialogs: string[] = [];
+    page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
+    await openForm(page);
+    await page.evaluate(() => {
+      (window as any).__t.hang = ['fn:send-bid-confirmation'];
+      // the email step's failure log throws once: stands in for anything thrown after the acceptance write
+      const realErr = console.error.bind(console); let thrown = false;
+      console.error = (...a: any[]) => { if (!thrown && String(a[0]).startsWith('[D-215 Layer 2]')) { thrown = true; throw new Error('post-insert failure'); } realErr(...a); };
+    });
+    await fillAndAccept(page);
+    await clickSubmit(page);
+    await expect.poll(() => page.evaluate(() => (window as any).__t.calls.filter((c: string) => c === 'fn:send-bid-confirmation').length)).toBe(1);
+    await page.clock.fastForward(10_000);
+    await expect.poll(() => dialogs.length).toBe(1);
+    expect(dialogs[0]).toBe('Error submitting bid: post-insert failure');
+    await expect.poll(async () => (await state(page)).btnDisabled).toBe(false);
+    await page.evaluate(() => { (window as any).__t.hang = []; });
+    await reTick(page);
+    await clickSubmit(page);
+    await expect.poll(async () => (await state(page)).success).toBe(true);
+    const t = await page.evaluate(() => (window as any).__t);
+    expect(t.rows.length).toBe(1);
+    expect(feeAccCount(t)).toBe(1);
+    expect(emailCount(t)).toBe(1); // the first attempt's (hung) call only
+  });
+
   // -- REVIEW 6743281622 finding 2: attempt A never lands, the contractor edits to B, B lands but times out, B is retried
   // unchanged: the bid on file IS what was sent, so it finishes on the success screen with its acceptance and email. --
   test('finding 2 (6743281622): A unlanded, edit to B, B landed but timed out, identical retry of B ends on success', async ({ page }) => {
