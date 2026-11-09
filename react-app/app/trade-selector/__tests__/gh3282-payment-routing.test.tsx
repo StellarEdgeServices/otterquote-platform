@@ -8,9 +8,10 @@
  * (2) component walk: each of the four answers lands on the right next page
  * (3) negative control: no answer -> no advance, no redirect
  *
- * Destinations for the D-407 pages that do not exist yet (#3283/#3284/#3285)
- * are the placeholders in PAYMENT_DESTINATIONS; this suite pins them so a
- * sub-issue that replaces one must change the test deliberately.
+ * Destinations: gh-3283 and gh-3285 switched the rcv and oop rows to the new
+ * React routes (/insurance-rcv, /out-of-pocket). The acv row is still the
+ * placeholder until gh-3284 (#3334 governs that row). This suite pins all
+ * three so a sub-issue that replaces one must change the test deliberately.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
@@ -54,9 +55,9 @@ vi.mock('@/lib/supabase', () => {
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import TradeSelectorPage from '../page';
 
-const RCV = 'https://otterquote.com/project-info-rcv.html';
+const RCV = 'https://app.otterquote.com/insurance-rcv';
 const ACV = 'https://otterquote.com/project-info-acv.html';
-const OOP = 'https://otterquote.com/project-info-cash.html';
+const OOP = 'https://app.otterquote.com/out-of-pocket';
 const CS_SIGNUP = {
   first_name: 'Jane', last_name: 'Doe', phone: '3175551234',
   address: '910 Congress Street, Noblesville, IN 46060',
@@ -77,6 +78,14 @@ describe('payment-route.ts -- routing table', () => {
     expect(paymentDestination('insurance', 'acv')).toBe(ACV);
     expect(paymentDestination('cash', null)).toBe(OOP);
     expect(PAYMENT_DESTINATIONS).toEqual({ rcv: RCV, acv: ACV, oop: OOP });
+  });
+  it('gh-3283 / gh-3285: rcv and oop no longer point at the static placeholder pages', () => {
+    expect(PAYMENT_DESTINATIONS.rcv).toBe('https://app.otterquote.com/insurance-rcv');
+    expect(PAYMENT_DESTINATIONS.oop).toBe('https://app.otterquote.com/out-of-pocket');
+    expect(PAYMENT_DESTINATIONS.rcv).not.toContain('project-info-rcv.html');
+    expect(PAYMENT_DESTINATIONS.oop).not.toContain('project-info-cash.html');
+    // The acv row is governed separately (#3334) and is unchanged here.
+    expect(PAYMENT_DESTINATIONS.acv).toBe('https://otterquote.com/project-info-acv.html');
   });
   it('"I\'m not sure" routes to the RCV destination but is not an RCV answer', () => {
     expect(resolvePaymentRoute('insurance', 'idk')).toBe('rcv');

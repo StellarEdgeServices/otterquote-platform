@@ -404,6 +404,8 @@ serve(async (req) => {
         claimId: metadata.claim_id,
         contractorId: contractor_id,
         buyerUserId: callerId,
+        // gh-3459: key null-id rows on the contractor (the claim's award), not only on the caller. upgradeClaimRow is select('*').
+        awardedContractorId: typeof upgradeClaimRow?.selected_contractor_id === "string" ? upgradeClaimRow.selected_contractor_id : null,
       });
       const { data: priorUpgradeForThisContractor, error: priorUpgradeErr } = await supabase
         .from(priorUpgradeLookup.table)

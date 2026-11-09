@@ -92,7 +92,9 @@ Deno.test("index.ts: upgrade -- a PAID upgrade with no usable role and no contra
   const alertAt = index.indexOf("if (upgradeRole === UNSPECIFIED_ROLE) {");
   assert(guard > 0 && verify > guard, "an unresolved role reaches the Stripe verification");
   assert(role > verify && insert > role && alertAt > insert, "verified, then recorded, then alerted");
-  assert(index.includes('requested_by_role: "unspecified", requested_by_contractor_id: null'));
+  // gh-3459: the contractor id is now the one the verified PaymentIntent (or the claim's award) names; it is NULL only when neither names one,
+  // which upgrade-contractor-from-pi.test.ts pins through the real handler.
+  assert(index.includes('requested_by_role: "unspecified", requested_by_contractor_id: orderContractorId'));
   assert(index.indexOf("UPGRADE_PRODUCT_CODE,\n        upgradeRole,") > 0, "the order email and activity_log carry the effective role");
 });
 

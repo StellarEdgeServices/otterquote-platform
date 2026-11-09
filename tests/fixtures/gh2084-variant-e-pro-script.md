@@ -111,8 +111,6 @@ captured at 5.5(a)/9.5(a); remaining field is phone (optional).]
 PAGE 4(b):
 Contractors often tell your policyholder their only cost is the
 deductible, then quietly upcharge for better materials or warranties.
-When contractors compete for the job, those upgrades stop costing your
-client extra.
 
 PAGE 5(b):
 How do your clients feel about saving money?

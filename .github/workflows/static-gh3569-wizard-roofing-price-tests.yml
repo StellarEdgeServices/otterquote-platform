@@ -1,0 +1,49 @@
+name: Static gh-3569 Wizard Roofing Price Field Tests
+
+# gh-3569 -- the static D-162 multi-trade wizard on contractor-bid-form.html must show the roofing price field on the
+# roofing step, and a new roofing + gutters bid must submit with stored fee = shown fee. Real Chromium against the real page with a stubbed Supabase client. `pull_request` only,
+# no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'contractor-bid-form.html'
+      - 'js/auth.js'
+      - 'js/config.js'
+      - 'js/supabase-client.js'
+      - 'tests/gh3569-wizard-roofing-price-field.mjs'
+      - 'tests/e2e/package.json'
+      - 'tests/e2e/package-lock.json'
+      - '.github/workflows/static-gh3569-wizard-roofing-price-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3569-wizard-roofing-price-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  wizard-roofing-price-chromium:
+    name: Wizard roofing step shows the roofing price field, real Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Install e2e dependencies
+        working-directory: tests/e2e
+        run: npm ci
+      - name: Install Chromium
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+      - name: Wizard roofing price field (gh3569-wizard-roofing-price-field)
+        run: node tests/gh3569-wizard-roofing-price-field.mjs
