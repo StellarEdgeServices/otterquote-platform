@@ -100,7 +100,7 @@ SELECT pg_temp.chk('Q query C (pre-flight, verbatim): completed referrals ledger
 SELECT pg_temp.chk('R query W2 (pre-flight, verbatim) lists only the gh3330 withhold that is a release candidate (wi_in); wi_ok is excluded by state, and the v4 holders are not withheld', '1|wi_in', '1|wi_in',
   (SELECT count(*)::text || '|' || COALESCE(string_agg(x.k, ',' ORDER BY x.k), '')
      FROM w_rows w JOIN (VALUES ('wi_ok'),('wi_in'),('insp_in'),('insp_ok'),('in')) x(k) ON w.referral = current_setting('proof.ref_' || x.k)::uuid));
-SELECT pg_temp.chk('S apply_referral_commission body md5', '7b9bc6957cb15534514f1e1ab9e32bbf', 'fed947cd0851aa492e9217c1f9855597',
+SELECT pg_temp.chk('S apply_referral_commission body md5', '50fa6642f7ca542b3b96248a01df8e4d', 'aa066bb3c0e378f425939824a7caa955',
   (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure));
 SELECT pg_temp.chk('T still SECURITY DEFINER with search_path public, pg_temp', 'true|search_path=public, pg_temp', 'true|search_path=public, pg_temp',
   (SELECT prosecdef::text || '|' || array_to_string(proconfig, ',') FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure));

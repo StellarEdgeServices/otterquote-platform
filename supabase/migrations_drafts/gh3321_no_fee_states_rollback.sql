@@ -2,7 +2,7 @@
 -- FILE ROLE: rollback file of set gh3321_no_fee_states (forward and pre-flight are siblings in this directory)
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
--- Rollback of gh3321_no_fee_states: restores the gh3330 body (md5 7b9bc6957cb15534514f1e1ab9e32bbf, PR #3337). Runs only when the live body is the gh3321 body or already the
+-- Rollback of gh3321_no_fee_states: restores the gh3330 body (md5 50fa6642f7ca542b3b96248a01df8e4d, PR #3337). Runs only when the live body is the gh3321 body or already the
 -- gh3330 body (idempotent); any other body aborts. It writes no data. Referrals completed while the exclusion was on keep job_value set, status job_completed and no fee; list
 -- them with pre-flight query C and decide by hand whether any is owed once the exclusion is off.
 
@@ -15,7 +15,7 @@ DECLARE
   v_md5 text;
 BEGIN
   SELECT md5(prosrc) INTO v_md5 FROM pg_proc WHERE oid = to_regprocedure('public.apply_referral_commission()');
-  IF v_md5 IS NULL OR v_md5 NOT IN ('fed947cd0851aa492e9217c1f9855597', '7b9bc6957cb15534514f1e1ab9e32bbf') THEN
+  IF v_md5 IS NULL OR v_md5 NOT IN ('aa066bb3c0e378f425939824a7caa955', '50fa6642f7ca542b3b96248a01df8e4d') THEN
     RAISE EXCEPTION 'gh3321 rollback guard: apply_referral_commission() body is neither the gh3321 nor the gh3330 body (md5 %); re-audit', v_md5;
   END IF;
 END
@@ -215,10 +215,12 @@ BEGIN
     -- bonus?": "No."): a recruiter earns the $50 only if the RECRUITER holds Partner Agreement v4
     -- (partner_v4_accepted_at(recruiter) IS NOT NULL). The Recruit Bonus predates v4 (v3 Section 4, D-139; D-401 item 7 keeps it);
     -- this condition is Dustin's ruling, not a v3 term. No cutoff and no timing test: the recruiter must hold v4 when the referral
-    -- completes. A recruiter without it is WITHHELD, not dropped:
-    -- nothing is accrued or paid now (recruit_commission_amount stays 0, no recruit_earnings, no payout row), the referral still
-    -- completes and the referrer still gets the $200, and the case is logged here. It stays recoverable by query (pre-flight
-    -- query W). There is NO release path yet: a recruiter who accepts v4 later is not paid automatically (see pre-flight).
+    -- completes. FORFEIT RULE (decided; D-417; Dustin's "Forfeit (Recommended)", #3330 comment 6726205835): a recruiter who accepts v4
+    -- later is NOT paid the $50 for recruits whose referrals completed before that acceptance. Nothing is accrued or paid now
+    -- (recruit_commission_amount stays 0, no recruit_earnings, no payout row), the referral still completes and the referrer
+    -- still gets the $200, and the case is logged here. This code is that rule: a later acceptance releases nothing and
+    -- re-fires nothing, and there is no release path to build. The log line and pre-flight query W are a record for support,
+    -- not a queue to pay from.
     IF FOUND AND v_recruiter.agent_type IS DISTINCT FROM 'home_inspector'
        AND public.partner_v4_accepted_at(v_recruiter.id) IS NULL THEN
       RAISE LOG 'apply_referral_commission: gh-3330 recruiter % has not accepted Partner Agreement v4, $50 recruit bonus WITHHELD (not accrued) for referral_id=% (referrer %)',
@@ -329,7 +331,7 @@ $function$;
 
 DO $check$
 BEGIN
-  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure) <> '7b9bc6957cb15534514f1e1ab9e32bbf' THEN
+  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure) <> '50fa6642f7ca542b3b96248a01df8e4d' THEN
     RAISE EXCEPTION 'gh3321 rollback: body check failed after CREATE OR REPLACE';
   END IF;
 END

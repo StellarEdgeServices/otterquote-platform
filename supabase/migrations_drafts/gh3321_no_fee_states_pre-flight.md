@@ -13,13 +13,13 @@ Ben: build on top of #3326 and #3337. Money and legal: Tier 3B; needs REVIEW + L
 Finding behind it (Marty, CTO RUN 94; Kevin, 2026-11-04): `apply_referral_commission` never read `claims.property_state`; no Edge Function creates the fee; `homeowner_blocked_states` (FL, LA, TX) is a different rule and is not reused.
 
 ## Order
-1. Apply PR #3337 (gh3330) first, with #3326's set per Ben's ruling 6667102434 (24 h R-097 notice, then apply together). Production body must be the gh3330 body, md5 `7b9bc6957cb15534514f1e1ab9e32bbf`. The forward refuses any other body.
+1. Apply PR #3337 (gh3330) first, with #3326's set per Ben's ruling 6667102434 (24 h R-097 notice, then apply together). Production body must be the gh3330 body, md5 `50fa6642f7ca542b3b96248a01df8e4d`. The forward refuses any other body.
 2. Run the read-only checks, apply the forward, run the post-apply checks.
 3. Compatibility with #3326 (`cto92/3245-referral-code-v4-gate`): it replaces `get_or_create_customer_referral_code()` only; its six files do not mention `apply_referral_commission` (checked with `git grep` on that branch, 2026-11-05). No shared object and no ordering constraint between the two, only this file's dependency on #3337.
 
 ## Read-only checks before apply
 ```sql
--- 1. the audited body (expect 7b9bc6957cb15534514f1e1ab9e32bbf, true, {search_path=public, pg_temp})
+-- 1. the audited body (expect 50fa6642f7ca542b3b96248a01df8e4d, true, {search_path=public, pg_temp})
 SELECT md5(prosrc), prosecdef, proconfig FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure;
 -- 2. claims.property_state exists and is text (expect one row: text)
 SELECT data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'claims' AND column_name = 'property_state';
@@ -42,7 +42,7 @@ SELECT count(*)::int AS rows_unpaid, COALESCE(sum(p.amount), 0) AS dollars_unpai
 
 ## Post-apply checks
 ```sql
--- expect fed947cd0851aa492e9217c1f9855597, true, {search_path=public, pg_temp}
+-- expect aa066bb3c0e378f425939824a7caa955, true, {search_path=public, pg_temp}
 SELECT md5(prosrc), prosecdef, proconfig FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure;
 ```
 
@@ -116,7 +116,7 @@ Deploy order: this Edge Function is independent of the migration and safe to dep
 Proof for the Edge Function: Deno unit tests in `templates.test.ts` (each of the five states blocked, padded and lower case blocked, IN/TX/FL/CA not blocked, blank/NULL not blocked, stages 1 to 4 never blocked) and a wiring test that the handler selects `property_state` and applies the gate before the stage stamp. Proof check N in the SQL proof still covers only the trigger's own calls.
 
 ## Rollback
-`gh3321_no_fee_states_rollback.sql`: restores the gh3330 body (md5 `7b9bc6957cb15534514f1e1ab9e32bbf`); runs only over the gh3321 body or the gh3330 body; writes no data. Referrals completed while the exclusion was on keep their no-fee ledger; list them with query C.
+`gh3321_no_fee_states_rollback.sql`: restores the gh3330 body (md5 `50fa6642f7ca542b3b96248a01df8e4d`); runs only over the gh3321 body or the gh3330 body; writes no data. Referrals completed while the exclusion was on keep their no-fee ledger; list them with query C.
 
 ## Proof
 `PGUSER=root PGHOST=/var/run/postgresql bash supabase/tests/gh3321_no_fee_states_proof_run.sh` on a throwaway Postgres 16 (base chain of the gh3330 proof, then the gh3330 forward, then a `claims.property_state` column): BASELINE / AFTER / ROLLBACK / REAPPLIED, 20 checks each.
