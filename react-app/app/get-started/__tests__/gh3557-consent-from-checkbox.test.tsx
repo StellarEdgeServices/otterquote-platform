@@ -6,9 +6,13 @@
  *       (the input from #3557's closes-on; passes on main too -- main's code already
  *       maps unticked -> null/false, see the PR body for why that matters)
  *   (b) both boxes ticked -> consent recorded (no regression)
- *   (c) state says ticked but the visible box is NOT checked (DOM changed without a
- *       React change event, e.g. a browser form-restore or extension) -> nothing
- *       recorded. FAILS on main (main trusts React state alone), passes with the guard.
+ *   (c) state says ticked but the visible boxes are NOT checked (DOM changed without a
+ *       React change event, e.g. a browser form-restore or extension): SMS consent is
+ *       withheld (fails toward not texting), the opt-out STAYS true (fails toward not
+ *       sending to the referrer). The SMS half FAILS on main (main trusts state alone).
+ *   (d) visible boxes checked but state is not: SMS consent still withheld (both must
+ *       agree), the opt-out is recorded true (either is enough). The opt-out half FAILS
+ *       on main and at 50af6e26 (both record false = send).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
@@ -91,7 +95,7 @@ describe('gh-3557 consent is recorded only from the visible checkbox', () => {
     expect(cs.referrer_updates_opt_out).toBe(true);
   });
 
-  it('(c) state ticked but the visible box is unchecked: nothing recorded', async () => {
+  it('(c) state ticked but the visible boxes are unchecked: no SMS consent, opt-out stays true', async () => {
     await toStep2AndFill();
     fireEvent.click(SMS());
     fireEvent.click(OPT());
@@ -100,6 +104,16 @@ describe('gh-3557 consent is recorded only from the visible checkbox', () => {
     OPT().checked = false;
     const cs = await submitAndReadSignup();
     expect(cs.sms_consent_ts).toBeNull();
-    expect(cs.referrer_updates_opt_out).toBe(false);
+    expect(cs.referrer_updates_opt_out).toBe(true);
+  });
+
+  it('(d) visible boxes checked but state is not: no SMS consent, opt-out recorded true', async () => {
+    await toStep2AndFill();
+    // The page shows both boxes checked, with no change event reaching React.
+    SMS().checked = true;
+    OPT().checked = true;
+    const cs = await submitAndReadSignup();
+    expect(cs.sms_consent_ts).toBeNull();
+    expect(cs.referrer_updates_opt_out).toBe(true);
   });
 });

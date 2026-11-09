@@ -196,12 +196,11 @@ function hasReferrer(): boolean {
 }
 
 /**
- * gh-3557: true only when React state says ticked AND the checkbox element the
- * visitor sees is present and checked. Any disagreement, or a missing element,
- * answers false, so a consent is never recorded that the page did not show.
+ * gh-3557: is the checkbox element the visitor sees present AND checked?
+ * A missing element, or any error reading it, answers false. Callers decide
+ * which direction is safe for their box (see persistSignupContext).
  */
-function boxVisiblyTicked(id: string, stateTicked: boolean): boolean {
-  if (!stateTicked) return false;
+function domBoxChecked(id: string): boolean {
   try {
     const el = typeof document !== 'undefined' ? document.getElementById(id) : null;
     return el instanceof HTMLInputElement && el.type === 'checkbox' && el.checked === true;
@@ -1051,13 +1050,16 @@ export default function GetStartedPage() {
       (typeof localStorage !== 'undefined' && localStorage.getItem('oq_referral_agent_id')) ||
       null;
 
-    // gh-3557 (protective, R-134): record a consent choice only when BOTH the
-    // React state AND the checkbox the visitor can actually see say "ticked".
-    // A box that is not on the page, or is visibly unchecked, records nothing:
-    // no sms_consent_ts, and referrer_updates_opt_out false. This can only
-    // remove a recorded consent, never add one.
-    const smsTicked = boxVisiblyTicked('sms-consent', smsConsent);
-    const referrerOptOutTicked = boxVisiblyTicked('referrer-updates-opt-out', referrerOptOut);
+    // gh-3557 (protective, R-134). Each box fails toward NOT sending:
+    // - SMS consent (ticked = we MAY text): recorded only when BOTH React state
+    //   AND the visible box say ticked. Any disagreement or a missing box
+    //   withholds consent (no sms_consent_ts). Can only remove consent.
+    // - Referrer opt-out (ticked = do NOT send updates to the referrer):
+    //   recorded true when EITHER React state OR the visible box says ticked;
+    //   otherwise main's plain state. The guard can never turn a ticked
+    //   opt-out into false, so it can only add an opt-out, never remove one.
+    const smsTicked = smsConsent && domBoxChecked('sms-consent');
+    const referrerOptOutTicked = referrerOptOut || domBoxChecked('referrer-updates-opt-out');
 
     // 3. Write cs_signup to localStorage
     localStorage.setItem(
