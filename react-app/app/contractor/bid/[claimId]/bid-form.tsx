@@ -23,7 +23,7 @@ import { BID_COPY, buildFeeDisclosureText } from './copy';
 import { HomePhotosCard } from './home-photos-card';
 import { FeeSection } from './fee-section';
 import { WarrantyCard } from './warranty-card';
-import { resolveBidAmount, wizardTradePrices } from './wizard-total'; // gh-3495 (D-267)
+import { resolveBidAmount, wizardTradePrices, seedWizardPrices } from './wizard-total'; // gh-3495 (D-267)
 import {
   type BidClaim, type BidMode, type TradeFlags, type WarrantySelectionInput,
   type ValueAddsFormState, type ValueAddsContext, type WizardState,
@@ -247,7 +247,9 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
     queue: wizardElig.queue,
     selectedTrades: wizardElig.queue,
   } as WizardState);
-  const [wizardPrices, setWizardPrices] = useState<Record<string, string>>({});
+  // gh-3495 N3: Change Bid / Renew of a stored multi-trade bid starts from its per_trade_breakdown.
+  const [wizardPrices, setWizardPrices] = useState<Record<string, string>>(() => (wizardMode ? seedWizardPrices(existingQuote?.per_trade_breakdown) : {}));
+  const wizardRounded = wizardTradePrices(wizard.queue, wizardPrices);
 
   // Resolve the config fee pct once (platform_fee_config, contracts unchanged).
   useEffect(() => {
@@ -497,7 +499,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
                 {wizard.queue.map((t) => (
                   <div key={t} style={{ display: 'contents' }}>
                     <span className="oqb-summary-k">{t.charAt(0).toUpperCase() + t.slice(1)}</span>
-                    <span className="oqb-summary-v">{wizardPrices[t] ? formatCurrency(parseFloat(wizardPrices[t]) || 0) : '—'}</span>
+                    <span className="oqb-summary-v">{wizardRounded[t] ? formatCurrency(wizardRounded[t]) : '—'}</span>
                   </div>
                 ))}
               </div>

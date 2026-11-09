@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  wizardGrandTotal, wizardTradePrices, resolveBidAmount, priceToCents,
+  wizardGrandTotal, wizardTradePrices, resolveBidAmount, priceToCents, seedWizardPrices,
 } from '../wizard-total';
 import { computeDisclosureFee, buildQuoteInsert } from '../utils';
 
@@ -39,6 +39,32 @@ describe('gh-3495 multi-trade total', () => {
     expect(priceToCents('9734.095')).toBe(973410);
     expect(wizardTradePrices(['roofing'], { roofing: '9734.095' })).toEqual({ roofing: 9734.1 });
     expect(wizardGrandTotal(['roofing', 'gutters'], { roofing: '9734.095', gutters: '0.1' })).toBe(9734.2);
+  });
+
+  it('round half up is decimal-safe (the Math.round(n * 100) float trap)', () => {
+    expect(Math.round(9734.095 * 100)).toBe(973409); // the trap: what a naive helper returns
+    for (const [raw, cents] of [['9734.095', 973410], ['1.005', 101], ['2.675', 268], ['0.005', 1], ['0.004', 0], ['200.015', 20002], ['10000', 1000000]] as const) {
+      expect(priceToCents(raw)).toBe(cents);
+    }
+    // Shown (sum of per-trade cents) == stored: 1000 + 200.015 is 1200.02 either way.
+    expect(wizardGrandTotal(['roofing', 'gutters'], { roofing: '1000', gutters: '200.015' })).toBe(1200.02);
+  });
+
+  it('N2: a non-wizard or change-bid amount passes through UNCHANGED (never rounded)', () => {
+    expect(resolveBidAmount({ wizardMode: false, queue: [], wizardPrices: {}, bidPrice: '18000.004' })).toBe(18000.004);
+    expect(resolveBidAmount({ wizardMode: true, queue: QUEUE, wizardPrices: {}, bidPrice: '18000.004' })).toBe(18000.004);
+  });
+
+  it('N3: Change Bid seeds every trade from per_trade_breakdown, so editing one trade keeps the others', () => {
+    const seeded = seedWizardPrices({ roofing: 10000, gutters: 2000 });
+    expect(seeded).toEqual({ roofing: '10000', gutters: '2000' });
+    expect(seedWizardPrices(JSON.stringify({ roofing: 10000, gutters: 2000 }))).toEqual(seeded);
+    expect(seedWizardPrices(null)).toEqual({});
+    // The contractor edits only gutters to 2500; roofing stays 10000 -> 12500, not 2500.
+    const edited = { ...seeded, gutters: '2500' };
+    expect(resolveBidAmount({ wizardMode: true, queue: QUEUE, wizardPrices: edited, bidPrice: '12000' })).toBe(12500);
+    // A click-through on a stored $12,000 bid stores $12,000.
+    expect(resolveBidAmount({ wizardMode: true, queue: QUEUE, wizardPrices: seeded, bidPrice: '12000' })).toBe(12000);
   });
 
   it('ignores blank, zero and unselected trades; sums only the queue', () => {

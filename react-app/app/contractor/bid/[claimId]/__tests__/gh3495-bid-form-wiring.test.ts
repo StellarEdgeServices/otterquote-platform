@@ -24,6 +24,11 @@ describe('gh-3495 bid-form.tsx wiring', () => {
     expect(src).toMatch(/perTradeBreakdown = wizardMode \? wizardTradePrices\(wizard\.queue, wizardPrices\)/);
   });
 
+  it('N3: seeds the wizard prices from the stored per_trade_breakdown and shows cent-rounded review prices', () => {
+    expect(src).toMatch(/seedWizardPrices\(existingQuote\?\.per_trade_breakdown\)/);
+    expect(src).toMatch(/formatCurrency\(wizardRounded\[t\]\)/);
+  });
+
   it('fee and total_price both follow bidAmount', () => {
     expect(src).toMatch(/computeDisclosureFee\(bidAmount, feePct\)/);
     expect(src).toMatch(/totalPrice: bidAmount/);
