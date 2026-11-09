@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 vi.mock('@/hooks/use-auth-ready', () => ({ useAuthReady: vi.fn() }));
@@ -126,5 +126,59 @@ describe('RCV page', () => {
     const update = (saveClaim as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1];
     expect('policy_type' in update).toBe(false);
     expect('job_type' in update).toBe(false);
+  });
+});
+
+describe('RCV page: the gh-3471 / D-419 return flag survives Save (gh-3283 / gh-3285 review F2)', () => {
+  let assign: ReturnType<typeof vi.fn>;
+  const realLocation = window.location;
+  function setSearch(search: string) {
+    assign = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true, writable: true,
+      value: { assign, search, origin: 'https://app.otterquote.com', href: 'https://app.otterquote.com/insurance-rcv' + search, hostname: 'app.otterquote.com', protocol: 'https:' },
+    });
+  }
+  afterEach(() => { Object.defineProperty(window, 'location', { configurable: true, writable: true, value: realLocation }); });
+
+  async function finish() {
+    wire({ policy_type: 'rcv', has_estimate: true });
+    render(<Page />);
+    await pickShingle3Tab();
+    fireEvent.click(screen.getByTestId('d407-continue'));
+    await waitFor(() => expect(saveClaim).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
+    return assign.mock.calls[0][0] as string;
+  }
+
+  it('?return=measurements is carried to the dashboard that forwards it', async () => {
+    setSearch('?claim_id=c1&return=measurements');
+    expect(await finish()).toBe('https://otterquote.com/dashboard.html?return=measurements');
+  });
+
+  it('no token: the plain dashboard, no return param', async () => {
+    setSearch('?claim_id=c1');
+    expect(await finish()).toBe('https://otterquote.com/dashboard.html');
+  });
+
+  it.each(['https://evil.example/', '//evil.example', 'javascript:alert(1)', '__proto__', 'MEASUREMENTS'])(
+    'NEGATIVE CONTROL: ?return=%s is not an allowlisted token, so nothing is carried and nowhere else is visited',
+    async (bad) => {
+      setSearch('?claim_id=c1&return=' + encodeURIComponent(bad));
+      const dest = await finish();
+      expect(dest).toBe('https://otterquote.com/dashboard.html');
+      expect(new URL(dest).hostname).toBe('otterquote.com');
+    },
+  );
+
+  it('a failed save does not navigate', async () => {
+    setSearch('?claim_id=c1&return=measurements');
+    (saveClaim as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('boom'));
+    wire({ policy_type: 'rcv', has_estimate: true });
+    render(<Page />);
+    await pickShingle3Tab();
+    fireEvent.click(screen.getByTestId('d407-continue'));
+    await waitFor(() => expect(saveClaim).toHaveBeenCalledTimes(1));
+    expect(assign).not.toHaveBeenCalled();
   });
 });

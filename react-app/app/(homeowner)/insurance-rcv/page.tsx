@@ -28,6 +28,7 @@ import { uploadClaimDocument } from '../dashboard/actions';
 import { ContactProjectCard } from '../_d407/ContactProjectCard';
 import { MaterialPicker } from '../_d407/MaterialPicker';
 import { D407_CSS } from '../_d407/styles';
+import { dashboardUrlWithReturn } from '@/lib/return-target';
 import { saveClaim, saveContact, useD407Data, type D407Claim, type D407Profile } from '../_d407/use-d407-claim';
 import {
   buildRcvClaimUpdate,
@@ -153,7 +154,7 @@ function RcvForm({
     try {
       await saveContact(userId, contact.fullName, contact.phone);
       await saveClaim(claim.id, buildRcvClaimUpdate(info, contact.fullName, material, claim.policy_type));
-      window.location.assign(new URL('/dashboard', window.location.origin).href);
+      window.location.assign(dashboardUrlWithReturn(window.location.search));
     } catch (err) {
       console.error('[insurance-rcv] save failed:', err);
       setError(C.RCV_SAVE_FAILED);
