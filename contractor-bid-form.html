@@ -3179,7 +3179,7 @@
       if (!rowsEl || !grandEl) return;
 
       const tradeLabels = { roofing: '🏠 Roofing', gutters: '💧 Gutters', siding: '🧱 Siding' };
-      const feeRate = PLATFORM_FEES.contractSigning; // 0.05
+      const feePct = currentFeePct(); // gh-3488: same rate and whole-cent rounding as the disclosure
 
       let grandTotal = 0;
       let html = '';
@@ -3188,7 +3188,7 @@
         const price = wizardTradePrices[trade];
         const label = tradeLabels[trade] || trade;
         if (price != null && price > 0) {
-          const net = price * (1 - feeRate);
+          const net = Math.round((wholeCentDollars(price) - platformFeeDollars(price, feePct)) * 100) / 100;
           grandTotal += price;
           html += `<div class="wizard-summary-row">
             <span class="wizard-summary-trade">${label}</span>
@@ -3208,7 +3208,7 @@
       rowsEl.innerHTML = html;
       grandEl.textContent = formatCurrency(grandTotal);
       if (grandTotal > 0 && grandNetEl) {
-        const grandNet = grandTotal * (1 - feeRate);
+        const grandNet = Math.round((wholeCentDollars(grandTotal) - platformFeeDollars(grandTotal, feePct)) * 100) / 100;
         grandNetEl.textContent = 'Net to you: ' + formatCurrency(grandNet);
       }
     }
@@ -4275,17 +4275,29 @@
       // accepted the fee (E2E walk fix 2026-07-07). updateFeeDisclosure is
       // async; fire-and-forget is fine for display refresh.
       if (typeof updateFeeDisclosure === 'function') { try { updateFeeDisclosure(); } catch (e) { /* non-fatal */ } }
-      const bidAmount = parseFloat(document.getElementById('totalPrice').value) || 0;
+      paintFeeBreakdown(wholeCentDollars(parseFloat(document.getElementById('totalPrice').value) || 0), currentFeePct());
 
-      // #487 (CEO decision 2026-07-08): fee base is the bid amount for every
-      // job type — aligned with the D-215 disclosure, fee_acceptances.fee_basis
+      // Show fee basis note for insurance jobs
+      const feeInfoEl = document.querySelector('.fee-info');
+      if (feeInfoEl) {
+        // #487: uniform note — the fee basis is the bid amount for every job type.
+        feeInfoEl.innerHTML = '<div>ℹ A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission.</div>';
+      }
+    }
+
+    // gh-3488 (LEGAL-READ 6674806511): the Platform Fee Breakdown and the net lines. Split out of updateFeeCalculator so
+    // paintFeeDisclosure can write them too: whenever the disclosure shows a rate, these show the same rate's figures.
+    function paintFeeBreakdown(bidAmount, feePct) {
+      // #487 (CEO decision 2026-07-08): fee base is the bid amount for every job type — aligned with the D-215 disclosure, fee_acceptances.fee_basis
       // ('bid_amount'), and the actual charge (docusign-webhook × total_price).
       const feeBase = bidAmount;
 
-      const contractSigningFee = feeBase * PLATFORM_FEES.contractSigning;
+      // gh-3488 / D-267: the same whole-cent figure the disclosure shows and the webhook charges (this line used
+      // feeBase * 0.05 on a float, which showed $64.80 beside a $64.81 disclosure for a $1,296.10 bid).
+      const contractSigningFee = platformFeeDollars(feeBase, feePct);
       const totalFee = contractSigningFee;
       const totalFeePercent = feeBase > 0 ? (totalFee / feeBase * 100).toFixed(1) : 0;
-      const netAmount = bidAmount - totalFee;
+      const netAmount = Math.round((bidAmount - totalFee) * 100) / 100;
 
       document.getElementById('displayBid').textContent = formatCurrency(bidAmount);
       // Net-to-contractor inline display (86e10t292)
@@ -4295,13 +4307,7 @@
       document.getElementById('totalFeePercent').textContent = totalFeePercent + '%';
       document.getElementById('totalFeeAmount').textContent = formatCurrency(totalFee);
       document.getElementById('yourNet').textContent = formatCurrency(netAmount);
-
-      // Show fee basis note for insurance jobs
-      const feeInfoEl = document.querySelector('.fee-info');
-      if (feeInfoEl) {
-        // #487: uniform note — the fee basis is the bid amount for every job type.
-        feeInfoEl.innerHTML = '<div>ℹ A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission.</div>';
-      }
+      try { buildWizardSummary(); } catch (e) { /* the wizard summary is only on screen in wizard mode */ }
     }
 
     function formatCurrency(value) {
@@ -4680,6 +4686,10 @@
     // ── Form Submission ──
     // ── D-214/D-215: Fee Disclosure & Acceptance Logic ──
     let _platformFeePct = 5.0;  // Default; will be fetched from platform_fee_config
+    var _submitInFlight = false, _submitDone = false; // var: read by updateFeeCheckboxState, which can run before this line
+    var FEE_LOOKUP_TIMEOUT_MS = 5000; // gh-3488: bound on the rate lookup
+    var BID_UPDATE_TIMEOUT_MS = 15000; // gh-3491 (REVIEW 6688103147): bound on the Change Bid / renew UPDATE; a retry is harmless (same row, same fields)
+    var IP_LOOKUP_TIMEOUT_MS = 3000;  // gh-3488: bound on the ipify call (best-effort, falls back to 'unknown')
     let _feeAcceptanceCheckbox = document.getElementById('feeAcceptanceCheckbox');
     let _submitBtn = document.getElementById('submitBtn');
 
@@ -4688,13 +4698,16 @@
       try {
         if (!currentContractor || !currentClaim) return _platformFeePct;
 
-        const contractorState = (currentContractor.state || '').toUpperCase();
+        const contractorState = (currentContractor.address_state || '').toUpperCase(); // gh-3488: the column quotes_platform_fee_for reads
         const tradeType = (currentClaim.trades?.[0] || 'roofing').toLowerCase();
 
         // Query: SELECT fee_pct FROM platform_fee_config 
         //        WHERE (state IS NULL OR state = ?) AND (trade IS NULL OR trade = ?) 
         //        ORDER BY state NULLS LAST, trade NULLS LAST LIMIT 1
-        const { data, error } = await sb
+        // gh-3488 (REVIEW 6674889982): a lookup that never returns must not hold the form. After FEE_LOOKUP_TIMEOUT_MS it
+        // ends the same way a failed lookup does (the rate already on screen), and a late answer is ignored.
+        let timedOut = false;
+        const lookup = sb
           .from('platform_fee_config')
           .select('fee_pct')
           .or(`state.is.null,state.eq.${contractorState}`)
@@ -4702,6 +4715,11 @@
           .order('state', { ascending: false, nullsFirst: false })
           .order('trade', { ascending: false, nullsFirst: false })
           .limit(1);
+        const { data, error } = await Promise.race([
+          lookup,
+          new Promise((resolve) => setTimeout(() => { timedOut = true; resolve({ data: null, error: new Error('fee lookup timed out') }); }, FEE_LOOKUP_TIMEOUT_MS)),
+        ]);
+        if (timedOut) { console.warn('[D-215] Fee lookup timed out'); return _platformFeePct; }
 
         if (error) {
           console.warn('[D-215] Fee lookup error:', error);
@@ -4719,17 +4737,48 @@
       return _platformFeePct;
     }
 
-    async function updateFeeDisclosure() {
-      // Recalculate and display fee based on bid amount + percentage
-      const bidAmountEl = document.getElementById('totalPrice');
-      if (!bidAmountEl) return;
+    // BEGIN platform-fee shared definition (gh-3488, D-267). Byte-identical in three places (parity test:
+    // react-app/app/contractor/bid/[claimId]/__tests__/gh3488-fee-one-rounding.test.ts): this file,
+    // react-app/constants/platform-fee.ts and the inline copy in contractor-bid-form.html.
+    // The fee the contractor is SHOWN and the fee that is CHARGED are this one figure, in whole cents,
+    // rounded half-up on the exact decimal product (bid cents x pct hundredths / 10000), integers only.
+    // It equals round(pct/100 * total_price, 2) in Postgres numeric (quotes.fee_amount, gh-2519 trigger).
+    // A typed bid is first normalised to whole cents the way Postgres numeric(12,2) stores it (half-up on
+    // the decimal text), so a bid typed with a fraction of a cent shows and charges the same fee.
+    function wholeCents(amount) {
+      const n = Number(amount);
+      if (!Number.isFinite(n) || n <= 0) return 0;
+      const viaText = Math.round(Number(n + 'e2'));
+      return Number.isFinite(viaText) ? viaText : Math.round(n * 100);
+    }
+    function wholeCentDollars(amount) {
+      return wholeCents(amount) / 100;
+    }
+    function platformFeeCents(bidAmount, feePct) {
+      const bidCents = wholeCents(bidAmount);
+      const pctHundredths = wholeCents(feePct);
+      if (bidCents <= 0 || pctHundredths <= 0) return 0;
+      const t = bidCents * pctHundredths + 5000;
+      return (t - (t % 10000)) / 10000;
+    }
+    function platformFeeDollars(bidAmount, feePct) {
+      return platformFeeCents(bidAmount, feePct) / 100;
+    }
+    // END platform-fee shared definition
 
-      const bidAmount = parseFloat(bidAmountEl.value) || 0;
-      
-      // Fetch fee percentage
-      const feePct = await fetchPlatformFeePercentage();
-      const feeAmount = (bidAmount * feePct) / 100;
-      const netAmount = bidAmount - feeAmount;
+    // gh-3488: the rate every on-page fee figure uses (the same one the disclosure uses). _platformFeePct is a
+    // `let` further down the script, so a call before it is initialised falls back to the 5% default.
+    function currentFeePct() {
+      try { return window._feePct || _platformFeePct; } catch (e) { return 5.0; }
+    }
+
+    // gh-3488 / D-267 (REVIEW 6674426561): the disclosure, the checkbox figure and the breakdown are written
+    // SYNCHRONOUSLY from the current bid and the cached rate, so they never lag the bid; the rate lookup then
+    // corrects them if the configured rate differs. Only the newest lookup may write, and submit waits for it.
+    let _feeDisclosureSeq = 0;
+    let _feeLookupInFlight = null;
+    function paintFeeDisclosure(feePct, bidAmount) {
+      const feeAmount = platformFeeDollars(bidAmount, feePct); // whole cents, the figure the webhook charges
 
       // Update display fields
       document.getElementById('feePercentDisplay').textContent = feePct.toFixed(2);
@@ -4737,20 +4786,82 @@
       document.getElementById('feeDollarDisplay').textContent = feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
       document.getElementById('feeDollarCheckbox').textContent = feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
+      paintFeeBreakdown(bidAmount, feePct);
+
+      // gh-3488 (LEGAL-READ 6674806511): a tick belongs to the figure it was given under; a different figure clears it.
+      const changed = window._feeAmount !== undefined && (window._feeAmount !== feeAmount || window._feePct !== feePct);
+
       // Store for submission
       window._feeAmount = feeAmount;
       window._feePct = feePct;
+      if (changed && _feeAcceptanceCheckbox) _feeAcceptanceCheckbox.checked = false;
 
       // Update checkbox state
       updateFeeCheckboxState();
+    }
+    async function updateFeeDisclosure() {
+      // Recalculate and display fee based on bid amount + percentage
+      const bidAmountEl = document.getElementById('totalPrice');
+      if (!bidAmountEl) return;
+      const currentBid = () => wholeCentDollars(parseFloat(bidAmountEl.value) || 0);
+
+      // 1. synchronous: current bid at the rate we already know
+      paintFeeDisclosure(currentFeePct(), currentBid());
+
+      // 2. asynchronous: the configured rate. Lookups can return out of order, so only the newest call may
+      //    write, and the bid is read AFTER the lookup.
+      const seq = ++_feeDisclosureSeq;
+      const run = (async () => {
+        const feePct = await fetchPlatformFeePercentage();
+        if (seq !== _feeDisclosureSeq) return;
+        paintFeeDisclosure(feePct, currentBid());
+      })();
+      _feeLookupInFlight = run;
+      try { await run; } finally { if (_feeLookupInFlight === run) _feeLookupInFlight = null; }
+    }
+    // Resolves once no fee lookup is in flight (a newer call may start while an older one settles).
+    async function settleFeeLookup() {
+      const deadline = Date.now() + FEE_LOOKUP_TIMEOUT_MS;
+      while (_feeLookupInFlight) {
+        const p = _feeLookupInFlight;
+        let timer;
+        const timeout = new Promise((resolve) => { timer = setTimeout(resolve, Math.max(0, deadline - Date.now())); });
+        try { await Promise.race([p, timeout]); } catch (e) { /* the lookup falls back to the cached rate */ }
+        clearTimeout(timer);
+        if (_feeLookupInFlight === p) _feeLookupInFlight = null;
+        if (Date.now() >= deadline) { _feeLookupInFlight = null; break; } // bounded: carry on with the rate on screen
+      }
+    }
+
+    // gh-3488 (REVIEW 6674426561): from the moment submit snapshots the bid until it finishes or fails, the form's
+    // inputs are locked, so the price on screen is the price recorded, accepted and charged.
+    let _bidInputLocks = null;
+    function lockBidInputs() {
+      if (_bidInputLocks) return;
+      _bidInputLocks = [];
+      // the fee checkbox sits outside #bidForm (like the submit button), so it is named explicitly
+      document.querySelectorAll('#bidForm input, #bidForm select, #bidForm textarea, #feeAcceptanceCheckbox').forEach((el) => {
+        if (el.type === 'hidden' || el.type === 'submit') return;
+        _bidInputLocks.push({ el: el, readOnly: el.readOnly, disabled: el.disabled });
+        if (el.tagName === 'SELECT' || el.type === 'checkbox' || el.type === 'radio' || el.type === 'file') el.disabled = true;
+        else el.readOnly = true;
+      });
+    }
+    function unlockBidInputs() {
+      if (!_bidInputLocks) return;
+      _bidInputLocks.forEach((l) => { l.el.readOnly = l.readOnly; l.el.disabled = l.disabled; });
+      _bidInputLocks = null;
     }
 
     function updateFeeCheckboxState() {
       // Disable submit button if checkbox is not checked
       if (_feeAcceptanceCheckbox) {
         const isChecked = _feeAcceptanceCheckbox.checked;
-        _submitBtn.disabled = !isChecked;
-        if (!isChecked) {
+        // gh-3488 (REVIEW 6674889982): while a submit is running, and after one has succeeded, the button stays disabled
+        // whatever a lookup or a tick does.
+        const busy = _submitInFlight || _submitDone;
+        _submitBtn.disabled = busy || !isChecked;
+        if (busy || !isChecked) {
           _submitBtn.style.opacity = '0.5';
           _submitBtn.style.cursor = 'not-allowed';
         } else {
@@ -4775,7 +4886,10 @@
     // Function to capture contractor IP (best-effort, client-side)
     async function getContractorIP() {
       try {
-        const response = await fetch('https://api.ipify.org?format=json', { timeout: 3000 });
+        const ctl = new AbortController(); // gh-3488: fetch has no `timeout` option; abort ends a hung call
+        const timer = setTimeout(() => ctl.abort(), IP_LOOKUP_TIMEOUT_MS);
+        let response;
+        try { response = await fetch('https://api.ipify.org?format=json', { signal: ctl.signal }); } finally { clearTimeout(timer); }
         if (!response.ok) return 'unknown';
         const data = await response.json();
         return data.ip || 'unknown';
@@ -5014,6 +5128,7 @@
     bidForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (window._bidLockedSelected) return; // gh-2564: a selected bid is locked; no write from this form
+      if (_submitInFlight || _submitDone) return; // gh-3488: one submit at a time, and none after one has succeeded
 
       // Validate: bid type must have a price if RCV selected
       const bidTypeOption = document.querySelector('input[name="bidTypeOption"]:checked')?.value || 'rcv_plus_supplements';
@@ -5067,16 +5182,42 @@
         return;
       }
 
+      // gh-3488 / D-267 (REVIEW 6674426561): ONE snapshot of the bid and of the disclosure on screen at the click.
+      // The accepted fee, the stored price and the charge basis all come from this snapshot; the form's inputs are
+      // locked until submit finishes or fails (see the finally below).
+      const _snapBid = wholeCentDollars(parseFloat(document.getElementById('totalPrice').value) || 0);
+      const _shownAtClick = { pct: window._feePct, amount: window._feeAmount };
+      const formData = new FormData(bidForm); // before the lock: disabled controls are left out of a FormData
+      _submitInFlight = true;
+      lockBidInputs();
+
       submitBtn.disabled = true;
       submitBtn.textContent = 'Submitting…';
 
       try {
-        const formData = new FormData(bidForm);
 
           // ── D-214/D-215: Fee Acceptance Capture ──
-          const _bidAmount = parseFloat(document.getElementById('totalPrice').value) || 0;
+          // gh-3488 / D-267: the accepted figure is derived here from the bid being submitted (whole cents), never
+          // from whatever an earlier fee lookup left in window._feeAmount; window values are set first so the
+          // recorded sentence (generateExactFeeText) carries the same figure.
+          // A click while the rate lookup is in flight waits for it. If the figure it settles on differs from the
+          // disclosure the contractor had on screen, the new disclosure is shown and acceptance is required again.
+          await settleFeeLookup();
+          // gh-3488 (LEGAL-READ 6674806511): a fresh rate lookup at every submit; the server decides the rate it stores
+          // and the webhook charges, so a rate that moved since the last lookup is caught here and re-accepted.
+          await updateFeeDisclosure();
+          const _bidAmount = _snapBid;
           const _feePct = window._feePct || _platformFeePct;
-          const _feeAmount = window._feeAmount || (_bidAmount * _feePct / 100);
+          const _feeAmount = platformFeeDollars(_bidAmount, _feePct);
+          if (_feePct !== _shownAtClick.pct || _feeAmount !== _shownAtClick.amount) {
+            paintFeeDisclosure(_feePct, _bidAmount);
+            if (_feeAcceptanceCheckbox) _feeAcceptanceCheckbox.checked = false;
+            updateFeeCheckboxState();
+            submitBtn.textContent = renewMode ? 'Renew Bid' : (changeBidMode ? 'Update Bid' : 'Submit Bid');
+            return;
+          }
+          window._feePct = _feePct;
+          window._feeAmount = _feeAmount;
           const _exactFeeText = generateExactFeeText();
           const _contractorIP = await getContractorIP();
           const _userAgent = navigator.userAgent;
@@ -5120,7 +5261,7 @@
               return;
             }
           }
-          const totalPrice = parseFloat(document.getElementById('totalPrice').value) || 0;
+          const totalPrice = _snapBid; // gh-3488: the snapshot taken at the click, never a second read of the field
           const feePercentage = 5.0;
 
           // #487 (CEO decision 2026-07-08): the platform fee basis is the BID
@@ -5285,8 +5426,8 @@
             valueAdds.wizard_trade_queue = wizardTradeQueue.length > 0 ? wizardTradeQueue : null;
           }
 
-          // ── D-214/D-215: Initialize fee disclosure on form load ──
-          await updateFeeDisclosure();
+          // (gh-3488: the mid-submit `await updateFeeDisclosure()` that stood here is gone: the accepted figure is
+          // fixed by the snapshot above, and a refresh here could only repaint it from a different read of the bid.)
 
           // D-202 Phase 2 — capture warranty selection BEFORE quoteData is built (Session 463)
           const __d202Selection = getD202WarrantySelection();
@@ -5357,11 +5498,10 @@
                   bid_status: 'active',
                   expired_at: null,
                   expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-                  renewals_count: (existingQuote.renewals_count || 0) + 1,
                 } : {}),
                 // gh-2564 (CEO RUN 104 point 4): Change Bid on a bid the contractor withdrew ('cancelled') makes it
                 // live again -- the rescind-and-re-bid path D-369/D-381 rely on. Same live fields as a renewal, but
-                // renewals_count is not bumped: this is not an auto-renewal.
+                // renewals are not counted (gh-3560): quotes has no renewals_count column.
                 ...(!renewMode && existingQuote.bid_status === 'cancelled' ? {
                   bid_status: 'active',
                   expired_at: null,
@@ -5369,11 +5509,17 @@
                 } : {}),
                 updated_at: new Date().toISOString(),
             };
-            const { data: updatedRows, error: updateError } = await sb
-              .from('quotes')
-              .update(_changeBidPayload)
-              .eq('id', existingQuote.id)
-              .select('id');
+            // gh-3491: an UPDATE that never answers must end through the catch below (button restored, inputs
+            // unlocked), as it did before the submit lock existed. Abort the request and stop waiting for it.
+            const _updCtl = new AbortController();
+            let _updTimer;
+            let updatedRows, updateError;
+            try {
+              ({ data: updatedRows, error: updateError } = await Promise.race([
+                sb.from('quotes').update(_changeBidPayload).eq('id', existingQuote.id).select('id').abortSignal(_updCtl.signal),
+                new Promise((_, reject) => { _updTimer = setTimeout(() => { _updCtl.abort(); reject(new Error('bid_update_timed_out: the quote update did not answer')); }, BID_UPDATE_TIMEOUT_MS); }),
+              ]));
+            } finally { clearTimeout(_updTimer); }
 
             if (updateError) throw updateError;
             // gh-2105 (decision a, money): a zero-row RLS/id-mismatch match used to
@@ -5544,6 +5690,7 @@
           `;
         }
         successState.classList.add('show');
+        _submitDone = true; // gh-3488: the button stays disabled on the success screen
         // Clear wizard localStorage state on successful submission
         clearWizardState();
       } catch (err) {
@@ -5551,6 +5698,10 @@
         alert('Error submitting bid: ' + (err.message || 'Unknown error'));
         submitBtn.disabled = false;
         submitBtn.textContent = renewMode ? 'Renew Bid' : (changeBidMode ? 'Update Bid' : 'Submit Bid');
+      } finally {
+        _submitInFlight = false;
+        unlockBidInputs(); // gh-3488: the lock lasts only while this submit is running
+        if (_submitDone) { submitBtn.disabled = true; } else { updateFeeCheckboxState(); }
       }
     });
 

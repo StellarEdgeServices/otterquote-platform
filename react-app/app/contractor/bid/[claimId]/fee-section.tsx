@@ -14,7 +14,7 @@ import { Card, Checkbox, formatCurrency } from './bid-ui';
 import { BID_COPY, splitFeeDisclosureText } from './copy';
 import type { BidMode } from './utils';
 
-export function FeeSection({ mode, bidAmount, feePct, disclosure, autoRenew, setAutoRenew, feeAccepted, setFeeAccepted }: {
+export function FeeSection({ mode, bidAmount, feePct, disclosure, autoRenew, setAutoRenew, feeAccepted, setFeeAccepted, locked }: {
   mode: BidMode; bidAmount: number; feePct: number;
   disclosure: { feeAmount: number };
   // Accepted but unused: the fee explainer is the same #547 item 1B text for every job
@@ -22,6 +22,8 @@ export function FeeSection({ mode, bidAmount, feePct, disclosure, autoRenew, set
   claimRcv?: number | null; isInsuranceRcv?: boolean;
   autoRenew: boolean; setAutoRenew: (v: boolean) => void;
   feeAccepted: boolean; setFeeAccepted: (v: boolean) => void;
+  // gh-3488: true while a submit is in flight, so the figure the contractor accepted is the figure filed.
+  locked?: boolean;
 }) {
   const { lead, rest } = splitFeeDisclosureText(feePct, disclosure.feeAmount);
   return (
@@ -39,7 +41,7 @@ export function FeeSection({ mode, bidAmount, feePct, disclosure, autoRenew, set
       )}
 
       <label className="oqb-accept">
-        <input type="checkbox" checked={feeAccepted} onChange={(e) => setFeeAccepted(e.target.checked)} />
+        <input type="checkbox" checked={feeAccepted} disabled={locked} onChange={(e) => setFeeAccepted(e.target.checked)} />
         <span>I understand and agree to the platform fee of {feePct.toFixed(2)}% ({formatCurrency(disclosure.feeAmount)})</span>
       </label>
     </Card>

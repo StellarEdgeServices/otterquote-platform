@@ -27,6 +27,7 @@
  */
 
 import { CUSTOM_WARRANTY_TAIL } from './copy';
+import { platformFeeDollars, wholeCentDollars } from '../../../../constants/platform-fee';
 
 // ── Flat platform fee rate (contractor-bid-form.html:2431-2433) ──────────────
 export const PLATFORM_FEE_CONTRACT_SIGNING = 0.05; // 5%
@@ -235,8 +236,10 @@ export function computeDisclosureFee(
   bidAmount: number,
   feePct: number,
 ): { feeAmount: number; netAmount: number } {
-  const feeAmount = (bidAmount * feePct) / 100;
-  return { feeAmount, netAmount: bidAmount - feeAmount };
+  // gh-3488 / D-267: whole-cent fee from the one shared definition (constants/platform-fee.ts); the figure shown,
+  // recorded in fee_acceptances / quotes and charged by the Edge Functions is this same value.
+  const feeAmount = platformFeeDollars(bidAmount, feePct);
+  return { feeAmount, netAmount: Math.round((wholeCentDollars(bidAmount) - feeAmount) * 100) / 100 };
 }
 
 /**
@@ -475,7 +478,6 @@ export interface QuoteUpdateInput extends QuoteCommonInput {
   renewMode: boolean;
   /** gh-2564: the quote's current bid_status. 'cancelled' (withdrawn) + Change Bid makes the bid live again. */
   existingBidStatus?: string | null;
-  existingRenewalsCount?: number | null;
   /** Injected for testability — the static page uses `new Date()`. */
   now?: Date;
 }
@@ -512,10 +514,9 @@ export function buildQuoteUpdate(input: QuoteUpdateInput): Record<string, unknow
     base.bid_status = 'active';
     base.expired_at = null;
     base.expires_at = new Date(now.getTime() + BID_RENEWAL_WINDOW_MS).toISOString();
-    base.renewals_count = (input.existingRenewalsCount || 0) + 1;
   } else if (input.existingBidStatus === 'cancelled') {
     // gh-2564 (CEO RUN 104 point 4): Change Bid on a withdrawn bid re-opens it -- the rescind-and-re-bid path
-    // D-369/D-381 rely on. Same live fields as a renewal; renewals_count is not bumped (not an auto-renewal).
+    // D-369/D-381 rely on. Same live fields as a renewal; renewals are not counted (gh-3560: quotes has no renewals_count column).
     base.bid_status = 'active';
     base.expired_at = null;
     base.expires_at = new Date(now.getTime() + BID_RENEWAL_WINDOW_MS).toISOString();

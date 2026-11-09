@@ -6,6 +6,7 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.114.0';
 import { buildEmailText, buildEmailHtml } from './templates.ts'; // gh-1824: email bodies moved to templates.ts (testable, no serve() import)
+import { platformFeeDollars } from '../_shared/platform-fee.ts'; // gh-3488 / D-267
 
 const DEFAULT_PLATFORM_FEE_PCT = 5.00; // Fallback if platform_fee_config lookup returns no rows
 const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? '';
@@ -182,7 +183,8 @@ serve(async (req: Request) => {
             ? (parseFloat(feeConfigData[0].fee_pct) || DEFAULT_PLATFORM_FEE_PCT)
             : DEFAULT_PLATFORM_FEE_PCT;
 
-          const feeAmount = Math.round(rcvAmount * (resolvedFeePct / 100) * 100) / 100;
+          // gh-3488 / D-267: the same whole-cent figure the webhook charges, so the emailed fee is the charged fee.
+          const feeAmount = platformFeeDollars(rcvAmount, resolvedFeePct);
           const now = new Date().toISOString();
 
           // Insert auto-bid quote

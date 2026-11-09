@@ -61,6 +61,7 @@ import { detectGpcSignal, makeGpcStore, recordGpcOptOut } from "./ad-sharing-opt
 import { AMBIGUOUS_OUTCOME_CODE, fetchStripeWithTimeout } from "./stripe-fetch.ts";
 import { AmbiguousChargeOutcomeError, runOffSessionPlatformFeeCharge } from "./off-session-charge.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { platformFeeCents } from "../_shared/platform-fee.ts"; // gh-3488 / D-267
 
 const FUNCTION_NAME = "create-payment-intent";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -329,7 +330,8 @@ serve(async (req) => {
             status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
-        amount = Math.round(Number(quote.total_price) * (Number(feePct) / 100) * 100);
+        // gh-3488 / D-267: the one shared whole-cent definition (shown fee = charged fee).
+        amount = platformFeeCents(Number(quote.total_price), Number(feePct));
         if (!Number.isFinite(amount) || amount <= 0) {
           return new Response(JSON.stringify({ error: "Computed platform fee amount is invalid" }), {
             status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
