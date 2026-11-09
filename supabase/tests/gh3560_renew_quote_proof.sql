@@ -10,6 +10,8 @@
 -- that returns only the last statement's result can instead end with a DO block that RAISEs EXCEPTION with that setting; the
 -- error aborts the transaction, which is a rollback too.)
 --
+-- Cases: D0/D1 controls; R1 renew, R2 reopen (own withdrawal, cancelled_at NULL); R3 other contractor; R4 active; R5 mode mismatch; R6 mode;
+-- R7 anon; R8 selected; R9 declined on awarded claim; R10 D-170 contractor_can_bid gate (stubbed); R11 reopen with cancelled_at set; G grants.
 -- Rows used (all is_test, production, read by SELECT 2026-11-09): contractor A 5e76adc9 (user 901008b8) with quote e6261cb3 on an
 -- active claim; contractor B 848798cc (user ce69bf9d) with quote ca91add4; contractor C 2bc792be (user 92d669a8) with the selected
 -- quote 6fd064f1 on an awarded claim; contractor D bb07fc40 (user 189b85ad) with the declined, cancelled quote 0a334300 on an
@@ -59,7 +61,7 @@ DECLARE
   nowts timestamptz := now();
 BEGIN
   v := 'BASELINE A qa: ' || (SELECT format('status=%s bid_status=%s expired_at set=%s', status, bid_status, expired_at IS NOT NULL) FROM public.quotes WHERE id = qa)
-    || E'\nBASELINE B qb: ' || (SELECT format('status=%s bid_status=%s', status, bid_status) FROM public.quotes WHERE id = qb)
+    || E'\nBASELINE B qb: ' || (SELECT format('status=%s bid_status=%s cancelled_at set=%s', status, bid_status, cancelled_at IS NOT NULL) FROM public.quotes WHERE id = qb)
     || E'\nBASELINE C qc: ' || (SELECT format('status=%s bid_status=%s', status, bid_status) FROM public.quotes WHERE id = qc)
     || E'\nBASELINE D qd: ' || (SELECT format('status=%s bid_status=%s claim=%s', q.status, q.bid_status, c.status) FROM public.quotes q JOIN public.claims c ON c.id = q.claim_id WHERE q.id = qd);
 
@@ -97,7 +99,7 @@ BEGIN
   -- R2 reopen, own cancelled quote
   BEGIN
     before_row := (SELECT to_jsonb(q) FROM public.quotes q WHERE id = qb);
-    v := v || E'\nR2 contractor B renew_quote(qb, ''reopen''): ' || pg_temp.try_as('authenticated', ub, format('SELECT public.renew_quote(%L, ''reopen'')', qb));
+    v := v || E'\nR2 contractor B renew_quote(qb, ''reopen'') (own withdrawal, cancelled_at NULL): ' || pg_temp.try_as('authenticated', ub, format('SELECT public.renew_quote(%L, ''reopen'')', qb));
     after_row := (SELECT to_jsonb(q) FROM public.quotes q WHERE id = qb);
     v := v || E'\n   columns changed: ' || regexp_replace(pg_temp.diff(before_row, after_row), '"[0-9T:.+\-]{20,}"', '<ts>', 'g');
     RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
@@ -156,6 +158,30 @@ BEGIN
       || ' -> qd bid_status still ' || (SELECT bid_status FROM public.quotes WHERE id = qd);
     RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
   EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+
+  -- R10 D-170 eligibility (review B2). A suspended or COI-lapsed fixture cannot be built (enforce_contractor_privileged_columns refuses
+  -- the change even to the table owner), so the gate is proved by replacing contractor_can_bid() INSIDE this sub-transaction with a
+  -- stub that returns false for contractor A only; the replacement is undone with the sub-transaction.
+  BEGIN
+    v := v || format(E'\nR10 baseline: real contractor_can_bid(A)=%s (B)=%s', public.contractor_can_bid('5e76adc9-8bd9-4ab6-a8c6-6a083f70d102'), public.contractor_can_bid('848798cc-217c-44a5-83f3-c82b3c602452'));
+    EXECUTE $stub$CREATE OR REPLACE FUNCTION public.contractor_can_bid(p_contractor_id uuid) RETURNS boolean LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp
+                   AS $b$ SELECT p_contractor_id <> '5e76adc9-8bd9-4ab6-a8c6-6a083f70d102'::uuid $b$$stub$;
+    v := v || E'\nR10a STUBBED ineligible contractor A renew_quote(qa, ''renew''): ' || pg_temp.try_as('authenticated', ua, format('SELECT public.renew_quote(%L, ''renew'')', qa))
+      || ' -> qa bid_status still ' || (SELECT bid_status FROM public.quotes WHERE id = qa);
+    v := v || E'\nR10b same stub, eligible contractor B renew_quote(qb, ''reopen''): ' || pg_temp.try_as('authenticated', ub, format('SELECT public.renew_quote(%L, ''reopen'')', qb));
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  v := v || E'\nR10c after undo, contractor_can_bid prosrc is the production body again: ' || (SELECT (prosrc LIKE '%coi_expires_at > CURRENT_DATE%')::text FROM pg_proc WHERE oid = 'public.contractor_can_bid(uuid)'::regprocedure);
+
+  -- R11 reopen of a bid removed by the platform / switch-contractor (cancelled_at set). R2 above is the contractor's own withdrawal
+  -- (cancelled_at NULL) and succeeds.
+  BEGIN
+    UPDATE public.quotes SET cancelled_at = now(), cancellation_reason = 'homeowner_switched_contractor' WHERE id = qb;
+    v := v || E'\nR11 contractor B ''reopen'' on qb with cancelled_at set: ' || pg_temp.try_as('authenticated', ub, format('SELECT public.renew_quote(%L, ''reopen'')', qb))
+      || ' -> qb bid_status still ' || (SELECT bid_status FROM public.quotes WHERE id = qb);
+    RAISE EXCEPTION 'undo' USING ERRCODE = 'P0U01';
+  EXCEPTION WHEN SQLSTATE 'P0U01' THEN NULL; END;
+  v := v || E'\nR11b qb cancelled_at is NULL again after undo: ' || (SELECT (cancelled_at IS NULL)::text FROM public.quotes WHERE id = qb);
 
   -- G grants
   v := v || E'\nG1 EXECUTE: anon=' || has_function_privilege('anon', 'public.renew_quote(uuid,text)', 'EXECUTE')
