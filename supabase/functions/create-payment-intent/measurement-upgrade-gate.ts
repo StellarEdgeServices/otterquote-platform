@@ -239,6 +239,15 @@ export interface PriorUpgradeLookupParams {
    * alone can never see, so the same contractor could mint and pay a second PaymentIntent. Such a row is matched by its buyer instead.
    */
   buyerUserId: string;
+  /**
+   * [gh-3459, DECIDED Tier A on #3459 after CLOSE-REVIEW: FAIL 6740291401] The claim's awarded contractor (claims.selected_contractor_id),
+   * read from the claim row the handler already loaded. The gate is keyed on the contractor, not on the caller: create-measurement-order now
+   * records an upgrade against the contractor in the verified PaymentIntent's metadata.contractor_id, falling back to this awarded
+   * contractor. A null-id row can therefore only be left when neither was known; when this contractor IS the awarded one, such a row is
+   * attributed to it whoever recorded it, so a second account recording the first order no longer opens a second charge. Optional:
+   * absent/null/another contractor leaves the #3482 query unchanged.
+   */
+  awardedContractorId?: string | null;
 }
 
 export interface PriorUpgradeLookupQuery {
@@ -246,7 +255,8 @@ export interface PriorUpgradeLookupQuery {
   select: "id";
   /** [column, value] pairs, applied as `.eq(column, value)` in order. */
   eq: readonly [string, string][];
-  /** A PostgREST `.or(...)` filter applied after the eq pairs: this contractor's order, OR an order with no contractor id bought by this user. */
+  /** A PostgREST `.or(...)` filter applied after the eq pairs: this contractor's order, OR an order with no contractor id bought by this user
+   *  (or, when this contractor is the claim's awarded contractor, any order with no contractor id). */
   or: string;
 }
 
@@ -260,6 +270,11 @@ export function buildPriorUpgradeLookupQuery(
   if (!UUID_SHAPE.test(params.contractorId) || !UUID_SHAPE.test(params.buyerUserId)) {
     throw new Error("prior-upgrade lookup refused: id is not a uuid");
   }
+  // gh-3459: the awarded id is only compared, never interpolated, so it needs no uuid check of its own.
+  const isAwardedContractor = params.awardedContractorId === params.contractorId;
+  const nullIdBranch = isAwardedContractor
+    ? "requested_by_contractor_id.is.null"
+    : `and(requested_by_contractor_id.is.null,user_id.eq.${params.buyerUserId})`;
   return {
     table: "hover_orders",
     select: "id",
@@ -267,6 +282,6 @@ export function buildPriorUpgradeLookupQuery(
       ["claim_id", params.claimId],
       ["product_code", UPGRADE_PRODUCT_CODE],
     ],
-    or: `requested_by_contractor_id.eq.${params.contractorId},and(requested_by_contractor_id.is.null,user_id.eq.${params.buyerUserId})`,
+    or: `requested_by_contractor_id.eq.${params.contractorId},${nullIdBranch}`,
   };
 }
