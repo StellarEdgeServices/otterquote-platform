@@ -27,7 +27,9 @@ const REAL = ['_priceToCents', '_sidingTotalNow', '_liveTradePrice', 'effectiveB
   'updateFeeCalculator', 'updateFeeDisclosure', 'formatCurrency', 'setVal', 'syncSidingTotal',
   // gh-3488 one-rounding helpers and the synchronous disclosure paint (main, merged via #3491)
   'wholeCents', 'wholeCentDollars', 'platformFeeCents', 'platformFeeDollars', 'currentFeePct', 'paintFeeDisclosure',
-  'paintFeeBreakdown'];
+  'paintFeeBreakdown',
+  // REVIEW 6744431358 F1: a loaded trade price survives an untouched empty input
+  '_keepLoadedTradePrice'];
 
 function sandbox() {
   const els = {};
@@ -45,6 +47,7 @@ function sandbox() {
     let wizardTradePrices = {}, sidingWallSquares = null, sidingTradeActive = false, _feeAcceptanceCheckbox = null, _submitBtn = null;
     let _platformFeePct = 5;
     let _feeDisclosureSeq = 0, _feeLookupInFlight = null;
+    let _wizardTouched = {};
     const PLATFORM_FEES = { contractSigning: 0.05 };
     async function fetchPlatformFeePercentage() { return 5; }
     function _showWizardTrade() {} function _updateWizardProgressBar() {} function saveWizardState() {}
@@ -109,9 +112,9 @@ await t('F1: wizard price inputs (gutters) refresh the fee on input', () => {
 
 await t('F2: Change Bid click-through on a stored $12,000 (10,000 + 2,000) wizard bid stores 12,000, not 14,000', async () => {
   const s = sandbox();
-  // What populate does on a stored wizard bid: grand total into #totalPrice, gutters prefilled from value_adds.
+  // What populate does on a stored wizard bid: grand total into #totalPrice. A real stored wizard bid has NO
+  // value_adds.gutter_*_price (REVIEW 6744431358 F1), so the gutter fields start empty.
   s.el('totalPrice').value = '12000';
-  s.el('gutter6InchPrice').value = '2000';
   const quote = { total_price: 12000, per_trade_breakdown: { roofing: 10000, gutters: 2000 } };
   if (s.have.includes('_applyStoredBreakdown')) s.ctx._applyStoredBreakdown(quote);
   s.run('wizardGoTo(2, 0, false)');
@@ -121,6 +124,29 @@ await t('F2: Change Bid click-through on a stored $12,000 (10,000 + 2,000) wizar
   assert.equal(s.run('effectiveBidAmount()'), 12000, 'stored total_price');
   assert.deepEqual(JSON.parse(JSON.stringify(s.run('roundedTradePrices()'))), { roofing: 10000, gutters: 2000 });
   assert.equal(money(s.el('feeDollarDisplay').textContent), 600, 'fee shown');
+});
+
+await t('F1 (REVIEW 6744431358): Change Bid prefills the gutter field from per_trade_breakdown; an untouched empty field never drops a loaded price', async () => {
+  const s = sandbox();
+  s.el('totalPrice').value = '18200.13';
+  s.ctx._applyStoredBreakdown({ total_price: 18200.13, per_trade_breakdown: { roofing: 15800, gutters: 2400.13 } });
+  assert.equal(s.el('gutter5InchPrice').value, 2400.13, 'gutter field prefilled');
+  assert.equal(s.el('retailBidPrice').value, 15800, 'roofing field prefilled');
+  // Page code empties the gutter field (no input event): the loaded price is kept on the step and on Next
+  s.el('gutter5InchPrice').value = '';
+  s.run('wizardGoTo(2, 1, false)');
+  assert.equal(s.run('effectiveBidAmount()'), 18200.13, 'live amount on the gutters step');
+  s.run('wizardNext()'); await flush();
+  assert.equal(s.run('effectiveBidAmount()'), 18200.13, 'stored total_price');
+  assert.deepEqual(JSON.parse(JSON.stringify(s.run('roundedTradePrices()'))), { roofing: 15800, gutters: 2400.13 });
+  // A contractor who clears the field on purpose (input event -> touched) removes the trade
+  const s2 = sandbox();
+  s2.ctx._applyStoredBreakdown({ per_trade_breakdown: { roofing: 15800, gutters: 2400.13 } });
+  s2.run('wizardGoTo(2, 1, false)');
+  s2.el('gutter5InchPrice').value = '';
+  s2.run('_wizardTouched.gutters = true');
+  s2.run('wizardNext()'); await flush();
+  assert.equal(s2.run('effectiveBidAmount()'), 15800, 'cleared gutters are dropped');
 });
 
 await t('F2: populate seeds the wizard prices from per_trade_breakdown', () => {

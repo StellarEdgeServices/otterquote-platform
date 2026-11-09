@@ -2509,6 +2509,12 @@
       if (queued.length < 2) return;
 
       wizardMode = true;
+      // gh-3495 (REVIEW 6744431358 F1): remember which trade's price inputs the contractor edited, so a price
+      // loaded from per_trade_breakdown is never replaced by an untouched empty input. Registered first, so the
+      // flag is set before the fee refresh below reads the amount.
+      Object.keys(_WIZARD_TRADE_INPUTS).forEach(t => _WIZARD_TRADE_INPUTS[t].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', () => { _wizardTouched[t] = true; });
+      }));
       // gh-3495 F1: any wizard trade price change refreshes the fee box and disclosure (gutter
       // inputs have no listener in a wizard: gutterTradeActive is only true for gutter-only claims).
       ['retailBidPrice', 'gutter5InchPrice', 'gutter6InchPrice'].forEach(id => {
@@ -3157,6 +3163,19 @@
 
     // ── Wizard: capture current trade price before navigating (86e10t285) ──
     let wizardTradePrices = {};   // {trade: number|null}
+    // gh-3495 (REVIEW 6744431358 F1): the inputs that price each wizard trade, and which ones the contractor edited.
+    const _WIZARD_TRADE_INPUTS = {
+      roofing: ['retailBidPrice'],
+      gutters: ['gutter5InchPrice', 'gutter6InchPrice'],
+      siding: ['sidingInstallPerSquare', 'sidingTrimPrice', 'sidingWindowWrapPrice', 'sidingTeardownPrice'],
+    };
+    let _wizardTouched = {};      // {trade: true} once one of its price inputs got an input event
+    // A trade's price inputs are empty and untouched, and a stored price was loaded: keep the stored price.
+    function _keepLoadedTradePrice(trade, price) {
+      const loaded = wizardTradePrices[trade];
+      if (!(price > 0) && loaded > 0 && !_wizardTouched[trade]) return loaded;
+      return price;
+    }
 
     function captureCurrentTradePrice() {
       if (!wizardMode || wizardStep !== 2) return;
@@ -3174,6 +3193,7 @@
         syncSidingTotal();
         price = _sidingTotalNow(); // gh-3495: not read back from #totalPrice
       }
+      price = _keepLoadedTradePrice(trade, price); // gh-3495 (REVIEW 6744431358 F1)
       wizardTradePrices[trade] = price > 0 ? price : null;
     }
 
@@ -3212,7 +3232,7 @@
       let cents = 0;
       wizardTradeQueue.forEach((trade, i) => {
         const live = (wizardStep === 2 && i === wizardCurrentTradeIdx);
-        cents += _priceToCents(live ? _liveTradePrice(trade) : wizardTradePrices[trade]);
+        cents += _priceToCents(live ? _keepLoadedTradePrice(trade, _liveTradePrice(trade)) : wizardTradePrices[trade]);
       });
       return cents > 0 ? cents / 100 : single;
     }
@@ -3237,6 +3257,13 @@
         if (c > 0) { wizardTradePrices[t] = c / 100; any = true; }
       });
       if (wizardTradePrices.roofing > 0) setVal('retailBidPrice', wizardTradePrices.roofing);
+      // gh-3495 (REVIEW 6744431358 F1): a stored wizard bid has no value_adds.gutter_*_price (those are written for
+      // gutter-only claims), so the gutter fields would come up empty. Prefill the 5" field (the 6" field, read first,
+      // stays free for an edit) only when neither field was restored. Siding fields restore from value_adds.siding_*.
+      const _g5 = document.getElementById('gutter5InchPrice'), _g6 = document.getElementById('gutter6InchPrice');
+      if (wizardTradePrices.gutters > 0 && _g5 && !(parseFloat(_g5.value) > 0) && !(parseFloat(_g6?.value) > 0)) {
+        setVal('gutter5InchPrice', wizardTradePrices.gutters);
+      }
       return any;
     }
 

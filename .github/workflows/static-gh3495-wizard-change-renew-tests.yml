@@ -1,0 +1,49 @@
+name: Static gh-3495 Wizard Change Bid and Renew Tests
+
+# gh-3495 (REVIEW 6744431358 F1) -- Change Bid and Renew of a stored multi-trade (wizard) bid on contractor-bid-form.html
+# keep every trade's stored price on a click-through. Real Chromium against the real page with a stubbed Supabase
+# client. `pull_request` only, no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'contractor-bid-form.html'
+      - 'js/auth.js'
+      - 'js/config.js'
+      - 'js/supabase-client.js'
+      - 'tests/gh3495-wizard-change-renew-chromium.mjs'
+      - 'tests/e2e/package.json'
+      - 'tests/e2e/package-lock.json'
+      - '.github/workflows/static-gh3495-wizard-change-renew-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3495-wizard-change-renew-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  wizard-change-renew-chromium:
+    name: Wizard Change Bid and Renew keep every stored trade price, real Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Install e2e dependencies
+        working-directory: tests/e2e
+        run: npm ci
+      - name: Install Chromium
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+      - name: Wizard Change Bid and Renew (gh3495-wizard-change-renew-chromium)
+        run: node tests/gh3495-wizard-change-renew-chromium.mjs
