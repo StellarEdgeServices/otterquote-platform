@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-11-09T12:45:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-09T12:42:18Z): NOT APPLIED
 -- FILE ROLE: forward file of set gh3554_view_definer_comments (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: drafted 2026-11-09 under #3554 from the amended closes-on (Marty, comment 6728491662, option b) and the read-only production evidence in comment 6728485033 (reloptions {security_barrier=true} on both views, no security_invoker; filters quoted from pg_get_viewdef). Tier 3A decided in comment 6740122004. No database was read or written to produce this file. Not applied: exec:cto applies it and pastes obj_description.
 -- REPO COPY: none. When applied, file under supabase/migrations/<ledger version>_gh3554_view_definer_comments.sql and the rollback under supabase/migrations_rollbacks/.
