@@ -322,7 +322,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
       if (mode === 'change' || mode === 'renew') {
         const updatePayload = buildQuoteUpdate({
           ...common, renewMode: mode === 'renew',
-          existingRenewalsCount: (existingQuote?.renewals_count as number) ?? 0, now: new Date(),
+          now: new Date(),
           existingBidStatus: (existingQuote?.bid_status as string | null) ?? null,
         });
         const { data: upRows, error: upErr } = await supabase.from('quotes').update(updatePayload).eq('id', existingQuote!.id).select('id');

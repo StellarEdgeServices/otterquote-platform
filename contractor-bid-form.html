@@ -5354,11 +5354,10 @@
                   bid_status: 'active',
                   expired_at: null,
                   expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-                  renewals_count: (existingQuote.renewals_count || 0) + 1,
                 } : {}),
                 // gh-2564 (CEO RUN 104 point 4): Change Bid on a bid the contractor withdrew ('cancelled') makes it
                 // live again -- the rescind-and-re-bid path D-369/D-381 rely on. Same live fields as a renewal, but
-                // renewals_count is not bumped: this is not an auto-renewal.
+                // renewals are not counted (gh-3560): quotes has no renewals_count column.
                 ...(!renewMode && existingQuote.bid_status === 'cancelled' ? {
                   bid_status: 'active',
                   expired_at: null,

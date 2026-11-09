@@ -1,0 +1,38 @@
+name: Static gh-3560 No renewals_count Tests
+
+# gh-3560 -- Renew Bid must not write quotes.renewals_count (the column does not exist in production).
+# `pull_request` only, no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'contractor-bid-form.html'
+      - 'react-app/app/contractor/bid/**'
+      - 'tests/gh3560-no-renewals-count-in-quote-update.mjs'
+      - '.github/workflows/static-gh3560-no-renewals-count.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3560-no-renewals-count-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-gh3560-no-renewals-count:
+    name: Renew Bid payload has no renewals_count (static + React twins)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: No renewals_count in either bid-form twin (gh3560)
+        run: node tests/gh3560-no-renewals-count-in-quote-update.mjs
