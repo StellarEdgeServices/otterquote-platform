@@ -42,7 +42,7 @@ export const SIGN_COPY = {
   // ── (c) TIER-3 LEGAL — Step 1 "No fee to use Otter Quotes" (D-206) (contract-signing.html:955-956; gh-2934 mirror of PR #2920) ──
   noCostTitle: 'No fee to use Otter Quotes',
   noCostBody:
-    'There is no fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when they complete a job. The price shown in this contract is the price you pay your contractor — other than the report fee above, there are no separate fees from Otter Quotes.',
+    'There is no fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when a job is completed through the platform; conditions apply. The price shown in this contract is the price you pay your contractor — other than the report fee above, there are no separate fees from Otter Quotes.',
 
   // ── (a) TIER-3 LEGAL — D-123 acknowledgment checkbox (contract-signing.html:955-956) ──
   // Split around the #ackContractorName placeholder span (default text "the contractor");
