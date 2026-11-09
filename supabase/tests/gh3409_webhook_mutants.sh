@@ -14,16 +14,16 @@ M=[
  ("M2 payment-intent quote read drops fee_amount","index.ts",'.select("id, claim_id, contractor_id, payment_intent_id, fee_amount")','.select("id, claim_id, contractor_id, payment_intent_id")'),
  ("M3 the reason is not kept (task loses it)","dispute-fee-evidence.ts","        feeAcceptanceMissingReason = picked.reason;","        feeAcceptanceMissingReason = null;"),
  ("M4 the reason is not passed to buildEvidencePayload (Stripe draft loses it)","dispute-fee-evidence.ts","evidencePayload: buildEvidencePayload({ dispute, claim, feeAcceptance, feeAcceptanceMissingReason }),","evidencePayload: buildEvidencePayload({ dispute, claim, feeAcceptance }),"),
- ("M5 picker takes the oldest row for the bid","fee-acceptance-select.ts","  const row = own[0];","  const row = own[own.length - 1];"),
- ("M6 the read sorts oldest first","fee-acceptance-select.ts",'.order("created_at", { ascending: false })\n    .limit(5)','.order("created_at", { ascending: true })\n    .limit(5)'),
- ("M7 fee comparison widened from half a cent to a dollar","fee-acceptance-select.ts","Math.abs(rowFee - bidFee) >= 0.005","Math.abs(rowFee - bidFee) >= 1"),
+ ("M5 picker takes the oldest matching row for the bid","fee-acceptance-select.ts","  const row = own.find(","  const row = [...own].reverse().find("),
+ ("M6 the read sorts oldest first","fee-acceptance-select.ts",'.order("created_at", { ascending: false })\n    // gh-3490: was 5,','.order("created_at", { ascending: true })\n    // gh-3490: was 5,'),
+ ("M7 fee comparison widened from half a cent to a dollar","fee-acceptance-select.ts","Math.abs(rowFee - bidFee) < 0.005","Math.abs(rowFee - bidFee) < 1"),
  ("M8 rescinded rows allowed","fee-acceptance-select.ts",'    .is("rescinded_at", null)\n',''),
  ("M9 the read no longer filters on the selected bid_id",'fee-acceptance-select.ts','    .eq("bid_id", selectedBid.id)\n',''),
  ("M10 index.ts gives the task an empty fee block","index.ts","taskFeeInfo: feeEvidence.taskFeeInfo,","taskFeeInfo: \"\","),
  ("M11 index.ts marks the acceptance resolved when it is not","index.ts","feeAcceptanceResolved: feeAcceptance !== null,","feeAcceptanceResolved: true,"),
  ("M12 index.ts sends Stripe a payload that ignores the assembler","index.ts","const evidencePayload = feeEvidence.evidencePayload;","const evidencePayload: Record<string, string> = {};"),
  ("M13 Stripe text names the quarantine table","fee-acceptance-select.ts",'    : "Not found in database — manual lookup required.";','    : "Not found in database — manual lookup required (see fee_acceptance_quarantine).";'),
- ("M14 the dip row is accepted when the bid fee is missing (null compares as 0)","fee-acceptance-select.ts","!Number.isFinite(bidFee)","false"),
+ ("M14 the dip row is accepted when the bid fee is missing (null compares as 0)","fee-acceptance-select.ts","Number.isFinite(rowFee) && Number.isFinite(bidFee) &&","Number.isFinite(rowFee) &&"),
 ]
 with open(sys.argv[2],"w") as out:
     for i,(name,f,a,b) in enumerate(M):
