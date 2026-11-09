@@ -195,6 +195,21 @@ function hasReferrer(): boolean {
   return false;
 }
 
+/**
+ * gh-3557: true only when React state says ticked AND the checkbox element the
+ * visitor sees is present and checked. Any disagreement, or a missing element,
+ * answers false, so a consent is never recorded that the page did not show.
+ */
+function boxVisiblyTicked(id: string, stateTicked: boolean): boolean {
+  if (!stateTicked) return false;
+  try {
+    const el = typeof document !== 'undefined' ? document.getElementById(id) : null;
+    return el instanceof HTMLInputElement && el.type === 'checkbox' && el.checked === true;
+  } catch {
+    return false;
+  }
+}
+
 // gh-1993: 50 states + DC + Puerto Rico — matches VALID_STATE_CODES in
 // trade-selector/utils.ts (the same set that page's address-parsing safety
 // net trusts) so a value picked here is never later rejected downstream as
@@ -1036,6 +1051,14 @@ export default function GetStartedPage() {
       (typeof localStorage !== 'undefined' && localStorage.getItem('oq_referral_agent_id')) ||
       null;
 
+    // gh-3557 (protective, R-134): record a consent choice only when BOTH the
+    // React state AND the checkbox the visitor can actually see say "ticked".
+    // A box that is not on the page, or is visibly unchecked, records nothing:
+    // no sms_consent_ts, and referrer_updates_opt_out false. This can only
+    // remove a recorded consent, never add one.
+    const smsTicked = boxVisiblyTicked('sms-consent', smsConsent);
+    const referrerOptOutTicked = boxVisiblyTicked('referrer-updates-opt-out', referrerOptOut);
+
     // 3. Write cs_signup to localStorage
     localStorage.setItem(
       'cs_signup',
@@ -1065,12 +1088,12 @@ export default function GetStartedPage() {
         referring_agent_name: null,
         referring_agent_email: null,
         role: 'homeowner',
-        sms_consent_ts: smsConsent ? new Date().toISOString() : null,
+        sms_consent_ts: smsTicked ? new Date().toISOString() : null,
         // gh-1337: FALSE (not omitted/null) means "shown the checkbox, did not
         // opt out" — the only value that permits send-partner-status-email's
         // consent gate to fire. Read downstream by the claim-creation writer
         // and persisted to claims.referrer_updates_opt_out.
-        referrer_updates_opt_out: referrerOptOut,
+        referrer_updates_opt_out: referrerOptOutTicked,
       }),
     );
     // gh-2060 item 2: stamp it so a stale blob (24h TTL) never seeds another visitor.
