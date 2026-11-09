@@ -1,0 +1,50 @@
+name: Static gh-3576 Wizard Browser Back/Forward Price Tests
+
+# gh-3576 -- the static D-162 multi-trade wizard on contractor-bid-form.html must save the trade price when the
+# contractor uses browser Back/Forward, so the summary, per_trade_breakdown and stored total carry the edited price.
+# Real Chromium against the real page with a stubbed Supabase client. `pull_request` only,
+# no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'contractor-bid-form.html'
+      - 'js/auth.js'
+      - 'js/config.js'
+      - 'js/supabase-client.js'
+      - 'tests/gh3576-wizard-popstate-price.mjs'
+      - 'tests/e2e/package.json'
+      - 'tests/e2e/package-lock.json'
+      - '.github/workflows/static-gh3576-wizard-popstate-price-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3576-wizard-popstate-price-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  wizard-popstate-price-chromium:
+    name: Wizard saves the trade price on browser Back/Forward, real Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Install e2e dependencies
+        working-directory: tests/e2e
+        run: npm ci
+      - name: Install Chromium
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+      - name: Wizard browser Back/Forward price (gh3576-wizard-popstate-price)
+        run: node tests/gh3576-wizard-popstate-price.mjs
