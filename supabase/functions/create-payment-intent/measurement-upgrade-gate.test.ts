@@ -172,12 +172,14 @@ function gateSees(q: ReturnType<typeof buildPriorUpgradeLookupQuery>, row: Row):
   return or.split(/,(?![^()]*\))/).some((branch) => {
     const eq = branch.match(/^requested_by_contractor_id\.eq\.(.+)$/);
     if (eq) return row.requested_by_contractor_id === eq[1];
+    // [gh-3459 contractor gate] any null-id order on this claim, whoever recorded it
+    if (branch === "requested_by_contractor_id.is.null") return row.requested_by_contractor_id === null;
     const nul = branch.match(/^and\(requested_by_contractor_id\.is\.null,user_id\.eq\.(.+)\)$/);
     return !!nul && row.requested_by_contractor_id === null && row.user_id === nul[1];
   });
 }
 const baseRow: Row = { claim_id: CLAIM_ID, product_code: UPGRADE_PRODUCT_CODE, requested_by_contractor_id: null, user_id: BUYER };
-const lookup = (over: Partial<{ contractorId: string; buyerUserId: string }> = {}) =>
+const lookup = (over: Partial<{ contractorId: string; buyerUserId: string; awardedContractorId: string | null }> = {}) =>
   buildPriorUpgradeLookupQuery({ claimId: CLAIM_ID, contractorId: CONTRACTOR, buyerUserId: BUYER, ...over });
 
 Deno.test("gh-3459: a PAID upgrade recorded with a NULL contractor id is seen by the gate for the same buyer, so a second PaymentIntent is refused (fails before the fix)", () => {
@@ -198,6 +200,31 @@ Deno.test("gh-3459: NEGATIVE CONTROLS -- the gate does not over-block", () => {
   // a different claim, a different product
   assertEquals(gateSees(lookup(), { ...baseRow, claim_id: "other-claim" }), false);
   assertEquals(gateSees(lookup(), { ...baseRow, product_code: "roof_basic" }), false);
+});
+
+// [gh-3459, CLOSE-REVIEW: FAIL 6740291401 / DECIDED Tier A] The gate is keyed on the contractor, not on the caller. A null-id upgrade row can
+// be recorded by a DIFFERENT signed-in account (create-measurement-order writes user_id from whoever calls it). When this contractor is the
+// claim's awarded contractor, that row is attributed to it (the same fallback create-measurement-order now records with), so a second
+// PaymentIntent is refused whoever recorded the first order.
+Deno.test("gh-3459: TWO ACCOUNTS -- a null-id paid upgrade recorded by a DIFFERENT account is seen for the claim's awarded contractor, so a second PaymentIntent is refused (fails before the fix)", () => {
+  const q = lookup({ awardedContractorId: CONTRACTOR });
+  const row = { ...baseRow, user_id: OTHER_BUYER };
+  assertEquals(gateSees(q, row), true);
+  const check = resolveContractorAlreadyPurchased({ data: gateSees(q, row) ? { id: "order-1" } : null, error: null });
+  assertEquals(check, { ok: true, alreadyPurchased: true });
+});
+
+Deno.test("gh-3459: contractor gate CONTROLS -- no over-block when this contractor is not the awarded one, and real-id rows still match only their contractor", () => {
+  // claim awarded to someone else (or to no one): a null-id row recorded by another account is not attributed to this contractor
+  assertEquals(gateSees(lookup({ awardedContractorId: OTHER_CONTRACTOR }), { ...baseRow, user_id: OTHER_BUYER }), false);
+  assertEquals(gateSees(lookup({ awardedContractorId: null }), { ...baseRow, user_id: OTHER_BUYER }), false);
+  // the same-buyer null-id branch from #3482 still holds whatever the award
+  assertEquals(gateSees(lookup({ awardedContractorId: OTHER_CONTRACTOR }), baseRow), true);
+  // even for the awarded contractor, another contractor's real-id order is NOT this contractor's purchase (D-317 cl. 4: later contractors pay)
+  assertEquals(gateSees(lookup({ awardedContractorId: CONTRACTOR }), { ...baseRow, requested_by_contractor_id: OTHER_CONTRACTOR, user_id: OTHER_BUYER }), false);
+  // other claim / other product still never match
+  assertEquals(gateSees(lookup({ awardedContractorId: CONTRACTOR }), { ...baseRow, claim_id: "other-claim" }), false);
+  assertEquals(gateSees(lookup({ awardedContractorId: CONTRACTOR }), { ...baseRow, product_code: "roof_basic" }), false);
 });
 
 Deno.test("gh-3459: a non-uuid id is refused before it reaches a filter string (no filter injection)", () => {

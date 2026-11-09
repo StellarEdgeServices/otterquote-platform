@@ -48,6 +48,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { logNotificationFailureLoud } from "./notification-failure.ts";
 import {
   buildUpgradeOrderInsert,
+  contractorIdOrNull,
+  resolveUpgradeContractorId,
   UPGRADE_PRODUCT_CODE,
   type UpgradeOrderInsertPayload,
 } from "./measurement-upgrade-order.ts";
@@ -262,7 +264,7 @@ async function verifyUpgradePayment(
   paymentIntentId: string,
   claimId: string,
   requestOrigin: string,
-): Promise<PaymentCheckResult> {
+): Promise<PaymentCheckResult & { piContractorId?: string | null }> {
   const isStaging = requestOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
     requestOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
   const stripeSecretKey = isStaging
@@ -287,7 +289,9 @@ async function verifyUpgradePayment(
   }
   const pi = await piRes.json();
   // gh-2107 (Ben's step 2 on #2078): same module, same USD guard.
-  return checkUpgradePaymentIntent(pi, { claimId });
+  const checked = checkUpgradePaymentIntent(pi, { claimId });
+  // gh-3459: carry the contractor this PaymentIntent was minted for (set server-side by create-payment-intent) to the order insert.
+  return checked.ok ? { ...checked, piContractorId: contractorIdOrNull(pi.metadata?.contractor_id) } : checked;
 }
 
 /**
@@ -499,11 +503,28 @@ const handler = async (req: Request): Promise<Response> => {
       }
 
       const upgradeRole = roleUnresolved && !contractorId ? UNSPECIFIED_ROLE : "contractor";
+
+      // gh-3459 (DECIDED Tier A on #3459): record the order against the contractor the verified PaymentIntent was minted for, falling back
+      // to the claim's awarded contractor, never against the caller's own claim. create-payment-intent's duplicate-upgrade gate matches on
+      // this column, so a second account recording the order can no longer leave the paying contractor free to be charged twice.
+      // The claim is read only when the PaymentIntent names no contractor; a failed read just means no fallback.
+      let awardedContractorId: string | null = null;
+      if (!paidUpgrade.piContractorId) {
+        const { data: awardRow, error: awardErr } = await supabase
+          .from("claims")
+          .select("selected_contractor_id")
+          .eq("id", claimId)
+          .maybeSingle();
+        if (awardErr) console.error(`[${FUNCTION_NAME}] upgrade awarded-contractor lookup failed (no fallback):`, awardErr);
+        awardedContractorId = contractorIdOrNull(awardRow?.selected_contractor_id);
+      }
+      const orderContractorId = resolveUpgradeContractorId(paidUpgrade.piContractorId, awardedContractorId, contractorId);
+
       const decision = buildUpgradeOrderInsert(
         paidUpgrade,
         claimId,
         authedUser.id,
-        contractorId ?? "",
+        orderContractorId ?? "",
         paymentIntentId,
         isFirstBuyer,
         note,
@@ -519,7 +540,7 @@ const handler = async (req: Request): Promise<Response> => {
 
       // gh-3447: paid, but no usable role and no contractor_id: record it for an admin rather than refuse it.
       const upgradePayload: UpgradeOrderInsertPayload = upgradeRole === UNSPECIFIED_ROLE
-        ? { ...decision.insertPayload, requested_by_role: "unspecified", requested_by_contractor_id: null }
+        ? { ...decision.insertPayload, requested_by_role: "unspecified", requested_by_contractor_id: orderContractorId }
         : decision.insertPayload;
       let { data: upgradeOrder, error: upgradeInsErr } = await supabase
         .from("hover_orders")
@@ -565,7 +586,7 @@ const handler = async (req: Request): Promise<Response> => {
       console.log(`[${FUNCTION_NAME}] upgrade order queued for manual fulfillment:`, {
         order_id: upgradeOrder.id,
         claim_id: claimId,
-        contractor_id: contractorId,
+        contractor_id: orderContractorId,
         amount: paidUpgrade.amount,
         first_buyer: isFirstBuyer,
       });

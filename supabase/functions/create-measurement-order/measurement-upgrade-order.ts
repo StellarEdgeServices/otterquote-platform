@@ -136,3 +136,33 @@ export function buildUpgradeOrderInsert(
     },
   };
 }
+
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A contractor id is used only if it is a plain UUID; anything else (absent, empty, malformed) is treated as not given. */
+export function contractorIdOrNull(value: unknown): string | null {
+  return typeof value === "string" && UUID_SHAPE.test(value) ? value : null;
+}
+
+/**
+ * [gh-3459, DECIDED Tier A on #3459 after CLOSE-REVIEW: FAIL 6740291401] Which contractor a paid upgrade order is recorded against.
+ *
+ * create-payment-intent's duplicate-upgrade gate refuses a second PaymentIntent when THIS contractor already has an upgrade order on the
+ * claim, matched on hover_orders.requested_by_contractor_id. Before this, that column was copied from the request body of whoever called
+ * create-measurement-order, and the PaymentIntent is not tied to the caller (payment-intent-checks.ts checks status, USD, claim and type).
+ * So a second signed-in account holding the PaymentIntent id could record the order with a NULL (or its own) contractor id, and the
+ * contractor who paid could then be charged again.
+ *
+ * Order of precedence:
+ *   1. The verified PaymentIntent's metadata.contractor_id. create-payment-intent writes it server-side, only after checking the caller
+ *      owns that contractor (index.ts, measurement_upgrade branch), so it names the contractor who actually paid.
+ *   2. The claim's awarded contractor (claims.selected_contractor_id), when the PaymentIntent names none.
+ *   3. Otherwise, the request's contractor id, exactly as before (null when none was sent). Only reached when neither 1 nor 2 exists.
+ */
+export function resolveUpgradeContractorId(
+  piContractorId: unknown,
+  awardedContractorId: unknown,
+  requestContractorId: string | null,
+): string | null {
+  return contractorIdOrNull(piContractorId) ?? contractorIdOrNull(awardedContractorId) ?? requestContractorId;
+}
