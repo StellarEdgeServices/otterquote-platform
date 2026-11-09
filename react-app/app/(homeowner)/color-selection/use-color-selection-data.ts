@@ -6,7 +6,7 @@
  * ADR-009 useState/useEffect over the shared supabase singleton; RLS is the real
  * gate. Mirrors use-project-confirmation-data.ts (H4) idiom. Faithful port of the
  * static init (color-selection.html:629-713) and its three mutations
- * (requestColorBoardVisit:999-1059, handleColorConfirmation save:1081-1091,
+ * (handleColorConfirmation save:1081-1091,
  * createColorAddendum EF call:1123-1159).
  *
  * Faithful-port notes:
@@ -257,10 +257,12 @@ export async function saveColorSelection({
     .select('id');
 
   if (error) {
-    throw new Error('Failed to save color selection: ' + error.message);
+    // gh-3287 (Ben 6584752880, item 67): the raw database message is logged, never shown.
+    console.error('[ColorSelection] save failed:', error.message);
+    throw new Error(COLOR_COPY.saveError);
   }
   if (!data || data.length === 0) {
-    throw new Error('Error saving color. Please try again.');
+    throw new Error(COLOR_COPY.saveError);
   }
 }
 
@@ -301,58 +303,3 @@ export async function createColorAddendumEnvelope({
   };
 }
 
-// ── In-person color board request ────────────────────────────────────────────────
-
-export type ColorBoardResult =
-  | { status: 'already' }
-  | { status: 'created' }
-  | { status: 'error'; error: string };
-
-/**
- * Faithful port of requestColorBoardVisit (color-selection.html:999-1059): dedup check
- * then insert a 'color_board_request' notification. Any failure (dedup or insert) →
- * { status: 'error' } so the page can fall back to the mailto. Does NOT alter
- * notifications RLS (Tier-3 — preserved as the static wrote it).
- */
-export async function requestColorBoardVisit({
-  claimId,
-  userId,
-}: {
-  claimId: string;
-  userId: string;
-}): Promise<ColorBoardResult> {
-  try {
-    // Dedup (static 1005-1010) — maybeSingle; the static ignores a dedup error and
-    // proceeds to insert, so any select error simply yields no `existing`.
-    const { data: existing } = await supabase
-      .from('notifications')
-      .select('id')
-      .eq('claim_id', claimId)
-      .eq('notification_type', 'color_board_request')
-      .maybeSingle();
-
-    if (existing) {
-      return { status: 'already' };
-    }
-
-    // Insert (static 1023-1033)
-    const { error } = await supabase.from('notifications').insert({
-      claim_id: claimId,
-      notification_type: 'color_board_request',
-      channel: 'dashboard',
-      recipient: '',
-      message_preview: 'Homeowner requesting a color board visit.',
-      user_id: userId,
-      created_at: new Date().toISOString(),
-    });
-
-    if (error) throw error;
-
-    return { status: 'created' };
-  } catch (err) {
-    return {
-      status: 'error',
-      error: err instanceof Error ? err.message : 'Failed to request color board visit.',
-    };
-  }
-}
