@@ -2987,6 +2987,12 @@
             if (jobType) {
               window.selectJobType(jobType);
               window.selectedJobTypeIsPreselect = true;  // gh-3398: set after the call; a user click clears it
+              // gh-3484 (D-407): a stored 'idk' answered nothing, so no payment option shows as chosen.
+              // selectJobType already ran above (it reveals the help link); undo only its highlight and selection.
+              if (jobType === 'insurance_rcv' && currentClaim.policy_type === 'idk') {
+                window.selectedJobType = null;
+                document.querySelectorAll('.job-type-btn').forEach(btn => btn.classList.remove('selected'));
+              }
               // Pre-populate conditional fields
               if (jobType === 'repair') {
                 if (currentClaim.repair_squares) document.querySelector('[name="repairSquares"]').value = currentClaim.repair_squares;
