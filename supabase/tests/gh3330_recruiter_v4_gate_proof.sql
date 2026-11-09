@@ -104,7 +104,7 @@ UPDATE public.claims SET completion_date = NULL WHERE referral_id IN (current_se
 UPDATE public.claims SET completion_date = now() WHERE referral_id IN (current_setting('proof.ref_bi')::uuid, current_setting('proof.ref_p')::uuid);
 SELECT pg_temp.chk('O re-fire, home_inspector referrer, recruiter has since accepted v4: returns at the gh-2479 status check (the first completion left the referral job_completed), so a withheld $50 is NOT released (before: paid once at first completion, not paid twice)', 'none|50|1|50', 'none|0|0|0', pg_temp.outcome('bi', 'a8'));
 SELECT pg_temp.chk('P re-fire, non-inspector referrer, recruiter has since accepted v4: returns at the commission_amount check, so a withheld $50 is NOT released (before: paid once at first completion)', '200|50|1|50', '200|0|0|0', pg_temp.outcome('p', 'a7'));
-SELECT pg_temp.chk('J apply_referral_commission body md5', '2eba9b9601c731cb20f45ef5a18c742b', '7b9bc6957cb15534514f1e1ab9e32bbf',
+SELECT pg_temp.chk('J apply_referral_commission body md5', '2eba9b9601c731cb20f45ef5a18c742b', '50fa6642f7ca542b3b96248a01df8e4d',
   (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure));
 SELECT pg_temp.chk('K still SECURITY DEFINER with search_path public, pg_temp', 'true|search_path=public, pg_temp', 'true|search_path=public, pg_temp',
   (SELECT prosecdef::text || '|' || array_to_string(proconfig, ',') FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure));

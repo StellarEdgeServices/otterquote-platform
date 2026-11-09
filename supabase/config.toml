@@ -285,7 +285,8 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.create-setup-intent]
-verify_jwt = false
+# gh-3507: user session required; in-handler check also enforces contractors.user_id = caller.
+verify_jwt = true
 
 # gh-2019: notify-admin-new-homeowner is deployed verify_jwt=false (Supabase
 # Management API /functions, 2026-09-30) but had NO stanza here, so a flagless
@@ -544,4 +545,10 @@ verify_jwt = false
 # profiles trigger, sign_up is not sent server-side) with the service-role key as bearer; the handler authorises that bearer in-code (same
 # model as notify-admin-new-homeowner). No browser caller. D-323 + D-336: it sends nothing for an opted-out or unknown-opt-out person.
 [functions.ga4-mp-conversion]
+verify_jwt = false
+
+# gh-3428: owner-alert-sweep places a Twilio voice call to the owner for a real customer event. Called only by pg_cron (net.http_post with the
+# service-role key). verify_jwt = false because the public anon key is also a valid JWT; the handler refuses everything but the exact
+# service-role key (sweep.ts authorizeServiceOnly, 401/403) before any database read or Twilio call.
+[functions.owner-alert-sweep]
 verify_jwt = false

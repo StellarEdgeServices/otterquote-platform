@@ -54,8 +54,8 @@ const PINS = {
   'choice_materials': 'a98390ad8cfb59240ba321fc554538e8676bdf4f4e69117b6c10924c7fd70c4d',
   'choice_warranties': 'bbd3f0735fed26d8d25841de2610edb8a6c141fdbb91400dc2471ef217d03947',
   'choice_decisions': '2220cfd5d3e14e5edb13879829ad61b3f52c299296c5c075521fbcc22367e787',
-  'para_save-money': '08b8ad8a58c4951fc531a6cc368e405c3d4f4d52c335977925f4b92117971c55',
-  'para_materials': 'd7bec219f889122916d97e1b113671d4e22bf95e7d7b6db3fde31ee5f3b0812f',
+  'para_save-money': '689a63344a9ff75caca4439b41b3478eea54dc1a9bf6fd39bbcb48190861b36c',
+  'para_materials': 'd927e487576e1a4d0476a7eaf4b432568428f61daa1884d943383ad2f0058deb',
   'para_warranties': 'f71c64709462c0dbcf36efb2ef8b828718f2dd61091796762a41f7c7ac945890',
   'para_decisions': '15f67bfab50cf39dcdadbb69ad4c77eeb0a685d7be8c08b2b5a8548849b9f946',
 };
@@ -116,8 +116,8 @@ function staticHalf() {
     const mut = HTML[t].replace(/(<p class="hc-para">[^<]{5})/, '$1X');
     control('V2 /hc/' + t + ' (one character added)', paraOf(mut) !== COPY['para_' + t]);
   }
-  ok(!/20\s*[-\u2013]\s*50|percent/i.test(HTML['save-money']) && /Many insurers offer a discount/.test(HTML['save-money']), 'V2 the save-money page carries the approved replacement text, not the "20-50 percent" original');
-  ok(/Ask yours what it offers\./.test(HTML['save-money']) && /more likely to include these upgrades for free or at discounted rates/.test(HTML['save-money']), 'V2 save-money keeps "Ask yours what it offers" and the approved "more likely" wording');
+  ok(!/20\s*[-\u2013]\s*50|percent/i.test(HTML['save-money']) && /Ask your insurance company whether it offers a discount for impact-resistant roofing\./.test(HTML['save-money']), 'V2 the save-money page carries the approved replacement text, not the "20-50 percent" original');
+  ok(/<p class="hc-para">Ask your insurance company whether it offers a discount for impact-resistant roofing\.<\/p>/.test(HTML['save-money']) && !/more likely to include|Many insurers offer/.test(HTML['save-money'] + HTML['materials']), 'V2 save-money carries exactly the ruled insurer-discount sentence, and the unsourced "more likely to include" / "Many insurers offer" claims are absent (#3380 FU 27)');
   ok(!/unbiased/i.test(HTML.decisions) && !/every product/i.test(HTML.decisions) && !/unbiased|every product/i.test(COPY.para_decisions), 'V2 decisions page and fixture: the words "unbiased" and "every product" are absent (Dustin 2026-09-30: contractors pay a fee on the accepted bid)');
   ok(/costs and benefits of the products that go on your home/.test(HTML.decisions) && /probably outlive you/.test(HTML.warranties) && !/out live/.test(HTML.warranties), 'V2 decisions reads "the products" and warranties reads "outlive" (Dustin 2026-09-30)');
   control('V2 "unbiased" (injected into decisions page)', /unbiased/i.test(HTML.decisions.replace('do our best', 'do our best to be unbiased')));
@@ -190,10 +190,10 @@ function staticHalf() {
     ok(phones.every((p) => p === '844-875-3412') && !Object.values(HTML).some((h) => /\btel:/.test(h)), 'V6 no phone number shown except 844-875-3412 (none is shown), no tel: link');
     control('V6 (wrong phone injected)', ['<p>Call 317-555-0100</p>'].flatMap((x) => [...x.matchAll(/\(?\b\d{3}\)?[-. ]\d{3}[-. ]\d{4}\b/g)].map((m) => m[0])).some((p) => p !== '844-875-3412'));
   }
-  // V7 /ho6 and /ho6/start are untouched
+  // V7 /ho6/start and its assets are untouched. ho6.html itself is excluded since #3380 FU 27 (its copy is pinned by tests/gh2378-ho6.mjs and tests/fixtures/ho6-copy.txt).
   {
-    const g = spawnSync('git', ['diff', '--quiet', 'origin/main', '--', 'ho6.html', 'ho6-start.html', 'css/ho6.css', 'js/ho6-start.js', 'js/oq-lead-core.js'], { cwd: ROOT });
-    if (g.status === 0) ok(true, 'V7 git diff origin/main is empty for ho6.html, ho6-start.html, css/ho6.css, js/ho6-start.js and js/oq-lead-core.js');
+    const g = spawnSync('git', ['diff', '--quiet', 'origin/main', '--', 'ho6-start.html', 'css/ho6.css', 'js/ho6-start.js', 'js/oq-lead-core.js'], { cwd: ROOT });
+    if (g.status === 0) ok(true, 'V7 git diff origin/main is empty for ho6-start.html, css/ho6.css, js/ho6-start.js and js/oq-lead-core.js');
     else if (g.status === 1) ok(false, 'V7 git diff origin/main shows a change to an HO-6 / start file');
     else console.log('SKIP: V7 git diff (no origin/main ref in this checkout); tests/gh2378-ho6.mjs runs unmodified in static-ho6-tests.yml');
     ok(/collectAttribution/.test(read('js/oq-lead-core.js')) && /ATTR_KEYS = \['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'\]/.test(read('js/oq-lead-core.js')), 'V7 /ho6/start still records utm_source, utm_medium, utm_content, utm_term, fbclid, gclid from the URL (utm_campaign is forced to ho-6 there)');

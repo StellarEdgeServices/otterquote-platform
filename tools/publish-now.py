@@ -184,6 +184,16 @@ def check_urls(paths, sites=()):
     return urls
 
 
+def nothing_served(urls, sites):
+    """True only when the change set has no URLs to check AND touches no served site (e.g. a tools-only PR).
+    A change that does touch a served site but yields no URLs is NOT this case and must still fail."""
+    return not urls and not sites
+
+
+def result_label(files, sites):
+    return "PASS (nothing served)" if nothing_served(check_urls(files, sites), sites) else "PASS"
+
+
 def sitemap_locs(xml_text):
     return set(re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", xml_text or ""))
 
@@ -694,6 +704,8 @@ def step_check(ctx, files, ref, sites):
     urls = check_urls(files, sites)
     ok_all = True
     dirs = set()
+    if nothing_served(urls, sites):
+        say("nothing served: this change set touches no served site and has no URLs to check"); return True
     if not urls:
         say("FAIL: no public URLs derived from the change set"); return False
     for u in urls:
@@ -764,7 +776,7 @@ def main(argv):
             if s == 200 and p.get("merged"):
                 ref = p["merge_commit_sha"]
         ok = step_check(ctx, files, ref, sites)
-        say("RESULT: %s" % ("PASS" if ok else "FAIL")); return 0 if ok else 1
+        say("RESULT: %s" % (result_label(files, sites) if ok else "FAIL")); return 0 if ok else 1
     if n in ("-", "0", ""):
         say("REFUSED: publishing requires a PR number"); return 2
     say("PR #%s changes %d file(s) (%d to URL-check); sites: %s" % (n, len(all_paths), len(files), sorted(sites) or "none (nothing served changes)"))
@@ -775,7 +787,7 @@ def main(argv):
     else:
         say("no served files changed: nothing to publish")
     ok = step_check(ctx, files, ref, sites)
-    say("RESULT: %s" % ("PASS" if ok else "FAIL"))
+    say("RESULT: %s" % (result_label(files, sites) if ok else "FAIL"))
     return 0 if ok else 1
 
 

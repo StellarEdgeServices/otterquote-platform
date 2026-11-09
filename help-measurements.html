@@ -919,6 +919,56 @@
             hoverStripe = Stripe(CONFIG.STRIPE_PK);
         }
 
+        // gh-3356: what the homeowner is told when create-payment-intent will not start a payment. The claim's paid / order / status
+        // columns are never written by anything, so the Purchase button cannot be hidden up front; the server is the authority.
+        // MEASUREMENT_ALREADY_PAID: this claim already paid for its report: hide the button, never show the card form.
+        // MEASUREMENT_PAYMENT_CHECK_UNAVAILABLE: the server could not check, so it started nothing: keep the button for a retry.
+        // MEASUREMENT_PAYMENT_CANNOT_START: the payment the server's idempotency key returns was cancelled, so no usable payment could be
+        //   started (an operator alert has been raised). The sentence says nothing about a charge and sends the buyer to support.
+        var MEASUREMENT_CANNOT_START_MESSAGE = 'We could not start a payment for the Aerial Roof Report just now. Please try again later. If this keeps happening, contact support.';
+        function showMeasurementRefusal(code, btn, originalText) {
+            if (code === 'MEASUREMENT_ALREADY_PAID') {
+                btn.style.display = 'none';
+                showMessage('Our records show a payment for the Aerial Roof Report on this project, so we did not start another one. This attempt did not charge your card. If you have a question about your report or a charge, contact support.', 'error');
+                return;
+            }
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+            if (code === 'MEASUREMENT_PAYMENT_CANNOT_START') {
+                showMessage(MEASUREMENT_CANNOT_START_MESSAGE, 'error');
+                return;
+            }
+            showMessage('We could not check your payment history just now, so we did not start a payment. This attempt did not charge your card. Please try again in a few minutes.', 'error');
+        }
+
+        // gh-3356 (F2): Stripe answers confirmCardPayment with payment_intent_unexpected_state when the PaymentIntent this page holds is no
+        // longer payable: it was cancelled (a newer tab or a price change replaced it) or it was already paid (another tab, or an earlier
+        // attempt whose order step did not finish). Stripe documents `error.payment_intent` as "the PaymentIntent object for errors returned
+        // on a request involving a PaymentIntent" (nullable), so its `status` tells the two apart:
+        //   - status 'succeeded': the card WAS charged. Run the normal order step with that intent's id and show the normal success screen
+        //     (create-measurement-order re-reads the PaymentIntent from Stripe and trusts nothing the browser sends but its id).
+        //   - status 'canceled': nothing was charged. The dead secret is never retried: the reload sentence, Pay stays disabled.
+        //   - anything else, or `payment_intent` absent / unreadable: FAIL SAFE: the same reload sentence, which claims nothing about a
+        //     charge, Pay disabled, no order recorded. The server still refuses a second purchase on the reloaded page.
+        var MEASUREMENT_STALE_INTENT_MESSAGE = 'This payment page is out of date. Please reload the page to continue. If you have a question about a charge, contact support.';
+        var staleIntentShown = false;
+        var expectedIntentId = null; // the id of the PaymentIntent this page created, set where the card form is mounted
+        // One place that shows (or clears) the dead-payment state: the explanation stays visible and Pay stays disabled while it holds.
+        function setStaleIntentState(isStale) {
+            staleIntentShown = isStale;
+            document.getElementById('payHoverBtn').disabled = isStale;
+            if (isStale) document.getElementById('hoverCardErrors').textContent = MEASUREMENT_STALE_INTENT_MESSAGE;
+        }
+        function measurementStaleIntentOutcome(stripeError, expectedIntentId) {
+            if (!stripeError) return null;
+            var pi = stripeError.payment_intent;
+            var status = pi && typeof pi === 'object' ? pi.status : undefined;
+            if (stripeError.code !== 'payment_intent_unexpected_state' && status !== 'canceled') return null;
+            var idOk = !!pi && typeof pi.id === 'string' && /^pi_[A-Za-z0-9_]+$/.test(pi.id) && (!expectedIntentId || pi.id === expectedIntentId);
+            if (status === 'succeeded' && idOk) return { kind: 'paid', paymentIntent: pi };
+            return { kind: 'stale' };
+        }
+
         // Step 1 — Create PaymentIntent and show card form (no charge yet)
         async function purchaseHover() {
             const btn = document.getElementById('purchaseHoverBtn');
@@ -936,12 +986,19 @@
                     description: 'Complete Property Report',
                 });
 
+                // gh-3356: the server refused because this claim has already paid for its report, or could not check. No card form.
+                if (paymentResult?.refused) {
+                    showMeasurementRefusal(paymentResult.code, btn, originalText);
+                    return;
+                }
+
                 if (!paymentResult?.client_secret) {
                     throw new Error('Could not initialize payment. Please try again.');
                 }
 
                 hoverClientSecret = paymentResult.client_secret;
                 hoverPaymentIntentId = paymentResult.payment_intent_id;
+                expectedIntentId = paymentResult.payment_intent_id || null;
 
                 // Mount Stripe Card Element into the form
                 const elements = hoverStripe.elements();
@@ -958,8 +1015,12 @@
                 });
                 hoverCardElement.mount('#hoverCardElement');
                 hoverCardElement.on('change', (e) => {
+                    // gh-3356: once the held payment is known to be dead, editing the card must not clear the explanation or re-enable Pay.
+                    if (staleIntentShown) { setStaleIntentState(true); return; }
                     document.getElementById('hoverCardErrors').textContent = e.error ? e.error.message : '';
                 });
+                // a fresh payment page: Pay is usable again (it stays disabled only for a dead one, above)
+                setStaleIntentState(false);
 
                 // Show card form, hide purchase button
                 btn.style.display = 'none';
@@ -1046,7 +1107,9 @@
             const originalText = payBtn.innerHTML;
             payBtn.disabled = true;
             payBtn.innerHTML = '<span class="spinner"></span> Processing...';
-            document.getElementById('hoverCardErrors').textContent = '';
+            const cardErrors = document.getElementById('hoverCardErrors');
+            cardErrors.textContent = '';
+            let recoveredPaid = false;
 
             try {
                 if (!hoverStripe || !hoverCardElement || !hoverClientSecret) {
@@ -1054,21 +1117,38 @@
                 }
 
                 // Charge the card — this is the real money movement
-                const { paymentIntent, error: stripeError } = await hoverStripe.confirmCardPayment(
+                let { paymentIntent, error: stripeError } = await hoverStripe.confirmCardPayment(
                     hoverClientSecret,
                     { payment_method: { card: hoverCardElement } }
                 );
 
                 if (stripeError) {
+                    // gh-3356 (F2): the held PaymentIntent is no longer payable.
+                    const stale = measurementStaleIntentOutcome(stripeError, expectedIntentId);
+                    if (stale && stale.kind === 'paid') {
+                        // It already SUCCEEDED (another tab, or an earlier attempt whose order step did not finish): the card was charged.
+                        // Record the order for that intent through the normal step below and show the normal success screen.
+                        recoveredPaid = true;
+                        paymentIntent = stale.paymentIntent;
+                        stripeError = null;
+                    } else if (stale) {
+                        // Cancelled (or status unreadable): plain reload message, Pay stays DISABLED (the secret is dead), no order.
+                        setStaleIntentState(true);
+                        payBtn.innerHTML = originalText;
+                        return;
+                    }
+                }
+
+                if (stripeError) {
                     // Stripe declined or card error — surface to user, don't create order
-                    document.getElementById('hoverCardErrors').textContent = stripeError.message;
+                    cardErrors.textContent = stripeError.message;
                     payBtn.disabled = false;
                     payBtn.innerHTML = originalText;
                     return;
                 }
 
-                if (paymentIntent.status !== 'succeeded') {
-                    throw new Error(`Unexpected payment status: ${paymentIntent.status}. Please contact support.`);
+                if (!paymentIntent || paymentIntent.status !== 'succeeded') {
+                    throw new Error(`Unexpected payment status: ${paymentIntent && paymentIntent.status}. Please contact support.`);
                 }
 
                 // Payment confirmed — safe to record the order.
@@ -1098,12 +1178,12 @@
 
             } catch (err) {
                 console.error('Measurement payment confirmation error:', err);
-                document.getElementById('hoverCardErrors').textContent =
+                cardErrors.textContent =
                     err.message || 'Payment failed. Please try again.';
                 // If the charge succeeded and only the bookkeeping failed, the
                 // worst possible outcome is the buyer paying twice. Leave the
                 // pay button disabled in that case.
-                if (err && err.paymentCaptured) {
+                if ((err && err.paymentCaptured) || recoveredPaid) {
                     payBtn.innerHTML = 'Paid — contact support';
                 } else {
                     payBtn.disabled = false;
@@ -1149,6 +1229,7 @@
             document.getElementById('hoverCardErrors').textContent = '';
             hoverClientSecret     = null;
             hoverPaymentIntentId  = null;
+            setStaleIntentState(false);
         }
 
         // ── Send measurement email to adjuster ────────────────────────────────

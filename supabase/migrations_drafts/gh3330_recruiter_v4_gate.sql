@@ -15,8 +15,9 @@
 --   Dustin's words, as recorded on #3330: "No." (2026-11-02 13:17 ET, comment 6584786600) and "Yes, v3 signers must accept v4 (Recommended)"
 --   (2026-11-05, comment 6668571465). The record does not attribute "withheld rather than dropped" to him: that phrase came from Marty's proposal 6582010408
 --   and Ben's answer 6583394572, which Ben withdrew at 6584765173. The code withholds only in the sense that it writes no bonus (see below).
--- Open, not decided here: whether a recruiter who accepts v4 later is paid for a referral that completed before they accepted. The code pays nothing
---   for it, and the question is open on #3330 (Marty's Q 6673399375, item 1).
+-- Decided (D-417; Dustin's "Forfeit (Recommended)", #3330 comment 6726205835): a recruiter who accepts v4 later is NOT paid the $50 for recruits whose
+--   referrals completed before that acceptance. The code already does exactly this (it accrues nothing for a pre-acceptance completion and nothing
+--   re-fires it); this commit reworded comments and pre-flight text only, no executable SQL changed.
 --   Needs REVIEW + LEGAL-READ + R-177 pair; CTO applies after R-097.
 -- DEPENDS ON gh3239 (partner_v4_accepted_at()) and gh3245 (the body this restates). Refuses to run on any other body.
 -- Rollback: gh3330_recruiter_v4_gate_rollback.sql   Pre-flight: gh3330_recruiter_v4_gate_pre-flight.md
@@ -24,10 +25,10 @@
 --
 -- What this file does
 --   apply_referral_commission(): the recruit-bonus branch gains one test. Where the recruiter exists and is not a home_inspector, the $50 now
---   accrues only if partner_v4_accepted_at(recruiter) IS NOT NULL; otherwise it is WITHHELD (logged, nothing written, referral recruit amount
+--   accrues only if partner_v4_accepted_at(recruiter) IS NOT NULL; otherwise it is FORFEITED for that referral (logged, nothing written, referral recruit amount
 --   stays 0). Everything else is unchanged: the referrer's $200 and its v4 gate, the home_inspector rules, the is_test/status/window checks,
 --   the emails. The diff against the live body is the gh-3330 lines (the full body is restated below).
---   Not done, and not invented: a RELEASE path for withheld bonuses. See the pre-flight, "Open: release path".
+--   No release path exists or is wanted: the $50 for a referral completed before the recruiter accepted v4 is forfeited (see the pre-flight, "Forfeit rule").
 
 BEGIN;
 
@@ -42,7 +43,7 @@ BEGIN
   END IF;
   SELECT md5(prosrc) INTO v_md5 FROM pg_proc WHERE oid = to_regprocedure('public.apply_referral_commission()');
   IF v_md5 IS NULL OR v_md5 NOT IN ('2eba9b9601c731cb20f45ef5a18c742b',    -- audited body (production 2026-11-02, the gh3245 body)
-                                    '7b9bc6957cb15534514f1e1ab9e32bbf') THEN -- this file's body (re-run)
+                                    '50fa6642f7ca542b3b96248a01df8e4d') THEN -- this file's body (re-run)
     RAISE EXCEPTION 'gh3330 guard: apply_referral_commission() body drifted (md5 %); re-audit before applying', v_md5;
   END IF;
 END
@@ -242,10 +243,12 @@ BEGIN
     -- bonus?": "No."): a recruiter earns the $50 only if the RECRUITER holds Partner Agreement v4
     -- (partner_v4_accepted_at(recruiter) IS NOT NULL). The Recruit Bonus predates v4 (v3 Section 4, D-139; D-401 item 7 keeps it);
     -- this condition is Dustin's ruling, not a v3 term. No cutoff and no timing test: the recruiter must hold v4 when the referral
-    -- completes. A recruiter without it is WITHHELD, not dropped:
-    -- nothing is accrued or paid now (recruit_commission_amount stays 0, no recruit_earnings, no payout row), the referral still
-    -- completes and the referrer still gets the $200, and the case is logged here. It stays recoverable by query (pre-flight
-    -- query W). There is NO release path yet: a recruiter who accepts v4 later is not paid automatically (see pre-flight).
+    -- completes. FORFEIT RULE (decided; D-417; Dustin's "Forfeit (Recommended)", #3330 comment 6726205835): a recruiter who accepts v4
+    -- later is NOT paid the $50 for recruits whose referrals completed before that acceptance. Nothing is accrued or paid now
+    -- (recruit_commission_amount stays 0, no recruit_earnings, no payout row), the referral still completes and the referrer
+    -- still gets the $200, and the case is logged here. This code is that rule: a later acceptance releases nothing and
+    -- re-fires nothing, and there is no release path to build. The log line and pre-flight query W are a record for support,
+    -- not a queue to pay from.
     IF FOUND AND v_recruiter.agent_type IS DISTINCT FROM 'home_inspector'
        AND public.partner_v4_accepted_at(v_recruiter.id) IS NULL THEN
       RAISE LOG 'apply_referral_commission: gh-3330 recruiter % has not accepted Partner Agreement v4, $50 recruit bonus WITHHELD (not accrued) for referral_id=% (referrer %)',
@@ -356,7 +359,7 @@ $function$;
 
 DO $check$
 BEGIN
-  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure) <> '7b9bc6957cb15534514f1e1ab9e32bbf' THEN
+  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.apply_referral_commission()'::regprocedure) <> '50fa6642f7ca542b3b96248a01df8e4d' THEN
     RAISE EXCEPTION 'gh3330 forward: body check failed after CREATE OR REPLACE';
   END IF;
 END

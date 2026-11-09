@@ -4,12 +4,16 @@
  * Supports both credit/debit card and ACH bank account (us_bank_account) flows.
  * If the contractor doesn't have a Stripe Customer yet, creates one first.
  *
+ * Auth (gh-3507): requires the caller's user session; refuses (401/403) unless
+ * contractors.user_id = the session's auth user id.
+ *
  * Request body:
  *   contractor_id  (required)  UUID of the contractor
  *   payment_type   (optional)  'card' (default) or 'us_bank_account'
  *
  * Environment variables:
  *   SUPABASE_URL
+ *   SUPABASE_ANON_KEY (caller JWT verification, gh-3507)
  *   SUPABASE_SERVICE_ROLE_KEY
  *   STRIPE_SECRET_KEY
  */
@@ -40,17 +44,50 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
-serve(async (req) => {
+// gh-3507: exported so auth.test.ts can drive the REAL handler (same precedent as
+// process-dunning / switch-contractor: serve() is guarded by import.meta.main, which the
+// Edge runtime sets for the entry file). `getEnv`, `makeClient` and `fetchFn` default to
+// the real Deno.env.get / createClient / fetch; tests stub them (no network, no Stripe).
+export async function handler(
+  req: Request,
+  getEnv: (name: string) => string | undefined = (n) => Deno.env.get(n),
+  makeClient: typeof createClient = createClient,
+  fetchFn: typeof fetch = fetch,
+): Promise<Response> {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  const supabaseUrl = getEnv("SUPABASE_URL")!;
+  const supabaseKey = getEnv("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = makeClient(supabaseUrl, supabaseKey);
 
   try {
+    // ── Caller identity (gh-3507) ──
+    // The caller must hold a real user session. The identity comes from the JWT, never from
+    // the request body. Same pattern as verify-payment-method (the second half of this card-add
+    // flow). verify_jwt=true in config.toml rejects a missing/malformed token at the gateway;
+    // this is the in-code check that also rejects the anon key, which is a valid JWT.
+    const authHeader = req.headers.get("Authorization") || "";
+    if (!authHeader.startsWith("Bearer ")) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized. A valid user session is required." }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const userClient = makeClient(supabaseUrl, getEnv("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: userData, error: userErr } = await userClient.auth.getUser();
+    const callerId = userData?.user?.id;
+    if (userErr || !callerId) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized. Session invalid or expired." }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { contractor_id, payment_type } = await req.json();
 
     if (!contractor_id) {
@@ -90,6 +127,20 @@ serve(async (req) => {
       );
     }
 
+    // gh-3507: the session must belong to THIS contractor. Checked before any Stripe key is
+    // selected, so a refused caller never reaches Customer or SetupIntent creation.
+    // (No admin path: verify-payment-method has none, and an admin has no reason to mint a
+    // client_secret for a contractor's card.)
+    if (contractor.user_id !== callerId) {
+      console.error(
+        `create-setup-intent: caller ${callerId} is not the owner of contractor ${contractor_id}`
+      );
+      return new Response(
+        JSON.stringify({ error: "Forbidden" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Staging detection — use test-mode key when origin is staging (fix #86e19wk6z).
     // gh-1536: exact-match, not substring — "app-staging." falsely matched
     // app-staging.otterquote.com, a Netlify DOMAIN ALIAS on the PRODUCTION app
@@ -99,8 +150,8 @@ serve(async (req) => {
     const isStaging = _reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
       _reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
     const stripeSecretKey = isStaging
-      ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
-      : Deno.env.get("STRIPE_SECRET_KEY");
+      ? (getEnv("STRIPE_SECRET_KEY_TEST") || getEnv("STRIPE_SECRET_KEY"))
+      : getEnv("STRIPE_SECRET_KEY");
     if (!stripeSecretKey) {
       throw new Error("Stripe secret key not configured.");
     }
@@ -158,7 +209,7 @@ serve(async (req) => {
 
       console.log("Creating Stripe Customer for contractor:", contractor_id);
 
-      const customerResponse = await fetch(`${STRIPE_API_BASE}/customers`, {
+      const customerResponse = await fetchFn(`${STRIPE_API_BASE}/customers`, {
         method: "POST",
         headers: {
           Authorization: `Basic ${basicAuth}`,
@@ -237,7 +288,7 @@ serve(async (req) => {
       selectedType
     );
 
-    const setupResponse = await fetch(`${STRIPE_API_BASE}/setup_intents`, {
+    const setupResponse = await fetchFn(`${STRIPE_API_BASE}/setup_intents`, {
       method: "POST",
       headers: {
         Authorization: `Basic ${basicAuth}`,
@@ -270,9 +321,13 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("create-setup-intent error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: (error as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-});
+}
+
+if (import.meta.main) {
+  serve((req) => handler(req));
+}

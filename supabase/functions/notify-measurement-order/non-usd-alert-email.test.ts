@@ -94,6 +94,6 @@ Deno.test("index.ts: the alert mode sends through the same Mailgun call to the s
   const at = index.indexOf("buildNonUsdAlertEmail(");
   const region = index.slice(at, at + 3200);
   assert(region.includes("api.mailgun.net") && region.includes("ADMIN_EMAIL"));
-  assert(region.includes('.from("platform_alerts_log")') && /alert_type:\s*"notification_failed"/.test(region) && /message:\s*"/.test(region), "a failed send leaves an alert row with a type and a fixed message");
+  assert(region.includes('.from("platform_alerts_log")') && /alert_type:\s*"notification_failed"/.test(region) && /message:\s*failureText\.rowMessage/.test(region), "a failed send leaves an alert row with a type and a fixed message (the text comes from alertSendFailureText, pinned in measurement-paid-gate-alert-email.test.ts)");
   assert(region.includes("return json("), "answers the caller");
 });

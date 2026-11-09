@@ -226,7 +226,7 @@ main.pi-main {
       // gh-3136 (P14): D-046 adjuster upsert removed from this page (no adjuster fields here); dashboard.html has its own upsert.
 
       gtag('event', 'project_info_saved', { job_type: 'insurance_acv' });
-      window.location.href = '/dashboard.html';
+      window.location.href = Auth.dashboardUrlWithReturn(window.location.search); // gh-3471: carries a valid ?return= token on to the dashboard
     } catch (err) {
       console.error('[project-info-acv] submit failed:', err);
       // gh-2105: the internal update_zero_rows token is logged above, never shown.

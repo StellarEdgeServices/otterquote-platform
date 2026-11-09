@@ -99,6 +99,22 @@ const REDIRECT_MAP: Record<string, string> = {
   // extensionless -> .html 301 as above so each is not dual-served.
   '/guides/multiple-bids-roof-insurance-claim':
     '/guides/multiple-bids-roof-insurance-claim.html',
+
+  // gh-3380: the 7 /guides/topics/ hubs, same mechanism as the content pages above.
+  '/guides/topics/claims-first-steps':
+    '/guides/topics/claims-first-steps.html',
+  '/guides/topics/claims-settlement':
+    '/guides/topics/claims-settlement.html',
+  '/guides/topics/choosing-contractor':
+    '/guides/topics/choosing-contractor.html',
+  '/guides/topics/comparing-bids':
+    '/guides/topics/comparing-bids.html',
+  '/guides/topics/siding-gutters-windows':
+    '/guides/topics/siding-gutters-windows.html',
+  '/guides/topics/shingles-warranties':
+    '/guides/topics/shingles-warranties.html',
+  '/guides/topics/timing-after-storm':
+    '/guides/topics/timing-after-storm.html',
   '/guides/roof-bid-comparison-worksheet':
     '/guides/roof-bid-comparison-worksheet.html',
   // gh-2905: the roofing bid comparison tool page, same extensionless -> .html 301.
@@ -132,6 +148,10 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/competitive-roof-bids-vs-single-referral.html',
   '/guides/otter-quotes-vs-thumbtack-angi':
     '/guides/otter-quotes-vs-thumbtack-angi.html',
+  '/guides/exterior-projects-one-contractor-or-separate-bids':
+    '/guides/exterior-projects-one-contractor-or-separate-bids.html',
+  '/guides/metal-roof-vs-asphalt-shingle-bids':
+    '/guides/metal-roof-vs-asphalt-shingle-bids.html',
   '/guides/hail-damaged-windows-gutters-bids':
     '/guides/hail-damaged-windows-gutters-bids.html',
   '/guides/gutter-replacement-cost-factors':

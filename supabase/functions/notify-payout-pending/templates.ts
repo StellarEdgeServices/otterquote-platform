@@ -15,6 +15,7 @@ export function formatCurrency(amount: number): string {
 }
 
 export function formatPayoutType(type: string): string {
+  if (type === "measurement_fees_monthly") return "Measurement Referral Fees"; // gh-3229 (P18)
   return type === "commission_referral" ? "Referral Commission" : "Recruit Bonus";
 }
 

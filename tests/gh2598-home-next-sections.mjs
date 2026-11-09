@@ -131,7 +131,7 @@ const total = (() => { const P = byKey(PAGE); return BUILT.reduce((n, k) => n + 
 ok(total > 60, `S1 the comparison covers ${total} desktop strings (a parser that finds nothing must not pass)`);
 
 const word = (html, a, b) => { if (!html.includes(a)) throw new Error('mutation anchor missing: ' + a); return html.replace(a, b); };
-control('S1 (one word changed on the page)', bad(sectionResults(word(PAGE, 'they are more likely to include better materials', 'they are more likely to include best materials'), DESK, PHONE)).length > 0);
+control('S1 (one word changed on the page)', bad(sectionResults(word(PAGE, 'so you can compare them side by side', 'so you can compare them side by sides'), DESK, PHONE)).length > 0);
 control('S1 (one word changed in the desktop design)', bad(sectionResults(PAGE, word(DESK, 'Nobody sits at your kitchen table.', 'Nobody sits at your dining table.'), PHONE)).length > 0);
 control('S2 (one word changed in the phone design)', bad(sectionResults(PAGE, DESK, word(PHONE, 'Who bids on my job?', 'Who bids on the job?'))).length > 0);
 control('S1 (a list item removed from the page)', bad(sectionResults(word(PAGE, '<li>Licensing information</li>', ''), DESK, PHONE)).length > 0);

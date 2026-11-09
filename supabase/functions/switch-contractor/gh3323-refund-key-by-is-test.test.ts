@@ -40,7 +40,7 @@ async function run(claim: Record<string, unknown>, env: Env, origin?: string, q:
     if (url.includes("api.stripe.com")) {
       const auth = String((init?.headers as Record<string, string> | undefined)?.Authorization ?? "");
       stripe.push({ url, method: init?.method ?? "GET", key: atob(auth.replace("Basic ", "")).replace(/:$/, "") });
-      const body = url.includes("/payment_intents/") ? { latest_charge: "ch_1" } : { id: "re_1", status: "succeeded" };
+      const body = url.includes("/payment_intents/") ? { latest_charge: "ch_1", amount: 18054, metadata: { platform_fee_cents: "17500" } } : { id: "re_1", status: "succeeded" };
       return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
     }
     if (url.includes("api.mailgun.net")) {
@@ -134,7 +134,7 @@ Deno.test("(7) is_test is read from the claim row, not from the request body", a
 const ENV_MAIL: Env = { ...ENV_BOTH, MAILGUN_API_KEY: "mg-fixture", MAILGUN_DOMAIN: "mail.example.test" };
 const NO_FEE = "No platform fee had been charged on this project, so no refund is necessary.";
 const PENDING = "We will process your platform fee refund separately.";
-const FULL = "Your platform fee has been refunded in full";
+const FULL = "refunded in full"; // gh-3438 (ruling 6669903256): the refunded email names the amounts instead; FULL must never appear
 function emails(m: Mail[]) {
   const ctr = m.find((x) => x.to === "ctr@example.com");
   const sup = m.find((x) => x.to === "dustinstohler1@gmail.com");
@@ -177,9 +177,10 @@ Deno.test("(11) CONTROL no charge on the quote -> 'no platform fee had been char
   assertEquals(r.stripe.length, 0);
 });
 
-Deno.test("(12) CONTROL real claim with a key: refunded in full, support says Yes", async () => {
+Deno.test("(12) CONTROL real claim with a key: refund named by amount (gh-3438), support says Yes", async () => {
   const r = await run(claimRow(), ENV_MAIL);
   const { ctr, sup } = emails(r.mail);
-  assert(ctr.text.includes(FULL), ctr.text);
+  assert(ctr.text.includes("We refunded your $175.00 platform fee. The remaining $5.54 processing fee is not refundable."), ctr.text);
+  assert(!ctr.text.includes(FULL), ctr.text);
   assert(sup.text.includes("Refund issued:   Yes"), sup.text);
 });

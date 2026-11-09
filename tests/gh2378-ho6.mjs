@@ -109,8 +109,9 @@ function staticHalf() {
     // gh-2378 (Dustin, 2026-09-30): "Better Materials and Warranties" must not promise what contractors will do. Negative control: the old wording is absent and the new wording is present.
     ok(!LANDING.includes('they get thrown in for free'), 'H2 /ho6 no longer says "they get thrown in for free"');
     ok(!COPY_LINES.join('\n').includes('they get thrown in for free'), 'H2 fixture no longer says "they get thrown in for free"');
-    ok(LANDING.includes('they are more likely to include them for free to win your business.'), 'H2 /ho6 says "they are more likely to include them for free to win your business."');
-    control('H2 (thrown-in absent)', /they get thrown in for free/.test(LANDING.replace('they are more likely to include them for free', 'they get thrown in for free')));
+    ok(LANDING.includes('When contractors bid on the same scope of work, you can compare what each one includes.') && !LANDING.includes('more likely to include'), 'H2 /ho6 says "When contractors bid on the same scope of work, you can compare what each one includes." and no longer says "more likely to include" (#3380 FU 27)');
+    control('H2 (thrown-in absent)', /they get thrown in for free/.test(LANDING.replace('you can compare what each one includes', 'they get thrown in for free')));
+    control('H2 (promo absent)', LANDING.replace('you can compare what each one includes.', 'they are more likely to include them.').includes('more likely to include'));
   }
   // H4 colours (css side; computed side is in the browser half)
   ok(/--ho6-blue:\s*#1D4ED8/i.test(CSS) && /--ho6-text:\s*#000000/i.test(CSS) && /--ho6-bg:\s*#FFFFFF/i.test(CSS), 'H4 css tokens: blue #1D4ED8, black text, white background');
