@@ -10,6 +10,8 @@ on:
     paths:
       - 'react-app/**'
       - 'supabase/functions/_shared/capi-event-id.contract.json'
+      - 'supabase/functions/_shared/platform-fee.ts'
+      - 'contractor-bid-form.html'
       - '.github/workflows/react-app-tests.yml'
   pull_request:
     branches:
@@ -18,6 +20,8 @@ on:
     paths:
       - 'react-app/**'
       - 'supabase/functions/_shared/capi-event-id.contract.json'
+      - 'supabase/functions/_shared/platform-fee.ts'
+      - 'contractor-bid-form.html'
       - '.github/workflows/react-app-tests.yml'
 
 # gh-1731: dedupe repeat-push churn on open PRs -- unit tests have no shared

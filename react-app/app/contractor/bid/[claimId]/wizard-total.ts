@@ -6,19 +6,18 @@
  *
  * Pure and ASCII-only. No fee rate and no displayed wording lives here.
  */
+import { wholeCents } from '../../../../constants/platform-fee';
 
 /**
  * Parse one typed price to whole cents with a decimal-safe round half up; blank,
  * negative or non-numeric -> 0. Math.round(n * 100) is wrong for inputs such as
- * 9734.095 (973409.4999...), so the third decimal digit is read from the string.
+ * 9734.095 (973409.4999...), so this uses the shared gh-3488 wholeCents (half-up
+ * on the decimal text): one rounding for the trade prices, the total and the fee.
  */
 export function priceToCents(raw: unknown): number {
   const n = typeof raw === 'number' ? raw : parseFloat(String(raw ?? ''));
   if (!(n > 0) || !Number.isFinite(n) || n >= 1e12) return 0;
-  const [whole, frac] = n.toFixed(10).split('.');
-  let cents = parseInt(whole, 10) * 100 + parseInt(frac.slice(0, 2), 10);
-  if (frac.charCodeAt(2) >= 53) cents += 1; // third decimal digit >= 5
-  return cents;
+  return wholeCents(n);
 }
 
 /**

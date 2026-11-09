@@ -13,11 +13,13 @@ const src = readFileSync(join(__dirname, '..', 'bid-form.tsx'), 'utf8');
 describe('gh-3495 bid-form.tsx wiring', () => {
   it('derives bidAmount from resolveBidAmount over the wizard trades', () => {
     expect(src).toContain("from './wizard-total'");
-    expect(src).toMatch(/const bidAmount = resolveBidAmount\(\{[^}]*wizardMode[^}]*queue: wizard\.queue[^}]*wizardPrices[^}]*bidPrice: form\.bidPrice/);
+    // gh-3488 (main) wraps the amount in wholeCentDollars(): one whole-cent figure shown, stored and charged
+    expect(src).toMatch(/const bidAmount = wholeCentDollars\(resolveBidAmount\(\{[^}]*wizardMode[^}]*queue: wizard\.queue[^}]*wizardPrices[^}]*bidPrice: form\.bidPrice/);
   });
 
   it('no longer takes the bid amount from the last price typed', () => {
     expect(src).not.toMatch(/const bidAmount = parseFloat\(form\.bidPrice\)/);
+    expect(src).not.toMatch(/const bidAmount = wholeCentDollars\(parseFloat\(form\.bidPrice\)/);
   });
 
   it('stores the cent-rounded per-trade breakdown', () => {

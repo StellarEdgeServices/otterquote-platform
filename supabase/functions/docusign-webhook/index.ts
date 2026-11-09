@@ -88,6 +88,7 @@ import {
 // one; the local copy is deleted.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
+import { platformFeeCents } from "../_shared/platform-fee.ts"; // gh-3488 / D-267: the one fee definition (shown = charged)
 
 // [gh-1886 re-review #2, independent review on #2198, 2026-09-25T22:02:35Z] Mirrored VERBATIM as a literal
 // string constant in the platform-fee-charge function's own stripe-fetch.ts (Supabase Edge Functions
@@ -1263,8 +1264,12 @@ serve(async (req) => {
                 `[docusign-webhook] D-214 violation: no fee_pct on quote ${quote.id} and platform_settings unavailable — aborting payment to prevent fabricated rate charge`
               );
             }
-            const feeAmount = Math.round(
-              quote.total_price * (platformFeePercent / 100) * 100
+            // gh-3488 / D-267: whole cents from the one shared definition, so the charge is the figure the
+            // contractor was shown and accepted. The old float expression (total_price * (pct / 100) * 100)
+            // rounded a $1,296.10 bid at 5% to 6480 cents against the $64.81 shown.
+            const feeAmount = platformFeeCents(
+              Number(quote.total_price),
+              Number(platformFeePercent)
             );
 
             // ── #1467 GATE 1: live-charge authorization ──────────────────

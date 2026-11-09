@@ -24,7 +24,10 @@ function grab(name) {
 }
 const REAL = ['_priceToCents', '_sidingTotalNow', '_liveTradePrice', 'effectiveBidAmount', 'roundedTradePrices',
   '_applyStoredBreakdown', 'captureCurrentTradePrice', 'buildWizardSummary', 'wizardGoTo', 'wizardNext', 'wizardBack',
-  'updateFeeCalculator', 'updateFeeDisclosure', 'formatCurrency', 'setVal', 'syncSidingTotal'];
+  'updateFeeCalculator', 'updateFeeDisclosure', 'formatCurrency', 'setVal', 'syncSidingTotal',
+  // gh-3488 one-rounding helpers and the synchronous disclosure paint (main, merged via #3491)
+  'wholeCents', 'wholeCentDollars', 'platformFeeCents', 'platformFeeDollars', 'currentFeePct', 'paintFeeDisclosure',
+  'paintFeeBreakdown'];
 
 function sandbox() {
   const els = {};
@@ -41,6 +44,7 @@ function sandbox() {
     let wizardMode = true, wizardStep = 2, wizardCurrentTradeIdx = 0, wizardTradeQueue = ['roofing','gutters'];
     let wizardTradePrices = {}, sidingWallSquares = null, sidingTradeActive = false, _feeAcceptanceCheckbox = null, _submitBtn = null;
     let _platformFeePct = 5;
+    let _feeDisclosureSeq = 0, _feeLookupInFlight = null;
     const PLATFORM_FEES = { contractSigning: 0.05 };
     async function fetchPlatformFeePercentage() { return 5; }
     function _showWizardTrade() {} function _updateWizardProgressBar() {} function saveWizardState() {}
@@ -87,11 +91,16 @@ await t('F1: roofing 10000 + gutters 2000 typed with no input events -> step 3 f
   assert.equal(s.run('effectiveBidAmount()'), 12000, 'stored total_price');
 });
 
-await t('F1: submit refreshes the disclosure BEFORE capturing _feeAmount / _exactFeeText', () => {
-  const cap = HTML.indexOf('const _feeAmount = window._feeAmount');
+await t('F1: submit snapshots the sum of trades, refreshes the disclosure BEFORE capturing _feeAmount / _exactFeeText, stores the snapshot', () => {
+  // gh-3488 (main): one snapshot at the click; gh-3495: that snapshot is effectiveBidAmount() (sum of trades)
+  assert.ok(HTML.includes('const _snapBid = wholeCentDollars(effectiveBidAmount());'), '_snapBid is not the sum of trades');
+  const cap = HTML.indexOf('const _feeAmount = platformFeeDollars(_bidAmount, _feePct);');
   assert.ok(cap > 0);
-  assert.ok(/await updateFeeDisclosure\(\);/.test(HTML.slice(Math.max(0, cap - 900), cap)),
+  assert.ok(/await updateFeeDisclosure\(\);\s*const _bidAmount = _snapBid;/.test(HTML.slice(Math.max(0, cap - 900), cap)),
     'no await updateFeeDisclosure() before the fee capture');
+  assert.ok(HTML.includes('const totalPrice = _snapBid;'), 'total_price is not the snapshot');
+  assert.ok(!/wholeCentDollars\(parseFloat\(document\.getElementById\('totalPrice'\)\.value\)/.test(HTML),
+    'a fee/total path still reads #totalPrice directly instead of effectiveBidAmount()');
 });
 
 await t('F1: wizard price inputs (gutters) refresh the fee on input', () => {

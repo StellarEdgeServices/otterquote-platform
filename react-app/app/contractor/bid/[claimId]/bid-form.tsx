@@ -13,13 +13,14 @@
  * UNCHANGED contracts. Fee + legal copy come VERBATIM from copy.ts. No innerHTML.
  */
 
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as Sentry from '@sentry/nextjs';
 import { supabase } from '@/lib/supabase';
 import type { ContractorRecord } from '../../_shell/use-contractor-record';
 import { Card, Field, TextInput, MoneyInput, TextArea, Select, Checkbox, RadioRow, formatCurrency, type Opt } from './bid-ui';
 import { BID_COPY, buildFeeDisclosureText } from './copy';
+import { wholeCentDollars } from '../../../../constants/platform-fee';
 import { HomePhotosCard } from './home-photos-card';
 import { FeeSection } from './fee-section';
 import { WarrantyCard } from './warranty-card';
@@ -194,13 +195,43 @@ function initialState(claim: BidClaim, flags: TradeFlags, claimRcv: number | nul
   };
 }
 
+// gh-3488 (REVIEW 6674889982): both outside calls are bounded, so a hung one cannot hold the form.
+const IP_LOOKUP_TIMEOUT_MS = 3000;
+const FEE_LOOKUP_TIMEOUT_MS = 5000;
+// gh-3491 (REVIEW 6688103147): bound on the Change Bid / renew UPDATE; a retry is harmless (same row, same fields).
+const BID_UPDATE_TIMEOUT_MS = 15000;
+
 async function getContractorIP(): Promise<string | null> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), IP_LOOKUP_TIMEOUT_MS);
   try {
-    const r = await fetch('https://api.ipify.org?format=json');
+    const r = await fetch('https://api.ipify.org?format=json', { signal: ctl.signal });
     if (!r.ok) return null;
     const d = await r.json();
     return ipForInet(d.ip);
-  } catch { return null; } // gh-3409: null, not 'unknown' (an inet column refuses the string and the acceptance was lost)
+  } catch { return null; } finally { clearTimeout(timer); } // gh-3409: null, not 'unknown' (an inet column refuses the string and the acceptance was lost)
+}
+
+/**
+ * The configured platform fee rate for this contractor and claim, or null when the lookup fails or does not answer
+ * within FEE_LOOKUP_TIMEOUT_MS (the caller then keeps the rate already on screen, as it does for any failed lookup).
+ * State is `address_state`, the column quotes_platform_fee_for reads on the server (gh-3488, LEGAL-READ 6674806511).
+ */
+async function fetchConfiguredFeePct(contractor: ContractorRecord, claim: Record<string, unknown>): Promise<number | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const { state, trade } = feeConfigLookupParams({ state: (contractor.address_state as string | null) ?? null }, claim as BidClaim);
+    const lookup = Promise.resolve(supabase
+      .from('platform_fee_config')
+      .select('fee_pct')
+      .or(`state.is.null,state.eq.${state}`)
+      .or(`trade.is.null,trade.eq.${trade}`)
+      .order('state', { ascending: false, nullsFirst: false })
+      .order('trade', { ascending: false, nullsFirst: false })
+      .limit(1)).then(({ data }) => resolveFeePct(data));
+    const timeout = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), FEE_LOOKUP_TIMEOUT_MS); });
+    return await Promise.race([lookup, timeout]);
+  } catch { return null; } finally { if (timer) clearTimeout(timer); }
 }
 
 function track(event: string, params: Record<string, unknown>): void {
@@ -231,6 +262,8 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
 
   const [feePct, setFeePct] = useState<number>(DEFAULT_PLATFORM_FEE_PCT);
   const [feeAccepted, setFeeAccepted] = useState(false);
+  // gh-3488: submit waits for the configured rate, and an acceptance never outlives the rate it was given under.
+  const [feeLookupDone, setFeeLookupDone] = useState(false);
   const [warrantySel, setWarrantySel] = useState<WarrantySelectionInput>({ isCustom: false, workmanshipYearsRaw: '' });
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -254,25 +287,22 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
   // Resolve the config fee pct once (platform_fee_config, contracts unchanged).
   useEffect(() => {
     let active = true;
+    setFeeLookupDone(false);
     (async () => {
-      try {
-        const { state, trade } = feeConfigLookupParams({ state: (contractor.state as string | null) ?? null }, claim);
-        const { data } = await supabase
-          .from('platform_fee_config')
-          .select('fee_pct')
-          .or(`state.is.null,state.eq.${state}`)
-          .or(`trade.is.null,trade.eq.${trade}`)
-          .order('state', { ascending: false, nullsFirst: false })
-          .order('trade', { ascending: false, nullsFirst: false })
-          .limit(1);
-        if (active) setFeePct(resolveFeePct(data));
-      } catch { /* keep default */ }
+      const pct = await fetchConfiguredFeePct(contractor, claim);
+      if (!active) return;
+      if (pct !== null) setFeePct(pct);
+      setFeeLookupDone(true);
     })();
     return () => { active = false; };
   }, [contractor, claim]);
 
   // gh-3495 (D-267): a multi-trade bid is the SUM of its trades (whole cents); fee, total_price and fee_amount all follow.
-  const bidAmount = resolveBidAmount({ wizardMode, queue: wizard.queue, wizardPrices, bidPrice: form.bidPrice });
+  // gh-3488: shown, stored and charged bid is whole cents.
+  const bidAmount = wholeCentDollars(resolveBidAmount({ wizardMode, queue: wizard.queue, wizardPrices, bidPrice: form.bidPrice }));
+  // A tick belongs to the figure it was given under: a different rate or a different bid is a different disclosure.
+  useEffect(() => { setFeeAccepted(false); }, [feePct, bidAmount]);
+  const submitInFlight = useRef(false); // gh-3488: set synchronously, so nothing can file a second bid while one is running
   const disclosure = computeDisclosureFee(bidAmount, feePct);
 
   function buildCtx(): ValueAddsContext {
@@ -288,10 +318,21 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
   async function handleSubmit() {
     setErrorMsg(null);
     if (bidAmount <= 0) { setErrorMsg('Please enter your bid price.'); return; }
+    if (submitInFlight.current) return;
+    submitInFlight.current = true;
     setSubmitState('submitting');
     const nowIso = new Date().toISOString();
 
     try {
+      // gh-3488 (LEGAL-READ 6674806511): a fresh rate lookup at every submit. If the server's rate differs from the one
+      // on screen, show it and require acceptance again (the effect on feePct clears the tick); nothing is filed.
+      const freshPct = await fetchConfiguredFeePct(contractor, claim);
+      if (freshPct !== null && freshPct !== feePct) {
+        setFeePct(freshPct);
+        setSubmitState('idle');
+        return;
+      }
+
       // D-199 bid-time validation gate (bid_can_submit RPC, contract unchanged).
       const gateParams = bidGateRpcParams(form.tradeType, claim, contractor.id);
       const { data: gateData, error: gateErr } = await supabase.rpc('bid_can_submit', gateParams);
@@ -324,10 +365,19 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
       if (mode === 'change' || mode === 'renew') {
         const updatePayload = buildQuoteUpdate({
           ...common, renewMode: mode === 'renew',
-          existingRenewalsCount: (existingQuote?.renewals_count as number) ?? 0, now: new Date(),
+          now: new Date(),
           existingBidStatus: (existingQuote?.bid_status as string | null) ?? null,
         });
-        const { data: upRows, error: upErr } = await supabase.from('quotes').update(updatePayload).eq('id', existingQuote!.id).select('id');
+        // gh-3491: an UPDATE that never answers ends through the catch below (message, form unlocked). Abort the request and stop waiting.
+        const updCtl = new AbortController();
+        let updTimer: ReturnType<typeof setTimeout> | undefined;
+        let upRows: unknown, upErr: unknown;
+        try {
+          ({ data: upRows, error: upErr } = await Promise.race([
+            supabase.from('quotes').update(updatePayload).eq('id', existingQuote!.id).select('id').abortSignal(updCtl.signal),
+            new Promise<never>((_, reject) => { updTimer = setTimeout(() => { updCtl.abort(); reject(new Error('bid_update_timed_out: the quote update did not answer')); }, BID_UPDATE_TIMEOUT_MS); }),
+          ]));
+        } finally { if (updTimer) clearTimeout(updTimer); }
         if (upErr) throw upErr;
         // gh-2105 (decision a, money — HIGH PRIORITY): `.update()` without
         // `.select()` reports success even on a zero-row RLS/id-mismatch
@@ -395,6 +445,8 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
       console.error('Error submitting bid:', err);
       setErrorMsg('Error submitting bid: ' + (err instanceof Error ? err.message : 'Unknown error'));
       setSubmitState('error');
+    } finally {
+      submitInFlight.current = false;
     }
   }
 
@@ -417,7 +469,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
   const submitLabel = submitState === 'submitting'
     ? 'Submitting…'
     : mode === 'renew' ? BID_COPY.submitBtnRenew : mode === 'change' ? BID_COPY.submitBtnChange : BID_COPY.submitBtnSubmit;
-  const submitDisabled = submitState === 'submitting' || !feeAccepted;
+  const submitDisabled = submitState === 'submitting' || !feeAccepted || !feeLookupDone;
 
   // The currently-shown wizard trade (step 2), if any.
   const wizardTrade = wizardMode && wizard.step === 2 ? wizard.queue[wizard.tradeIdx] : null;
@@ -514,7 +566,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
           <FeeSection mode={mode} bidAmount={bidAmount} feePct={feePct} disclosure={disclosure}
             claimRcv={claimRcv} isInsuranceRcv={claim.job_type === 'insurance_rcv'}
             autoRenew={form.autoRenew} setAutoRenew={(v) => update({ autoRenew: v })}
-            feeAccepted={feeAccepted} setFeeAccepted={setFeeAccepted} />
+            feeAccepted={feeAccepted} setFeeAccepted={setFeeAccepted} locked={submitState === 'submitting'} />
 
           {errorMsg && <div className="oqb-err">{errorMsg}</div>}
           <div className="oqb-actions">
