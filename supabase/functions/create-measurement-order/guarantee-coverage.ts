@@ -7,7 +7,8 @@
  * WHERE THE LIST LIVES. platform_settings, key `guarantee_excluded_states`, value a JSON array of two-letter codes, e.g. ["NY","CA"]. This follows the repo's
  * precedent for a state list (gh-2421 / D-344 `homeowner_blocked_states`, read directly by notify-admin-new-homeowner with the service role). platform_settings
  * has RLS on and only a key allow-list SELECT policy for authenticated (this key is not on it), so only the service role and SQL can read or write the list.
- * gh-3471 ships NO row: the list is unset until Dustin names it.
+ * The schema migration inserts NO row. Dustin named the list on 2026-11-09 (FL, LA, TX, OK, AR, KS, NE, MI, KY; #3471 comment 6744041238); it is inserted by the
+ * SEPARATE data file supabase/migrations_drafts/gh3471_guarantee_excluded_states_seed.sql, never by this code. Until that seed is applied every order records NULL.
  *
  * WHAT IS RECORDED (hover_orders.guarantee_covered, only on an order that got a clock; see decideGuaranteeCoverage):
  *   true   the claim's state is a valid two-letter code and is NOT on a configured list (an explicit [] means "nothing excluded")

@@ -4,7 +4,7 @@
 // Pinned: covered state -> true; excluded state -> false; [] -> true; missing/blank/non-code state -> unknown (no column written) + alert; list not configured
 // -> unknown, logged, NO alert; list read error / malformed list -> unknown + alert, order and clock kept; is_test / livemode=false / contractor -> no clock,
 // no coverage and the list is never read (negative control); guarantee_covered column missing -> retry keeps the clock, drops only coverage, alerts.
-// Run: deno test --allow-read=supabase/functions supabase/functions/create-measurement-order/guarantee-coverage-handler.test.ts
+// Run: deno test --allow-read=supabase/functions,supabase/migrations_drafts supabase/functions/create-measurement-order/guarantee-coverage-handler.test.ts
 import { assert, assertEquals, assertFalse, assertStringIncludes } from "https://deno.land/std@0.208.0/assert/mod.ts";
 
 const CLAIM = "66666666-7777-4888-8999-000000000000";
@@ -295,4 +295,46 @@ Deno.test("coverage: while the list is unset, the order payload carries NO new c
   assertEquals(r.status, 200);
   assertEquals(w.hoverPosts.length, 1, "no rejected insert, no retry");
   assertEquals(w.alerts.length, 0);
+}));
+
+// ── Dustin's list, 2026-11-09 10:33 ET (#3471 comment 6744041238), verbatim: "#3471: excluded states are FL, LA, TX, OK, AR, KS, NE, MI, KY (Dustin 11-09), stored as config."
+// The list below is the one the seed file inserts; the first test pins that the seed file holds exactly it (needs --allow-read=supabase/migrations_drafts, as CI runs).
+const DUSTIN_2026_11_09 = ["FL", "LA", "TX", "OK", "AR", "KS", "NE", "MI", "KY"];
+const SEED_FILE = new URL("../../migrations_drafts/gh3471_guarantee_excluded_states_seed.sql", import.meta.url);
+
+Deno.test("seed file: inserts EXACTLY Dustin's nine codes in his order, ON CONFLICT DO NOTHING, guarded on the table, quoting him verbatim", async () => {
+  const sql = await Deno.readTextFile(SEED_FILE);
+  const m = sql.match(/\('guarantee_excluded_states', '(\[[^']*\])'::jsonb\)/);
+  assert(m, "the seed INSERT of guarantee_excluded_states is present");
+  assertEquals(JSON.parse(m![1]), DUSTIN_2026_11_09);
+  assertStringIncludes(sql, "ON CONFLICT (key) DO NOTHING");
+  assertStringIncludes(sql, "to_regclass('public.platform_settings') IS NULL");
+  assertStringIncludes(sql, "'#3471: excluded states are FL, LA, TX, OK, AR, KS, NE, MI, KY (Dustin 11-09), stored as config.'");
+  assertStringIncludes(sql, "'2026-11-09'");
+});
+
+Deno.test("coverage with Dustin's 2026-11-09 list: FL/LA/TX/OK/AR/KS/NE/MI/KY -> false; IN, MS, OH, CA -> true (MI is on the list as given, MS is not)", quiet(async () => {
+  const expected: Record<string, boolean> = {
+    FL: false, LA: false, TX: false, OK: false, AR: false, KS: false, NE: false, MI: false, KY: false,
+    IN: true, MS: true, OH: true, CA: true,
+  };
+  for (const [state, covered] of Object.entries(expected)) {
+    const w = world({ excluded: DUSTIN_2026_11_09, claim: { is_test: false, user_id: OWNER, property_state: state } });
+    const r = await purchase(w);
+    assertEquals(r.status, 200, state);
+    assertEquals(w.hoverPosts.length, 1, state);
+    assertEquals(w.hoverPosts[0].guarantee_covered, covered, state);
+    assertEquals(w.hoverPosts[0].guarantee_started_at, PAID_ISO, `${state}: the clock and the payment are unaffected`);
+    assertEquals(w.alerts.length, 0, state);
+  }
+}));
+
+Deno.test("coverage with Dustin's list, NEGATIVE CONTROL: an is_test order in FL and in IN gets neither clock nor coverage, and the list is not read", quiet(async () => {
+  for (const state of ["FL", "IN"]) {
+    const w = world({ excluded: DUSTIN_2026_11_09, claim: { is_test: true, user_id: OWNER, property_state: state } });
+    await purchase(w);
+    assertFalse("guarantee_started_at" in w.hoverPosts[0], state);
+    assertFalse("guarantee_covered" in w.hoverPosts[0], state);
+    assertEquals(listReads(w), 0, state);
+  }
 }));
