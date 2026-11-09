@@ -2622,10 +2622,13 @@
       });
 
       // For roofing: D-163 — show valueAddsSection + secondLayerContingencySection
-      // (retailPriceSection is hidden — fee syncs from valueAddsSection total price input)
+      // gh-3569: show retailPriceSection too. It holds #retailBidPrice, the only roofing
+      // price input on this page: it syncs #totalPrice (the fee base), captureCurrentTradePrice()
+      // reads it for the roofing row, and the retail submit check requires it > 0. Hiding it
+      // left a new roofing wizard bid with no way to enter a price, so submit always stopped.
       if (trade === 'roofing' && isRetailJob) {
         const retail = document.getElementById('retailPriceSection');
-        if (retail) retail.style.display = 'none';
+        if (retail) retail.style.display = 'block';
         const va = document.getElementById('valueAddsSection');
         if (va) va.style.display = '';
         const slc = document.getElementById('secondLayerContingencySection');
