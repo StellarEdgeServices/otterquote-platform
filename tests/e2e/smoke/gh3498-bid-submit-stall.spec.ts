@@ -105,6 +105,19 @@ window.Auth = new Proxy({ requireAuth: async () => ({ id: 'u-1', email: 'c@examp
 
 async function openForm(page: Page, opts: { changeMode?: boolean } = {}) {
   await page.clock.install();
+  // gh-3498 (REVIEW 6740533205): ipify can answer its headers and then stall the body. window.__ipBodyStall makes the fake
+  // ipify response do that; its json() settles only when the request signal aborts, as a real fetch body does.
+  await page.addInitScript(() => {
+    const real = window.fetch.bind(window);
+    window.fetch = (input: any, init?: any) => {
+      const u = typeof input === 'string' ? input : input && input.url;
+      if (u && u.includes('api.ipify.org') && (window as any).__ipBodyStall) {
+        const sig = init && init.signal;
+        return Promise.resolve({ ok: true, json: () => new Promise((_, rej) => { if (sig) sig.addEventListener('abort', () => rej(sig.reason)); }) } as any);
+      }
+      return real(input, init);
+    };
+  });
   await page.route('**/*', async (route) => {
     const url = route.request().url();
     if (url.startsWith('http://127.0.0.1')) {
@@ -165,6 +178,19 @@ test.describe('gh-3498 contractor-bid-form.html stalled submit (real page, Chrom
     await expect.poll(async () => (await state(page)).success).toBe(true);
     const s = await state(page);
     expect(s.quotesFiled).toBe(1);
+  });
+
+  test('an ipify response whose body stalls does not hold the form: the bid files with IP unknown', async ({ page }) => {
+    await openForm(page);
+    await page.evaluate(() => { (window as any).__ipBodyStall = true; });
+    await fillAndAccept(page);
+    await clickSubmit(page);
+    await expect.poll(async () => (await state(page)).btn).toContain('Submitting');
+    await page.clock.fastForward(125_000);
+    await expect.poll(async () => { const s = await state(page); return s.success || s.btn !== 'Submitting…'; }).toBe(true);
+    const s = await state(page);
+    expect(s.quotesFiled).toBe(1);
+    expect(s.success).toBe(true);
   });
 
   test('a bid_can_submit that never answers ends with a message and an unlocked form', async ({ page }) => {

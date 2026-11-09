@@ -166,6 +166,26 @@ describe('gh-3498 React bid form: stalled submit', () => {
     expect(h.state.feeAcceptances).toBe(1);
   });
 
+  // REVIEW 6740533205 finding 2, REPRODUCTION ONLY. This pins what the code does today; it is NOT an endorsement. The key covers
+  // claim, contractor, trade and price, so a price edit after a landed-but-timed-out insert files a second bid. Whether the right
+  // behaviour is "update the landed bid" or "refuse" is a product/money decision (Q on #3498); flip this assertion with that answer.
+  it('REPRODUCTION (pending Q): a price changed after an insert landed and timed out files a second bid under a new key', async () => {
+    h.state.insert = 'land_then_hang';
+    const { container } = mount();
+    await ready(container);
+    await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+    await advance(21_000);
+    expect(h.state.rows.length).toBe(1);
+
+    h.state.insert = 'ok';
+    fireEvent.change(priceInput(container), { target: { value: '19000' } });
+    await advance(4000);
+    if (!feeBox(container).checked) fireEvent.click(feeBox(container));
+    await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+    expect(h.state.rows.length).toBe(2);
+    expect(h.state.keyed[0]).not.toBe(h.state.keyed[h.state.keyed.length - 1]);
+  });
+
   it('a database without the column yet: the bid is filed as before, without a key', async () => {
     h.state.insert = 'nocolumn';
     const { container } = mount();

@@ -4922,11 +4922,13 @@
       try {
         const ctl = new AbortController(); // gh-3488: fetch has no `timeout` option; abort ends a hung call
         const timer = setTimeout(() => ctl.abort(), IP_LOOKUP_TIMEOUT_MS);
-        let response;
-        try { response = await fetch('https://api.ipify.org?format=json', { signal: ctl.signal }); } finally { clearTimeout(timer); }
-        if (!response.ok) return 'unknown';
-        const data = await response.json();
-        return data.ip || 'unknown';
+        // gh-3498 (REVIEW 6740533205): the timer also covers the body read; a stalled body aborts with the request.
+        try {
+          const response = await fetch('https://api.ipify.org?format=json', { signal: ctl.signal });
+          if (!response.ok) return 'unknown';
+          const data = await response.json();
+          return data.ip || 'unknown';
+        } finally { clearTimeout(timer); }
       } catch (e) {
         console.warn('[D-215] IP fetch failed:', e);
         return 'unknown';
