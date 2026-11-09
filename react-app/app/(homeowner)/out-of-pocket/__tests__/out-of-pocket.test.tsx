@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -211,5 +211,156 @@ describe('Out-of-pocket page', () => {
       const src = readFileSync(join(__dirname, '..', f), 'utf-8');
       expect(src).not.toMatch(/\$\s?\d/);
     }
+  });
+});
+
+describe('Out-of-pocket page: the gh-3471 / D-419 return flag survives Save (gh-3283 / gh-3285 review F2)', () => {
+  let assign: ReturnType<typeof vi.fn>;
+  const realLocation = window.location;
+  function setSearch(search: string) {
+    assign = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true, writable: true,
+      value: { assign, search, origin: 'https://app.otterquote.com', href: 'https://app.otterquote.com/out-of-pocket' + search, hostname: 'app.otterquote.com', protocol: 'https:' },
+    });
+  }
+  afterEach(() => { Object.defineProperty(window, 'location', { configurable: true, writable: true, value: realLocation }); });
+
+  async function finish() {
+    wire({ has_measurements: true });
+    render(<Page />);
+    await pickShingle3Tab();
+    fireEvent.click(screen.getByTestId('d407-continue'));
+    await waitFor(() => expect(saveClaim).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
+    return assign.mock.calls[0][0] as string;
+  }
+
+  it('?return=measurements is carried to the dashboard that forwards it', async () => {
+    setSearch('?claim_id=c1&return=measurements');
+    expect(await finish()).toBe('https://otterquote.com/dashboard.html?return=measurements');
+  });
+
+  it('no token: the plain dashboard, no return param', async () => {
+    setSearch('?claim_id=c1');
+    expect(await finish()).toBe('https://otterquote.com/dashboard.html');
+  });
+
+  it.each(['https://evil.example/', '//evil.example', 'javascript:alert(1)', '__proto__', 'MEASUREMENTS'])(
+    'NEGATIVE CONTROL: ?return=%s is not an allowlisted token, so nothing is carried and nowhere else is visited',
+    async (bad) => {
+      setSearch('?claim_id=c1&return=' + encodeURIComponent(bad));
+      const dest = await finish();
+      expect(dest).toBe('https://otterquote.com/dashboard.html');
+      expect(new URL(dest).hostname).toBe('otterquote.com');
+    },
+  );
+
+  it('a failed save does not navigate', async () => {
+    setSearch('?claim_id=c1&return=measurements');
+    (saveClaim as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('boom'));
+    wire({ has_measurements: true });
+    render(<Page />);
+    await pickShingle3Tab();
+    fireEvent.click(screen.getByTestId('d407-continue'));
+    await waitFor(() => expect(saveClaim).toHaveBeenCalledTimes(1));
+    expect(assign).not.toHaveBeenCalled();
+  });
+});
+
+describe('Out-of-pocket page: GA4 project_info_saved (port of project-info-cash.html:214)', () => {
+  let assign: ReturnType<typeof vi.fn>;
+  let gtag: ReturnType<typeof vi.fn>;
+  const realLocation = window.location;
+  beforeEach(() => {
+    assign = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true, writable: true,
+      value: { assign, search: '?claim_id=c1', origin: 'https://app.otterquote.com', href: 'https://app.otterquote.com/out-of-pocket?claim_id=c1', hostname: 'app.otterquote.com', protocol: 'https:' },
+    });
+    // gtag as GA4Gate defines it once consent allows: the helper waits on event_callback, so the stub calls it like gtag.js does.
+    gtag = vi.fn((...args: unknown[]) => {
+      const params = args[2] as { event_callback?: () => void } | undefined;
+      params?.event_callback?.();
+    });
+    (window as unknown as { gtag?: unknown }).gtag = gtag;
+  });
+  afterEach(() => {
+    delete (window as unknown as { gtag?: unknown }).gtag;
+    Object.defineProperty(window, 'location', { configurable: true, writable: true, value: realLocation });
+  });
+
+  async function submit(claim: Record<string, unknown>) {
+    wire(claim);
+    render(<Page />);
+    await pickShingle3Tab();
+    fireEvent.click(screen.getByTestId('d407-continue'));
+    await waitFor(() => expect(saveClaim).toHaveBeenCalledTimes(1));
+  }
+  const savedEvents = () => gtag.mock.calls.filter((c) => c[0] === 'event' && c[1] === 'project_info_saved');
+
+  it('a successful cash save fires project_info_saved once, job_type retail (same params as project-info-cash.html)', async () => {
+    await submit({ funding_type: 'cash', has_measurements: true });
+    await waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
+    const events = savedEvents();
+    expect(events).toHaveLength(1);
+    const { event_callback, event_timeout, ...params } = events[0][2] as Record<string, unknown>;
+    expect(params).toEqual({ job_type: 'retail' });
+    expect(typeof event_callback).toBe('function');
+    expect(event_timeout).toBe(1000);
+    // fired after the claims write and before the redirect
+    expect(gtag.mock.invocationCallOrder[0]).toBeGreaterThan((saveClaim as unknown as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]);
+    expect(gtag.mock.invocationCallOrder[0]).toBeLessThan(assign.mock.invocationCallOrder[0]);
+  });
+
+  it('a stored ACV homeowner sends job_type insurance_acv (as project-info-acv.html did), never retail', async () => {
+    await submit({ policy_type: 'acv', funding_type: 'insurance', has_measurements: true });
+    await waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
+    const events = savedEvents();
+    expect(events).toHaveLength(1);
+    const { event_callback, event_timeout, ...params } = events[0][2] as Record<string, unknown>;
+    expect(params).toEqual({ job_type: 'insurance_acv' });
+    expect(typeof event_callback).toBe('function');
+    expect(event_timeout).toBe(1000);
+    // fired after the claims write and before the redirect
+    expect(gtag.mock.invocationCallOrder[0]).toBeGreaterThan((saveClaim as unknown as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]);
+    expect(gtag.mock.invocationCallOrder[0]).toBeLessThan(assign.mock.invocationCallOrder[0]);
+  });
+
+  it('NEGATIVE CONTROL: a failed claims save fires no project_info_saved and does not navigate', async () => {
+    (saveClaim as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('boom'));
+    await submit({ has_measurements: true });
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(savedEvents()).toHaveLength(0);
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE CONTROL: a failed contact save fires no project_info_saved (the claims write never runs)', async () => {
+    (saveContact as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('boom'));
+    wire({ has_measurements: true });
+    render(<Page />);
+    await pickShingle3Tab();
+    fireEvent.click(screen.getByTestId('d407-continue'));
+    await waitFor(() => expect(saveContact).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(saveClaim).not.toHaveBeenCalled();
+    expect(savedEvents()).toHaveLength(0);
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE CONTROL: a blocked Continue (required items missing) fires nothing', async () => {
+    wire({ has_measurements: true });
+    render(<Page />);
+    fireEvent.click(await screen.findByTestId('d407-continue'));
+    await screen.findByTestId('d407-missing');
+    expect(saveClaim).not.toHaveBeenCalled();
+    expect(gtag).not.toHaveBeenCalled();
+  });
+
+  it('no gtag (consent gate did not load GA4): the save still navigates and nothing throws', async () => {
+    delete (window as unknown as { gtag?: unknown }).gtag;
+    await submit({ has_measurements: true });
+    await waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
+    expect(gtag).not.toHaveBeenCalled();
   });
 });

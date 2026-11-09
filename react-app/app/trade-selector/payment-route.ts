@@ -33,9 +33,9 @@ export const PAYMENT_QUESTION = 'How is this being paid for?';
  * row when the owning sub-issue ships.
  */
 export const PAYMENT_DESTINATIONS: Record<PaymentRoute, string> = {
-  rcv: 'https://otterquote.com/project-info-rcv.html', // placeholder until #3283
+  rcv: 'https://app.otterquote.com/insurance-rcv', // #3283 (switched from project-info-rcv.html)
   acv: 'https://otterquote.com/project-info-acv.html', // placeholder until #3284
-  oop: 'https://otterquote.com/project-info-cash.html', // placeholder until #3285
+  oop: 'https://app.otterquote.com/out-of-pocket', // #3285 (switched from project-info-cash.html)
 };
 
 /** Q1 answer -> does the wizard ask Q2? */

@@ -157,7 +157,8 @@ describe("gh-1939 R-1: Clarity route-guard regression", () => {
   it("CLARITY_ALLOWED_PATHS is exactly the ruled set (Dustin 2026-09-16, #1939 comment 5691693161)", () => {
     const paths = extractClarityAllowedPaths(readGA4GateSource());
     // #1939 row 0.4 (Ben's ruling 5810533784, on Dustin's scope ruling): the React funnel routes /dashboard, /bids, /repair-intake join.
-    expect(paths).toEqual(["/get-started", "/trade-selector", "/dashboard", "/bids", "/repair-intake"]);
+    // gh-3283 / gh-3285: Dustin, 2026-11-09 09:26 ET, verbatim: \"Clarity on /insurance-rcv and /out-of-pocket: yes.\" (#3283 comment 6742512470) -- /insurance-rcv and /out-of-pocket join.
+    expect(paths).toEqual(["/get-started", "/trade-selector", "/dashboard", "/bids", "/repair-intake", "/insurance-rcv", "/out-of-pocket"]);
   });
 
   it("every AUTHENTICATED allowlisted route masks its page root (data-clarity-mask=\"true\")", () => {
@@ -170,6 +171,8 @@ describe("gh-1939 R-1: Clarity route-guard regression", () => {
       "/dashboard": ["(homeowner)/_shell/HomeownerShell.tsx", /<main className="oqh-main"[^>]*\sdata-clarity-mask="true"/],
       "/bids": ["(homeowner)/_shell/HomeownerShell.tsx", /<main className="oqh-main"[^>]*\sdata-clarity-mask="true"/],
       "/repair-intake": ["(homeowner)/_shell/HomeownerShell.tsx", /<main className="oqh-main"[^>]*\sdata-clarity-mask="true"/],
+      "/insurance-rcv": ["(homeowner)/_shell/HomeownerShell.tsx", /<main className="oqh-main"[^>]*\sdata-clarity-mask="true"/],
+      "/out-of-pocket": ["(homeowner)/_shell/HomeownerShell.tsx", /<main className="oqh-main"[^>]*\sdata-clarity-mask="true"/],
     };
     const paths = extractClarityAllowedPaths(readGA4GateSource());
     for (const p of paths) {
@@ -181,7 +184,7 @@ describe("gh-1939 R-1: Clarity route-guard regression", () => {
       expect(src).toMatch(rootRe);
       // an unmask anywhere under the route would re-expose a subtree
       // (the three homeowner routes live under the "(homeowner)" route group; trade-selector at the app root)
-      const routeDir = path.join(APP_ROOT, ["/dashboard", "/bids", "/repair-intake"].includes(p) ? "(homeowner)/" + p.slice(1) : p.slice(1));
+      const routeDir = path.join(APP_ROOT, ["/dashboard", "/bids", "/repair-intake", "/insurance-rcv", "/out-of-pocket"].includes(p) ? "(homeowner)/" + p.slice(1) : p.slice(1));
       for (const f of walkTsxFiles(routeDir)) {
         expect(fs.readFileSync(f, "utf8"), `${f} unmasks a subtree`).not.toMatch(/data-clarity-unmask/);
       }
