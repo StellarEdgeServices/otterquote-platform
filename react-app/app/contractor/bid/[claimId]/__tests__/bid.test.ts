@@ -327,17 +327,19 @@ describe('quote + acceptance + notify payloads', () => {
     expect(u.fee_amount).toBe(1000);
   });
 
-  it('buildQuoteUpdate renewal resets the 14-day window + increments renewals_count', () => {
-    const u = buildQuoteUpdate({ ...common, renewMode: true, existingRenewalsCount: 2, now: NOW });
+  it('buildQuoteUpdate renewal resets the 14-day window and does NOT write renewals_count', () => {
+    const u = buildQuoteUpdate({ ...common, renewMode: true, now: NOW });
     expect(u.bid_status).toBe('active'); // gh-2564: 'submitted' is refused by quotes_bid_status_check
     expect(u.expired_at).toBeNull();
     expect(u.expires_at).toBe(new Date(NOW.getTime() + BID_RENEWAL_WINDOW_MS).toISOString());
-    expect(u.renewals_count).toBe(3);
+    // gh-3560: quotes has no renewals_count column; PostgREST rejects the whole UPDATE if it is sent.
+    expect(u).not.toHaveProperty('renewals_count');
+    expect(Object.keys(u)).not.toContain('renewals_count');
     expect(BID_RENEWAL_WINDOW_MS).toBe(14 * 24 * 60 * 60 * 1000);
   });
 
   it('gh-2564 Change Bid on a withdrawn (cancelled) quote sets bid_status back to active, with a fresh window', () => {
-    const u = buildQuoteUpdate({ ...common, renewMode: false, existingBidStatus: 'cancelled', existingRenewalsCount: 2, now: NOW });
+    const u = buildQuoteUpdate({ ...common, renewMode: false, existingBidStatus: 'cancelled', now: NOW });
     expect(u.bid_status).toBe('active');
     expect(u.expired_at).toBeNull();
     expect(u.expires_at).toBe(new Date(NOW.getTime() + BID_RENEWAL_WINDOW_MS).toISOString());
