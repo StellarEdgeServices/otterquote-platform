@@ -1,0 +1,92 @@
+/**
+ * gh-3495 (D-267): a multi-trade bid stores and charges the SUM of its trades.
+ * Negative control: on main these helpers do not exist and bid-form.tsx sets
+ * totalPrice to the last price typed (10000 + 2000 stored 2000, fee 100).
+ */
+import { describe, it, expect } from 'vitest';
+import {
+  wizardGrandTotal, wizardTradePrices, resolveBidAmount, priceToCents, seedWizardPrices,
+} from '../wizard-total';
+import { computeDisclosureFee, buildQuoteInsert } from '../utils';
+
+const QUEUE = ['roofing', 'gutters'];
+
+describe('gh-3495 multi-trade total', () => {
+  it('sums the trades: 10000 + 2000 is 12000, not the last price 2000', () => {
+    const prices = { roofing: '10000', gutters: '2000' };
+    expect(wizardGrandTotal(QUEUE, prices)).toBe(12000);
+    expect(resolveBidAmount({ wizardMode: true, queue: QUEUE, wizardPrices: prices, bidPrice: '2000' })).toBe(12000);
+  });
+
+  it('fee shown, fee stored and total stored all come from the same total', () => {
+    const prices = { roofing: '10000', gutters: '2000' };
+    const total = resolveBidAmount({ wizardMode: true, queue: QUEUE, wizardPrices: prices, bidPrice: '2000' });
+    const { feeAmount } = computeDisclosureFee(total, 5);
+    expect(feeAmount).toBe(600);
+    const row = buildQuoteInsert({
+      claimId: 'c1', contractorId: 'k1', totalPrice: total, feeBase: total, feePct: 5,
+      acceptedAtIso: '2026-11-09T00:00:00.000Z', scopeSummary: '{}', notes: null,
+      deckingPricePerSheet: null, fullRedeckPrice: null, supplementAcknowledged: false,
+      tradeType: 'roofing', valueAdds: {}, perTradeBreakdown: wizardTradePrices(QUEUE, prices),
+      autoRenew: true, warranty: {},
+    } as never);
+    expect(row.total_price).toBe(12000);
+    expect(row.fee_amount).toBe(600);
+    expect(row.per_trade_breakdown).toEqual({ roofing: 10000, gutters: 2000 });
+  });
+
+  it('rounds typed fractions to whole cents so 9734.095 is never stored', () => {
+    expect(priceToCents('9734.095')).toBe(973410);
+    expect(wizardTradePrices(['roofing'], { roofing: '9734.095' })).toEqual({ roofing: 9734.1 });
+    expect(wizardGrandTotal(['roofing', 'gutters'], { roofing: '9734.095', gutters: '0.1' })).toBe(9734.2);
+  });
+
+  it('round half up is decimal-safe (the Math.round(n * 100) float trap)', () => {
+    expect(Math.round(9734.095 * 100)).toBe(973409); // the trap: what a naive helper returns
+    for (const [raw, cents] of [['9734.095', 973410], ['1.005', 101], ['2.675', 268], ['0.005', 1], ['0.004', 0], ['200.015', 20002], ['10000', 1000000]] as const) {
+      expect(priceToCents(raw)).toBe(cents);
+    }
+    // Shown (sum of per-trade cents) == stored: 1000 + 200.015 is 1200.02 either way.
+    expect(wizardGrandTotal(['roofing', 'gutters'], { roofing: '1000', gutters: '200.015' })).toBe(1200.02);
+  });
+
+  it('N2: a non-wizard or change-bid amount passes through UNCHANGED (never rounded)', () => {
+    expect(resolveBidAmount({ wizardMode: false, queue: [], wizardPrices: {}, bidPrice: '18000.004' })).toBe(18000.004);
+    expect(resolveBidAmount({ wizardMode: true, queue: QUEUE, wizardPrices: {}, bidPrice: '18000.004' })).toBe(18000.004);
+  });
+
+  it('N3: Change Bid seeds every trade from per_trade_breakdown, so editing one trade keeps the others', () => {
+    const seeded = seedWizardPrices({ roofing: 10000, gutters: 2000 });
+    expect(seeded).toEqual({ roofing: '10000', gutters: '2000' });
+    expect(seedWizardPrices(JSON.stringify({ roofing: 10000, gutters: 2000 }))).toEqual(seeded);
+    expect(seedWizardPrices(null)).toEqual({});
+    // The contractor edits only gutters to 2500; roofing stays 10000 -> 12500, not 2500.
+    const edited = { ...seeded, gutters: '2500' };
+    expect(resolveBidAmount({ wizardMode: true, queue: QUEUE, wizardPrices: edited, bidPrice: '12000' })).toBe(12500);
+    // A click-through on a stored $12,000 bid stores $12,000.
+    expect(resolveBidAmount({ wizardMode: true, queue: QUEUE, wizardPrices: seeded, bidPrice: '12000' })).toBe(12000);
+  });
+
+  it('REVIEW 6744431358 parity: a Change Bid / Renew click-through of a stored wizard bid (no value_adds gutter keys) keeps every trade, as the static form now does', () => {
+    // Same fixtures as tests/gh3495-wizard-change-renew-chromium.mjs. React seeds every trade from per_trade_breakdown.
+    const rg = { roofing: 15800, gutters: 2400.13 };
+    const all = { roofing: 15800, gutters: 2400.13, siding: 7999.99 };
+    expect(resolveBidAmount({ wizardMode: true, queue: QUEUE, wizardPrices: seedWizardPrices(rg), bidPrice: '18200.13' })).toBe(18200.13);
+    expect(wizardTradePrices(QUEUE, seedWizardPrices(rg))).toEqual(rg);
+    const q3 = ['roofing', 'gutters', 'siding'];
+    expect(resolveBidAmount({ wizardMode: true, queue: q3, wizardPrices: seedWizardPrices(all), bidPrice: '26200.12' })).toBe(26200.12);
+    expect(wizardTradePrices(q3, seedWizardPrices(all))).toEqual(all);
+    expect(computeDisclosureFee(18200.13, 5).feeAmount).toBe(910.01);
+    expect(computeDisclosureFee(26200.12, 5).feeAmount).toBe(1310.01);
+  });
+
+  it('ignores blank, zero and unselected trades; sums only the queue', () => {
+    expect(wizardGrandTotal(['roofing', 'gutters'], { roofing: '5000', gutters: '', siding: '9999' })).toBe(5000);
+    expect(wizardTradePrices(['roofing', 'gutters'], { roofing: '5000', gutters: '0' })).toEqual({ roofing: 5000 });
+  });
+
+  it('non-wizard bids and change-bid with no wizard prices keep the single bid price', () => {
+    expect(resolveBidAmount({ wizardMode: false, queue: [], wizardPrices: {}, bidPrice: '8000' })).toBe(8000);
+    expect(resolveBidAmount({ wizardMode: true, queue: QUEUE, wizardPrices: {}, bidPrice: '8000' })).toBe(8000);
+  });
+});

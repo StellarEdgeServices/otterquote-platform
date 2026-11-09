@@ -24,6 +24,7 @@ import { wholeCentDollars } from '../../../../constants/platform-fee';
 import { HomePhotosCard } from './home-photos-card';
 import { FeeSection } from './fee-section';
 import { WarrantyCard } from './warranty-card';
+import { resolveBidAmount, wizardTradePrices, seedWizardPrices } from './wizard-total'; // gh-3495 (D-267)
 import {
   type BidClaim, type BidMode, type TradeFlags, type WarrantySelectionInput,
   type ValueAddsFormState, type ValueAddsContext, type WizardState,
@@ -279,7 +280,9 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
     queue: wizardElig.queue,
     selectedTrades: wizardElig.queue,
   } as WizardState);
-  const [wizardPrices, setWizardPrices] = useState<Record<string, string>>({});
+  // gh-3495 N3: Change Bid / Renew of a stored multi-trade bid starts from its per_trade_breakdown.
+  const [wizardPrices, setWizardPrices] = useState<Record<string, string>>(() => (wizardMode ? seedWizardPrices(existingQuote?.per_trade_breakdown) : {}));
+  const wizardRounded = wizardTradePrices(wizard.queue, wizardPrices);
 
   // Resolve the config fee pct once (platform_fee_config, contracts unchanged).
   useEffect(() => {
@@ -293,7 +296,10 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
     })();
     return () => { active = false; };
   }, [contractor, claim]);
-  const bidAmount = wholeCentDollars(parseFloat(form.bidPrice) || 0); // gh-3488: shown, stored and charged bid is whole cents
+
+  // gh-3495 (D-267): a multi-trade bid is the SUM of its trades (whole cents); fee, total_price and fee_amount all follow.
+  // gh-3488: shown, stored and charged bid is whole cents.
+  const bidAmount = wholeCentDollars(resolveBidAmount({ wizardMode, queue: wizard.queue, wizardPrices, bidPrice: form.bidPrice }));
   // A tick belongs to the figure it was given under: a different rate or a different bid is a different disclosure.
   useEffect(() => { setFeeAccepted(false); }, [feePct, bidAmount]);
   const submitInFlight = useRef(false); // gh-3488: set synchronously, so nothing can file a second bid while one is running
@@ -345,9 +351,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
       const feeAmount = disclosure.feeAmount;
       const exactFeeText = buildFeeDisclosureText(feePct, feeAmount);
       const scopeSummary = buildScopeSummary({ brand: form.brandProduct, estimatedStartDate: form.startDate, estimatedCompletionTime: form.completionTime });
-      const perTradeBreakdown = wizardMode
-        ? Object.fromEntries(Object.entries(wizardPrices).map(([k, v]) => [k, parseFloat(v) || 0]).filter(([, v]) => (v as number) > 0))
-        : null;
+      const perTradeBreakdown = wizardMode ? wizardTradePrices(wizard.queue, wizardPrices) : null;
       const common = {
         claimId: String(claim.id), contractorId: contractor.id, totalPrice: bidAmount,
         feeBase, feePct, acceptedAtIso: nowIso, scopeSummary, notes: form.homeownerMessage || null,
@@ -547,7 +551,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
                 {wizard.queue.map((t) => (
                   <div key={t} style={{ display: 'contents' }}>
                     <span className="oqb-summary-k">{t.charAt(0).toUpperCase() + t.slice(1)}</span>
-                    <span className="oqb-summary-v">{wizardPrices[t] ? formatCurrency(parseFloat(wizardPrices[t]) || 0) : '—'}</span>
+                    <span className="oqb-summary-v">{wizardRounded[t] ? formatCurrency(wizardRounded[t]) : '—'}</span>
                   </div>
                 ))}
               </div>
