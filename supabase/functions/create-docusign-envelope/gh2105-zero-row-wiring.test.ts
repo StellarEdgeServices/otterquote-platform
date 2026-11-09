@@ -80,7 +80,7 @@ Deno.test("all three sites use the shared checkRowsWritten/zeroRowWriteMessage h
   const msgCount = (src.match(/zeroRowWriteMessage\(/g) || []).length;
   // 3 envelope-pointer writes fixed in batch 5, plus the colour-envelope slot
   // claim, slot takeover and pointer write added by the colour-signature repair
-  // (gh2105-colour-signature.test.ts covers those behaviourally): 6 checks, 4 messages.
+  // (D-407 / #3287: that mint path is now unreachable, refused 410 before it runs, see gh3287-retired-envelopes.test.ts; the code is kept, so the counts stay): 6 checks, 4 messages.
   assert(checkCount === 6, `expected 6 checkRowsWritten(...) call sites (3 batch-5 writes + 3 colour-slot writes), found ${checkCount}`);
   assert(msgCount === 4, `expected 4 zeroRowWriteMessage(...) call sites, found ${msgCount}`);
 });

@@ -22,21 +22,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
-import {
-  DocuSignEmbed,
-  isSigningCompleteReturn,
-  runSigningReturnBridge,
-} from '@/components/docusign-embed';
+import { isSigningCompleteReturn, runSigningReturnBridge } from '@/components/docusign-embed';
 import { HomeownerShell } from '../_shell/HomeownerShell';
 import {
   COLOR_COPY as C,
   subtitleBrandKnown,
   subtitleBrandUnconfirmed,
-  colorBoardVisitRequested,
-  colorBoardPhoneSuffix,
-  addendumFallbackWithPhone,
-  addendumFallbackNoPhone,
-  colorBoardMailtoBody,
 } from './copy';
 import {
   hasVisualizer,
@@ -44,13 +35,11 @@ import {
   getVisualizerDescription,
   resolveLinkOut,
   canCreateAddendum,
-  jobNumberFromClaimId,
 } from './utils';
 import {
   useColorSelectionData,
   saveColorSelection,
   createColorAddendumEnvelope,
-  requestColorBoardVisit,
 } from './use-color-selection-data';
 
 // ── Top-level page: tri-state boot ────────────────────────────────────────────
@@ -119,7 +108,7 @@ function Content() {
     return (
       <Wrap>
         <ErrorPanel
-          title="Missing claim ID"
+          title={data.error ? C.claimNotFoundTitle : 'Missing claim ID'}
           detail={
             data.error ??
             'No claim ID was found in the URL. Please return to your dashboard and navigate here from your project page.'
@@ -164,7 +153,7 @@ function PageBody({
   userId: string;
   signedReturn: boolean;
 }) {
-  const { brand, contractorName, contractorPhone, contractorId, signerEmail, zipCode } = data;
+  const { brand, contractorName, contractorId, signerEmail, zipCode } = data;
 
   // ── Phase ──
   const [phase, setPhase] = useState<'page' | 'done'>('page');
@@ -177,23 +166,11 @@ function PageBody({
   const [saveError, setSaveError] = useState<string | null>(null);
 
   // ── Addendum state ──
-  const [addendum, setAddendum] = useState<'none' | 'signing' | 'fallback'>('none');
-  const [signingUrl, setSigningUrl] = useState<string | null>(null);
-
-  // ── In-person request state ──
-  const [inPersonMsg, setInPersonMsg] = useState<string | null>(null);
-  const [inPersonDisabled, setInPersonDisabled] = useState(false);
+  // gh-3287 (Ben 6584752880, items 69-71): the signing panel is removed; only the saved note remains.
+  const [addendum, setAddendum] = useState<'none' | 'fallback'>('none');
 
   // ── Visualizer scroll target ──
   const visualizerRef = useRef<HTMLDivElement>(null);
-
-  // ── onComplete ref (stable identity for the embed listener) ──
-  const onCompleteRef = useRef<() => void>(() => {});
-  onCompleteRef.current = () => {
-    setPhase('done');
-    setSigningUrl(null);
-  };
-  const handleComplete = useCallback(() => onCompleteRef.current(), []);
 
   // ── Init-time signed=true return (mirror H4) ──
   const firedReturn = useRef(false);
@@ -220,7 +197,9 @@ function PageBody({
       await saveColorSelection({ claimId, userId, brand, colorName: name });
     } catch (err) {
       setSaving(false);
-      setSaveError(err instanceof Error ? err.message : 'Error saving color. Please try again.');
+      // gh-3287 (Ben 6584752880, item 67): never show a raw database message.
+      console.error('[ColorSelection] save failed:', err);
+      setSaveError(C.saveError);
       return;
     }
 
@@ -234,51 +213,27 @@ function PageBody({
       return;
     }
     try {
-      const { signingUrl: url } = await createColorAddendumEnvelope({
+      await createColorAddendumEnvelope({
         claimId,
         contractorId: contractorId!,
         origin: window.location.origin,
       });
-      setSigningUrl(url);
-      setAddendum('signing');
     } catch {
-      setAddendum('fallback');
+      /* the envelope is retired; the saved note below is shown either way */
     }
+    setAddendum('fallback');
   }, [colorInput, claimId, userId, brand, contractorId, signerEmail]);
-
-  // ── In-person color board request ──
-  const handleInPerson = useCallback(async () => {
-    const res = await requestColorBoardVisit({ claimId, userId });
-    if (res.status === 'already') {
-      setInPersonMsg(C.colorBoardAlreadyRequested);
-      return;
-    }
-    if (res.status === 'created') {
-      let msg = colorBoardVisitRequested(contractorName);
-      if (contractorPhone) msg += colorBoardPhoneSuffix(contractorPhone);
-      setInPersonMsg(msg);
-      setInPersonDisabled(true);
-      return;
-    }
-    // error → mailto fallback (static 1054-1057)
-    const subject = encodeURIComponent(C.colorBoardMailtoSubject);
-    const body = encodeURIComponent(
-      colorBoardMailtoBody(jobNumberFromClaimId(claimId), contractorName || 'unknown'),
-    );
-    window.location.href = `mailto:${C.colorBoardMailtoAddress}?subject=${subject}&body=${body}`;
-  }, [claimId, userId, contractorName, contractorPhone]);
 
   // ── Option-card click ──
   const handleOptionClick = useCallback(
-    (id: 'visualize' | 'browse' | 'inperson') => {
+    (id: 'visualize') => {
       if (id === 'visualize') {
         visualizerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } else if (id === 'inperson') {
-        void handleInPerson();
       }
-      // 'browse' is a no-op in the static (analytics only) — preserved.
+      // gh-3287 (Ben 6584752880, items 14-16): the 'browse' card is removed.
+      // gh-3287 (Ben 6668689264): the in-person visit request is removed.
     },
-    [handleInPerson],
+    [],
   );
 
   // ── Done screen (after addendum signing completes or a signed=true return) ──
@@ -304,7 +259,7 @@ function PageBody({
   const showLinkOutNote = isLinkOutBrand(brand);
 
   const OPTIONS: {
-    id: 'visualize' | 'browse' | 'inperson';
+    id: 'visualize';
     title: string;
     icon: string;
     description: string;
@@ -319,22 +274,6 @@ function PageBody({
       primary: true,
       button: C.optionVisualizeButton,
     },
-    {
-      id: 'browse',
-      title: C.optionBrowseTitle,
-      icon: C.optionBrowseIcon,
-      description: C.optionBrowseDescription,
-      primary: false,
-      button: C.optionBrowseButton,
-    },
-    {
-      id: 'inperson',
-      title: C.optionInPersonTitle,
-      icon: C.optionInPersonIcon,
-      description: C.optionInPersonDescription,
-      primary: false,
-      button: C.optionInPersonButton,
-    },
   ];
 
   return (
@@ -344,12 +283,6 @@ function PageBody({
         <h1 className="oqcs-title">{C.headerTitle}</h1>
         <p className="oqcs-subtitle">{subtitle}</p>
       </header>
-
-      {/* No-rush banner */}
-      <div className="oqcs-norush">
-        <div className="oqcs-norush-icon">{C.noRushIcon}</div>
-        <p className="oqcs-norush-text">{C.noRushText}</p>
-      </div>
 
       {/* Option cards */}
       <div className="oqcs-options">
@@ -361,7 +294,7 @@ function PageBody({
             <div className="oqcs-option-icon">{opt.icon}</div>
             <h3 className="oqcs-option-title">{opt.title}</h3>
             <p className="oqcs-option-desc">{opt.description}</p>
-            {showLinkOutNote && (
+            {showLinkOutNote && opt.id === 'visualize' && (
               <div className="oqcs-option-note">
                 <span className="oqcs-ext">
                   <span className="oqcs-ext-icon">{C.externalLinkIcon}</span> {C.opensInNewTabLabel}
@@ -383,24 +316,6 @@ function PageBody({
       <div className="oqcs-visualizer" ref={visualizerRef}>
         <div className="oqcs-visualizer-title">{C.visualizerSectionTitle}</div>
         <Visualizer brand={brand} zip={zipCode} />
-      </div>
-
-      {/* In-person color samples */}
-      <div className="oqcs-inperson">
-        <div className="oqcs-inperson-icon">{C.inPersonIcon}</div>
-        <div className="oqcs-inperson-content">
-          <h3 className="oqcs-inperson-title">{C.inPersonTitle}</h3>
-          <p className="oqcs-inperson-desc">{C.inPersonDescription}</p>
-          <button
-            type="button"
-            className="oqcs-btn oqcs-btn-secondary"
-            onClick={() => void handleInPerson()}
-            disabled={inPersonDisabled}
-          >
-            {C.inPersonButton}
-          </button>
-          {inPersonMsg && <div className="oqcs-inperson-confirm">{inPersonMsg}</div>}
-        </div>
       </div>
 
       {/* Confirmation */}
@@ -447,8 +362,6 @@ function PageBody({
             </div>
           </div>
 
-          <div className="oqcs-note">{C.confirmationNote}</div>
-
           {saveError && <div className="oqcs-submit-error">{saveError}</div>}
 
           <div className="oqcs-form-actions">
@@ -469,25 +382,10 @@ function PageBody({
         </form>
 
         {/* Addendum (rendered below the form, like the static) */}
-        {addendum === 'signing' && signingUrl && (
-          <div className="oqcs-addendum">
-            <h3 className="oqcs-addendum-heading">{C.addendumHeading}</h3>
-            <p className="oqcs-addendum-body">{C.addendumBody}</p>
-            <DocuSignEmbed
-              signingUrl={signingUrl}
-              onComplete={handleComplete}
-              title={C.addendumIframeTitle}
-            />
-          </div>
-        )}
-
         {addendum === 'fallback' && (
           <div className="oqcs-addendum-fallback">
             <p>
-              {C.addendumFallbackBase}{' '}
-              {contractorPhone
-                ? addendumFallbackWithPhone(contractorName, contractorPhone)
-                : addendumFallbackNoPhone(contractorName)}
+              {C.addendumFallbackBase}
             </p>
           </div>
         )}
@@ -686,12 +584,6 @@ const STYLES = `
   .oqcs-brand-unknown-icon { font-size:2.5rem; margin-bottom:.75rem; }
   .oqcs-brand-unknown-title { font-size:1rem; font-weight:600; margin-bottom:.5rem; }
   .oqcs-brand-unknown-text { color:var(--slate,#94a3b8); font-size:.9rem; max-width:480px; margin:0 auto; line-height:1.6; }
-  .oqcs-inperson { display:flex; align-items:flex-start; gap:1.5rem; background:rgba(224,123,0,0.06); border:1px solid rgba(224,123,0,0.25); border-left:4px solid #E07B00; border-radius:12px; padding:1.75rem; margin-bottom:2rem; }
-  .oqcs-inperson-icon { font-size:2.2rem; flex-shrink:0; line-height:1; }
-  .oqcs-inperson-content { flex:1; }
-  .oqcs-inperson-title { font-size:1.1rem; font-weight:600; margin:0 0 .5rem; }
-  .oqcs-inperson-desc { color:var(--slate,#94a3b8); margin:0 0 1.25rem; font-size:.95rem; line-height:1.6; }
-  .oqcs-inperson-confirm { margin-top:1.25rem; background:var(--green-light,#D1FAE5); color:#065F46; padding:1.25rem; border-radius:12px; border-left:4px solid var(--green,#10b981); }
   .oqcs-confirm { background:var(--navy-2,rgba(255,255,255,0.03)); border:1px solid rgba(255,255,255,0.06); border-radius:12px; padding:1.75rem; margin-bottom:2rem; }
   .oqcs-confirm-head { margin-bottom:1.5rem; padding-bottom:1.5rem; border-bottom:1px solid rgba(255,255,255,0.06); }
   .oqcs-confirm-title { font-size:1.25rem; margin:0 0 .5rem; }
@@ -728,5 +620,5 @@ const STYLES = `
   .oqcs-error-icon { font-size:2rem; margin-bottom:.5rem; }
   .oqcs-error-title { color:#ef4444; font-weight:600; margin:0 0 .35rem; }
   .oqcs-error-detail { color:var(--slate,#94a3b8); font-size:.9rem; margin:0; }
-  @media (max-width:768px){ .oqcs-wrap{ padding:1.5rem 1rem 2.5rem; } .oqcs-form-row{ grid-template-columns:1fr; } .oqcs-options{ grid-template-columns:1fr; } .oqcs-inperson{ flex-direction:column; gap:1rem; } }
+  @media (max-width:768px){ .oqcs-wrap{ padding:1.5rem 1rem 2.5rem; } .oqcs-form-row{ grid-template-columns:1fr; } .oqcs-options{ grid-template-columns:1fr; } }
 `;
