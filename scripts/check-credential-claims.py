@@ -486,6 +486,19 @@ ALLOWLIST = [
         "on the OtterQuote platform. CRO RUN 65, gh-2904.",
     ),
     (
+        "blog/storm-chaser-roofing-scams.html",
+        "FTC, 2003</a>, advises dealing with licensed and insured contractors",
+        "Generic consumer advice to verify your own contractor's insurance and any "
+        "license your area requires, sourced to the FTC (2003); no claim about "
+        "marketplace contractors.",
+    ),
+    (
+        "blog/storm-chaser-roofing-scams.html",
+        "deal only with licensed and insured contractors; take your time before signing",
+        "Sources blurb summarizing the FTC (2003) release; generic consumer advice, "
+        "no claim about marketplace contractors.",
+    ),
+    (
         "guides/metal-roof-vs-asphalt-shingle-bids.html",
         "It advises checking that an installer is licensed, insured and carries workers' compensation coverage",
         "Attributed statement of what the Metal Roofing Alliance's buyer's guide advises the "

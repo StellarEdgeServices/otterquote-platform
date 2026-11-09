@@ -19,7 +19,7 @@ No table, column, setting or existing function is altered. No data is written at
 - `is_admin_email()`.
 PR #3455 (Edge Function change that creates `unspecified` orders) does not have to be applied first: with no `unspecified` rows the trigger and function do nothing.
 
-**Order with #3455 (recorded on #3460, 6673369791 and 6673383780).** Preferred: #3468 merged and gh3460 applied before, or in the same session as, the #3455 functions. If #3455 goes first, nobody sets the role on an `unspecified` order by hand until gh3460 is applied: a hand UPDATE moves it off `unspecified` with no accrual, the new trigger arm can never fire for it, and the function then reports `role_set_without_fee` (not success). #3455's own alert says "set the role on the order"; do not follow that line by hand. Check 5 finds any such order before the apply.
+**Order with #3455 (recorded on #3460, 6673369791 and 6673383780).** Preferred: #3468 merged and gh3460 applied before, or in the same session as, the #3455 functions. If #3455 goes first, nobody sets the role on an `unspecified` order by hand until gh3460 is applied: a hand UPDATE moves it off `unspecified` with no accrual, the new trigger arm cannot fire for it unless the CTO sets it back to unspecified, and the function then reports `role_set_without_fee` (not success). #3455's own alert says "set the role on the order"; do not follow that line by hand. Check 5 finds any such order before the apply.
 
 ## Read-only checks before the apply
 ```sql
@@ -63,7 +63,7 @@ It passes for the reason that is true: RLS is on, the only policy that allows UP
 
 ## Verify
 Run `supabase/tests/gh3460_held_fee_release_proof.sql` (single rolled-back batch). Local: `supabase/tests/gh3460_held_fee_release_local_run.sh before|after|rollback|mutant-*`.
-After the apply, re-run check 4 (each query now returns one row), then make a bare call in the SQL editor: `SELECT public.admin_settle_order_buyer_role(gen_random_uuid(), 'homeowner');`. Want SQLSTATE 42501 and nothing changed. Do not settle a real held order to verify the migration: that is the runbook's job (`runbooks/held-partner-fee-release.md`), after its step 1, and it ends the hold for good.
+After the apply, re-run check 4 (each query now returns one row), then make a bare call in the SQL editor: `SELECT public.admin_settle_order_buyer_role(gen_random_uuid(), 'homeowner');`. Want SQLSTATE 42501 and nothing changed. Do not settle a real held order to verify the migration: that is the runbook's job (`runbooks/held-partner-fee-release.md`), after its step 1, and it ends the hold.
 
 ## Rollback
 `gh3460_held_fee_release_rollback.sql`. Drops the trigger and function only; accrued fee rows and settled roles stay.
