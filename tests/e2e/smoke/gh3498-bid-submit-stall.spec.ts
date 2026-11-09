@@ -209,6 +209,8 @@ test.describe('gh-3498 contractor-bid-form.html stalled submit (real page, Chrom
     await fillAndAccept(page);
     await clickSubmit(page);
     await expect.poll(async () => (await state(page)).btn).toContain('Submitting');
+    // the gate call has been made (its 10 s limit is running) before the clock moves; on a loaded host it can come later
+    await expect.poll(() => page.evaluate(() => (window as any).__t.calls.includes('bid_can_submit'))).toBe(true);
     await page.clock.fastForward(11_000);
     await expect.poll(async () => (await state(page)).banner).toContain('Network error verifying contract template. Please retry.');
     const s = await state(page);
@@ -268,7 +270,7 @@ test.describe('gh-3498 contractor-bid-form.html stalled submit (real page, Chrom
   async function landThenTimeOut(page: Page, dialogs: string[]) {
     await page.evaluate(() => { (window as any).__t.insertMode = 'land_then_hang'; });
     await clickSubmit(page);
-    await expect.poll(async () => (await state(page)).btn).toContain('Submitting');
+    await expect.poll(async () => (await state(page)).quotesFiled).toBe(1); // landed; its 20 s limit is running
     await page.clock.fastForward(21_000);
     await expect.poll(() => dialogs.length).toBe(1);
     expect(dialogs[0]).toMatch(/^Error submitting bid: /);
@@ -372,6 +374,118 @@ test.describe('gh-3498 contractor-bid-form.html stalled submit (real page, Chrom
     const t = await page.evaluate(() => (window as any).__t);
     expect(t.rows.length).toBe(1);
     expect(t.rows[0].idempotency_key).toBeUndefined();
+  });
+
+  // -- REVIEW 6743281622 finding 1: an error after a confirmed insert (a missing gtag, or anything else thrown there) must not
+  // let an edited retry show success over the old terms, write a second acceptance or email, or file a second row. --
+  const feeAccCount = (t: any) => t.inserts.filter((i: any) => i.table === 'fee_acceptances').length;
+  const emailCount = (t: any) => t.calls.filter((c: string) => c === 'fn:send-bid-confirmation').length;
+  for (const noColumn of [false, true]) {
+    test(`finding 1 (6743281622): a missing gtag does not turn a filed bid into an error (noColumn=${noColumn})`, async ({ page }) => {
+      const dialogs: string[] = [];
+      page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
+      await openForm(page);
+      await page.evaluate((nc) => { (window as any).__t.noColumn = nc; delete (window as any).gtag; }, noColumn);
+      await fillAndAccept(page);
+      await clickSubmit(page);
+      await expect.poll(async () => { const s = await state(page); return s.success || dialogs.length > 0; }).toBe(true);
+      const s = await state(page);
+      const t = await page.evaluate(() => (window as any).__t);
+      expect(dialogs).toEqual([]);
+      expect(s.success).toBe(true);
+      expect(t.rows.length).toBe(1);
+      expect(feeAccCount(t)).toBe(1);
+      expect(emailCount(t)).toBe(1);
+    });
+
+    test(`finding 1 (6743281622): an error thrown after a confirmed insert, then an edited retry: no success, nothing written twice (noColumn=${noColumn})`, async ({ page }) => {
+      const dialogs: string[] = [];
+      page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
+      await openForm(page);
+      await page.evaluate((nc) => {
+        (window as any).__t.noColumn = nc;
+        // stands in for anything that throws after the insert is confirmed (the unguarded gtag was the reviewer's case)
+        const thrower = () => { throw new Error('post-insert failure'); };
+        (window as any).trackBidEvent = thrower; (window as any).gtag = thrower;
+      }, noColumn);
+      await fillAndAccept(page);
+      await clickSubmit(page);
+      await expect.poll(() => dialogs.length).toBe(1);
+      expect(dialogs[0]).toMatch(/^Error submitting bid: /);
+      await expect.poll(async () => (await state(page)).btnDisabled).toBe(false);
+      await page.evaluate(() => { (window as any).trackBidEvent = () => {}; (window as any).gtag = () => {}; });
+      await page.locator('#retailBidPrice').fill('19000');
+      await page.clock.fastForward(6_000);
+      await reTick(page);
+      await clickSubmit(page);
+      await page.clock.fastForward(30_000);
+      await expect.poll(() => dialogs.length).toBe(2);
+      expect(dialogs[1]).toContain(ALREADY_FILED);
+      const s = await state(page);
+      const t = await page.evaluate(() => (window as any).__t);
+      expect(s.success).toBe(false);
+      expect(s.btn).toBe('Update Bid');
+      expect(t.rows.map((r: any) => r.total_price)).toEqual([18500]);
+      expect(feeAccCount(t)).toBe(1);
+      expect(emailCount(t)).toBe(1);
+    });
+  }
+
+  test('finding 1 (6743281622): an error thrown after a confirmed insert, then an identical retry: success, acceptance and email not repeated', async ({ page }) => {
+    const dialogs: string[] = [];
+    page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
+    await openForm(page);
+    await page.evaluate(() => { const thrower = () => { throw new Error('post-insert failure'); }; (window as any).trackBidEvent = thrower; (window as any).gtag = thrower; });
+    await fillAndAccept(page);
+    await clickSubmit(page);
+    await expect.poll(() => dialogs.length).toBe(1);
+    await expect.poll(async () => (await state(page)).btnDisabled).toBe(false);
+    await page.evaluate(() => { (window as any).trackBidEvent = () => {}; (window as any).gtag = () => {}; });
+    await reTick(page);
+    await clickSubmit(page);
+    await expect.poll(async () => (await state(page)).success).toBe(true);
+    const t = await page.evaluate(() => (window as any).__t);
+    expect(t.rows.length).toBe(1);
+    expect(feeAccCount(t)).toBe(1);
+    expect(emailCount(t)).toBe(1);
+    expect(dialogs.length).toBe(1);
+  });
+
+  // -- REVIEW 6743281622 finding 2: attempt A never lands, the contractor edits to B, B lands but times out, B is retried
+  // unchanged: the bid on file IS what was sent, so it finishes on the success screen with its acceptance and email. --
+  test('finding 2 (6743281622): A unlanded, edit to B, B landed but timed out, identical retry of B ends on success', async ({ page }) => {
+    const dialogs: string[] = [];
+    page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
+    await openForm(page);
+    await fillAndAccept(page);
+    await page.evaluate(() => { (window as any).__t.insertMode = 'hang'; });
+    await clickSubmit(page);
+    await expect.poll(() => page.evaluate(() => (window as any).__t.inserts.filter((i: any) => i.table === 'quotes').length)).toBe(1);
+    await page.clock.fastForward(21_000);
+    await expect.poll(() => dialogs.length).toBe(1);
+    await expect.poll(async () => (await state(page)).btnDisabled).toBe(false);
+    expect((await state(page)).quotesFiled).toBe(0);
+    await page.locator('#retailBidPrice').fill('19000');
+    await page.clock.fastForward(6_000);
+    await reTick(page);
+    await page.evaluate(() => { (window as any).__t.insertMode = 'land_then_hang'; });
+    await clickSubmit(page);
+    await expect.poll(async () => (await state(page)).quotesFiled).toBe(1); // B's insert has landed; its 20 s limit is running
+    await page.clock.fastForward(21_000);
+    await expect.poll(() => dialogs.length).toBe(2);
+    await expect.poll(async () => (await state(page)).btnDisabled).toBe(false);
+    await page.evaluate(() => { (window as any).__t.insertMode = 'ok'; });
+    await reTick(page);
+    await clickSubmit(page);
+    await page.clock.fastForward(30_000);
+    await expect.poll(async () => { const s = await state(page); return s.success || dialogs.length > 2; }).toBe(true);
+    const s = await state(page);
+    const t = await page.evaluate(() => (window as any).__t);
+    expect(dialogs.length).toBe(2);
+    expect(s.success).toBe(true);
+    expect(t.rows.map((r: any) => r.total_price)).toEqual([19000]);
+    expect(feeAccCount(t)).toBe(1);
+    expect(emailCount(t)).toBe(1);
   });
 
   test('a database without the column yet: the bid is filed as before, without a key', async ({ page }) => {

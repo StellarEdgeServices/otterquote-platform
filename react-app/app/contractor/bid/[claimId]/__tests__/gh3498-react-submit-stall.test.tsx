@@ -20,6 +20,7 @@ const h = vi.hoisted(() => {
     lookups: 0, // gh-3498: quotes lookups by (claim_id, contractor_id), the page-load query a retry repeats
     hideFromLookup: false, // a landed row the lookup does not see yet (an insert that lands after the lookup)
     noColumn: false, // the idempotency_key column does not exist yet (migration not applied)
+    emails: 0, // send-bid-confirmation invocations
   };
   const hang = (signal: AbortSignal | null) => new Promise((_, rej) => {
     signal?.addEventListener('abort', () => { state.aborted++; rej(signal.reason); });
@@ -82,6 +83,7 @@ const h = vi.hoisted(() => {
     functions: {
       invoke: async (name: string, o?: { signal?: AbortSignal }) => {
         if (state.hang.includes(`fn:${name}`)) { state.hung++; return hang(o?.signal ?? null); }
+        if (name === 'send-bid-confirmation') state.emails++;
         return { data: null, error: null };
       },
     },
@@ -108,7 +110,9 @@ const submitBtn = (c: HTMLElement) => Array.from(c.querySelectorAll('button')).f
 beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }); });
 afterEach(() => {
   cleanup(); vi.useRealTimers();
-  Object.assign(h.state, { gate: 'ok', insert: 'ok', aborted: 0, readbacks: 0, feeAcceptances: 0, hung: 0, updates: 0, lookups: 0, hideFromLookup: false, noColumn: false });
+  Object.assign(h.state, { gate: 'ok', insert: 'ok', aborted: 0, readbacks: 0, feeAcceptances: 0, hung: 0, updates: 0, lookups: 0, hideFromLookup: false, noColumn: false, emails: 0 });
+  sentry.captureMessage.mockReset(); sentry.captureException.mockReset();
+  delete (window as unknown as { gtag?: unknown }).gtag;
   h.state.hang.length = 0;
   sentry.captureException.mockClear(); sentry.captureMessage.mockClear();
   h.state.rows.length = 0; h.state.keyed.length = 0;
@@ -260,6 +264,66 @@ describe('gh-3498 React bid form: stalled submit', () => {
     await retry(container);
     expect(h.state.rows.length).toBe(1);
     expect(container.textContent).toContain('Bid submitted');
+  });
+
+  // -- REVIEW 6743281622 finding 1: an error after a confirmed insert must not let an edited retry show success over the old terms,
+  // write a second acceptance or email, or file a second row. (React's track() was already guarded; the throw here is a Sentry
+  // call in the fee path, standing in for anything thrown after the insert is confirmed.) --
+  it('finding 1 (6743281622): a missing or throwing gtag does not turn a filed bid into an error', async () => {
+    (window as unknown as { gtag?: unknown }).gtag = () => { throw new Error('gtag is not defined'); };
+    const { container } = mount();
+    await ready(container);
+    await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+    expect(container.textContent).toContain('Bid submitted');
+    expect(h.state.rows.length).toBe(1);
+  });
+
+  for (const noColumn of [false, true]) {
+    it(`finding 1 (6743281622): an error after a confirmed insert, then an edited retry: no success, nothing written twice (noColumn=${noColumn})`, async () => {
+      h.state.noColumn = noColumn;
+      // both Sentry calls in the fee path throw once, so the error escapes the fee step's own catch
+      sentry.captureMessage.mockImplementationOnce(() => { throw new Error('post-insert failure'); });
+      sentry.captureException.mockImplementationOnce(() => { throw new Error('post-insert failure'); });
+      const { container } = mount();
+      await ready(container);
+      await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+      expect(container.textContent).toContain('Error submitting bid: post-insert failure');
+      expect(h.state.rows.length).toBe(1);
+      const accBefore = h.state.feeAcceptances;
+      fireEvent.change(priceInput(container), { target: { value: '19000' } });
+      await advance(4000);
+      await retry(container);
+      expect(h.state.rows.map((r) => r.total_price)).toEqual([18500]);
+      expect(container.textContent).not.toContain('Bid submitted');
+      expect(container.textContent).toContain('Your bid was already filed on an earlier try');
+      expect(isChangeBid(container)).toBe(true);
+      expect(h.state.feeAcceptances).toBe(accBefore);
+      expect(h.state.emails).toBe(0);
+    });
+  }
+
+  // -- REVIEW 6743281622 finding 2: A never lands, edit to B, B lands but times out, B retried unchanged: success. --
+  it('finding 2 (6743281622): A unlanded, edit to B, B landed but timed out, identical retry of B ends on success', async () => {
+    const { container } = mount();
+    await ready(container);
+    h.state.insert = 'hang';
+    await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+    await advance(21_000);
+    expect(container.textContent).toContain('Error submitting bid: ');
+    expect(h.state.rows.length).toBe(0);
+    fireEvent.change(priceInput(container), { target: { value: '19000' } });
+    await advance(4000);
+    h.state.insert = 'land_then_hang';
+    await retry(container);
+    await advance(21_000);
+    expect(h.state.rows.length).toBe(1);
+    expect(container.textContent).toContain('Error submitting bid: ');
+    h.state.insert = 'ok';
+    await retry(container);
+    expect(container.textContent).toContain('Bid submitted');
+    expect(h.state.rows.map((r) => r.total_price)).toEqual([19000]);
+    expect(h.state.feeAcceptances).toBe(1);
+    expect(h.state.emails).toBe(1);
   });
 
   it('a database without the column yet: the bid is filed as before, without a key', async () => {

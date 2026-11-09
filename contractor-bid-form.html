@@ -4710,9 +4710,19 @@
     // across every retry, whatever the contractor edits in between (REVIEW 6740720167 finding 2: a key that changed with the price
     // let a retry file a second bid). It is dropped only when the bid is filed or the form switches to Change Bid.
     var _bidIdemKey = null, _bidIdemFp = null;
-    // Content fingerprints of insert attempts that ended without a confirmed answer (timed out, or failed after being sent).
-    // While this is not empty, the next submit first looks for a bid already filed for this claim before it inserts anything.
+    // Content fingerprints of insert attempts sent from this page that have not yet ended on the success screen (timed out,
+    // failed after being sent, or confirmed but followed by an error). While this is not empty, the next submit first looks for
+    // a bid already filed for this claim before it inserts anything (REVIEW 6743281622 finding 1: it is no longer cleared at
+    // the confirmed insert, only on the success screen or the Change Bid switch).
     var _bidUnconfirmedFps = [];
+    // Id of the filed bid whose fee_acceptances row and confirmation email this page has already sent, so a retry that finds
+    // that same bid finishes on the success screen without writing them a second time.
+    var _bidPostWritesDoneId = null;
+    // GA4 events are best-effort: a missing or failing gtag (blocked, or ga-gate not loaded) must never turn a filed bid into
+    // an error (REVIEW 6743281622 finding 1; same as React's track()).
+    function trackBidEvent(name, params) {
+      try { if (typeof gtag === 'function') gtag('event', name, params); } catch (e) { /* non-fatal */ }
+    }
     function bidIdempotencyKey(fingerprint) {
       if (!_bidIdemKey || _bidIdemFp !== fingerprint) {
         _bidIdemKey = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
@@ -4734,6 +4744,38 @@
       if (v && typeof v === 'object') return '{' + Object.keys(v).sort().filter((k) => v[k] !== undefined)
         .map((k) => JSON.stringify(k) + ':' + _stableJson(v[k])).join(',') + '}';
       return JSON.stringify(v === undefined ? null : v);
+    }
+    // gh-3498 (REVIEW 6743281622): the terms of a bid as filed, comparable between the payload this page would send and a row read
+    // back from the database. Only the fields the contractor sets are compared (fee amounts are derived, timestamps and the key
+    // change per attempt). Numbers are compared as numbers, JSON text (scope_summary) as JSON, and null equals absent.
+    var BID_TERM_FIELDS = ['total_price', 'trade_type', 'scope_summary', 'notes', 'decking_price_per_sheet', 'full_redeck_price',
+      'supplement_acknowledged', 'value_adds', 'per_trade_breakdown', 'auto_renew', 'warranty_option_id', 'warranty_snapshot',
+      'workmanship_warranty_years', 'platform_fee_pct'];
+    function _normTerm(v) {
+      if (v === undefined || v === null || v === '') return null;
+      if (typeof v === 'number') return isFinite(v) ? Math.round(v * 10000) / 10000 : null;
+      if (typeof v === 'string') {
+        const s = v.trim();
+        if (/^-?\d+(\.\d+)?$/.test(s)) return Math.round(Number(s) * 10000) / 10000;
+        if (/^[[{]/.test(s)) { try { return _normTerm(JSON.parse(s)); } catch (e) { /* plain text */ } }
+        return s === '' ? null : s;
+      }
+      if (Array.isArray(v)) return v.length ? v.map(_normTerm) : null;
+      if (typeof v === 'object') {
+        const o = {};
+        Object.keys(v).forEach((k) => { const n = _normTerm(v[k]); if (n !== null) o[k] = n; });
+        return Object.keys(o).length ? o : null;
+      }
+      return v;
+    }
+    function bidTermsFingerprint(row) {
+      const t = {};
+      BID_TERM_FIELDS.forEach((k) => { t[k] = row ? row[k] : null; });
+      if (t.value_adds && typeof t.value_adds === 'object' && t.value_adds.warranty_admin_review) {
+        t.value_adds = Object.assign({}, t.value_adds, {
+          warranty_admin_review: Object.assign({}, t.value_adds.warranty_admin_review, { flagged_at: null }) });
+      }
+      return _stableJson(_normTerm(t));
     }
     function bidContentFingerprint(payload) {
       const p = Object.assign({}, payload);
@@ -4758,7 +4800,7 @@
     var BID_ALREADY_FILED_MSG = 'Your bid was already filed on an earlier try, so no second bid was sent. The form now shows the bid on file: if it is not what you meant to send, change it and select Update Bid.';
     function showFiledBidAsChangeBid(quote) {
       existingQuote = quote;
-      _bidUnconfirmedFps = []; _bidIdemKey = null; _bidIdemFp = null;
+      _bidUnconfirmedFps = []; _bidIdemKey = null; _bidIdemFp = null; _bidPostWritesDoneId = null;
       if (isSelectedBidLocked(quote, currentClaim, currentContractor)) { showSelectedBidLock(); return; }
       changeBidMode = true; renewMode = false;
       // Not awaited: the prefill loads warranty options over the network, and nothing between the submit lock and its finally
@@ -5637,7 +5679,7 @@
 
             // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id
             // removed — a per-homeowner database identifier must not reach GA4.
-            gtag('event', 'bid_updated', {
+            trackBidEvent('bid_updated', {
               bid_amount: quoteData.total_price,
             });
 
@@ -5684,7 +5726,9 @@
 
             if (error) throw error;
             if (_filedBid) {
-              const _sameBid = _bidUnconfirmedFps.every((fp) => fp === _contentFp)
+              // REVIEW 6743281622: the filed row's OWN terms are compared with this retry's terms, so it does not matter which
+              // earlier attempt landed or what was thrown after it; a match is the same bid, anything else goes to Change Bid.
+              const _sameBid = bidTermsFingerprint(_filedBid) === bidTermsFingerprint(quoteData)
                 && (!_filedBid.idempotency_key || _filedBid.idempotency_key === _bidIdemKey);
               if (!_sameBid) {
                 showFiledBidAsChangeBid(_filedBid);
@@ -5694,7 +5738,8 @@
               }
               insertedQuote = _filedBid; // the earlier attempt filed exactly this bid: finish it (acceptance, email, success)
             }
-            _bidUnconfirmedFps = [];
+            // (the attempt list is cleared on the success screen, not here: an error after this point must still make the
+            // next submit look for this bid first)
 
             // Store the new quote ID for contract signing
             window._newQuoteId = insertedQuote?.id || null;
@@ -5702,7 +5747,7 @@
             // ── D-215 Layer 1: Insert fee_acceptances record (UETA evidence) ──
             // Runs AFTER quote insert so bid_id (insertedQuote.id) is available.
             // Non-fatal: quote is already committed; log failures for compliance audit.
-            if (!changeBidMode) {
+            if (!changeBidMode && insertedQuote.id !== _bidPostWritesDoneId) { // gh-3498: not twice for the same filed bid
               // gh-3409: NO .single() here. Asking PostgREST for exactly one row makes it roll the whole request back (406 PGRST116) when the
               // server diverts a mismatching acceptance to review (zero rows returned), which would delete the record of what was shown.
               // .select('id') without .single() returns an array; an empty array means "kept for review, not recorded".
@@ -5769,7 +5814,8 @@
             }
 
             // GA4 conversion event — bid funnel
-            gtag('event', 'bid_submit', {
+            _bidPostWritesDoneId = insertedQuote.id;
+            trackBidEvent('bid_submit', {
               trade_types: Array.isArray(currentClaim.trades) ? currentClaim.trades : [],
               job_type: isRetailJob ? 'retail' : 'insurance',
               bid_amount: quoteData.total_price,
@@ -5805,6 +5851,7 @@
         successState.classList.add('show');
         _submitDone = true; // gh-3488: the button stays disabled on the success screen
         _bidIdemKey = null; _bidIdemFp = null; // gh-3498: this bid is filed; its key is spent
+        _bidUnconfirmedFps = []; _bidPostWritesDoneId = null;
         // Clear wizard localStorage state on successful submission
         clearWizardState();
       } catch (err) {

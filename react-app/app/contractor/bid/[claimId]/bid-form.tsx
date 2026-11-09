@@ -265,6 +265,38 @@ function stableJson(v: unknown): string {
   }
   return JSON.stringify(v === undefined ? null : v);
 }
+// gh-3498 (REVIEW 6743281622): the terms of a bid as filed, comparable between the payload this form would send and a row read
+// back from the database (same fields and rules as contractor-bid-form.html bidTermsFingerprint). Fee amounts are derived and
+// timestamps and the key change per attempt, so they are left out. Numbers compare as numbers, JSON text as JSON, null = absent.
+const BID_TERM_FIELDS = ['total_price', 'trade_type', 'scope_summary', 'notes', 'decking_price_per_sheet', 'full_redeck_price',
+  'supplement_acknowledged', 'value_adds', 'per_trade_breakdown', 'auto_renew', 'warranty_option_id', 'warranty_snapshot',
+  'workmanship_warranty_years', 'platform_fee_pct'];
+function normTerm(v: unknown): unknown {
+  if (v === undefined || v === null || v === '') return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? Math.round(v * 10000) / 10000 : null;
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (/^-?\d+(\.\d+)?$/.test(s)) return Math.round(Number(s) * 10000) / 10000;
+    if (/^[[{]/.test(s)) { try { return normTerm(JSON.parse(s)); } catch { /* plain text */ } }
+    return s === '' ? null : s;
+  }
+  if (Array.isArray(v)) return v.length ? v.map(normTerm) : null;
+  if (typeof v === 'object') {
+    const o: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) { const n = normTerm(x); if (n !== null) o[k] = n; }
+    return Object.keys(o).length ? o : null;
+  }
+  return v;
+}
+function bidTermsFingerprint(row: Record<string, unknown> | null): string {
+  const t: Record<string, unknown> = {};
+  for (const k of BID_TERM_FIELDS) t[k] = row ? row[k] : null;
+  const va = t.value_adds as Record<string, unknown> | null | undefined;
+  if (va && typeof va === 'object' && va.warranty_admin_review && typeof va.warranty_admin_review === 'object') {
+    t.value_adds = { ...va, warranty_admin_review: { ...(va.warranty_admin_review as Record<string, unknown>), flagged_at: null } };
+  }
+  return stableJson(normTerm(t));
+}
 function bidContentFingerprint(payload: Record<string, unknown>): string {
   const p: Record<string, unknown> = { ...payload };
   delete p.idempotency_key; delete p.fee_accepted_at;
@@ -350,8 +382,9 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
   // gh-3498: one idempotency key per (claim, contractor) while the form is open, kept across every retry whatever is edited in
   // between (REVIEW 6740720167 finding 2), dropped only when the bid is filed or the form becomes Change Bid.
   const idemRef = useRef<{ key: string; fp: string } | null>(null);
-  // Content fingerprints of insert attempts that ended without a confirmed answer; while not empty, the next submit first looks
-  // for a bid already filed for this claim before it inserts anything.
+  // Content fingerprints of insert attempts sent from this form that have not yet ended on the success screen; while not empty,
+  // the next submit first looks for a bid already filed for this claim before it inserts anything (cleared only on success or
+  // the Change Bid switch, REVIEW 6743281622).
   const unconfirmedRef = useRef<string[]>([]);
   const submitInFlight = useRef(false); // gh-3488: set synchronously, so nothing can file a second bid while one is running
   const disclosure = computeDisclosureFee(bidAmount, feePct);
@@ -507,7 +540,8 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
         }
         if (insErr) throw insErr;
         if (filed) {
-          const sameBid = unconfirmedRef.current.every((f) => f === contentFp)
+          // REVIEW 6743281622: the filed row's OWN terms against this retry's terms, whichever earlier attempt landed.
+          const sameBid = bidTermsFingerprint(filed) === bidTermsFingerprint(insertPayload)
             && (!filed.idempotency_key || filed.idempotency_key === idemKey);
           if (!sameBid) {
             idemRef.current = null; unconfirmedRef.current = [];
@@ -519,7 +553,6 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
           }
           inserted = filed; // the earlier attempt filed exactly this bid: finish it (acceptance, email, success)
         }
-        unconfirmedRef.current = [];
         const bidId = (inserted as { id: string }).id;
         // D-215 Layer 1 fee_acceptances + Layer 2 send-bid-confirmation (non-fatal; quote committed).
         try {
@@ -555,6 +588,7 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
       // Clear wizard localStorage state on success (parity with clearWizardState).
       try { localStorage.removeItem(`oq_wizard_${claim.id}`); } catch { /* ignore */ }
       idemRef.current = null; // gh-3498: this bid is filed; its key is spent
+      unconfirmedRef.current = [];
       setSubmitState('done');
     } catch (err) {
       console.error('Error submitting bid:', err);
