@@ -26,7 +26,7 @@ const FAKE_SUPABASE = `
   const contractor = { id: 'c-1', user_id: 'u-1', status: 'active', attestation_accepted_at: '2026-01-01T00:00:00Z',
     coi_file_url: 'x', coi_expires_at: '2099-01-01', cpa_version: 'v1-2026-04', needs_cpa_reattestation: false,
     company_name: 'Acme Roofing', phone: '5551234567', trades: ['roofing'], service_area_description: 'IN', address_state: 'IN', is_test: true };
-  const existing = { id: 'q-1', claim_id: 'claim-1', contractor_id: 'c-1', total_price: 18000, bid_status: 'active', platform_fee_pct: 5, scope_summary: '{}', trade_type: 'roofing' };
+  const existing = Object.assign({ id: 'q-1', claim_id: 'claim-1', contractor_id: 'c-1', total_price: 18000, bid_status: 'active', platform_fee_pct: 5, scope_summary: '{}', trade_type: 'roofing' }, window.__existingOverride || {});
   async function run(s) {
     // gh-3491: a call named in __t.hang never answers (armed by the test once the form is filled)
     if (t.hang && t.hang.includes(s.table + ':' + s.op)) { t.hung = (t.hung || 0) + 1; await new Promise(() => {}); }
@@ -91,7 +91,9 @@ window.Auth = new Proxy({ requireAuth: async () => ({ id: 'u-1', email: 'c@examp
   { get: (t, k) => (k in t ? t[k] : async () => null) });
 `;
 
-async function openForm(page: Page, opts: { ipifyGate?: boolean; ipifyHang?: boolean; changeMode?: boolean } = {}) {
+// gh-3497 (LEGAL-READ 6743062238): `existing` overrides fields of the stored quote, `configured` sets the rate
+// quotes_platform_fee_for answers from the first lookup, and `renew` opens ?renew=true (an expired bid's Renew).
+async function openForm(page: Page, opts: { ipifyGate?: boolean; ipifyHang?: boolean; changeMode?: boolean; existing?: Record<string, unknown>; configured?: string; renew?: boolean } = {}) {
   const waiting: Array<() => void> = [];
   const gate: { release: () => void } = { release: () => { waiting.forEach((r) => r()); waiting.length = 0; } };
   await page.route('**/*', async (route) => {
@@ -107,7 +109,10 @@ async function openForm(page: Page, opts: { ipifyGate?: boolean; ipifyHang?: boo
       return route.continue();
     }
     if (url.includes('supabase-js') || url.includes('supabase.js')) {
-      return route.fulfill({ contentType: 'text/javascript', body: opts.changeMode ? FAKE_SUPABASE.replace("feeMode: 'immediate'", "feeMode: 'immediate', changeMode: true") : FAKE_SUPABASE });
+      let fake = opts.changeMode ? FAKE_SUPABASE.replace("feeMode: 'immediate'", "feeMode: 'immediate', changeMode: true") : FAKE_SUPABASE;
+      if (opts.configured) fake = fake.replace("feePct: '5.00'", 'feePct: ' + JSON.stringify(opts.configured));
+      if (opts.existing) fake = 'window.__existingOverride = ' + JSON.stringify(opts.existing) + ';\n' + fake;
+      return route.fulfill({ contentType: 'text/javascript', body: fake });
     }
     if (url.includes('api.ipify.org')) {
       if (opts.ipifyHang) await new Promise<void>(() => {});
@@ -116,7 +121,7 @@ async function openForm(page: Page, opts: { ipifyGate?: boolean; ipifyHang?: boo
     }
     return route.abort();
   });
-  await page.goto(PAGE);
+  await page.goto(opts.renew ? PAGE + '&renew=true' : PAGE);
   await page.waitForFunction(() => (window as any).__t && document.getElementById('retailBidPrice'));
   await page.waitForFunction(() => (window as any).isRetailJob === true || (document.getElementById('retailBidPrice') as HTMLElement).offsetParent !== null);
   return gate;
@@ -538,5 +543,52 @@ test.describe('gh-3497 contractor-bid-form.html reads the rate through quotes_pl
     expect((await inserted(page, 'quotes'))[0].payload.platform_fee_pct).toBe(7.5);
     await expect.poll(async () => (await inserted(page, 'fee_acceptances')).length).toBe(1);
     expect((await inserted(page, 'fee_acceptances'))[0].payload.fee_amount).toBe(1875);
+  });
+});
+
+// gh-3497 (LEGAL-READ 6743062238): Change Bid and Renew UPDATE an existing quote, and the quotes guard keeps that quote's
+// stored rate on the contractor's UPDATE (gh2564, CEO ruling 6050104316: c_revised_bid_takes_current_config_rate :=
+// false), recomputing fee_amount = round(rate / 100 * total_price, 2). Stored 5.00, configured 4.00: the page must show,
+// accept and send 5.00, so the fee shown is the fee the guard stores and docusign-webhook charges. On ccb66dc7 it shows 4.00.
+test.describe('gh-3497 contractor-bid-form.html: Change Bid and Renew use the stored rate, not the configured one', () => {
+  for (const renew of [false, true]) {
+    const label = renew ? 'Renew' : 'Change Bid';
+    test(`${label}: stored 5.00, configured 4.00 -> shows, accepts and sends 5.00; the fee shown is the fee the guard stores`, async ({ page }) => {
+      test.setTimeout(30000);
+      const stored = { platform_fee_pct: 5, fee_percentage: 5, bid_status: renew ? 'expired' : 'active' };
+      await openForm(page, { changeMode: true, renew, existing: stored, configured: '4.00' });
+      await expect.poll(() => page.evaluate(() => document.getElementById('submitBtn')!.textContent!.trim())).toBe(renew ? 'Renew Bid' : 'Update Bid');
+      await fillRequired(page);
+      await typeBid(page, '25000');
+      await expect.poll(() => page.evaluate(() => document.getElementById('feePercentDisplay')!.textContent)).toBe('5.00');
+      expect(await disclosure(page)).toEqual({ pct: '5.00', disclosure: '$1,250.00', checkbox: '$1,250.00' });
+      expect(await page.evaluate(() => document.getElementById('feePercentCheckbox')!.textContent)).toBe('5.00');
+      await acceptFee(page);
+      await clickSubmit(page);
+      await expect.poll(async () => (await inserted(page, 'quotes')).length, { timeout: 15000 }).toBe(1);
+      const u = (await inserted(page, 'quotes'))[0];
+      expect(u.op).toBe('update');
+      expect(u.payload.platform_fee_pct).toBe(5);                     // the UPDATE sends the stored rate
+      expect(u.payload.total_price).toBe(25000);
+      // the guard keeps the stored rate and recomputes the fee from it: that is the fee shown and accepted
+      const guardRate = stored.platform_fee_pct ?? stored.fee_percentage;
+      const guardFeeCents = Math.round(guardRate * u.payload.total_price);   // round(rate/100 * total, 2) in cents
+      expect(guardFeeCents).toBe(125000);
+      const shownCents = await page.evaluate((tp) => (window as any).platformFeeCents(tp, (window as any)._feePct), u.payload.total_price);
+      expect(shownCents).toBe(guardFeeCents);
+      expect((await inserted(page, 'fee_acceptances')).length).toBe(0);    // a revised bid writes no new acceptance row
+    });
+  }
+
+  test('a new bid on the same page still uses the configured 4.00', async ({ page }) => {
+    await openForm(page, { configured: '4.00' });
+    await fillRequired(page);
+    await typeBid(page, '25000');
+    await expect.poll(() => page.evaluate(() => document.getElementById('feePercentDisplay')!.textContent)).toBe('4.00');
+    expect((await disclosure(page)).disclosure).toBe('$1,000.00');
+    await acceptFee(page);
+    await clickSubmit(page);
+    await expect.poll(async () => (await inserted(page, 'quotes')).length).toBe(1);
+    expect((await inserted(page, 'quotes'))[0].payload.platform_fee_pct).toBe(4);
   });
 });

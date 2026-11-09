@@ -39,9 +39,15 @@
 --   quote insert error, leave the contractor's entries in place, unlock the form and show the message ("Error submitting bid: ..."). With this PR the
 --   forms also recognise fee_rate_mismatch, re-read the rate and show the configured figure with the acceptance cleared, so the contractor re-accepts and
 --   resubmits. It is never a silent overwrite and never a lost bid.
--- ORDER OF ROLLOUT. Part 1 (both bid forms read the rate through quotes_platform_fee_for and stop with no answer) can ship first, last, or together.
---   Applied BEFORE part 1 is deployed, nothing changes at the one 5.00 rate; at any other rate the old forms (which show 5.00) are refused loudly, none
---   is silently charged a different rate. The CONDITION on #3497 (no insert into or fee_pct update on platform_fee_config) lifts only when BOTH are live.
+-- ORDER OF ROLLOUT. Part 1 (both bid forms read the rate through quotes_platform_fee_for and stop with no answer, AND Change Bid / Renew show, accept
+--   and send the bid's STORED platform_fee_pct) can ship first, last, or together. Applied BEFORE part 1 is deployed, nothing changes at the one 5.00
+--   rate; at any other rate the old forms (which show 5.00) are refused loudly, none is silently charged a different rate.
+-- UPDATE PATH (LEGAL-READ 6743062238). This trigger is BEFORE INSERT only. On the contractor's own UPDATE (Change Bid, Renew) the gh2564 guard keeps
+--   the row's stored rate (CEO ruling 6050104316: c_revised_bid_takes_current_config_rate := false) and recomputes fee_amount from it. Part 1 therefore
+--   has both forms show, accept and send that stored rate on Change Bid and Renew, never the configured one; without that, a revised bid would show
+--   the new configured rate and be charged the stored one.
+-- The CONDITION on #3497 (no insert into or fee_pct update on platform_fee_config) lifts only when #3497 is live INCLUDING the Change Bid / Renew
+--   stored-rate fix: part 1 with that fix deployed AND this trigger applied. Part 1 without the Change Bid / Renew fix does not lift it.
 --
 -- No table, policy, grant or data change. Idempotent: CREATE OR REPLACE FUNCTION, DROP TRIGGER IF EXISTS then CREATE TRIGGER.
 -- NOT APPLIED by the authoring session.

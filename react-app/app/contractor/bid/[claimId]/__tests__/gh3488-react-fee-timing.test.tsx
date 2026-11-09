@@ -195,12 +195,13 @@ describe('gh-3488 React bid form: timing windows', () => {
   it('(REVIEW) a Change Bid UPDATE that never returns ends with a message and an unlocked form; a retry files once', async () => {
     h.state.deferFirst = false;
     h.state.hangUpdate = true;
-    const existing = { id: 'q-1', bid_status: 'active', renewals_count: 0, total_price: 18000 };
+    const existing = { id: 'q-1', bid_status: 'active', renewals_count: 0, total_price: 18000, platform_fee_pct: 5, fee_percentage: 5 };   // gh-3497: a stored rate, as every row has (fee_percentage is NOT NULL)
     const { container } = render(
       <BidForm mode="change" claim={claim as never} contractor={contractor as never} existingQuote={existing as never}
         flags={flags} claimRcv={null} userId="u1" />,
     );
-    await waitFor(() => expect(h.state.lookups).toBeGreaterThan(0));
+    // gh-3497 (LEGAL-READ 6743062238): Change Bid uses the quote's stored rate, so it makes no configured-rate lookup.
+    await waitFor(() => expect(container.textContent).toContain('5.00%'));
     fireEvent.change(priceInput(container), { target: { value: '18500' } });
     fireEvent.click(feeBox(container));
     await waitFor(() => expect(submitBtn(container).disabled).toBe(false));
@@ -217,5 +218,7 @@ describe('gh-3488 React bid form: timing windows', () => {
     await waitFor(() => expect(container.textContent).toContain('Bid updated'));
     expect(inserted('quotes:update').length).toBe(2);   // the first (hung) attempt and the retry; one row, same fields
     expect(inserted('quotes:update')[1].row.total_price).toBe(18500);
+    expect(inserted('quotes:update')[1].row.platform_fee_pct).toBe(5);   // gh-3497: the stored rate
+    expect(h.state.lookups).toBe(0);
   }, 40000);
 });

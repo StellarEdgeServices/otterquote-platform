@@ -228,6 +228,21 @@ export function parseConfiguredFeePct(data: unknown): number | null {
 }
 
 /**
+ * gh-3497 (LEGAL-READ 6743062238): the rate stored on the quote that Change Bid / Renew updates, or null when the row has
+ * no usable rate. On the contractor's own UPDATE the quotes guard keeps the stored rate (gh2564, CEO ruling 6050104316:
+ * c_revised_bid_takes_current_config_rate := false) and recomputes fee_amount from COALESCE(platform_fee_pct,
+ * fee_percentage) and the new total_price. So a revised bid shows, accepts and sends this rate, never the configured one.
+ * A null counts as no answer: the submit stops, exactly as for a new bid whose configured rate cannot be read.
+ */
+export function storedQuoteFeePct(quote: Record<string, unknown> | null | undefined): number | null {
+  if (!quote) return null;
+  const raw = quote.platform_fee_pct !== null && quote.platform_fee_pct !== undefined ? quote.platform_fee_pct : quote.fee_percentage;
+  if (raw === null || raw === undefined) return null;
+  const parsed = parseFloat(String(raw));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+/**
  * Fee-calculator math (updateFeeCalculator, :4343-4353). For insurance_rcv jobs
  * the 5% fee base is the claim RCV; otherwise the bid amount.
  */

@@ -28,7 +28,7 @@ import {
   type BidClaim, type BidMode, type TradeFlags, type WarrantySelectionInput,
   type ValueAddsFormState, type ValueAddsContext, type WizardState,
   buildValueAdds, serializeWarrantySelection, applyCustomWarrantyReview,
-  parseConfiguredFeePct, computeDisclosureFee, computeQuoteFeeBase,
+  parseConfiguredFeePct, storedQuoteFeePct, computeDisclosureFee, computeQuoteFeeBase,
   bidGateRpcParams, interpretBidGate, BID_GATE_ROUTES, DEFAULT_PLATFORM_FEE_PCT,
   buildScopeSummary, buildQuoteInsert, buildQuoteUpdate,
   buildFeeAcceptanceInsert, ipForInet, feeAcceptanceOutcome, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
@@ -232,6 +232,21 @@ async function fetchConfiguredFeePct(contractor: ContractorRecord, claim: Record
   } catch { return null; } finally { if (timer) clearTimeout(timer); }
 }
 
+/**
+ * gh-3497 (LEGAL-READ 6743062238): the rate this form shows, accepts and sends. A new bid uses the configured rate. Change
+ * Bid and Renew UPDATE the existing quote, and the quotes guard keeps that quote's stored rate on the contractor's UPDATE
+ * (ruling 6050104316), so they use the stored rate; showing the configured one would show one fee and charge another.
+ */
+async function resolveBidFeePct(
+  mode: BidMode,
+  existingQuote: Record<string, unknown> | null,
+  contractor: ContractorRecord,
+  claim: Record<string, unknown>,
+): Promise<number | null> {
+  if ((mode === 'change' || mode === 'renew') && existingQuote) return storedQuoteFeePct(existingQuote);
+  return fetchConfiguredFeePct(contractor, claim);
+}
+
 function track(event: string, params: Record<string, unknown>): void {
   try {
     const g = (window as unknown as { gtag?: (...a: unknown[]) => void }).gtag;
@@ -285,13 +300,13 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
     let active = true;
     setFeeLookupDone(false);
     (async () => {
-      const pct = await fetchConfiguredFeePct(contractor, claim);
+      const pct = await resolveBidFeePct(mode, existingQuote, contractor, claim);
       if (!active) return;
       if (pct !== null) setFeePct(pct);
       setFeeLookupDone(true);
     })();
     return () => { active = false; };
-  }, [contractor, claim]);
+  }, [mode, existingQuote, contractor, claim]);
   const bidAmount = wholeCentDollars(parseFloat(form.bidPrice) || 0); // gh-3488: shown, stored and charged bid is whole cents
   // A tick belongs to the figure it was given under: a different rate or a different bid is a different disclosure.
   useEffect(() => { setFeeAccepted(false); }, [feePct, bidAmount]);
@@ -319,7 +334,8 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
     try {
       // gh-3488 (LEGAL-READ 6674806511): a fresh rate lookup at every submit. If the server's rate differs from the one
       // on screen, show it and require acceptance again (the effect on feePct clears the tick); nothing is filed.
-      const freshPct = await fetchConfiguredFeePct(contractor, claim);
+      // gh-3497 (LEGAL-READ 6743062238): for Change Bid / Renew this is the quote's stored rate (see resolveBidFeePct).
+      const freshPct = await resolveBidFeePct(mode, existingQuote, contractor, claim);
       // gh-3497: no answer from quotes_platform_fee_for means no submit. The rate on screen is not evidence of what the
       // server will store. The form keeps the contractor's entries and the existing 'Error submitting bid: ' message
       // reports it, as the other stops do.
@@ -455,7 +471,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
       // figure, so clear it and re-read the rate: the page then shows the configured figure to be accepted again.
       if (/fee_rate_mismatch/.test(errMsg)) {
         setFeeAccepted(false);
-        void fetchConfiguredFeePct(contractor, claim).then((p) => { if (p !== null) setFeePct(p); });
+        void resolveBidFeePct(mode, existingQuote, contractor, claim).then((p) => { if (p !== null) setFeePct(p); });
       }
     } finally {
       submitInFlight.current = false;
