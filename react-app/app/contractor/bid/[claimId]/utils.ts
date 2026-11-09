@@ -507,20 +507,22 @@ export function buildQuoteUpdate(input: QuoteUpdateInput): Record<string, unknow
     updated_at: now.toISOString(),
   };
   if (input.renewMode) {
-    // D-150 renewal — reset the bid window (:5347-5352).
-    // gh-2564: 'submitted' is not admitted by quotes_bid_status_check (active, expired, superseded, cancelled).
-    base.bid_status = 'active';
-    base.expired_at = null;
-    base.expires_at = new Date(now.getTime() + BID_RENEWAL_WINDOW_MS).toISOString();
+    // D-150 renewal. gh-3560: bid_status, expired_at and expires_at are NOT sent here: the quotes guard trigger refuses
+    // them to a contractor's direct UPDATE (42501), so renewQuoteRpcMode() + supabase.rpc('renew_quote') set them first.
     base.renewals_count = (input.existingRenewalsCount || 0) + 1;
-  } else if (input.existingBidStatus === 'cancelled') {
-    // gh-2564 (CEO RUN 104 point 4): Change Bid on a withdrawn bid re-opens it -- the rescind-and-re-bid path
-    // D-369/D-381 rely on. Same live fields as a renewal; renewals_count is not bumped (not an auto-renewal).
-    base.bid_status = 'active';
-    base.expired_at = null;
-    base.expires_at = new Date(now.getTime() + BID_RENEWAL_WINDOW_MS).toISOString();
   }
   return base;
+}
+
+/**
+ * gh-3560: which renew_quote(p_quote_id, p_mode) call, if any, must run BEFORE the field UPDATE.
+ * 'renew' = Renew Bid on an expired bid (D-150); 'reopen' = Change Bid on a withdrawn ('cancelled') bid (gh-2564 rescind and
+ * re-bid). null = a plain change-bid save. The RPC sets bid_status 'active', expired_at null and expires_at now()+14 days.
+ */
+export function renewQuoteRpcMode(renewMode: boolean, existingBidStatus?: string | null): 'renew' | 'reopen' | null {
+  if (renewMode) return 'renew';
+  if (existingBidStatus === 'cancelled') return 'reopen';
+  return null;
 }
 
 /**

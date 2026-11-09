@@ -20,7 +20,7 @@ import {
   PLATFORM_FEE_CONTRACT_SIGNING, QUOTE_FEE_PERCENTAGE,
   serializeWarrantySelection,
   bidGateRpcParams, interpretBidGate,
-  buildScopeSummary, buildQuoteInsert, buildQuoteUpdate, BID_RENEWAL_WINDOW_MS,
+  buildScopeSummary, buildQuoteInsert, buildQuoteUpdate, renewQuoteRpcMode, BID_RENEWAL_WINDOW_MS,
   applyCustomWarrantyReview, CUSTOM_WARRANTY_REVIEW_NOTE,
   buildFeeAcceptanceInsert, ipForInet, feeAcceptanceOutcome, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
   RESCINDABLE_STATUSES, isRescindable, buildRescindRequest, isBidSelected, readBidSelectedRefusal,
@@ -327,24 +327,29 @@ describe('quote + acceptance + notify payloads', () => {
     expect(u.fee_amount).toBe(1000);
   });
 
-  it('buildQuoteUpdate renewal resets the 14-day window + increments renewals_count', () => {
+  it('buildQuoteUpdate renewal keeps bid_status, expired_at and expires_at OUT of the UPDATE payload (gh-3560)', () => {
     const u = buildQuoteUpdate({ ...common, renewMode: true, existingRenewalsCount: 2, now: NOW });
-    expect(u.bid_status).toBe('active'); // gh-2564: 'submitted' is refused by quotes_bid_status_check
-    expect(u.expired_at).toBeNull();
-    expect(u.expires_at).toBe(new Date(NOW.getTime() + BID_RENEWAL_WINDOW_MS).toISOString());
-    expect(u.renewals_count).toBe(3);
+    expect(u).not.toHaveProperty('bid_status'); // the quotes guard trigger refuses these to a direct UPDATE (42501)
+    expect(u).not.toHaveProperty('expired_at');
+    expect(u).not.toHaveProperty('expires_at');
+    expect(u.renewals_count).toBe(3); // untouched here: PR #3563 owns this key
+    expect(u.updated_at).toBe(NOW.toISOString());
     expect(BID_RENEWAL_WINDOW_MS).toBe(14 * 24 * 60 * 60 * 1000);
   });
 
-  it('gh-2564 Change Bid on a withdrawn (cancelled) quote sets bid_status back to active, with a fresh window', () => {
+  it('gh-3560 Change Bid on a withdrawn (cancelled) quote sends no bid_status, expired_at or expires_at either', () => {
     const u = buildQuoteUpdate({ ...common, renewMode: false, existingBidStatus: 'cancelled', existingRenewalsCount: 2, now: NOW });
-    expect(u.bid_status).toBe('active');
-    expect(u.expired_at).toBeNull();
-    expect(u.expires_at).toBe(new Date(NOW.getTime() + BID_RENEWAL_WINDOW_MS).toISOString());
-    expect(u).not.toHaveProperty('renewals_count'); // not an auto-renewal
+    for (const k of ['bid_status', 'expired_at', 'expires_at', 'renewals_count']) expect(u).not.toHaveProperty(k);
   });
 
-  it('gh-2564 NEGATIVE CONTROL: Change Bid on a live quote still leaves bid_status alone', () => {
+  it('gh-3560 renewQuoteRpcMode: renew on Renew Bid, reopen on a cancelled bid, null on a plain change', () => {
+    expect(renewQuoteRpcMode(true, 'expired')).toBe('renew');
+    expect(renewQuoteRpcMode(true, null)).toBe('renew');
+    expect(renewQuoteRpcMode(false, 'cancelled')).toBe('reopen');
+    for (const s of ['active', 'expired', 'superseded', null, undefined]) expect(renewQuoteRpcMode(false, s)).toBeNull();
+  });
+
+  it('gh-2564 NEGATIVE CONTROL: Change Bid on a live quote leaves bid_status alone', () => {
     for (const s of ['active', 'expired', null, undefined]) {
       const u = buildQuoteUpdate({ ...common, renewMode: false, existingBidStatus: s, now: NOW });
       expect(u).not.toHaveProperty('bid_status');
@@ -573,6 +578,15 @@ describe('bid-form.tsx wiring (gh-2105, money — HIGH PRIORITY)', () => {
     expect(block).toContain(".select('id')");
     expect(block).toContain('wroteRow(upRows)');
     expect(block).toContain('bid_update_zero_rows');
+  });
+
+  it('gh-3560: the renew / reopen path calls supabase.rpc(\'renew_quote\') with p_quote_id and p_mode BEFORE the field UPDATE, and throws on its error', () => {
+    const idxRpc = compSrc.indexOf(".rpc('renew_quote', { p_quote_id: existingQuote!.id, p_mode: renewRpcMode })");
+    expect(idxRpc).toBeGreaterThan(-1);
+    const idxUpdate = compSrc.indexOf(".update(updatePayload).eq('id', existingQuote!.id)");
+    expect(idxRpc).toBeLessThan(idxUpdate);
+    expect(compSrc.slice(idxRpc, idxUpdate)).toContain('if (renewErr) throw renewErr;');
+    expect(compSrc).toContain('renewQuoteRpcMode(mode === \'renew\'');
   });
 
   it('mutation control: removing .select(\'id\') breaks the wroteRow(upRows) call from ever seeing real data', () => {
