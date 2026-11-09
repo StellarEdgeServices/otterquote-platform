@@ -139,7 +139,7 @@ BEGIN
     IF NOT FOUND AND COALESCE(p_require_fee, true) THEN     -- an explicit NULL means 'require' (NULL would otherwise skip the refusal)
       -- no fee row: the trigger's checks refused it (no credited partner, outside the window, excluded state, inspector, v4, test mismatch, payment already paid a fee...), or a missing fee setting or a swallowed fee-side error stopped it.
       -- Undo the role change: the order stays 'unspecified' and the $5 stays held.
-      RAISE EXCEPTION 'admin_settle_order_buyer_role: order % accrued no partner fee; role not changed and the fee stays held. The accrual checks may have said no, or a missing fee setting or a fee-side error may have stopped it, in which case the fee may still be owed. p_require_fee => false removes only this refusal: a qualifying order still accrues, but the hold then ends for good and a fee that did not accrue cannot accrue later. Follow runbooks/held-partner-fee-release.md step 2 first.', p_order_id
+      RAISE EXCEPTION 'admin_settle_order_buyer_role: order % accrued no partner fee; role not changed and the fee stays held. The accrual checks may have said no, or a missing fee setting or a fee-side error may have stopped it, in which case the fee may still be owed. p_require_fee => false removes only this refusal: a qualifying order still accrues, but the hold then ends, and a fee that did not accrue can accrue later only if the CTO sets the order back to unspecified (runbook step 2). Follow runbooks/held-partner-fee-release.md step 2 first.', p_order_id
         USING ERRCODE = '22023';
     END IF;
   END IF;

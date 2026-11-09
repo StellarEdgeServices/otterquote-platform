@@ -3126,7 +3126,7 @@ Let me know if you have any questions!`;
                     if (window.currentPartnerAgentType === 'home_inspector') {
                         return 'I wanted to recommend using Otter Quotes when your friends and clients need a contractor for roofing, siding, gutters or windows. Otter Quotes helps homeowners get measurements, develop a scope of work, pick out materials and submit their job to multiple contractors. They get competitive bids without sitting through multiple sales calls, and better prices and better materials. Use my link below to sign up: ' + link;
                     }
-                    return 'I wanted to recommend using Otter Quotes when your friends and clients need a contractor for roofing, siding, gutters or windows. Otter Quotes helps homeowners get measurements, develop a scope of work, pick out materials and submit their job to multiple contractors. They get competitive bids without sitting through multiple sales calls. They get better prices and better materials and you get $200 every time a homeowner you refer completes a project of $10,000 or more. I get $50 every time you get $200, so I hope you\'ll consider using this. Use my link below to sign up: ' + link;
+                    return 'I wanted to recommend using Otter Quotes when your friends and clients need a contractor for roofing, siding, gutters or windows. Otter Quotes helps homeowners get measurements, develop a scope of work, pick out materials and submit their job to multiple contractors. They get competitive bids without sitting through multiple sales calls. They get better prices and better materials and you get $200 every time a homeowner you refer completes a project of $10,000 or more. If you join through my link, Otter Quotes may pay me a bonus on referrals you complete. Use my link below to sign up: ' + link;
                 }
             };
 
@@ -3155,7 +3155,7 @@ Let me know if you have any questions!`;
                     body: function (link) {
                         return 'Hi,\r\n\r\n' +
                             'As promised — here’s the service I recommend for getting contractor bids: Otter Quotes.\r\n\r\n' +
-                            'There is no fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when they complete a job. Tell them about your project once, and contractors compete for the job with real, comparable bids. They handle measurements, paperwork, and contract signing end to end.\r\n\r\n' +
+                            'There is no fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when a job is completed through the platform; conditions apply. Tell them about your project once, and contractors compete for the job with real, comparable bids. They handle measurements, paperwork, and contract signing end to end.\r\n\r\n' +
                             'Here’s my personal link to get started:\r\n' + link + '\r\n\r\n' +
                             'What to expect:\r\n' +
                             '1. Create your account (about 2 minutes)\r\n' +
@@ -3170,7 +3170,7 @@ Let me know if you have any questions!`;
                         // D-333 provision 7: no fee/bonus promise for home_inspector.
                         var feeParagraph = window.currentPartnerAgentType === 'home_inspector'
                             ? ''
-                            : 'You get $200 every time a homeowner you refer completes a project of $10,000 or more. I get $50 every time you get $200, so I hope you\'ll consider using this.\r\n\r\n';
+                            : 'You get $200 every time a homeowner you refer completes a project of $10,000 or more. If you join through my link, Otter Quotes may pay me a bonus on referrals you complete.\r\n\r\n';
                         return 'Hi,\r\n\r\n' +
                             'I\'ve been referring clients to Otter Quotes, and I thought it was worth passing along.\r\n\r\n' +
                             'When a homeowner needs roofing, siding, gutters or windows, Otter Quotes walks them through getting measurements, building a scope of work and picking materials, then submits the job to multiple contractors for bid. They get competitive bids without sitting through multiple sales calls, and better prices and better materials.\r\n\r\n' +
