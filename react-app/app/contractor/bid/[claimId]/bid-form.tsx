@@ -23,6 +23,7 @@ import { BID_COPY, buildFeeDisclosureText } from './copy';
 import { HomePhotosCard } from './home-photos-card';
 import { FeeSection } from './fee-section';
 import { WarrantyCard } from './warranty-card';
+import { resolveBidAmount, wizardTradePrices } from './wizard-total'; // gh-3495 (D-267)
 import {
   type BidClaim, type BidMode, type TradeFlags, type WarrantySelectionInput,
   type ValueAddsFormState, type ValueAddsContext, type WizardState,
@@ -268,7 +269,8 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
     return () => { active = false; };
   }, [contractor, claim]);
 
-  const bidAmount = parseFloat(form.bidPrice) || 0;
+  // gh-3495 (D-267): a multi-trade bid is the SUM of its trades (whole cents); fee, total_price and fee_amount all follow.
+  const bidAmount = resolveBidAmount({ wizardMode, queue: wizard.queue, wizardPrices, bidPrice: form.bidPrice });
   const disclosure = computeDisclosureFee(bidAmount, feePct);
 
   function buildCtx(): ValueAddsContext {
@@ -306,9 +308,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
       const feeAmount = disclosure.feeAmount;
       const exactFeeText = buildFeeDisclosureText(feePct, feeAmount);
       const scopeSummary = buildScopeSummary({ brand: form.brandProduct, estimatedStartDate: form.startDate, estimatedCompletionTime: form.completionTime });
-      const perTradeBreakdown = wizardMode
-        ? Object.fromEntries(Object.entries(wizardPrices).map(([k, v]) => [k, parseFloat(v) || 0]).filter(([, v]) => (v as number) > 0))
-        : null;
+      const perTradeBreakdown = wizardMode ? wizardTradePrices(wizard.queue, wizardPrices) : null;
       const common = {
         claimId: String(claim.id), contractorId: contractor.id, totalPrice: bidAmount,
         feeBase, feePct, acceptedAtIso: nowIso, scopeSummary, notes: form.homeownerMessage || null,

@@ -3169,6 +3169,41 @@
       wizardTradePrices[trade] = price > 0 ? price : null;
     }
 
+    // gh-3495 (D-267): a multi-trade bid's amount is the SUM of its trades in whole
+    // cents. The Grand Total, #totalPrice-derived fee box, the accepted fee,
+    // total_price and fee_amount all read this one number. No side effects (it must
+    // not call syncSidingTotal, which calls updateFeeCalculator).
+    function _liveTradePrice(trade) {
+      if (trade === 'gutters') {
+        return parseFloat(document.getElementById('gutter6InchPrice')?.value)
+            || parseFloat(document.getElementById('gutter5InchPrice')?.value) || 0;
+      }
+      if (trade === 'roofing') {
+        return parseFloat(document.getElementById('retailBidPrice')?.value)
+            || parseFloat(document.getElementById('totalPrice')?.value) || 0;
+      }
+      return parseFloat(document.getElementById('totalPrice')?.value) || 0;
+    }
+    function effectiveBidAmount() {
+      const single = parseFloat(document.getElementById('totalPrice')?.value) || 0;
+      if (!wizardMode || !wizardTradeQueue || wizardTradeQueue.length === 0) return single;
+      let cents = 0;
+      wizardTradeQueue.forEach((trade, i) => {
+        const p = (wizardStep === 2 && i === wizardCurrentTradeIdx) ? _liveTradePrice(trade) : wizardTradePrices[trade];
+        const n = parseFloat(p);
+        if (n > 0) cents += Math.round(n * 100);
+      });
+      return cents > 0 ? cents / 100 : single;
+    }
+    function roundedTradePrices() {
+      const out = {};
+      wizardTradeQueue.forEach(trade => {
+        const n = parseFloat(wizardTradePrices[trade]);
+        if (n > 0) out[trade] = Math.round(n * 100) / 100;
+      });
+      return out;
+    }
+
     function buildWizardSummary() {
       const rowsEl      = document.getElementById('wizardTradeSummaryRows');
       const grandEl     = document.getElementById('wizardGrandTotal');
@@ -3186,7 +3221,7 @@
         const label = tradeLabels[trade] || trade;
         if (price != null && price > 0) {
           const net = price * (1 - feeRate);
-          grandTotal += price;
+          grandTotal = Math.round((grandTotal + price) * 100) / 100; // gh-3495
           html += `<div class="wizard-summary-row">
             <span class="wizard-summary-trade">${label}</span>
             <div class="wizard-summary-price">
@@ -4272,7 +4307,7 @@
       // accepted the fee (E2E walk fix 2026-07-07). updateFeeDisclosure is
       // async; fire-and-forget is fine for display refresh.
       if (typeof updateFeeDisclosure === 'function') { try { updateFeeDisclosure(); } catch (e) { /* non-fatal */ } }
-      const bidAmount = parseFloat(document.getElementById('totalPrice').value) || 0;
+      const bidAmount = effectiveBidAmount(); // gh-3495: sum of trades on a multi-trade bid
 
       // #487 (CEO decision 2026-07-08): fee base is the bid amount for every
       // job type — aligned with the D-215 disclosure, fee_acceptances.fee_basis
@@ -4721,7 +4756,7 @@
       const bidAmountEl = document.getElementById('totalPrice');
       if (!bidAmountEl) return;
 
-      const bidAmount = parseFloat(bidAmountEl.value) || 0;
+      const bidAmount = effectiveBidAmount(); // gh-3495
       
       // Fetch fee percentage
       const feePct = await fetchPlatformFeePercentage();
@@ -5014,7 +5049,7 @@
 
       // Validate: bid type must have a price if RCV selected
       const bidTypeOption = document.querySelector('input[name="bidTypeOption"]:checked')?.value || 'rcv_plus_supplements';
-      const totalPriceVal = parseFloat(document.getElementById('totalPrice').value) || 0;
+      const totalPriceVal = effectiveBidAmount(); // gh-3495
 
       // Gutter-specific validation: at least one gutter price required
       const _claimTrades = Array.isArray(currentClaim?.trades) ? currentClaim.trades : [];
@@ -5071,7 +5106,7 @@
         const formData = new FormData(bidForm);
 
           // ── D-214/D-215: Fee Acceptance Capture ──
-          const _bidAmount = parseFloat(document.getElementById('totalPrice').value) || 0;
+          const _bidAmount = effectiveBidAmount(); // gh-3495
           const _feePct = window._feePct || _platformFeePct;
           const _feeAmount = window._feeAmount || (_bidAmount * _feePct / 100);
           const _exactFeeText = generateExactFeeText();
@@ -5117,7 +5152,7 @@
               return;
             }
           }
-          const totalPrice = parseFloat(document.getElementById('totalPrice').value) || 0;
+          const totalPrice = effectiveBidAmount(); // gh-3495 (D-267): sum of trades, whole cents
           const feePercentage = 5.0;
 
           // #487 (CEO decision 2026-07-08): the platform fee basis is the BID
@@ -5302,7 +5337,7 @@
             trade_type: formData.get('tradeType') || 'roofing',
             value_adds: valueAdds,
             // Per-trade price breakdown for wizard (multi-trade) bids
-            per_trade_breakdown: (wizardMode && Object.keys(wizardTradePrices).length > 0) ? wizardTradePrices : null,
+            per_trade_breakdown: (wizardMode && Object.keys(wizardTradePrices).length > 0) ? roundedTradePrices() : null, // gh-3495
             is_auto_bid: false,
             auto_renew: document.getElementById('autoRenewToggle')?.checked ?? true, // D-150
             // D-202 Phase 2 — manufacturer × tier warranty selection (Session 463)
