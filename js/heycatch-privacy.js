@@ -26,9 +26,19 @@
 //   $external_click_url and link targets in autocapture ($elements attr__href,
 //     href, $elements_chain): origin + path, no query, no fragment.
 //     mailto:, tel:, sms:, javascript: and data: values are cut to the scheme.
-//   Left alone: $pathname, $host, $referring_domain, $prev_pageview_pathname,
-//     $session_entry_pathname and the other path or host-only properties. They
-//     carry no query.
+//   Left alone: $pathname, $host, $referring_domain, $session_entry_pathname and
+//     the other path or host-only properties. They carry no query.
+//   gh-3357: a path property can still NAME a page HeyCatch must not see. The SDK
+//     records every page the visitor moves to inside one document (history_change)
+//     even when beforeSend drops that page's events, and the next allowed pageview
+//     carries it as $prev_pageview_pathname ("/contractor/bid/<claimId>" in the app).
+//     makeBeforeSend(gate, pathAllowed): with pathAllowed, every property whose name
+//     ends in "pathname", and every current-page URL property ($session_entry_url and
+//     the rest of CURRENT_URL_KEYS) whose path is not allowed, is dropped unless
+//     pathAllowed(path) is true (the app passes its route allowlist). Without it
+//     (the marketing site, where every page is a full load and the SDK only starts
+//     on an allowlisted page), $prev_pageview_pathname is kept only when it is the
+//     event's own $pathname.
 //   Any other string property whose name ends in url, href, action or src is
 //     scrubbed like a link target, and one ending in referrer like a referrer, so a
 //     property the SDK adds later fails closed.
@@ -40,6 +50,8 @@ var URL_KEY = /(url|href|action|src)$/i;
 var REFERRER_KEY = /referrer$/i;
 var OPAQUE_SCHEME = /^(mailto|tel|sms|javascript|data|blob):/i;
 var MAX_DEPTH = 10;
+var PATHNAME_KEY = /pathname$/i;
+var PREV_PATHNAME = '$prev_pageview_pathname';
 
 // gh-3357 (from the #3352 heatmap check): heatmaps are off today only because HeyCatch's config says so
 // ("heatmaps": false), and HeyCatch can change that for every customer. The SDK would send the click and
@@ -122,12 +134,17 @@ function scrubChain(chain) {
   });
 }
 
+// The path of an absolute URL, or null when it does not parse (so a pathAllowed check fails closed).
+function urlPath(v) {
+  try { return new URL(v).pathname; } catch (e) { return null; }
+}
+
 function isPlain(v) {
   var p = Object.getPrototypeOf(v);
   return p === Object.prototype || p === null;
 }
 
-function walk(v, key, depth) {
+function walk(v, key, depth, pathOk) {
   if (depth > MAX_DEPTH) return undefined;
   if (key === HEATMAP_PROP) return undefined;
   if (key) {
@@ -137,17 +154,19 @@ function walk(v, key, depth) {
   }
   if (typeof v === 'string') {
     if (key === '$elements_chain') return scrubChain(v);
+    if (pathOk && key && PATHNAME_KEY.test(key) && pathOk(v) !== true) return undefined;
+    if (pathOk && CURRENT_URL_KEYS.indexOf(key) !== -1 && pathOk(urlPath(v)) !== true) return undefined;
     if (key && REFERRER_KEY.test(key)) return scrubReferrer(v);
     if (key && URL_KEY.test(key)) return scrubUrl(v, CURRENT_URL_KEYS.indexOf(key) !== -1);
     return v;
   }
   if (Array.isArray(v)) {
-    return v.map(function (x) { return walk(x, key, depth + 1); });
+    return v.map(function (x) { return walk(x, key, depth + 1, pathOk); });
   }
   if (v && typeof v === 'object' && isPlain(v)) {
     var out = {};
     Object.keys(v).forEach(function (k) {
-      var r = walk(v[k], k, depth + 1);
+      var r = walk(v[k], k, depth + 1, pathOk);
       if (r !== undefined) out[k] = r;
     });
     return out;
@@ -159,23 +178,29 @@ function walk(v, key, depth) {
 // Covers event.properties (which holds the session-entry values the SDK stores and
 // re-adds to every event), event.$set and event.$set_once (which hold the initial_*
 // values) and autocapture elements, because it walks the whole event.
-export function scrubEvent(event) {
+// pathAllowed (optional, gh-3357): see the header. A pathAllowed that throws drops the event.
+export function scrubEvent(event, pathAllowed) {
   try {
     if (!event || typeof event !== 'object') return null;
     if (event.event === HEATMAP_EVENT) return null;
-    return walk(event, '', 0);
+    var pathOk = typeof pathAllowed === 'function' ? pathAllowed : null;
+    var out = walk(event, '', 0, pathOk);
+    var p = out && out.properties;
+    if (!pathOk && p && typeof p === 'object' && PREV_PATHNAME in p && p[PREV_PATHNAME] !== p.$pathname) delete p[PREV_PATHNAME];
+    return out;
   } catch (e) {
     return null;
   }
 }
 
 // gate: optional function returning false to drop the event (the app uses it for its route check).
+// pathAllowed: optional page predicate for path properties (gh-3357, see the header).
 // The SDK calls beforeSend without a try/catch, so this must never throw: a failure drops the event.
-export function makeBeforeSend(gate) {
+export function makeBeforeSend(gate, pathAllowed) {
   return function (event) {
     try {
       if (gate && !gate()) return null;
-      return scrubEvent(event);
+      return scrubEvent(event, pathAllowed);
     } catch (e) {
       return null;
     }
