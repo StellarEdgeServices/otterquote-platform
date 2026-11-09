@@ -82,7 +82,7 @@ Deno.test("gh-3510: a dedupe lookup error reports 'error' (caller returns 500 so
 Deno.test("gh-3510: index.ts dispatches the refund events after the signature check and event ledger", () => {
   const src = stripComments(Deno.readTextFileSync(new URL("./index.ts", import.meta.url)));
   const sig = src.indexOf("Stripe signature verification failed");
-  const ledger = src.indexOf('.from("stripe_webhook_events")');
+  const ledger = src.indexOf("event_id: event.id, event_type: event.type");
   const dispatch = src.indexOf("handleSwitchRefundFailed(event.type");
   assert(sig > 0 && ledger > sig && dispatch > ledger, "dispatch must come after signature verification and the ledger insert");
 });
