@@ -94,6 +94,14 @@ Deno.test("end to end: of two rows for one bid the NEWEST right-fee row is used 
   assertEquals(none.feeAcceptance, null); // no row matches: still manual evidence
 });
 
+Deno.test("gh-3490 end to end: two rows for one bid both match the bid's fee: the NEWEST is used (a reversed sort would pick the older)", async () => {
+  const older = row({ id: "fa-a1", created_at: "2026-11-01T09:00:00Z" });
+  const newer = row({ id: "fa-a2", created_at: "2026-11-01T10:00:01Z" });
+  const between = row({ id: "fa-b", fee_amount: 800, created_at: "2026-11-01T09:30:00Z" });
+  const e = await run({ quotes: [bid], fee_acceptances: [older, between, newer] });
+  assertEquals((e.feeAcceptance as FeeAcceptanceRow).id, "fa-a2");
+});
+
 Deno.test("end to end: fee tolerance is half a cent: $750.004 matches, $751 does not", async () => {
   assertEquals((await run({ quotes: [bid], fee_acceptances: [row({ fee_amount: "750.004" })] })).feeAcceptance !== null, true);
   assertEquals((await run({ quotes: [bid], fee_acceptances: [row({ fee_amount: 751 })] })).feeAcceptance, null);

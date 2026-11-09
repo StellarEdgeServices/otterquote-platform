@@ -4,7 +4,10 @@
 set -u
 SRC=supabase/functions/stripe-webhook; W=$(mktemp -d); rc=0
 cp -r supabase/functions "$W/functions"
-( cd "$W/functions/stripe-webhook" && deno test -A >/dev/null 2>&1 ) || { echo "BASELINE FAILS: the unmodified copy does not pass"; exit 2; }
+# A run counts as failing ONLY from deno's final summary line ("ok | N passed | N failed" or "FAILED | N passed | N failed"); test NAMES can contain the word FAILED.
+nfailed() { printf '%s\n' "$1" | sed 's/\x1b\[[0-9;]*m//g' | grep -E '^(ok|FAILED) \| [0-9]+ passed \| [0-9]+ failed' | tail -1 | sed -E 's/.*\| ([0-9]+) failed.*/\1/'; }
+base=$( cd "$W/functions/stripe-webhook" && deno test -A 2>&1 ); bn=$(nfailed "$base")
+[ "$bn" = "0" ] || { echo "BASELINE FAILS: the unmodified copy does not pass (failed count: ${bn:-no summary line})"; exit 2; }
 echo "baseline: passes"
 python3 - "$W/functions/stripe-webhook" "$W/mut.list" <<'PY'
 import sys,os
@@ -23,7 +26,7 @@ M=[
  ("M11 index.ts marks the acceptance resolved when it is not","index.ts","feeAcceptanceResolved: feeAcceptance !== null,","feeAcceptanceResolved: true,"),
  ("M12 index.ts sends Stripe a payload that ignores the assembler","index.ts","const evidencePayload = feeEvidence.evidencePayload;","const evidencePayload: Record<string, string> = {};"),
  ("M13 Stripe text names the quarantine table","fee-acceptance-select.ts",'    : "Not found in database — manual lookup required.";','    : "Not found in database — manual lookup required (see fee_acceptance_quarantine).";'),
- ("M14 the dip row is accepted when the bid fee is missing (null compares as 0)","fee-acceptance-select.ts","Number.isFinite(rowFee) && Number.isFinite(bidFee) &&","Number.isFinite(rowFee) &&"),
+ ("M14 no matching row: the picker falls back to the newest row instead of fee_differs_from_bid","fee-acceptance-select.ts",'  if (!row) return { row: null, reason: "fee_differs_from_bid" };','  if (!row) return { row: own[0], reason: "ok" };'),
 ]
 with open(sys.argv[2],"w") as out:
     for i,(name,f,a,b) in enumerate(M):
@@ -35,8 +38,8 @@ PY
 killed=0; total=0
 while IFS=$'\t' read -r i f name; do
   total=$((total+1)); cp "$W/functions/stripe-webhook/$f" "$W/orig.$f"; cp "$W/functions/stripe-webhook/$f.m$i" "$W/functions/stripe-webhook/$f"
-  out=$( cd "$W/functions/stripe-webhook" && deno test -A 2>&1 ); n=$(printf '%s\n' "$out" | grep -c "FAILED\|error: Test failed")
-  if [ "$n" -gt 0 ]; then killed=$((killed+1)); echo "KILLED  $name: $(printf '%s\n' "$out" | grep -m1 -o '[0-9]* failed')"; else echo "SURVIVED $name"; rc=1; fi
+  out=$( cd "$W/functions/stripe-webhook" && deno test -A 2>&1 ); n=$(nfailed "$out")
+  if [ -n "$n" ] && [ "$n" -gt 0 ]; then killed=$((killed+1)); echo "KILLED  $name: $n failed"; else echo "SURVIVED $name (failed: ${n:-no summary line})"; rc=1; fi
   cp "$W/orig.$f" "$W/functions/stripe-webhook/$f"
 done < "$W/mut.list"
 echo "WEBHOOK MUTANTS killed: $killed of $total"; rm -rf "$W"; exit $rc
