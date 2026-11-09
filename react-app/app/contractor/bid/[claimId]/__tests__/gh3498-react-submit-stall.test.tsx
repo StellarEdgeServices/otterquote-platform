@@ -17,6 +17,9 @@ const h = vi.hoisted(() => {
     hang: [] as string[], // calls that never answer: 'table:op' or 'fn:name'
     hung: 0,
     updates: 0,
+    lookups: 0, // gh-3498: quotes lookups by (claim_id, contractor_id), the page-load query a retry repeats
+    hideFromLookup: false, // a landed row the lookup does not see yet (an insert that lands after the lookup)
+    noColumn: false, // the idempotency_key column does not exist yet (migration not applied)
   };
   const hang = (signal: AbortSignal | null) => new Promise((_, rej) => {
     signal?.addEventListener('abort', () => { state.aborted++; rej(signal.reason); });
@@ -36,7 +39,7 @@ const h = vi.hoisted(() => {
       if (table === 'quotes' && s.op === 'insert') {
         const key = s.payload!.idempotency_key as string | undefined;
         if (key) state.keyed.push(key);
-        if (state.insert === 'nocolumn' && key) return { data: null, error: { code: 'PGRST204', message: "Could not find the 'idempotency_key' column of 'quotes' in the schema cache" } };
+        if ((state.insert === 'nocolumn' || state.noColumn) && key) return { data: null, error: { code: 'PGRST204', message: "Could not find the 'idempotency_key' column of 'quotes' in the schema cache" } };
         if (key && state.rows.some((r) => r.idempotency_key === key)) {
           return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "quotes_idempotency_key_uidx"' } };
         }
@@ -50,6 +53,13 @@ const h = vi.hoisted(() => {
         state.readbacks++;
         const k = s.eqs.find(([c]) => c === 'idempotency_key')![1];
         return { data: state.rows.find((r) => r.idempotency_key === k) ?? null, error: null };
+      }
+      if (table === 'quotes' && s.eqs.some(([c]) => c === 'claim_id')) {
+        state.lookups++;
+        if (state.hideFromLookup) return { data: null, error: null };
+        const cid = s.eqs.find(([c]) => c === 'claim_id')![1];
+        const ctr = s.eqs.find(([c]) => c === 'contractor_id')?.[1];
+        return { data: state.rows.find((r) => r.claim_id === cid && r.contractor_id === ctr) ?? null, error: null };
       }
       if (table === 'fee_acceptances') { state.feeAcceptances++; return { data: { id: 'fa-1' }, error: null }; }
       if (table === 'platform_fee_config') return { data: [{ fee_pct: 5 }], error: null };
@@ -98,7 +108,7 @@ const submitBtn = (c: HTMLElement) => Array.from(c.querySelectorAll('button')).f
 beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }); });
 afterEach(() => {
   cleanup(); vi.useRealTimers();
-  Object.assign(h.state, { gate: 'ok', insert: 'ok', aborted: 0, readbacks: 0, feeAcceptances: 0, hung: 0, updates: 0 });
+  Object.assign(h.state, { gate: 'ok', insert: 'ok', aborted: 0, readbacks: 0, feeAcceptances: 0, hung: 0, updates: 0, lookups: 0, hideFromLookup: false, noColumn: false });
   h.state.hang.length = 0;
   sentry.captureException.mockClear(); sentry.captureMessage.mockClear();
   h.state.rows.length = 0; h.state.keyed.length = 0;
@@ -160,30 +170,96 @@ describe('gh-3498 React bid form: stalled submit', () => {
     await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
     expect(container.textContent).toContain('Bid submitted');
     expect(h.state.rows.length).toBe(1);
+    // gh-3498 (REVIEW 6740720167): the retry finds the landed bid by (claim, contractor) before inserting, so no second insert is sent
+    expect(h.state.lookups).toBe(1);
+    expect(h.state.keyed.length).toBe(1);
+    expect(h.state.feeAcceptances).toBe(1); // the earlier attempt died before its acceptance: written once, now
+  });
+
+  // -- REVIEW 6740720167 finding 2: a retry after a landed-but-timed-out insert can never file a second bid, and never shows
+  // success over terms other than the ones on file. A retry with other content gets the filed bid back as Change Bid. --
+  async function landThenTimeOut(c: HTMLElement) {
+    h.state.insert = 'land_then_hang';
+    await act(async () => { fireEvent.click(submitBtn(c)); await vi.advanceTimersByTimeAsync(4000); });
+    await advance(21_000);
+    expect(c.textContent).toContain('Error submitting bid: ');
+    expect(h.state.rows.length).toBe(1);
+    h.state.insert = 'ok';
+  }
+  async function retry(c: HTMLElement) {
+    if (!feeBox(c).checked) fireEvent.click(feeBox(c));
+    await act(async () => { fireEvent.click(submitBtn(c)); await vi.advanceTimersByTimeAsync(4000); });
+  }
+  const isChangeBid = (c: HTMLElement) => /You are editing your existing bid/.test(c.textContent || '') && /Update Bid/.test(submitBtn(c).textContent || '');
+
+  it('finding 2: a price changed after an insert landed and timed out files NO second bid; the filed bid comes back as Change Bid', async () => {
+    const { container } = mount();
+    await ready(container);
+    await landThenTimeOut(container);
+    fireEvent.change(priceInput(container), { target: { value: '19000' } });
+    await advance(4000);
+    await retry(container);
+    expect(h.state.rows.length).toBe(1);
+    expect(h.state.rows[0].total_price).toBe(18500);
+    expect(container.textContent).not.toContain('Bid submitted');
+    expect(container.textContent).toContain('Your bid was already filed on an earlier try, so no second bid was sent.');
+    expect(isChangeBid(container)).toBe(true);
+    expect(priceInput(container).value).toBe('18500'); // the figures on file, not the unsent edit
+    expect(submitBtn(container).textContent).not.toMatch(/Submitting/);
+    expect(h.state.feeAcceptances).toBe(0);
+  });
+
+  it('finding 2: another field changed after an insert landed and timed out shows no success over the old terms', async () => {
+    const { container } = mount();
+    await ready(container);
+    await landThenTimeOut(container);
+    const msg = container.querySelector('textarea') as HTMLTextAreaElement;
+    fireEvent.change(msg, { target: { value: 'Different message on the retry' } });
+    await retry(container);
+    expect(h.state.rows.length).toBe(1);
+    expect(container.textContent).not.toContain('Bid submitted');
+    expect(container.textContent).toContain('Your bid was already filed on an earlier try');
+    expect(isChangeBid(container)).toBe(true);
+  });
+
+  it('finding 2: a different-price retry whose first insert lands only after the lookup is refused by the same key', async () => {
+    const { container } = mount();
+    await ready(container);
+    await landThenTimeOut(container);
+    h.state.hideFromLookup = true;
+    fireEvent.change(priceInput(container), { target: { value: '19000' } });
+    await advance(4000);
+    await retry(container);
     expect(h.state.keyed.length).toBe(2);
+    expect(h.state.keyed[0]).toBe(h.state.keyed[1]); // the key no longer changes with the price
+    expect(h.state.readbacks).toBe(1);
+    expect(h.state.rows.length).toBe(1);
+    expect(container.textContent).not.toContain('Bid submitted');
+    expect(isChangeBid(container)).toBe(true);
+  });
+
+  it('a same-content retry whose first insert lands only after the lookup reads the filed row back as success', async () => {
+    const { container } = mount();
+    await ready(container);
+    await landThenTimeOut(container);
+    h.state.hideFromLookup = true;
+    await retry(container);
     expect(h.state.keyed[0]).toBe(h.state.keyed[1]);
     expect(h.state.readbacks).toBe(1);
+    expect(h.state.rows.length).toBe(1);
+    expect(container.textContent).toContain('Bid submitted');
     expect(h.state.feeAcceptances).toBe(1);
   });
 
-  // REVIEW 6740533205 finding 2, REPRODUCTION ONLY. This pins what the code does today; it is NOT an endorsement. The key covers
-  // claim, contractor, trade and price, so a price edit after a landed-but-timed-out insert files a second bid. Whether the right
-  // behaviour is "update the landed bid" or "refuse" is a product/money decision (Q on #3498); flip this assertion with that answer.
-  it('REPRODUCTION (pending Q): a price changed after an insert landed and timed out files a second bid under a new key', async () => {
-    h.state.insert = 'land_then_hang';
+  it('finding 3: without the key column, a retry after an insert that landed and timed out still files no second bid', async () => {
+    h.state.noColumn = true;
     const { container } = mount();
     await ready(container);
-    await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
-    await advance(21_000);
+    await landThenTimeOut(container);
+    expect(h.state.rows[0].idempotency_key).toBeUndefined();
+    await retry(container);
     expect(h.state.rows.length).toBe(1);
-
-    h.state.insert = 'ok';
-    fireEvent.change(priceInput(container), { target: { value: '19000' } });
-    await advance(4000);
-    if (!feeBox(container).checked) fireEvent.click(feeBox(container));
-    await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
-    expect(h.state.rows.length).toBe(2);
-    expect(h.state.keyed[0]).not.toBe(h.state.keyed[h.state.keyed.length - 1]);
+    expect(container.textContent).toContain('Bid submitted');
   });
 
   it('a database without the column yet: the bid is filed as before, without a key', async () => {

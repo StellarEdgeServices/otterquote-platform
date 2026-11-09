@@ -255,6 +255,25 @@ type DbErr = { code?: string; message?: string; details?: string } | null;
 const isIdemViolation = (e: DbErr) => !!e && e.code === '23505' && /quotes_idempotency_key_uidx/.test(`${e.message || ''} ${e.details || ''}`);
 // The column is not in this database yet (migration not applied): the bid is filed as before.
 const isIdemColumnMissing = (e: DbErr) => !!e && /idempotency_key/.test(e.message || '') && (e.code === 'PGRST204' || e.code === '42703');
+// gh-3498 (REVIEW 6740720167): what a bid says, minus the fields that change on every attempt (acceptance time, the
+// custom-warranty review stamp, the key). Two attempts with the same fingerprint would file the same bid.
+function stableJson(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stableJson).join(',')}]`;
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o).sort().filter((k) => o[k] !== undefined).map((k) => `${JSON.stringify(k)}:${stableJson(o[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(v === undefined ? null : v);
+}
+function bidContentFingerprint(payload: Record<string, unknown>): string {
+  const p: Record<string, unknown> = { ...payload };
+  delete p.idempotency_key; delete p.fee_accepted_at;
+  const va = p.value_adds as Record<string, unknown> | null | undefined;
+  if (va && va.warranty_admin_review && typeof va.warranty_admin_review === 'object') {
+    p.value_adds = { ...va, warranty_admin_review: { ...(va.warranty_admin_review as Record<string, unknown>), flagged_at: null } };
+  }
+  return stableJson(p);
+}
 function newIdempotencyKey(): string {
   const c = (typeof crypto !== 'undefined' ? crypto : undefined) as Crypto | undefined;
   return c && typeof c.randomUUID === 'function' ? c.randomUUID() : `k${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
@@ -269,7 +288,7 @@ function track(event: string, params: Record<string, unknown>): void {
 
 type SubmitState = 'idle' | 'submitting' | 'done' | 'error';
 
-export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRcv, userId }: {
+export function BidForm({ mode: modeProp, claim, contractor, existingQuote: existingQuoteProp, flags, claimRcv, userId }: {
   mode: BidMode;
   claim: BidClaim & Record<string, unknown>;
   contractor: ContractorRecord;
@@ -278,6 +297,11 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
   claimRcv: number | null;
   userId: string;
 }) {
+  // gh-3498 (REVIEW 6740720167 finding 2): when a retry finds that an earlier, timed-out attempt already filed the bid with other
+  // terms, the form becomes Change Bid on that filed row (as a page reload would), so nothing is filed twice.
+  const [filedQuote, setFiledQuote] = useState<(Record<string, unknown> & { id: string }) | null>(null);
+  const mode: BidMode = filedQuote ? 'change' : modeProp;
+  const existingQuote = filedQuote ?? existingQuoteProp;
   const router = useRouter();
   const claimTrades = useMemo(() => (Array.isArray(claim.trades) ? (claim.trades as string[]) : []), [claim.trades]);
   const hasRoofing = claimTrades.includes('roofing');
@@ -323,8 +347,12 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
   const bidAmount = wholeCentDollars(parseFloat(form.bidPrice) || 0); // gh-3488: shown, stored and charged bid is whole cents
   // A tick belongs to the figure it was given under: a different rate or a different bid is a different disclosure.
   useEffect(() => { setFeeAccepted(false); }, [feePct, bidAmount]);
-  // gh-3498: one idempotency key per bid being filed, kept across retries of the same bid, dropped when its content changes.
+  // gh-3498: one idempotency key per (claim, contractor) while the form is open, kept across every retry whatever is edited in
+  // between (REVIEW 6740720167 finding 2), dropped only when the bid is filed or the form becomes Change Bid.
   const idemRef = useRef<{ key: string; fp: string } | null>(null);
+  // Content fingerprints of insert attempts that ended without a confirmed answer; while not empty, the next submit first looks
+  // for a bid already filed for this claim before it inserts anything.
+  const unconfirmedRef = useRef<string[]>([]);
   const submitInFlight = useRef(false); // gh-3488: set synchronously, so nothing can file a second bid while one is running
   const disclosure = computeDisclosureFee(bidAmount, feePct);
 
@@ -444,24 +472,54 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
         } catch (e) { console.warn('Bid update/renewal email failed (non-fatal):', e); }
       } else {
         const insertPayload = buildQuoteInsert(common);
-        // gh-3498: the insert carries an idempotency key and is bounded. A timed-out insert that landed is found by the retry
-        // (same key -> unique violation -> read the existing row back), so no second bid is filed.
-        const fp = [String(claim.id), contractor.id, String(insertPayload.trade_type), String(insertPayload.total_price)].join('|');
+        // gh-3498: the insert carries an idempotency key and is bounded. A retry after an attempt with no confirmed answer first
+        // looks for a bid already filed for this claim (found even before the key column exists); if one races in anyway, the same
+        // key hits the unique index and the filed row is read back. The filed row counts as this bid only when every unconfirmed
+        // attempt carried exactly this content; otherwise the form becomes Change Bid on it (REVIEW 6740720167 finding 2).
+        const contentFp = bidContentFingerprint(insertPayload);
+        const fp = [String(claim.id), contractor.id].join('|');
         if (!idemRef.current || idemRef.current.fp !== fp) idemRef.current = { key: newIdempotencyKey(), fp };
         const idemKey = idemRef.current.key;
         const payloadWithKey: Record<string, unknown> = { ...insertPayload, idempotency_key: idemKey };
         const insertOnce = (body: Record<string, unknown>) => callWithTimeout(INSERT_TIMEOUT_MS, (signal) =>
           withAbortSignal(supabase.from('quotes').insert(body).select('id').single(), signal));
-        let { data: inserted, error: insErr } = await insertOnce(payloadWithKey);
-        if (insErr && isIdemColumnMissing(insErr as DbErr)) {
-          ({ data: inserted, error: insErr } = await insertOnce(insertPayload));
+        type FiledRow = Record<string, unknown> & { id: string };
+        let inserted: unknown = null;
+        let insErr: unknown = null;
+        let filed: FiledRow | null = null;
+        if (unconfirmedRef.current.length) {
+          const { data: onFile, error: lookErr } = await callWithTimeout(INSERT_TIMEOUT_MS, (signal) => withAbortSignal(
+            supabase.from('quotes').select('*').eq('claim_id', String(claim.id)).eq('contractor_id', contractor.id).maybeSingle(), signal));
+          if (lookErr) throw lookErr; // nothing is inserted on a failed lookup; the catch shows the message and unlocks
+          if (onFile && (onFile as { id?: string }).id) filed = onFile as FiledRow;
         }
-        if (insErr && isIdemViolation(insErr as DbErr)) {
-          const { data: existing, error: readErr } = await callWithTimeout(INSERT_TIMEOUT_MS, (signal) =>
-            withAbortSignal(supabase.from('quotes').select('id').eq('idempotency_key', idemKey).maybeSingle(), signal));
-          if (!readErr && existing && (existing as { id?: string }).id) { inserted = existing as typeof inserted; insErr = null; }
+        if (!filed) {
+          if (!unconfirmedRef.current.includes(contentFp)) unconfirmedRef.current.push(contentFp);
+          ({ data: inserted, error: insErr } = await insertOnce(payloadWithKey));
+          if (insErr && isIdemColumnMissing(insErr as DbErr)) {
+            ({ data: inserted, error: insErr } = await insertOnce(insertPayload));
+          }
+          if (insErr && isIdemViolation(insErr as DbErr)) {
+            const { data: existing, error: readErr } = await callWithTimeout(INSERT_TIMEOUT_MS, (signal) =>
+              withAbortSignal(supabase.from('quotes').select('*').eq('idempotency_key', idemKey).maybeSingle(), signal));
+            if (!readErr && existing && (existing as { id?: string }).id) { filed = existing as FiledRow; insErr = null; }
+          }
         }
         if (insErr) throw insErr;
+        if (filed) {
+          const sameBid = unconfirmedRef.current.every((f) => f === contentFp)
+            && (!filed.idempotency_key || filed.idempotency_key === idemKey);
+          if (!sameBid) {
+            idemRef.current = null; unconfirmedRef.current = [];
+            setFiledQuote(filed);
+            setForm(initialState(claim, flags, claimRcv, filed));
+            setErrorMsg(BID_COPY.bidAlreadyFiled);
+            setSubmitState('error');
+            return;
+          }
+          inserted = filed; // the earlier attempt filed exactly this bid: finish it (acceptance, email, success)
+        }
+        unconfirmedRef.current = [];
         const bidId = (inserted as { id: string }).id;
         // D-215 Layer 1 fee_acceptances + Layer 2 send-bid-confirmation (non-fatal; quote committed).
         try {

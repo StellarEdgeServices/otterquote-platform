@@ -4706,10 +4706,13 @@
     function withAbortSignal(builder, signal) {
       return (builder && typeof builder.abortSignal === 'function') ? builder.abortSignal(signal) : builder;
     }
-    // gh-3498: ONE idempotency key per bid being filed. It is generated at the first insert and kept across retries of the
-    // same bid (a retry after a timed-out insert must carry the same key, or the unique index cannot see it is the same bid);
-    // it is dropped when the bid's content changes or the bid is filed.
+    // gh-3498: ONE idempotency key per (claim, contractor) while this page is open. It is generated at the first insert and kept
+    // across every retry, whatever the contractor edits in between (REVIEW 6740720167 finding 2: a key that changed with the price
+    // let a retry file a second bid). It is dropped only when the bid is filed or the form switches to Change Bid.
     var _bidIdemKey = null, _bidIdemFp = null;
+    // Content fingerprints of insert attempts that ended without a confirmed answer (timed out, or failed after being sent).
+    // While this is not empty, the next submit first looks for a bid already filed for this claim before it inserts anything.
+    var _bidUnconfirmedFps = [];
     function bidIdempotencyKey(fingerprint) {
       if (!_bidIdemKey || _bidIdemFp !== fingerprint) {
         _bidIdemKey = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
@@ -4723,6 +4726,44 @@
     }
     function isIdemColumnMissing(err) { // migration not applied yet: the column is unknown to PostgREST
       return !!err && /idempotency_key/.test(err.message || '') && (err.code === 'PGRST204' || err.code === '42703');
+    }
+    // gh-3498 (REVIEW 6740720167): what a bid says, minus the fields that change on every attempt (acceptance time, the
+    // custom-warranty review stamp, the key). Two attempts with the same fingerprint would file the same bid.
+    function _stableJson(v) {
+      if (Array.isArray(v)) return '[' + v.map(_stableJson).join(',') + ']';
+      if (v && typeof v === 'object') return '{' + Object.keys(v).sort().filter((k) => v[k] !== undefined)
+        .map((k) => JSON.stringify(k) + ':' + _stableJson(v[k])).join(',') + '}';
+      return JSON.stringify(v === undefined ? null : v);
+    }
+    function bidContentFingerprint(payload) {
+      const p = Object.assign({}, payload);
+      delete p.idempotency_key; delete p.fee_accepted_at;
+      if (p.value_adds && p.value_adds.warranty_admin_review) {
+        p.value_adds = Object.assign({}, p.value_adds, {
+          warranty_admin_review: Object.assign({}, p.value_adds.warranty_admin_review, { flagged_at: null }) });
+      }
+      return _stableJson(p);
+    }
+    // The bid this contractor already has on file for this claim (the same lookup as page load), or null. Bounded like the insert;
+    // a lookup that fails or times out ends in the existing catch and nothing is inserted.
+    async function findFiledBid() {
+      const { data, error } = await callWithTimeout(INSERT_TIMEOUT_MS, (signal) => withAbortSignal(
+        sb.from('quotes').select('*').eq('claim_id', currentClaim.id).eq('contractor_id', currentContractor.id).maybeSingle(), signal));
+      if (error) throw error;
+      return (data && data.id) ? data : null;
+    }
+    // gh-3498 (REVIEW 6740720167 finding 2): an earlier attempt that timed out did file the bid, but with other terms than this
+    // retry. Nothing is filed twice and no success is shown: the form switches to Change Bid with the figures on file, so the
+    // contractor decides. (Wording proposed under the open Q on #3498; exec:cto to approve.)
+    var BID_ALREADY_FILED_MSG = 'Your bid was already filed on an earlier try, so no second bid was sent. The form now shows the bid on file: if it is not what you meant to send, change it and select Update Bid.';
+    function showFiledBidAsChangeBid(quote) {
+      existingQuote = quote;
+      _bidUnconfirmedFps = []; _bidIdemKey = null; _bidIdemFp = null;
+      if (isSelectedBidLocked(quote, currentClaim, currentContractor)) { showSelectedBidLock(); return; }
+      changeBidMode = true; renewMode = false;
+      // Not awaited: the prefill loads warranty options over the network, and nothing between the submit lock and its finally
+      // may wait without a bound.
+      Promise.resolve().then(() => activateChangeBidMode(quote)).catch((e) => console.warn('[gh-3498] Change Bid prefill failed:', e));
     }
     let _feeAcceptanceCheckbox = document.getElementById('feeAcceptanceCheckbox');
     let _submitBtn = document.getElementById('submitBtn');
@@ -5617,22 +5658,43 @@
 
           } else {
 
-            // gh-3498: the insert carries an idempotency key and is bounded. If a timed-out insert actually landed, the retry
-            // (same key) hits the unique index and the existing row is read back as the result, so no second bid is filed.
-            quoteData.idempotency_key = bidIdempotencyKey([currentClaim.id, currentContractor.id, quoteData.trade_type, quoteData.total_price].join('|'));
+            // gh-3498: the insert carries an idempotency key and is bounded. A retry after an attempt with no confirmed answer first
+            // looks for a bid already filed for this claim, so a landed insert is found even before the key column exists. If one
+            // races in anyway, the same key hits the unique index and the filed row is read back. Either way the filed row counts as
+            // this bid only when every unconfirmed attempt carried exactly this content; otherwise the form switches to Change Bid
+            // with the filed figures (REVIEW 6740720167 finding 2: never a second bid, never a success screen over other terms).
+            const _contentFp = bidContentFingerprint(quoteData);
+            quoteData.idempotency_key = bidIdempotencyKey([currentClaim.id, currentContractor.id].join('|'));
             const _insertOnce = () => callWithTimeout(INSERT_TIMEOUT_MS, (signal) => withAbortSignal(sb.from('quotes').insert(quoteData).select('id').single(), signal));
-            let { data: insertedQuote, error } = await _insertOnce();
-            if (error && isIdemColumnMissing(error)) { // the column is not in this database yet: file the bid as before
-              delete quoteData.idempotency_key;
+            let insertedQuote = null, error = null, _filedBid = null;
+            if (_bidUnconfirmedFps.length) _filedBid = await findFiledBid();
+            if (!_filedBid) {
+              if (_bidUnconfirmedFps.indexOf(_contentFp) === -1) _bidUnconfirmedFps.push(_contentFp);
               ({ data: insertedQuote, error } = await _insertOnce());
-            }
-            if (error && isIdemViolation(error)) {
-              const { data: existingByKey, error: readBackErr } = await callWithTimeout(INSERT_TIMEOUT_MS, (signal) => withAbortSignal(
-                sb.from('quotes').select('id').eq('idempotency_key', quoteData.idempotency_key).maybeSingle(), signal));
-              if (!readBackErr && existingByKey && existingByKey.id) { insertedQuote = existingByKey; error = null; }
+              if (error && isIdemColumnMissing(error)) { // the column is not in this database yet: file the bid as before
+                delete quoteData.idempotency_key;
+                ({ data: insertedQuote, error } = await _insertOnce());
+              }
+              if (error && isIdemViolation(error)) {
+                const { data: existingByKey, error: readBackErr } = await callWithTimeout(INSERT_TIMEOUT_MS, (signal) => withAbortSignal(
+                  sb.from('quotes').select('*').eq('idempotency_key', _bidIdemKey).maybeSingle(), signal));
+                if (!readBackErr && existingByKey && existingByKey.id) { _filedBid = existingByKey; error = null; }
+              }
             }
 
             if (error) throw error;
+            if (_filedBid) {
+              const _sameBid = _bidUnconfirmedFps.every((fp) => fp === _contentFp)
+                && (!_filedBid.idempotency_key || _filedBid.idempotency_key === _bidIdemKey);
+              if (!_sameBid) {
+                showFiledBidAsChangeBid(_filedBid);
+                const _filedErr = new Error(BID_ALREADY_FILED_MSG);
+                _filedErr.bidAlreadyFiled = true;
+                throw _filedErr;
+              }
+              insertedQuote = _filedBid; // the earlier attempt filed exactly this bid: finish it (acceptance, email, success)
+            }
+            _bidUnconfirmedFps = [];
 
             // Store the new quote ID for contract signing
             window._newQuoteId = insertedQuote?.id || null;
@@ -5747,7 +5809,8 @@
         clearWizardState();
       } catch (err) {
         console.error('Error submitting bid:', err);
-        alert('Error submitting bid: ' + (err.message || 'Unknown error'));
+        if (err && err.bidAlreadyFiled) alert(err.message); // gh-3498: the filed bid is now shown as Change Bid
+        else alert('Error submitting bid: ' + (err.message || 'Unknown error'));
         submitBtn.disabled = false;
         submitBtn.textContent = renewMode ? 'Renew Bid' : (changeBidMode ? 'Update Bid' : 'Submit Bid');
       } finally {
