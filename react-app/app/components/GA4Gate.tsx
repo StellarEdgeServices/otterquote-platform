@@ -85,7 +85,13 @@ const CLARITY_PROJECT_ID = "wwr7qlk8g5";
 // are both masked and a page cannot forget it). Every other homeowner route stays denied by default: /help-measurements (a card payment form),
 // /help-estimate, /help-materials, /color-selection, /project-confirmation and /contract-signing (the signing ceremony, excluded by the ruling).
 // clarity-react-funnel-gate.test.tsx enumerates every real page.tsx route and fails if Clarity loads on anything but this set.
-const CLARITY_ALLOWED_PATHS = ["/get-started", "/trade-selector", "/dashboard", "/bids", "/repair-intake"];
+//
+// gh-3283 / gh-3285 (D-407): Dustin, 2026-11-09 09:26 ET, verbatim: "Clarity on /insurance-rcv and /out-of-pocket: yes." (#3283 comment 6742512470),
+// https://github.com/StellarEdgeServices/otterquote-platform/issues/3283#issuecomment-6742512470
+// /insurance-rcv and /out-of-pocket replace the static project-info-rcv.html / project-info-cash.html (already ruled in by #1939). Both
+// render inside HomeownerShell (masked <header> and <main>), and nothing under them or the shared (homeowner)/_d407 components unmasks or
+// portals. /insurance-acv is NOT on this ruling and stays denied by default.
+const CLARITY_ALLOWED_PATHS = ["/get-started", "/trade-selector", "/dashboard", "/bids", "/repair-intake", "/insurance-rcv", "/out-of-pocket"];
 
 // gh-1925 (CEO, #2304 comment 5974043923 item 7: "`/auth-callback` must not load GA4"; 5973957454: the route carries no Do Not Sell link,
 // "therefore no GA4 load there"): the GA4 library is never requested on the sign-in landing route. Clarity was already off it (default-deny above).
