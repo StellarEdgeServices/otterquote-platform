@@ -2675,6 +2675,15 @@
           return;
         }
         wizardTradeQueue = [...wizardSelectedTrades];
+        // gh-3569 (REVIEW 6743095024): roofing unchecked on a claim that includes roofing. A roofing
+        // price typed earlier must not stay behind as the fee base or the stored total.
+        if (!wizardTradeQueue.includes('roofing') && (currentClaim?.trades || []).includes('roofing')) {
+          const _rb = document.getElementById('retailBidPrice');
+          if (_rb) _rb.value = '';
+          document.getElementById('totalPrice').value = '';
+          delete wizardTradePrices.roofing;
+          updateFeeCalculator();
+        }
         saveWizardState();
         wizardGoTo(2, 0, true);
       } else if (wizardStep === 2) {
@@ -5157,7 +5166,8 @@
         const retailPrice = parseFloat(document.getElementById('retailBidPrice')?.value) || 0;
         // gh-3569 (REVIEW 6742800394): the stored total and fee come from #totalPrice, so refuse
         // a total <= 0 too: no quotes row with total_price=0 / fee_amount=0 can be written.
-        if (retailPrice <= 0 || totalPriceVal <= 0) {
+        // REVIEW 6743095024: in the wizard this roofing branch also needs roofing in the trade queue.
+        if (retailPrice <= 0 || totalPriceVal <= 0 || (wizardMode && !wizardTradeQueue.includes('roofing'))) {
           alert('Please enter your total bid price.');
           return;
         }

@@ -215,6 +215,73 @@ async function scenario(browser, base, { trades, zeroBaseAtSubmit = false }) {
   await context.close();
 }
 
+// REVIEW 6743095024: enter a roofing price, go Back, UNCHECK roofing, price the other trade, submit. The roofing price
+// typed earlier must not become the fee base or the stored total. Main stops this flow at the price alert with no row
+// (there the roofing price cannot be entered at all), so the expected outcome is exactly main's.
+async function staleRoofingScenario(browser, base, { trades }) {
+  const other = trades.filter((t) => t !== 'roofing');
+  const name = trades.join(' + ') + ' claim: roofing price entered, Back, roofing unchecked';
+  console.log('--- ' + name);
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  const dialogs = [];
+  page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
+  await page.addInitScript((r) => { window.__ROWS = r; try { localStorage.clear(); } catch (e) {} }, rows(trades, trades.includes('siding')));
+  await page.route('**/*', (route) => {
+    const u = new URL(route.request().url());
+    if (u.hostname === 'cdn.jsdelivr.net' && u.pathname.includes('/@supabase/supabase-js@')) return route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_SDK });
+    if (u.hostname !== '127.0.0.1') return route.abort();
+    return route.continue();
+  });
+  await page.goto(base + '/contractor-bid-form.html?claim_id=claim-1', { waitUntil: 'load' });
+  await page.waitForFunction(() => { const c = document.getElementById('wizardStep1Card'); return c && getComputedStyle(c).display !== 'none'; }, null, { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(800);
+  const fillIf = async (sel, v) => { if (await page.evaluate(vis(sel))) await page.fill(sel, v); };
+
+  await page.click('#wizardStep1Next');
+  await page.waitForTimeout(300);
+  let typed = false;
+  try { await page.fill('#retailBidPrice', String(ROOF_EDITED), { timeout: 2000 }); typed = true; } catch (e) { console.log('     fill failed: ' + e.message.split('\n')[0]); }
+  ok(typed, name + ': roofing price typed on the roofing step');
+  await page.evaluate(() => wizardBack());
+  await page.waitForTimeout(300);
+  await page.uncheck('#wizardTradeCheckboxes input[value="roofing"]');
+  await page.click('#wizardStep1Next');
+  await page.waitForTimeout(300);
+  for (let i = 0; i < 4; i++) {
+    if (await page.evaluate(() => wizardStep === 3)) break;
+    const l = await page.evaluate(() => document.getElementById('wizardTradeLabel')?.textContent || '');
+    if (l === 'GUTTERS') await fillIf('#gutter6InchPrice', String(GUTTER_PRICE));
+    if (l === 'SIDING') { await fillIf('#sidingInstallPerSquare', '300'); await fillIf('#sidingTrimPrice', '1000'); }
+    await page.evaluate(() => wizardNext());
+    await page.waitForTimeout(300);
+  }
+  const queue = await page.evaluate(() => wizardTradeQueue.join(','));
+  ok(queue === other.join(','), name + ': wizard queue is ' + JSON.stringify(queue));
+  const summary = await page.evaluate(() => document.getElementById('wizardTradeSummaryRows')?.textContent.replace(/\s+/g, ' ').trim());
+  console.log('     step-3 summary: ' + summary);
+  ok(!/Roofing/.test(summary || ''), name + ': step 3 summary has no roofing row');
+  const st = await page.evaluate(() => ({ bid: document.getElementById('displayBid').textContent, fee: document.getElementById('totalFeeAmount').textContent, base: document.getElementById('totalPrice').value, roof: document.getElementById('retailBidPrice').value }));
+  console.log('     bid / fee shown at submit: ' + st.bid + ' / ' + st.fee + '  #totalPrice=' + JSON.stringify(st.base));
+  ok(st.base === '' && st.roof === '', name + ': the stale roofing price is cleared from #retailBidPrice and #totalPrice (' + JSON.stringify(st) + ')');
+  ok(st.bid === '$0.00' && st.fee === '$0.00', name + ': fee box no longer shows the removed roofing price (' + st.bid + ' / ' + st.fee + ')');
+
+  await page.evaluate(() => {
+    document.querySelectorAll('#bidForm [required]').forEach((el) => el.removeAttribute('required'));
+    window.validateValueAddDeclarations = () => true;
+    window.checkBidCanSubmitGate = async () => ({ can_submit: true });
+  });
+  await page.evaluate(() => document.getElementById('bidForm').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })));
+  await page.waitForTimeout(1500);
+  const allWrites = await page.evaluate(() => window.__writes);
+  const q = allWrites.filter((w) => w.table === 'quotes' && (w.method === 'insert' || w.method === 'upsert'));
+  const row = q.length ? (Array.isArray(q[0].payload) ? q[0].payload[0] : q[0].payload) : null;
+  const rowTxt = row ? 'total_price=' + row.total_price + ', fee_amount=' + row.fee_amount + ', trade_type=' + row.trade_type + ', per_trade_breakdown=' + JSON.stringify(row.per_trade_breakdown) : 'none';
+  ok(dialogs.includes(NEEDLE), name + ': submit stops at "' + NEEDLE + '", as on main (alerts seen: ' + JSON.stringify(dialogs) + ')');
+  ok(!row, name + ': no quotes row is written at the removed roofing price (' + rowTxt + ')');
+  await context.close();
+}
+
 const server = await serve();
 const base = 'http://127.0.0.1:' + server.address().port;
 const browser = await chromium.launch();
@@ -223,6 +290,8 @@ try {
   await scenario(browser, base, { trades: ['roofing', 'siding'] });
   await scenario(browser, base, { trades: ['roofing', 'gutters', 'siding'] });
   await scenario(browser, base, { trades: ['roofing', 'gutters'], zeroBaseAtSubmit: true });
+  await staleRoofingScenario(browser, base, { trades: ['roofing', 'gutters'] });
+  await staleRoofingScenario(browser, base, { trades: ['roofing', 'siding'] });
 } finally {
   await browser.close();
   server.close();
