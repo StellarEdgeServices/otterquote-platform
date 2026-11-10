@@ -276,10 +276,10 @@ SELECT proof.rec('W2 forged newer row (fee 0.01, created_at +1h) for the same bi
 SELECT proof.rec('W3 webhook OLD query returns', 'fee_amount=0.01', 'fee_amount=750.00', proof.wh_old('q15'));
 
 -- ======================= REVIEW 6669057587 B2: every key check pinned =======================
-SELECT proof.rec('K1 React wording, fee $0.05 printed (both places) on a $750.00 bid', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:displayed_fee_differs', proof.ins('authenticated','u1','k1', replace(:'text_react_q2','$750.00','$0.05'), 5.00, 750.00));
-SELECT proof.rec('K2 React wording, rate 4.00% printed (both places)', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:displayed_fee_differs', proof.ins('authenticated','u1','k2', replace(:'text_react_q2','5.00%','4.00%'), 5.00, 750.00));
-SELECT proof.rec('K3 React wording, wrong net amount', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:displayed_fee_differs', proof.ins('authenticated','u1','k3', replace(:'text_react_q2','$14,250.00','$1.00'), 5.00, 750.00));
-SELECT proof.rec('K4 React wording, the repeated figure differs from the first', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:text_not_form_wording', proof.ins('authenticated','u1','k4', regexp_replace(:'text_react_q2', '\(\$750\.00\)$', '($1.00)'), 5.00, 750.00));
+SELECT proof.rec('K1 legacy React wording, fee $0.05 printed (both places) on a $750.00 bid', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:displayed_fee_differs', proof.ins('authenticated','u1','k1', replace(:'text_react_legacy_q2','$750.00','$0.05'), 5.00, 750.00));
+SELECT proof.rec('K2 legacy React wording, rate 4.00% printed (both places)', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:displayed_fee_differs', proof.ins('authenticated','u1','k2', replace(:'text_react_legacy_q2','5.00%','4.00%'), 5.00, 750.00));
+SELECT proof.rec('K3 legacy React wording (pre gh-3480, still recognised), wrong net amount', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:displayed_fee_differs', proof.ins('authenticated','u1','k3', replace(:'text_react_legacy_q2','$14,250.00','$1.00'), 5.00, 750.00));
+SELECT proof.rec('K4 legacy React wording, the repeated figure differs from the first', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:text_not_form_wording', proof.ins('authenticated','u1','k4', regexp_replace(:'text_react_legacy_q2', '\(\$750\.00\)$', '($1.00)'), 5.00, 750.00));
 SELECT proof.rec('K5 HTML wording, rate 4.00% printed with the right fee', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:displayed_fee_differs', proof.ins('authenticated','u1','k5', replace(:'text_html_q9','(5.00%','(4.00%'), 5.00, 750.00));
 SELECT proof.rec('K6a HTML fee tolerance: $750.01 on a $750.00 fee is within a cent', 'ok -> fa=1 q=0', 'ok -> fa=1 q=0', proof.ins('authenticated','u1','k6a', replace(:'text_html_q9','$750.00','$750.01'), 5.00, 750.00));
 SELECT proof.rec('K6b HTML fee tolerance: $750.02 is not', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:displayed_fee_differs', proof.ins('authenticated','u1','k6b', replace(:'text_html_q9','$750.00','$750.02'), 5.00, 750.00));
@@ -295,8 +295,8 @@ SELECT proof.rec('K10b K10 as stored in quarantine', 'no quarantine table', 'acc
 SELECT proof.rec('K12 junk text of 5000 characters is kept, capped at 4000', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:text_not_form_wording', proof.ins('authenticated','u1','k12', repeat('x', 5000), 5.00, 750.00));
 SELECT proof.rec('K12b K12 stored length (original length is recorded beside it)', 'no quarantine table', 'stored=4000 original=5000', proof.held_len('k12'), 'no held row');
 SELECT proof.rec('K13 flood: one session diverts 30 rows; the cap is 25 an hour', 'no quarantine table', 'quarantine rows=25', proof.flood('u2', 30), 'quarantine rows=0');
-SELECT proof.rec('K14 React wording, net amount $1.00 off (tolerance is two cents)', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:displayed_fee_differs', proof.ins('authenticated','u1','k14', replace(:'text_react_q2','$14,250.00','$14,249.00'), 5.00, 750.00));
-SELECT proof.rec('K15 React wording, net amount two cents off is within tolerance', 'ok -> fa=1 q=0', 'ok -> fa=1 q=0', proof.ins('authenticated','u1','k15', replace(:'text_react_q2','$14,250.00','$14,250.02'), 5.00, 750.00));
+SELECT proof.rec('K14 legacy React wording, net amount $1.00 off (tolerance is two cents)', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:displayed_fee_differs', proof.ins('authenticated','u1','k14', replace(:'text_react_legacy_q2','$14,250.00','$14,249.00'), 5.00, 750.00));
+SELECT proof.rec('K15 legacy React wording, net amount two cents off is within tolerance', 'ok -> fa=1 q=0', 'ok -> fa=1 q=0', proof.ins('authenticated','u1','k15', replace(:'text_react_legacy_q2','$14,250.00','$14,250.02'), 5.00, 750.00));
 SELECT proof.rec('K16 a 600-character user agent on a diverted row is kept, capped at 500', 'ok -> fa=1 q=0', 'ok -> fa=0 q=1:text_not_form_wording', proof.ins('authenticated','u1','k16', 'junk', 5.00, 750.00, p_ua => repeat('u', 600)));
 SELECT proof.rec('K16b K16 stored user agent length', 'no quarantine table', 'ua=500', proof.held_ua_len('k16'), 'no held row');
 SELECT proof.rec('K17 genuine insert with no IP (the lookup failed; the forms now send null)', 'ok -> fa=1 q=0', 'ok -> fa=1 q=0', proof.ins('authenticated','u1','k17', :'text_html_q9', 5.00, 750.00, p_ip => NULL));
