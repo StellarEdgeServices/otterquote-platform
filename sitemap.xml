@@ -651,6 +651,12 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://otterquote.com/locations/delaware-county-in/roofing/</loc>
+    <lastmod>2026-11-10</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://otterquote.com/locations/delaware-county-oh/roofing/</loc>
     <lastmod>2026-11-03</lastmod>
     <changefreq>monthly</changefreq>
@@ -743,6 +749,12 @@
   <url>
     <loc>https://otterquote.com/locations/marion-county-in/roofing/</loc>
     <lastmod>2026-11-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/locations/monroe-county-in/roofing/</loc>
+    <lastmod>2026-11-10</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
