@@ -186,6 +186,12 @@ export function scrubEvent(event, pathAllowed) {
     var pathOk = typeof pathAllowed === 'function' ? pathAllowed : null;
     var out = walk(event, '', 0, pathOk);
     var p = out && out.properties;
+    // gh-3357 (REVIEW 6775360563): when pathAllowed rejected $prev_pageview_pathname, the rest of that
+    // page's $prev_pageview_* data (id, duration, scroll, content) describes the denied page too: drop all of it.
+    var inP = event.properties;
+    if (pathOk && p && typeof p === 'object' && inP && typeof inP === 'object' && PREV_PATHNAME in inP && !(PREV_PATHNAME in p)) {
+      Object.keys(p).forEach(function (k) { if (k.indexOf('$prev_pageview_') === 0) delete p[k]; });
+    }
     if (!pathOk && p && typeof p === 'object' && PREV_PATHNAME in p && p[PREV_PATHNAME] !== p.$pathname) delete p[PREV_PATHNAME];
     return out;
   } catch (e) {

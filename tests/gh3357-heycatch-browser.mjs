@@ -101,6 +101,9 @@ check('item 1 app: no denied route or claim id reaches HeyCatch after /dashboard
 const appCtl = await scenario({ mode: 'app-unguarded', moves: MOVES }, `https://${HOST}/get-started`);
 check('item 1 app NEGATIVE CONTROL: with the route gate alone the SDK sends the claim path ($prev_pageview_pathname)', /"\$prev_pageview_pathname":"\/contractor\/bid\/CLAIMPATH777"/.test(appCtl.sent));
 
+check('item 1 app (REVIEW 6775360563): no $prev_pageview_* key (id, duration, scroll, content, pathname) reaches HeyCatch after a denied page', !/"\$prev_pageview_/.test(app.sent), (app.sent.match(/"\$prev_pageview_[a-z_]*":[^,}]*/g) || []).join(' '));
+check('item 1 app NEGATIVE CONTROL (REVIEW 6775360563): with the route gate alone the SDK also sends the denied page\'s other $prev_pageview_* data', /"\$prev_pageview_(id|duration|last_scroll|max_scroll_percentage|last_content|max_content_percentage)":/.test(appCtl.sent), (appCtl.sent.match(/"\$prev_pageview_[a-z_]*":[^,}]*/g) || []).join(' '));
+
 // Item 1, site shape: full load of a public page from a signed-in page on the same origin
 const signed = `/contract-signing.html`;
 const site = await scenario({ mode: 'site', plain: [signed] }, `https://${HOST}${signed}?claim_id=CLAIMREF999&bid=7`, async (pg) => { await Promise.all([pg.waitForNavigation(), pg.click('#next')]); });

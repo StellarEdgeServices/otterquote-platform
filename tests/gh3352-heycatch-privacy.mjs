@@ -87,9 +87,14 @@ for (const [label, m] of [['js', js], ['ts', ts]]) {
   const out = m.makeBeforeSend(() => true, appAllowed)(spaEvent());
   const text = JSON.stringify(out);
   check(`${label}: gh3357 no denied route survives in a path property (pathAllowed)`, out !== null && !/CLAIMPATH777|CLAIMSIGN555|\/contractor|\/dashboard|\/bids/.test(text), text);
-  check(`${label}: gh3357 allowed paths and other properties are kept`, out && out.properties.$pathname === '/get-started' && out.properties.$prev_pageview_id === 'p1' && out.properties.$current_url === 'https://app.otterquote.com/get-started?utm_source=meta', text);
+  check(`${label}: gh3357 allowed paths and other properties are kept (a denied page's $prev_pageview_* is not)`, out && out.properties.$pathname === '/get-started' && !('$prev_pageview_id' in out.properties) && out.properties.$current_url === 'https://app.otterquote.com/get-started?utm_source=meta', text);
   const ok2 = m.makeBeforeSend(() => true, appAllowed)({ event: '$pageview', properties: { $pathname: '/get-started', $prev_pageview_pathname: '/get-started/step-2' } });
   check(`${label}: gh3357 an allowed previous path is kept`, ok2 && ok2.properties.$prev_pageview_pathname === '/get-started/step-2', JSON.stringify(ok2));
+  const prevAll = { $prev_pageview_duration: 1861.31, $prev_pageview_last_scroll: 0, $prev_pageview_max_scroll_percentage: 1, $prev_pageview_last_content: 720, $prev_pageview_max_content_percentage: 1, $prev_pageview_id: 'p9' };
+  const den = m.makeBeforeSend(() => true, appAllowed)({ event: '$pageview', properties: { $pathname: '/get-started', $prev_pageview_pathname: '/contractor/bid/CLAIMROT123', ...prevAll } });
+  check(`${label}: gh3357 a denied $prev_pageview_pathname takes every other $prev_pageview_* key with it`, den && den.properties.$pathname === '/get-started' && !Object.keys(den.properties).some((k) => k.startsWith('$prev_pageview_')), JSON.stringify(den));
+  const alw = m.makeBeforeSend(() => true, appAllowed)({ event: '$pageview', properties: { $pathname: '/get-started', $prev_pageview_pathname: '/get-started/step-2', ...prevAll } });
+  check(`${label}: gh3357 an allowed $prev_pageview_pathname keeps the other $prev_pageview_* keys`, alw && alw.properties.$prev_pageview_duration === 1861.31 && alw.properties.$prev_pageview_id === 'p9', JSON.stringify(alw));
   check(`${label}: gh3357 a pathAllowed that throws drops the event`, m.makeBeforeSend(() => true, () => { throw new Error('x'); })(spaEvent()) === null);
   const site = m.scrubEvent({ event: '$pageview', properties: { $pathname: '/faq', $prev_pageview_pathname: '/contract-signing' } });
   check(`${label}: gh3357 without pathAllowed, a $prev_pageview_pathname that is not the page itself is dropped`, site && !('$prev_pageview_pathname' in site.properties) && site.properties.$pathname === '/faq', JSON.stringify(site));

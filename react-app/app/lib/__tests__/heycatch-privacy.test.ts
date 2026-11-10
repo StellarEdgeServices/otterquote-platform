@@ -146,6 +146,18 @@ describe("HeyCatch scrubEvent", () => {
     expect(out.properties.$x_referrer).toBe("https://a.test");
   });
 
+  it("with pathAllowed, a denied $prev_pageview_pathname takes every other $prev_pageview_* key with it (REVIEW 6775360563)", () => {
+    const allowed = (p: string) => typeof p === "string" && (p === "/get-started" || p.startsWith("/get-started/"));
+    const prev = { $prev_pageview_duration: 1861.31, $prev_pageview_last_scroll: 0, $prev_pageview_max_scroll_percentage: 1, $prev_pageview_last_content: 720, $prev_pageview_max_content_percentage: 1, $prev_pageview_id: "01a1c6a8" };
+    const denied = scrubEvent({ event: "$pageview", properties: { $pathname: "/get-started", $prev_pageview_pathname: "/contractor/bid/CLAIMROT123", ...prev } }, allowed)!;
+    expect(Object.keys(denied.properties).filter((k) => k.startsWith("$prev_pageview_"))).toEqual([]);
+    expect(denied.properties.$pathname).toBe("/get-started");
+    const ok = scrubEvent({ event: "$pageview", properties: { $pathname: "/get-started", $prev_pageview_pathname: "/get-started/step-2", ...prev } }, allowed)!;
+    expect(ok.properties.$prev_pageview_pathname).toBe("/get-started/step-2");
+    expect(ok.properties.$prev_pageview_duration).toBe(1861.31);
+    expect(ok.properties.$prev_pageview_id).toBe("01a1c6a8");
+  });
+
   it("returns null instead of throwing", () => {
     const hostile = { event: "x", properties: {} as Record<string, unknown> };
     Object.defineProperty(hostile.properties, "$current_url", { enumerable: true, get() { throw new Error("boom"); } });
