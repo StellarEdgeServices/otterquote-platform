@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Roof Underlayment and Ice Barrier in Your Bid | Otter Quotes</title>
+<meta name="description" content="Two roof bids can both say new underlayment and still differ. Learn what to ask each contractor to write down before you compare totals.">
+<link rel="canonical" href="https://otterquote.com/guides/roof-underlayment-ice-barrier-bid.html">
+<meta property="og:title" content="Roof Underlayment and Ice Barrier in Your Bid | Otter Quotes">
+<meta property="og:description" content="Two roof bids can both say new underlayment and still differ. Learn what to ask each contractor to write down before you compare totals.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/roof-underlayment-ice-barrier-bid.html">
+<meta property="og:image" content="https://otterquote.com/img/social/og-default.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Otter Quotes: Contractors Compete. Homeowners Win. A cartoon otter in a hard hat.">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-11-10">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds (same values as PR #2499; defined here until it merges) */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+.definition-table td { color: var(--dark-gray); border-bottom: 1px solid #D9DEE7; }
+.definition-table td:first-child { color: var(--navy); }
+.definition-table tr:last-child td { border-bottom: none; }
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+<style id="breadcrumb-css">.breadcrumb ol{list-style:none;display:flex;flex-wrap:wrap;gap:.25rem .5rem;justify-content:inherit;margin:0 0 var(--sp-4);padding:0;font-size:.85rem}.breadcrumb li+li:before{content:"\203A";margin-right:.5rem;opacity:.7}.breadcrumb a{color:inherit;text-decoration:underline}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <nav class="breadcrumb" data-seo-crumb="1" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/guides/">Guides</a></li><li aria-current="page">What Underlayment and Ice Barrier Should Your Roof Replacement Bid Name?</li></ol></nav>
+      <h1>What Underlayment and Ice Barrier Should Your Roof Replacement Bid Name?</h1>
+    <p class="meta">Otter Quotes &middot; Updated November 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>Underlayment is the layer between your roof deck and your shingles. An ice barrier is a sealed layer, usually self-adhering, used at the eaves and other leak-prone spots. Bids often name them in one vague word, or skip them. Ask each contractor to write down which product goes where, and why, before you compare totals.</p>
+    </div>
+
+    <section class="step">
+      <h2>What is roof underlayment, and why does a bid need to name it?</h2>
+      <p>Underlayment is a water-resistant layer installed over the roof deck before the shingles. ARMA, the asphalt shingle manufacturers' trade group, says it provides a secondary layer of protection beneath the shingles. A bid should name the product, because bids can differ on it and you cannot see it afterward.</p>
+      <p>ARMA's guidance also says underlayment should always be used in new construction and reroofing. That is ARMA's recommendation. It adds that most building codes require underlayment meeting an industry standard, and tells readers to always consult local building codes and the shingle manufacturer's requirements.</p>
+      <p>Once the shingles are on, the layer underneath is hidden. The written bid and contract are the only record of what went on your roof. A line that says "underlayment included" does not tell you which type, which areas or which standard.</p>
+    </section>
+
+    <section class="step">
+      <h2>What is an ice barrier, and how is it different from underlayment?</h2>
+      <p>An ice barrier is a self-adhering membrane, or two layers of underlayment cemented together, placed along the eaves where melting snow can back up under shingles. ARMA says self-adhering membranes are "most frequently used as ice dam protection at roof eaves." GAF also lists valleys, chimneys and skylights.</p>
+      <p>Different sources use different names for this category: ice barrier, ice and water shield, leak barrier, self-adhering membrane. When a bid uses one of those names, ask the contractor to describe the product and say exactly where it goes.</p>
+      <p>ARMA describes self-adhering membranes as sealing around nail shanks and adhering to the deck. GAF says its leak barrier helps prevent leaks from water backing up, and also addresses wind-driven rain. Neither description means every roof needs one. The next section explains how code treats the question.</p>
+    </section>
+
+    <section class="step">
+      <h2>Does the building code require an ice barrier on my roof?</h2>
+      <p>It depends on where you live. The model International Residential Code requires an ice barrier only where there has been "a history of ice forming along the eaves," as designated in its climate table. Your state or local government adopts its own version, and that version controls. Ask your building department or each bidder in writing.</p>
+      <p>For reference, the 2018 and 2021 editions of the model code describe the barrier this way. It is either two layers of underlayment cemented together or a self-adhering polymer-modified bitumen sheet. It runs from the lowest roof edge to a point at least 24 inches inside the exterior wall line. On roofs 8 units in 12 or steeper, it also applies at least 36 inches up the slope from the eave edge.</p>
+      <p>The 2024 edition may word this differently, and a state or local government may adopt an earlier or later edition, or change the text. In Indiana, the 2020 Indiana Residential Code, based on the 2018 IRC, applies. This page does not say what your area requires. GAF's product page says many building codes require ice and leak barriers at the eaves in colder northern climates, and tells readers to consult local codes. Our guide to <a href="/guides/roof-permit-in-your-bid.html">putting the permit in your roof bid</a> covers the permit line in a bid.</p>
+    </section>
+
+    <section class="step">
+      <h2>Which underlayment types might a bid list?</h2>
+      <p>A bid may list asphalt-saturated felt, a synthetic sheet or a self-adhering membrane. ARMA's 2017 bulletin calls felt the most common asphalt shingle underlayment and lists non-asphaltic synthetics as another type. A bid that only says "underlayment" does not tell you which one you are getting, so ask each bidder to name it.</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>What ARMA and GAF say</th>
+              <th>What to ask</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Asphalt-saturated felt</td>
+              <td>ARMA says it is water-resistant but permits some vapor transmission and moisture absorption.</td>
+              <td>Which weight or grade, and over the whole roof?</td>
+            </tr>
+            <tr>
+              <td>Synthetic sheet</td>
+              <td>ARMA says these are mechanically attached and lighter. GAF says some are generally impermeable and advises choosing a breathable product.</td>
+              <td>Which product, and is it approved for the shingle named in my bid?</td>
+            </tr>
+            <tr>
+              <td>Self-adhering membrane</td>
+              <td>ARMA says it seals around nail shanks and acts as a vapor retarder.</td>
+              <td>Where does it go: eaves, valleys, openings or the whole deck?</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>This page does not rank these. Shingle manufacturers can set their own underlayment requirements, and ARMA says a tested product is recommended and may be required by the shingle manufacturer. Read the warranty for the shingle your bid names, and see our guide to <a href="/guides/manufacturer-backed-roof-warranties.html">manufacturer-backed roof warranties</a> for what else to compare.</p>
+    </section>
+
+    <section class="step">
+      <h2>Should the whole roof deck get a self-adhering layer?</h2>
+      <p>Some bids propose a self-adhering layer over the entire deck, not only the edges. GAF's bulletin says full-deck coverage with a leak barrier provides an advantage in severe wind and hail events, but warns of attic moisture problems without proper ventilation. Ask why the contractor chose it for your roof and how ventilation is handled.</p>
+      <p>GAF's bulletin on the topic says leak barriers act as vapor retarders. It states that "Proper ventilation is the key" and says full-deck coverage may cause moisture problems in an attic if precautions are skipped. It also notes that some newer synthetic underlayments are generally impermeable and recommends a breathable product.</p>
+      <p>A second GAF bulletin ties full-deck coverage to one product warranty. For GAF's WindProven limited wind warranty on fiberglass shingles, it says full-deck coverage with a leak barrier changes the eligibility requirements, which include starter strip shingles at the eaves and rakes, ridge cap shingles and attic ventilation. That applies to GAF's warranty only. Other manufacturers write their own. Our guide to <a href="/guides/roof-replacement-in-cold-weather.html">replacing a roof in cold weather</a> covers what changes when a roof goes on in winter.</p>
+    </section>
+
+    <section class="step">
+      <h2>Why can two bids differ on underlayment and ice barrier?</h2>
+      <p>Because the line is easy to write in a few words and hard to check later. One bid may price felt across the deck plus a leak barrier at the eaves. Another may price only a synthetic sheet. A third may price a self-adhering layer on the whole roof. All three can read "new underlayment included."</p>
+      <p>That is why a lower total is not always a like-for-like total. Before you decide one bid is cheaper, check that each names the same layers in the same places. Our guides on <a href="/guides/roof-bid-much-lower-than-the-others.html">why one roof bid can be much lower than the others</a> and the <a href="/guides/roof-replacement-cost-breakdown.html">roof replacement cost breakdown</a> show what else to line up, and the <a href="/guides/roof-bid-comparison-worksheet.html">roof bid comparison worksheet</a> gives you a place to record the answers side by side.</p>
+      <p>NRCA, the National Roofing Contractors Association, advises homeowners to "insist on a written proposal" with complete descriptions of the work and specifications. For this line, that means the product, the type and the areas it covers. Our <a href="/guides/roofing-contract-checklist-before-you-sign.html">roofing contract checklist before you sign</a> shows how to get that in the contract.</p>
+    </section>
+
+    <section class="step">
+      <h2>What to ask every roofing contractor about underlayment and ice barrier</h2>
+      <p>Put the same questions to every bidder and keep the answers in writing, so you can set them side by side. Copy this list into a note and send it to each contractor before you compare totals. The wording is plain on purpose, so any contractor can answer it.</p>
+      <ul>
+        <li>Which underlayment will cover the main roof, and what type is it?</li>
+        <li>Will you install an ice barrier at the eaves, and how far up the roof does it run?</li>
+        <li>Is a leak barrier planned in valleys, around chimneys, skylights and other openings?</li>
+        <li>Is any self-adhering layer going over the whole deck? If so, how is attic ventilation handled?</li>
+        <li>Do local code or the shingle manufacturer's instructions call for any of this on my roof? Which document says so?</li>
+        <li>Does the underlayment you named affect the shingle warranty I am being offered, and where is that written?</li>
+        <li>Is this priced as its own line, or is it inside the roof price?</li>
+        <li>If the plan changes after the old roof comes off, how is the new product priced and agreed in writing?</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>Otter Quotes creates a written scope of work for your roof replacement and sends it to multiple contractors, who compete with bids on that same scope. Homeowners who provide a copy of their insurance estimate pay nothing. For a replacement, a homeowner without one pays as little as $22.63 upfront for measurements that contractors use to bid, refunded if they complete a job on the platform. Contractors pay Otter Quotes a fee on the accepted bid. We do not offer inspections or damage assessments, work with your insurance company or sell upgrades.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+      <p>Related guides: <a href="/guides/roof-bid-comparison-worksheet.html">roof bid comparison worksheet</a>, <a href="/guides/roofing-contract-checklist-before-you-sign.html">roofing contract checklist before you sign</a>, <a href="/guides/roof-replacement-cost-breakdown.html">roof replacement cost breakdown</a>.</p>
+    </section>
+
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>Do I need an ice barrier on my new roof?</h3>
+        <div class="faq-answer">
+          <p>It depends on your local code and climate designation. The model code requires one where there has been "a history of ice forming along the eaves," and your state or local government adopts its own version. Ask your building department, or each bidder in writing, whether it applies to your address and how far up the roof it must run.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Is ice and water shield the same as underlayment?</h3>
+        <div class="faq-answer">
+          <p>They are related, not identical. Underlayment is the water-resistant layer over the roof deck. An ice barrier is a self-adhering membrane, or two cemented layers of underlayment, used at the eaves and in places such as valleys. Bids use several names for it, so ask each contractor to describe the product and where it goes.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Is felt or synthetic underlayment better?</h3>
+        <div class="faq-answer">
+          <p>This page does not rank them. ARMA's 2017 bulletin calls asphalt-saturated felt the most common type and also lists synthetic and self-adhering types. Shingle manufacturers can set their own requirements. Ask each bidder which type it names, and read the warranty for your shingle for any underlayment rule.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Should the whole roof deck get a self-adhering layer?</h3>
+        <div class="faq-answer">
+          <p>Some bidders propose it. GAF says full-deck coverage with a leak barrier can help in severe wind and hail events, but can cause attic moisture problems without proper ventilation. It also changes eligibility terms for GAF's WindProven wind warranty. Ask the contractor why it fits your roof and how ventilation is handled.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Where can I see what underlayment I am getting?</h3>
+        <div class="faq-answer">
+          <p>Look in the written bid and contract. If it only says "underlayment" or "ice and water," ask the contractor to name the type and the areas it covers. NRCA advises homeowners to "insist on a written proposal" describing the work and specifications. Once shingles are installed, the layer underneath is hidden.</p>
+        </div>
+      </div>
+
+    </section>
+
+      <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/guides/roof-bid-comparison-worksheet.html">How to Compare Roofing Bids: A Side-by-Side Worksheet</a></li>
+        <li><a href="/guides/roofing-contract-checklist-before-you-sign.html">What Should Be in a Roofing Contract Before You Sign?</a></li>
+        <li><a href="/guides/roof-replacement-cost-breakdown.html">What Goes Into the Cost of a Roof Replacement?</a></li>
+        <li><a href="/guides/manufacturer-backed-roof-warranties.html">Golden Pledge, Platinum Protection and SureStart PLUS: The Manufacturer-Backed Roof Warranties Compared</a></li>
+        <li><a href="/guides/roof-permit-in-your-bid.html">Who Pulls the Roofing Permit, and What Should the Bid Say?</a></li>
+        <li><a href="/guides/topics/comparing-bids.html">Browse all: Comparing Bids and Roof Costs</a></li>
+      </ul>
+    </div>
+
+    </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "What Underlayment and Ice Barrier Should Your Roof Replacement Bid Name?",
+  "description": "Two roof bids can both say new underlayment and still differ. Learn what to ask each contractor to write down before you compare totals.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization", "logo": {"@type": "ImageObject", "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"}, "sameAs": ["https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ", "https://www.linkedin.com/company/otter-quotes", "https://www.facebook.com/OtterQuote", "https://www.instagram.com/otterquote/"],
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-11-10",
+  "dateModified": "2026-11-10",
+  "publisher": {
+    "@type": "Organization", "url": "https://otterquote.com/", "sameAs": ["https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ", "https://www.linkedin.com/company/otter-quotes", "https://www.facebook.com/OtterQuote", "https://www.instagram.com/otterquote/"],
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/roof-underlayment-ice-barrier-bid.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Do I need an ice barrier on my new roof?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It depends on your local code and climate designation. The model code requires one where there has been \"a history of ice forming along the eaves,\" and your state or local government adopts its own version. Ask your building department, or each bidder in writing, whether it applies to your address and how far up the roof it must run."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is ice and water shield the same as underlayment?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "They are related, not identical. Underlayment is the water-resistant layer over the roof deck. An ice barrier is a self-adhering membrane, or two cemented layers of underlayment, used at the eaves and in places such as valleys. Bids use several names for it, so ask each contractor to describe the product and where it goes."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is felt or synthetic underlayment better?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "This page does not rank them. ARMA's 2017 bulletin calls asphalt-saturated felt the most common type and also lists synthetic and self-adhering types. Shingle manufacturers can set their own requirements. Ask each bidder which type it names, and read the warranty for your shingle for any underlayment rule."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Should the whole roof deck get a self-adhering layer?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Some bidders propose it. GAF says full-deck coverage with a leak barrier can help in severe wind and hail events, but can cause attic moisture problems without proper ventilation. It also changes eligibility terms for GAF's WindProven wind warranty. Ask the contractor why it fits your roof and how ventilation is handled."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Where can I see what underlayment I am getting?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Look in the written bid and contract. If it only says \"underlayment\" or \"ice and water,\" ask the contractor to name the type and the areas it covers. NRCA advises homeowners to \"insist on a written proposal\" describing the work and specifications. Once shingles are installed, the layer underneath is hidden."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "What Underlayment and Ice Barrier Should Your Roof Replacement Bid Name?",
+      "item": "https://otterquote.com/guides/roof-underlayment-ice-barrier-bid.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>
