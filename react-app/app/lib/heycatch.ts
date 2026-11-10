@@ -69,7 +69,9 @@ export function loadHeyCatch(): Promise<void> {
         install: { framework: "nextjs", frameworkVersion: "16", agent: "claude-code" },
         // A client-side move off an allowed route must not keep reporting. Every URL-bearing
         // property loses its query string and fragment (gh-3352); see heycatch-privacy.ts.
-        beforeSend: makeBeforeSend(() => isHeyCatchAllowedPath(window.location.pathname)),
+        // gh-3357: the second argument drops any path property that names a route off the
+        // allowlist, e.g. $prev_pageview_pathname "/contractor/bid/<claimId>" after a client-side move.
+        beforeSend: makeBeforeSend(() => isHeyCatchAllowedPath(window.location.pathname), isHeyCatchAllowedPath),
       });
       sdk = analytics;
       guard.restore();
