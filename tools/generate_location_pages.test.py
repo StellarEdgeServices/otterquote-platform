@@ -2223,5 +2223,230 @@ class CrossStateSharedTextTests(unittest.TestCase):
         self.assertEqual(seen, [["ZZ"] * 12])
 
 
+class CityPageTests(unittest.TestCase):
+    """gh-3600: a state profile may list cities; a city page is built from the county template at
+    /locations/<city>-city-<st>/<trade>/, scored by the same strict gate in the same run as the county
+    pages, and adding cities never changes a county page."""
+
+    tearDown = GeneratorTests.tearDown
+    run_gen = GeneratorTests.run_gen
+    run_fx = GeneratorTests.run_fx
+
+    CITIES = {"Quillon": "Alpha", "Brevik": "Alpha", "Torvane": "Gamma"}
+
+    def setUp(self):
+        GeneratorTests.setUp(self)
+        self.write_cities()
+
+    def write_cities(self, mutate=None, cities=None):
+        cities = self.CITIES if cities is None else cities
+        prof = json.loads(json.dumps(FIXTURE_PROFILE))
+        prof["cities"] = {c: {"county": p} for c, p in cities.items()}
+        prof["city_content"] = {c: {"roofing": fixture_content(c, "roofing")} for c in cities}
+        prof["city_sources"] = {c: {"roofing": [{"label": f"{c} source", "url": f"https://example.gov/{c.lower()}"}]}
+                                for c in cities}
+        if mutate:
+            mutate(prof)
+        (self.fx_profiles / "ZZ.json").write_text(json.dumps(prof), encoding="utf-8")
+
+    def page(self, city, trade="roofing"):
+        return (self.out / glp.city_slug(city, "ZZ") / trade / "index.html").read_text(encoding="utf-8")
+
+    def load_with(self, mutate):
+        self.write_cities(mutate)
+        return glp.load_profile("ZZ", self.fx_profiles)
+
+    # slug and generation ---------------------------------------------------------------------------
+    def test_city_slug_is_city_dash_city_dash_state(self):
+        self.assertEqual(glp.city_slug("Carmel", "IN"), "carmel-city-in")
+        self.assertEqual(glp.city_slug("Fishers", "IN"), "fishers-city-in")
+        self.assertEqual(glp.city_slug("Noblesville", "IN"), "noblesville-city-in")
+        self.assertEqual(glp.city_slug("Westfield", "IN"), "westfield-city-in")
+        self.assertEqual(glp.county_slug("Hamilton", "IN"), "hamilton-county-in")   # unchanged
+
+    def test_cities_are_written_beside_the_counties_and_listed_by_the_dry_run(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            summary = glp.generate(["ZZ"], out_dir=self.out, sitemap_path=self.sitemap, dry_run=True,
+                                   counties_path=self.fx_counties, profiles_dir=self.fx_profiles)
+        out = buf.getvalue()
+        self.assertEqual(summary["city_tuples"], 3)
+        self.assertEqual(summary["written"], 3 * 4 + 3)
+        for city in self.CITIES:
+            slug = glp.city_slug(city, "ZZ")
+            self.assertIn(f"[DRY RUN] Would write {self.out / slug / 'roofing' / 'index.html'}", out)
+            self.assertIn((slug, "roofing"), summary["paths"])
+        self.assertFalse(self.out.exists())                       # dry run writes nothing
+
+    def test_city_page_content_url_and_structured_data(self):
+        self.run_fx()
+        page = self.page("Quillon")
+        slug = "quillon-city-zz"
+        self.assertEqual(slug, glp.city_slug("Quillon", "ZZ"))
+        self.assertIn(f'<link rel="canonical" href="https://otterquote.com/locations/{slug}/roofing/">', page)
+        self.assertIn("<h1>Comparing Roofing Bids in Quillon, Zedland</h1>", page)
+        self.assertIn("<title>Comparing Roofing Bids in Quillon, ZZ", page)
+        self.assertIn("<h2>Quillon city notes</h2>", page)
+        self.assertNotIn("Quillon County", page)
+        self.assertIn("send it to local contractors", page)
+        self.assertNotRegex(page, r"(?i)<meta[^>]+name=\"robots\"")
+        notes = page.split("city notes</h2>")[1].split("<h2>")[0]
+        self.assertRegex(notes, r"^\s*<p>")
+        self.assertIn('<a href="https://example.gov/quillon" rel="noopener" target="_blank">Quillon source</a>', page)
+        ld = [json.loads(x) for x in re.findall(r'<script type="application/ld\+json">(.*?)</script>', page, re.S)]
+        service = next(x for x in ld if x["@type"] == "Service")
+        self.assertEqual(service["areaServed"], {"@type": "City", "name": "Quillon, Zedland"})
+        self.assertEqual(service["url"], f"https://otterquote.com/locations/{slug}/roofing/")
+        crumb = next(x for x in ld if x["@type"] == "BreadcrumbList")
+        self.assertEqual(crumb["itemListElement"][1]["name"], "Quillon, ZZ roofing")
+        glp.compliance_lint(page, slug)
+        sm = self.sitemap.read_text(encoding="utf-8")
+        self.assertIn(f"https://otterquote.com/locations/{slug}/roofing/", sm)
+
+    def test_city_template_prose_and_climate_use_the_parent_county(self):
+        # Brevik is in Alpha (north region), Torvane in Gamma (south region): the climate paragraph is the parent's.
+        self.run_fx()
+        self.assertIn("Alpha County sits in the fixture state's northern band", self.page("Brevik"))
+        self.assertIn("Gamma County sits in the fixture state's southern band", self.page("Torvane"))
+
+    def test_only_trades_with_city_content_are_built(self):
+        summary = self.run_fx()
+        self.assertEqual({t for _s, t in summary["paths"] if "-city-" in _s}, {"roofing"})
+        self.assertFalse((self.out / "quillon-city-zz" / "siding").exists())
+
+    def test_adding_cities_does_not_change_any_county_page(self):
+        self.run_fx()
+        with_cities = {p.relative_to(self.out): p.read_bytes() for p in self.out.glob("*-county-zz/*/index.html")}
+        self.assertEqual(len(with_cities), 12)
+        # The same state without cities, generated the same day, into a fresh output directory.
+        self.write_cities(lambda prof: [prof.pop(k) for k in ("cities", "city_content", "city_sources")])
+        other = self.tmp / "no-cities"
+        quiet(glp.generate, ["ZZ"], out_dir=other / "locations", sitemap_path=other / "sitemap.xml",
+              counties_path=self.fx_counties, profiles_dir=self.fx_profiles)
+        without = {p.relative_to(other / "locations"): p.read_bytes()
+                   for p in (other / "locations").glob("*-county-zz/*/index.html")}
+        self.assertEqual(with_cities, without)
+        # ... and the county pages never link to a city page.
+        for body in with_cities.values():
+            self.assertNotIn("-city-zz", body.decode("utf-8"))
+
+    # gate ---------------------------------------------------------------------------------------------
+    def test_a_city_that_copies_a_county_fails_the_gate_with_it(self):
+        # City text identical to a county page's text is shared: both pages fall under the floor.
+        def copy_county(prof):
+            prof["city_content"]["Quillon"] = {"roofing": prof["county_content"]["Alpha"]["roofing"]}
+        self.write_cities(copy_county)
+        summary = self.run_fx()
+        self.assertIn("quillon-city-zz/roofing", summary["skipped_thin"])
+        self.assertIn("alpha-county-zz/roofing", summary["skipped_thin"])
+        self.assertFalse((self.out / "quillon-city-zz").exists())
+        self.assertTrue((self.out / "beta-county-zz" / "roofing" / "index.html").exists())
+
+    def test_two_cities_with_identical_text_fail_each_other(self):
+        def same(prof):
+            prof["city_content"]["Brevik"] = dict(prof["city_content"]["Quillon"])
+        self.write_cities(same)
+        summary = self.run_fx()
+        self.assertEqual(sorted(p for p in summary["skipped_thin"] if "-city-" in p),
+                         ["brevik-city-zz/roofing", "quillon-city-zz/roofing"])
+        self.assertTrue((self.out / "torvane-city-zz" / "roofing" / "index.html").exists())
+
+    def test_a_city_that_costs_a_live_county_page_its_floor_stops_the_run(self):
+        # gh-3108 applies to cities: a live county page pushed under the floor by a new city page fails the
+        # run before anything is written.
+        self.run_fx()                                                  # county pages now "live" in self.out
+
+        def copy_county(prof):
+            prof["city_content"]["Quillon"] = {"roofing": prof["county_content"]["Alpha"]["roofing"]}
+        self.write_cities(copy_county)
+        with self.assertRaises(glp.LivePageDropError):
+            self.run_fx()
+
+    def test_a_thin_city_emits_no_page_and_no_sitemap_entry(self):
+        def thin(prof):
+            prof["city_content"]["Quillon"] = {"roofing": "Short text about the city."}
+        self.write_cities(thin)
+        summary = self.run_fx()
+        self.assertEqual([p for p in summary["skipped_thin"] if "-city-" in p], ["quillon-city-zz/roofing"])
+        self.assertFalse((self.out / "quillon-city-zz").exists())
+        self.assertNotIn("quillon-city-zz", self.sitemap.read_text(encoding="utf-8"))
+
+    def test_city_pages_without_a_sources_list_are_refused_by_the_cli(self):
+        self.write_cities(lambda prof: prof.pop("city_sources"))
+        with self.assertRaises(glp.ComplianceError):
+            self.run_fx(require_sources=True)
+
+    # hub and links ----------------------------------------------------------------------------------
+    def test_hub_lists_cities_with_a_city_anchor(self):
+        self.run_fx()
+        hub = (self.out / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<a href="/locations/quillon-city-zz/roofing/">Comparing Roofing Bids in Quillon, Zedland</a>', hub)
+        self.assertIn('<a href="/locations/alpha-county-zz/roofing/">Comparing Roofing Bids in Alpha County, Zedland</a>', hub)
+        self.assertEqual(hub.count("<h2>Zedland</h2>"), 1)
+
+    def test_city_page_links_its_parent_county_first_then_the_other_cities(self):
+        self.run_fx()
+        block = re.search(r'<nav class="loc-more".*?</nav>', self.page("Quillon"), re.S).group(0)
+        hrefs = re.findall(r'<a href="([^"]+)"', block)
+        self.assertEqual(hrefs, ["/locations/",
+                                 "/locations/alpha-county-zz/roofing/",
+                                 "/locations/torvane-city-zz/roofing/",
+                                 "/locations/brevik-city-zz/roofing/"])
+        self.assertNotIn("loc-more-fill", block)                   # never padded with other states' pages
+
+    def test_city_link_block_leaves_the_strict_gate_text_unchanged(self):
+        # generate() raises RuntimeError (INTEGRITY FAIL) if the injected block changed the gate text.
+        summary = self.run_fx()
+        self.assertGreaterEqual(summary["min_strict_unique_words"], glp.MIN_WORDS)
+
+    # profile validation -----------------------------------------------------------------------------
+    def test_profile_without_cities_has_empty_city_maps(self):
+        prof = glp.load_profile("IN")
+        self.assertEqual((prof["city_county"], prof["city_content"], prof["city_sources"]), ({}, {}, {}))
+
+    def test_city_parent_must_be_a_listed_county(self):
+        with self.assertRaisesRegex(glp.StateConfigError, r'"Nowhere" is not a county listed in any region'):
+            self.load_with(lambda p: p["cities"].update({"Quillon": {"county": "Nowhere"}}))
+
+    def test_city_content_and_sources_must_name_a_listed_city(self):
+        with self.assertRaisesRegex(glp.StateConfigError, r'city_content: "Ghost" is not a city listed'):
+            self.load_with(lambda p: p["city_content"].update({"Ghost": {"roofing": "text"}}))
+        with self.assertRaisesRegex(glp.StateConfigError, r'city_sources: "Ghost" is not a city listed'):
+            self.load_with(lambda p: p["city_sources"].update(
+                {"Ghost": {"roofing": [{"label": "x", "url": "https://example.gov/x"}]}}))
+
+    def test_a_city_may_not_share_a_name_with_a_county(self):
+        with self.assertRaisesRegex(glp.StateConfigError, "same name as a county"):
+            self.load_with(lambda p: p["cities"].update({"Alpha": {"county": "Beta"}}))
+
+    def test_city_content_uses_the_plain_text_allow_list(self):
+        with self.assertRaisesRegex(glp.StateConfigError, "must be plain text"):
+            self.load_with(lambda p: p["city_content"].update({"Quillon": {"roofing": "bad <b>markup</b>"}}))
+        with self.assertRaisesRegex(glp.StateConfigError, "not allowed"):
+            self.load_with(lambda p: p["city_content"].update({"Quillon": {"roofing": "section § 35.30 text"}}))
+        with self.assertRaisesRegex(glp.StateConfigError, "unknown trade"):
+            self.load_with(lambda p: p["city_content"].update({"Quillon": {"carpets": "text"}}))
+
+    def test_a_city_source_may_carry_an_unrendered_note_but_a_county_source_may_not(self):
+        def noted(p):
+            p["city_sources"]["Quillon"]["roofing"][0]["note"] = "Editor audit note, not page copy."
+        prof = self.load_with(noted)
+        self.assertEqual(prof["city_sources"]["Quillon"]["roofing"],
+                         [{"label": "Quillon source", "url": "https://example.gov/quillon"}])
+        self.run_fx()
+        self.assertNotIn("Editor audit note", self.page("Quillon"))
+
+        def county_noted(p):
+            p["county_sources"] = {"Alpha": {"roofing": [{"label": "x", "url": "https://example.gov/x", "note": "n"}]}}
+        with self.assertRaisesRegex(glp.StateConfigError, 'exactly "label" and "url"'):
+            self.load_with(county_noted)
+
+    def test_page_h1_text_for_a_city_and_a_county(self):
+        self.assertEqual(glp.page_h1_text("Carmel", "roofing", "Indiana", "city"),
+                         "Comparing Roofing Bids in Carmel, Indiana")
+        self.assertEqual(glp.page_h1_text("Hamilton", "roofing", "Indiana"),
+                         "Comparing Roofing Bids in Hamilton County, Indiana")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

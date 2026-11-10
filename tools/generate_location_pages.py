@@ -69,6 +69,13 @@ content per page", kept by D-345; STRICT reading per the CEO ruling on #2304):
   - Each run prints min/median strict-unique words, plus an informational
     cross-page share-of-unshared-shingles metric.
 
+CITY PAGES (gh-3600): a state profile may also list cities (top-level "cities": {City: {"county":
+parent county}}, "city_content", "city_sources"; see the profile _readme). A city page is built from the
+same template as a county page, at /locations/<city>-city-<st>/<trade>/ (slug = city_slug), takes its
+climate region from the parent county, and runs through the same strict-unique gate in the same run as
+the state's county pages and the other cities. Only (city, trade) pairs that have city_content are built.
+A profile with no "cities" key behaves exactly as before.
+
 HARD REFUSAL (D-344): FL, LA and TX are blocked states (BLOCKED_STATES). The
 generator refuses them, even if listed in the allow-list or passed via
 --allowlist, with an error before anything is written.
@@ -421,15 +428,21 @@ def render_county_text(text: str) -> str:
 _SOURCE_URL = re.compile(r"^https://[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}(?::\d+)?(?:[/?#][A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]*)?$")
 
 
-def _clean_source_list(items, where, bad) -> list:
-    """Validate a list of {"label", "url"} objects (county_sources and region sources)."""
+def _clean_source_list(items, where, bad, allow_note=False) -> list:
+    """Validate a list of {"label", "url"} objects (county_sources and region sources). With allow_note
+    (city_sources, gh-3600) an item may also carry a plain-text "note": an editor's audit note that is
+    checked and then dropped, never rendered."""
     if not (isinstance(items, list) and items):
         raise bad(f"{where} must be a non-empty list of {{label, url}} objects")
     seen, clean = set(), []
     for i, item in enumerate(items):
-        if not (isinstance(item, dict) and set(item) == {"label", "url"}
+        keys = {"label", "url", "note"} if allow_note and isinstance(item, dict) and "note" in item else {"label", "url"}
+        if not (isinstance(item, dict) and set(item) == keys
                 and all(isinstance(item[k], str) for k in item)):
-            raise bad(f'{where}[{i}] must be an object with exactly "label" and "url" strings')
+            raise bad(f'{where}[{i}] must be an object with exactly "label" and "url" strings'
+                      + (' (and, for a city, an optional "note" string)' if allow_note else ""))
+        if "note" in item:
+            _require_plain_text(item["note"], bad, f"{where}[{i}] note")
         label, url = item["label"].strip(), item["url"]
         if not label:
             raise bad(f"{where}[{i}] has an empty label")
@@ -446,7 +459,8 @@ def _clean_source_list(items, where, bad) -> list:
 def load_profile(state: str, profiles_dir=None) -> dict:
     """Load and validate data/location-state-profiles/<state>.json.
 
-    Returns {"name", "county_region", "region_label", "region_climate", "region_sources", "county_content", "county_sources"}.
+    Returns {"name", "county_region", "region_label", "region_climate", "region_sources", "county_content", "county_sources",
+    "city_county", "city_content", "city_sources"} (the three city keys are empty dicts for a profile with no cities).
     A missing or malformed profile raises StateConfigError (never a silent
     skip, never a traceback from deep inside page building).
     """
@@ -549,10 +563,77 @@ def load_profile(state: str, profiles_dir=None) -> dict:
                 raise bad(f'county_sources["{county}"]: unknown trade "{trade}" (use {list(ELIGIBLE_TRADES)})')
             clean = _clean_source_list(items, where, bad)
             county_sources[county][trade] = clean
+    city_county, city_content, city_sources = _load_cities(data, county_region, bad)
     return {"name": name, "county_region": county_region,
             "region_label": region_label, "region_climate": region_climate,
             "region_sources": region_sources,
-            "county_content": county_content, "county_sources": county_sources}
+            "county_content": county_content, "county_sources": county_sources,
+            "city_county": city_county, "city_content": city_content, "city_sources": city_sources}
+
+
+def _load_cities(data: dict, county_region: dict, bad) -> tuple:
+    """Validate the optional city keys of a state profile (gh-3600).
+
+    "cities":       {City: {"county": parent county}}; the parent must be a county listed in a region (the
+                    city takes its climate region and region sources from it).
+    "city_content": {City: text | {trade: text}}, the same plain-text rules as county_content.
+    "city_sources": {City: {trade: [{"label", "url"}, ...]}}, the same rules as county_sources.
+    Returns (city_county, city_content, city_sources); all three are empty when the profile has no "cities"."""
+    raw_cities = data.get("cities", {})
+    if not isinstance(raw_cities, dict):
+        raise bad('"cities" must be an object mapping city -> {"county": parent county}')
+    city_county = {}
+    for city, entry in raw_cities.items():
+        if not (isinstance(city, str) and city.strip() and city == city.strip()):
+            raise bad(f'cities: invalid city name {city!r}')
+        _require_no_markup(city, bad, f'cities["{city}"] name')
+        if not (isinstance(entry, dict) and set(entry) == {"county"} and isinstance(entry["county"], str)):
+            raise bad(f'cities["{city}"] must be an object with exactly a "county" string')
+        if entry["county"] not in county_region:
+            raise bad(f'cities["{city}"]: "{entry["county"]}" is not a county listed in any region')
+        if city in county_region:
+            raise bad(f'cities["{city}"] has the same name as a county; give the city a distinct key')
+        city_county[city] = entry["county"]
+
+    city_content = {}
+    raw_cc = data.get("city_content", {})
+    if not isinstance(raw_cc, dict):
+        raise bad('"city_content" must be an object mapping city -> text, or city -> {trade: text}')
+    for city, value in raw_cc.items():
+        if city not in city_county:
+            raise bad(f'city_content: "{city}" is not a city listed in "cities"')
+        if isinstance(value, str):
+            if not value.strip():
+                raise bad(f'city_content["{city}"] is empty')
+            _require_plain_text(value, bad, f'city_content["{city}"]')
+            city_content[city] = {t: value for t in ELIGIBLE_TRADES}
+        elif isinstance(value, dict):
+            for trade, text in value.items():
+                if trade not in ELIGIBLE_TRADES:
+                    raise bad(f'city_content["{city}"]: unknown trade "{trade}" (use {list(ELIGIBLE_TRADES)})')
+                if not (isinstance(text, str) and text.strip()):
+                    raise bad(f'city_content["{city}"]["{trade}"] must be a non-empty string')
+                _require_plain_text(text, bad, f'city_content["{city}"]["{trade}"]')
+            city_content[city] = dict(value)
+        else:
+            raise bad(f'city_content["{city}"] must be a string or an object keyed by trade')
+
+    city_sources = {}
+    raw_cs = data.get("city_sources", {})
+    if not isinstance(raw_cs, dict):
+        raise bad('"city_sources" must be an object mapping city -> {trade: [{"label", "url"}, ...]}')
+    for city, by_trade in raw_cs.items():
+        if city not in city_county:
+            raise bad(f'city_sources: "{city}" is not a city listed in "cities"')
+        if not isinstance(by_trade, dict):
+            raise bad(f'city_sources["{city}"] must be an object keyed by trade')
+        city_sources[city] = {}
+        for trade, items in by_trade.items():
+            where = f'city_sources["{city}"]["{trade}"]'
+            if trade not in ELIGIBLE_TRADES:
+                raise bad(f'city_sources["{city}"]: unknown trade "{trade}" (use {list(ELIGIBLE_TRADES)})')
+            city_sources[city][trade] = _clean_source_list(items, where, bad, allow_note=True)
+    return city_county, city_content, city_sources
 
 
 def validate_states(states: list, counties_path=None, profiles_dir=None) -> dict:
@@ -581,6 +662,19 @@ def discover_tuples(states: list, counties_path=None) -> list:
     return out
 
 
+def discover_city_tuples(states: list, profiles: dict) -> list:
+    """(state, city, trade) for every city of every allow-listed state, for the trades the profile gives
+    city_content for. A city with no content for a trade has nothing to score, so no tuple is made."""
+    out = []
+    for st in states:
+        content = profiles[st].get("city_content") or {}
+        for city in profiles[st].get("city_county") or {}:
+            for trade in ELIGIBLE_TRADES:
+                if trade in content.get(city, {}):
+                    out.append((st, city, trade))
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -595,6 +689,11 @@ def slugify(text: str) -> str:
 
 def county_slug(county: str, state: str) -> str:
     return slugify(f"{county} County {state}")
+
+
+def city_slug(city: str, state: str) -> str:
+    """gh-3600: <city>-city-<st>, e.g. carmel-city-in."""
+    return slugify(f"{city} City {state}")
 
 
 def safe_jsonld(obj) -> str:
@@ -1492,30 +1591,48 @@ TRADE_EXTRA_LINKS = {
 
 
 
-def page_sources(profile: dict, county: str, trade: str) -> list:
-    """The Sources rows a county page lists: its own county_sources, then the sources of
-    its region (the documents the region's climate paragraphs cite), no duplicate urls."""
-    sources = list((profile.get("county_sources") or {}).get(county, {}).get(trade, []))
+def page_sources(profile: dict, county: str, trade: str, kind: str = "county") -> list:
+    """The Sources rows a page lists: its own county_sources (city_sources for a city), then the sources of
+    its region (the documents the region's climate paragraphs cite), no duplicate urls. A city takes the
+    region of its parent county."""
+    if kind == "city":
+        sources = list((profile.get("city_sources") or {}).get(county, {}).get(trade, []))
+        parent = (profile.get("city_county") or {}).get(county)
+    else:
+        sources = list((profile.get("county_sources") or {}).get(county, {}).get(trade, []))
+        parent = county
     have = {src["url"] for src in sources}
-    region = (profile.get("county_region") or {}).get(county)
+    region = (profile.get("county_region") or {}).get(parent)
     sources += [src for src in (profile.get("region_sources") or {}).get(region, []) if src["url"] not in have]
     return sources
 
 
-def build_page(county: str, trade: str, generated_on: str, state: str = "IN", profile: dict = None) -> str:
+def build_page(county: str, trade: str, generated_on: str, state: str = "IN", profile: dict = None,
+               kind: str = "county") -> str:
+    """One page. kind="county" (the default) is the county page; kind="city" (gh-3600) builds a city page
+    from the same template, where `county` is the CITY name: the template prose and the climate copy use
+    the parent county (profile["city_county"]) and its region, while the title, H1, breadcrumb, notes
+    heading, call to action and structured data name the city."""
     profile = profile or load_profile(state)
     state_name = profile["name"]
+    is_city = kind == "city"
+    if kind not in ("county", "city"):
+        raise ValueError(f"unknown page kind {kind!r}")
+    place = county                                   # the name the page is about (the city for a city page)
+    if is_city:
+        county = profile["city_county"][place]       # template prose and climate use the parent county
     region = profile["county_region"][county]
     region_lbl = profile["region_label"][region]
     # Labels that already begin with "the" (e.g. "the northeast hills of Ohio") read
     # correctly mid-sentence; the heading template supplies its own "The".
     region_head = region_lbl[4:] if region_lbl[:4].lower() == "the " else region_lbl
-    seed = page_seed(county, trade)
-    c_slug = county_slug(county, state)
+    seed = page_seed(f"{place} City" if is_city else county, trade)
+    c_slug = city_slug(place, state) if is_city else county_slug(county, state)
     t_label = TRADE_LABELS[trade]
     noun = TRADE_NOUN[trade]
     noun_title = noun.capitalize()
     county_esc = html.escape(county, quote=True)
+    place_esc = html.escape(place, quote=True)       # == county_esc for a county page
     page_url = f"{SITE_BASE}/locations/{c_slug}/{trade}/"
 
     intro = variant(seed, 1, TRADE_INTRO[trade]).format(county=county_esc, region=region_lbl)
@@ -1528,11 +1645,16 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     seasonal = variant(seed, 6, SEASONAL).format(county=county_esc, region=region_lbl)
     article = "an" if county[:1].lower() in "aeiou" else "a"
     how_it_works = variant(seed, 5, HOW_IT_WORKS).format(county=county_esc, article=article)
-    county_text = (profile.get("county_content") or {}).get(county, {}).get(trade, "")
-    county_notes = (f"<h2>{county_esc} County notes</h2>\n    {render_county_text(county_text)}"
+    if is_city:
+        county_text = (profile.get("city_content") or {}).get(place, {}).get(trade, "")
+        notes_heading = f"{place_esc} city notes"
+    else:
+        county_text = (profile.get("county_content") or {}).get(county, {}).get(trade, "")
+        notes_heading = f"{county_esc} County notes"
+    county_notes = (f"<h2>{notes_heading}</h2>\n    {render_county_text(county_text)}"
                     if county_text.strip() else "")
 
-    sources = page_sources(profile, county, trade)
+    sources = page_sources(profile, place, trade, kind)
     sources_block = ""
     if sources:
         items = "\n".join(
@@ -1553,11 +1675,13 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
         for href, label in CORNERSTONE_GUIDES + TRADE_EXTRA_LINKS.get(trade, [])
     )
 
-    title = f"Comparing {noun_title} Bids in {county} County, {state} · Otter Quotes"
+    where_short = f"{place}, {state}" if is_city else f"{county} County, {state}"
+    where_long = f"{place}, {state_name}" if is_city else f"{county} County, {state_name}"
+    title = f"Comparing {noun_title} Bids in {where_short} · Otter Quotes"
     if len(title) > 60:  # SEO audit: keep titles to 60 characters
-        title = f"Comparing {noun_title} Bids in {county} County, {state}"
+        title = f"Comparing {noun_title} Bids in {where_short}"
     meta_desc = (
-        f"{t_label} in {county} County, {state_name}. "
+        f"{t_label} in {where_long}. "
         f"We create a scope of work and send it to local contractors. "
         f"Homeowners can compare any written bids they receive."
     )
@@ -1577,12 +1701,12 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
         "@context": "https://schema.org",
         "@type": "Service",
         "serviceType": f"{noun_title} bid comparison",
-        "name": f"Comparing {noun_title} Bids in {county} County, {state_name}",
+        "name": f"Comparing {noun_title} Bids in {where_long}",
         "url": page_url,
         "provider": {"@id": f"{SITE_BASE}/#organization"},
         "areaServed": {
-            "@type": "AdministrativeArea",
-            "name": f"{county} County, {state_name}",
+            "@type": "City" if is_city else "AdministrativeArea",
+            "name": where_long,
         },
     }
     breadcrumb = {
@@ -1590,7 +1714,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
         "@type": "BreadcrumbList",
         "itemListElement": [
             {"@type": "ListItem", "position": 1, "name": "Home", "item": f"{SITE_BASE}/"},
-            {"@type": "ListItem", "position": 2, "name": f"{county} County, {state} {t_label.lower()}", "item": page_url},
+            {"@type": "ListItem", "position": 2, "name": f"{where_short} {t_label.lower()}", "item": page_url},
         ],
     }
 
@@ -1670,10 +1794,10 @@ footer a:hover {{ color: var(--link-on-light-deep, #7A4200) !important; }}
 <main>
   <div class="loc-hero">
     <div class="breadcrumb" data-boilerplate>
-      <a href="/">Home</a> &rsaquo; {county_esc} County, {state} {t_label.lower()}
+      <a href="/">Home</a> &rsaquo; {place_esc}{"" if is_city else " County"}, {state} {t_label.lower()}
     </div>
     <div style="padding: var(--sp-8) var(--sp-6) 0;">
-      <h1>{html.escape(page_h1_text(county, trade, state_name), quote=True)}</h1>
+      <h1>{html.escape(page_h1_text(place, trade, state_name, kind), quote=True)}</h1>
       <p style="color:#3D4F60; max-width:640px; margin:0 auto;">We create a scope of work and send it to local contractors.</p>
       <p style="color:#3D4F60; max-width:640px; margin:0 auto;">You compare any written bids you receive for your {noun} project, and the decision stays yours.</p>
     </div>
@@ -1711,7 +1835,7 @@ footer a:hover {{ color: var(--link-on-light-deep, #7A4200) !important; }}
     </div>
 
     <div class="cta-bar" data-boilerplate>
-      <p>Ready to start your {county_esc} County project?</p>
+      <p>Ready to start your {place_esc}{"" if is_city else " County"} project?</p>
       <a href="/start.html" class="btn btn-primary btn-lg">Start Your Project with Otter Quotes</a>
     </div>
 
@@ -1761,16 +1885,19 @@ def _entry_sort_key(entry: dict) -> tuple:
     return (entry["county"].casefold(), entry["county"], entry["trade"])
 
 
-def page_h1_text(county: str, trade: str, state_name: str) -> str:
-    """The county page's H1 text, unescaped. build_page renders its <h1> from this and every internal
-    anchor to a county page uses it, so an anchor always equals its target's H1 (state included)."""
+def page_h1_text(county: str, trade: str, state_name: str, kind: str = "county") -> str:
+    """The page's H1 text, unescaped (for kind="city", `county` is the city name). build_page renders its <h1>
+    from this and every internal anchor to a page uses it, so an anchor always equals its target's H1
+    (state included)."""
+    if kind == "city":
+        return f"Comparing {TRADE_NOUN[trade].capitalize()} Bids in {county}, {state_name}"
     return f"Comparing {TRADE_NOUN[trade].capitalize()} Bids in {county} County, {state_name}"
 
 
 def page_anchor_text(entry: dict, state_names: dict) -> str:
     """Anchor text for a link to a county page: the target page's H1, naming the TARGET's own state, so
     no anchor can read as another state's county (D-169 / D-345 geographic accuracy). Not HTML-escaped."""
-    return page_h1_text(entry["county"], entry["trade"], state_names[entry["state"]])
+    return page_h1_text(entry["county"], entry["trade"], state_names[entry["state"]], entry.get("kind", "county"))
 
 
 def page_href(entry: dict) -> str:
@@ -1778,12 +1905,23 @@ def page_href(entry: dict) -> str:
 
 
 def sibling_entries(entry: dict, entries: list) -> list:
-    """Up to SIBLING_LINKS other pages of the same state and trade: the next ones
-    in alphabetical order, wrapping around the end of the list."""
-    group = sorted((e for e in entries if e["state"] == entry["state"] and e["trade"] == entry["trade"]),
+    """Up to SIBLING_LINKS other pages of the same state, trade and kind: the next ones
+    in alphabetical order, wrapping around the end of the list. A city page (entry["kind"] == "city",
+    where entry["county"] is the city name and entry["parent"] its parent county) lists its parent
+    county's page first, when that page is in the run, then the other cities; a county page links
+    counties only, so adding cities never changes a county page."""
+    kind = entry.get("kind", "county")
+    group = sorted((e for e in entries if e["state"] == entry["state"] and e["trade"] == entry["trade"]
+                    and e.get("kind", "county") == kind),
                    key=_entry_sort_key)
     i = next(n for n, e in enumerate(group) if e["slug"] == entry["slug"])
-    return [group[(i + k) % len(group)] for k in range(1, min(SIBLING_LINKS, len(group) - 1) + 1)]
+    sibs = [group[(i + k) % len(group)] for k in range(1, min(SIBLING_LINKS, len(group) - 1) + 1)]
+    if kind == "city":
+        parent = next((e for e in entries if e["state"] == entry["state"] and e["trade"] == entry["trade"]
+                       and e.get("kind", "county") == "county" and e["county"] == entry.get("parent")), None)
+        if parent is not None:
+            sibs = [parent] + sibs[:SIBLING_LINKS - 1]
+    return sibs
 
 
 FILL_HEADING = "More county roofing pages"
@@ -1794,11 +1932,11 @@ def fill_entries(entry: dict, entries: list, state_names: dict, linked: list) ->
     remaining slots (up to SIBLING_LINKS links in all) go to same-trade pages of OTHER states, ordered
     alphabetically by state name then county, never the page itself or one already linked."""
     need = SIBLING_LINKS - len(linked)
-    if need <= 0:
+    if need <= 0 or entry.get("kind", "county") == "city":   # a city page is never padded with other states' pages
         return []
     taken = {e["slug"] for e in linked} | {entry["slug"]}
     pool = sorted((e for e in entries if e["state"] != entry["state"] and e["trade"] == entry["trade"]
-                   and e["slug"] not in taken),
+                   and e.get("kind", "county") == "county" and e["slug"] not in taken),
                   key=lambda e: (state_names.get(e["state"], e["state"]).casefold(), e["state"]) + _entry_sort_key(e))
     return pool[:need]
 
@@ -2107,7 +2245,7 @@ def template_baseline_words(states, profiles: dict, generated_on: str, masks: di
 def require_sources_list(page_html: str, page_id: str) -> None:
     """A page with county notes cites sources in its prose, so it must list them
     (gh-2423): a "Sources" section with at least one external https link."""
-    if " County notes</h2>" not in page_html:
+    if " County notes</h2>" not in page_html and " city notes</h2>" not in page_html:
         return
     m = re.search(r"<h2>Sources</h2>\s*<ul>(.*?)</ul>", page_html, re.S)
     if not (m and re.search(r'<a href="https://[^"]+"', m.group(1))):
@@ -2118,7 +2256,7 @@ def require_sources_list(page_html: str, page_id: str) -> None:
 
 def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
              dry_run=False, build_fn=None, generated_on=None, profiles_dir=None,
-             require_sources=False) -> dict:
+             require_sources=False, city_build_fn=None) -> dict:
     """Generate pages for the given allow-listed states.
 
     Every page of the run is built first; the strict unique-content gate
@@ -2126,7 +2264,8 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
     text. Pages under MIN_WORDS are skipped; the rest are linted and written.
 
     build_fn(county, trade, generated_on, state) -> html lets tests inject
-    thin or non-compliant content. require_sources=True (the CLI sets it) refuses
+    thin or non-compliant content (city_build_fn does the same for city pages, gh-3600; its default builds
+    the real city page). require_sources=True (the CLI sets it) refuses
     any passing page that carries county notes but no Sources list. Returns a
     summary dict.
     """
@@ -2152,8 +2291,17 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
     tuples = discover_tuples(states, counties_path)
     summary["tuples"] = len(tuples)
     print(f"Allow-listed states: {', '.join(states)}; (county, trade) tuples: {len(tuples)}")
+    city_tuples = discover_city_tuples(states, profiles)     # gh-3600
+    summary["city_tuples"] = len(city_tuples)
+    if city_tuples:
+        print(f"City (city, trade) tuples: {len(city_tuples)}")
+        if city_build_fn is None:
+            def city_build_fn(city, trade, generated_on, state):
+                return build_page(city, trade, generated_on, state, profile=profiles[state], kind="city")
 
-    masks = {st: StateMask(st, profiles[st]["name"], load_counties(st, counties_path),
+    # City names are masked like county names (mail-merge text), for the whole state's run.
+    masks = {st: StateMask(st, profiles[st]["name"],
+                           load_counties(st, counties_path) + list(profiles[st].get("city_county") or {}),
                            list(profiles[st]["region_label"].values()) + list(profiles[st]["region_label"]))
              for st in states}
     built, page_states, built_meta = [], [], []
@@ -2161,6 +2309,12 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
         built.append((county_slug(county, state), trade, build_fn(county, trade, generated_on, state)))
         page_states.append(state)
         built_meta.append({"state": state, "county": county, "trade": trade, "slug": county_slug(county, state)})
+    for state, city, trade in city_tuples:
+        # entry["county"] holds the page's place name (the city) so sorting and anchors work unchanged.
+        built.append((city_slug(city, state), trade, city_build_fn(city, trade, generated_on, state)))
+        page_states.append(state)
+        built_meta.append({"state": state, "county": city, "trade": trade, "slug": city_slug(city, state),
+                           "kind": "city", "parent": profiles[state]["city_county"][city]})
     word_lists = [main_words(page_html, masks[st]) for (_, _, page_html), st in zip(built, page_states)]
     baseline_lists = template_baseline_words(states, profiles, generated_on, masks)
     strict = strict_unique_counts(word_lists, baseline_lists, page_states)
