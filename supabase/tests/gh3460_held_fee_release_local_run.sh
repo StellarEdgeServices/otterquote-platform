@@ -26,7 +26,7 @@ as "$PGBIN/pg_ctl" -D "$D/data" -o "-p $PORT -k $D -c listen_addresses=''" -l "$
 trap 'as "$PGBIN/pg_ctl" -D "$D/data" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$D"' EXIT
 P="$PGBIN/psql -X -q -v ON_ERROR_STOP=1 -h $D -p $PORT -U $AS -d postgres"
 PNS="$PGBIN/psql -X -q -1 -v ON_ERROR_STOP=1 -h $D -p $PORT -U $AS -d postgres"
-F29="$SQL/migrations_drafts/gh3229_partner_measurement_fee.sql"
+F29="$SQL/migrations_applied_manually/20261105194055_gh3229_partner_measurement_fee.sql"
 FWD="$SQL/migrations_drafts/gh3460_held_fee_release.sql"
 RB="$SQL/migrations_drafts/gh3460_held_fee_release_rollback.sql"
 PROOF="$SQL/tests/gh3460_held_fee_release_proof.sql"
