@@ -33,6 +33,8 @@ let faq = null;
 for (const b of blocks) {
   try { const j = JSON.parse(b[1]); if (j['@type'] === 'FAQPage') faq = j; } catch (e) { /* invalid JSON-LD block */ }
 }
+check('fits paragraph says measurements that contractors use to bid (D-388)', page.includes('for measurements that contractors use to bid'));
+check('"every contractor" is absent from the page and its JSON-LD (D-388)', !/every contractor/i.test(page));
 check('FAQPage JSON-LD present and parses', faq !== null);
 const qa = faq ? faq.mainEntity || [] : [];
 check('FAQPage has exactly 5 Questions with answers',
