@@ -14,7 +14,7 @@ as "$PGBIN/initdb" -D "$D/data" -A trust >/dev/null
 as "$PGBIN/pg_ctl" -D "$D/data" -o "-p $PORT -k $D -c listen_addresses=''" -l "$D/log" -w start >/dev/null
 trap 'as "$PGBIN/pg_ctl" -D "$D/data" -m immediate stop >/dev/null 2>&1 || true' EXIT
 P="$PGBIN/psql -X -q -At -v ON_ERROR_STOP=1 -h $D -p $PORT -U $AS -d postgres"
-DRAFT="$REPO/supabase/migrations_drafts/gh3229_partner_measurement_fee.sql"
+DRAFT="$REPO/supabase/migrations_applied_manually/20261105194055_gh3229_partner_measurement_fee.sql"
 FWD="$REPO/supabase/migrations_drafts/gh3470_create_monthly_fee_batch_guard_fail_closed.sql"
 RB="$REPO/supabase/migrations_drafts/gh3470_create_monthly_fee_batch_guard_fail_closed_rollback.sql"
 python3 - "$DRAFT" "$D/today.sql" <<'PY'
