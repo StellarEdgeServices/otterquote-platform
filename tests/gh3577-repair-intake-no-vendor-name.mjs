@@ -30,6 +30,8 @@ for (const [name, src] of Object.entries(files)) {
   const hits = src.split('\n').map((l, i) => [i + 1, l]).filter(([, l]) => /\bITEL\b/i.test(l));
   check(hits.length === 0, `${name}: no vendor name (ITEL)` + hits.map(([n, l]) => `\n     L${n}: ${l.trim().slice(0, 120)}`).join(''));
 }
+check(/<p style="font-size: 0.9rem; margin-top: 0.5rem;">\s*Attn: Sample Receiving<br>\s*7 Westport Court<br>/.test(html),
+  'mail-in recipient line is exactly "Attn: Sample Receiving", followed by the unchanged street address');
 check(html.includes('<strong>\u{1F4B0} Starting at $75</strong> \u2014 refunded if you use an Otter Quotes contractor'),
   'offer wording "Starting at $75 \u2014 refunded if you use an Otter Quotes contractor" unchanged');
 check(html.includes('<span class="tier-price">$75-100</span>'), 'tier price $75-100 unchanged');
