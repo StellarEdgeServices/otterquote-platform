@@ -279,3 +279,19 @@ describe('RCV page: GA4 project_info_saved (port of project-info-rcv.html:255)',
     expect(gtag).not.toHaveBeenCalled();
   });
 });
+
+describe('property address shown once (gh-3587)', () => {
+  const field = async () => (await screen.findByLabelText('Property address')) as HTMLInputElement;
+
+  it('street field already holds the full address: shown once', async () => {
+    wire({ property_address: '1 Test Lane, Zionsville, IN 46077', property_city: 'Zionsville', property_state: 'IN', property_zip: '46077' });
+    render(<Page />);
+    expect((await field()).value).toBe('1 Test Lane, Zionsville, IN 46077');
+  });
+
+  it('street field holds only the street line: city, state, zip appended once', async () => {
+    wire({ property_address: '1 Test Lane', property_city: 'Zionsville', property_state: 'IN', property_zip: '46077' });
+    render(<Page />);
+    expect((await field()).value).toBe('1 Test Lane, Zionsville, IN 46077');
+  });
+});

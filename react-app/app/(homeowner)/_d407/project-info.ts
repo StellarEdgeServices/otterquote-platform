@@ -23,6 +23,38 @@ export const URGENCY_OPTIONS: { value: Urgency; label: string }[] = [
   { value: 'asap', label: 'ASAP \u2014 urgent' },
 ];
 
+/**
+ * Single-line property address for the read-only field (gh-3587). Some claims
+ * store the FULL address in property_address ("1 Test Lane, Zionsville, IN 46077");
+ * others store only the street line. Append city/state/zip only for the parts the
+ * street value does not already contain, so the address is shown once.
+ */
+export function formatPropertyAddress(c: {
+  property_address?: string | null;
+  property_city?: string | null;
+  property_state?: string | null;
+  property_zip?: string | null;
+}): string {
+  const street = (c.property_address ?? '').trim();
+  if (!street) return '';
+  const lower = street.toLowerCase();
+  const city = (c.property_city ?? '').trim();
+  const state = (c.property_state ?? '').trim();
+  const zip = (c.property_zip ?? '').trim();
+  const tokens = lower.split(/[^a-z0-9]+/);
+  const parts = [street];
+  const cityInStreet = !!city && lower.includes(city.toLowerCase());
+  if (city && !cityInStreet) parts.push(city);
+  const stateZip = [
+    state && !(cityInStreet && tokens.includes(state.toLowerCase())) ? state : '',
+    zip && !lower.includes(zip.toLowerCase()) ? zip : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  if (stateZip) parts.push(stateZip);
+  return parts.join(', ');
+}
+
 export interface ContactInfo {
   fullName: string;
   phone: string;
