@@ -2686,20 +2686,7 @@
 
     function wizardNext() {
       if (wizardStep === 1) {
-        if (wizardSelectedTrades.length === 0) {
-          alert('Please select at least one trade to bid on.');
-          return;
-        }
-        wizardTradeQueue = [...wizardSelectedTrades];
-        // gh-3569 (REVIEW 6743095024): roofing unchecked on a claim that includes roofing. A roofing
-        // price typed earlier must not stay behind as the fee base or the stored total.
-        if (!wizardTradeQueue.includes('roofing') && (currentClaim?.trades || []).includes('roofing')) {
-          const _rb = document.getElementById('retailBidPrice');
-          if (_rb) _rb.value = '';
-          document.getElementById('totalPrice').value = '';
-          delete wizardTradePrices.roofing;
-          updateFeeCalculator();
-        }
+        if (!_commitWizardTradeSelection()) return;
         saveWizardState();
         wizardGoTo(2, 0, true);
       } else if (wizardStep === 2) {
@@ -2710,6 +2697,26 @@
           wizardGoTo(3, 0, true);
         }
       }
+    }
+
+    // gh-3576: the step-1 -> step-2 commit, shared by the Next button and browser Forward.
+    // Builds the trade queue from the step-1 checkboxes. Returns false when no trade is selected.
+    function _commitWizardTradeSelection() {
+      if (wizardSelectedTrades.length === 0) {
+        alert('Please select at least one trade to bid on.');
+        return false;
+      }
+      wizardTradeQueue = [...wizardSelectedTrades];
+      // gh-3569 (REVIEW 6743095024): roofing unchecked on a claim that includes roofing. A roofing
+      // price typed earlier must not stay behind as the fee base or the stored total.
+      if (!wizardTradeQueue.includes('roofing') && (currentClaim?.trades || []).includes('roofing')) {
+        const _rb = document.getElementById('retailBidPrice');
+        if (_rb) _rb.value = '';
+        document.getElementById('totalPrice').value = '';
+        delete wizardTradePrices.roofing;
+        updateFeeCalculator();
+      }
+      return true;
     }
 
     function wizardBack() {
@@ -2748,7 +2755,25 @@
       if (!wizardMode) return;
       const s = e.state;
       if (s && typeof s.wizardStep === 'number') {
-        wizardGoTo(s.wizardStep, s.wizardTradeIdx || 0, false);
+        // gh-3576: save the price of the trade being left, as wizardNext() does. Without this the
+        // step-3 summary and per_trade_breakdown kept the price from before a Back/Forward edit.
+        captureCurrentTradePrice();
+        // gh-3576: leaving step 1 through history applies the step-1 checkboxes, as Next does.
+        if (wizardStep === 1 && s.wizardStep > 1) {
+          const _before = wizardTradeQueue.join(',');
+          if (!_commitWizardTradeSelection()) {
+            history.replaceState({ wizardStep: 1, wizardTradeIdx: 0 }, '', location.href);
+            return;
+          }
+          if (wizardTradeQueue.join(',') !== _before) {
+            // The later history entries index the old queue: start the new queue fresh.
+            saveWizardState();
+            wizardGoTo(2, 0, true);
+            return;
+          }
+        }
+        const _idx = Math.max(0, Math.min(s.wizardTradeIdx || 0, wizardTradeQueue.length - 1));
+        wizardGoTo(s.wizardStep, _idx, false);
       }
     });
 
@@ -5970,11 +5995,22 @@
             initWizard(claimTrades);  // sets wizardMode if eligible
 
             if (wizardMode) {
-              if (saved && saved.wizardTradeQueue && saved.wizardTradeQueue.length > 0) {
-                wizardTradeQueue    = saved.wizardTradeQueue;
-                wizardSelectedTrades = saved.wizardSelectedTrades || [...wizardTradeQueue];
+              // gh-3576: keep only saved trades that are still in the claim's wizard queue
+              // (initWizard just built it from the claim's current trades).
+              const _eligible = [...wizardTradeQueue];
+              const _savedQueue = (saved && Array.isArray(saved.wizardTradeQueue))
+                ? saved.wizardTradeQueue.filter(t => _eligible.includes(t)) : [];
+              if (_savedQueue.length > 0) {
+                wizardTradeQueue    = _savedQueue;
+                wizardSelectedTrades = (Array.isArray(saved.wizardSelectedTrades) ? saved.wizardSelectedTrades : _savedQueue)
+                  .filter(t => _eligible.includes(t));
+                if (wizardSelectedTrades.length === 0) wizardSelectedTrades = [..._savedQueue];
+                document.querySelectorAll('#wizardTradeCheckboxes input').forEach(cb => {
+                  cb.checked = wizardSelectedTrades.includes(cb.value);
+                });
                 const restoreStep  = changeBidMode ? 2 : (saved.wizardStep || 1);
-                const restoreIdx   = changeBidMode ? 0 : (saved.wizardCurrentTradeIdx || 0);
+                const _savedTrade  = saved.wizardTradeQueue[saved.wizardCurrentTradeIdx || 0];
+                const restoreIdx   = changeBidMode ? 0 : Math.max(0, wizardTradeQueue.indexOf(_savedTrade));
                 wizardGoTo(restoreStep, restoreIdx, false);
               } else if (changeBidMode) {
                 // Change-bid with no saved state: jump to step 2 per D-162 spec
