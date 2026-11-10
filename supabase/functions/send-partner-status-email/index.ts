@@ -111,6 +111,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import {
   formatReferralDisplayName,
   isStageBlockedForAgentType,
+  isStageBlockedForState,
   renderStageEmail,
   type Stage,
 } from "./templates.ts";
@@ -149,6 +150,7 @@ interface ClaimRow {
   selected_contractor_id: string | null;
   contract_signed_at: string | null;
   completion_date: string | null;
+  property_state: string | null; // gh-3321
 }
 
 interface ReferralRow {
@@ -348,7 +350,7 @@ serve(async (req: Request) => {
     // ── Load the linked claim (drives stage eligibility) ────────────────────
     const { data: claim, error: claimErr } = await supabase
       .from("claims")
-      .select("id, selected_contractor_id, contract_signed_at, completion_date")
+      .select("id, selected_contractor_id, contract_signed_at, completion_date, property_state")
       .eq("referral_id", referralId)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -422,6 +424,15 @@ serve(async (req: Request) => {
       // both. Stages 1-4 carry no payment language and are unaffected. ────
       if (isStageBlockedForAgentType(agent.agent_type, stage)) {
         skipped.push({ stage, reason: "home_inspector — no referral fee/recruit bonus (D-333); stage 5 payment email suppressed" });
+        continue;
+      }
+
+      // ── gh-3321 gate (D-401 item 7, A4.4): no partner fee in OK, AR, KS, NE,
+      // MS, so stage 5's "payment is on its way" copy would be a false promise.
+      // A blank or NULL state is not blocked (it accrues, #3321 6664032518).
+      // Skipped before the stage stamp, so nothing is burned. ───────────────
+      if (isStageBlockedForState(claim.property_state, stage)) {
+        skipped.push({ stage, reason: "no-partner-fee state (A4.4, gh-3321); stage 5 payment email suppressed" });
         continue;
       }
 

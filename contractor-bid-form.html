@@ -2511,6 +2511,17 @@
       if (queued.length < 2) return;
 
       wizardMode = true;
+      // gh-3495 (REVIEW 6744431358 F1): remember which trade's price inputs the contractor edited, so a price
+      // loaded from per_trade_breakdown is never replaced by an untouched empty input. Registered first, so the
+      // flag is set before the fee refresh below reads the amount.
+      Object.keys(_WIZARD_TRADE_INPUTS).forEach(t => _WIZARD_TRADE_INPUTS[t].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', () => { _wizardTouched[t] = true; });
+      }));
+      // gh-3495 F1: any wizard trade price change refreshes the fee box and disclosure (gutter
+      // inputs have no listener in a wizard: gutterTradeActive is only true for gutter-only claims).
+      ['retailBidPrice', 'gutter5InchPrice', 'gutter6InchPrice'].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', () => updateFeeCalculator());
+      });
       wizardSelectedTrades = [...queued];
       wizardTradeQueue = [...queued];
 
@@ -2583,6 +2594,10 @@
         submitSection.style.display = '';
         buildWizardSummary(); // render pre-submit trade summary (86e10t285)
       }
+
+      // gh-3495 F1: the fee box and the fee disclosure follow the sum of the trades on every step,
+      // so step 3 (and the accepted fee text) never shows a stale single-trade fee.
+      if (wizardMode) { try { updateFeeCalculator(); } catch (e) { /* non-fatal */ } }
 
       _updateWizardProgressBar(step);
       saveWizardState();
@@ -2704,6 +2719,7 @@
     }
 
     function wizardBack() {
+      captureCurrentTradePrice(); // gh-3495: keep the price typed on the trade being left
       if (wizardStep === 2 && wizardCurrentTradeIdx === 0) {
         wizardGoTo(1, 0, true);
       } else if (wizardStep === 2 && wizardCurrentTradeIdx > 0) {
@@ -3186,6 +3202,19 @@
 
     // ── Wizard: capture current trade price before navigating (86e10t285) ──
     let wizardTradePrices = {};   // {trade: number|null}
+    // gh-3495 (REVIEW 6744431358 F1): the inputs that price each wizard trade, and which ones the contractor edited.
+    const _WIZARD_TRADE_INPUTS = {
+      roofing: ['retailBidPrice'],
+      gutters: ['gutter5InchPrice', 'gutter6InchPrice'],
+      siding: ['sidingInstallPerSquare', 'sidingTrimPrice', 'sidingWindowWrapPrice', 'sidingTeardownPrice'],
+    };
+    let _wizardTouched = {};      // {trade: true} once one of its price inputs got an input event
+    // A trade's price inputs are empty and untouched, and a stored price was loaded: keep the stored price.
+    function _keepLoadedTradePrice(trade, price) {
+      const loaded = wizardTradePrices[trade];
+      if (!(price > 0) && loaded > 0 && !_wizardTouched[trade]) return loaded;
+      return price;
+    }
 
     function captureCurrentTradePrice() {
       if (!wizardMode || wizardStep !== 2) return;
@@ -3194,18 +3223,87 @@
 
       let price = 0;
       if (trade === 'roofing') {
-        price = parseFloat(document.getElementById('retailBidPrice')?.value)
-             || parseFloat(document.getElementById('totalPrice')?.value)
-             || 0;
+        price = parseFloat(document.getElementById('retailBidPrice')?.value) || 0; // gh-3495: no #totalPrice fallback
       } else if (trade === 'gutters') {
         price = parseFloat(document.getElementById('gutter6InchPrice')?.value)
              || parseFloat(document.getElementById('gutter5InchPrice')?.value)
              || 0;
       } else if (trade === 'siding') {
-        const sidingTotal = syncSidingTotal(); // gh-3569: undefined when siding is not active
-        price = (sidingTotal !== undefined) ? sidingTotal : (parseFloat(document.getElementById('totalPrice')?.value) || 0);
+        syncSidingTotal();
+        price = _sidingTotalNow(); // gh-3495: not read back from #totalPrice
       }
+      price = _keepLoadedTradePrice(trade, price); // gh-3495 (REVIEW 6744431358 F1)
       wizardTradePrices[trade] = price > 0 ? price : null;
+    }
+
+    // gh-3495 (D-267): a multi-trade bid's amount is the SUM of its trades in whole
+    // cents. The step-3 Grand Total, the fee box, the fee disclosure the contractor
+    // accepts, total_price, fee_amount and per_trade_breakdown ALL derive from the
+    // per-trade whole-cent values below, so what is shown == what is stored == what
+    // is charged. A price is never read back from the hidden #totalPrice for a
+    // trade (on Change Bid that field holds the old grand total).
+    // Decimal-safe round half up to whole cents: Math.round(n * 100) fails on
+    // inputs such as 9734.095 (973409.4999...), so round on the decimal string.
+    function _priceToCents(raw) {
+      const n = typeof raw === 'number' ? raw : parseFloat(raw);
+      if (!(n > 0) || !isFinite(n) || n >= 1e12) return 0;
+      return wholeCents(n); // gh-3488: the one whole-cent rounding the fee uses
+    }
+    // Siding total from the siding inputs (same math as syncSidingTotal, no DOM writes).
+    function _sidingTotalNow() {
+      const g = id => parseFloat(document.getElementById(id)?.value) || 0;
+      const install = g('sidingInstallPerSquare');
+      const extras = g('sidingTrimPrice') + g('sidingWindowWrapPrice') + g('sidingTeardownPrice');
+      return (sidingWallSquares > 0) ? (install * sidingWallSquares) + extras : install + extras;
+    }
+    function _liveTradePrice(trade) {
+      if (trade === 'gutters') {
+        return parseFloat(document.getElementById('gutter6InchPrice')?.value)
+            || parseFloat(document.getElementById('gutter5InchPrice')?.value) || 0;
+      }
+      if (trade === 'roofing') return parseFloat(document.getElementById('retailBidPrice')?.value) || 0;
+      if (trade === 'siding') return _sidingTotalNow();
+      return 0;
+    }
+    function effectiveBidAmount() {
+      const single = parseFloat(document.getElementById('totalPrice')?.value) || 0;
+      if (!wizardMode || !wizardTradeQueue || wizardTradeQueue.length === 0) return single;
+      let cents = 0;
+      wizardTradeQueue.forEach((trade, i) => {
+        const live = (wizardStep === 2 && i === wizardCurrentTradeIdx);
+        cents += _priceToCents(live ? _keepLoadedTradePrice(trade, _liveTradePrice(trade)) : wizardTradePrices[trade]);
+      });
+      return cents > 0 ? cents / 100 : single;
+    }
+    function roundedTradePrices() {
+      const out = {};
+      wizardTradeQueue.forEach(trade => {
+        const c = _priceToCents(wizardTradePrices[trade]);
+        if (c > 0) out[trade] = c / 100;
+      });
+      return out;
+    }
+    // Change Bid / Renew of a stored wizard bid: seed the per-trade prices from the
+    // stored per_trade_breakdown and prefill the roofing price field, so the form
+    // never counts the stored grand total (in #totalPrice) as a trade price.
+    function _applyStoredBreakdown(quote) {
+      let bd = quote && quote.per_trade_breakdown;
+      if (typeof bd === 'string') { try { bd = JSON.parse(bd); } catch (e) { bd = null; } }
+      if (!bd || typeof bd !== 'object') return false;
+      let any = false;
+      ['roofing', 'gutters', 'siding'].forEach(t => {
+        const c = _priceToCents(bd[t]);
+        if (c > 0) { wizardTradePrices[t] = c / 100; any = true; }
+      });
+      if (wizardTradePrices.roofing > 0) setVal('retailBidPrice', wizardTradePrices.roofing);
+      // gh-3495 (REVIEW 6744431358 F1): a stored wizard bid has no value_adds.gutter_*_price (those are written for
+      // gutter-only claims), so the gutter fields would come up empty. Prefill the 5" field (the 6" field, read first,
+      // stays free for an edit) only when neither field was restored. Siding fields restore from value_adds.siding_*.
+      const _g5 = document.getElementById('gutter5InchPrice'), _g6 = document.getElementById('gutter6InchPrice');
+      if (wizardTradePrices.gutters > 0 && _g5 && !(parseFloat(_g5.value) > 0) && !(parseFloat(_g6?.value) > 0)) {
+        setVal('gutter5InchPrice', wizardTradePrices.gutters);
+      }
+      return any;
     }
 
     function buildWizardSummary() {
@@ -3218,14 +3316,16 @@
       const feePct = currentFeePct(); // gh-3488: same rate and whole-cent rounding as the disclosure
 
       let grandTotal = 0;
+      let grandCents = 0;
       let html = '';
 
       wizardTradeQueue.forEach(trade => {
-        const price = wizardTradePrices[trade];
+        const price = _priceToCents(wizardTradePrices[trade]) / 100; // gh-3495: same cents as the stored total
         const label = tradeLabels[trade] || trade;
         if (price != null && price > 0) {
           const net = Math.round((wholeCentDollars(price) - platformFeeDollars(price, feePct)) * 100) / 100;
-          grandTotal += price;
+          grandCents += _priceToCents(price); // gh-3495
+          grandTotal = grandCents / 100;
           html += `<div class="wizard-summary-row">
             <span class="wizard-summary-trade">${label}</span>
             <div class="wizard-summary-price">
@@ -3769,6 +3869,9 @@
         setVal('retailBidPrice', quote.total_price);
       }
 
+      // gh-3495 F2: a stored wizard bid seeds its per-trade prices from per_trade_breakdown.
+      if (_restoreWizard) _applyStoredBreakdown(quote);
+
       // Restore siding trade fields
       if (va.siding_install_per_square != null) setVal('sidingInstallPerSquare', va.siding_install_per_square);
       if (va.siding_trim_price != null)         setVal('sidingTrimPrice', va.siding_trim_price);
@@ -4311,7 +4414,7 @@
       // accepted the fee (E2E walk fix 2026-07-07). updateFeeDisclosure is
       // async; fire-and-forget is fine for display refresh.
       if (typeof updateFeeDisclosure === 'function') { try { updateFeeDisclosure(); } catch (e) { /* non-fatal */ } }
-      paintFeeBreakdown(wholeCentDollars(parseFloat(document.getElementById('totalPrice').value) || 0), currentFeePct());
+      paintFeeBreakdown(wholeCentDollars(effectiveBidAmount()), currentFeePct()); // gh-3495: sum of trades on a multi-trade bid
 
       // Show fee basis note for insurance jobs
       const feeInfoEl = document.querySelector('.fee-info');
@@ -4839,7 +4942,8 @@
       // Recalculate and display fee based on bid amount + percentage
       const bidAmountEl = document.getElementById('totalPrice');
       if (!bidAmountEl) return;
-      const currentBid = () => wholeCentDollars(parseFloat(bidAmountEl.value) || 0);
+      // gh-3495 (D-267): a multi-trade bid's amount is the sum of its trades; read live at every paint.
+      const currentBid = () => wholeCentDollars(effectiveBidAmount());
 
       // 1. synchronous: current bid at the rate we already know
       paintFeeDisclosure(currentFeePct(), currentBid());
@@ -5168,7 +5272,7 @@
 
       // Validate: bid type must have a price if RCV selected
       const bidTypeOption = document.querySelector('input[name="bidTypeOption"]:checked')?.value || 'rcv_plus_supplements';
-      const totalPriceVal = parseFloat(document.getElementById('totalPrice').value) || 0;
+      const totalPriceVal = effectiveBidAmount(); // gh-3495
 
       // Gutter-specific validation: at least one gutter price required
       const _claimTrades = Array.isArray(currentClaim?.trades) ? currentClaim.trades : [];
@@ -5224,7 +5328,7 @@
       // gh-3488 / D-267 (REVIEW 6674426561): ONE snapshot of the bid and of the disclosure on screen at the click.
       // The accepted fee, the stored price and the charge basis all come from this snapshot; the form's inputs are
       // locked until submit finishes or fails (see the finally below).
-      const _snapBid = wholeCentDollars(parseFloat(document.getElementById('totalPrice').value) || 0);
+      const _snapBid = wholeCentDollars(effectiveBidAmount()); // gh-3495 (D-267): sum of trades on a multi-trade bid
       const _shownAtClick = { pct: window._feePct, amount: window._feeAmount };
       const formData = new FormData(bidForm); // before the lock: disabled controls are left out of a FormData
       _submitInFlight = true;
@@ -5300,7 +5404,7 @@
               return;
             }
           }
-          const totalPrice = _snapBid; // gh-3488: the snapshot taken at the click, never a second read of the field
+          const totalPrice = _snapBid; // gh-3488: the snapshot taken at the click, never a second read of the field (gh-3495: sum of trades)
           const feePercentage = 5.0;
 
           // #487 (CEO decision 2026-07-08): the platform fee basis is the BID
@@ -5485,7 +5589,7 @@
             trade_type: formData.get('tradeType') || 'roofing',
             value_adds: valueAdds,
             // Per-trade price breakdown for wizard (multi-trade) bids
-            per_trade_breakdown: (wizardMode && Object.keys(wizardTradePrices).length > 0) ? wizardTradePrices : null,
+            per_trade_breakdown: (wizardMode && Object.keys(wizardTradePrices).length > 0) ? roundedTradePrices() : null, // gh-3495
             is_auto_bid: false,
             auto_renew: document.getElementById('autoRenewToggle')?.checked ?? true, // D-150
             // D-202 Phase 2 — manufacturer × tier warranty selection (Session 463)

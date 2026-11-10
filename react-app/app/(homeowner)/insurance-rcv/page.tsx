@@ -28,6 +28,8 @@ import { uploadClaimDocument } from '../dashboard/actions';
 import { ContactProjectCard } from '../_d407/ContactProjectCard';
 import { MaterialPicker } from '../_d407/MaterialPicker';
 import { D407_CSS } from '../_d407/styles';
+import { dashboardUrlWithReturn } from '@/lib/return-target';
+import { gtagEventBeforeNavigation } from '@/lib/ga-events';
 import { saveClaim, saveContact, useD407Data, type D407Claim, type D407Profile } from '../_d407/use-d407-claim';
 import {
   buildRcvClaimUpdate,
@@ -153,7 +155,10 @@ function RcvForm({
     try {
       await saveContact(userId, contact.fullName, contact.phone);
       await saveClaim(claim.id, buildRcvClaimUpdate(info, contact.fullName, material, claim.policy_type));
-      window.location.assign(new URL('/dashboard', window.location.origin).href);
+      // GA4 port of project-info-rcv.html:255 (`gtag('event', 'project_info_saved', { job_type: 'insurance_rcv' })`): fired once, only
+      // after the save succeeded, awaited (bounded to 1 s) so the redirect cannot drop it (gh-1984). No-op unless GA4Gate loaded gtag.
+      await gtagEventBeforeNavigation('project_info_saved', { job_type: 'insurance_rcv' });
+      window.location.assign(dashboardUrlWithReturn(window.location.search));
     } catch (err) {
       console.error('[insurance-rcv] save failed:', err);
       setError(C.RCV_SAVE_FAILED);

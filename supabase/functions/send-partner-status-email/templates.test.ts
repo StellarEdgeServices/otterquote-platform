@@ -9,6 +9,7 @@ import {
 import {
   formatReferralDisplayName,
   isStageBlockedForAgentType,
+  isStageBlockedForState,
   renderStageEmail,
   STAGE_KEYS,
   type Stage,
@@ -196,4 +197,26 @@ Deno.test("gh-1824 negative control: renderStageEmail's text is NOT merely the u
     const { text } = renderStageEmail(stage, "Jane D.");
     assertEquals(text.endsWith(POSTAL_ADDRESS), true);
   }
+});
+
+// ── isStageBlockedForState — gh-3321 gate (D-401 item 7, A4.4) ─────────────
+Deno.test("isStageBlockedForState: stage 5 is blocked in each of OK, AR, KS, NE, MS", () => {
+  for (const s of ["OK", "AR", "KS", "NE", "MS"]) assertEquals(isStageBlockedForState(s, 5), true, s);
+});
+Deno.test("isStageBlockedForState: lower case and padded forms are blocked like the migration's upper(btrim())", () => {
+  assertEquals(isStageBlockedForState(" ok ", 5), true);
+  assertEquals(isStageBlockedForState("ms", 5), true);
+});
+Deno.test("isStageBlockedForState: negative control, an allowed state is not blocked", () => {
+  for (const s of ["IN", "TX", "FL", "CA"]) assertEquals(isStageBlockedForState(s, 5), false, s);
+});
+Deno.test("isStageBlockedForState: a blank or NULL state is not blocked (blank accrues, #3321 6664032518)", () => {
+  for (const s of [null, undefined, "", "   "]) assertEquals(isStageBlockedForState(s, 5), false);
+});
+Deno.test("isStageBlockedForState: stages 1-4 carry no payment language and are never blocked", () => {
+  for (const stage of [1, 2, 3, 4] as Stage[]) assertEquals(isStageBlockedForState("OK", stage), false);
+});
+Deno.test("isStageBlockedForState: the D-333 gate is unchanged and independent", () => {
+  assertEquals(isStageBlockedForAgentType("home_inspector", 5), true);
+  assertEquals(isStageBlockedForAgentType("re_agent", 5), false);
 });

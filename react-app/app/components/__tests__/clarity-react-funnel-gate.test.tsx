@@ -32,8 +32,11 @@ import { GA4Gate } from '../GA4Gate';
 
 const APP_ROOT = path.resolve(__dirname, '../../'); // react-app/app
 
-/** The ruled set: the two already live, plus the three this change adds. */
-const RULED = ['/get-started', '/trade-selector', '/dashboard', '/bids', '/repair-intake'];
+/** The ruled set: the two already live, the three #1939 row 0.4 added, and the two D-407 routes (gh-3283 / gh-3285). */
+// gh-3283 / gh-3285: Dustin, 2026-11-09 09:26 ET, verbatim: "Clarity on /insurance-rcv and /out-of-pocket: yes." (#3283 comment 6742512470)
+const RULED = ['/get-started', '/trade-selector', '/dashboard', '/bids', '/repair-intake', '/insurance-rcv', '/out-of-pocket'];
+/** The homeowner-shell routes on the ruled set (every one renders inside the masked HomeownerShell). */
+const SHELL_RULED = ['/dashboard', '/bids', '/repair-intake', '/insurance-rcv', '/out-of-pocket'];
 
 /** Every real page.tsx route, as a URL path: route groups "(x)" dropped, dynamic segments filled with a sample value. */
 function enumerateRoutes(dir = APP_ROOT, prefix = ''): string[] {
@@ -102,6 +105,8 @@ describe('Clarity on the React funnel: exactly the ruled routes, default-deny ev
     '/help-measurements', '/help-estimate', '/help-materials', '/color-selection', '/project-confirmation', '/contract-signing',
     '/auth-callback', '/login', '/refer', '/', '/admin/payouts', '/admin/contractors', '/contractor/dashboard', '/contractor/login',
     '/contractor/pre-approval', '/contractor/sign/sample', '/partner/dashboard',
+    // gh-3283 / gh-3285: the ruling names /insurance-rcv and /out-of-pocket only; the sibling ACV explainer stays off, and so do look-alikes.
+    '/insurance-acv', '/insurance-rcvx', '/out-of-pocketx',
   ])('NEGATIVE CONTROL: Clarity does NOT load on the excluded route %s', async (route) => {
     mockPath = route;
     setLocation('app.otterquote.com');
@@ -122,7 +127,7 @@ describe('Clarity on the React funnel: exactly the ruled routes, default-deny ev
     expect(clarityLoaded(b.container)).toBe(false);
   });
 
-  it.each(['/dashboard', '/bids', '/repair-intake'])('the credential-in-fragment guard still runs first on %s: no Clarity with a token in the URL fragment', async (route) => {
+  it.each(SHELL_RULED)('the credential-in-fragment guard still runs first on %s: no Clarity with a token in the URL fragment', async (route) => {
     mockPath = route;
     setLocation('app.otterquote.com', '#access_token=abc&refresh_token=def');
     const { container } = render(<GA4Gate />);
@@ -130,7 +135,7 @@ describe('Clarity on the React funnel: exactly the ruled routes, default-deny ev
     expect(clarityLoaded(container)).toBe(false);
   });
 
-  it.each(['/dashboard', '/bids', '/repair-intake'])('on %s the gate itself starts the input exclusion: an input added afterwards is tagged data-oq-privacy="secret"', async (route) => {
+  it.each(SHELL_RULED)('on %s the gate itself starts the input exclusion: an input added afterwards is tagged data-oq-privacy="secret"', async (route) => {
     vi.resetModules(); // a fresh GA4Gate module: its once-per-page-load latch has not fired yet
     const { GA4Gate: FreshGate } = await import('../GA4Gate');
     mockPath = route;
@@ -161,7 +166,7 @@ describe('the masking that makes the three new routes safe to record', () => {
     expect(shell).toMatch(/<main className="oqh-main"[^>]*\sdata-clarity-mask="true"/);
   });
 
-  it.each(['dashboard', 'bids', 'repair-intake'])('the %s page renders inside HomeownerShell (so the masked shell wraps it)', (route) => {
+  it.each(['dashboard', 'bids', 'repair-intake', 'insurance-rcv', 'out-of-pocket'])('the %s page renders inside HomeownerShell (so the masked shell wraps it)', (route) => {
     expect(read(`(homeowner)/${route}/page.tsx`)).toMatch(/<HomeownerShell\b/);
   });
 
@@ -171,7 +176,7 @@ describe('the masking that makes the three new routes safe to record', () => {
       if (e.isDirectory()) return e.name === '__tests__' || e.name === 'node_modules' ? [] : walk(full);
       return /\.(tsx|ts)$/.test(e.name) && !/\.test\./.test(e.name) ? [full] : [];
     });
-    for (const d of ['(homeowner)/_shell', '(homeowner)/dashboard', '(homeowner)/bids', '(homeowner)/repair-intake']) {
+    for (const d of ['(homeowner)/_shell', '(homeowner)/dashboard', '(homeowner)/bids', '(homeowner)/repair-intake', '(homeowner)/insurance-rcv', '(homeowner)/out-of-pocket', '(homeowner)/_d407']) {
       for (const f of walk(path.join(APP_ROOT, d))) expect(fs.readFileSync(f, 'utf8'), `${f} unmasks`).not.toMatch(/data-clarity-unmask/);
     }
   });
@@ -182,7 +187,7 @@ describe('the masking that makes the three new routes safe to record', () => {
       if (e.isDirectory()) return e.name === '__tests__' || e.name === 'node_modules' ? [] : walk(full);
       return /\.(tsx|ts)$/.test(e.name) && !/\.test\./.test(e.name) ? [full] : [];
     });
-    for (const d of ['(homeowner)/dashboard', '(homeowner)/bids', '(homeowner)/repair-intake']) {
+    for (const d of ['(homeowner)/dashboard', '(homeowner)/bids', '(homeowner)/repair-intake', '(homeowner)/insurance-rcv', '(homeowner)/out-of-pocket', '(homeowner)/_d407']) {
       for (const f of walk(path.join(APP_ROOT, d))) expect(fs.readFileSync(f, 'utf8'), `${f} portals`).not.toMatch(/createPortal/);
     }
   });

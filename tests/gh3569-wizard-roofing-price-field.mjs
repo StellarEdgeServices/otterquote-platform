@@ -3,6 +3,11 @@
  * contractor SEE, ENTER and EDIT a roofing price on the roofing step, and that a NEW retail roofing + gutters bid then
  * submits (writes a quotes row) with the stored fee equal to the fee shown on the page.
  *
+ * gh-3495 (Ben's ruling 6727931801, D-267): a multi-trade bid's total is the SUM of its trades and the fee is computed on
+ * that total. So roofing 15800 + gutters 2400 stores total_price 18200 / fee 910 (it stored the roofing price alone,
+ * 15800 / 790, before #3561). Siding cannot be priced on the wizard siding step in a roofing combo (#3561 REVIEW N1,
+ * tracked separately), so it adds nothing here unless its field is visible.
+ *
  * Cause: _showWizardTrade() hid #retailPriceSection on the roofing step (the comment claimed a "total price input" in
  * valueAddsSection, which does not exist). #retailBidPrice is the only roofing price input, and the retail submit check
  * requires it > 0, so every new wizard bid that included roofing stopped at "Please enter your total bid price."
@@ -107,8 +112,9 @@ const fmt = (v) => new Intl.NumberFormat('en-US', { style: 'currency', currency:
 
 // One NEW wizard bid through the real page.
 //   trades          the claim's trades (roofing first in the wizard queue)
-//   zeroBaseAtSubmit  REVIEW 6742800394 guard: blank the fee base (#totalPrice) right before submit while the roofing
-//                   price is still entered; the submit must refuse with the price alert and write no quotes row.
+//   zeroBaseAtSubmit  REVIEW 6742800394 guard: blank the trade prices themselves (the inputs, the captured per-trade
+//                   prices and #totalPrice) right before submit; the sum is then 0, so the submit must refuse with the
+//                   price alert and write no quotes row.
 async function scenario(browser, base, { trades, zeroBaseAtSubmit = false }) {
   const name = trades.join(' + ') + (zeroBaseAtSubmit ? ' (fee base zeroed at submit)' : '');
   console.log('--- ' + name);
@@ -163,6 +169,7 @@ async function scenario(browser, base, { trades, zeroBaseAtSubmit = false }) {
 
   // The remaining trades, in wizard order, until step 3.
   const seen = [];
+  let expectTotal = ROOF_EDITED; // gh-3495: the sum of the trades priced below
   for (let i = 0; i < 4; i++) {
     await page.evaluate(() => wizardNext());
     await page.waitForTimeout(300);
@@ -171,9 +178,13 @@ async function scenario(browser, base, { trades, zeroBaseAtSubmit = false }) {
     const l = await page.evaluate(() => document.getElementById('wizardTradeLabel')?.textContent || '');
     seen.push(l);
     ok(!(await page.evaluate(vis('#retailBidPrice'))), name + ': ' + l.toLowerCase() + ' step: the roofing price field is not shown');
-    if (l === 'GUTTERS') await fillIf('#gutter6InchPrice', String(GUTTER_PRICE));
-    if (l === 'SIDING') { await fillIf('#sidingInstallPerSquare', '300'); await fillIf('#sidingTrimPrice', '1000'); }
+    if (l === 'GUTTERS' && await page.evaluate(vis('#gutter6InchPrice'))) { await page.fill('#gutter6InchPrice', String(GUTTER_PRICE)); expectTotal += GUTTER_PRICE; }
+    if (l === 'SIDING' && await page.evaluate(vis('#sidingInstallPerSquare'))) {
+      await page.fill('#sidingInstallPerSquare', '300'); await fillIf('#sidingTrimPrice', '1000');
+      expectTotal += await page.evaluate(() => _sidingTotalNow());
+    }
   }
+  const expectFee = Math.round(expectTotal * 5) / 100; // whole cents at the 5% rate the stub serves
   const expectSeen = trades.filter((t) => t !== 'roofing').map((t) => t.toUpperCase());
   ok(JSON.stringify(seen.slice().sort()) === JSON.stringify(expectSeen.slice().sort()), name + ': wizard visits the other trades ' + JSON.stringify(seen));
 
@@ -181,19 +192,23 @@ async function scenario(browser, base, { trades, zeroBaseAtSubmit = false }) {
   console.log('     step-3 summary: ' + summary);
   ok(/Roofing\s*\$15,800\.00/.test(summary || ''), name + ': step 3 summary carries the edited roofing price');
 
-  // Leaving the siding step must not have clobbered the roofing fee base (REVIEW 6742800394 finding 1).
+  // Leaving the siding step must not have clobbered the fee base (REVIEW 6742800394 finding 1); the base is the sum.
   const shownFee = await page.evaluate(() => document.getElementById('totalFeeAmount').textContent);
   const shownBid3 = await page.evaluate(() => document.getElementById('displayBid').textContent);
   console.log('     bid / fee shown at submit: ' + shownBid3 + ' / ' + shownFee);
   if (!zeroBaseAtSubmit) {
-    ok(shownBid3 === '$15,800.00' && shownFee === '$790.00', name + ': fee box at step 3 still shows the roofing bid and its fee (' + shownBid3 + ' / ' + shownFee + ')');
+    ok(shownBid3 === fmt(expectTotal) && shownFee === fmt(expectFee), name + ': fee box at step 3 shows the sum of the trades and its fee, ' + fmt(expectTotal) + ' / ' + fmt(expectFee) + ' (' + shownBid3 + ' / ' + shownFee + ')');
   }
 
   await page.evaluate((zero) => {
     document.querySelectorAll('#bidForm [required]').forEach((el) => el.removeAttribute('required'));
     window.validateValueAddDeclarations = () => true;
     window.checkBidCanSubmitGate = async () => ({ can_submit: true });
-    if (zero) { document.getElementById('totalPrice').value = ''; updateFeeCalculator(); }
+    if (zero) {
+      ['retailBidPrice', 'gutter5InchPrice', 'gutter6InchPrice', 'sidingInstallPerSquare', 'sidingTrimPrice', 'totalPrice'].forEach((id) => { const e = document.getElementById(id); if (e) e.value = ''; });
+      wizardTradePrices = {};
+      updateFeeCalculator();
+    }
   }, zeroBaseAtSubmit);
   await page.evaluate(() => document.getElementById('bidForm').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })));
   await page.waitForTimeout(1500);
@@ -209,7 +224,7 @@ async function scenario(browser, base, { trades, zeroBaseAtSubmit = false }) {
     ok(!dialogs.includes(NEEDLE), name + ': submit is not stopped at "' + NEEDLE + '" (alerts seen: ' + JSON.stringify(dialogs) + ')');
     ok(!!row, name + ': submit writes a new quotes row (' + rowTxt + ')');
     ok(!!row && row.total_price > 0 && row.fee_amount > 0, name + ': stored total_price and fee_amount are nonzero (' + rowTxt + ')');
-    ok(!!row && row.total_price === ROOF_EDITED, name + ': stored total_price is the roofing price, today\'s fee base (' + rowTxt + ')');
+    ok(!!row && row.total_price === expectTotal && row.fee_amount === expectFee, name + ': stored total_price / fee are the sum of the trades and its fee, ' + expectTotal + ' / ' + expectFee + ' (' + rowTxt + ')');
     ok(!!row && fmt(row.fee_amount) === shownFee, name + ': stored fee_amount equals the fee shown (' + (row ? fmt(row.fee_amount) : 'n/a') + ' vs ' + shownFee + ')');
   }
   await context.close();
@@ -264,7 +279,9 @@ async function staleRoofingScenario(browser, base, { trades }) {
   const st = await page.evaluate(() => ({ bid: document.getElementById('displayBid').textContent, fee: document.getElementById('totalFeeAmount').textContent, base: document.getElementById('totalPrice').value, roof: document.getElementById('retailBidPrice').value }));
   console.log('     bid / fee shown at submit: ' + st.bid + ' / ' + st.fee + '  #totalPrice=' + JSON.stringify(st.base));
   ok(st.base === '' && st.roof === '', name + ': the stale roofing price is cleared from #retailBidPrice and #totalPrice (' + JSON.stringify(st) + ')');
-  ok(st.bid === '$0.00' && st.fee === '$0.00', name + ': fee box no longer shows the removed roofing price (' + st.bid + ' / ' + st.fee + ')');
+  // gh-3495: the fee box shows the sum of the trades still on the bid (the gutters price, if priced), never the roofing price.
+  const left = await page.evaluate(() => document.getElementById('wizardGrandTotal')?.textContent || '$0.00');
+  ok(st.bid !== fmt(ROOF_EDITED) && st.bid === (left === '' ? '$0.00' : left), name + ': fee box no longer shows the removed roofing price; it shows the remaining trades (' + st.bid + ' / ' + st.fee + ', Grand Total ' + left + ')');
 
   await page.evaluate(() => {
     document.querySelectorAll('#bidForm [required]').forEach((el) => el.removeAttribute('required'));

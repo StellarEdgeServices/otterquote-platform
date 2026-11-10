@@ -2,13 +2,15 @@
  * gh-3471 (P23 / D-419) clauses (3) and (4): a recorded, repo-committed walkthrough of the homeowner path to the measurement
  * checkout, in real headless Chromium (390x844 phone viewport, 1280x800 for the desktop nav), with no new customer wording.
  *
- *   A  (clause 3)  Homepage -> /start -> app get-started -> trade-selector -> project-info -> dashboard -> help-measurements ->
+ *   A  (clause 3)  Homepage -> /start -> app get-started -> trade-selector -> /insurance-rcv (React, gh-3283) -> dashboard -> help-measurements ->
  *                  the card form is shown. Passes on the PR head. Negative control: with the dashboard's route to
  *                  help-measurements.html removed (served copy only), the SAME script fails at the named step
  *                  "dashboard: a way to the measurement".
  *   B  (clause 4)  Starts signed out (how-it-works.html) on the guest-nav "Measurements" link, signs up, and must land back on
  *                  help-measurements.html. On main (e5759c57 and later until this PR) it fails at the named step
  *                  "lands back on help-measurements.html" because it lands on dashboard.html.
+ *   D  (gh-3285)   Same as B but the wizard answer is Out of Pocket: sign up -> /out-of-pocket (return token rides on) -> measurement
+ *                  uploaded, materials, Save -> help-measurements.html.
  *   C  (return flag safety) allowlist only, no open redirect, nothing bypassed:
  *        C1 a ?return= that is not an allowlisted token (URL, //host, javascript:, __proto__, wrong case) goes nowhere;
  *        C2 a valid token sends a signed-in homeowner on to help-measurements.html;
@@ -161,12 +163,29 @@ function stepper(page, label) {
   return r;
 }
 
-// the sign-up half shared by A and B: get-started address, account, then the trade-selector wizard and project-info Save
-async function signUpAndIntake(page, s) {
+// the sign-up half shared by A, B and D: get-started address, account, then the trade-selector wizard and the React D-407 page
+// (gh-3283 /insurance-rcv, gh-3285 /out-of-pocket) with its Save & Continue. kind: 'rcv' (insurance, RCV) or 'oop' (out-of-pocket).
+const PDF = { name: 'document.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 stub') };
+async function signUpAndIntake(page, s, kind) {
+  kind = kind || 'rcv';
+  const route = kind === 'oop' ? /app\.otterquote\.com\/out-of-pocket/ : /app\.otterquote\.com\/insurance-rcv/;
   await s.step('get-started: address', async () => { await page.waitForURL(/app\.otterquote\.com\/get-started/, STEP_TIMEOUT); await page.locator('#street').waitFor(STEP_TIMEOUT); await page.fill('#street', '123 Main St'); await page.fill('#city', 'Zionsville'); await page.selectOption('#state', 'IN'); await page.fill('#zip', '46077'); await page.click('button[type=submit]'); await page.locator('#first-name').waitFor(STEP_TIMEOUT); });
   await s.step('get-started: account created, lands in the wizard', async () => { await page.fill('#first-name', 'Walk'); await page.fill('#last-name', 'Tester'); await page.fill('#email', 'walk@example.com'); await page.fill('#password', 'Passw0rd!stub'); await page.click('button[type=submit]'); await page.waitForURL(/trade-selector/, STEP_TIMEOUT); await page.locator('text=Insurance Claim').first().waitFor(STEP_TIMEOUT); });
-  await s.step('wizard: pay question, policy, trade, replace', async () => { await page.click('text=Insurance Claim'); await page.waitForTimeout(600); await page.click('text=Replacement Cost Value'); await page.click('button:has-text("Continue")'); await page.click('text=Roofing'); await page.click('button:has-text("Continue")'); await page.locator('text=Full replacement').waitFor(STEP_TIMEOUT); await page.click('text=Full replacement'); await page.click('button:has-text("Continue")'); await page.waitForURL(/project-info-rcv/, { timeout: 15000 }); });
-  await s.step('project info: save and continue', async () => { await page.click('#pi-submit'); await page.waitForURL(/(dashboard|help-measurements)\.html/, STEP_TIMEOUT); });
+  await s.step('wizard: pay question, ' + (kind === 'oop' ? 'out of pocket' : 'policy') + ', trade, replace', async () => {
+    if (kind === 'oop') { await page.click('text=Out of Pocket'); await page.locator('text=What do you need done?').waitFor(STEP_TIMEOUT); }
+    else { await page.click('text=Insurance Claim'); await page.waitForTimeout(600); await page.click('text=Replacement Cost Value'); await page.click('button:has-text("Continue")'); }
+    await page.click('text=Roofing'); await page.click('button:has-text("Continue")'); await page.locator('text=Full replacement').waitFor(STEP_TIMEOUT); await page.click('text=Full replacement'); await page.click('button:has-text("Continue")');
+    await page.waitForURL(route, { timeout: 15000 });
+  });
+  await s.step(kind === 'oop' ? 'out-of-pocket page: contact, measurement, materials, save' : 'insurance-rcv page: contact, estimate, materials, save', async () => {
+    await page.locator('#d407-name').waitFor(STEP_TIMEOUT);
+    await page.fill('#d407-name', 'Walk Tester'); await page.fill('#d407-phone', '3175550100');
+    if (kind === 'oop') { await page.setInputFiles('[data-testid=d407-measurement-input]', PDF); await page.locator('[data-testid=d407-measurement-done]').waitFor(STEP_TIMEOUT); }
+    else { await page.setInputFiles('[data-testid=d407-estimate-input]', PDF); await page.locator('[data-testid=d407-estimate-done]').waitFor(STEP_TIMEOUT); }
+    await page.getByText('Shingles', { exact: true }).click(); await page.getByText('3-Tab Shingle', { exact: true }).click();
+    await page.click('[data-testid=d407-continue]');
+    await page.waitForURL(/otterquote\.com\/(dashboard|help-measurements)\.html/, STEP_TIMEOUT);
+  });
 }
 
 // ── A: homepage to the measurement checkout form ──
@@ -193,6 +212,22 @@ async function walkB(browser, appPort) {
   await s.step('how-it-works page loads signed out (guest nav)', async () => { await page.goto('https://otterquote.com/how-it-works.html?oq_internal=1', { waitUntil: 'domcontentloaded' }); await page.locator('#site-header a[href="/help-measurements.html"]').first().waitFor(STEP_TIMEOUT); });
   await s.step('guest nav "Measurements" click sends them to sign up', async () => { await page.locator('#site-header a[href="/help-measurements.html"]').first().click(); await page.waitForURL(/app\.otterquote\.com\/get-started/, STEP_TIMEOUT); });
   await signUpAndIntake(page, s);
+  await s.step(NAMED_RETURN_STEP, async () => { await page.waitForURL(/otterquote\.com\/help-measurements\.html/, { timeout: 8000 }); });
+  await s.step('measurements: the choice screen is shown', async () => { await page.locator('#pathSelection').waitFor({ state: 'visible', timeout: 8000 }); });
+  await context.close();
+  return s;
+}
+
+// ── D: the same signed-out Measurements click, but through the OUT-OF-POCKET page (gh-3285): the return token must survive it ──
+async function walkD(browser, appPort) {
+  const { context } = await newWorld(browser, appPort, { desktop: true });
+  const page = await context.newPage(); const s = stepper(page, 'D');
+  await s.step('how-it-works page loads signed out (guest nav)', async () => { await page.goto('https://otterquote.com/how-it-works.html?oq_internal=1', { waitUntil: 'domcontentloaded' }); await page.locator('#site-header a[href="/help-measurements.html"]').first().waitFor(STEP_TIMEOUT); });
+  await s.step('guest nav "Measurements" click sends them to sign up', async () => { await page.locator('#site-header a[href="/help-measurements.html"]').first().click(); await page.waitForURL(/app\.otterquote\.com\/get-started/, STEP_TIMEOUT); });
+  const seen = [];
+  page.on('framenavigated', (f) => { if (f === page.mainFrame()) seen.push(f.url()); });
+  await signUpAndIntake(page, s, 'oop');
+  await s.step('the out-of-pocket page was reached carrying return=measurements', async () => { if (!seen.some((u) => /app\.otterquote\.com\/out-of-pocket\?.*return=measurements/.test(u))) throw new Error('return token missing on /out-of-pocket: ' + seen.filter((u) => /out-of-pocket/.test(u)).join(' ')); });
   await s.step(NAMED_RETURN_STEP, async () => { await page.waitForURL(/otterquote\.com\/help-measurements\.html/, { timeout: 8000 }); });
   await s.step('measurements: the choice screen is shown', async () => { await page.locator('#pathSelection').waitFor({ state: 'visible', timeout: 8000 }); });
   await context.close();
@@ -248,6 +283,9 @@ try {
   console.log('--- B: signed-out guest-nav "Measurements" click, back at the measurement page after sign-up (clause 4)');
   const bRes = await walkB(browser, app.port);
   ok(bRes.failed === null, 'B passes: signed-out Measurements click -> sign-up -> help-measurements.html' + (bRes.failed ? ' (FAILED at "' + bRes.failed + '": ' + bRes.detail + '; final url ' + bRes.finalUrl + ')' : ''));
+  console.log('--- D: signed-out Measurements click through the out-of-pocket page (gh-3285), back at the measurement page');
+  const dRes = await walkD(browser, app.port);
+  ok(dRes.failed === null, 'D passes: signed-out Measurements click -> sign-up -> /out-of-pocket -> help-measurements.html' + (dRes.failed ? ' (FAILED at "' + dRes.failed + '": ' + dRes.detail + '; final url ' + dRes.finalUrl + ')' : ''));
   console.log('--- C: the return flag is an allowlist and bypasses nothing');
   await walkC(browser, app.port);
 } catch (e) {
