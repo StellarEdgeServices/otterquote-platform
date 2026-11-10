@@ -33,7 +33,10 @@ describe('gh-3577 MaterialTiers vendor-name removal (D-312)', () => {
   it('uses the same neutral wording as PR #3599', () => {
     expect(src).toContain('Tier 4: Lab Analysis');
     expect(src).toContain('Lab Sample Mailing Address:');
-    expect(src).toContain('Material Testing Lab');
+    expect(src).toContain('Attn: Sample Receiving');
+    expect(src).not.toContain('Material Testing Lab');
+    expect(src).toContain('7 Westport Court');
+    expect(src).toContain('Phone: (800) 783-4835');
     expect(src).toContain('Lab analysis request noted');
     expect(src).toContain('Request Lab Analysis ($75)');
   });

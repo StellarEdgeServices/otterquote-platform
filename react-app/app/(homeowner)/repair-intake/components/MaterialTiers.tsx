@@ -303,7 +303,7 @@ export function MaterialTiers({
             <div className="ri-itel-address">
               <p style={{ margin: 0 }}>Lab Sample Mailing Address:</p>
               <p style={{ margin: '0.5rem 0 0' }}>
-                Material Testing Lab
+                Attn: Sample Receiving
                 <br />
                 7 Westport Court
                 <br />
