@@ -17,6 +17,10 @@
  *  - created at or after `since` (fee_acceptances went live with v62 on 2026-05-07; older quotes cannot have a row);
  *  - is_test is not true (unless includeTest, used only to plant a proof case in production: a test quote must be
  *    visible to the proof and invisible to the real alert);
+ *  - renewed_from_quote_id is null. process-bid-expirations clones an expiring bid with renewed_from_quote_id set and
+ *    writes no fee_acceptances row; the ORIGINAL bid carries the acceptance (and is checked itself). Excluding renewals
+ *    (rather than walking the chain) is the simpler reading of the closes-on ("any non-test quote lacking a row") that
+ *    does not alarm on every auto-renewed bid forever. Flagged on #3586 for Ben/Marty to overrule.
  *  - is_auto_bid is not true. process-auto-bids files quotes with fee_agreed set by the contractor's standing auto-bid
  *    setup and writes no fee_acceptances row today, so counting them would fire forever. Whether auto-bids need an
  *    acceptance row is a product/legal question raised on #3586, not decided here.
@@ -30,6 +34,7 @@ export interface QuoteRow {
   status?: string | null;
   is_test?: boolean | null;
   is_auto_bid?: boolean | null;
+  renewed_from_quote_id?: string | null;
 }
 
 export interface GapOptions {
@@ -60,6 +65,7 @@ export const FEE_GAP_LISTED_IDS = 20;
 export function isCheckableQuote(q: QuoteRow, opts: GapOptions): boolean {
   if (!opts.includeTest && q.is_test === true) return false;
   if (q.is_auto_bid === true) return false;
+  if (q.renewed_from_quote_id) return false;
   const created = Date.parse(q.created_at);
   if (Number.isNaN(created)) return false;
   if (created < Date.parse(opts.since)) return false;
@@ -79,6 +85,29 @@ export function findQuotesMissingAcceptance(
     .filter((q) => isCheckableQuote(q, opts) && !accepted.has(q.id))
     .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
   return { count: gaps.length, gaps };
+}
+
+export const FEE_GAP_REMINDER_HOURS = 24;
+
+/**
+ * Throttle for a STANDING condition. Alert when (a) there has never been an alert, (b) a gap appeared since the last alert
+ * (created after lastAlertSentAt - graceMinutes, because a quote becomes checkable only graceMinutes after it is filed), or
+ * (c) the last alert is older than reminderHours (one reminder a day while gaps stand). `force` (the planted-case proof) always alerts.
+ * lastAlertSentAt is the newest platform_alerts_log row of this type, acknowledged or not.
+ */
+export function shouldAlertOnGap(
+  result: GapResult,
+  lastAlertSentAt: string | null,
+  o: { graceMinutes: number; now?: Date; reminderHours?: number; force?: boolean },
+): { alert: boolean; newCount: number } {
+  if (result.count <= 0) return { alert: false, newCount: 0 };
+  const last = lastAlertSentAt ? Date.parse(lastAlertSentAt) : NaN;
+  if (o.force || Number.isNaN(last)) return { alert: true, newCount: result.count };
+  const newSince = last - o.graceMinutes * 60_000;
+  const newCount = result.gaps.filter((g) => Date.parse(g.created_at) > newSince).length;
+  const now = (o.now ?? new Date()).getTime();
+  const reminderDue = now - last >= (o.reminderHours ?? FEE_GAP_REMINDER_HOURS) * 3_600_000;
+  return { alert: newCount > 0 || reminderDue, newCount };
 }
 
 export interface FeeGapAlert {

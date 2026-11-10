@@ -104,7 +104,10 @@ import {
   evaluateFeeAcceptanceGap,
   FEE_GAP_DEFAULT_GRACE_MINUTES,
   FEE_GAP_DEFAULT_SINCE,
+  FEE_GAP_ALERT_TYPE,
+  FEE_GAP_FUNCTION_NAME,
   findQuotesMissingAcceptance,
+  shouldAlertOnGap,
   type QuoteRow,
 } from "./fee-acceptance-gap-check.ts"; // gh-3586
 import {
@@ -1035,8 +1038,9 @@ async function runFeeAcceptanceGapCheck(
   for (let from = 0; ; from += PAGE) {
     let q = supabase
       .from("quotes")
-      .select("id, claim_id, contractor_id, created_at, status, is_test, is_auto_bid")
+      .select("id, claim_id, contractor_id, created_at, status, is_test, is_auto_bid, renewed_from_quote_id")
       .gte("created_at", since)
+      .is("renewed_from_quote_id", null)
       .lte("created_at", graceCutoff)
       .or("is_auto_bid.is.null,is_auto_bid.eq.false")
       .order("created_at", { ascending: true })
@@ -1068,8 +1072,17 @@ async function runFeeAcceptanceGapCheck(
 
   const result = findQuotesMissingAcceptance(quotes, accepted, opts);
   const alert = evaluateFeeAcceptanceGap(result, includeTest);
+  // Standing-gap throttle (gh-3586 review): newest log row of this type, acknowledged or not. A read error counts as "never alerted".
+  const { data: lastRows } = await supabase
+    .from("platform_alerts_log")
+    .select("sent_at")
+    .eq("function_name", FEE_GAP_FUNCTION_NAME)
+    .eq("alert_type", FEE_GAP_ALERT_TYPE)
+    .order("sent_at", { ascending: false })
+    .limit(1) as { data: { sent_at: string }[] | null };
+  const throttle = shouldAlertOnGap(result, lastRows?.[0]?.sent_at ?? null, { graceMinutes: opts.graceMinutes, force: includeTest });
   let alertsFired = 0;
-  if (alert) {
+  if (alert && throttle.alert) {
     const message = `${alert.message}
 Checked at: ${formatDualTimestamp(new Date())}
 This is an automated alert from OtterQuote platform monitoring (gh-3586).`;

@@ -21,3 +21,11 @@ Deno.test("Phase 6 reads fee_acceptances by bid_id and quotes without writing ei
     if (body.includes(w)) throw new Error(`Phase 6 must be read-only; found ${w}`);
   }
 });
+
+Deno.test("Phase 6 excludes renewed quotes in the query and throttles through shouldAlertOnGap", () => {
+  const start = src.indexOf("async function runFeeAcceptanceGapCheck");
+  const body = src.slice(start, src.indexOf("// MAIN HANDLER", start));
+  assertStringIncludes(body, '.is("renewed_from_quote_id", null)');
+  assertStringIncludes(body, "shouldAlertOnGap(");
+  assertStringIncludes(body, "if (alert && throttle.alert)");
+});

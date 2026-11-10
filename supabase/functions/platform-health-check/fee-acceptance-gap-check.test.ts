@@ -68,3 +68,32 @@ Deno.test("alert lists at most 20 ids, oldest first, and states the true count",
   assertEquals(alert.subject.includes("25 quotes"), true);
   assertEquals(alert.message.includes("and 5 more"), true);
 });
+
+// ---- review fixes (REVIEW 6774741998) ----
+import { shouldAlertOnGap } from "./fee-acceptance-gap-check.ts";
+
+Deno.test("an auto-renewed clone (renewed_from_quote_id set, no row) is not a gap", () => {
+  const clone = q("renewed", { renewed_from_quote_id: "orig" });
+  assertEquals(findQuotesMissingAcceptance([clone], [], OPTS).count, 0);
+  // the original with its row is clean; the original WITHOUT a row is still a gap
+  assertEquals(findQuotesMissingAcceptance([q("orig"), clone], ["orig"], OPTS).count, 0);
+  assertEquals(findQuotesMissingAcceptance([q("orig"), clone], [], OPTS).count, 1);
+});
+
+Deno.test("a standing gap does not re-alert every tick; new gap, daily reminder and proof run do", () => {
+  const r = findQuotesMissingAcceptance([q("old", { created_at: "2026-11-09T12:00:00Z" })], [], OPTS);
+  const T = { graceMinutes: 10, now: NOW };
+  // never alerted -> alert
+  assertEquals(shouldAlertOnGap(r, null, T).alert, true);
+  // alerted 15 minutes ago for this same gap -> silent
+  assertEquals(shouldAlertOnGap(r, "2026-11-10T17:45:00Z", T).alert, false);
+  // alerted 25 hours ago -> one reminder
+  assertEquals(shouldAlertOnGap(r, "2026-11-09T17:00:00Z", T).alert, true);
+  // a gap created after the last alert -> alert, counted as new
+  const r2 = findQuotesMissingAcceptance([q("old"), q("new", { created_at: "2026-11-10T17:40:00Z" })], [], OPTS);
+  const t2 = shouldAlertOnGap(r2, "2026-11-10T17:30:00Z", T);
+  assertEquals(t2, { alert: true, newCount: 1 });
+  // no gap -> never alert; proof run (force) -> always alert
+  assertEquals(shouldAlertOnGap({ count: 0, gaps: [] }, null, T).alert, false);
+  assertEquals(shouldAlertOnGap(r, "2026-11-10T17:45:00Z", { ...T, force: true }).alert, true);
+});
