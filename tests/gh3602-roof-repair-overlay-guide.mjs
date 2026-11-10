@@ -26,6 +26,8 @@ check('exactly one H1 and it is the approved H1', h1s.length === 1 && h1s[0] ===
 check('title tag is the approved title', page.includes(`<title>${TITLE}</title>`));
 check('canonical points at the guide URL', page.includes(`<link rel="canonical" href="${URL}">`));
 check('byline is the company only (D-414)', page.includes('Otter Quotes &middot; Updated November 2026') && !/Dustin/.test(page));
+check('D-388 wording: "measurements that contractors use to bid"', page.includes('for measurements that contractors use to bid'));
+check('D-388: "every contractor" is absent (body, FAQ, JSON-LD)', !/every contractor/i.test(page));
 check('sitemap.xml lists the guide URL', read('sitemap.xml').includes(`<loc>${URL}</loc>`));
 check('guides index links the guide', read('guides/index.html').includes(`href="/guides/${SLUG}.html"`));
 check('llms.txt lists the guide', read('llms.txt').includes(URL));
