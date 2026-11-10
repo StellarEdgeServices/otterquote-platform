@@ -795,6 +795,12 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://otterquote.com/locations/st-joseph-county-in/roofing/</loc>
+    <lastmod>2026-11-10</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://otterquote.com/locations/st-louis-county-mo/roofing/</loc>
     <lastmod>2026-11-03</lastmod>
     <changefreq>monthly</changefreq>
@@ -821,6 +827,12 @@
   <url>
     <loc>https://otterquote.com/locations/sumner-county-tn/roofing/</loc>
     <lastmod>2026-11-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/locations/tippecanoe-county-in/roofing/</loc>
+    <lastmod>2026-11-10</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>

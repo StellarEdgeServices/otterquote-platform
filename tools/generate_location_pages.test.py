@@ -163,24 +163,26 @@ class GeneratorTests(unittest.TestCase):
 
     def test_indiana_only_counties_with_county_content_emit(self):
         # Indiana's committed profile carries county_content for Marion, Lake, Allen,
-        # Hamilton, Hendricks, Johnson, Boone, Hancock, Madison, Morgan, Shelby, Monroe and Delaware roofing only. Those thirteen pages clear the strict gate; every other
+        # Hamilton, Hendricks, Johnson, Boone, Hancock, Madison, Morgan, Shelby, Monroe, Delaware, Tippecanoe and St. Joseph roofing only. Those fifteen pages clear the strict gate; every other
         # county/trade page is template text shared with other pages and fails it.
         summary = self.run_gen(["IN"])
-        self.assertEqual(summary["written"], 13)
-        self.assertEqual(len(summary["skipped_thin"]), 92 * 4 - 13)
+        self.assertEqual(summary["written"], 15)
+        self.assertEqual(len(summary["skipped_thin"]), 92 * 4 - 15)
         self.assertEqual(sorted(summary["paths"]),
                          [("allen-county-in", "roofing"), ("boone-county-in", "roofing"),
                           ("delaware-county-in", "roofing"), ("hamilton-county-in", "roofing"), ("hancock-county-in", "roofing"),
                           ("hendricks-county-in", "roofing"), ("johnson-county-in", "roofing"),
                           ("lake-county-in", "roofing"), ("madison-county-in", "roofing"),
                           ("marion-county-in", "roofing"), ("monroe-county-in", "roofing"),
-                          ("morgan-county-in", "roofing"), ("shelby-county-in", "roofing")])
+                          ("morgan-county-in", "roofing"), ("shelby-county-in", "roofing"),
+                          ("st-joseph-county-in", "roofing"), ("tippecanoe-county-in", "roofing")])
         self.assertLess(summary["median_strict_unique_words"], glp.MIN_WORDS)
         self.assertEqual(sorted(p.name for p in self.out.iterdir()),
                          ["allen-county-in", "boone-county-in", "delaware-county-in", "hamilton-county-in",
                           "hancock-county-in", "hendricks-county-in", "index.html", "johnson-county-in",
                           "lake-county-in", "madison-county-in", "marion-county-in", "monroe-county-in",
-                          "morgan-county-in", "shelby-county-in"])   # index.html = hub (gh-2893)
+                          "morgan-county-in", "shelby-county-in", "st-joseph-county-in",
+                          "tippecanoe-county-in"])   # index.html = hub (gh-2893)
         self.assertNotEqual(self.sitemap.read_text(encoding="utf-8"), SITEMAP_SEED)
 
     def test_every_indiana_template_page_passes_the_lint(self):
@@ -1980,7 +1982,7 @@ class SourcesListTests(unittest.TestCase):
 
     def test_every_committed_county_page_has_a_non_empty_sources_list(self):
         pairs = self.committed_pairs()
-        self.assertEqual(len(pairs), 39)
+        self.assertEqual(len(pairs), 41)
         for state, county, trade, sources, _page in pairs:
             with self.subTest(f"{county}-{state}/{trade}"):
                 self.assertGreaterEqual(len(sources), 3)   # NOAA or Census plus at least one local source
