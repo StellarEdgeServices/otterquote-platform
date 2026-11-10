@@ -176,6 +176,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/roof-bid-much-lower-than-the-others.html',
   '/guides/roof-permit-in-your-bid':
     '/guides/roof-permit-in-your-bid.html',
+  '/guides/starter-strip-ridge-cap-bid':
+    '/guides/starter-strip-ridge-cap-bid.html',
   '/guides/roof-tarp-while-you-wait-for-repairs':
     '/guides/roof-tarp-while-you-wait-for-repairs.html',
   '/guides/roof-wind-ratings-explained':
