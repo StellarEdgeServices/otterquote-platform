@@ -328,17 +328,17 @@ describe('quote + acceptance + notify payloads', () => {
   });
 
   it('buildQuoteUpdate renewal keeps bid_status, expired_at and expires_at OUT of the UPDATE payload (gh-3560)', () => {
-    const u = buildQuoteUpdate({ ...common, renewMode: true, existingRenewalsCount: 2, now: NOW });
+    const u = buildQuoteUpdate({ ...common, renewMode: true, now: NOW });
     expect(u).not.toHaveProperty('bid_status'); // the quotes guard trigger refuses these to a direct UPDATE (42501)
     expect(u).not.toHaveProperty('expired_at');
     expect(u).not.toHaveProperty('expires_at');
-    expect(u.renewals_count).toBe(3); // untouched here: PR #3563 owns this key
+    expect(u).not.toHaveProperty('renewals_count'); // #3563 removed it: the column does not exist
     expect(u.updated_at).toBe(NOW.toISOString());
     expect(BID_RENEWAL_WINDOW_MS).toBe(14 * 24 * 60 * 60 * 1000);
   });
 
   it('gh-3560 Change Bid on a withdrawn (cancelled) quote sends no bid_status, expired_at or expires_at either', () => {
-    const u = buildQuoteUpdate({ ...common, renewMode: false, existingBidStatus: 'cancelled', existingRenewalsCount: 2, now: NOW });
+    const u = buildQuoteUpdate({ ...common, renewMode: false, existingBidStatus: 'cancelled', now: NOW });
     for (const k of ['bid_status', 'expired_at', 'expires_at', 'renewals_count']) expect(u).not.toHaveProperty(k);
   });
 

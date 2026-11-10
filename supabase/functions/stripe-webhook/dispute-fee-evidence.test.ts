@@ -88,7 +88,18 @@ Deno.test("end to end: of two rows for one bid the NEWEST right-fee row is used 
   const e = await run({ quotes: [bid], fee_acceptances: [older, newer] });
   assertEquals((e.feeAcceptance as FeeAcceptanceRow).id, "fa-new");
   const reversed = await run({ quotes: [bid], fee_acceptances: [row({ id: "fa-old", created_at: "2026-11-01T09:00:00Z" }), row({ id: "fa-new", fee_amount: 0.05, created_at: "2026-11-01T10:00:01Z" })] });
-  assertEquals(reversed.feeAcceptance, null); // the newest row is the stale one: not evidence, never silently swapped for the older
+  // gh-3490: the newest row is the wrong-fee one (price went A -> B -> A, no new row for the return to A): the older row that matches the bid's current fee is used
+  assertEquals((reversed.feeAcceptance as FeeAcceptanceRow).id, "fa-old");
+  const none = await run({ quotes: [bid], fee_acceptances: [row({ id: "x1", fee_amount: 0.05 }), row({ id: "x2", fee_amount: 1 })] });
+  assertEquals(none.feeAcceptance, null); // no row matches: still manual evidence
+});
+
+Deno.test("gh-3490 end to end: two rows for one bid both match the bid's fee: the NEWEST is used (a reversed sort would pick the older)", async () => {
+  const older = row({ id: "fa-a1", created_at: "2026-11-01T09:00:00Z" });
+  const newer = row({ id: "fa-a2", created_at: "2026-11-01T10:00:01Z" });
+  const between = row({ id: "fa-b", fee_amount: 800, created_at: "2026-11-01T09:30:00Z" });
+  const e = await run({ quotes: [bid], fee_acceptances: [older, between, newer] });
+  assertEquals((e.feeAcceptance as FeeAcceptanceRow).id, "fa-a2");
 });
 
 Deno.test("end to end: fee tolerance is half a cent: $750.004 matches, $751 does not", async () => {

@@ -35,7 +35,7 @@ const OLD_SUBHEAD = 'Otter Quotes gets multiple competitive bids for your client
 const SECTIONS = [
   ['Easier Service.', 'Otter Quotes generates a scope of work and submits it to multiple contractors for bid. In less time than it takes for them to sign with a door to door canvasser, your client can get multiple bids from local, well-known contractors.'],
   ['Educated Clients.', 'We show your clients how higher grade materials can reduce damage from hail and wind. So you can have fewer claims in the future.'],
-  ['Better Warranties and Materials.', "Otter Quotes helps contractors reduce or eliminate the cost of sales and marketing and forces them to compete. So they can funnel those savings into better material and warranties to win your clients' jobs."],
+  ['Better Warranties and Materials.', "Otter Quotes helps contractors reduce or eliminate the cost of sales and marketing and forces them to compete."],
   ['No cost, no obligation.', 'There is no obligation to work with our contractors and no cost for homeowners who provide a copy of their insurance estimate.'],
   ['Simple and easy to send.', "We know it's hard to reach out to everyone affected by a storm. So we make it easy to send your link to clients."],
   ['$200 referral fee.', 'For every client you refer who completes $10,000 or more of work through Otter Quotes, we will send you $200. Please make sure your employment and licensing terms allow this.'],

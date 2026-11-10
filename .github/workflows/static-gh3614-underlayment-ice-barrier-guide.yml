@@ -1,0 +1,42 @@
+name: Static Underlayment and Ice Barrier Guide Test
+
+# gh-3614 -- the roof underlayment and ice barrier guide is built, listed in the sitemap and wired into the guides index.
+# Runs tests/gh3614-underlayment-ice-barrier-guide.mjs (no browser, no secrets). `pull_request` only, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'guides/roof-underlayment-ice-barrier-bid.html'
+      - 'guides/index.html'
+      - 'sitemap.xml'
+      - 'llms.txt'
+      - '_redirects'
+      - 'netlify/edge-functions/blog-guides-redirect.ts'
+      - 'tests/gh3614-underlayment-ice-barrier-guide.mjs'
+      - '.github/workflows/static-gh3614-underlayment-ice-barrier-guide.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3614-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  underlayment-ice-barrier-guide:
+    name: Underlayment and ice barrier guide (gh-3614)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Guide exists, FAQPage JSON-LD, listed (gh3614)
+        run: node tests/gh3614-underlayment-ice-barrier-guide.mjs

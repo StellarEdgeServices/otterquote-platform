@@ -27,6 +27,7 @@
  */
 
 import { CUSTOM_WARRANTY_TAIL } from './copy';
+import { platformFeeDollars, wholeCentDollars } from '../../../../constants/platform-fee';
 
 // ── Flat platform fee rate (contractor-bid-form.html:2431-2433) ──────────────
 export const PLATFORM_FEE_CONTRACT_SIGNING = 0.05; // 5%
@@ -235,8 +236,10 @@ export function computeDisclosureFee(
   bidAmount: number,
   feePct: number,
 ): { feeAmount: number; netAmount: number } {
-  const feeAmount = (bidAmount * feePct) / 100;
-  return { feeAmount, netAmount: bidAmount - feeAmount };
+  // gh-3488 / D-267: whole-cent fee from the one shared definition (constants/platform-fee.ts); the figure shown,
+  // recorded in fee_acceptances / quotes and charged by the Edge Functions is this same value.
+  const feeAmount = platformFeeDollars(bidAmount, feePct);
+  return { feeAmount, netAmount: Math.round((wholeCentDollars(bidAmount) - feeAmount) * 100) / 100 };
 }
 
 /**
@@ -475,7 +478,6 @@ export interface QuoteUpdateInput extends QuoteCommonInput {
   renewMode: boolean;
   /** gh-2564: the quote's current bid_status. 'cancelled' (withdrawn) + Change Bid makes the bid live again. */
   existingBidStatus?: string | null;
-  existingRenewalsCount?: number | null;
   /** Injected for testability — the static page uses `new Date()`. */
   now?: Date;
 }
@@ -506,11 +508,9 @@ export function buildQuoteUpdate(input: QuoteUpdateInput): Record<string, unknow
     workmanship_warranty_years: input.warranty.workmanship_warranty_years,
     updated_at: now.toISOString(),
   };
-  if (input.renewMode) {
-    // D-150 renewal. gh-3560: bid_status, expired_at and expires_at are NOT sent here: the quotes guard trigger refuses
-    // them to a contractor's direct UPDATE (42501), so renewQuoteRpcMode() + supabase.rpc('renew_quote') set them first.
-    base.renewals_count = (input.existingRenewalsCount || 0) + 1;
-  }
+  // D-150 renewal (input.renewMode). gh-3560: bid_status, expired_at and expires_at are NOT sent here: the quotes guard trigger refuses
+  // them to a contractor's direct UPDATE (42501), so renewQuoteRpcMode() + supabase.rpc('renew_quote') set them first.
+  // No renewal counter is written (#3563: quotes has no renewals_count column).
   return base;
 }
 

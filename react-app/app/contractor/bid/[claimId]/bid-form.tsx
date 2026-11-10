@@ -13,16 +13,18 @@
  * UNCHANGED contracts. Fee + legal copy come VERBATIM from copy.ts. No innerHTML.
  */
 
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as Sentry from '@sentry/nextjs';
 import { supabase } from '@/lib/supabase';
 import type { ContractorRecord } from '../../_shell/use-contractor-record';
 import { Card, Field, TextInput, MoneyInput, TextArea, Select, Checkbox, RadioRow, formatCurrency, type Opt } from './bid-ui';
 import { BID_COPY, buildFeeDisclosureText } from './copy';
+import { wholeCentDollars } from '../../../../constants/platform-fee';
 import { HomePhotosCard } from './home-photos-card';
 import { FeeSection } from './fee-section';
 import { WarrantyCard } from './warranty-card';
+import { resolveBidAmount, wizardTradePrices, seedWizardPrices } from './wizard-total'; // gh-3495 (D-267)
 import {
   type BidClaim, type BidMode, type TradeFlags, type WarrantySelectionInput,
   type ValueAddsFormState, type ValueAddsContext, type WizardState,
@@ -193,13 +195,121 @@ function initialState(claim: BidClaim, flags: TradeFlags, claimRcv: number | nul
   };
 }
 
+// gh-3488 (REVIEW 6674889982): both outside calls are bounded, so a hung one cannot hold the form.
+const IP_LOOKUP_TIMEOUT_MS = 3000;
+const FEE_LOOKUP_TIMEOUT_MS = 5000;
+// gh-3491 (REVIEW 6688103147): bound on the Change Bid / renew UPDATE; a retry is harmless (same row, same fields).
+const BID_UPDATE_TIMEOUT_MS = 15000;
+
 async function getContractorIP(): Promise<string | null> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), IP_LOOKUP_TIMEOUT_MS);
   try {
-    const r = await fetch('https://api.ipify.org?format=json');
+    const r = await fetch('https://api.ipify.org?format=json', { signal: ctl.signal });
     if (!r.ok) return null;
     const d = await r.json();
     return ipForInet(d.ip);
-  } catch { return null; } // gh-3409: null, not 'unknown' (an inet column refuses the string and the acceptance was lost)
+  } catch { return null; } finally { clearTimeout(timer); } // gh-3409: null, not 'unknown' (an inet column refuses the string and the acceptance was lost)
+}
+
+/**
+ * The configured platform fee rate for this contractor and claim, or null when the lookup fails or does not answer
+ * within FEE_LOOKUP_TIMEOUT_MS (the caller then keeps the rate already on screen, as it does for any failed lookup).
+ * State is `address_state`, the column quotes_platform_fee_for reads on the server (gh-3488, LEGAL-READ 6674806511).
+ */
+async function fetchConfiguredFeePct(contractor: ContractorRecord, claim: Record<string, unknown>): Promise<number | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const { state, trade } = feeConfigLookupParams({ state: (contractor.address_state as string | null) ?? null }, claim as BidClaim);
+    const lookup = Promise.resolve(supabase
+      .from('platform_fee_config')
+      .select('fee_pct')
+      .or(`state.is.null,state.eq.${state}`)
+      .or(`trade.is.null,trade.eq.${trade}`)
+      .order('state', { ascending: false, nullsFirst: false })
+      .order('trade', { ascending: false, nullsFirst: false })
+      .limit(1)).then(({ data }) => resolveFeePct(data));
+    const timeout = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), FEE_LOOKUP_TIMEOUT_MS); });
+    return await Promise.race([lookup, timeout]);
+  } catch { return null; } finally { if (timer) clearTimeout(timer); }
+}
+
+// gh-3498 (REVIEW 6675274132): the bid_can_submit gate and the quote insert are bounded, so a stalled connection ends in
+// the existing error paths (message shown, form unlocked) instead of a permanent "Submitting…". Both exceed the lookups.
+const GATE_TIMEOUT_MS = 10000;
+const INSERT_TIMEOUT_MS = 20000;
+// Widened closes-on (REVIEW 6688103147): every write AFTER the bid has landed is bounded too. The bid is already filed, so a
+// timeout there is logged by the existing non-fatal catch and the submit goes on to the success screen.
+const POST_WRITE_TIMEOUT_MS = 8000;
+// Runs start(signal), aborts it after ms and rejects with the abort reason (no new wording).
+function callWithTimeout<T>(ms: number, start: (signal: AbortSignal) => PromiseLike<T> | T): Promise<T> {
+  const ctl = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<never>((_, reject) => { timer = setTimeout(() => { ctl.abort(); reject(ctl.signal.reason); }, ms); });
+  return Promise.race([Promise.resolve().then(() => start(ctl.signal)), limit]).finally(() => { if (timer) clearTimeout(timer); });
+}
+function withAbortSignal<B>(builder: B, signal: AbortSignal): B {
+  const b = builder as unknown as { abortSignal?: (s: AbortSignal) => B };
+  return typeof b.abortSignal === 'function' ? b.abortSignal(signal) : builder;
+}
+type DbErr = { code?: string; message?: string; details?: string } | null;
+const isIdemViolation = (e: DbErr) => !!e && e.code === '23505' && /quotes_idempotency_key_uidx/.test(`${e.message || ''} ${e.details || ''}`);
+// The column is not in this database yet (migration not applied): the bid is filed as before.
+const isIdemColumnMissing = (e: DbErr) => !!e && /idempotency_key/.test(e.message || '') && (e.code === 'PGRST204' || e.code === '42703');
+// gh-3498 (REVIEW 6740720167): what a bid says, minus the fields that change on every attempt (acceptance time, the
+// custom-warranty review stamp, the key). Two attempts with the same fingerprint would file the same bid.
+function stableJson(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stableJson).join(',')}]`;
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o).sort().filter((k) => o[k] !== undefined).map((k) => `${JSON.stringify(k)}:${stableJson(o[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(v === undefined ? null : v);
+}
+// gh-3498 (REVIEW 6743281622): the terms of a bid as filed, comparable between the payload this form would send and a row read
+// back from the database (same fields and rules as contractor-bid-form.html bidTermsFingerprint). Fee amounts are derived and
+// timestamps and the key change per attempt, so they are left out. Numbers compare as numbers, JSON text as JSON, null = absent.
+const BID_TERM_FIELDS = ['total_price', 'trade_type', 'scope_summary', 'notes', 'decking_price_per_sheet', 'full_redeck_price',
+  'supplement_acknowledged', 'value_adds', 'per_trade_breakdown', 'auto_renew', 'warranty_option_id', 'warranty_snapshot',
+  'workmanship_warranty_years', 'platform_fee_pct'];
+function normTerm(v: unknown): unknown {
+  if (v === undefined || v === null || v === '') return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? Math.round(v * 10000) / 10000 : null;
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (/^-?\d+(\.\d+)?$/.test(s)) return Math.round(Number(s) * 10000) / 10000;
+    if (/^[[{]/.test(s)) { try { return normTerm(JSON.parse(s)); } catch { /* plain text */ } }
+    return s === '' ? null : s;
+  }
+  if (Array.isArray(v)) return v.length ? v.map(normTerm) : null;
+  if (typeof v === 'object') {
+    const o: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) { const n = normTerm(x); if (n !== null) o[k] = n; }
+    return Object.keys(o).length ? o : null;
+  }
+  return v;
+}
+function bidTermsFingerprint(row: Record<string, unknown> | null): string {
+  const t: Record<string, unknown> = {};
+  for (const k of BID_TERM_FIELDS) t[k] = row ? row[k] : null;
+  const va = t.value_adds as Record<string, unknown> | null | undefined;
+  if (va && typeof va === 'object' && va.warranty_admin_review && typeof va.warranty_admin_review === 'object') {
+    t.value_adds = { ...va, warranty_admin_review: { ...(va.warranty_admin_review as Record<string, unknown>), flagged_at: null } };
+  }
+  return stableJson(normTerm(t));
+}
+function bidContentFingerprint(payload: Record<string, unknown>): string {
+  const p: Record<string, unknown> = { ...payload };
+  delete p.idempotency_key; delete p.fee_accepted_at;
+  const va = p.value_adds as Record<string, unknown> | null | undefined;
+  if (va && va.warranty_admin_review && typeof va.warranty_admin_review === 'object') {
+    p.value_adds = { ...va, warranty_admin_review: { ...(va.warranty_admin_review as Record<string, unknown>), flagged_at: null } };
+  }
+  return stableJson(p);
+}
+function newIdempotencyKey(): string {
+  const c = (typeof crypto !== 'undefined' ? crypto : undefined) as Crypto | undefined;
+  return c && typeof c.randomUUID === 'function' ? c.randomUUID() : `k${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
 }
 
 function track(event: string, params: Record<string, unknown>): void {
@@ -211,7 +321,7 @@ function track(event: string, params: Record<string, unknown>): void {
 
 type SubmitState = 'idle' | 'submitting' | 'done' | 'error';
 
-export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRcv, userId }: {
+export function BidForm({ mode: modeProp, claim, contractor, existingQuote: existingQuoteProp, flags, claimRcv, userId }: {
   mode: BidMode;
   claim: BidClaim & Record<string, unknown>;
   contractor: ContractorRecord;
@@ -220,6 +330,11 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
   claimRcv: number | null;
   userId: string;
 }) {
+  // gh-3498 (REVIEW 6740720167 finding 2): when a retry finds that an earlier, timed-out attempt already filed the bid with other
+  // terms, the form becomes Change Bid on that filed row (as a page reload would), so nothing is filed twice.
+  const [filedQuote, setFiledQuote] = useState<(Record<string, unknown> & { id: string }) | null>(null);
+  const mode: BidMode = filedQuote ? 'change' : modeProp;
+  const existingQuote = filedQuote ?? existingQuoteProp;
   const router = useRouter();
   const claimTrades = useMemo(() => (Array.isArray(claim.trades) ? (claim.trades as string[]) : []), [claim.trades]);
   const hasRoofing = claimTrades.includes('roofing');
@@ -230,6 +345,8 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
 
   const [feePct, setFeePct] = useState<number>(DEFAULT_PLATFORM_FEE_PCT);
   const [feeAccepted, setFeeAccepted] = useState(false);
+  // gh-3488: submit waits for the configured rate, and an acceptance never outlives the rate it was given under.
+  const [feeLookupDone, setFeeLookupDone] = useState(false);
   const [warrantySel, setWarrantySel] = useState<WarrantySelectionInput>({ isCustom: false, workmanshipYearsRaw: '' });
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -246,29 +363,39 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
     queue: wizardElig.queue,
     selectedTrades: wizardElig.queue,
   } as WizardState);
-  const [wizardPrices, setWizardPrices] = useState<Record<string, string>>({});
+  // gh-3495 N3: Change Bid / Renew of a stored multi-trade bid starts from its per_trade_breakdown.
+  const [wizardPrices, setWizardPrices] = useState<Record<string, string>>(() => (wizardMode ? seedWizardPrices(existingQuote?.per_trade_breakdown) : {}));
+  const wizardRounded = wizardTradePrices(wizard.queue, wizardPrices);
 
   // Resolve the config fee pct once (platform_fee_config, contracts unchanged).
   useEffect(() => {
     let active = true;
+    setFeeLookupDone(false);
     (async () => {
-      try {
-        const { state, trade } = feeConfigLookupParams({ state: (contractor.state as string | null) ?? null }, claim);
-        const { data } = await supabase
-          .from('platform_fee_config')
-          .select('fee_pct')
-          .or(`state.is.null,state.eq.${state}`)
-          .or(`trade.is.null,trade.eq.${trade}`)
-          .order('state', { ascending: false, nullsFirst: false })
-          .order('trade', { ascending: false, nullsFirst: false })
-          .limit(1);
-        if (active) setFeePct(resolveFeePct(data));
-      } catch { /* keep default */ }
+      const pct = await fetchConfiguredFeePct(contractor, claim);
+      if (!active) return;
+      if (pct !== null) setFeePct(pct);
+      setFeeLookupDone(true);
     })();
     return () => { active = false; };
   }, [contractor, claim]);
 
-  const bidAmount = parseFloat(form.bidPrice) || 0;
+  // gh-3495 (D-267): a multi-trade bid is the SUM of its trades (whole cents); fee, total_price and fee_amount all follow.
+  // gh-3488: shown, stored and charged bid is whole cents.
+  const bidAmount = wholeCentDollars(resolveBidAmount({ wizardMode, queue: wizard.queue, wizardPrices, bidPrice: form.bidPrice }));
+  // A tick belongs to the figure it was given under: a different rate or a different bid is a different disclosure.
+  useEffect(() => { setFeeAccepted(false); }, [feePct, bidAmount]);
+  // gh-3498: one idempotency key per (claim, contractor) while the form is open, kept across every retry whatever is edited in
+  // between (REVIEW 6740720167 finding 2), dropped only when the bid is filed or the form becomes Change Bid.
+  const idemRef = useRef<{ key: string; fp: string } | null>(null);
+  // Content fingerprints of insert attempts sent from this form that have not yet ended on the success screen; while not empty,
+  // the next submit first looks for a bid already filed for this claim before it inserts anything (cleared only on success or
+  // the Change Bid switch, REVIEW 6743281622).
+  const unconfirmedRef = useRef<string[]>([]);
+  // Id of the filed bid whose fee_acceptances write and confirmation email this form has already made, so a retry that finds
+  // that same bid ends on the success screen without writing them twice (REVIEW 6744510442).
+  const postWritesDoneRef = useRef<string | null>(null);
+  const submitInFlight = useRef(false); // gh-3488: set synchronously, so nothing can file a second bid while one is running
   const disclosure = computeDisclosureFee(bidAmount, feePct);
 
   function buildCtx(): ValueAddsContext {
@@ -284,13 +411,33 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
   async function handleSubmit() {
     setErrorMsg(null);
     if (bidAmount <= 0) { setErrorMsg('Please enter your bid price.'); return; }
+    if (submitInFlight.current) return;
+    submitInFlight.current = true;
     setSubmitState('submitting');
     const nowIso = new Date().toISOString();
 
     try {
+      // gh-3488 (LEGAL-READ 6674806511): a fresh rate lookup at every submit. If the server's rate differs from the one
+      // on screen, show it and require acceptance again (the effect on feePct clears the tick); nothing is filed.
+      const freshPct = await fetchConfiguredFeePct(contractor, claim);
+      if (freshPct !== null && freshPct !== feePct) {
+        setFeePct(freshPct);
+        setSubmitState('idle');
+        return;
+      }
+
       // D-199 bid-time validation gate (bid_can_submit RPC, contract unchanged).
       const gateParams = bidGateRpcParams(form.tradeType, claim, contractor.id);
-      const { data: gateData, error: gateErr } = await supabase.rpc('bid_can_submit', gateParams);
+      let gateData: unknown = null;
+      let gateErr: unknown = null;
+      try {
+        ({ data: gateData, error: gateErr } = await callWithTimeout(GATE_TIMEOUT_MS, (signal) => withAbortSignal(supabase.rpc('bid_can_submit', gateParams), signal)));
+      } catch {
+        // gh-3498: a gate that never answers (or fails to connect) ends here with the existing network-error message
+        setErrorMsg(BID_COPY.gate.networkError);
+        setSubmitState('error');
+        return;
+      }
       const gate = interpretBidGate(gateData as never, gateErr, BID_COPY.gate);
       if (!gate.can_submit) {
         const msg = (gate.reason || BID_COPY.gate.notValidatedDefault) + BID_COPY.gate.uploadAndValidateSuffix + BID_COPY.gate.clickOkSuffix;
@@ -306,9 +453,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
       const feeAmount = disclosure.feeAmount;
       const exactFeeText = buildFeeDisclosureText(feePct, feeAmount);
       const scopeSummary = buildScopeSummary({ brand: form.brandProduct, estimatedStartDate: form.startDate, estimatedCompletionTime: form.completionTime });
-      const perTradeBreakdown = wizardMode
-        ? Object.fromEntries(Object.entries(wizardPrices).map(([k, v]) => [k, parseFloat(v) || 0]).filter(([, v]) => (v as number) > 0))
-        : null;
+      const perTradeBreakdown = wizardMode ? wizardTradePrices(wizard.queue, wizardPrices) : null;
       const common = {
         claimId: String(claim.id), contractorId: contractor.id, totalPrice: bidAmount,
         feeBase, feePct, acceptedAtIso: nowIso, scopeSummary, notes: form.homeownerMessage || null,
@@ -322,7 +467,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
       if (mode === 'change' || mode === 'renew') {
         const updatePayload = buildQuoteUpdate({
           ...common, renewMode: mode === 'renew',
-          existingRenewalsCount: (existingQuote?.renewals_count as number) ?? 0, now: new Date(),
+          now: new Date(),
           existingBidStatus: (existingQuote?.bid_status as string | null) ?? null,
         });
         // gh-3560: renew / reopen set bid_status, expired_at and expires_at server-side (the quotes guard trigger refuses
@@ -332,7 +477,16 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
           const { error: renewErr } = await supabase.rpc('renew_quote', { p_quote_id: existingQuote!.id, p_mode: renewRpcMode });
           if (renewErr) throw renewErr;
         }
-        const { data: upRows, error: upErr } = await supabase.from('quotes').update(updatePayload).eq('id', existingQuote!.id).select('id');
+        // gh-3491: an UPDATE that never answers ends through the catch below (message, form unlocked). Abort the request and stop waiting.
+        const updCtl = new AbortController();
+        let updTimer: ReturnType<typeof setTimeout> | undefined;
+        let upRows: unknown, upErr: unknown;
+        try {
+          ({ data: upRows, error: upErr } = await Promise.race([
+            supabase.from('quotes').update(updatePayload).eq('id', existingQuote!.id).select('id').abortSignal(updCtl.signal),
+            new Promise<never>((_, reject) => { updTimer = setTimeout(() => { updCtl.abort(); reject(new Error('bid_update_timed_out: the quote update did not answer')); }, BID_UPDATE_TIMEOUT_MS); }),
+          ]));
+        } finally { if (updTimer) clearTimeout(updTimer); }
         if (upErr) throw upErr;
         // gh-2105 (decision a, money — HIGH PRIORITY): `.update()` without
         // `.select()` reports success even on a zero-row RLS/id-mismatch
@@ -345,61 +499,124 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
         }
         // Homeowner "bid updated" notification + activity log + GA + contractor email (all non-fatal).
         try {
-          await supabase.from('notifications').insert(buildBidUpdatedNotification({
+          await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(supabase.from('notifications').insert(buildBidUpdatedNotification({
             claimUserId: (claim.user_id as string) || null, claimId: String(claim.id),
             previewText: BID_COPY.bidUpdatedPreview(contractor.company_name), createdAtIso: nowIso,
-          }));
+          })), signal));
         } catch (e) { console.warn('Notification insert failed (non-fatal):', e); }
         try {
-          await supabase.from('activity_log').insert({
+          await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(supabase.from('activity_log').insert({
             user_id: userId, event_type: 'bid_updated',
             title: `Bid updated for project ${String(claim.id).slice(0, 8) || '…'}`, created_at: nowIso,
             metadata: { claim_id: String(claim.id) }, // gh-2997: lets the activity_log trigger inherit is_test from the claim
-          });
+          }), signal));
         } catch (e) { console.warn('Activity log failed (non-fatal):', e); }
         // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id removed —
         // a per-homeowner database identifier must not reach GA4.
         track('bid_updated', { bid_amount: bidAmount });
         try {
-          await supabase.functions.invoke('notify-contractors', { body: buildNotifyContractorsBody(mode === 'renew', String(claim.id), contractor.id) });
+          await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => supabase.functions.invoke('notify-contractors', { body: buildNotifyContractorsBody(mode === 'renew', String(claim.id), contractor.id), signal }));
         } catch (e) { console.warn('Bid update/renewal email failed (non-fatal):', e); }
       } else {
         const insertPayload = buildQuoteInsert(common);
-        const { data: inserted, error: insErr } = await supabase.from('quotes').insert(insertPayload).select('id').single();
+        // gh-3498: the insert carries an idempotency key and is bounded. A retry after an attempt with no confirmed answer first
+        // looks for a bid already filed for this claim (found even before the key column exists); if one races in anyway, the same
+        // key hits the unique index and the filed row is read back. The filed row counts as this bid only when every unconfirmed
+        // attempt carried exactly this content; otherwise the form becomes Change Bid on it (REVIEW 6740720167 finding 2).
+        const contentFp = bidContentFingerprint(insertPayload);
+        const fp = [String(claim.id), contractor.id].join('|');
+        if (!idemRef.current || idemRef.current.fp !== fp) idemRef.current = { key: newIdempotencyKey(), fp };
+        const idemKey = idemRef.current.key;
+        const payloadWithKey: Record<string, unknown> = { ...insertPayload, idempotency_key: idemKey };
+        const insertOnce = (body: Record<string, unknown>) => callWithTimeout(INSERT_TIMEOUT_MS, (signal) =>
+          withAbortSignal(supabase.from('quotes').insert(body).select('id').single(), signal));
+        type FiledRow = Record<string, unknown> & { id: string };
+        let inserted: unknown = null;
+        let insErr: unknown = null;
+        let filed: FiledRow | null = null;
+        if (unconfirmedRef.current.length) {
+          const { data: onFile, error: lookErr } = await callWithTimeout(INSERT_TIMEOUT_MS, (signal) => withAbortSignal(
+            supabase.from('quotes').select('*').eq('claim_id', String(claim.id)).eq('contractor_id', contractor.id).maybeSingle(), signal));
+          if (lookErr) throw lookErr; // nothing is inserted on a failed lookup; the catch shows the message and unlocks
+          if (onFile && (onFile as { id?: string }).id) filed = onFile as FiledRow;
+        }
+        if (!filed) {
+          if (!unconfirmedRef.current.includes(contentFp)) unconfirmedRef.current.push(contentFp);
+          ({ data: inserted, error: insErr } = await insertOnce(payloadWithKey));
+          if (insErr && isIdemColumnMissing(insErr as DbErr)) {
+            ({ data: inserted, error: insErr } = await insertOnce(insertPayload));
+          }
+          if (insErr && isIdemViolation(insErr as DbErr)) {
+            const { data: existing, error: readErr } = await callWithTimeout(INSERT_TIMEOUT_MS, (signal) =>
+              withAbortSignal(supabase.from('quotes').select('*').eq('idempotency_key', idemKey).maybeSingle(), signal));
+            if (!readErr && existing && (existing as { id?: string }).id) { filed = existing as FiledRow; insErr = null; }
+          }
+        }
         if (insErr) throw insErr;
+        if (filed) {
+          // REVIEW 6743281622: the filed row's OWN terms against this retry's terms, whichever earlier attempt landed.
+          const sameBid = bidTermsFingerprint(filed) === bidTermsFingerprint(insertPayload)
+            && (!filed.idempotency_key || filed.idempotency_key === idemKey);
+          if (!sameBid) {
+            idemRef.current = null; unconfirmedRef.current = []; postWritesDoneRef.current = null;
+            setFiledQuote(filed);
+            setForm(initialState(claim, flags, claimRcv, filed));
+            setErrorMsg(BID_COPY.bidAlreadyFiled);
+            setSubmitState('error');
+            return;
+          }
+          inserted = filed; // the earlier attempt filed exactly this bid: finish it (acceptance, email, success)
+        }
         const bidId = (inserted as { id: string }).id;
-        // D-215 Layer 1 fee_acceptances + Layer 2 send-bid-confirmation (non-fatal; quote committed).
+        // D-215 Layer 1 fee_acceptances + Layer 2 send-bid-confirmation (non-fatal; quote committed). Not twice for the same filed bid.
+        if (postWritesDoneRef.current !== bidId) {
         try {
           const ip = await getContractorIP();
           // gh-3409: .select('id') and NEVER .single() (a diverted row returns zero rows; .single() would make PostgREST roll the quarantine row back).
-          const feeRes = await supabase.from('fee_acceptances').insert(buildFeeAcceptanceInsert({
+          const feeIns = supabase.from('fee_acceptances').insert(buildFeeAcceptanceInsert({
             contractorId: contractor.id, claimId: String(claim.id), bidId, feePct, feeAmount,
             feeTextDisplayed: exactFeeText, acceptedAtIso: nowIso, ipAddress: ip,
             userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
           })).select('id');
+          const feeRes = await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(feeIns, signal)); // gh-3498: bounded; a timeout lands in the non-fatal catch below
           const feeOutcome = feeAcceptanceOutcome(feeRes);
           if (feeOutcome !== 'recorded') {
             const feeMsg = feeOutcome === 'failed' ? '[D-215] Fee acceptance record failed (non-fatal, quote committed)' : '[D-215] Fee acceptance diverted to quarantine';
             console.error(feeMsg, feeRes.error?.message);
-            Sentry.captureMessage(feeMsg, { level: feeOutcome === 'failed' ? 'error' : 'warning', extra: { bid_id: bidId, claim_id: String(claim.id), contractor_id: contractor.id, code: feeRes.error?.code, message: feeRes.error?.message } });
+            try { // gh-3498 (6744510442): Sentry reporting is best-effort and must not escape into the submit's error path
+              Sentry.captureMessage(feeMsg, { level: feeOutcome === 'failed' ? 'error' : 'warning', extra: { bid_id: bidId, claim_id: String(claim.id), contractor_id: contractor.id, code: feeRes.error?.code, message: feeRes.error?.message } });
+            } catch (se) { console.warn('[gh-3498] Sentry report failed:', se); }
           }
-        } catch (e) { console.error('[D-215] fee acceptance failed (non-fatal):', e); }
+        } catch (e) {
+          // gh-3498: a timed-out (or otherwise thrown) acceptance write must leave a trace, as the HTML form does: the quote is filed, the D-215 row may not be.
+          console.error('[D-215] fee acceptance failed (non-fatal):', e);
+          try { Sentry.captureException(e, { extra: { bid_id: bidId, claim_id: String(claim.id), contractor_id: contractor.id } }); }
+          catch (se) { console.warn('[gh-3498] Sentry report failed:', se); }
+        }
+        // The acceptance write has been made or attempted (a timed-out one may still have landed): never again for this bid.
+        postWritesDoneRef.current = bidId;
         try {
           const tradeLabel = wizardMode && wizard.queue.length > 0 ? wizard.queue.join(', ') : (claimTrades.length ? claimTrades.join(', ') : 'roofing');
-          await supabase.functions.invoke('send-bid-confirmation', {
+          await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => supabase.functions.invoke('send-bid-confirmation', {
             body: buildBidConfirmationBody({ quoteId: bidId, contractorId: contractor.id, bidAmount, feePct, feeAmount, trade: tradeLabel }),
-          });
+            signal,
+          }));
         } catch (e) { console.error('[D-215 Layer 2] send-bid-confirmation failed (non-fatal):', e); }
+        }
         track('bid_submit', { trade_types: claimTrades, job_type: flags.isRetailJob ? 'retail' : 'insurance', bid_amount: bidAmount });
       }
 
       // Clear wizard localStorage state on success (parity with clearWizardState).
       try { localStorage.removeItem(`oq_wizard_${claim.id}`); } catch { /* ignore */ }
+      idemRef.current = null; // gh-3498: this bid is filed; its key is spent
+      unconfirmedRef.current = []; postWritesDoneRef.current = null;
       setSubmitState('done');
     } catch (err) {
       console.error('Error submitting bid:', err);
       setErrorMsg('Error submitting bid: ' + (err instanceof Error ? err.message : 'Unknown error'));
       setSubmitState('error');
+    } finally {
+      submitInFlight.current = false;
     }
   }
 
@@ -422,7 +639,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
   const submitLabel = submitState === 'submitting'
     ? 'Submitting…'
     : mode === 'renew' ? BID_COPY.submitBtnRenew : mode === 'change' ? BID_COPY.submitBtnChange : BID_COPY.submitBtnSubmit;
-  const submitDisabled = submitState === 'submitting' || !feeAccepted;
+  const submitDisabled = submitState === 'submitting' || !feeAccepted || !feeLookupDone;
 
   // The currently-shown wizard trade (step 2), if any.
   const wizardTrade = wizardMode && wizard.step === 2 ? wizard.queue[wizard.tradeIdx] : null;
@@ -504,7 +721,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
                 {wizard.queue.map((t) => (
                   <div key={t} style={{ display: 'contents' }}>
                     <span className="oqb-summary-k">{t.charAt(0).toUpperCase() + t.slice(1)}</span>
-                    <span className="oqb-summary-v">{wizardPrices[t] ? formatCurrency(parseFloat(wizardPrices[t]) || 0) : '—'}</span>
+                    <span className="oqb-summary-v">{wizardRounded[t] ? formatCurrency(wizardRounded[t]) : '—'}</span>
                   </div>
                 ))}
               </div>
@@ -519,7 +736,7 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
           <FeeSection mode={mode} bidAmount={bidAmount} feePct={feePct} disclosure={disclosure}
             claimRcv={claimRcv} isInsuranceRcv={claim.job_type === 'insurance_rcv'}
             autoRenew={form.autoRenew} setAutoRenew={(v) => update({ autoRenew: v })}
-            feeAccepted={feeAccepted} setFeeAccepted={setFeeAccepted} />
+            feeAccepted={feeAccepted} setFeeAccepted={setFeeAccepted} locked={submitState === 'submitting'} />
 
           {errorMsg && <div className="oqb-err">{errorMsg}</div>}
           <div className="oqb-actions">

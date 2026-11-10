@@ -65,3 +65,15 @@ export function takeStoredReturn(): ReturnToken | null {
 export function readReturnFromUrl(search: string): ReturnToken | null {
   try { return parseReturnToken(new URLSearchParams(search).get('return')); } catch { return null; }
 }
+
+/** The homeowner dashboard that owns the state gate and the return-flag forward (same page the static project-info pages ended on). */
+export const HOMEOWNER_DASHBOARD_URL = 'https://otterquote.com/dashboard.html';
+
+/**
+ * gh-3283 / gh-3285: where the /insurance-rcv and /out-of-pocket pages send the homeowner after Save. Always the dashboard, with
+ * the allowlisted token carried forward when the incoming URL had a valid one (React twin of Auth.dashboardUrlWithReturn in
+ * js/auth.js). The destination is a constant; only an allowlist token from the query is ever appended, so it cannot be an open redirect.
+ */
+export function dashboardUrlWithReturn(search: string): string {
+  return withReturn(HOMEOWNER_DASHBOARD_URL, readReturnFromUrl(search));
+}

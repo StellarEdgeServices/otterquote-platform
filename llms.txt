@@ -1,6 +1,6 @@
 # Otter Quotes
 
-Otter Quotes is a technology platform based in Indianapolis, Indiana that helps homeowners and contractors navigate property damage repair projects. For insurance-backed projects, after a homeowner files their own claim with their insurance carrier, Otter Quotes gathers the loss sheet, coordinates professional aerial roof measurements, facilitates material and color selection, runs a competitive bidding process, and delivers a fully executed contract to the winning contractor — ready to start work. Homeowners paying out of pocket can start without an insurance claim. There is no cost for homeowners who provide a copy of their insurance estimate. Homeowners without one pay an upfront charge of as little as $22.63 for professional measurements that are used by every contractor; that money is refunded if they complete a job on the platform. Contractors pay a percentage-based platform fee only on signed contracts they win.
+Otter Quotes is a technology platform based in Indianapolis, Indiana that helps homeowners and contractors navigate property damage repair projects. For insurance-backed projects, after a homeowner files their own claim with their insurance carrier, Otter Quotes gathers the loss sheet, coordinates professional aerial roof measurements, facilitates material and color selection, runs a competitive bidding process, and delivers a fully executed contract to the winning contractor — ready to start work. Homeowners paying out of pocket can start without an insurance claim. There is no cost for homeowners who provide a copy of their insurance estimate. Homeowners without one pay an upfront charge of as little as $22.63 for professional measurements that contractors use to bid; that money is refunded if they complete a job on the platform. Contractors pay a percentage-based platform fee only on signed contracts they win.
 
 Otter Quotes does not represent homeowners in their insurance claims and is not a public adjuster. The platform organizes and executes the contractor selection process; on insurance-backed projects that begins after the homeowner has filed their own claim.
 
@@ -68,8 +68,11 @@ Otter Quotes does not represent homeowners in their insurance claims and is not 
 - [What Is a Roofing Change Order, and What if the Roofer Finds Hidden Damage?](https://otterquote.com/guides/roof-change-orders-hidden-damage.html)
 - [What Should Be in a Roofing Contract Before You Sign?](https://otterquote.com/guides/roofing-contract-checklist-before-you-sign.html)
 - [Why Is One Roof Bid Much Lower Than the Others?](https://otterquote.com/guides/roof-bid-much-lower-than-the-others.html)
+- [What Underlayment and Ice Barrier Should Your Roof Replacement Bid Name?](https://otterquote.com/guides/roof-underlayment-ice-barrier-bid.html)
 - [Who Pulls the Roofing Permit, and What Should the Bid Say?](https://otterquote.com/guides/roof-permit-in-your-bid.html)
 - [How Long Can a Tarp Stay on a Roof?](https://otterquote.com/guides/roof-tarp-while-you-wait-for-repairs.html)
+- [Roof Repair, Overlay or Replacement? How to Get Bids You Can Compare](https://otterquote.com/guides/roof-repair-overlay-or-replacement-bids.html)
+- [Does Your Roof Replacement Bid Say What Happens to the Flashing?](https://otterquote.com/guides/roof-flashing-replacement-bid.html)
 - [Roof Wind Ratings Explained: What “110,” “130” and “No Limit” Really Promise](https://otterquote.com/guides/roof-wind-ratings-explained.html)
 - [Class 4 Impact-Resistant Shingles: What the Rating Means, What It Doesn't, and the Insurance Catch](https://otterquote.com/guides/class-4-impact-resistant-shingles.html)
 - [Algae-Resistant Shingle Warranties: 10, 25 and 30 Years, and What Each One Requires](https://otterquote.com/guides/algae-resistant-shingle-warranties.html)

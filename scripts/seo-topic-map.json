@@ -60,12 +60,15 @@
         "guides/roof-bid-comparison-worksheet",
         "guides/roof-bid-comparison-tool",
         "guides/roof-bid-much-lower-than-the-others",
+        "guides/roof-underlayment-ice-barrier-bid",
         "blog/why-roofers-quote-different-prices",
         "guides/competitive-roof-bids-vs-single-referral",
         "guides/online-roof-bids-no-salesperson",
         "blog/aerial-roof-measurement-reports",
         "guides/roof-replacement-cost-breakdown",
-        "guides/otter-quotes-vs-thumbtack-angi"
+        "guides/otter-quotes-vs-thumbtack-angi",
+        "guides/roof-repair-overlay-or-replacement-bids",
+        "guides/roof-flashing-replacement-bid"
       ]
     },
     {
@@ -322,6 +325,13 @@
       "/guides/roof-bid-comparison-worksheet.html",
       "/guides/how-to-read-contractor-estimate.html"
     ],
+    "guides/roof-underlayment-ice-barrier-bid": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/manufacturer-backed-roof-warranties.html",
+      "/guides/roof-permit-in-your-bid.html"
+    ],
     "guides/roof-permit-in-your-bid": [
       "/guides/how-to-read-contractor-estimate.html",
       "/guides/roof-bid-comparison-worksheet.html",
@@ -398,6 +408,20 @@
       "/guides/roof-wind-ratings-explained.html",
       "/guides/contractor-workmanship-warranty.html",
       "/guides/roof-change-orders-hidden-damage.html"
+    ],
+    "guides/roof-repair-overlay-or-replacement-bids": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roof-change-orders-hidden-damage.html",
+      "/guides/roof-tarp-while-you-wait-for-repairs.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/how-to-read-contractor-estimate.html"
+    ],
+    "guides/roof-flashing-replacement-bid": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/roof-change-orders-hidden-damage.html",
+      "/guides/manufacturer-backed-roof-warranties.html"
     ],
     "guides/online-roof-bids-no-salesperson": [
       "/guides/roof-bid-comparison-worksheet.html",
@@ -542,7 +566,7 @@
     "guides/roof-tarp-while-you-wait-for-repairs": [
       "/guides/roofers-backed-up-after-storm.html",
       "/guides/roof-bid-comparison-worksheet.html",
-      "/guides/how-long-does-roof-replacement-take.html",
+      "/guides/roof-repair-overlay-or-replacement-bids.html",
       "/guides/how-to-read-contractor-estimate.html",
       "/blog/what-to-do-after-storm-damages-roof.html"
     ],

@@ -48,6 +48,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { logNotificationFailureLoud } from "./notification-failure.ts";
 import {
   buildUpgradeOrderInsert,
+  contractorIdOrNull,
+  resolveUpgradeContractorId,
   UPGRADE_PRODUCT_CODE,
   type UpgradeOrderInsertPayload,
 } from "./measurement-upgrade-order.ts";
@@ -67,6 +69,13 @@ import {
   paymentSucceededAt,
   raiseClockAlert,
 } from "./guarantee-clock.ts";
+import {
+  buildCoverageAlertRow,
+  coverageNeedsAlert,
+  decideGuaranteeCoverage,
+  EXCLUDED_STATES_SETTING_KEY,
+  raiseCoverageAlert,
+} from "./guarantee-coverage.ts";
 import {
   NON_USD_ALERT_SEND_TIMEOUT_MS,
   NON_USD_ALERT_TYPE,
@@ -262,7 +271,7 @@ async function verifyUpgradePayment(
   paymentIntentId: string,
   claimId: string,
   requestOrigin: string,
-): Promise<PaymentCheckResult> {
+): Promise<PaymentCheckResult & { piContractorId?: string | null }> {
   const isStaging = requestOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
     requestOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
   const stripeSecretKey = isStaging
@@ -287,7 +296,9 @@ async function verifyUpgradePayment(
   }
   const pi = await piRes.json();
   // gh-2107 (Ben's step 2 on #2078): same module, same USD guard.
-  return checkUpgradePaymentIntent(pi, { claimId });
+  const checked = checkUpgradePaymentIntent(pi, { claimId });
+  // gh-3459: carry the contractor this PaymentIntent was minted for (set server-side by create-payment-intent) to the order insert.
+  return checked.ok ? { ...checked, piContractorId: contractorIdOrNull(pi.metadata?.contractor_id) } : checked;
 }
 
 /**
@@ -499,11 +510,28 @@ const handler = async (req: Request): Promise<Response> => {
       }
 
       const upgradeRole = roleUnresolved && !contractorId ? UNSPECIFIED_ROLE : "contractor";
+
+      // gh-3459 (DECIDED Tier A on #3459): record the order against the contractor the verified PaymentIntent was minted for, falling back
+      // to the claim's awarded contractor, never against the caller's own claim. create-payment-intent's duplicate-upgrade gate matches on
+      // this column, so a second account recording the order can no longer leave the paying contractor free to be charged twice.
+      // The claim is read only when the PaymentIntent names no contractor; a failed read just means no fallback.
+      let awardedContractorId: string | null = null;
+      if (!paidUpgrade.piContractorId) {
+        const { data: awardRow, error: awardErr } = await supabase
+          .from("claims")
+          .select("selected_contractor_id")
+          .eq("id", claimId)
+          .maybeSingle();
+        if (awardErr) console.error(`[${FUNCTION_NAME}] upgrade awarded-contractor lookup failed (no fallback):`, awardErr);
+        awardedContractorId = contractorIdOrNull(awardRow?.selected_contractor_id);
+      }
+      const orderContractorId = resolveUpgradeContractorId(paidUpgrade.piContractorId, awardedContractorId, contractorId);
+
       const decision = buildUpgradeOrderInsert(
         paidUpgrade,
         claimId,
         authedUser.id,
-        contractorId ?? "",
+        orderContractorId ?? "",
         paymentIntentId,
         isFirstBuyer,
         note,
@@ -519,7 +547,7 @@ const handler = async (req: Request): Promise<Response> => {
 
       // gh-3447: paid, but no usable role and no contractor_id: record it for an admin rather than refuse it.
       const upgradePayload: UpgradeOrderInsertPayload = upgradeRole === UNSPECIFIED_ROLE
-        ? { ...decision.insertPayload, requested_by_role: "unspecified", requested_by_contractor_id: null }
+        ? { ...decision.insertPayload, requested_by_role: "unspecified", requested_by_contractor_id: orderContractorId }
         : decision.insertPayload;
       let { data: upgradeOrder, error: upgradeInsErr } = await supabase
         .from("hover_orders")
@@ -565,7 +593,7 @@ const handler = async (req: Request): Promise<Response> => {
       console.log(`[${FUNCTION_NAME}] upgrade order queued for manual fulfillment:`, {
         order_id: upgradeOrder.id,
         claim_id: claimId,
-        contractor_id: contractorId,
+        contractor_id: orderContractorId,
         amount: paidUpgrade.amount,
         first_buyer: isFirstBuyer,
       });
@@ -681,13 +709,18 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // gh-3471: the 100-hour clock for a real (non-test) payment. Test orders and unreadable payment times get no clock. Contained: never throws.
+    // The same claim read also carries property_state for the covered-state check below (claimReadOk stays false if the read errors or never runs).
+    let claimReadOk = false;
+    let claimPropertyState: unknown = null;
     const clock = await decideGuaranteeClock({
       livemode: paid.livemode,
       paidAt: paid.paidAt ?? null,
       buyerId: authedUser.id,
       lookupClaim: async () => {
-        const { data, error } = await supabase.from("claims").select("is_test, user_id").eq("id", claimId).maybeSingle();
+        const { data, error } = await supabase.from("claims").select("is_test, user_id, property_state").eq("id", claimId).maybeSingle();
         if (error) throw new Error("claim lookup returned an error");
+        claimReadOk = true;
+        claimPropertyState = data?.property_state ?? null;
         return data ?? null;
       },
       lookupProfile: async (id: string) => {
@@ -722,6 +755,23 @@ const handler = async (req: Request): Promise<Response> => {
     const paidRole: string = decidedRole.role;
     const roleStillUnspecified = paidRole === UNSPECIFIED_ROLE;
 
+    // gh-3471 (#3427 D6): the covered-state check, ONLY for an order that gets a clock (so never for is_test, contractor-role, or an unreadable payment time).
+    // It records coverage and never blocks or changes the payment. guarantee_covered is written only when it is true/false; unknown stays the column's NULL
+    // (so while the list is unset, the payload carries no new column at all). Contained: never throws.
+    const clockApplies = clock.stored && paidRole !== "contractor";
+    const coverage = clockApplies
+      ? await decideGuaranteeCoverage({
+        claimReadOk,
+        propertyState: claimPropertyState,
+        readExcludedSetting: async () => {
+          const { data, error } = await supabase.from("platform_settings").select("value").eq("key", EXCLUDED_STATES_SETTING_KEY).maybeSingle();
+          if (error) throw new Error("excluded-state list read returned an error");
+          return data ?? null;
+        },
+        log: (m) => console.error(m),
+      })
+      : null;
+
     const orderPayload = {
         claim_id: claimId,
         user_id: authedUser.id,
@@ -738,14 +788,30 @@ const handler = async (req: Request): Promise<Response> => {
         admin_notes: note,
         // gh-3471: the clock is a homeowner promise, so a contractor-role order never carries one; a test order or an unreadable payment time has no fields.
         ...(paidRole === "contractor" ? {} : clock.fields),
+        // gh-3471: coverage only beside a clock, and only when known (true/false).
+        ...(coverage && typeof coverage.covered === "boolean" ? { guarantee_covered: coverage.covered } : {}),
     };
     let { data: order, error: insErr } = await supabase.from("hover_orders").insert(orderPayload).select("id, status").single();
 
+    // gh-3471: if guarantee_covered is not in this database yet (its migration not applied), keep the clock and drop ONLY the coverage first: the error code
+    // does not name the column (matched on the code only), and the clock migration is the older one, so the newer column is the likelier one to be missing.
+    let coverageColumnMissing = false;
+    let insertPayload: Record<string, unknown> = orderPayload;
+    if (isMissingColumnError(insErr) && "guarantee_covered" in insertPayload) {
+      console.error(`[${FUNCTION_NAME}] hover_orders guarantee_covered column missing (gh3471 coverage migration not yet applied) -- retrying without it:`, insErr);
+      const { guarantee_covered: _c, ...withoutCoverage } = insertPayload;
+      insertPayload = withoutCoverage;
+      const retry = await supabase.from("hover_orders").insert(insertPayload).select("id, status").single();
+      order = retry.data;
+      insErr = retry.error;
+      coverageColumnMissing = true;
+    }
+
     // gh-3471: if the clock columns are not in this database yet (migration not applied), a paid order must still be recorded: retry without them and alert.
     let clockColumnsMissing = false;
-    if (isMissingColumnError(insErr) && "guarantee_started_at" in orderPayload) {
+    if (isMissingColumnError(insErr) && "guarantee_started_at" in insertPayload) {
       console.error(`[${FUNCTION_NAME}] hover_orders guarantee clock columns missing (migration not yet applied) -- retrying without them:`, insErr);
-      const { guarantee_started_at: _s, guarantee_deadline_at: _d, ...withoutClock } = orderPayload as Record<string, unknown>;
+      const { guarantee_started_at: _s, guarantee_deadline_at: _d, guarantee_covered: _c2, ...withoutClock } = insertPayload;
       const retry = await supabase.from("hover_orders").insert(withoutClock).select("id, status").single();
       order = retry.data;
       insErr = retry.error;
@@ -779,6 +845,21 @@ const handler = async (req: Request): Promise<Response> => {
         (row) => supabase.from("platform_alerts_log").insert(row),
         (m) => console.error(m),
         buildClockAlertRow({ reason: clockColumnsMissing ? "column_missing" : "no_payment_time", orderId: order.id, paymentIntentId, claimId }),
+      );
+    }
+
+    // gh-3471: an order that kept its clock but whose coverage is unknown (or could not be stored) is an operator alert. "List not configured yet" is logged
+    // only (it would alert on every order until Dustin's list lands). No alert when the clock itself was not stored: the clock alert above covers that order.
+    if (!clockColumnsMissing && coverage && (coverageColumnMissing || coverageNeedsAlert(coverage))) {
+      await raiseCoverageAlert(
+        (row) => supabase.from("platform_alerts_log").insert(row),
+        (m) => console.error(m),
+        buildCoverageAlertRow({
+          reason: coverageColumnMissing ? "column_missing" : (coverage.reason as "list_malformed" | "list_read_failed" | "claim_read_failed" | "no_property_state"),
+          orderId: order.id,
+          paymentIntentId,
+          claimId,
+        }),
       );
     }
 

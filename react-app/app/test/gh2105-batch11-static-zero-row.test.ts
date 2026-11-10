@@ -58,7 +58,8 @@ describe('contract-signing.html makes no signature-stamp write (gh-2864, superse
 describe('contractor-bid-form.html change/renew bid update (gh-2105 batch 11)', () => {
   const src = read('contractor-bid-form.html');
   const start = src.indexOf('if (changeBidMode && existingQuote) {');
-  const end = src.indexOf("await sb.from('notifications').insert({", start);
+  // gh-3498: the notifications insert is now wrapped in callWithTimeout(..., withAbortSignal(...)), so match the call itself
+  const end = src.indexOf("sb.from('notifications').insert({", start);
   const block = src.slice(start, end);
 
   it('locates the change-bid block', () => {
@@ -67,7 +68,8 @@ describe('contractor-bid-form.html change/renew bid update (gh-2105 batch 11)', 
   });
 
   it("chains .select('id') on the quotes update", () => {
-    expect(block).toContain(".eq('id', existingQuote.id)\n              .select('id')");
+    // Whitespace/line-break tolerant: the chain may sit on one line or several.
+    expect(block).toMatch(/\.eq\(\s*'id'\s*,\s*existingQuote\.id\s*\)\s*\.select\(\s*'id'\s*\)/);
   });
 
   it('throws bid_update_zero_rows on a zero-row match, after the existing error check', () => {

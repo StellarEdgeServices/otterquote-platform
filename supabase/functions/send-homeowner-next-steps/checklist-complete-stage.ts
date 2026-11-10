@@ -117,6 +117,7 @@ export interface ChecklistCompleteClaim {
   has_estimate?: boolean | null;
   has_measurements?: boolean | null;
   has_material_selection?: boolean | null;
+  policy_type?: string | null;
   updated_at?: string | null;
   created_at?: string | null;
 }

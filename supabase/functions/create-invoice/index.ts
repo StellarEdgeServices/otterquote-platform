@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.104.0";
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
+import { platformFeeCents } from "../_shared/platform-fee.ts"; // gh-3488 / D-267
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -365,7 +366,8 @@ serve(async (req: Request) => {
     // Calculate amounts
     const bidAmount = Math.round(parseFloat(quote.total_price) * 100);
     const feePct = quote.platform_fee_pct || quote.fee_percentage;
-    const platformFeeAmount = Math.round((bidAmount * feePct) / 100);
+    // gh-3488 / D-267: the one shared whole-cent definition (shown fee = charged fee = invoiced fee).
+    const platformFeeAmount = platformFeeCents(parseFloat(quote.total_price), Number(feePct));
     const contractorNet = bidAmount - platformFeeAmount;
 
     // Fetch contractor email + mailing address (D-237; v14 address columns)

@@ -357,3 +357,15 @@ Deno.test("buildRows: a draft with complete columns and no event is checklist_co
   assertStrictEquals(by.get("dn-no-event")!.checklist_complete, false);
   assertStrictEquals(resolveChecklistCompleteAt(claim({ id: "x", status: "submitted", has_material_selection: true, has_measurements: true }), undefined), null);
 });
+
+// gh-3578 (D-407): an ACV claim with a purchased measurement and no estimate is
+// checklist-complete, same as dashboard.html isChecklistComplete().
+Deno.test("resolveChecklistCompleteAt: ACV draft with measurement and no estimate is complete (gh-3578)", () => {
+  const acv = claim({ id: "a", status: "draft", funding_type: "insurance", policy_type: "acv", has_estimate: false, has_measurements: true, has_material_selection: true });
+  assertEquals(resolveChecklistCompleteAt(acv, undefined), "2026-08-01T00:00:00Z");
+  // still needs material selection
+  assertStrictEquals(resolveChecklistCompleteAt({ ...acv, has_material_selection: false }, undefined), null);
+  // RCV / unknown policy types still need the estimate
+  assertStrictEquals(resolveChecklistCompleteAt({ ...acv, policy_type: "rcv" }, undefined), null);
+  assertStrictEquals(resolveChecklistCompleteAt({ ...acv, policy_type: null }, undefined), null);
+});

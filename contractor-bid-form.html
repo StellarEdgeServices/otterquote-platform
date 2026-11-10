@@ -1506,12 +1506,12 @@
 
         <!-- ── Retail Price Input (replaces bid type selector for cash/retail jobs) ── -->
         <div class="form-section" id="retailPriceSection" style="grid-column: 1 / -1; display: none;">
-          <label class="form-label required" style="margin-bottom:var(--sp-3);">Total Bid Price</label>
+          <label class="form-label required" id="retailPriceLabel" style="margin-bottom:var(--sp-3);">Roofing price</label>
           <div class="input-prefix" style="max-width:320px;">
             <span>$</span>
             <input type="number" id="retailBidPrice" name="retailBidPrice" step="0.01" min="0" placeholder="Enter your total price for this project">
           </div>
-          <p style="font-size:0.8rem;color:#6B7280;margin-top:var(--sp-2);">This is the total price the homeowner will see. Platform fees are deducted from this amount per the breakdown below.</p>
+          <p id="retailPriceHelp" style="font-size:0.8rem;color:#6B7280;margin-top:var(--sp-2);">Price for the roofing portion. Your bid total is the sum of all trades.</p>
         </div>
 
         <div class="form-group" id="brandProductGroup">
@@ -2266,6 +2266,7 @@
           <div style="font-size:0.78rem;color:#94A3B8;margin-top:3px;" id="netToContractorBidRow">Net to you: $0.00</div>
         </div>
       </div>
+      <p id="bidTotalFeeNote" style="font-size:0.8rem;color:#6B7280;margin:var(--sp-2) 0 0;">Platform fees are deducted from this amount per the breakdown below.</p>
 
       <div style="margin-top: var(--sp-6); margin-bottom: var(--sp-4);">
         <div class="fee-row">
@@ -2444,15 +2445,17 @@
       const trim    = parseFloat(document.getElementById('sidingTrimPrice')?.value) || 0;
       const wrap    = parseFloat(document.getElementById('sidingWindowWrapPrice')?.value) || 0;
       const demo    = parseFloat(document.getElementById('sidingTeardownPrice')?.value) || 0;
-      if (sidingWallSquares > 0) {
-        const total = (install * sidingWallSquares) + trim + wrap + demo;
-        document.getElementById('totalPrice').value = total > 0 ? total : '';
-      } else {
-        // Wall squares not yet loaded — use raw input sum as placeholder (warn in note)
-        const total = install + trim + wrap + demo;
+      // Wall squares not yet loaded — use raw input sum as placeholder (warn in note)
+      const total = (sidingWallSquares > 0)
+        ? (install * sidingWallSquares) + trim + wrap + demo
+        : install + trim + wrap + demo;
+      // gh-3569 (REVIEW 6742800394): in a wizard bid that includes roofing, #totalPrice is the
+      // roofing-derived fee base; the siding step must not overwrite it (it would zero the fee).
+      if (!(wizardMode && wizardTradeQueue.includes('roofing'))) {
         document.getElementById('totalPrice').value = total > 0 ? total : '';
       }
       updateFeeCalculator();
+      return total;
     }
 
     // Fee calculator configuration — flat 5% only (Session 216 + 226 cleanup)
@@ -2509,6 +2512,17 @@
       if (queued.length < 2) return;
 
       wizardMode = true;
+      // gh-3495 (REVIEW 6744431358 F1): remember which trade's price inputs the contractor edited, so a price
+      // loaded from per_trade_breakdown is never replaced by an untouched empty input. Registered first, so the
+      // flag is set before the fee refresh below reads the amount.
+      Object.keys(_WIZARD_TRADE_INPUTS).forEach(t => _WIZARD_TRADE_INPUTS[t].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', () => { _wizardTouched[t] = true; });
+      }));
+      // gh-3495 F1: any wizard trade price change refreshes the fee box and disclosure (gutter
+      // inputs have no listener in a wizard: gutterTradeActive is only true for gutter-only claims).
+      ['retailBidPrice', 'gutter5InchPrice', 'gutter6InchPrice'].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', () => updateFeeCalculator());
+      });
       wizardSelectedTrades = [...queued];
       wizardTradeQueue = [...queued];
 
@@ -2582,6 +2596,10 @@
         buildWizardSummary(); // render pre-submit trade summary (86e10t285)
       }
 
+      // gh-3495 F1: the fee box and the fee disclosure follow the sum of the trades on every step,
+      // so step 3 (and the accepted fee text) never shows a stale single-trade fee.
+      if (wizardMode) { try { updateFeeCalculator(); } catch (e) { /* non-fatal */ } }
+
       _updateWizardProgressBar(step);
       saveWizardState();
 
@@ -2622,10 +2640,13 @@
       });
 
       // For roofing: D-163 — show valueAddsSection + secondLayerContingencySection
-      // (retailPriceSection is hidden — fee syncs from valueAddsSection total price input)
+      // gh-3569: show retailPriceSection too — it holds #retailBidPrice, the only roofing
+      // price input on this page: it syncs #totalPrice (the fee base), captureCurrentTradePrice()
+      // reads it for the roofing row, and the retail submit check requires it > 0. Hiding it
+      // left a new roofing wizard bid with no way to enter a price, so submit always stopped.
       if (trade === 'roofing' && isRetailJob) {
         const retail = document.getElementById('retailPriceSection');
-        if (retail) retail.style.display = 'none';
+        if (retail) retail.style.display = 'block';
         const va = document.getElementById('valueAddsSection');
         if (va) va.style.display = '';
         const slc = document.getElementById('secondLayerContingencySection');
@@ -2665,11 +2686,7 @@
 
     function wizardNext() {
       if (wizardStep === 1) {
-        if (wizardSelectedTrades.length === 0) {
-          alert('Please select at least one trade to bid on.');
-          return;
-        }
-        wizardTradeQueue = [...wizardSelectedTrades];
+        if (!_commitWizardTradeSelection()) return;
         saveWizardState();
         wizardGoTo(2, 0, true);
       } else if (wizardStep === 2) {
@@ -2682,7 +2699,28 @@
       }
     }
 
+    // gh-3576: the step-1 -> step-2 commit, shared by the Next button and browser Forward.
+    // Builds the trade queue from the step-1 checkboxes. Returns false when no trade is selected.
+    function _commitWizardTradeSelection() {
+      if (wizardSelectedTrades.length === 0) {
+        alert('Please select at least one trade to bid on.');
+        return false;
+      }
+      wizardTradeQueue = [...wizardSelectedTrades];
+      // gh-3569 (REVIEW 6743095024): roofing unchecked on a claim that includes roofing. A roofing
+      // price typed earlier must not stay behind as the fee base or the stored total.
+      if (!wizardTradeQueue.includes('roofing') && (currentClaim?.trades || []).includes('roofing')) {
+        const _rb = document.getElementById('retailBidPrice');
+        if (_rb) _rb.value = '';
+        document.getElementById('totalPrice').value = '';
+        delete wizardTradePrices.roofing;
+        updateFeeCalculator();
+      }
+      return true;
+    }
+
     function wizardBack() {
+      captureCurrentTradePrice(); // gh-3495: keep the price typed on the trade being left
       if (wizardStep === 2 && wizardCurrentTradeIdx === 0) {
         wizardGoTo(1, 0, true);
       } else if (wizardStep === 2 && wizardCurrentTradeIdx > 0) {
@@ -2717,7 +2755,25 @@
       if (!wizardMode) return;
       const s = e.state;
       if (s && typeof s.wizardStep === 'number') {
-        wizardGoTo(s.wizardStep, s.wizardTradeIdx || 0, false);
+        // gh-3576: save the price of the trade being left, as wizardNext() does. Without this the
+        // step-3 summary and per_trade_breakdown kept the price from before a Back/Forward edit.
+        captureCurrentTradePrice();
+        // gh-3576: leaving step 1 through history applies the step-1 checkboxes, as Next does.
+        if (wizardStep === 1 && s.wizardStep > 1) {
+          const _before = wizardTradeQueue.join(',');
+          if (!_commitWizardTradeSelection()) {
+            history.replaceState({ wizardStep: 1, wizardTradeIdx: 0 }, '', location.href);
+            return;
+          }
+          if (wizardTradeQueue.join(',') !== _before) {
+            // The later history entries index the old queue: start the new queue fresh.
+            saveWizardState();
+            wizardGoTo(2, 0, true);
+            return;
+          }
+        }
+        const _idx = Math.max(0, Math.min(s.wizardTradeIdx || 0, wizardTradeQueue.length - 1));
+        wizardGoTo(s.wizardStep, _idx, false);
       }
     });
 
@@ -2807,7 +2863,7 @@
     const HOVER_PHOTOS_TTL = 10 * 60 * 1000;
 
     async function initHoverHomePhotos(claimId) {
-      // gh-1873: the measurement vendor (Hover) is retired; no back-end call is made. The card shows its
+      // gh-1873: the measurement vendor is retired; no back-end call is made. The card shows its
       // empty state, and a cached vendor payload from an earlier visit is no longer rendered.
       if (!claimId) return;
       const card = document.getElementById('hoverHomePhotosCard');
@@ -2929,7 +2985,7 @@
 
     // ── Siding Design Data Loader ──
     async function loadHoverSidingData() {
-      // gh-1873: the measurement vendor (Hover) is retired; no back-end call is made.
+      // gh-1873: the measurement vendor is retired; no back-end call is made.
       const btn        = document.getElementById('loadHoverSidingDataBtn');
       const content    = document.getElementById('hoverDesignContent');
       const noDataHelp = document.getElementById('hoverNoDesignHelp');
@@ -3136,7 +3192,7 @@
 
     // ── Roofing Measurements Loader (86e10t2cb) ──
     async function loadHoverRoofingData() {
-      // gh-1873: the measurement vendor (Hover) is retired; no back-end call is made.
+      // gh-1873: the measurement vendor is retired; no back-end call is made.
       const btn     = document.getElementById('loadHoverRoofingBtn');
       const content = document.getElementById('hoverRoofingContent');
       if (!currentClaim || !btn || !content) return;
@@ -3147,6 +3203,19 @@
 
     // ── Wizard: capture current trade price before navigating (86e10t285) ──
     let wizardTradePrices = {};   // {trade: number|null}
+    // gh-3495 (REVIEW 6744431358 F1): the inputs that price each wizard trade, and which ones the contractor edited.
+    const _WIZARD_TRADE_INPUTS = {
+      roofing: ['retailBidPrice'],
+      gutters: ['gutter5InchPrice', 'gutter6InchPrice'],
+      siding: ['sidingInstallPerSquare', 'sidingTrimPrice', 'sidingWindowWrapPrice', 'sidingTeardownPrice'],
+    };
+    let _wizardTouched = {};      // {trade: true} once one of its price inputs got an input event
+    // A trade's price inputs are empty and untouched, and a stored price was loaded: keep the stored price.
+    function _keepLoadedTradePrice(trade, price) {
+      const loaded = wizardTradePrices[trade];
+      if (!(price > 0) && loaded > 0 && !_wizardTouched[trade]) return loaded;
+      return price;
+    }
 
     function captureCurrentTradePrice() {
       if (!wizardMode || wizardStep !== 2) return;
@@ -3155,18 +3224,87 @@
 
       let price = 0;
       if (trade === 'roofing') {
-        price = parseFloat(document.getElementById('retailBidPrice')?.value)
-             || parseFloat(document.getElementById('totalPrice')?.value)
-             || 0;
+        price = parseFloat(document.getElementById('retailBidPrice')?.value) || 0; // gh-3495: no #totalPrice fallback
       } else if (trade === 'gutters') {
         price = parseFloat(document.getElementById('gutter6InchPrice')?.value)
              || parseFloat(document.getElementById('gutter5InchPrice')?.value)
              || 0;
       } else if (trade === 'siding') {
         syncSidingTotal();
-        price = parseFloat(document.getElementById('totalPrice')?.value) || 0;
+        price = _sidingTotalNow(); // gh-3495: not read back from #totalPrice
       }
+      price = _keepLoadedTradePrice(trade, price); // gh-3495 (REVIEW 6744431358 F1)
       wizardTradePrices[trade] = price > 0 ? price : null;
+    }
+
+    // gh-3495 (D-267): a multi-trade bid's amount is the SUM of its trades in whole
+    // cents. The step-3 Grand Total, the fee box, the fee disclosure the contractor
+    // accepts, total_price, fee_amount and per_trade_breakdown ALL derive from the
+    // per-trade whole-cent values below, so what is shown == what is stored == what
+    // is charged. A price is never read back from the hidden #totalPrice for a
+    // trade (on Change Bid that field holds the old grand total).
+    // Decimal-safe round half up to whole cents: Math.round(n * 100) fails on
+    // inputs such as 9734.095 (973409.4999...), so round on the decimal string.
+    function _priceToCents(raw) {
+      const n = typeof raw === 'number' ? raw : parseFloat(raw);
+      if (!(n > 0) || !isFinite(n) || n >= 1e12) return 0;
+      return wholeCents(n); // gh-3488: the one whole-cent rounding the fee uses
+    }
+    // Siding total from the siding inputs (same math as syncSidingTotal, no DOM writes).
+    function _sidingTotalNow() {
+      const g = id => parseFloat(document.getElementById(id)?.value) || 0;
+      const install = g('sidingInstallPerSquare');
+      const extras = g('sidingTrimPrice') + g('sidingWindowWrapPrice') + g('sidingTeardownPrice');
+      return (sidingWallSquares > 0) ? (install * sidingWallSquares) + extras : install + extras;
+    }
+    function _liveTradePrice(trade) {
+      if (trade === 'gutters') {
+        return parseFloat(document.getElementById('gutter6InchPrice')?.value)
+            || parseFloat(document.getElementById('gutter5InchPrice')?.value) || 0;
+      }
+      if (trade === 'roofing') return parseFloat(document.getElementById('retailBidPrice')?.value) || 0;
+      if (trade === 'siding') return _sidingTotalNow();
+      return 0;
+    }
+    function effectiveBidAmount() {
+      const single = parseFloat(document.getElementById('totalPrice')?.value) || 0;
+      if (!wizardMode || !wizardTradeQueue || wizardTradeQueue.length === 0) return single;
+      let cents = 0;
+      wizardTradeQueue.forEach((trade, i) => {
+        const live = (wizardStep === 2 && i === wizardCurrentTradeIdx);
+        cents += _priceToCents(live ? _keepLoadedTradePrice(trade, _liveTradePrice(trade)) : wizardTradePrices[trade]);
+      });
+      return cents > 0 ? cents / 100 : single;
+    }
+    function roundedTradePrices() {
+      const out = {};
+      wizardTradeQueue.forEach(trade => {
+        const c = _priceToCents(wizardTradePrices[trade]);
+        if (c > 0) out[trade] = c / 100;
+      });
+      return out;
+    }
+    // Change Bid / Renew of a stored wizard bid: seed the per-trade prices from the
+    // stored per_trade_breakdown and prefill the roofing price field, so the form
+    // never counts the stored grand total (in #totalPrice) as a trade price.
+    function _applyStoredBreakdown(quote) {
+      let bd = quote && quote.per_trade_breakdown;
+      if (typeof bd === 'string') { try { bd = JSON.parse(bd); } catch (e) { bd = null; } }
+      if (!bd || typeof bd !== 'object') return false;
+      let any = false;
+      ['roofing', 'gutters', 'siding'].forEach(t => {
+        const c = _priceToCents(bd[t]);
+        if (c > 0) { wizardTradePrices[t] = c / 100; any = true; }
+      });
+      if (wizardTradePrices.roofing > 0) setVal('retailBidPrice', wizardTradePrices.roofing);
+      // gh-3495 (REVIEW 6744431358 F1): a stored wizard bid has no value_adds.gutter_*_price (those are written for
+      // gutter-only claims), so the gutter fields would come up empty. Prefill the 5" field (the 6" field, read first,
+      // stays free for an edit) only when neither field was restored. Siding fields restore from value_adds.siding_*.
+      const _g5 = document.getElementById('gutter5InchPrice'), _g6 = document.getElementById('gutter6InchPrice');
+      if (wizardTradePrices.gutters > 0 && _g5 && !(parseFloat(_g5.value) > 0) && !(parseFloat(_g6?.value) > 0)) {
+        setVal('gutter5InchPrice', wizardTradePrices.gutters);
+      }
+      return any;
     }
 
     function buildWizardSummary() {
@@ -3176,17 +3314,19 @@
       if (!rowsEl || !grandEl) return;
 
       const tradeLabels = { roofing: '🏠 Roofing', gutters: '💧 Gutters', siding: '🧱 Siding' };
-      const feeRate = PLATFORM_FEES.contractSigning; // 0.05
+      const feePct = currentFeePct(); // gh-3488: same rate and whole-cent rounding as the disclosure
 
       let grandTotal = 0;
+      let grandCents = 0;
       let html = '';
 
       wizardTradeQueue.forEach(trade => {
-        const price = wizardTradePrices[trade];
+        const price = _priceToCents(wizardTradePrices[trade]) / 100; // gh-3495: same cents as the stored total
         const label = tradeLabels[trade] || trade;
         if (price != null && price > 0) {
-          const net = price * (1 - feeRate);
-          grandTotal += price;
+          const net = Math.round((wholeCentDollars(price) - platformFeeDollars(price, feePct)) * 100) / 100;
+          grandCents += _priceToCents(price); // gh-3495
+          grandTotal = grandCents / 100;
           html += `<div class="wizard-summary-row">
             <span class="wizard-summary-trade">${label}</span>
             <div class="wizard-summary-price">
@@ -3205,7 +3345,7 @@
       rowsEl.innerHTML = html;
       grandEl.textContent = formatCurrency(grandTotal);
       if (grandTotal > 0 && grandNetEl) {
-        const grandNet = grandTotal * (1 - feeRate);
+        const grandNet = Math.round((wholeCentDollars(grandTotal) - platformFeeDollars(grandTotal, feePct)) * 100) / 100;
         grandNetEl.textContent = 'Net to you: ' + formatCurrency(grandNet);
       }
     }
@@ -3730,6 +3870,9 @@
         setVal('retailBidPrice', quote.total_price);
       }
 
+      // gh-3495 F2: a stored wizard bid seeds its per-trade prices from per_trade_breakdown.
+      if (_restoreWizard) _applyStoredBreakdown(quote);
+
       // Restore siding trade fields
       if (va.siding_install_per_square != null) setVal('sidingInstallPerSquare', va.siding_install_per_square);
       if (va.siding_trim_price != null)         setVal('sidingTrimPrice', va.siding_trim_price);
@@ -4081,7 +4224,7 @@
       }
     }
 
-    // gh-1873: the measurement vendor (Hover) is retired. This button no longer calls any back-end function;
+    // gh-1873: the measurement vendor is retired. This button no longer calls any back-end function;
     // it tells the contractor the vendor PDF is gone. The homeowner's uploaded measurements file (View
     // Measurements) and the measured quantities on the form are unchanged.
     async function openBidFormHoverPdf() {
@@ -4272,17 +4415,29 @@
       // accepted the fee (E2E walk fix 2026-07-07). updateFeeDisclosure is
       // async; fire-and-forget is fine for display refresh.
       if (typeof updateFeeDisclosure === 'function') { try { updateFeeDisclosure(); } catch (e) { /* non-fatal */ } }
-      const bidAmount = parseFloat(document.getElementById('totalPrice').value) || 0;
+      paintFeeBreakdown(wholeCentDollars(effectiveBidAmount()), currentFeePct()); // gh-3495: sum of trades on a multi-trade bid
 
-      // #487 (CEO decision 2026-07-08): fee base is the bid amount for every
-      // job type — aligned with the D-215 disclosure, fee_acceptances.fee_basis
+      // Show fee basis note for insurance jobs
+      const feeInfoEl = document.querySelector('.fee-info');
+      if (feeInfoEl) {
+        // #487: uniform note — the fee basis is the bid amount for every job type.
+        feeInfoEl.innerHTML = '<div>ℹ A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission.</div>';
+      }
+    }
+
+    // gh-3488 (LEGAL-READ 6674806511): the Platform Fee Breakdown and the net lines. Split out of updateFeeCalculator so
+    // paintFeeDisclosure can write them too: whenever the disclosure shows a rate, these show the same rate's figures.
+    function paintFeeBreakdown(bidAmount, feePct) {
+      // #487 (CEO decision 2026-07-08): fee base is the bid amount for every job type — aligned with the D-215 disclosure, fee_acceptances.fee_basis
       // ('bid_amount'), and the actual charge (docusign-webhook × total_price).
       const feeBase = bidAmount;
 
-      const contractSigningFee = feeBase * PLATFORM_FEES.contractSigning;
+      // gh-3488 / D-267: the same whole-cent figure the disclosure shows and the webhook charges (this line used
+      // feeBase * 0.05 on a float, which showed $64.80 beside a $64.81 disclosure for a $1,296.10 bid).
+      const contractSigningFee = platformFeeDollars(feeBase, feePct);
       const totalFee = contractSigningFee;
       const totalFeePercent = feeBase > 0 ? (totalFee / feeBase * 100).toFixed(1) : 0;
-      const netAmount = bidAmount - totalFee;
+      const netAmount = Math.round((bidAmount - totalFee) * 100) / 100;
 
       document.getElementById('displayBid').textContent = formatCurrency(bidAmount);
       // Net-to-contractor inline display (86e10t292)
@@ -4292,13 +4447,7 @@
       document.getElementById('totalFeePercent').textContent = totalFeePercent + '%';
       document.getElementById('totalFeeAmount').textContent = formatCurrency(totalFee);
       document.getElementById('yourNet').textContent = formatCurrency(netAmount);
-
-      // Show fee basis note for insurance jobs
-      const feeInfoEl = document.querySelector('.fee-info');
-      if (feeInfoEl) {
-        // #487: uniform note — the fee basis is the bid amount for every job type.
-        feeInfoEl.innerHTML = '<div>ℹ A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission.</div>';
-      }
+      try { buildWizardSummary(); } catch (e) { /* the wizard summary is only on screen in wizard mode */ }
     }
 
     function formatCurrency(value) {
@@ -4640,11 +4789,11 @@
         return { can_submit: false, reason: 'Cannot determine contractor identity. Please refresh and try again.', status: null };
       }
       try {
-        const { data, error } = await sb.rpc('bid_can_submit', {
+        const { data, error } = await callWithTimeout(GATE_TIMEOUT_MS, (signal) => withAbortSignal(sb.rpc('bid_can_submit', {
           p_contractor_id: contractorId,
           p_trade: trade,
           p_funding_type: fundingType,
-        });
+        }), signal)); // gh-3498: a gate that never answers ends in the catch below (existing network-error message)
         if (error) {
           console.warn('[D-199] bid_can_submit RPC error:', error);
           return { can_submit: false, reason: 'Could not verify your contract template status. Please refresh and try again.', status: null };
@@ -4677,6 +4826,130 @@
     // ── Form Submission ──
     // ── D-214/D-215: Fee Disclosure & Acceptance Logic ──
     let _platformFeePct = 5.0;  // Default; will be fetched from platform_fee_config
+    var _submitInFlight = false, _submitDone = false; // var: read by updateFeeCheckboxState, which can run before this line
+    var FEE_LOOKUP_TIMEOUT_MS = 5000; // gh-3488: bound on the rate lookup
+    var BID_UPDATE_TIMEOUT_MS = 15000; // gh-3491 (REVIEW 6688103147): bound on the Change Bid / renew UPDATE; a retry is harmless (same row, same fields)
+    var IP_LOOKUP_TIMEOUT_MS = 3000;  // gh-3488: bound on the ipify call (best-effort, falls back to 'unknown')
+    // gh-3498 (REVIEW 6675274132): the bid_can_submit gate and the quote insert are bounded too, so a stalled connection
+    // ends in the existing catch (message shown, button restored, inputs unlocked) instead of a locked "Submitting…".
+    // Both are longer than the lookups above; the insert is the longest because a landed insert must not be cut short early.
+    var GATE_TIMEOUT_MS = 10000;
+    var INSERT_TIMEOUT_MS = 20000;
+    // gh-3498 (widened closes-on, REVIEW 6688103147): every write AFTER the bid has landed is bounded as well. The bid is already
+    // filed, so a timeout there is logged and the submit goes on to the success screen; it never reaches the error path.
+    var POST_WRITE_TIMEOUT_MS = 8000;
+    // Runs start(signal) and gives up after ms: the request is aborted and the promise rejects with the abort reason
+    // (no new wording; callers show it through their existing error paths). A builder without abortSignal still races.
+    function callWithTimeout(ms, start) {
+      const ctl = new AbortController();
+      let timer;
+      const limit = new Promise((_, reject) => { timer = setTimeout(() => { ctl.abort(); reject(ctl.signal.reason); }, ms); });
+      return Promise.race([Promise.resolve().then(() => start(ctl.signal)), limit]).finally(() => clearTimeout(timer));
+    }
+    function withAbortSignal(builder, signal) {
+      return (builder && typeof builder.abortSignal === 'function') ? builder.abortSignal(signal) : builder;
+    }
+    // gh-3498: ONE idempotency key per (claim, contractor) while this page is open. It is generated at the first insert and kept
+    // across every retry, whatever the contractor edits in between (REVIEW 6740720167 finding 2: a key that changed with the price
+    // let a retry file a second bid). It is dropped only when the bid is filed or the form switches to Change Bid.
+    var _bidIdemKey = null, _bidIdemFp = null;
+    // Content fingerprints of insert attempts sent from this page that have not yet ended on the success screen (timed out,
+    // failed after being sent, or confirmed but followed by an error). While this is not empty, the next submit first looks for
+    // a bid already filed for this claim before it inserts anything (REVIEW 6743281622 finding 1: it is no longer cleared at
+    // the confirmed insert, only on the success screen or the Change Bid switch).
+    var _bidUnconfirmedFps = [];
+    // Id of the filed bid whose fee_acceptances row and confirmation email this page has already sent, so a retry that finds
+    // that same bid finishes on the success screen without writing them a second time.
+    var _bidPostWritesDoneId = null;
+    // GA4 events are best-effort: a missing or failing gtag (blocked, or ga-gate not loaded) must never turn a filed bid into
+    // an error (REVIEW 6743281622 finding 1; same as React's track()).
+    function trackBidEvent(name, params) {
+      try { if (typeof gtag === 'function') gtag('event', name, params); } catch (e) { /* non-fatal */ }
+    }
+    function bidIdempotencyKey(fingerprint) {
+      if (!_bidIdemKey || _bidIdemFp !== fingerprint) {
+        _bidIdemKey = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+          : 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+        _bidIdemFp = fingerprint;
+      }
+      return _bidIdemKey;
+    }
+    function isIdemViolation(err) {
+      return !!err && err.code === '23505' && /quotes_idempotency_key_uidx/.test((err.message || '') + ' ' + (err.details || ''));
+    }
+    function isIdemColumnMissing(err) { // migration not applied yet: the column is unknown to PostgREST
+      return !!err && /idempotency_key/.test(err.message || '') && (err.code === 'PGRST204' || err.code === '42703');
+    }
+    // gh-3498 (REVIEW 6740720167): what a bid says, minus the fields that change on every attempt (acceptance time, the
+    // custom-warranty review stamp, the key). Two attempts with the same fingerprint would file the same bid.
+    function _stableJson(v) {
+      if (Array.isArray(v)) return '[' + v.map(_stableJson).join(',') + ']';
+      if (v && typeof v === 'object') return '{' + Object.keys(v).sort().filter((k) => v[k] !== undefined)
+        .map((k) => JSON.stringify(k) + ':' + _stableJson(v[k])).join(',') + '}';
+      return JSON.stringify(v === undefined ? null : v);
+    }
+    // gh-3498 (REVIEW 6743281622): the terms of a bid as filed, comparable between the payload this page would send and a row read
+    // back from the database. Only the fields the contractor sets are compared (fee amounts are derived, timestamps and the key
+    // change per attempt). Numbers are compared as numbers, JSON text (scope_summary) as JSON, and null equals absent.
+    var BID_TERM_FIELDS = ['total_price', 'trade_type', 'scope_summary', 'notes', 'decking_price_per_sheet', 'full_redeck_price',
+      'supplement_acknowledged', 'value_adds', 'per_trade_breakdown', 'auto_renew', 'warranty_option_id', 'warranty_snapshot',
+      'workmanship_warranty_years', 'platform_fee_pct'];
+    function _normTerm(v) {
+      if (v === undefined || v === null || v === '') return null;
+      if (typeof v === 'number') return isFinite(v) ? Math.round(v * 10000) / 10000 : null;
+      if (typeof v === 'string') {
+        const s = v.trim();
+        if (/^-?\d+(\.\d+)?$/.test(s)) return Math.round(Number(s) * 10000) / 10000;
+        if (/^[[{]/.test(s)) { try { return _normTerm(JSON.parse(s)); } catch (e) { /* plain text */ } }
+        return s === '' ? null : s;
+      }
+      if (Array.isArray(v)) return v.length ? v.map(_normTerm) : null;
+      if (typeof v === 'object') {
+        const o = {};
+        Object.keys(v).forEach((k) => { const n = _normTerm(v[k]); if (n !== null) o[k] = n; });
+        return Object.keys(o).length ? o : null;
+      }
+      return v;
+    }
+    function bidTermsFingerprint(row) {
+      const t = {};
+      BID_TERM_FIELDS.forEach((k) => { t[k] = row ? row[k] : null; });
+      if (t.value_adds && typeof t.value_adds === 'object' && t.value_adds.warranty_admin_review) {
+        t.value_adds = Object.assign({}, t.value_adds, {
+          warranty_admin_review: Object.assign({}, t.value_adds.warranty_admin_review, { flagged_at: null }) });
+      }
+      return _stableJson(_normTerm(t));
+    }
+    function bidContentFingerprint(payload) {
+      const p = Object.assign({}, payload);
+      delete p.idempotency_key; delete p.fee_accepted_at;
+      if (p.value_adds && p.value_adds.warranty_admin_review) {
+        p.value_adds = Object.assign({}, p.value_adds, {
+          warranty_admin_review: Object.assign({}, p.value_adds.warranty_admin_review, { flagged_at: null }) });
+      }
+      return _stableJson(p);
+    }
+    // The bid this contractor already has on file for this claim (the same lookup as page load), or null. Bounded like the insert;
+    // a lookup that fails or times out ends in the existing catch and nothing is inserted.
+    async function findFiledBid() {
+      const { data, error } = await callWithTimeout(INSERT_TIMEOUT_MS, (signal) => withAbortSignal(
+        sb.from('quotes').select('*').eq('claim_id', currentClaim.id).eq('contractor_id', currentContractor.id).maybeSingle(), signal));
+      if (error) throw error;
+      return (data && data.id) ? data : null;
+    }
+    // gh-3498 (REVIEW 6740720167 finding 2): an earlier attempt that timed out did file the bid, but with other terms than this
+    // retry. Nothing is filed twice and no success is shown: the form switches to Change Bid with the figures on file, so the
+    // contractor decides. (Wording proposed under the open Q on #3498; exec:cto to approve.)
+    var BID_ALREADY_FILED_MSG = 'Your bid was already filed on an earlier try, so no second bid was sent. The form now shows the bid on file: if it is not what you meant to send, change it and select Update Bid.';
+    function showFiledBidAsChangeBid(quote) {
+      existingQuote = quote;
+      _bidUnconfirmedFps = []; _bidIdemKey = null; _bidIdemFp = null; _bidPostWritesDoneId = null;
+      if (isSelectedBidLocked(quote, currentClaim, currentContractor)) { showSelectedBidLock(); return; }
+      changeBidMode = true; renewMode = false;
+      // Not awaited: the prefill loads warranty options over the network, and nothing between the submit lock and its finally
+      // may wait without a bound.
+      Promise.resolve().then(() => activateChangeBidMode(quote)).catch((e) => console.warn('[gh-3498] Change Bid prefill failed:', e));
+    }
     let _feeAcceptanceCheckbox = document.getElementById('feeAcceptanceCheckbox');
     let _submitBtn = document.getElementById('submitBtn');
 
@@ -4685,13 +4958,16 @@
       try {
         if (!currentContractor || !currentClaim) return _platformFeePct;
 
-        const contractorState = (currentContractor.state || '').toUpperCase();
+        const contractorState = (currentContractor.address_state || '').toUpperCase(); // gh-3488: the column quotes_platform_fee_for reads
         const tradeType = (currentClaim.trades?.[0] || 'roofing').toLowerCase();
 
         // Query: SELECT fee_pct FROM platform_fee_config 
         //        WHERE (state IS NULL OR state = ?) AND (trade IS NULL OR trade = ?) 
         //        ORDER BY state NULLS LAST, trade NULLS LAST LIMIT 1
-        const { data, error } = await sb
+        // gh-3488 (REVIEW 6674889982): a lookup that never returns must not hold the form. After FEE_LOOKUP_TIMEOUT_MS it
+        // ends the same way a failed lookup does (the rate already on screen), and a late answer is ignored.
+        let timedOut = false;
+        const lookup = sb
           .from('platform_fee_config')
           .select('fee_pct')
           .or(`state.is.null,state.eq.${contractorState}`)
@@ -4699,6 +4975,11 @@
           .order('state', { ascending: false, nullsFirst: false })
           .order('trade', { ascending: false, nullsFirst: false })
           .limit(1);
+        const { data, error } = await Promise.race([
+          lookup,
+          new Promise((resolve) => setTimeout(() => { timedOut = true; resolve({ data: null, error: new Error('fee lookup timed out') }); }, FEE_LOOKUP_TIMEOUT_MS)),
+        ]);
+        if (timedOut) { console.warn('[D-215] Fee lookup timed out'); return _platformFeePct; }
 
         if (error) {
           console.warn('[D-215] Fee lookup error:', error);
@@ -4716,17 +4997,48 @@
       return _platformFeePct;
     }
 
-    async function updateFeeDisclosure() {
-      // Recalculate and display fee based on bid amount + percentage
-      const bidAmountEl = document.getElementById('totalPrice');
-      if (!bidAmountEl) return;
+    // BEGIN platform-fee shared definition (gh-3488, D-267). Byte-identical in three places (parity test:
+    // react-app/app/contractor/bid/[claimId]/__tests__/gh3488-fee-one-rounding.test.ts): this file,
+    // react-app/constants/platform-fee.ts and the inline copy in contractor-bid-form.html.
+    // The fee the contractor is SHOWN and the fee that is CHARGED are this one figure, in whole cents,
+    // rounded half-up on the exact decimal product (bid cents x pct hundredths / 10000), integers only.
+    // It equals round(pct/100 * total_price, 2) in Postgres numeric (quotes.fee_amount, gh-2519 trigger).
+    // A typed bid is first normalised to whole cents the way Postgres numeric(12,2) stores it (half-up on
+    // the decimal text), so a bid typed with a fraction of a cent shows and charges the same fee.
+    function wholeCents(amount) {
+      const n = Number(amount);
+      if (!Number.isFinite(n) || n <= 0) return 0;
+      const viaText = Math.round(Number(n + 'e2'));
+      return Number.isFinite(viaText) ? viaText : Math.round(n * 100);
+    }
+    function wholeCentDollars(amount) {
+      return wholeCents(amount) / 100;
+    }
+    function platformFeeCents(bidAmount, feePct) {
+      const bidCents = wholeCents(bidAmount);
+      const pctHundredths = wholeCents(feePct);
+      if (bidCents <= 0 || pctHundredths <= 0) return 0;
+      const t = bidCents * pctHundredths + 5000;
+      return (t - (t % 10000)) / 10000;
+    }
+    function platformFeeDollars(bidAmount, feePct) {
+      return platformFeeCents(bidAmount, feePct) / 100;
+    }
+    // END platform-fee shared definition
 
-      const bidAmount = parseFloat(bidAmountEl.value) || 0;
-      
-      // Fetch fee percentage
-      const feePct = await fetchPlatformFeePercentage();
-      const feeAmount = (bidAmount * feePct) / 100;
-      const netAmount = bidAmount - feeAmount;
+    // gh-3488: the rate every on-page fee figure uses (the same one the disclosure uses). _platformFeePct is a
+    // `let` further down the script, so a call before it is initialised falls back to the 5% default.
+    function currentFeePct() {
+      try { return window._feePct || _platformFeePct; } catch (e) { return 5.0; }
+    }
+
+    // gh-3488 / D-267 (REVIEW 6674426561): the disclosure, the checkbox figure and the breakdown are written
+    // SYNCHRONOUSLY from the current bid and the cached rate, so they never lag the bid; the rate lookup then
+    // corrects them if the configured rate differs. Only the newest lookup may write, and submit waits for it.
+    let _feeDisclosureSeq = 0;
+    let _feeLookupInFlight = null;
+    function paintFeeDisclosure(feePct, bidAmount) {
+      const feeAmount = platformFeeDollars(bidAmount, feePct); // whole cents, the figure the webhook charges
 
       // Update display fields
       document.getElementById('feePercentDisplay').textContent = feePct.toFixed(2);
@@ -4734,20 +5046,83 @@
       document.getElementById('feeDollarDisplay').textContent = feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
       document.getElementById('feeDollarCheckbox').textContent = feeAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
+      paintFeeBreakdown(bidAmount, feePct);
+
+      // gh-3488 (LEGAL-READ 6674806511): a tick belongs to the figure it was given under; a different figure clears it.
+      const changed = window._feeAmount !== undefined && (window._feeAmount !== feeAmount || window._feePct !== feePct);
+
       // Store for submission
       window._feeAmount = feeAmount;
       window._feePct = feePct;
+      if (changed && _feeAcceptanceCheckbox) _feeAcceptanceCheckbox.checked = false;
 
       // Update checkbox state
       updateFeeCheckboxState();
+    }
+    async function updateFeeDisclosure() {
+      // Recalculate and display fee based on bid amount + percentage
+      const bidAmountEl = document.getElementById('totalPrice');
+      if (!bidAmountEl) return;
+      // gh-3495 (D-267): a multi-trade bid's amount is the sum of its trades; read live at every paint.
+      const currentBid = () => wholeCentDollars(effectiveBidAmount());
+
+      // 1. synchronous: current bid at the rate we already know
+      paintFeeDisclosure(currentFeePct(), currentBid());
+
+      // 2. asynchronous: the configured rate. Lookups can return out of order, so only the newest call may
+      //    write, and the bid is read AFTER the lookup.
+      const seq = ++_feeDisclosureSeq;
+      const run = (async () => {
+        const feePct = await fetchPlatformFeePercentage();
+        if (seq !== _feeDisclosureSeq) return;
+        paintFeeDisclosure(feePct, currentBid());
+      })();
+      _feeLookupInFlight = run;
+      try { await run; } finally { if (_feeLookupInFlight === run) _feeLookupInFlight = null; }
+    }
+    // Resolves once no fee lookup is in flight (a newer call may start while an older one settles).
+    async function settleFeeLookup() {
+      const deadline = Date.now() + FEE_LOOKUP_TIMEOUT_MS;
+      while (_feeLookupInFlight) {
+        const p = _feeLookupInFlight;
+        let timer;
+        const timeout = new Promise((resolve) => { timer = setTimeout(resolve, Math.max(0, deadline - Date.now())); });
+        try { await Promise.race([p, timeout]); } catch (e) { /* the lookup falls back to the cached rate */ }
+        clearTimeout(timer);
+        if (_feeLookupInFlight === p) _feeLookupInFlight = null;
+        if (Date.now() >= deadline) { _feeLookupInFlight = null; break; } // bounded: carry on with the rate on screen
+      }
+    }
+
+    // gh-3488 (REVIEW 6674426561): from the moment submit snapshots the bid until it finishes or fails, the form's
+    // inputs are locked, so the price on screen is the price recorded, accepted and charged.
+    let _bidInputLocks = null;
+    function lockBidInputs() {
+      if (_bidInputLocks) return;
+      _bidInputLocks = [];
+      // the fee checkbox sits outside #bidForm (like the submit button), so it is named explicitly
+      document.querySelectorAll('#bidForm input, #bidForm select, #bidForm textarea, #feeAcceptanceCheckbox').forEach((el) => {
+        if (el.type === 'hidden' || el.type === 'submit') return;
+        _bidInputLocks.push({ el: el, readOnly: el.readOnly, disabled: el.disabled });
+        if (el.tagName === 'SELECT' || el.type === 'checkbox' || el.type === 'radio' || el.type === 'file') el.disabled = true;
+        else el.readOnly = true;
+      });
+    }
+    function unlockBidInputs() {
+      if (!_bidInputLocks) return;
+      _bidInputLocks.forEach((l) => { l.el.readOnly = l.readOnly; l.el.disabled = l.disabled; });
+      _bidInputLocks = null;
     }
 
     function updateFeeCheckboxState() {
       // Disable submit button if checkbox is not checked
       if (_feeAcceptanceCheckbox) {
         const isChecked = _feeAcceptanceCheckbox.checked;
-        _submitBtn.disabled = !isChecked;
-        if (!isChecked) {
+        // gh-3488 (REVIEW 6674889982): while a submit is running, and after one has succeeded, the button stays disabled
+        // whatever a lookup or a tick does.
+        const busy = _submitInFlight || _submitDone;
+        _submitBtn.disabled = busy || !isChecked;
+        if (busy || !isChecked) {
           _submitBtn.style.opacity = '0.5';
           _submitBtn.style.cursor = 'not-allowed';
         } else {
@@ -4772,10 +5147,15 @@
     // Function to capture contractor IP (best-effort, client-side)
     async function getContractorIP() {
       try {
-        const response = await fetch('https://api.ipify.org?format=json', { timeout: 3000 });
-        if (!response.ok) return 'unknown';
-        const data = await response.json();
-        return data.ip || 'unknown';
+        const ctl = new AbortController(); // gh-3488: fetch has no `timeout` option; abort ends a hung call
+        const timer = setTimeout(() => ctl.abort(), IP_LOOKUP_TIMEOUT_MS);
+        // gh-3498 (REVIEW 6740533205): the timer also covers the body read; a stalled body aborts with the request.
+        try {
+          const response = await fetch('https://api.ipify.org?format=json', { signal: ctl.signal });
+          if (!response.ok) return 'unknown';
+          const data = await response.json();
+          return data.ip || 'unknown';
+        } finally { clearTimeout(timer); }
       } catch (e) {
         console.warn('[D-215] IP fetch failed:', e);
         return 'unknown';
@@ -5011,10 +5391,11 @@
     bidForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (window._bidLockedSelected) return; // gh-2564: a selected bid is locked; no write from this form
+      if (_submitInFlight || _submitDone) return; // gh-3488: one submit at a time, and none after one has succeeded
 
       // Validate: bid type must have a price if RCV selected
       const bidTypeOption = document.querySelector('input[name="bidTypeOption"]:checked')?.value || 'rcv_plus_supplements';
-      const totalPriceVal = parseFloat(document.getElementById('totalPrice').value) || 0;
+      const totalPriceVal = effectiveBidAmount(); // gh-3495
 
       // Gutter-specific validation: at least one gutter price required
       const _claimTrades = Array.isArray(currentClaim?.trades) ? currentClaim.trades : [];
@@ -5035,7 +5416,10 @@
       } else if (isRetailJob) {
         // Retail with roofing (or roofing+siding): validate combined total price
         const retailPrice = parseFloat(document.getElementById('retailBidPrice')?.value) || 0;
-        if (retailPrice <= 0) {
+        // gh-3569 (REVIEW 6742800394): the stored total and fee come from #totalPrice, so refuse
+        // a total <= 0 too: no quotes row with total_price=0 / fee_amount=0 can be written.
+        // REVIEW 6743095024: in the wizard this roofing branch also needs roofing in the trade queue.
+        if (retailPrice <= 0 || totalPriceVal <= 0 || (wizardMode && !wizardTradeQueue.includes('roofing'))) {
           alert('Please enter your total bid price.');
           return;
         }
@@ -5064,16 +5448,42 @@
         return;
       }
 
+      // gh-3488 / D-267 (REVIEW 6674426561): ONE snapshot of the bid and of the disclosure on screen at the click.
+      // The accepted fee, the stored price and the charge basis all come from this snapshot; the form's inputs are
+      // locked until submit finishes or fails (see the finally below).
+      const _snapBid = wholeCentDollars(effectiveBidAmount()); // gh-3495 (D-267): sum of trades on a multi-trade bid
+      const _shownAtClick = { pct: window._feePct, amount: window._feeAmount };
+      const formData = new FormData(bidForm); // before the lock: disabled controls are left out of a FormData
+      _submitInFlight = true;
+      lockBidInputs();
+
       submitBtn.disabled = true;
       submitBtn.textContent = 'Submitting…';
 
       try {
-        const formData = new FormData(bidForm);
 
           // ── D-214/D-215: Fee Acceptance Capture ──
-          const _bidAmount = parseFloat(document.getElementById('totalPrice').value) || 0;
+          // gh-3488 / D-267: the accepted figure is derived here from the bid being submitted (whole cents), never
+          // from whatever an earlier fee lookup left in window._feeAmount; window values are set first so the
+          // recorded sentence (generateExactFeeText) carries the same figure.
+          // A click while the rate lookup is in flight waits for it. If the figure it settles on differs from the
+          // disclosure the contractor had on screen, the new disclosure is shown and acceptance is required again.
+          await settleFeeLookup();
+          // gh-3488 (LEGAL-READ 6674806511): a fresh rate lookup at every submit; the server decides the rate it stores
+          // and the webhook charges, so a rate that moved since the last lookup is caught here and re-accepted.
+          await updateFeeDisclosure();
+          const _bidAmount = _snapBid;
           const _feePct = window._feePct || _platformFeePct;
-          const _feeAmount = window._feeAmount || (_bidAmount * _feePct / 100);
+          const _feeAmount = platformFeeDollars(_bidAmount, _feePct);
+          if (_feePct !== _shownAtClick.pct || _feeAmount !== _shownAtClick.amount) {
+            paintFeeDisclosure(_feePct, _bidAmount);
+            if (_feeAcceptanceCheckbox) _feeAcceptanceCheckbox.checked = false;
+            updateFeeCheckboxState();
+            submitBtn.textContent = renewMode ? 'Renew Bid' : (changeBidMode ? 'Update Bid' : 'Submit Bid');
+            return;
+          }
+          window._feePct = _feePct;
+          window._feeAmount = _feeAmount;
           const _exactFeeText = generateExactFeeText();
           const _contractorIP = await getContractorIP();
           const _userAgent = navigator.userAgent;
@@ -5117,7 +5527,7 @@
               return;
             }
           }
-          const totalPrice = parseFloat(document.getElementById('totalPrice').value) || 0;
+          const totalPrice = _snapBid; // gh-3488: the snapshot taken at the click, never a second read of the field (gh-3495: sum of trades)
           const feePercentage = 5.0;
 
           // #487 (CEO decision 2026-07-08): the platform fee basis is the BID
@@ -5282,8 +5692,8 @@
             valueAdds.wizard_trade_queue = wizardTradeQueue.length > 0 ? wizardTradeQueue : null;
           }
 
-          // ── D-214/D-215: Initialize fee disclosure on form load ──
-          await updateFeeDisclosure();
+          // (gh-3488: the mid-submit `await updateFeeDisclosure()` that stood here is gone: the accepted figure is
+          // fixed by the snapshot above, and a refresh here could only repaint it from a different read of the bid.)
 
           // D-202 Phase 2 — capture warranty selection BEFORE quoteData is built (Session 463)
           const __d202Selection = getD202WarrantySelection();
@@ -5302,7 +5712,7 @@
             trade_type: formData.get('tradeType') || 'roofing',
             value_adds: valueAdds,
             // Per-trade price breakdown for wizard (multi-trade) bids
-            per_trade_breakdown: (wizardMode && Object.keys(wizardTradePrices).length > 0) ? wizardTradePrices : null,
+            per_trade_breakdown: (wizardMode && Object.keys(wizardTradePrices).length > 0) ? roundedTradePrices() : null, // gh-3495
             is_auto_bid: false,
             auto_renew: document.getElementById('autoRenewToggle')?.checked ?? true, // D-150
             // D-202 Phase 2 — manufacturer × tier warranty selection (Session 463)
@@ -5356,17 +5766,21 @@
                 warranty_snapshot: quoteData.warranty_snapshot,
                 workmanship_warranty_years: quoteData.workmanship_warranty_years,
                 // D-150: renewal. gh-3560: bid_status, expired_at and expires_at are set by rpc('renew_quote') before this
-                // UPDATE; the quotes guard trigger refuses them to a direct UPDATE (42501).
-                ...(renewMode ? {
-                  renewals_count: (existingQuote.renewals_count || 0) + 1,
-                } : {}),
+                // UPDATE; the quotes guard trigger refuses them to a direct UPDATE (42501). No renewal counter is written
+                // (#3563 removed the quotes.renewals_count key: the column does not exist).
                 updated_at: new Date().toISOString(),
             };
-            const { data: updatedRows, error: updateError } = await sb
-              .from('quotes')
-              .update(_changeBidPayload)
-              .eq('id', existingQuote.id)
-              .select('id');
+            // gh-3491: an UPDATE that never answers must end through the catch below (button restored, inputs
+            // unlocked), as it did before the submit lock existed. Abort the request and stop waiting for it.
+            const _updCtl = new AbortController();
+            let _updTimer;
+            let updatedRows, updateError;
+            try {
+              ({ data: updatedRows, error: updateError } = await Promise.race([
+                sb.from('quotes').update(_changeBidPayload).eq('id', existingQuote.id).select('id').abortSignal(_updCtl.signal),
+                new Promise((_, reject) => { _updTimer = setTimeout(() => { _updCtl.abort(); reject(new Error('bid_update_timed_out: the quote update did not answer')); }, BID_UPDATE_TIMEOUT_MS); }),
+              ]));
+            } finally { clearTimeout(_updTimer); }
 
             if (updateError) throw updateError;
             // gh-2105 (decision a, money): a zero-row RLS/id-mismatch match used to
@@ -5378,7 +5792,7 @@
             }
 
             try {
-              await sb.from('notifications').insert({
+              await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(sb.from('notifications').insert({
                 user_id: currentClaim.user_id || null,
                 claim_id: currentClaim.id,
                 channel: 'dashboard',
@@ -5386,53 +5800,87 @@
                 recipient: '',
                 message_preview: `${currentContractor.company_name || 'A contractor'} has updated their bid for your project. Please review the new figures.`,
                 created_at: new Date().toISOString(),
-              });
+              }), signal));
             } catch (notifErr) {
               console.warn('Notification insert failed (non-fatal):', notifErr);
             }
 
             try {
-              await sb.from('activity_log').insert({
+              await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(sb.from('activity_log').insert({
                 user_id: currentUser.id,
                 event_type: 'bid_updated',
                 title: `Bid updated for project ${currentClaim.id?.slice(0, 8) || '…'}`,
                 // gh-2997: claim_id in metadata lets the activity_log BEFORE INSERT trigger inherit is_test from the claim
                 metadata: { claim_id: currentClaim.id },
                 created_at: new Date().toISOString(),
-              });
+              }), signal));
             } catch (logErr) {
               console.warn('Activity log failed (non-fatal):', logErr);
             }
 
             // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id
             // removed — a per-homeowner database identifier must not reach GA4.
-            gtag('event', 'bid_updated', {
+            trackBidEvent('bid_updated', {
               bid_amount: quoteData.total_price,
             });
 
             // Send bid update confirmation email to contractor (non-fatal)
             // D-150: for renewal mode send bid_renewal_requested; otherwise bid_update_confirmed
             try {
-              await sb.functions.invoke('notify-contractors', {
+              await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => sb.functions.invoke('notify-contractors', {
                 body: {
                   event_type: renewMode ? 'bid_renewal_requested' : 'bid_update_confirmed',
                   claim_id: currentClaim.id,
                   contractor_id: currentContractor.id,
                 },
-              });
+                signal,
+              }));
             } catch (notifErr) {
               console.warn('Bid update/renewal confirmation email failed (non-fatal):', notifErr);
             }
 
           } else {
 
-            const { data: insertedQuote, error } = await sb
-              .from('quotes')
-              .insert(quoteData)
-              .select('id')
-              .single();
+            // gh-3498: the insert carries an idempotency key and is bounded. A retry after an attempt with no confirmed answer first
+            // looks for a bid already filed for this claim, so a landed insert is found even before the key column exists. If one
+            // races in anyway, the same key hits the unique index and the filed row is read back. Either way the filed row counts as
+            // this bid only when every unconfirmed attempt carried exactly this content; otherwise the form switches to Change Bid
+            // with the filed figures (REVIEW 6740720167 finding 2: never a second bid, never a success screen over other terms).
+            const _contentFp = bidContentFingerprint(quoteData);
+            quoteData.idempotency_key = bidIdempotencyKey([currentClaim.id, currentContractor.id].join('|'));
+            const _insertOnce = () => callWithTimeout(INSERT_TIMEOUT_MS, (signal) => withAbortSignal(sb.from('quotes').insert(quoteData).select('id').single(), signal));
+            let insertedQuote = null, error = null, _filedBid = null;
+            if (_bidUnconfirmedFps.length) _filedBid = await findFiledBid();
+            if (!_filedBid) {
+              if (_bidUnconfirmedFps.indexOf(_contentFp) === -1) _bidUnconfirmedFps.push(_contentFp);
+              ({ data: insertedQuote, error } = await _insertOnce());
+              if (error && isIdemColumnMissing(error)) { // the column is not in this database yet: file the bid as before
+                delete quoteData.idempotency_key;
+                ({ data: insertedQuote, error } = await _insertOnce());
+              }
+              if (error && isIdemViolation(error)) {
+                const { data: existingByKey, error: readBackErr } = await callWithTimeout(INSERT_TIMEOUT_MS, (signal) => withAbortSignal(
+                  sb.from('quotes').select('*').eq('idempotency_key', _bidIdemKey).maybeSingle(), signal));
+                if (!readBackErr && existingByKey && existingByKey.id) { _filedBid = existingByKey; error = null; }
+              }
+            }
 
             if (error) throw error;
+            if (_filedBid) {
+              // REVIEW 6743281622: the filed row's OWN terms are compared with this retry's terms, so it does not matter which
+              // earlier attempt landed or what was thrown after it; a match is the same bid, anything else goes to Change Bid.
+              const _sameBid = bidTermsFingerprint(_filedBid) === bidTermsFingerprint(quoteData)
+                && (!_filedBid.idempotency_key || _filedBid.idempotency_key === _bidIdemKey);
+              if (!_sameBid) {
+                showFiledBidAsChangeBid(_filedBid);
+                const _filedErr = new Error(BID_ALREADY_FILED_MSG);
+                _filedErr.bidAlreadyFiled = true;
+                throw _filedErr;
+              }
+              insertedQuote = _filedBid; // the earlier attempt filed exactly this bid: finish it (acceptance, email, success)
+            }
+            // (the attempt list is cleared on the success screen, not here: an error after this point must still make the
+            // next submit look for this bid first)
 
             // Store the new quote ID for contract signing
             window._newQuoteId = insertedQuote?.id || null;
@@ -5440,11 +5888,13 @@
             // ── D-215 Layer 1: Insert fee_acceptances record (UETA evidence) ──
             // Runs AFTER quote insert so bid_id (insertedQuote.id) is available.
             // Non-fatal: quote is already committed; log failures for compliance audit.
-            if (!changeBidMode) {
+            if (!changeBidMode && insertedQuote.id !== _bidPostWritesDoneId) { // gh-3498: not twice for the same filed bid
               // gh-3409: NO .single() here. Asking PostgREST for exactly one row makes it roll the whole request back (406 PGRST116) when the
               // server diverts a mismatching acceptance to review (zero rows returned), which would delete the record of what was shown.
               // .select('id') without .single() returns an array; an empty array means "kept for review, not recorded".
-              const { data: feeAccRows, error: feeAccError } = await sb.from('fee_acceptances').insert({
+              let feeAccRows = null, feeAccError = null;
+              try { // gh-3498: bounded; a timeout is the same non-fatal outcome as a failed insert (the bid is already filed)
+              ({ data: feeAccRows, error: feeAccError } = await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(sb.from('fee_acceptances').insert({
                 contractor_id: currentContractor.id,
                 claim_id: currentClaim.id,
                 bid_id: insertedQuote.id,
@@ -5455,22 +5905,31 @@
                 accepted_at: _acceptedAt,
                 ip_address: (_contractorIP && _contractorIP !== 'unknown') ? _contractorIP : null, // 'unknown' is not an inet value and made the whole insert fail
                 user_agent: _userAgent,
-              }).select('id');
+              }).select('id'), signal)));
+              } catch (feeAccTimeoutErr) { feeAccError = feeAccTimeoutErr; }
+              // gh-3498 (REVIEW 6744510442): the acceptance write for this bid has been made (or attempted: a timed-out write may
+              // still have landed). From here on a retry that finds this bid must not write it, or the email, again.
+              _bidPostWritesDoneId = insertedQuote.id;
 
+              // Sentry reporting is best-effort: a throw from it must not escape into the submit's error path (6744510442).
               if (feeAccError) {
                 console.error('[D-215] Fee acceptance record failed (non-fatal, quote committed):', feeAccError.message);
                 if (typeof Sentry !== 'undefined') {
-                  Sentry.captureException(feeAccError, {
-                    extra: { bid_id: insertedQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
-                  });
+                  try {
+                    Sentry.captureException(feeAccError, {
+                      extra: { bid_id: insertedQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
+                    });
+                  } catch (sentryErr) { console.warn('[gh-3498] Sentry report failed:', sentryErr); }
                 }
               } else if (!feeAccRows || feeAccRows.length === 0) {
                 console.warn('[D-215] Fee acceptance kept for review instead of recorded (non-fatal, quote committed)');
                 if (typeof Sentry !== 'undefined') {
-                  Sentry.captureMessage('[D-215] Fee acceptance diverted to quarantine', {
-                    level: 'warning',
-                    extra: { bid_id: insertedQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
-                  });
+                  try {
+                    Sentry.captureMessage('[D-215] Fee acceptance diverted to quarantine', {
+                      level: 'warning',
+                      extra: { bid_id: insertedQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
+                    });
+                  } catch (sentryErr) { console.warn('[gh-3498] Sentry report failed:', sentryErr); }
                 }
               }
 
@@ -5482,7 +5941,7 @@
                 const tradeLabel = wizardMode && wizardTradeQueue.length > 0
                   ? wizardTradeQueue.join(', ')
                   : (Array.isArray(currentClaim.trades) ? currentClaim.trades.join(', ') : 'roofing');
-                await sb.functions.invoke('send-bid-confirmation', {
+                await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => sb.functions.invoke('send-bid-confirmation', {
                   body: {
                     quote_id: insertedQuote.id,
                     contractor_id: currentContractor.id,
@@ -5491,19 +5950,23 @@
                     platform_fee_amount: _feeAmount,
                     trade: tradeLabel,
                   },
-                });
+                  signal,
+                }));
               } catch (emailErr) {
                 console.error('[D-215 Layer 2] send-bid-confirmation failed (non-fatal, bid committed):', emailErr);
                 if (typeof Sentry !== 'undefined') {
-                  Sentry.captureException(emailErr, {
-                    extra: { bid_id: insertedQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
-                  });
+                  try {
+                    Sentry.captureException(emailErr, {
+                      extra: { bid_id: insertedQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
+                    });
+                  } catch (sentryErr) { console.warn('[gh-3498] Sentry report failed:', sentryErr); }
                 }
               }
             }
 
             // GA4 conversion event — bid funnel
-            gtag('event', 'bid_submit', {
+            _bidPostWritesDoneId = insertedQuote.id;
+            trackBidEvent('bid_submit', {
               trade_types: Array.isArray(currentClaim.trades) ? currentClaim.trades : [],
               job_type: isRetailJob ? 'retail' : 'insurance',
               bid_amount: quoteData.total_price,
@@ -5537,13 +6000,21 @@
           `;
         }
         successState.classList.add('show');
+        _submitDone = true; // gh-3488: the button stays disabled on the success screen
+        _bidIdemKey = null; _bidIdemFp = null; // gh-3498: this bid is filed; its key is spent
+        _bidUnconfirmedFps = []; _bidPostWritesDoneId = null;
         // Clear wizard localStorage state on successful submission
         clearWizardState();
       } catch (err) {
         console.error('Error submitting bid:', err);
-        alert('Error submitting bid: ' + (err.message || 'Unknown error'));
+        if (err && err.bidAlreadyFiled) alert(err.message); // gh-3498: the filed bid is now shown as Change Bid
+        else alert('Error submitting bid: ' + (err.message || 'Unknown error'));
         submitBtn.disabled = false;
         submitBtn.textContent = renewMode ? 'Renew Bid' : (changeBidMode ? 'Update Bid' : 'Submit Bid');
+      } finally {
+        _submitInFlight = false;
+        unlockBidInputs(); // gh-3488: the lock lasts only while this submit is running
+        if (_submitDone) { submitBtn.disabled = true; } else { updateFeeCheckboxState(); }
       }
     });
 
@@ -5693,11 +6164,22 @@
             initWizard(claimTrades);  // sets wizardMode if eligible
 
             if (wizardMode) {
-              if (saved && saved.wizardTradeQueue && saved.wizardTradeQueue.length > 0) {
-                wizardTradeQueue    = saved.wizardTradeQueue;
-                wizardSelectedTrades = saved.wizardSelectedTrades || [...wizardTradeQueue];
+              // gh-3576: keep only saved trades that are still in the claim's wizard queue
+              // (initWizard just built it from the claim's current trades).
+              const _eligible = [...wizardTradeQueue];
+              const _savedQueue = (saved && Array.isArray(saved.wizardTradeQueue))
+                ? saved.wizardTradeQueue.filter(t => _eligible.includes(t)) : [];
+              if (_savedQueue.length > 0) {
+                wizardTradeQueue    = _savedQueue;
+                wizardSelectedTrades = (Array.isArray(saved.wizardSelectedTrades) ? saved.wizardSelectedTrades : _savedQueue)
+                  .filter(t => _eligible.includes(t));
+                if (wizardSelectedTrades.length === 0) wizardSelectedTrades = [..._savedQueue];
+                document.querySelectorAll('#wizardTradeCheckboxes input').forEach(cb => {
+                  cb.checked = wizardSelectedTrades.includes(cb.value);
+                });
                 const restoreStep  = changeBidMode ? 2 : (saved.wizardStep || 1);
-                const restoreIdx   = changeBidMode ? 0 : (saved.wizardCurrentTradeIdx || 0);
+                const _savedTrade  = saved.wizardTradeQueue[saved.wizardCurrentTradeIdx || 0];
+                const restoreIdx   = changeBidMode ? 0 : Math.max(0, wizardTradeQueue.indexOf(_savedTrade));
                 wizardGoTo(restoreStep, restoreIdx, false);
               } else if (changeBidMode) {
                 // Change-bid with no saved state: jump to step 2 per D-162 spec

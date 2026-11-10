@@ -446,6 +446,15 @@ RULED_AUTHENTICATED_ALLOWED: dict[str, str] = {
     "/project-info-rcv": "post-trade-selector intake (RCV) -- Dustin ruling #1939 c.5691693161",
     "/project-info-acv": "post-trade-selector intake (ACV) -- Dustin ruling #1939 c.5691693161",
     "/repair-intake": "repair intake + photo upload -- Dustin ruling #1939 c.5691693161",
+    # gh-3283 / gh-3285 (D-407): the React successors to project-info-rcv.html /
+    # project-info-cash.html. These are React routes, gated at runtime by
+    # react-app/app/components/GA4Gate.tsx CLARITY_ALLOWED_PATHS (pinned by
+    # clarity-route-guard.test.ts and clarity-react-funnel-gate.test.tsx); no
+    # static page has either path today, so these entries are inert here and
+    # record the ruling so a future static twin at that path is held to the
+    # same masked-<body> rule as every other ruled page.
+    "/insurance-rcv": "RCV intake (D-407, gh-3283) -- Dustin, 2026-11-09 09:26 ET, verbatim: \"Clarity on /insurance-rcv and /out-of-pocket: yes.\" (#3283 comment 6742512470) https://github.com/StellarEdgeServices/otterquote-platform/issues/3283#issuecomment-6742512470",
+    "/out-of-pocket": "out-of-pocket intake (D-407, gh-3285) -- Dustin, 2026-11-09 09:26 ET, verbatim: \"Clarity on /insurance-rcv and /out-of-pocket: yes.\" (#3283 comment 6742512470) https://github.com/StellarEdgeServices/otterquote-platform/issues/3283#issuecomment-6742512470",
 }
 
 class _BodyMaskParser(html.parser.HTMLParser):

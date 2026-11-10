@@ -1,0 +1,38 @@
+name: Static gh-3495 Multi-Trade Total Tests
+
+# gh-3495 -- the static bid form's multi-trade total, fee shown and accepted, and Change Bid. Runs the real page
+# functions in a node:vm sandbox over a stub DOM: no browser, no dependencies, no secrets. `pull_request` only,
+# read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'contractor-bid-form.html'
+      - 'tests/gh3495-html-wizard-total.mjs'
+      - '.github/workflows/static-gh3495-wizard-total-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3495-wizard-total-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  wizard-total:
+    name: Multi-trade total, fee shown and Change Bid (node vm)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Multi-trade total (gh3495-html-wizard-total)
+        run: node tests/gh3495-html-wizard-total.mjs
