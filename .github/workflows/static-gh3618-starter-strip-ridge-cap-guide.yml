@@ -1,0 +1,42 @@
+name: Static Starter Strip and Ridge Cap Guide Test
+
+# gh-3618 -- the starter strip and ridge cap guide is built, listed in the sitemap and wired into the guides index.
+# Runs tests/gh3618-starter-strip-ridge-cap-guide.mjs (no browser, no secrets). `pull_request` only, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'guides/starter-strip-ridge-cap-bid.html'
+      - 'guides/index.html'
+      - 'sitemap.xml'
+      - 'llms.txt'
+      - '_redirects'
+      - 'netlify/edge-functions/blog-guides-redirect.ts'
+      - 'tests/gh3618-starter-strip-ridge-cap-guide.mjs'
+      - '.github/workflows/static-gh3618-starter-strip-ridge-cap-guide.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3618-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  starter-strip-ridge-cap-guide:
+    name: Starter strip and ridge cap guide (gh-3618)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Guide exists, FAQPage JSON-LD, listed (gh3618)
+        run: node tests/gh3618-starter-strip-ridge-cap-guide.mjs

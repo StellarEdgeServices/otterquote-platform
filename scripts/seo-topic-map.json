@@ -60,6 +60,7 @@
         "guides/roof-bid-comparison-worksheet",
         "guides/roof-bid-comparison-tool",
         "guides/roof-bid-much-lower-than-the-others",
+        "guides/starter-strip-ridge-cap-bid",
         "guides/roof-underlayment-ice-barrier-bid",
         "blog/why-roofers-quote-different-prices",
         "guides/competitive-roof-bids-vs-single-referral",
@@ -577,6 +578,13 @@
       "/guides/roof-repair-overlay-or-replacement-bids.html",
       "/guides/how-to-read-contractor-estimate.html",
       "/blog/what-to-do-after-storm-damages-roof.html"
+    ],
+    "guides/starter-strip-ridge-cap-bid": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/manufacturer-backed-roof-warranties.html",
+      "/guides/algae-resistant-shingle-warranties.html"
     ],
     "guides/how-long-does-roof-replacement-take": [
       "/guides/roof-replacement-cost-breakdown.html",
