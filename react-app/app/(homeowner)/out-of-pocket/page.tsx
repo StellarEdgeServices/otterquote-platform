@@ -35,6 +35,7 @@ import { gtagEventBeforeNavigation } from '@/lib/ga-events';
 import { saveClaim, saveContact, useD407Data, type D407Claim, type D407Profile } from '../_d407/use-d407-claim';
 import {
   buildOopClaimUpdate,
+  formatPropertyAddress,
   missingForOop,
   type ContactInfo,
   type ProjectInfoInput,
@@ -49,19 +50,6 @@ export default function OutOfPocketPage() {
       <OutOfPocketContent />
     </HomeownerShell>
   );
-}
-
-function addressLine(c: {
-  property_address?: string | null;
-  property_city?: string | null;
-  property_state?: string | null;
-  property_zip?: string | null;
-}): string {
-  const street = (c.property_address ?? '').trim();
-  if (!street) return '';
-  return [street, c.property_city, [c.property_state, c.property_zip].filter(Boolean).join(' ')]
-    .filter((p) => p && String(p).trim())
-    .join(', ');
 }
 
 function OutOfPocketContent() {
@@ -103,7 +91,7 @@ function OopForm({
     fullName: (profile?.full_name ?? claim.homeowner_name ?? '').trim(),
     phone: (profile?.phone ?? '').trim(),
     email,
-    address: addressLine(claim),
+    address: formatPropertyAddress(claim),
   }));
   const [info, setInfo] = useState<ProjectInfoInput>(() => ({
     urgency:
