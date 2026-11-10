@@ -268,6 +268,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/shelby-county-in/roofing/',
   '/locations/shelby-county-tn/roofing/index.html':
     '/locations/shelby-county-tn/roofing/',
+  '/locations/st-joseph-county-in/roofing/index.html':
+    '/locations/st-joseph-county-in/roofing/',
   '/locations/st-louis-county-mo/roofing/index.html':
     '/locations/st-louis-county-mo/roofing/',
   '/locations/stark-county-oh/roofing/index.html':
@@ -278,6 +280,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/summit-county-oh/roofing/',
   '/locations/sumner-county-tn/roofing/index.html':
     '/locations/sumner-county-tn/roofing/',
+  '/locations/tippecanoe-county-in/roofing/index.html':
+    '/locations/tippecanoe-county-in/roofing/',
   '/locations/warren-county-oh/roofing/index.html':
     '/locations/warren-county-oh/roofing/',
   '/locations/washington-county-tn/roofing/index.html':
