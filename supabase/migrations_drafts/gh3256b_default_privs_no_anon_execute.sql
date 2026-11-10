@@ -9,12 +9,15 @@
 -- Rollback: supabase/migrations_drafts/gh3256b_default_privs_no_anon_execute_rollback.sql (exact inverse)
 -- Proof: bash supabase/tests/gh3256b_default_privs_functions_proof_run.sh (throwaway PG16 cluster bootstrapped as supabase_admin)
 --
--- WHAT. Functions that postgres (the migration role) creates AFTER this runs no longer get EXECUTE for anon or PUBLIC.
+-- WHAT. Functions that postgres (the migration role) creates AFTER this runs no longer get EXECUTE for anon or PUBLIC, EXCEPT in schema storage (see STORAGE below).
 --   IN SCHEMA public, authenticated, service_role and the owner keep the EXECUTE they get today (the public-schema default row still lists
---   them), so a new RPC the signed-in app calls still works with no extra GRANT. OUTSIDE schema public that is NOT true: a new function
+--   them), so a new RPC the signed-in app calls still works with no extra GRANT. OUTSIDE schemas public and storage that is NOT true: a new function
 --   postgres creates in another schema (for example a private schema) gets EXECUTE for the owner only, because authenticated and service_role
 --   used to receive it through PUBLIC. Such a function needs an explicit GRANT EXECUTE to authenticated and/or service_role in its own
 --   migration. No function in this repo is created outside public today (REVIEW 6776836494).
+--   STORAGE. Production has a (postgres, storage, f) default row = {postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}.
+--   This migration does not change it, and a schema-specific row adds to the global one, so a function postgres creates in schema storage STILL gets EXECUTE
+--   for anon, authenticated and service_role. No function in this repo is created in storage today (REVIEW 6777966561).
 --   A function that anon must call now needs an explicit GRANT EXECUTE ... TO anon in its own migration (the pattern the repo already
 --   uses for the public RPCs). Likewise a DROP FUNCTION + CREATE FUNCTION of an anon-callable function must repeat its GRANT
 --   (CREATE OR REPLACE keeps grants). EXISTING functions are not touched. Tables, sequences and every other schema's table/sequence defaults are not touched.
