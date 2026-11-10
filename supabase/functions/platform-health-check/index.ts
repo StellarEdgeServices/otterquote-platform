@@ -101,6 +101,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { findConsecutiveUndelivered, type TwilioMessageRow } from "./sms-delivery-check.ts";
 import { evaluateRegisterPartnerGlobalBudget } from "./register-partner-budget-check.ts";
 import {
+  evaluateFeeAcceptanceGap,
+  FEE_GAP_DEFAULT_GRACE_MINUTES,
+  FEE_GAP_DEFAULT_SINCE,
+  findQuotesMissingAcceptance,
+  type QuoteRow,
+} from "./fee-acceptance-gap-check.ts"; // gh-3586
+import {
   alertEmailText,
   cronErrorAlert,
   cronStalenessAlert,
@@ -1008,6 +1015,70 @@ async function runRegisterPartnerBudgetCheck(
   return { checked: true, alertsFired, hourCount: hourCount ?? 0, dayCount: dayCount ?? 0 };
 }
 
+/**
+ * Phase 6 (gh-3586): quotes filed without a fee_acceptances row (D-214 evidence gap). READ-ONLY.
+ * Pure rule in fee-acceptance-gap-check.ts. Reads quotes (paged) then fee_acceptances.bid_id for those quotes (chunked), runs the rule,
+ * and calls fireAlert(). includeTest is true only when the caller's POST body sets fee_gap_include_test (the planted-case proof).
+ * Soft-fails (never throws, never blocks another phase) on any read error.
+ */
+async function runFeeAcceptanceGapCheck(
+  supabase: ReturnType<typeof createClient>,
+  mailgunApiKey: string,
+  mailgunDomain: string,
+  includeTest: boolean,
+): Promise<{ checked: boolean; alertsFired: number; count: number; skipped?: string }> {
+  const since = Deno.env.get("FEE_GAP_SINCE") || FEE_GAP_DEFAULT_SINCE;
+  const opts = { since, graceMinutes: FEE_GAP_DEFAULT_GRACE_MINUTES, includeTest };
+  const graceCutoff = new Date(Date.now() - opts.graceMinutes * 60_000).toISOString();
+  const PAGE = 1000;
+  const quotes: QuoteRow[] = [];
+  for (let from = 0; ; from += PAGE) {
+    let q = supabase
+      .from("quotes")
+      .select("id, claim_id, contractor_id, created_at, status, is_test, is_auto_bid")
+      .gte("created_at", since)
+      .lte("created_at", graceCutoff)
+      .or("is_auto_bid.is.null,is_auto_bid.eq.false")
+      .order("created_at", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (!includeTest) q = q.or("is_test.is.null,is_test.eq.false");
+    const { data, error } = await q as { data: QuoteRow[] | null; error: { message: string } | null };
+    if (error) {
+      console.error("[platform-health-check] Phase 6 (fee acceptance gap): quotes read failed:", error.message);
+      return { checked: false, alertsFired: 0, count: 0, skipped: "quotes-read-error" };
+    }
+    quotes.push(...(data ?? []));
+    if (!data || data.length < PAGE) break;
+  }
+
+  const accepted = new Set<string>();
+  const CHUNK = 150; // keeps the in.(...) URL well under PostgREST/proxy limits
+  for (let i = 0; i < quotes.length; i += CHUNK) {
+    const ids = quotes.slice(i, i + CHUNK).map((r) => r.id);
+    const { data, error } = await supabase
+      .from("fee_acceptances")
+      .select("bid_id")
+      .in("bid_id", ids) as { data: { bid_id: string }[] | null; error: { message: string } | null };
+    if (error) {
+      console.error("[platform-health-check] Phase 6 (fee acceptance gap): fee_acceptances read failed:", error.message);
+      return { checked: false, alertsFired: 0, count: 0, skipped: "fee-acceptances-read-error" };
+    }
+    for (const r of data ?? []) accepted.add(r.bid_id);
+  }
+
+  const result = findQuotesMissingAcceptance(quotes, accepted, opts);
+  const alert = evaluateFeeAcceptanceGap(result, includeTest);
+  let alertsFired = 0;
+  if (alert) {
+    const message = `${alert.message}
+Checked at: ${formatDualTimestamp(new Date())}
+This is an automated alert from OtterQuote platform monitoring (gh-3586).`;
+    const { alerted } = await fireAlert(supabase, mailgunApiKey, mailgunDomain, alert.alertType, alert.functionName, alert.subject, message);
+    if (alerted) alertsFired++;
+  }
+  return { checked: true, alertsFired, count: result.count };
+}
+
 // =============================================================================
 // MAIN HANDLER
 // =============================================================================
@@ -1072,6 +1143,15 @@ serve(async (req) => {
   // Independent of Phases 1-4 (own data source, own soft-fail path).
   const phase5 = await runRegisterPartnerBudgetCheck(supabase, mailgunApiKey, mailgunDomain);
 
+  // ── Phase 6: quotes without a fee_acceptances row (gh-3586) ────────────────
+  // Read-only, own soft-fail path. The service-role gate above already ran; the body flag is honoured only past it.
+  let feeGapIncludeTest = false;
+  try {
+    const body = await req.clone().json();
+    feeGapIncludeTest = body?.fee_gap_include_test === true;
+  } catch { /* no/invalid body: the cron sends none */ }
+  const phase6 = await runFeeAcceptanceGapCheck(supabase, mailgunApiKey, mailgunDomain, feeGapIncludeTest);
+
   const elapsed = Date.now() - startedAt;
 
   const result = {
@@ -1093,7 +1173,11 @@ serve(async (req) => {
     registerPartnerBudgetHourCount: phase5.hourCount,
     registerPartnerBudgetDayCount: phase5.dayCount,
     registerPartnerBudgetSkipped: phase5.skipped ?? null,
-    totalAlerts:        phase1.alertsFired + phase2.alertsFired + phase3.alertsFired + phase4.alertsFired + phase5.alertsFired,
+    feeAcceptanceGapChecked: phase6.checked,
+    feeAcceptanceGapAlertsCount: phase6.alertsFired,
+    feeAcceptanceGapCount: phase6.count,
+    feeAcceptanceGapSkipped: phase6.skipped ?? null,
+    totalAlerts:        phase1.alertsFired + phase2.alertsFired + phase3.alertsFired + phase4.alertsFired + phase5.alertsFired + phase6.alertsFired,
     elapsedMs:          elapsed,
     ranAt:              new Date().toISOString(),
   };
