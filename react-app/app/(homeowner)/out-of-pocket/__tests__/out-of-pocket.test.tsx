@@ -379,4 +379,10 @@ describe('property address shown once (gh-3587)', () => {
     render(<Page />);
     expect((await field()).value).toBe('1 Test Lane, Zionsville, IN 46077');
   });
+
+  it('street name contains the city name: city is still appended', async () => {
+    wire({ property_address: '100 Carmel Dr', property_city: 'Carmel', property_state: 'IN', property_zip: '46032' });
+    render(<Page />);
+    expect((await field()).value).toBe('100 Carmel Dr, Carmel, IN 46032');
+  });
 });

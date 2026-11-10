@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildOopClaimUpdate,
   buildRcvClaimUpdate,
+  formatPropertyAddress,
   missingContact,
   missingForOop,
   missingForRcv,
@@ -92,5 +93,30 @@ describe('OOP write never reclassifies a stored answer (D-079 / D-073)', () => {
       const u = buildOopClaimUpdate(info, 'J', done, pol, fund);
       for (const k of ['job_type', 'funding_type', 'policy_type']) expect(k in u).toBe(false);
     }
+  });
+});
+
+describe('formatPropertyAddress (gh-3587)', () => {
+  const loc = { property_city: 'Zionsville', property_state: 'IN', property_zip: '46077' };
+  it('street-only gets city, state zip appended once', () => {
+    expect(formatPropertyAddress({ property_address: '1 Test Lane', ...loc })).toBe('1 Test Lane, Zionsville, IN 46077');
+  });
+  it('street already ending with the full suffix is returned as is', () => {
+    expect(formatPropertyAddress({ property_address: '1 Test Lane, Zionsville, IN 46077', ...loc })).toBe('1 Test Lane, Zionsville, IN 46077');
+    expect(formatPropertyAddress({ property_address: '1 Test Lane, zionsville, in 46077 ', ...loc })).toBe('1 Test Lane, zionsville, in 46077');
+    expect(formatPropertyAddress({ property_address: '1 Test Lane, Zionsville, IN', ...loc })).toBe('1 Test Lane, Zionsville, IN');
+  });
+  it('street name containing the city name keeps the city', () => {
+    expect(
+      formatPropertyAddress({ property_address: '100 Carmel Dr', property_city: 'Carmel', property_state: 'IN', property_zip: '46032' }),
+    ).toBe('100 Carmel Dr, Carmel, IN 46032');
+  });
+  it('street name containing the zip digits or state letters does not suppress them', () => {
+    expect(
+      formatPropertyAddress({ property_address: '46032 In Ave', property_city: 'Carmel', property_state: 'IN', property_zip: '46032' }),
+    ).toBe('46032 In Ave, Carmel, IN 46032');
+  });
+  it('empty street returns empty string', () => {
+    expect(formatPropertyAddress({ property_address: ' ', ...loc })).toBe('');
   });
 });

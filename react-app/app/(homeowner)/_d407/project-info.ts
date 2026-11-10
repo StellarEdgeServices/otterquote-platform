@@ -26,8 +26,9 @@ export const URGENCY_OPTIONS: { value: Urgency; label: string }[] = [
 /**
  * Single-line property address for the read-only field (gh-3587). Some claims
  * store the FULL address in property_address ("1 Test Lane, Zionsville, IN 46077");
- * others store only the street line. Append city/state/zip only for the parts the
- * street value does not already contain, so the address is shown once.
+ * others store only the street line. The street value is treated as already
+ * complete only when it ENDS with ", City, ST ZIP" or ", City, ST" (case-insensitive);
+ * a substring match is not enough ("100 Carmel Dr" in Carmel still needs its city).
  */
 export function formatPropertyAddress(c: {
   property_address?: string | null;
@@ -37,22 +38,16 @@ export function formatPropertyAddress(c: {
 }): string {
   const street = (c.property_address ?? '').trim();
   if (!street) return '';
-  const lower = street.toLowerCase();
   const city = (c.property_city ?? '').trim();
   const state = (c.property_state ?? '').trim();
   const zip = (c.property_zip ?? '').trim();
-  const tokens = lower.split(/[^a-z0-9]+/);
-  const parts = [street];
-  const cityInStreet = !!city && lower.includes(city.toLowerCase());
-  if (city && !cityInStreet) parts.push(city);
-  const stateZip = [
-    state && !(cityInStreet && tokens.includes(state.toLowerCase())) ? state : '',
-    zip && !lower.includes(zip.toLowerCase()) ? zip : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
-  if (stateZip) parts.push(stateZip);
-  return parts.join(', ');
+  const stateZip = [state, zip].filter(Boolean).join(' ');
+  const lower = street.toLowerCase();
+  const suffixes = [[city, stateZip], [city, state], [city]]
+    .map((p) => p.filter(Boolean).join(', '))
+    .filter(Boolean);
+  if (city && suffixes.some((sfx) => lower.endsWith(`, ${sfx.toLowerCase()}`))) return street;
+  return [street, city, stateZip].filter(Boolean).join(', ');
 }
 
 export interface ContactInfo {
