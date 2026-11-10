@@ -31,7 +31,7 @@ import {
   buildValueAdds, serializeWarrantySelection, applyCustomWarrantyReview,
   feeConfigLookupParams, resolveFeePct, computeDisclosureFee, computeQuoteFeeBase,
   bidGateRpcParams, interpretBidGate, BID_GATE_ROUTES, DEFAULT_PLATFORM_FEE_PCT,
-  buildScopeSummary, buildQuoteInsert, buildQuoteUpdate,
+  buildScopeSummary, buildQuoteInsert, buildQuoteUpdate, renewQuoteRpcMode,
   buildFeeAcceptanceInsert, ipForInet, feeAcceptanceOutcome, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
   computeWizardEligibility, wizardReducer, wroteRow, claimLocationLabel,
 } from './utils';
@@ -470,6 +470,13 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
           now: new Date(),
           existingBidStatus: (existingQuote?.bid_status as string | null) ?? null,
         });
+        // gh-3560: renew / reopen set bid_status, expired_at and expires_at server-side (the quotes guard trigger refuses
+        // them to a direct UPDATE, 42501). RPC first, then the field UPDATE below.
+        const renewRpcMode = renewQuoteRpcMode(mode === 'renew', (existingQuote?.bid_status as string | null) ?? null);
+        if (renewRpcMode) {
+          const { error: renewErr } = await supabase.rpc('renew_quote', { p_quote_id: existingQuote!.id, p_mode: renewRpcMode });
+          if (renewErr) throw renewErr;
+        }
         // gh-3491: an UPDATE that never answers ends through the catch below (message, form unlocked). Abort the request and stop waiting.
         const updCtl = new AbortController();
         let updTimer: ReturnType<typeof setTimeout> | undefined;

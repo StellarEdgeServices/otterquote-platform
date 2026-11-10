@@ -5735,6 +5735,14 @@
           }
 
           if (changeBidMode && existingQuote) {
+            // gh-3560: Renew Bid (expired bid, D-150) and Change Bid on a withdrawn ('cancelled') bid (gh-2564 rescind and
+            // re-bid) make the bid live again through renew_quote(): the quotes guard trigger refuses bid_status, expired_at
+            // and expires_at to a contractor's direct UPDATE (42501). The RPC runs FIRST, then the field UPDATE below.
+            const _renewRpcMode = renewMode ? 'renew' : (existingQuote.bid_status === 'cancelled' ? 'reopen' : null);
+            if (_renewRpcMode) {
+              const { error: renewRpcError } = await sb.rpc('renew_quote', { p_quote_id: existingQuote.id, p_mode: _renewRpcMode });
+              if (renewRpcError) throw renewRpcError;
+            }
             // gh-2105: payload hoisted to a named const so the ratchet scanner's
             // 25-line statement window can see the .select('id') chained below.
             const _changeBidPayload = {
@@ -5757,22 +5765,9 @@
                 warranty_option_id: quoteData.warranty_option_id,
                 warranty_snapshot: quoteData.warranty_snapshot,
                 workmanship_warranty_years: quoteData.workmanship_warranty_years,
-                // D-150: renewal — reset bid window
-                ...(renewMode ? {
-                  // gh-2564: 'submitted' is not admitted by quotes_bid_status_check (active, expired, superseded,
-                  // cancelled); a renewed bid is live again, which is 'active'.
-                  bid_status: 'active',
-                  expired_at: null,
-                  expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-                } : {}),
-                // gh-2564 (CEO RUN 104 point 4): Change Bid on a bid the contractor withdrew ('cancelled') makes it
-                // live again -- the rescind-and-re-bid path D-369/D-381 rely on. Same live fields as a renewal, but
-                // renewals are not counted (gh-3560): quotes has no renewals_count column.
-                ...(!renewMode && existingQuote.bid_status === 'cancelled' ? {
-                  bid_status: 'active',
-                  expired_at: null,
-                  expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-                } : {}),
+                // D-150: renewal. gh-3560: bid_status, expired_at and expires_at are set by rpc('renew_quote') before this
+                // UPDATE; the quotes guard trigger refuses them to a direct UPDATE (42501). No renewal counter is written
+                // (#3563 removed the quotes.renewals_count key: the column does not exist).
                 updated_at: new Date().toISOString(),
             };
             // gh-3491: an UPDATE that never answers must end through the catch below (button restored, inputs
