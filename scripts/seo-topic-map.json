@@ -65,7 +65,8 @@
         "guides/online-roof-bids-no-salesperson",
         "blog/aerial-roof-measurement-reports",
         "guides/roof-replacement-cost-breakdown",
-        "guides/otter-quotes-vs-thumbtack-angi"
+        "guides/otter-quotes-vs-thumbtack-angi",
+        "guides/roof-flashing-replacement-bid"
       ]
     },
     {
@@ -398,6 +399,13 @@
       "/guides/roof-wind-ratings-explained.html",
       "/guides/contractor-workmanship-warranty.html",
       "/guides/roof-change-orders-hidden-damage.html"
+    ],
+    "guides/roof-flashing-replacement-bid": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/roof-change-orders-hidden-damage.html",
+      "/guides/manufacturer-backed-roof-warranties.html"
     ],
     "guides/online-roof-bids-no-salesperson": [
       "/guides/roof-bid-comparison-worksheet.html",
