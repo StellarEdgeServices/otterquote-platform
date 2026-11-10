@@ -146,8 +146,9 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/online-roof-bids-no-salesperson.html',
   '/guides/competitive-roof-bids-vs-single-referral':
     '/guides/competitive-roof-bids-vs-single-referral.html',
+  // gh-3629: the combined page is deleted; this entry goes straight to the Thumbtack guide (one hop, no chain).
   '/guides/otter-quotes-vs-thumbtack-angi':
-    '/guides/otter-quotes-vs-thumbtack-angi.html',
+    '/guides/otter-quotes-vs-thumbtack.html',
   '/guides/exterior-projects-one-contractor-or-separate-bids':
     '/guides/exterior-projects-one-contractor-or-separate-bids.html',
   '/guides/metal-roof-vs-asphalt-shingle-bids':

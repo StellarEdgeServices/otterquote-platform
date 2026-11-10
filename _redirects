@@ -240,7 +240,13 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 /guides/roofers-backed-up-after-storm /guides/roofers-backed-up-after-storm.html 301
 /guides/online-roof-bids-no-salesperson /guides/online-roof-bids-no-salesperson.html 301
 /guides/competitive-roof-bids-vs-single-referral /guides/competitive-roof-bids-vs-single-referral.html 301
-/guides/otter-quotes-vs-thumbtack-angi /guides/otter-quotes-vs-thumbtack-angi.html 301
+# gh-3629 (CRO RUN 92): the combined Thumbtack-and-Angi guide is retired in favour of the two single-platform guides (#3592 ruling).
+# The file is DELETED (no static file for Netlify Pretty URLs to serve ahead of these rules, same convention as gh-2480 above),
+# and every URL form 301s straight to the Thumbtack guide in one hop. The extensionless form is also in
+# netlify/edge-functions/blog-guides-redirect.ts, pointed at the same target.
+/guides/otter-quotes-vs-thumbtack-angi.html /guides/otter-quotes-vs-thumbtack.html 301
+/guides/otter-quotes-vs-thumbtack-angi /guides/otter-quotes-vs-thumbtack.html 301
+/guides/otter-quotes-vs-thumbtack-angi/ /guides/otter-quotes-vs-thumbtack.html 301
 /guides/exterior-projects-one-contractor-or-separate-bids /guides/exterior-projects-one-contractor-or-separate-bids.html 301
 /guides/metal-roof-vs-asphalt-shingle-bids /guides/metal-roof-vs-asphalt-shingle-bids.html 301
 /guides/roof-repair-overlay-or-replacement-bids /guides/roof-repair-overlay-or-replacement-bids.html 301
