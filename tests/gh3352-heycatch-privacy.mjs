@@ -73,6 +73,38 @@ for (const [label, m] of [['js', js], ['ts', ts]]) {
   check(`${label}: $heatmap_data is removed from any other event`, !JSON.stringify(stray).includes('heatmap') && stray.properties.$pathname === '/faq', JSON.stringify(stray));
 }
 
+// gh-3357 item 1: a path property must not name a page HeyCatch does not load on. In the app the SDK keeps
+// running across client-side moves (history_change), so after /get-started -> /contractor/bid/<claimId> ->
+// /get-started the next pageview carries $prev_pageview_pathname "/contractor/bid/<claimId>" (seen with the real
+// 0.8.3 SDK in tests/gh3357-heycatch-browser.mjs). The app passes its route allowlist as pathAllowed.
+const appAllowed = (p) => typeof p === 'string' && (p === '/get-started' || p.startsWith('/get-started/'));
+const spaEvent = () => ({ event: '$pageview', properties: {
+  $pathname: '/get-started', $prev_pageview_pathname: '/contractor/bid/CLAIMPATH777', $prev_pageview_id: 'p1',
+  $session_entry_pathname: '/dashboard', $session_entry_url: 'https://app.otterquote.com/contractor/sign/CLAIMSIGN555',
+  $current_url: 'https://app.otterquote.com/get-started?utm_source=meta' },
+  $set_once: { $initial_pathname: '/bids', $initial_current_url: 'https://app.otterquote.com/bids?claim_id=Q' } });
+for (const [label, m] of [['js', js], ['ts', ts]]) {
+  const out = m.makeBeforeSend(() => true, appAllowed)(spaEvent());
+  const text = JSON.stringify(out);
+  check(`${label}: gh3357 no denied route survives in a path property (pathAllowed)`, out !== null && !/CLAIMPATH777|CLAIMSIGN555|\/contractor|\/dashboard|\/bids/.test(text), text);
+  check(`${label}: gh3357 allowed paths and other properties are kept (a denied page's $prev_pageview_* is not)`, out && out.properties.$pathname === '/get-started' && !('$prev_pageview_id' in out.properties) && out.properties.$current_url === 'https://app.otterquote.com/get-started?utm_source=meta', text);
+  const ok2 = m.makeBeforeSend(() => true, appAllowed)({ event: '$pageview', properties: { $pathname: '/get-started', $prev_pageview_pathname: '/get-started/step-2' } });
+  check(`${label}: gh3357 an allowed previous path is kept`, ok2 && ok2.properties.$prev_pageview_pathname === '/get-started/step-2', JSON.stringify(ok2));
+  const prevAll = { $prev_pageview_duration: 1861.31, $prev_pageview_last_scroll: 0, $prev_pageview_max_scroll_percentage: 1, $prev_pageview_last_content: 720, $prev_pageview_max_content_percentage: 1, $prev_pageview_id: 'p9' };
+  const den = m.makeBeforeSend(() => true, appAllowed)({ event: '$pageview', properties: { $pathname: '/get-started', $prev_pageview_pathname: '/contractor/bid/CLAIMROT123', ...prevAll } });
+  check(`${label}: gh3357 a denied $prev_pageview_pathname takes every other $prev_pageview_* key with it`, den && den.properties.$pathname === '/get-started' && !Object.keys(den.properties).some((k) => k.startsWith('$prev_pageview_')), JSON.stringify(den));
+  const alw = m.makeBeforeSend(() => true, appAllowed)({ event: '$pageview', properties: { $pathname: '/get-started', $prev_pageview_pathname: '/get-started/step-2', ...prevAll } });
+  check(`${label}: gh3357 an allowed $prev_pageview_pathname keeps the other $prev_pageview_* keys`, alw && alw.properties.$prev_pageview_duration === 1861.31 && alw.properties.$prev_pageview_id === 'p9', JSON.stringify(alw));
+  check(`${label}: gh3357 a pathAllowed that throws drops the event`, m.makeBeforeSend(() => true, () => { throw new Error('x'); })(spaEvent()) === null);
+  const site = m.scrubEvent({ event: '$pageview', properties: { $pathname: '/faq', $prev_pageview_pathname: '/contract-signing' } });
+  check(`${label}: gh3357 without pathAllowed, a $prev_pageview_pathname that is not the page itself is dropped`, site && !('$prev_pageview_pathname' in site.properties) && site.properties.$pathname === '/faq', JSON.stringify(site));
+  const same = m.scrubEvent({ event: '$pageleave', properties: { $pathname: '/faq', $prev_pageview_pathname: '/faq' } });
+  check(`${label}: gh3357 without pathAllowed, $prev_pageview_pathname equal to $pathname is kept`, same && same.properties.$prev_pageview_pathname === '/faq');
+}
+check('js and ts agree on the gh3357 path cases', JSON.stringify(js.makeBeforeSend(() => true, appAllowed)(spaEvent())) === JSON.stringify(ts.makeBeforeSend(() => true, appAllowed)(spaEvent())));
+check('app passes its route allowlist as pathAllowed (gh3357)', /beforeSend:\s*makeBeforeSend\(\s*\(\)\s*=>\s*isHeyCatchAllowedPath\(window\.location\.pathname\),\s*isHeyCatchAllowedPath\s*\)/.test(read('react-app/app/lib/heycatch.ts')));
+check('negative control (gh3357): the unguarded event really carries the claim path', JSON.stringify(spaEvent()).includes('CLAIMPATH777') && JSON.stringify(js.makeBeforeSend(() => true)(spaEvent())).includes('/contractor/sign'));
+
 // (b) boot order
 const boot = read('js/heycatch-boot.js');
 const code = boot.replace(/^\s*\/\/.*$/gm, '');

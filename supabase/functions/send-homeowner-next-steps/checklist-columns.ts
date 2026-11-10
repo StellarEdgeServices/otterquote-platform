@@ -15,6 +15,8 @@ export interface ChecklistColumns {
   has_estimate?: boolean | null;
   has_measurements?: boolean | null;
   has_material_selection?: boolean | null;
+  /** gh-3578 — 'rcv' | 'acv' | 'idk'. */
+  policy_type?: string | null;
   updated_at?: string | null;
   created_at?: string | null;
 }
@@ -22,6 +24,11 @@ export interface ChecklistColumns {
 export function isChecklistCompleteByColumns(claim: ChecklistColumns): boolean {
   const cash = claim.funding_type === "cash";
   const measurementsOk = !cash || !!claim.has_measurements;
+  // gh-3578 (D-407): an ACV claim accepts a purchased measurement in place of the
+  // insurance estimate, as dashboard.html isChecklistComplete() does.
+  if (!cash && claim.policy_type === "acv") {
+    return (!!claim.has_estimate || !!claim.has_measurements) && !!claim.has_material_selection;
+  }
   const estimateOk = cash || !!claim.has_estimate;
   return estimateOk && !!claim.has_material_selection && measurementsOk;
 }

@@ -863,7 +863,11 @@ export default function TradeSelectorPage() {
       if (user) {
         // ── Upsert profiles table ──
         try {
-          await supabase.from('profiles').upsert({
+          // gh-3588: a returning homeowner may reach this step with no
+          // cs_signup in storage. Null/undefined/empty values are OMITTED so
+          // the upsert's ON CONFLICT UPDATE never overwrites a saved name,
+          // phone, address, referral source or SMS consent with null.
+          const profilePayload: Record<string, unknown> = {
             id: user.id,
             role: 'homeowner',
             full_name: [(csSignup.first_name as string || '').trim(), (csSignup.last_name as string || '').trim()].filter(Boolean).join(' ') || null,
@@ -875,7 +879,11 @@ export default function TradeSelectorPage() {
             referral_source: (csSignup.referral_source as string) || null,
             sms_consent_ts: (csSignup.sms_consent_ts as string) || null,
             updated_at: new Date().toISOString(),
-          });
+          };
+          for (const k of Object.keys(profilePayload)) {
+            if (profilePayload[k] === null || profilePayload[k] === undefined) delete profilePayload[k];
+          }
+          await supabase.from('profiles').upsert(profilePayload);
         } catch (profileErr) {
           console.warn('[trade-selector] profile upsert failed:', profileErr);
         }

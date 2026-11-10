@@ -99,6 +99,7 @@ on:
       - 'tests/gh3228-measurement-price-2263.mjs'
       - 'tests/gh3356-hover-refusal-client.mjs'
       - 'tests/gh3352-heycatch-privacy.mjs'
+      - 'tests/gh3357-heycatch-browser.mjs'
       - 'js/heycatch-boot.js'
       - 'js/heycatch-privacy.js'
       - 'js/vendor/heycatch-sdk-0.8.3.js'
@@ -221,6 +222,7 @@ on:
       - 'tests/gh3228-measurement-price-2263.mjs'
       - 'tests/gh3356-hover-refusal-client.mjs'
       - 'tests/gh3352-heycatch-privacy.mjs'
+      - 'tests/gh3357-heycatch-browser.mjs'
       - 'js/heycatch-boot.js'
       - 'js/heycatch-privacy.js'
       - 'js/vendor/heycatch-sdk-0.8.3.js'
@@ -368,3 +370,5 @@ jobs:
         run: node tests/cro51-re1-value-layout.mjs
       - name: INS-1 value layout -- Dustin's copy byte-for-byte, Become a partner today buttons, banned phrases, 390px no overflow (cro51-ins1-value-layout)
         run: node tests/cro51-ins1-value-layout.mjs
+      - name: HeyCatch in Chromium with the real SDK, all traffic local -- no denied route in what is sent after client-side moves or from a signed-in referrer, crafted toolbar links load no toolbar script, negative controls (gh3357-heycatch-browser)
+        run: node tests/gh3357-heycatch-browser.mjs
