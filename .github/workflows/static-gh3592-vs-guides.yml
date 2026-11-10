@@ -1,0 +1,41 @@
+name: Static gh3592 Comparison Guides
+
+# gh-3592 -- the Otter Quotes vs Thumbtack and vs Angi guides must exist with valid FAQPage
+# JSON-LD, be in sitemap.xml and be linked from the guides index. Static check of tracked
+# files; no secrets, read-only token. See tests/gh3592-vs-guides.mjs.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'guides/otter-quotes-vs-thumbtack.html'
+      - 'guides/otter-quotes-vs-angi.html'
+      - 'guides/index.html'
+      - 'sitemap.xml'
+      - 'tests/gh3592-vs-guides.mjs'
+      - '.github/workflows/static-gh3592-vs-guides.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3592-vs-guides-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-gh3592-vs-guides:
+    name: comparison guides present, FAQPage valid, in sitemap (gh3592)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Comparison guide checks
+        run: node tests/gh3592-vs-guides.mjs
