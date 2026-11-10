@@ -23,19 +23,34 @@ export const URGENCY_OPTIONS: { value: Urgency; label: string }[] = [
   { value: 'asap', label: 'ASAP \u2014 urgent' },
 ];
 
-/**
- * A street value that already looks like a full address: it contains a comma and
- * its tail is a 2-letter state, optionally followed by ZIP or ZIP+4, optionally
- * followed by ", USA" (case- and whitespace-insensitive).
- */
-const FULL_ADDRESS_TAIL = /[\s,]+[a-z]{2}(?:\s+\d{5}(?:-\d{4})?)?(?:\s*,\s*(?:usa|us|united states))?\s*$/i;
+/** Lowercase, drop punctuation (keep hyphens), split to tokens, drop a trailing "usa". */
+function addressTokens(raw: string): string[] {
+  const t = raw.toLowerCase().replace(/[^a-z0-9-]+/g, ' ').trim().split(' ').filter(Boolean);
+  if (t[t.length - 1] === 'usa') t.pop();
+  return t;
+}
+
+/** ZIP+4 and ZIP compare equal: only the 5-digit part is significant. */
+function zipToken(t: string): string {
+  return /^\d{5}-\d{4}$/.test(t) ? t.slice(0, 5) : t;
+}
 
 /**
- * Single-line property address for the read-only field (gh-3587). Some claims
- * store the FULL address in property_address ("1 Test Lane, Zionsville, IN 46077");
- * others store only the street line. A full-looking street line is shown as is and
- * city/state/zip are NOT appended; otherwise street + whichever of city, state and
- * zip are present. "100 Carmel Dr" (no comma) is street-only and keeps its city.
+ * Single-line property address for the read-only field (gh-3587).
+ *
+ * Root cause: claims.property_address is, by CEO ruling (PR #1998, trade-selector
+ * fullAddress()), the full combined line "street, city, ST zip"; property_city /
+ * property_state / property_zip are split copies of it. Older or other-source rows
+ * can hold only the street line. So the street value may or may not already carry
+ * the city/state/zip, and appending them blindly shows the address twice.
+ *
+ * Rule (token based, no regex address shapes): normalize street and fields to
+ * lowercase tokens. If the street's tokens END with a prefix of [city, state, zip]
+ * (on a component boundary), append only the remaining components in their original
+ * display format. If all components are already at the end, or appear together
+ * anywhere in the street, return the street untouched. A street that merely
+ * resembles part of the address ("100 Carmel Dr", "12 Main St, NW") matches no
+ * prefix and gets every component appended.
  */
 export function formatPropertyAddress(c: {
   property_address?: string | null;
@@ -43,12 +58,44 @@ export function formatPropertyAddress(c: {
   property_state?: string | null;
   property_zip?: string | null;
 }): string {
-  const street = (c.property_address ?? '').trim();
+  const street = (c.property_address ?? '').trim().replace(/[\s,]+$/, '');
   if (!street) return '';
-  if (street.includes(',') && FULL_ADDRESS_TAIL.test(street)) return street;
   const city = (c.property_city ?? '').trim();
-  const stateZip = [(c.property_state ?? '').trim(), (c.property_zip ?? '').trim()].filter(Boolean).join(' ');
-  return [street, city, stateZip].filter(Boolean).join(', ');
+  const state = (c.property_state ?? '').trim();
+  const zip = (c.property_zip ?? '').trim();
+
+  const comps = [
+    { kind: 'city', text: city, tokens: addressTokens(city) },
+    { kind: 'state', text: state, tokens: addressTokens(state) },
+    { kind: 'zip', text: zip, tokens: addressTokens(zip).map(zipToken) },
+  ].filter((p) => p.tokens.length > 0);
+  if (comps.length === 0) return street;
+
+  const st = addressTokens(street).map(zipToken);
+  const all = comps.flatMap((p) => p.tokens);
+  const endsWith = (run: string[]) =>
+    run.length <= st.length && run.every((t, i) => st[st.length - run.length + i] === t);
+  const containsRun = (run: string[]) => {
+    for (let i = 0; i + run.length <= st.length; i++) {
+      if (run.every((t, j) => st[i + j] === t)) return true;
+    }
+    return false;
+  };
+  if (endsWith(all) || containsRun(all)) return street;
+
+  // Longest prefix of the components (whole components only) the street already ends with.
+  let have = 0;
+  for (let n = 1; n <= comps.length; n++) {
+    if (endsWith(comps.slice(0, n).flatMap((p) => p.tokens))) have = n;
+  }
+  const rest = comps.slice(have);
+  if (rest.length === 0) return street;
+  // City is its own ", " segment; state and zip share one ("IN 46077"). A zip that
+  // follows a state the street already carries continues that segment with a space.
+  const city1 = rest.find((p) => p.kind === 'city');
+  const stateZip = rest.filter((p) => p.kind !== 'city').map((p) => p.text).join(' ');
+  if (rest[0].kind === 'zip' && have > 0) return `${street} ${stateZip}`;
+  return [street, city1?.text, stateZip].filter(Boolean).join(', ');
 }
 
 export interface ContactInfo {
