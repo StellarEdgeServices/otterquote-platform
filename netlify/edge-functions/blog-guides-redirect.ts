@@ -178,6 +178,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/roof-permit-in-your-bid.html',
   '/guides/roof-tarp-while-you-wait-for-repairs':
     '/guides/roof-tarp-while-you-wait-for-repairs.html',
+  '/guides/roof-repair-overlay-or-replacement-bids':
+    '/guides/roof-repair-overlay-or-replacement-bids.html',
   '/guides/roof-wind-ratings-explained':
     '/guides/roof-wind-ratings-explained.html',
   '/guides/class-4-impact-resistant-shingles':
