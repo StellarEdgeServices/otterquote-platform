@@ -2837,7 +2837,7 @@
     const HOVER_PHOTOS_TTL = 10 * 60 * 1000;
 
     async function initHoverHomePhotos(claimId) {
-      // gh-1873: the measurement vendor (Hover) is retired; no back-end call is made. The card shows its
+      // gh-1873: the measurement vendor is retired; no back-end call is made. The card shows its
       // empty state, and a cached vendor payload from an earlier visit is no longer rendered.
       if (!claimId) return;
       const card = document.getElementById('hoverHomePhotosCard');
@@ -2959,7 +2959,7 @@
 
     // ── Siding Design Data Loader ──
     async function loadHoverSidingData() {
-      // gh-1873: the measurement vendor (Hover) is retired; no back-end call is made.
+      // gh-1873: the measurement vendor is retired; no back-end call is made.
       const btn        = document.getElementById('loadHoverSidingDataBtn');
       const content    = document.getElementById('hoverDesignContent');
       const noDataHelp = document.getElementById('hoverNoDesignHelp');
@@ -3166,7 +3166,7 @@
 
     // ── Roofing Measurements Loader (86e10t2cb) ──
     async function loadHoverRoofingData() {
-      // gh-1873: the measurement vendor (Hover) is retired; no back-end call is made.
+      // gh-1873: the measurement vendor is retired; no back-end call is made.
       const btn     = document.getElementById('loadHoverRoofingBtn');
       const content = document.getElementById('hoverRoofingContent');
       if (!currentClaim || !btn || !content) return;
@@ -4198,7 +4198,7 @@
       }
     }
 
-    // gh-1873: the measurement vendor (Hover) is retired. This button no longer calls any back-end function;
+    // gh-1873: the measurement vendor is retired. This button no longer calls any back-end function;
     // it tells the contractor the vendor PDF is gone. The homeowner's uploaded measurements file (View
     // Measurements) and the measured quantities on the form are unchanged.
     async function openBidFormHoverPdf() {
