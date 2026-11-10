@@ -1506,12 +1506,12 @@
 
         <!-- ── Retail Price Input (replaces bid type selector for cash/retail jobs) ── -->
         <div class="form-section" id="retailPriceSection" style="grid-column: 1 / -1; display: none;">
-          <label class="form-label required" style="margin-bottom:var(--sp-3);">Total Bid Price</label>
+          <label class="form-label required" id="retailPriceLabel" style="margin-bottom:var(--sp-3);">Roofing price</label>
           <div class="input-prefix" style="max-width:320px;">
             <span>$</span>
             <input type="number" id="retailBidPrice" name="retailBidPrice" step="0.01" min="0" placeholder="Enter your total price for this project">
           </div>
-          <p style="font-size:0.8rem;color:#6B7280;margin-top:var(--sp-2);">This is the total price the homeowner will see. Platform fees are deducted from this amount per the breakdown below.</p>
+          <p id="retailPriceHelp" style="font-size:0.8rem;color:#6B7280;margin-top:var(--sp-2);">Price for the roofing portion. Your bid total is the sum of all trades.</p>
         </div>
 
         <div class="form-group" id="brandProductGroup">
@@ -2266,6 +2266,7 @@
           <div style="font-size:0.78rem;color:#94A3B8;margin-top:3px;" id="netToContractorBidRow">Net to you: $0.00</div>
         </div>
       </div>
+      <p id="bidTotalFeeNote" style="font-size:0.8rem;color:#6B7280;margin:var(--sp-2) 0 0;">Platform fees are deducted from this amount per the breakdown below.</p>
 
       <div style="margin-top: var(--sp-6); margin-bottom: var(--sp-4);">
         <div class="fee-row">

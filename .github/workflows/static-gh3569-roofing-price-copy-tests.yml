@@ -1,0 +1,38 @@
+name: Static gh-3569 Roofing Price Copy Tests
+
+# gh-3569 follow-up -- the wizard roofing price field copy (Ben's ruling 6775144071) and the untouched D-214/D-215
+# fee-acceptance disclosure on contractor-bid-form.html. Static source check, no browser. `pull_request` only,
+# no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'contractor-bid-form.html'
+      - 'tests/gh3569-roofing-price-copy.mjs'
+      - '.github/workflows/static-gh3569-roofing-price-copy-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3569-roofing-price-copy-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  roofing-price-copy:
+    name: Roofing price label and help text exact, fee disclosure unchanged
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Roofing price copy (gh3569-roofing-price-copy)
+        run: node tests/gh3569-roofing-price-copy.mjs
