@@ -24,11 +24,18 @@ export const URGENCY_OPTIONS: { value: Urgency; label: string }[] = [
 ];
 
 /**
+ * A street value that already looks like a full address: it contains a comma and
+ * its tail is a 2-letter state, optionally followed by ZIP or ZIP+4, optionally
+ * followed by ", USA" (case- and whitespace-insensitive).
+ */
+const FULL_ADDRESS_TAIL = /[\s,]+[a-z]{2}(?:\s+\d{5}(?:-\d{4})?)?(?:\s*,\s*(?:usa|us|united states))?\s*$/i;
+
+/**
  * Single-line property address for the read-only field (gh-3587). Some claims
  * store the FULL address in property_address ("1 Test Lane, Zionsville, IN 46077");
- * others store only the street line. The street value is treated as already
- * complete only when it ENDS with ", City, ST ZIP" or ", City, ST" (case-insensitive);
- * a substring match is not enough ("100 Carmel Dr" in Carmel still needs its city).
+ * others store only the street line. A full-looking street line is shown as is and
+ * city/state/zip are NOT appended; otherwise street + whichever of city, state and
+ * zip are present. "100 Carmel Dr" (no comma) is street-only and keeps its city.
  */
 export function formatPropertyAddress(c: {
   property_address?: string | null;
@@ -38,15 +45,9 @@ export function formatPropertyAddress(c: {
 }): string {
   const street = (c.property_address ?? '').trim();
   if (!street) return '';
+  if (street.includes(',') && FULL_ADDRESS_TAIL.test(street)) return street;
   const city = (c.property_city ?? '').trim();
-  const state = (c.property_state ?? '').trim();
-  const zip = (c.property_zip ?? '').trim();
-  const stateZip = [state, zip].filter(Boolean).join(' ');
-  const lower = street.toLowerCase();
-  const suffixes = [[city, stateZip], [city, state], [city]]
-    .map((p) => p.filter(Boolean).join(', '))
-    .filter(Boolean);
-  if (city && suffixes.some((sfx) => lower.endsWith(`, ${sfx.toLowerCase()}`))) return street;
+  const stateZip = [(c.property_state ?? '').trim(), (c.property_zip ?? '').trim()].filter(Boolean).join(' ');
   return [street, city, stateZip].filter(Boolean).join(', ');
 }
 

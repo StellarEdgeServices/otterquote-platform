@@ -116,6 +116,21 @@ describe('formatPropertyAddress (gh-3587)', () => {
       formatPropertyAddress({ property_address: '46032 In Ave', property_city: 'Carmel', property_state: 'IN', property_zip: '46032' }),
     ).toBe('46032 In Ave, Carmel, IN 46032');
   });
+  it.each([
+    ['missing zip', '1 Test Lane, Zionsville, IN', { property_city: 'Zionsville', property_state: 'IN', property_zip: '' }],
+    ['missing city', '1 Test Lane, Zionsville, IN 46077', { property_city: '', property_state: 'IN', property_zip: '46077' }],
+    ['ZIP+4', '1 Test Lane, Zionsville, IN 46077-1234', { property_city: 'Zionsville', property_state: 'IN', property_zip: '46077' }],
+    ['no comma before state', '1 Test Lane, Zionsville IN 46077', { property_city: 'Zionsville', property_state: 'IN', property_zip: '46077' }],
+    ['trailing USA', '1 Test Lane, Zionsville, IN 46077, USA', { property_city: 'Zionsville', property_state: 'IN', property_zip: '46077' }],
+    ['extra spaces and case', '  1 Test Lane ,  zionsville ,  in   46077 , usa ', { property_city: 'Zionsville', property_state: 'IN', property_zip: '46077' }],
+    ['reviewer example', '1 Test Lane, Zionsville, IN 46077, Zionsville, IN', { property_city: 'Zionsville', property_state: 'IN', property_zip: '46077' }],
+  ])('full-address street (%s) is rendered as is', (_n, street, loc) => {
+    expect(formatPropertyAddress({ property_address: street, ...loc })).toBe(street.trim());
+  });
+  it('street-only with missing fields composes from what is present', () => {
+    expect(formatPropertyAddress({ property_address: '1 Test Lane', property_city: 'Zionsville', property_state: 'IN', property_zip: '' })).toBe('1 Test Lane, Zionsville, IN');
+    expect(formatPropertyAddress({ property_address: '1 Test Lane', property_city: '', property_state: 'IN', property_zip: '46077' })).toBe('1 Test Lane, IN 46077');
+  });
   it('empty street returns empty string', () => {
     expect(formatPropertyAddress({ property_address: ' ', ...loc })).toBe('');
   });
