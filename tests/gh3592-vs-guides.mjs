@@ -43,6 +43,10 @@ for (const g of GUIDES) {
     assert.ok(!/&reg;|&trade;|\u00AE|\u2122|registered trademark/i.test(html), 'trademark notice present');
     assert.ok(!/window/i.test(body), 'window claim present');
   });
+  check(`${g}: D-388 retired claim absent (every contractor uses/starts), narrowed measurement line present`, () => {
+    assert.ok(!/every contractor (uses|starts)/i.test(html), 'retired "every contractor" measurement claim present (D-388)');
+    assert.ok(html.includes('If you order the aerial roof report, you get professional measurements that contractors use to bid.'));
+  });
   check(`${g}: in sitemap.xml and linked from guides index`, () => {
     assert.ok(read('sitemap.xml').includes(`<loc>${url}</loc>`), 'not in sitemap');
     assert.ok(read('guides/index.html').includes(`href="/guides/otter-quotes-vs-${g}.html"`), 'not linked from guides index');
