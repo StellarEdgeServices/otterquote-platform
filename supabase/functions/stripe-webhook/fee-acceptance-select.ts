@@ -33,12 +33,15 @@ export function pickFeeAcceptanceForBid<T extends AcceptanceCandidate>(
   if (!bid) return { row: null, reason: "no_selected_bid" };
   const own = (rows ?? []).filter((r) => r.bid_id === bid.id);
   if (own.length === 0) return { row: null, reason: "no_row_for_selected_bid" };
-  const row = own[0];
-  const rowFee = Number(row.fee_amount);
+  // gh-3490: one bid can hold several acceptance rows with different fees (a changed or renewed bid writes its own row).
+  // A price that goes A -> B -> A writes no new row for the return to A, so the newest row (B) is not the one that matches.
+  // Take the NEWEST row whose fee equals the bid's current fee (same tolerance as before); only if none matches is it fee_differs_from_bid.
   const bidFee = Number(bid.fee_amount);
-  if (!Number.isFinite(rowFee) || !Number.isFinite(bidFee) || Math.abs(rowFee - bidFee) >= 0.005) {
-    return { row: null, reason: "fee_differs_from_bid" };
-  }
+  const row = own.find((r) => {
+    const rowFee = Number(r.fee_amount);
+    return Number.isFinite(rowFee) && Number.isFinite(bidFee) && Math.abs(rowFee - bidFee) < 0.005;
+  });
+  if (!row) return { row: null, reason: "fee_differs_from_bid" };
   return { row, reason: "ok" };
 }
 
@@ -118,6 +121,8 @@ export async function loadFeeAcceptanceForDispute<T extends AcceptanceCandidate>
     .eq("bid_id", selectedBid.id)
     .is("rescinded_at", null)
     .order("created_at", { ascending: false })
-    .limit(5);
+    // gh-3490: was 5, which could cut off the older row that matches the bid's current fee (A -> B -> A). The query already
+    // filters to one bid, so rows are few; 50 is a generous bound that keeps the read small without hiding a match.
+    .limit(50);
   return pickFeeAcceptanceForBid(feeRows as T[] | null, selectedBid);
 }
