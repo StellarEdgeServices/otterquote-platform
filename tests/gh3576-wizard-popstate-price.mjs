@@ -206,13 +206,14 @@ async function scenarioA(browser, base) {
   ok(!/\$15,800\.00/.test(s), n + ': step-3 summary no longer shows the old roofing price $15,800.00');
   ok(g === '$19,400.00', n + ': summary grand total uses the edited price (' + g + ')');
   const shown = await h.shown();
-  ok(shown.bid === '$17,000.00' && shown.fee === '$850.00', n + ': fee box shows $17,000.00 / $850.00 (' + shown.bid + ' / ' + shown.fee + ')');
+  // #3561 (D-267): the fee box and stored total are the SUM of the trades (17000 + 2400 = 19400, 5% = $970), not roofing alone.
+  ok(shown.bid === '$19,400.00' && shown.fee === '$970.00', n + ': fee box shows the sum of trades $19,400.00 / $970.00 (' + shown.bid + ' / ' + shown.fee + ')');
   const row = await h.submit();
   console.log('     quotes row: ' + rowTxt(row));
   ok(!!row, n + ': submit writes a quotes row (alerts ' + JSON.stringify(h.dialogs) + ')');
   ok(!!row && row.per_trade_breakdown && row.per_trade_breakdown.roofing === ROOF_EDIT, n + ': per_trade_breakdown.roofing is the edited 17000');
   ok(!!row && row.per_trade_breakdown && row.per_trade_breakdown.gutters === GUT, n + ': per_trade_breakdown.gutters is 2400');
-  ok(!!row && row.total_price === ROOF_EDIT, n + ': stored total_price is the edited 17000');
+  ok(!!row && row.total_price === ROOF_EDIT + GUT, n + ': stored total_price is the sum of trades with the edited roofing, 19400');
   ok(!!row && fmt(row.fee_amount) === shown.fee, n + ': stored fee_amount equals the fee shown (' + (row ? fmt(row.fee_amount) : 'n/a') + ' vs ' + shown.fee + ')');
   ok(h.errors.length === 0, n + ': no page errors ' + JSON.stringify(h.errors));
   await h.context.close();
@@ -238,7 +239,7 @@ async function scenarioB(browser, base) {
   ok(!!row, n + ': submit writes a quotes row (alerts ' + JSON.stringify(h.dialogs) + ')');
   ok(!!row && row.per_trade_breakdown && row.per_trade_breakdown.gutters === GUT_EDIT, n + ': per_trade_breakdown.gutters is the edited 3000');
   ok(!!row && row.per_trade_breakdown && row.per_trade_breakdown.roofing === ROOF, n + ': per_trade_breakdown.roofing is 15800');
-  ok(!!row && row.total_price === ROOF && fmt(row.fee_amount) === shown.fee, n + ': stored total/fee match the fee box (' + rowTxt(row) + ' vs ' + shown.bid + ' / ' + shown.fee + ')');
+  ok(!!row && row.total_price === ROOF + GUT_EDIT && fmt(row.fee_amount) === shown.fee, n + ': stored total (sum of trades, 18800) and fee match the fee box (' + rowTxt(row) + ' vs ' + shown.bid + ' / ' + shown.fee + ')');
   ok(h.errors.length === 0, n + ': no page errors ' + JSON.stringify(h.errors));
   await h.context.close();
 }
