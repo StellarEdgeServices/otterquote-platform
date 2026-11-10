@@ -4,7 +4,6 @@
 -- DO NOT RUN FROM THIS DIRECTORY: apply only via the Tier 3B path (migration-author, review, R-097 notice, recorded apply).
 BEGIN;
 DROP POLICY IF EXISTS "Homeowner can view own claim roof image" ON storage.objects;
-DROP POLICY IF EXISTS "Contractor can view biddable claim roof image" ON storage.objects;
 -- Remove the bucket only when empty; delete stored objects via the Storage API first (direct deletes from storage.objects are not supported).
 DELETE FROM storage.buckets WHERE id = 'claim-roof-images' AND NOT EXISTS (SELECT 1 FROM storage.objects WHERE bucket_id = 'claim-roof-images');
 COMMIT;

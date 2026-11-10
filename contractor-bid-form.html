@@ -1274,7 +1274,6 @@
   <header id="site-header" data-active="opportunities" data-auth="false"></header>
 
   <main>
-    <div id="roofImageSlot"></div>
     <!-- Change Bid Banner (hidden until Change Bid mode activates) -->
     <div id="changeBidBanner" style="display:none; background:#FFF3CD; border:2px solid #E07B00; border-radius:0.75rem; padding:1rem 1.5rem; margin-bottom:1.5rem;">
       <div style="display:flex; align-items:flex-start; gap:0.75rem;">
@@ -2426,7 +2425,6 @@
   <script src="js/cookie-storage.js"></script>
   <script src="js/config.js"></script>
   <script src="js/supabase-client.js"></script>
-  <script src="js/claim-roof-image.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/nav.js"></script>
 
@@ -3421,7 +3419,6 @@
           if (!error && data) {
             data.carrier_profiles = data.carrier_profile_name ? { carrier_name: data.carrier_profile_name } : null;
             currentClaim = data;
-            if (window.OQRoofImage) window.OQRoofImage.render(sb, data.id, 'roofImageSlot'); // gh-1413, flag OFF by default
 
             // Determine RCV for bid type selector
             const parsedSummary = data.parsed_line_items?.summary;

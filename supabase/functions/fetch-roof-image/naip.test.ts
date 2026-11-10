@@ -1,5 +1,5 @@
 import { assertEquals, assertAlmostEquals, assert, assertThrows } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { ATTRIBUTION, buildAddress, buildBbox, buildNaipUrl, isJpeg, lonLatToWebMercator, parseGeocode } from "./naip.ts";
+import { addressHash, objectName, ATTRIBUTION, buildAddress, buildBbox, buildNaipUrl, isJpeg, lonLatToWebMercator, parseGeocode } from "./naip.ts";
 
 Deno.test("attribution credit line is exact", () => assertEquals(ATTRIBUTION, "Imagery: USDA/USGS NAIP"));
 Deno.test("web mercator of (0,0) is origin", () => { const p = lonLatToWebMercator(0, 0); assertAlmostEquals(p.x, 0, 1e-6); assertAlmostEquals(p.y, 0, 1e-6); });
@@ -31,4 +31,11 @@ Deno.test("isJpeg", () => { const b = new Uint8Array(3000); b.set([0xff, 0xd8, 0
 Deno.test("buildAddress joins parts and skips blanks", () => {
   assertEquals(buildAddress({ property_address: "1 Main St", property_city: "Zionsville", property_state: "IN", property_zip: "46077" }), "1 Main St, Zionsville, IN 46077");
   assertEquals(buildAddress({}), "");
+});
+Deno.test("addressHash: stable, case/whitespace-insensitive, differs for a different address", async () => {
+  const a = await addressHash("1 Main St, Zionsville, IN 46077");
+  assertEquals(a.length, 16);
+  assertEquals(a, await addressHash("  1  MAIN st, zionsville, in 46077 "));
+  assert(a !== await addressHash("2 Main St, Zionsville, IN 46077"));
+  assertEquals(objectName(a), `roof-${a}.jpg`);
 });

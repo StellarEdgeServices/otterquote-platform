@@ -65,3 +65,13 @@ export function buildAddress(c: { property_address?: string | null; property_cit
   return [c.property_address, c.property_city, [c.property_state, c.property_zip].filter(Boolean).join(" ")]
     .map((s) => (s ?? "").trim()).filter(Boolean).join(", ");
 }
+
+/** Short stable hash of the normalised address (lowercase, collapsed whitespace). Stored in the object name so a changed claim address regenerates the image. */
+export async function addressHash(address: string): Promise<string> {
+  const norm = address.toLowerCase().replace(/\s+/g, " ").trim();
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(norm)));
+  return [...d.slice(0, 8)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export const OBJECT_PREFIX = "roof-";
+export const objectName = (hash: string) => `${OBJECT_PREFIX}${hash}.jpg`;
