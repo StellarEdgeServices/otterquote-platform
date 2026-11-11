@@ -14,6 +14,8 @@
  * (the approved drive originals still say "that every contractor uses"). Re-run the legal read on that line.
  * THIRD RULED EXCEPTION to "verbatim" (Dustin, chat, 2026-11-03, CEO RUN 144, the HeyCatch audit: "Quick wins first"): the hero claim line, the hero cost line, the 5% in #paid
  * and the pricing link are in the page AND in both committed fixtures; the drive originals do not carry them. Each needs the legal read.
+ * FIFTH RULED EXCEPTION to "verbatim" (gh-3661, P22 W-Q3; Ben's COPY-READ PASS, #3376 comment 6779965057, 2026-11-10, draft Marketing/drafts/ceo150-p22-wq3-proof-strip-v1-20261110.md): the #proof strip ("What it costs and how we are paid", four tiles) sits between the hero and #facts, in the page AND in both committed fixtures;
+ * the drive originals do not carry it. It repeats money wording outside #paid, so S4 allows exactly its own PROOF_LINES inside #proof and nowhere else (any other money word in #proof, and any PROOF_LINES string anywhere else, still fails S4). LEGAL-READ and R-177 owed.
  * Slice 3 (How we're paid, What we do not do, You can change your mind) is built; it restates the fee, the $22.63 measurement charge and its refund and the
  * switch-contractor promise, so the PR that adds it carries an independent LEGAL-READ and the CEO's R-177 SIGNED line (D-377, D-378, D-291, D-313, D-371).
  *
@@ -45,7 +47,7 @@ const readDesign = (name) => { for (const f of [name + '.txt', name]) { const p 
 const DESK = readDesign('Recommended-desktop.dc.html');
 const PHONE = readDesign('Recommended-phone.dc.html');
 
-const BUILT = ['header', 'hero', 'facts', 'how', 'contractor', 'paid', 'promise', 'questions', 'closing'];       /* slices 1, 2 and 3 */
+const BUILT = ['header', 'hero', 'proof', 'facts', 'how', 'contractor', 'paid', 'promise', 'questions', 'closing'];       /* slices 1, 2 and 3 */
 const MONEY_SECTIONS = ['paid', 'promise'];                                                    /* slice 3: the only sections allowed to carry money or promise wording */
 /* slice 4 owns the footer (the page carries a minimal legal-links footer until then), so it is in neither list */
 const IDLE = 'Sample layout. Your bids appear here, side by side.';                            /* the design's {{ explain }} default */
@@ -74,7 +76,7 @@ function chunks(html) {
     const id = (p.match(/^<\w+[^>]*\sid="([^"]+)"/) || [])[1] || '';
     let key = null;
     if (tag === 'header') key = 'header'; else if (tag === 'footer') key = 'footer';
-    else if (id === 'top') key = 'hero'; else if (id === 'how') key = 'how'; else if (id === 'paid') key = 'paid'; else if (id === 'promise') key = 'promise';
+    else if (id === 'top') key = 'hero'; else if (id === 'how') key = 'how'; else if (id === 'proof') key = 'proof'; else if (id === 'paid') key = 'paid'; else if (id === 'promise') key = 'promise';
     else if (id === 'questions') key = 'questions'; else if (id === 'start') key = 'closing'; else if (id === 'facts') key = 'facts'; else if (id === 'contractor') key = 'contractor';
     else if (p.includes('Your details stay yours')) key = 'facts';
     else if (p.includes('What you see about each contractor')) key = 'contractor';
@@ -161,6 +163,16 @@ control('S3 (paid and promise swapped)', swapped2 !== PAGE && JSON.stringify(ord
 /* ---------- S4: money and promise wording stays inside #paid and #promise ---------- */
 /* Third ruled exception (see the header): this one exact hero line is allowed; any other wording still fails S4. */
 const HERO_COST_LINE = 'Free with your insurance estimate. Need measurements? As little as $22.63 up front for professional measurements, refunded in full if your job is completed through the platform; conditions apply. Switch to another Otter Quotes contractor at no cost up to 3 days before your start date.';
+/* gh-3661 (P22 W-Q3): the #proof strip's own money-bearing strings, exact. LEGAL-READ and R-177 owed on the PR. */
+const PROOF_LINES = new Set([
+  '$22.63', 'Refunded in full', '5%', '3 days',
+  'As little as $22.63 up front', 'When your job is completed', 'Contractors pay the fee', 'Switch at no cost',
+  'for professional measurements that contractors use to bid. Free if you provide a copy of your insurance estimate.',
+  'If you complete a job on the platform, the money you paid for measurements is refunded to you. Conditions apply.',
+  'Contractors pay Otter Quotes a fee, currently 5%, on the bid you accept.',
+  'If something does not work out before work begins, you can switch to another Otter Quotes contractor at no cost, up to 3 days before your start date.',
+  'See what everything costs and when the fee is refunded',
+]);
 const MONEY = /\$\s?\d|\brefund|\bfee\b|\bswitch (?:to )?another|at no cost|up to \d+ days|no cost\b/i;
 /* visible attribute text: placeholder, value, title, alt, aria-label (the string extractor reads text nodes only) */
 function attrTexts(chunkHtml) {
@@ -173,7 +185,7 @@ const sectionTextAll = (c) => [...strings(c.html, 'desktop'), ...strings(c.html,
 const moneyOnly = new Set();
 {
   const others = new Set();
-  for (const d of [byKey(DESK), byKey(PHONE)]) for (const k of BUILT) if (!MONEY_SECTIONS.includes(k) && d[k]) for (const v of ['desktop', 'phone']) strings(d[k].html, v).forEach((x) => others.add(x));
+  for (const d of [byKey(DESK), byKey(PHONE)]) for (const k of BUILT) if (!MONEY_SECTIONS.includes(k) && k !== 'proof' && d[k]) for (const v of ['desktop', 'phone']) strings(d[k].html, v).forEach((x) => others.add(x));
   for (const d of [byKey(DESK), byKey(PHONE)]) for (const k of MONEY_SECTIONS) if (d[k]) for (const v of ['desktop', 'phone']) strings(d[k].html, v).forEach((x) => { if (!others.has(x)) moneyOnly.add(x); });
 }
 ok(moneyOnly.size >= 8, `S4 the two money sections yield ${moneyOnly.size} strings of their own to look for`);
@@ -181,7 +193,7 @@ function stray(html) {   /* money or promise wording found outside #paid and #pr
   const P = byKey(html), hits = [];
   for (const k of Object.keys(P)) {
     if (MONEY_SECTIONS.includes(k)) continue;
-    for (const x of sectionTextAll(P[k])) { if (x !== HERO_COST_LINE && (MONEY.test(x) || moneyOnly.has(x))) hits.push(k + ': ' + x); }
+    for (const x of sectionTextAll(P[k])) { if (x !== HERO_COST_LINE && !(k === 'proof' && PROOF_LINES.has(x)) && (MONEY.test(x) || moneyOnly.has(x))) hits.push(k + ': ' + x); }
   }
   return hits;
 }
@@ -196,6 +208,13 @@ control('S4 (money wording in a placeholder attribute: reviewer m1)', stray(word
 control('S4 (money wording in a value attribute: reviewer m1)', stray(word(PAGE, '<input id="hr-zip"', '<input value="$22.63 refunded" id="hr-zip"')).length > 0);
 control('S4 (money wording in an aria-label)', stray(word(PAGE, 'aria-label="Call Otter Quotes at 844 875 3412"', 'aria-label="Call us, no cost to switch to another contractor"')).length > 0);
 control('S4 (the switch promise copied into the footer)', stray(word(PAGE, '<a href="/privacy.html">Privacy Policy</a>', '<a href="/privacy.html">Switch to another Otter Quotes contractor at no cost</a>')).length > 0);
+
+control('S4 (a new money sentence inside #proof)', stray(word(PAGE, '<h2 class="hr-h2">What it costs and how we are paid</h2>', '<h2 class="hr-h2">What it costs and how we are paid</h2><p class="hr-p">Contractors pay a 7% fee.</p>')).length > 0);
+control('S4 (a PROOF_LINES string altered inside #proof)', stray(word(PAGE, 'Contractors pay Otter Quotes a fee, currently 5%, on the bid you accept.', 'Contractors pay Otter Quotes a fee, currently 6%, on the bid you accept.')).length > 0);
+control('S4 (a PROOF_LINES string copied into #facts)', stray(word(PAGE, 'Contractors do not see your name, phone number or street address until you choose one.', 'Contractors do not see your name, phone number or street address until you choose one. Switch at no cost')).length > 0);
+control('S4 (the #proof 3 days line copied into the hero)', stray(word(PAGE, '<div class="hr-reassure">No salesperson in your home. No obligation to hire.</div>', '<div class="hr-reassure">If something does not work out before work begins, you can switch to another Otter Quotes contractor at no cost, up to 3 days before your start date.</div>')).length > 0);
+control('S1 (a #proof tile word changed on the page)', bad(sectionResults(word(PAGE, 'currently 5%, on the bid you accept.</p>\n      </div>\n      <div class="hr-stepcard">\n        <h3 class="hr-h3">3 days', 'currently 5%, on the bid they accept.</p>\n      </div>\n      <div class="hr-stepcard">\n        <h3 class="hr-h3">3 days'), DESK, PHONE)).length > 0);
+control('S3 (#proof moved below #facts)', (() => { const m = PAGE.match(/(<section class="hr-sec hr-proof"[\s\S]*?<\/section>)\s*(<section class="hr-sec hr-facts"[\s\S]*?<\/section>)/); return !!m && JSON.stringify(orderOf(PAGE.replace(m[0], m[2] + '\n' + m[1]))) !== JSON.stringify(want); })());
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

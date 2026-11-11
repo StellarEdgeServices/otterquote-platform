@@ -113,6 +113,33 @@ a{color:#0D1B2E}a:hover{color:#B45309}
 </div>
 </section>
 
+<section id="proof" style="background: #FFFFFF; padding: 40px 20px; display: flex; flex-direction: column; gap: 18px">
+<h2 style="margin: 0; font-size: 36px; font-weight: 800; color: #0D1B2E">What it costs and how we are paid</h2>
+<div>
+<div style="padding: 20px; border: 1px solid #DCE2E8; border-radius: 10px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 800">$22.63</h3>
+<div style="font-size: 17px; font-weight: 800">As little as $22.63 up front</div>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #3D4F60">for professional measurements that contractors use to bid. Free if you provide a copy of your insurance estimate.</p>
+</div>
+<div style="padding: 20px; border: 1px solid #DCE2E8; border-radius: 10px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 800">Refunded in full</h3>
+<div style="font-size: 17px; font-weight: 800">When your job is completed</div>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #3D4F60">If you complete a job on the platform, the money you paid for measurements is refunded to you. Conditions apply.</p>
+</div>
+<div style="padding: 20px; border: 1px solid #DCE2E8; border-radius: 10px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 800">5%</h3>
+<div style="font-size: 17px; font-weight: 800">Contractors pay the fee</div>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #3D4F60">Contractors pay Otter Quotes a fee, currently 5%, on the bid you accept.</p>
+</div>
+<div style="padding: 20px; border: 1px solid #DCE2E8; border-radius: 10px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 800">3 days</h3>
+<div style="font-size: 17px; font-weight: 800">Switch at no cost</div>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #3D4F60">If something does not work out before work begins, you can switch to another Otter Quotes contractor at no cost, up to 3 days before your start date.</p>
+</div>
+</div>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #3D4F60"><a href="/pricing.html">See what everything costs and when the fee is refunded</a></p>
+</section>
+
 <section style="background: #FFFFFF; border-bottom: 1px solid #DCE2E8">
 <div style="max-width: 1160px; margin: 0 auto; padding: 40px 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 32px">
 <div style="display: flex; gap: 14px">
