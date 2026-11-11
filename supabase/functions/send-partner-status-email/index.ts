@@ -81,6 +81,9 @@
  * Fallback source referrals.metadata.referrer_updates_opt_out is read only when
  * the claims column yields nothing, so the gate holds whichever surface the
  * homeowner opt-out checkbox ends up writing to.
+ * gh-3241: an opt-out (true) on ANY claim linked to the referral (claims.referral_id
+ * or referrals.claim_id), or in referrals.metadata, withholds the series; the
+ * decision itself is the pure decideReferrerConsent() in consent.ts.
  * The gate runs BEFORE any idempotency stamp is written, so a withheld-consent
  * call burns no stage stamps and a later consented call still sends normally.
  * The claims column is additive/nullable (Tier 3A) and is NOT applied by this
@@ -108,9 +111,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import {
   formatReferralDisplayName,
   isStageBlockedForAgentType,
+  isStageBlockedForState,
   renderStageEmail,
   type Stage,
 } from "./templates.ts";
+import { decideReferrerConsent, linkedClaimsOrFilter, type ReferrerConsent } from "./consent.ts";
 
 const FUNCTION_NAME = "send-partner-status-email";
 const ALL_STAGES: Stage[] = [1, 2, 3, 4, 5];
@@ -145,12 +150,14 @@ interface ClaimRow {
   selected_contractor_id: string | null;
   contract_signed_at: string | null;
   completion_date: string | null;
+  property_state: string | null; // gh-3321
 }
 
 interface ReferralRow {
   id: string;
   referral_agent_id: string | null;
   homeowner_name: string | null;
+  claim_id: string | null;
   // deno-lint-ignore no-explicit-any
   metadata: Record<string, any> | null;
 }
@@ -205,40 +212,31 @@ async function sendMailgunEmail(
   }
 }
 
-type ReferrerConsent = "granted" | "withheld";
-
 /**
- * gh-1337: resolves the homeowner's captured consent for sending claim-progress
- * updates to the person who referred them. Fails CLOSED: anything other than an
- * explicitly captured "did not opt out" returns "withheld".
- *
- * Tolerant of claims.referrer_updates_opt_out not existing yet — the Tier 3A
- * migration that adds it is drafted but deliberately not applied, so a
- * merged-but-unmigrated deploy must remain safe rather than throwing.
+ * gh-1337 / gh-3241: resolves the homeowner's captured consent for sending claim-progress
+ * updates to the person who referred them. Reads referrer_updates_opt_out on EVERY claim
+ * linked to the referral (either side of the link) and hands the decision to the pure
+ * decideReferrerConsent() (consent.ts). Fails CLOSED: a lookup error leaves only the
+ * referrals.metadata fallback, and no captured value withholds.
  */
 async function resolveReferrerUpdatesConsent(
   // deno-lint-ignore no-explicit-any
   supabase: any,
-  claimId: string,
-  // deno-lint-ignore no-explicit-any
-  referralMetadata: Record<string, any> | null,
+  primaryClaimId: string,
+  referral: ReferralRow,
 ): Promise<{ consent: ReferrerConsent; source: string }> {
+  // deno-lint-ignore no-explicit-any
+  let linkedClaims: any[] | null = null;
+  const orFilter = linkedClaimsOrFilter(referral.id, referral.claim_id);
   try {
-    const { data, error } = await supabase
-      .from("claims")
-      .select("referrer_updates_opt_out")
-      .eq("id", claimId)
-      .maybeSingle();
-
+    const query = supabase.from("claims").select("id, referrer_updates_opt_out");
+    const { data, error } = orFilter ? await query.or(orFilter) : await query.eq("id", primaryClaimId);
     if (error) {
       console.warn(
         `[${FUNCTION_NAME}] claims.referrer_updates_opt_out unavailable (${error.message}) — falling back to referrals.metadata`,
       );
-    } else if (data && data.referrer_updates_opt_out !== null && data.referrer_updates_opt_out !== undefined) {
-      return {
-        consent: data.referrer_updates_opt_out === true ? "withheld" : "granted",
-        source: "claims.referrer_updates_opt_out",
-      };
+    } else {
+      linkedClaims = Array.isArray(data) ? data : [];
     }
   } catch (err) {
     console.warn(
@@ -246,16 +244,7 @@ async function resolveReferrerUpdatesConsent(
       err instanceof Error ? err.message : String(err),
     );
   }
-
-  const metaValue = referralMetadata?.referrer_updates_opt_out;
-  if (metaValue === true) {
-    return { consent: "withheld", source: "referrals.metadata.referrer_updates_opt_out (opted out)" };
-  }
-  if (metaValue === false) {
-    return { consent: "granted", source: "referrals.metadata.referrer_updates_opt_out" };
-  }
-
-  return { consent: "withheld", source: "no captured consent value" };
+  return decideReferrerConsent({ primaryClaimId, linkedClaims, referralMetadata: referral.metadata });
 }
 
 serve(async (req: Request) => {
@@ -316,7 +305,7 @@ serve(async (req: Request) => {
     // ── Load referral ────────────────────────────────────────────────────
     const { data: referral, error: referralErr } = await supabase
       .from("referrals")
-      .select("id, referral_agent_id, homeowner_name, metadata")
+      .select("id, referral_agent_id, homeowner_name, claim_id, metadata")
       .eq("id", referralId)
       .single<ReferralRow>();
 
@@ -361,7 +350,7 @@ serve(async (req: Request) => {
     // ── Load the linked claim (drives stage eligibility) ────────────────────
     const { data: claim, error: claimErr } = await supabase
       .from("claims")
-      .select("id, selected_contractor_id, contract_signed_at, completion_date")
+      .select("id, selected_contractor_id, contract_signed_at, completion_date, property_state")
       .eq("referral_id", referralId)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -383,7 +372,7 @@ serve(async (req: Request) => {
     const { consent, source: consentSource } = await resolveReferrerUpdatesConsent(
       supabase,
       claim.id,
-      referral.metadata,
+      referral,
     );
     if (consent === "withheld") {
       console.log(
@@ -435,6 +424,15 @@ serve(async (req: Request) => {
       // both. Stages 1-4 carry no payment language and are unaffected. ────
       if (isStageBlockedForAgentType(agent.agent_type, stage)) {
         skipped.push({ stage, reason: "home_inspector — no referral fee/recruit bonus (D-333); stage 5 payment email suppressed" });
+        continue;
+      }
+
+      // ── gh-3321 gate (D-401 item 7, A4.4): no partner fee in OK, AR, KS, NE,
+      // MS, so stage 5's "payment is on its way" copy would be a false promise.
+      // A blank or NULL state is not blocked (it accrues, #3321 6664032518).
+      // Skipped before the stage stamp, so nothing is burned. ───────────────
+      if (isStageBlockedForState(claim.property_state, stage)) {
+        skipped.push({ stage, reason: "no-partner-fee state (A4.4, gh-3321); stage 5 payment email suppressed" });
         continue;
       }
 

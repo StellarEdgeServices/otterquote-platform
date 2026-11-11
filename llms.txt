@@ -1,6 +1,6 @@
 # Otter Quotes
 
-Otter Quotes is a technology platform based in Indianapolis, Indiana that helps homeowners and contractors navigate property damage repair projects. For insurance-backed projects, after a homeowner files their own claim with their insurance carrier, Otter Quotes gathers the loss sheet, coordinates professional aerial roof measurements, facilitates material and color selection, runs a competitive bidding process, and delivers a fully executed contract to the winning contractor — ready to start work. Homeowners paying out of pocket can start without an insurance claim. There is no cost for homeowners who provide a copy of their insurance estimate. Homeowners without one pay an upfront charge of as little as $22.63 for professional measurements that are used by every contractor; that money is refunded if they complete a job on the platform. Contractors pay a percentage-based platform fee only on signed contracts they win.
+Otter Quotes is a technology platform based in Indianapolis, Indiana that helps homeowners and contractors navigate property damage repair projects. For insurance-backed projects, after a homeowner files their own claim with their insurance carrier, Otter Quotes gathers the loss sheet, coordinates professional aerial roof measurements, facilitates material and color selection, runs a competitive bidding process, and delivers a fully executed contract to the winning contractor — ready to start work. Homeowners paying out of pocket can start without an insurance claim. There is no cost for homeowners who provide a copy of their insurance estimate. Homeowners without one pay an upfront charge of as little as $22.63 for professional measurements that contractors use to bid; that money is refunded if they complete a job on the platform. Contractors pay a percentage-based platform fee only on signed contracts they win.
 
 Otter Quotes does not represent homeowners in their insurance claims and is not a public adjuster. The platform organizes and executes the contractor selection process; on insurance-backed projects that begins after the homeowner has filed their own claim.
 
@@ -27,6 +27,8 @@ Otter Quotes does not represent homeowners in their insurance claims and is not 
 - [How It Works](https://otterquote.com/how-it-works.html)
 - [Get Started — Homeowners](https://otterquote.com/start.html)
 - [Homeowner FAQ](https://otterquote.com/faq.html)
+- [Pricing for homeowners](https://otterquote.com/pricing.html)
+- [About the founder](https://otterquote.com/about.html)
 - [Contractor Join](https://otterquote.com/contractor-join.html)
 - [Contractor FAQ](https://otterquote.com/contractor-faq.html)
 - [Contractor How It Works](https://otterquote.com/contractor-how-it-works.html)
@@ -51,6 +53,11 @@ Otter Quotes does not represent homeowners in their insurance claims and is not 
 - [I Found Hail Damage Months After the Storm. What Now?](https://otterquote.com/guides/hail-damage-found-months-later.html)
 - [What Can I Do When Roofers Are Booked Up After a Storm?](https://otterquote.com/guides/roofers-backed-up-after-storm.html)
 - [How Do Online Roof Bids Work Without a Salesperson?](https://otterquote.com/guides/online-roof-bids-no-salesperson.html)
+- [Competitive Roof Bids vs. a Single Referral: What Changes?](https://otterquote.com/guides/competitive-roof-bids-vs-single-referral.html)
+- [Otter Quotes or Thumbtack: Which Fits Your Exterior Project?](https://otterquote.com/guides/otter-quotes-vs-thumbtack.html)
+- [Otter Quotes or Angi: Which Fits Your Exterior Project?](https://otterquote.com/guides/otter-quotes-vs-angi.html)
+- [Roof, Gutters, Siding and Windows: One Contractor or Separate Bids?](https://otterquote.com/guides/exterior-projects-one-contractor-or-separate-bids.html)
+- [Metal Roof or Asphalt Shingles? How to Compare Bids for Each](https://otterquote.com/guides/metal-roof-vs-asphalt-shingle-bids.html)
 - [Hail-Damaged Windows and Gutters: How to Document the Damage and Get Comparable Bids](https://otterquote.com/guides/hail-damaged-windows-gutters-bids.html)
 - [What Affects the Cost of Gutter Replacement?](https://otterquote.com/guides/gutter-replacement-cost-factors.html)
 - [What Affects the Cost of Window Replacement?](https://otterquote.com/guides/window-replacement-cost-factors.html)
@@ -59,11 +66,16 @@ Otter Quotes does not represent homeowners in their insurance claims and is not 
 - [My Roof Insurance Check Is Made Out to Me and My Mortgage Company. How Do I Pay the Contractor?](https://otterquote.com/guides/roof-insurance-check-mortgage-contractor-payment.html)
 - [Can a Roof Be Replaced in Winter?](https://otterquote.com/guides/roof-replacement-in-cold-weather.html)
 - [How Long Does It Take to Replace a Roof?](https://otterquote.com/guides/how-long-does-roof-replacement-take.html)
+- [What Should Your Roof Replacement Bid Say About Drip Edge?](https://otterquote.com/guides/drip-edge-roof-replacement-bid.html)
 - [What Is a Roofing Change Order, and What if the Roofer Finds Hidden Damage?](https://otterquote.com/guides/roof-change-orders-hidden-damage.html)
 - [What Should Be in a Roofing Contract Before You Sign?](https://otterquote.com/guides/roofing-contract-checklist-before-you-sign.html)
 - [Why Is One Roof Bid Much Lower Than the Others?](https://otterquote.com/guides/roof-bid-much-lower-than-the-others.html)
+- [What Underlayment and Ice Barrier Should Your Roof Replacement Bid Name?](https://otterquote.com/guides/roof-underlayment-ice-barrier-bid.html)
 - [Who Pulls the Roofing Permit, and What Should the Bid Say?](https://otterquote.com/guides/roof-permit-in-your-bid.html)
+- [What Starter Strip and Ridge Cap Shingles Should Your Roof Replacement Bid Name?](https://otterquote.com/guides/starter-strip-ridge-cap-bid.html)
 - [How Long Can a Tarp Stay on a Roof?](https://otterquote.com/guides/roof-tarp-while-you-wait-for-repairs.html)
+- [Roof Repair, Overlay or Replacement? How to Get Bids You Can Compare](https://otterquote.com/guides/roof-repair-overlay-or-replacement-bids.html)
+- [Does Your Roof Replacement Bid Say What Happens to the Flashing?](https://otterquote.com/guides/roof-flashing-replacement-bid.html)
 - [Roof Wind Ratings Explained: What “110,” “130” and “No Limit” Really Promise](https://otterquote.com/guides/roof-wind-ratings-explained.html)
 - [Class 4 Impact-Resistant Shingles: What the Rating Means, What It Doesn't, and the Insurance Catch](https://otterquote.com/guides/class-4-impact-resistant-shingles.html)
 - [Algae-Resistant Shingle Warranties: 10, 25 and 30 Years, and What Each One Requires](https://otterquote.com/guides/algae-resistant-shingle-warranties.html)

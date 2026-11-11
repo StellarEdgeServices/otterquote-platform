@@ -697,6 +697,7 @@
     bridge.trackRouter('router_contact_submitted', stepParams('f-contact'));
     bridge.trackRouter('generate_lead', stepParams('f-contact', { event_id: eventId }));
     try { fbq('track', 'Lead', {}, { eventID: eventId }); } catch (e) {}
+    try { if (typeof window.__oqHcTrack === 'function') window.__oqHcTrack('lead_saved'); } catch (e) {} // gh-3389 (D-409): HeyCatch goal, no properties
   }
 
   // ── Screen 4: thank-you. The conversion was already counted above; the two

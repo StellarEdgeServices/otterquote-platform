@@ -6,7 +6,7 @@
  *   - the select view shows a "temporarily unavailable" notice and ONLY the free Ask-Adjuster card;
  *   - nothing on the page can create a PaymentIntent, mount the card form or call create-hover-order, so no homeowner is
  *     charged for a report that cannot be delivered (NEGATIVE CONTROL: against main's page.tsx the Hover card renders and
- *     "Purchase Property Data File" creates a PaymentIntent, so the first three tests fail);
+ *     "Purchase Aerial Roof Report" creates a PaymentIntent, so the first three tests fail);
  *   - a resume pointer left in sessionStorage by an earlier visit (gh-951) is cleared and the homeowner is told to contact
  *     support; no Edge Function is called;
  *   - the Ask-Adjuster email path (unchanged) and the gh-2121 already-signed-in lead link keep working.

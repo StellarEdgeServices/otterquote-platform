@@ -1,0 +1,50 @@
+name: Static HeyCatch lead_saved Test
+
+# gh-3389 (D-409) -- HeyCatch records one property-less `lead_saved` goal after the leads row is saved on /start (Arm D, the live arm; Arm F) and /ho6/start.
+# Runs tests/gh3389-heycatch-lead-saved.mjs (no browser, no secrets), and the HeyCatch privacy test it sits beside.
+# `pull_request` only, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'js/heycatch-boot.js'
+      - 'js/heycatch-privacy.js'
+      - 'js/router-variant-f.js'
+      - 'js/router-variant-d.js'
+      - 'js/router-discovery.js'
+      - 'js/ho6-start.js'
+      - 'js/ga-gate.js'
+      - 'tests/gh3389-heycatch-lead-saved.mjs'
+      - 'tests/gh3389-arm-d-lead-saved.mjs'
+      - 'tests/gh3352-heycatch-privacy.mjs'
+      - '.github/workflows/static-gh3389-heycatch-lead-saved.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3389-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  lead-saved:
+    name: HeyCatch lead_saved (gh-3389)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: lead_saved checks with negative controls (gh3389)
+        run: node tests/gh3389-heycatch-lead-saved.mjs
+      - name: Arm D lead_saved checks, ordered, with mutant controls (gh3389)
+        run: node tests/gh3389-arm-d-lead-saved.mjs
+      - name: HeyCatch privacy checks (gh3352)
+        run: node tests/gh3352-heycatch-privacy.mjs

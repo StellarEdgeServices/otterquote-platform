@@ -114,7 +114,7 @@ Deno.test("index.ts wiring: serviceGate precedes makeClient(...) and every .from
   const handlerAt = at("export async function handler(");
   const gateAt = at("serviceGate(req, getEnv, corsHeaders)");
   const clientAt = at("makeClient(supabaseUrl, supabaseKey)");
-  const stripeKeyAt = at('getEnv("STRIPE_SECRET_KEY")');
+  const stripeKeyAt = at("selectStripeKey({ isStaging, claimIsTest: false, env: getEnv })"); // gh-3323: the Stripe-configured gate (was getEnv("STRIPE_SECRET_KEY"))
   const firstFrom = lines.findIndex((l, i) => i > handlerAt && live(l) && l.includes(".from("));
   assert(handlerAt > 0 && gateAt > handlerAt, "gate inside handler");
   assert(clientAt > gateAt && stripeKeyAt > gateAt && firstFrom > gateAt, "gate before client, Stripe key and DB");
@@ -124,7 +124,7 @@ Deno.test("index.ts wiring: serviceGate precedes makeClient(...) and every .from
 // The five copies of caller-gate.ts must stay byte-identical (one source of truth).
 Deno.test("caller-gate.ts copies are byte-identical across the gated functions", async () => {
   const mine = await Deno.readTextFile(new URL("./caller-gate.ts", import.meta.url));
-  for (const fn of ["check-siding-design-completion", "notify-feature-request", "notify-contractors"]) {
+  for (const fn of ["notify-feature-request", "notify-contractors"]) {
     const other = await Deno.readTextFile(new URL(`../${fn}/caller-gate.ts`, import.meta.url));
     assertEquals(other, mine, `${fn}/caller-gate.ts drifted from process-hover-rebate/caller-gate.ts`);
   }

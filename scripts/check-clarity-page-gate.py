@@ -446,6 +446,15 @@ RULED_AUTHENTICATED_ALLOWED: dict[str, str] = {
     "/project-info-rcv": "post-trade-selector intake (RCV) -- Dustin ruling #1939 c.5691693161",
     "/project-info-acv": "post-trade-selector intake (ACV) -- Dustin ruling #1939 c.5691693161",
     "/repair-intake": "repair intake + photo upload -- Dustin ruling #1939 c.5691693161",
+    # gh-3283 / gh-3285 (D-407): the React successors to project-info-rcv.html /
+    # project-info-cash.html. These are React routes, gated at runtime by
+    # react-app/app/components/GA4Gate.tsx CLARITY_ALLOWED_PATHS (pinned by
+    # clarity-route-guard.test.ts and clarity-react-funnel-gate.test.tsx); no
+    # static page has either path today, so these entries are inert here and
+    # record the ruling so a future static twin at that path is held to the
+    # same masked-<body> rule as every other ruled page.
+    "/insurance-rcv": "RCV intake (D-407, gh-3283) -- Dustin, 2026-11-09 09:26 ET, verbatim: \"Clarity on /insurance-rcv and /out-of-pocket: yes.\" (#3283 comment 6742512470) https://github.com/StellarEdgeServices/otterquote-platform/issues/3283#issuecomment-6742512470",
+    "/out-of-pocket": "out-of-pocket intake (D-407, gh-3285) -- Dustin, 2026-11-09 09:26 ET, verbatim: \"Clarity on /insurance-rcv and /out-of-pocket: yes.\" (#3283 comment 6742512470) https://github.com/StellarEdgeServices/otterquote-platform/issues/3283#issuecomment-6742512470",
 }
 
 class _BodyMaskParser(html.parser.HTMLParser):
@@ -703,6 +712,54 @@ def analyze_gate_file(gate_src: str) -> tuple[list[str] | None, bool, list[str]]
     return entries, gate_live, problems
 
 
+HEYCATCH_ARRAY_RE = re.compile(r"HEYCATCH_ALLOWED_PATHS\s*=\s*\[(.*?)\]", re.S)
+HEYCATCH_GATE_RE = re.compile(
+    r"if\s*\(\s*HEYCATCH_ALLOWED_PATHS\s*\.\s*indexOf\s*\(\s*hcPath\s*\)\s*!==\s*-1\s*\)\s*\{"
+)
+
+
+def analyze_heycatch_gate(gate_src: str) -> tuple[list[str] | None, list[str]]:
+    """gh-3352 item 3: the HeyCatch loader must sit inside a default-deny
+    `HEYCATCH_ALLOWED_PATHS.indexOf(hcPath) !== -1` block, and nowhere else.
+    A denylist (`HEYCATCH_DENIED_PATHS.indexOf(...) === -1`) fails here: it
+    loads HeyCatch on every Clarity-allowed path not explicitly denied.
+    Returns (allowlist entries or None, problems). A file with no HeyCatch
+    loader at all has nothing to check."""
+    with_strings = tokenize_js(gate_src, keep_strings=True)
+    no_strings = tokenize_js(gate_src, keep_strings=False)
+    loader_hits = [m.start() for m in re.finditer(r"heycatch-boot", with_strings)]
+    if not loader_hits:
+        return None, []
+    problems: list[str] = []
+    if len(loader_hits) != 1:
+        problems.append(
+            f"js/ga-gate.js references the HeyCatch loader {len(loader_hits)} times; "
+            f"exactly one, inside the allowlist gate, is permitted"
+        )
+    m = HEYCATCH_ARRAY_RE.search(with_strings)
+    entries = ENTRY_RE.findall(m.group(1)) if m else None
+    if m is None:
+        problems.append(
+            "HEYCATCH_ALLOWED_PATHS array not found in js/ga-gate.js -- the HeyCatch "
+            "page gate must be an explicit allowlist (default-deny), not a denylist"
+        )
+    g = HEYCATCH_GATE_RE.search(no_strings)
+    if g is None:
+        problems.append(
+            "the canonical HeyCatch gate `if (HEYCATCH_ALLOWED_PATHS.indexOf(hcPath) "
+            "!== -1) {` was not found in js/ga-gate.js (a denylist, a negated test, "
+            "or an altered gate does not satisfy it)"
+        )
+    else:
+        end = _matching_brace(no_strings, g.end() - 1)
+        if end is None or not any(g.end() <= h < end for h in loader_hits):
+            problems.append(
+                "the HeyCatch loader is not inside the HEYCATCH_ALLOWED_PATHS gate block "
+                "in js/ga-gate.js -- it would load regardless of the allowlist"
+            )
+    return entries, problems
+
+
 def main_check(root: pathlib.Path, ruled: dict[str, str] | None = None) -> tuple[int, str]:
     ruled = RULED_AUTHENTICATED_ALLOWED if ruled is None else ruled
     lines: list[str] = []
@@ -716,6 +773,14 @@ def main_check(root: pathlib.Path, ruled: dict[str, str] | None = None) -> tuple
     allowlist, gate_live, gate_problems = analyze_gate_file(gate_src)
     violations.extend(gate_problems)
     allowlist_set = set(allowlist) if allowlist else set()
+    hc_entries, hc_problems = analyze_heycatch_gate(gate_src)
+    violations.extend(hc_problems)
+    hc_set = set(hc_entries) if hc_entries else set()
+    for dead in sorted(hc_set - allowlist_set):
+        violations.append(
+            f"HEYCATCH_ALLOWED_PATHS entry {dead!r} is not on CLARITY_ALLOWED_PATHS -- "
+            f"the Clarity gate returns first, so the entry is dead and misleading"
+        )
 
     pages = find_gated_pages(root)
     rows: list[tuple[str, str, str, list[tuple[str, int]], list[tuple[str, int]]]] = []
@@ -728,6 +793,15 @@ def main_check(root: pathlib.Path, ruled: dict[str, str] | None = None) -> tuple
             cls = "SESSION" if session_hits else "PUBLIC"
 
         rows.append((rel, norm, cls, auth_hits, session_hits))
+
+        if norm in hc_set and (cls == "AUTH" or (cls == "SESSION" and norm not in SESSION_AWARE_PUBLIC)):
+            # HeyCatch has no masking and no ruled exceptions.
+            hits = auth_hits if cls == "AUTH" else session_hits
+            violations.append(
+                f"{rel}: classified {cls} ({hits[0][0]}@L{hits[0][1]}) but its normalised "
+                f"path {norm!r} is on js/ga-gate.js's HEYCATCH_ALLOWED_PATHS -- HeyCatch "
+                f"would load on a signed-in page with no masking"
+            )
 
         if cls in ("AUTH", "SESSION") and norm in allowlist_set and norm in ruled:
             # gh-1939: Dustin-ruled authenticated page -- allowed ONLY with a
@@ -1077,6 +1151,30 @@ def run_self_test() -> tuple[int, str]:
         "/partner-profile" not in SESSION_AWARE_PUBLIC,
         f"SESSION_AWARE_PUBLIC keys: {sorted(SESSION_AWARE_PUBLIC)}",
     )
+
+    # gh-3352 item 3: HeyCatch page gate must be an allowlist.
+    def _hc(block: str, extra: str = "") -> str:
+        base = _gate_js(extra_allow=extra)
+        tail = "\n})();\n"
+        i = base.rindex(tail)
+        return base[:i] + "\n  var hcPath = normalizeClarityPath(window.location.pathname);\n" + block + base[i:]
+
+    _HC_LOAD = "    var hc = document.createElement('script'); hc.src = '/js/heycatch-boot.js';\n"
+    _HC_ALLOW_OK = ("  var HEYCATCH_ALLOWED_PATHS = ['/', '/public-page'];\n"
+                    "  if (HEYCATCH_ALLOWED_PATHS.indexOf(hcPath) !== -1) {\n" + _HC_LOAD + "  }")
+    _HC_DENYLIST = ("  var HEYCATCH_DENIED_PATHS = ['/bids'];\n"
+                    "  if (HEYCATCH_DENIED_PATHS.indexOf(hcPath) === -1) {\n" + _HC_LOAD + "  }")
+    r.run_scenario("heycatch_allowlist_exit_0", _hc(_HC_ALLOW_OK), None, 0)
+    r.run_scenario("heycatch_denylist_exit_1_negative_control", _hc(_HC_DENYLIST), None, 1)
+    r.run_scenario("heycatch_loader_outside_gate_exit_1",
+                   _hc(_HC_ALLOW_OK + "\n" + _HC_LOAD.replace("hc", "hd")), None, 1)
+    r.run_scenario("heycatch_allowlist_auth_page_exit_1",
+                   _hc(_HC_ALLOW_OK.replace("'/public-page'", "'/admin'"), extra="    ,'/admin'\n"),
+                   None, 1)
+    r.run_scenario("heycatch_dead_entry_not_on_clarity_exit_1",
+                   _hc(_HC_ALLOW_OK.replace("'/public-page'", "'/not-on-clarity'")), None, 1)
+    r.run_scenario("heycatch_gate_negated_exit_1",
+                   _hc(_HC_ALLOW_OK.replace("!== -1", "=== -1")), None, 1)
 
     output = "\n".join(r.results) + "\n"
     return (1 if r.failed else 0), output

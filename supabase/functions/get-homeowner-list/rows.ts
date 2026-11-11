@@ -126,6 +126,8 @@ export interface ClaimIn {
    */
   has_measurements?: boolean | null;
   has_material_selection?: boolean | null;
+  /** gh-3578 — 'rcv' | 'acv' | 'idk'; an ACV claim treats a measurement as the estimate. */
+  policy_type?: string | null;
 }
 
 /**
@@ -351,7 +353,12 @@ export function resolveChecklistCompleteAt(c: ClaimIn, eventAtIso: string | unde
   if (eventAtIso !== undefined) return eventAtIso;
   if (c.status !== "draft") return null;
   const cash = c.funding_type === "cash";
-  const complete = (cash || !!c.has_estimate) && !!c.has_material_selection && (!cash || !!c.has_measurements);
+  // gh-3578 (D-407): mirrors dashboard.html isChecklistComplete() — an ACV claim
+  // accepts a purchased measurement in place of the insurance estimate.
+  const acv = !cash && c.policy_type === "acv";
+  const complete = acv
+    ? (!!c.has_estimate || !!c.has_measurements) && !!c.has_material_selection
+    : (cash || !!c.has_estimate) && !!c.has_material_selection && (!cash || !!c.has_measurements);
   return complete ? (c.updated_at ?? c.created_at ?? null) : null;
 }
 

@@ -97,6 +97,14 @@ on:
       - 'help-measurements.html'
       - 'tests/gh2078-static-measurement-purchase.mjs'
       - 'tests/gh3228-measurement-price-2263.mjs'
+      - 'tests/gh3356-hover-refusal-client.mjs'
+      - 'tests/gh3352-heycatch-privacy.mjs'
+      - 'tests/gh3357-heycatch-browser.mjs'
+      - 'js/heycatch-boot.js'
+      - 'js/heycatch-privacy.js'
+      - 'js/vendor/heycatch-sdk-0.8.3.js'
+      - 'react-app/app/lib/heycatch.ts'
+      - 'react-app/app/lib/heycatch-privacy.ts'
       - 'partner-other.html'
       - 'partners.html'
       - 'partner-profile.html'
@@ -212,6 +220,14 @@ on:
       - 'help-measurements.html'
       - 'tests/gh2078-static-measurement-purchase.mjs'
       - 'tests/gh3228-measurement-price-2263.mjs'
+      - 'tests/gh3356-hover-refusal-client.mjs'
+      - 'tests/gh3352-heycatch-privacy.mjs'
+      - 'tests/gh3357-heycatch-browser.mjs'
+      - 'js/heycatch-boot.js'
+      - 'js/heycatch-privacy.js'
+      - 'js/vendor/heycatch-sdk-0.8.3.js'
+      - 'react-app/app/lib/heycatch.ts'
+      - 'react-app/app/lib/heycatch-privacy.ts'
       - 'partner-other.html'
       - 'partners.html'
       - 'partner-profile.html'
@@ -277,6 +293,10 @@ jobs:
         run: node tests/gh2078-static-measurement-purchase.mjs
       - name: Homeowner measurement fee is $22.63 (2263 cents) on every served page, email and constant; draft settings migration moves both keys; negative controls (gh3228-measurement-price-2263)
         run: node tests/gh3228-measurement-price-2263.mjs
+      - name: Static checkout handles the paid-claim refusal, no card form, negative control vs main (gh3356-hover-refusal-client)
+        run: node tests/gh3356-hover-refusal-client.mjs
+      - name: HeyCatch referrer and URL scrub, toolbar trigger removal, js/ts parity, SDK pinned (gh3352-heycatch-privacy)
+        run: node tests/gh3352-heycatch-privacy.mjs
       - name: GPC capture on the create-payment-intent call (gh2107-gpc-client)
         run: node tests/gh2107-gpc-client.mjs
       - name: Partner dashboard activation RPC, per-user flag (gh2154-p2-app-activation)
@@ -350,3 +370,5 @@ jobs:
         run: node tests/cro51-re1-value-layout.mjs
       - name: INS-1 value layout -- Dustin's copy byte-for-byte, Become a partner today buttons, banned phrases, 390px no overflow (cro51-ins1-value-layout)
         run: node tests/cro51-ins1-value-layout.mjs
+      - name: HeyCatch in Chromium with the real SDK, all traffic local -- no denied route in what is sent after client-side moves or from a signed-in referrer, crafted toolbar links load no toolbar script, negative controls (gh3357-heycatch-browser)
+        run: node tests/gh3357-heycatch-browser.mjs

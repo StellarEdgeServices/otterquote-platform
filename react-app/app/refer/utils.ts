@@ -24,6 +24,8 @@
  * inherently escaped (the static page used innerHTML/textContent assignment).
  */
 
+import { referralUpdatesDeclined, declinedReferralLabel, referralFeeEarned } from '@/lib/referral-privacy';
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 /** Public site origin — matches CONFIG.SITE_URL in js/config.js (hardcoded, as
@@ -48,8 +50,11 @@ export interface CustomerReferral {
   id?: string;
   display_name?: string | null;
   referral_agent_id?: string | null;
+  /** gh-3257: NULL when the homeowner declined updates to their referrer (privacy.html 4.7). */
   status?: string | null;
   created_at?: string | null;
+  commission_amount?: number | null;
+  commission_paid_at?: string | null;
   [key: string]: unknown;
 }
 
@@ -73,18 +78,19 @@ export const PARTNER_AGREEMENT_CURRENT_VERSION = 'v4-2026-10';
 /** The referral_agents columns that record acceptance (read through RLS: user_id = auth.uid()). */
 export interface AgreementRow {
   partner_agreement_version?: string | null;
+  partner_agreement_accepted_at?: string | null;
   partner_agreement_attestation?: Record<string, unknown> | null;
 }
 
-/** True only when the row carries a v4-2026-10 acceptance (the v4 attestation key, else the version column) —
- *  same test as hasAcceptedAgreementV4() in refer-a-friend.html. No row = not accepted. */
+/** True only when the row carries a v4-2026-10 acceptance the SERVER also counts (gh-3245): the v4 attestation key with a
+ *  non-empty accepted_at, else the version column with partner_agreement_accepted_at set. Same test as the server's
+ *  partner_v4_accepted_at() and as rowShowsV4Accepted() in refer-a-friend.html. No row = not accepted. */
 export function hasAcceptedAgreementV4(row: AgreementRow | null | undefined): boolean {
   if (!row) return false;
-  const att = row.partner_agreement_attestation || {};
-  return (
-    Object.prototype.hasOwnProperty.call(att, PARTNER_AGREEMENT_CURRENT_VERSION) ||
-    row.partner_agreement_version === PARTNER_AGREEMENT_CURRENT_VERSION
-  );
+  const att = (row.partner_agreement_attestation || {}) as Record<string, unknown>;
+  const entry = att[PARTNER_AGREEMENT_CURRENT_VERSION] as { accepted_at?: unknown } | null | undefined;
+  if (Object.prototype.hasOwnProperty.call(att, PARTNER_AGREEMENT_CURRENT_VERSION) && entry && entry.accepted_at) return true;
+  return row.partner_agreement_version === PARTNER_AGREEMENT_CURRENT_VERSION && !!row.partner_agreement_accepted_at;
 }
 
 /** What accept_partner_agreement_v4() returns. */
@@ -105,7 +111,7 @@ export type ReferLinkState =
  */
 export async function loadReferLink(deps: {
   readAgreementRow: () => Promise<AgreementRow | null>;
-  getOrCreateCode: () => Promise<string | null>;
+  getOrCreateCode: () => Promise<CodeResult>;
 }): Promise<ReferLinkState> {
   let row: AgreementRow | null = null;
   try {
@@ -114,26 +120,59 @@ export async function loadReferLink(deps: {
     row = null;
   }
   if (!hasAcceptedAgreementV4(row)) return { state: 'needs_agreement' };
-  const code = await deps.getOrCreateCode();
-  return code ? { state: 'link', code } : { state: 'error' };
+  const result = await deps.getOrCreateCode();
+  if (result.code) return { state: 'link', code: result.code };
+  // gh-3245: the page read this account as accepted but the server still withholds the code (v4_acceptance_required):
+  // show the existing accept-first gate, not the error state.
+  if (result.v4AcceptanceRequired) return { state: 'needs_agreement' };
+  return { state: 'error' };
 }
 
 /**
  * Gate submit: get_or_create_customer_referral_code() first (the customer's referral_agents row must exist to carry the
- * acceptance), then accept_partner_agreement_v4(). The code is returned for display only when the acceptance response
- * confirms v4-2026-10 with a timestamp; any failure throws and the caller keeps the gate up with no link.
+ * acceptance), then accept_partner_agreement_v4(), then get_or_create_customer_referral_code() again. gh-3245: once the
+ * server withholds the code until v4 is accepted, the first call returns no code with v4AcceptanceRequired true; that is
+ * the normal "accept first" state, not an error. Any other empty first result is a failure. The code is returned for
+ * display only when the acceptance response confirms v4-2026-10 with a timestamp and the second call returns a code. A
+ * failure before acceptance is confirmed throws and the caller keeps the gate up with no link. After acceptance is
+ * confirmed, a second call that fails or returns no code resolves to null (the caller shows the existing link-error
+ * state, not the acceptance error).
  */
+export interface CodeResult {
+  code: string | null;
+  /** true when the RPC returned unique_code null with v4_acceptance_required true */
+  v4AcceptanceRequired?: boolean;
+}
+
+/** Maps the get_or_create_customer_referral_code() answer to a CodeResult (gh-3245). A code wins; a null code with
+ *  v4_acceptance_required true and no RPC error is the accept-first state; anything else is a failure (code null). */
+export function codeResultFromRpc(
+  data: { unique_code?: string | null; v4_acceptance_required?: boolean } | null | undefined,
+  error: unknown,
+): CodeResult {
+  if (data && data.unique_code) return { code: data.unique_code };
+  if (data && !error && data.v4_acceptance_required === true) return { code: null, v4AcceptanceRequired: true };
+  return { code: null };
+}
+
 export async function acceptAgreementAndIssueLink(deps: {
-  getOrCreateCode: () => Promise<string | null>;
+  getOrCreateCode: () => Promise<CodeResult>;
   acceptAgreement: () => Promise<AcceptanceResult | null>;
-}): Promise<string> {
-  const code = await deps.getOrCreateCode();
-  if (!code) throw new Error('no referral code');
+}): Promise<string | null> {
+  const first = await deps.getOrCreateCode();
+  if (!first.code && !first.v4AcceptanceRequired) throw new Error('no referral code');
   const res = await deps.acceptAgreement();
   if (!res || res.agreement_version !== PARTNER_AGREEMENT_CURRENT_VERSION || !res.accepted_at) {
     throw new Error('unexpected acceptance response');
   }
-  return code;
+  // Acceptance is recorded from here on. A failed or empty second call must not read as a failed acceptance: return null
+  // and the caller closes the gate onto the existing link-error state (refresh recovers), as the static page does.
+  try {
+    const second = await deps.getOrCreateCode();
+    return second.code || null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Referral link + code ──────────────────────────────────────────────────────
@@ -207,18 +246,35 @@ export function referralCommissionCell(status: string | null | undefined): strin
 /** All four table cells in header order [Friend, Date, Status, Commission]. */
 export interface ReferralRowCells {
   friend: string;
+  /** gh-3257: false for a row whose homeowner declined updates — render '—' instead of the status badge. */
+  showStatus: boolean;
   date: string;
   statusLabel: string;
   statusClass: string;
   commission: string;
 }
 export function referralRowCells(ref: CustomerReferral, index: number): ReferralRowCells {
+  // gh-3257 / privacy.html 4.7: "Referral #N — updates declined", no progress status, and the
+  // commission only once earned (commission_amount set) for a row whose homeowner declined updates.
+  if (referralUpdatesDeclined(ref)) {
+    return {
+      friend: declinedReferralLabel(index),
+      showStatus: false,
+      date: referralDate(ref.created_at),
+      statusLabel: '',
+      statusClass: '',
+      commission: referralFeeEarned(ref) ? `$${REFERRAL_COMMISSION_USD}` : '—',
+    };
+  }
   return {
     friend: referralFriendName(ref, index),
+    showStatus: true,
     date: referralDate(ref.created_at),
     statusLabel: referralStatusLabel(ref.status),
     statusClass: referralStatusClass(ref.status),
-    commission: referralCommissionCell(ref.status),
+    // gh-3333: an opted-in row shows the fee only once it has accrued (commission_amount > 0), the same
+    // test the declined branch uses. A job_completed / commission_paid row with a 0 or NULL fee shows '—'.
+    commission: referralFeeEarned(ref) ? referralCommissionCell(ref.status) : '—',
   };
 }
 
@@ -241,11 +297,19 @@ export interface ReferralSummary {
  */
 export function summarizeReferrals(referrals: CustomerReferral[]): ReferralSummary {
   const total = referrals.length;
-  const paid = referrals.filter((r) => r.status === 'commission_paid').length;
-  const completedUnpaid = referrals.filter((r) => r.status === 'job_completed').length;
+  // gh-3257: a row whose homeowner declined updates has no status; its commission counts from the
+  // fee fields instead (paid once commission_paid_at is set, pending once commission_amount is set).
+  const declinedPaid = (r: CustomerReferral) => referralUpdatesDeclined(r) && referralFeeEarned(r) && r.commission_paid_at != null;
+  const declinedPending = (r: CustomerReferral) => referralUpdatesDeclined(r) && referralFeeEarned(r) && r.commission_paid_at == null;
+  const paid = referrals.filter((r) => r.status === 'commission_paid' || declinedPaid(r)).length;
+  const completedUnpaid = referrals.filter((r) => r.status === 'job_completed' || declinedPending(r)).length;
   const completed = paid + completedUnpaid;
-  const earned = paid * REFERRAL_COMMISSION_USD;
-  const pending = completedUnpaid * REFERRAL_COMMISSION_USD;
+  // gh-3333: the dollar boxes count a fee only once it has accrued (commission_amount > 0). An opted-in
+  // row with status commission_paid / job_completed but a 0 or NULL fee still counts as completed above.
+  const paidWithFee = referrals.filter((r) => (r.status === 'commission_paid' && referralFeeEarned(r)) || declinedPaid(r)).length;
+  const pendingWithFee = referrals.filter((r) => (r.status === 'job_completed' && referralFeeEarned(r)) || declinedPending(r)).length;
+  const earned = paidWithFee * REFERRAL_COMMISSION_USD;
+  const pending = pendingWithFee * REFERRAL_COMMISSION_USD;
   return { total, completed, earned, pending };
 }
 

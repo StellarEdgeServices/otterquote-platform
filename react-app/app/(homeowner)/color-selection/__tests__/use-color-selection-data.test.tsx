@@ -155,10 +155,18 @@ describe('gh-2105 F: a zero-row save surfaces', () => {
     ).rejects.toThrow();
   });
 
-  it('throws the database error when there is one', async () => {
+  it('throws the ruled words, never the raw database message (Ben 6584752880, item 67)', async () => {
     h.updateResult = { data: null, error: { message: 'permission denied' } };
-    await expect(
-      saveColorSelection({ claimId: 'c1', userId: 'u1', brand: null, colorName: 'Charcoal' }),
-    ).rejects.toThrow('Failed to save color selection: permission denied');
+    const err = await saveColorSelection({
+      claimId: 'c1',
+      userId: 'u1',
+      brand: null,
+      colorName: 'Charcoal',
+    }).then(
+      () => null,
+      (e: Error) => e,
+    );
+    expect(err?.message).toBe('Error saving color. Please try again.');
+    expect(err?.message).not.toContain('permission denied');
   });
 });

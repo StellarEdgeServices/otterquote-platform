@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Metal Roof vs Shingle Bids: How to Compare | Otter Quotes</title>
+<meta name="description" content="Comparing a metal roof bid with a shingle bid? Line up panels, underlayment, tear-off, warranties and installer experience before you look at totals.">
+<link rel="canonical" href="https://otterquote.com/guides/metal-roof-vs-asphalt-shingle-bids.html">
+<meta property="og:title" content="Metal Roof vs Shingle Bids: How to Compare | Otter Quotes">
+<meta property="og:description" content="Comparing a metal roof bid with a shingle bid? Line up panels, underlayment, tear-off, warranties and installer experience before you look at totals.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/metal-roof-vs-asphalt-shingle-bids.html">
+<meta property="og:image" content="https://otterquote.com/img/social/og-default.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Otter Quotes: Contractors Compete. Homeowners Win. A cartoon otter in a hard hat.">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-11-05">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds (same values as PR #2499; defined here until it merges) */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+.definition-table td { color: var(--dark-gray); border-bottom: 1px solid #D9DEE7; }
+.definition-table td:first-child { color: var(--navy); }
+.definition-table tr:last-child td { border-bottom: none; }
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+<style id="breadcrumb-css">.breadcrumb ol{list-style:none;display:flex;flex-wrap:wrap;gap:.25rem .5rem;justify-content:inherit;margin:0 0 var(--sp-4);padding:0;font-size:.85rem}.breadcrumb li+li:before{content:"\203A";margin-right:.5rem;opacity:.7}.breadcrumb a{color:inherit;text-decoration:underline}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <nav class="breadcrumb" data-seo-crumb="1" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/guides/">Guides</a></li><li aria-current="page">Metal Roof or Asphalt Shingles? How to Compare Bids for Each</li></ol></nav>
+      <h1>Metal Roof or Asphalt Shingles? How to Compare Bids for Each</h1>
+    <p class="meta">Otter Quotes &middot; Updated November 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>A metal roof bid and a shingle bid are not two prices for one job. They are two different roofs, so skip the total at first. Line up what decides the job: the roof system, the layers under it, whether the old roof comes off, who backs each warranty, and the crew's experience. Get every answer in writing.</p>
+    </div>
+
+    <section class="step">
+      <h2>Can you compare a metal roof bid with an asphalt shingle bid?</h2>
+      <p>Yes, but the totals will not line up neatly. A metal roof bid and a shingle bid price different products that are fastened, underlaid and warranted in different ways. Compare them row by row, using the same house, the same roof sections and the same questions for every contractor.</p>
+      <p>A bid that says only "metal roof" or "new shingles, one price" gives you nothing to compare. A useful bid names the product, describes each step and says what it leaves out. Start with our <a href="/guides/roof-bid-comparison-worksheet.html">roof bid comparison worksheet</a>, which covers the parts every roofing bid shares. Then add the rows below that fit the material.</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr>
+              <th>What to look for</th>
+              <th>Asphalt shingle bid</th>
+              <th>Metal roof bid</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Roof covering, named in writing</td>
+              <td>Brand and shingle line</td>
+              <td>Brand, panel profile, type of metal and coating</td>
+            </tr>
+            <tr>
+              <td>How it is fastened</td>
+              <td>Fasteners and placement, following the manufacturer's instructions</td>
+              <td>Exposed fasteners or concealed fasteners, and what upkeep that means</td>
+            </tr>
+            <tr>
+              <td>What goes under it</td>
+              <td>Underlayment type, drip edge, flashing</td>
+              <td>Underlayment type, drip edge, flashing</td>
+            </tr>
+            <tr>
+              <td>The old roof</td>
+              <td>Torn off, or covered over, and how many layers are there now</td>
+              <td>Torn off, or covered over, and who decides</td>
+            </tr>
+            <tr>
+              <td>Deck repair</td>
+              <td>How rotted or damaged boards are priced</td>
+              <td>How rotted or damaged boards are priced</td>
+            </tr>
+            <tr>
+              <td>Warranties</td>
+              <td>Manufacturer warranty and contractor warranty, in writing</td>
+              <td>Material, finish, performance and workmanship warranties, in writing</td>
+            </tr>
+            <tr>
+              <td>Impact and wind ratings</td>
+              <td>Rating listed, for which product</td>
+              <td>Rating listed, for which panel</td>
+            </tr>
+            <tr>
+              <td>Installer experience</td>
+              <td>Years with this shingle line</td>
+              <td>Jobs completed with this panel system</td>
+            </tr>
+            <tr>
+              <td>Exclusions and change orders</td>
+              <td>What is left out and how extra work is priced</td>
+              <td>What is left out and how extra work is priced</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="step">
+      <h2>What kinds of metal roof might a bid quote?</h2>
+      <p>A metal roof bid may quote one of three kinds of system. <a href="https://blog.mcelroymetal.com/metal-roofing-and-siding/metal-roofing-styles-exposed-fastener-vs.-concealed-fastener" target="_blank" rel="noopener">McElroy Metal</a>, a manufacturer, names exposed fastener panels, standing seam panels, and specialty panels that replicate the look of materials such as shingles, slate or tile. Exposed-fastener panels are held down by fasteners through the face of the panel. Standing seam panels hide the fasteners beneath it.</p>
+      <p><a href="https://blog.mcelroymetal.com/metal-roofing-and-siding/metal-roofing-styles-exposed-fastener-vs.-concealed-fastener" target="_blank" rel="noopener">McElroy</a> describes the trade-off this way. With exposed-fastener systems, the fasteners and washers "remain exposed to the elements and may require periodic inspection and maintenance." Standing seam systems "are designed to accommodate thermal movement," which the page calls an important consideration on longer panel runs. It also says exposed fastener panels are "often selected for budget-conscious projects" and standing seam systems are "commonly chosen for their clean appearance and concealed fasteners."</p>
+      <p>That is a manufacturer describing its own product category, so treat it as a list of questions, not a verdict. Find out which system each metal bidder is pricing, what metal and coating the panel uses, and what upkeep the fasteners are expected to need over the years.</p>
+    </section>
+
+    <section class="step">
+      <h2>What goes under the roof covering in each bid?</h2>
+      <p>Both bids should name what sits between the roof deck and the roof covering. The <a href="https://www.metalroofing.com/_files/ugd/14ee74_bd89455bf91f443ca87686d83b1c4996.pdf" target="_blank" rel="noopener">Metal Roofing Alliance</a>, a metal roofing trade group, describes underlayment installed over the roof sheathing as an inner barrier against water getting into the house. Have each bid name the underlayment, the drip edge and the flashing.</p>
+      <p>For shingles, the <a href="https://www.asphaltroofing.org/installation-of-drip-edge-at-eaves-and-rakes/" target="_blank" rel="noopener">Asphalt Roofing Manufacturers Association (ARMA)</a> gives the general rule as applying drip edge "underneath the underlayment along the eaves and over the underlayment on the rakes." It adds that with self-adhering underlayment at the eave, some manufacturers or local codes may allow a different order, and it tells readers to consult the manufacturer's instructions.</p>
+      <p>You need each bid to say in writing what it uses and where, so you can see whether two bids describe the same layers. If one bid lists underlayment and flashing and another does not, the second may price less work, or it may simply be silent. Find out which.</p>
+    </section>
+
+    <section class="step">
+      <h2>Does the old roof come off?</h2>
+      <p>A bid should say whether the old roof is removed or covered. The <a href="https://www.metalroofing.com/_files/ugd/14ee74_bd89455bf91f443ca87686d83b1c4996.pdf" target="_blank" rel="noopener">Metal Roofing Alliance</a> notes that a metal roof often "may be installed over the existing roof, eliminating the need for tear-off and disposal." For shingles, <a href="https://www.asphaltroofing.org/reroofing-replacement-vs-recover/" target="_blank" rel="noopener">ARMA</a> reports that most manufacturers do not recommend new shingles over existing laminated shingles.</p>
+      <p>Whether the old roof comes off changes the price and changes what you can see. The Alliance recommends checking with your installer on whether it must be removed. <a href="https://www.asphaltroofing.org/reroofing-replacement-vs-recover/" target="_blank" rel="noopener">ARMA</a> lists the chance to inspect the roof deck and repair any damage among the benefits of replacement, and it notes that local building codes may limit your options, generally allowing no more than two roof coverings on a building.</p>
+      <p>Get each contractor to say how many layers are on your roof now, whether the bid removes them, and what happens if boards under the old roof turn out to be damaged. Our guide to <a href="/guides/roof-change-orders-hidden-damage.html">change orders and hidden damage</a> explains how to get a price for those surprises in writing before work starts.</p>
+    </section>
+
+    <section class="step">
+      <h2>How do the warranties compare?</h2>
+      <p>Some warranties are basically worthless, and some warranties mean the roof will probably outlive you. The difference is in the document, so have each bid separate its warranties and name who backs each one. The <a href="https://www.metalroofing.com/_files/ugd/14ee74_bd89455bf91f443ca87686d83b1c4996.pdf" target="_blank" rel="noopener">Metal Roofing Alliance (MRA)</a> lists several common ones for a metal roof, and shingle roofs also split between the manufacturer and the contractor.</p>
+      <p>The MRA list: a manufacturer material warranty, a paint and finish warranty, a weather and performance warranty, a workmanship warranty, and transferable warranty options. In its words, the finish warranty "protects against fading, chalking, peeling, or corrosion of the factory-applied coating," the material warranty "covers defects in the metal panels, fasteners, or roofing components," and the workmanship warranty is "provided by the roofing contractor to cover installation-related issues." Some systems also include protection "against wind damage, hail resistance, or water penetration when installed to manufacturer specifications."</p>
+      <p>Get each warranty as a document, not a sentence in a bid. The <a href="https://www.nrca.net/roofing-guidelines/selecting-a-contractor" target="_blank" rel="noopener">National Roofing Contractors Association (NRCA)</a> advises homeowners to read a roofing warranty closely and understand the conditions that would void it. For the shingle side, our guides on <a href="/guides/manufacturer-backed-roof-warranties.html">manufacturer-backed roof warranties</a> and the <a href="/guides/contractor-workmanship-warranty.html">contractor workmanship warranty</a> show what to look for.</p>
+    </section>
+
+    <section class="step">
+      <h2>Does an impact or wind rating change the comparison?</h2>
+      <p>It can, if a bid lists one. Some metal panels are listed under UL 2218 Class 4, the same impact standard used to rate shingles. Have each bid state which rating it lists, for which named product, and where the proof is. A rating belongs to a tested product, so do not assume it from the material alone.</p>
+      <p><a href="https://www.mcelroymetal.com/hubfs/assets/impact_resistance_ul2218_class4080117.pdf" target="_blank" rel="noopener">McElroy Metal's UL 2218 technical bulletin</a>, issued in 2006 and revised in 2017, shows how this works: it lists specific named steel, copper and aluminum panels as Class 4, not metal roofing in general. <a href="https://www.asphaltroofing.org/reroofing-replacement-vs-recover/" target="_blank" rel="noopener">ARMA</a> also notes that impact resistance ratings for asphalt shingles "may be affected when new shingles are installed over existing shingles."</p>
+      <p>Ask your insurance company whether it offers a discount for impact-resistant roofing. Our guides to <a href="/guides/class-4-impact-resistant-shingles.html">Class 4 impact-resistant shingles</a> and <a href="/guides/roof-wind-ratings-explained.html">roof wind ratings</a> explain what those ratings do and do not promise.</p>
+    </section>
+
+    <section class="step">
+      <h2>What should you ask a contractor who quotes a metal roof?</h2>
+      <p>Find out whether the crew has installed this exact system before. The <a href="https://www.metalroofing.com/_files/ugd/14ee74_bd89455bf91f443ca87686d83b1c4996.pdf" target="_blank" rel="noopener">Metal Roofing Alliance's buyer's guide</a> lists the question: can they install this roof, and do they have the experience or training to do so. Request recent references and job locations you can drive past, and find out who backs the product warranty.</p>
+      <p>The Alliance's guide also suggests learning who produced the product, where and from what raw materials. It advises checking that an installer is licensed, insured and carries workers' compensation coverage, and getting proof of insurance. <a href="https://www.nrca.net/roofing-guidelines/selecting-a-contractor" target="_blank" rel="noopener">NRCA</a> gives similar advice for any roofing contractor: a written proposal with complete descriptions of the work and specifications, and client references and a list of completed projects.</p>
+    </section>
+
+    <section class="step">
+      <h2>What to ask every roofing contractor</h2>
+      <p>Copy this list into a note and send it to each contractor before you compare totals.</p>
+      <ul>
+        <li>What exact product are you quoting: brand, line or profile, metal or shingle type, and coating or color?</li>
+        <li>For metal: exposed fasteners or concealed fasteners, and what upkeep does that system need?</li>
+        <li>What goes under the roof covering: underlayment, drip edge and flashing, by name?</li>
+        <li>Is the old roof removed or covered, how many layers are there now, and why?</li>
+        <li>How do you price rotted or damaged deck boards, and what is the price per sheet?</li>
+        <li>Which warranties come with this roof, who backs each one, and can I see the documents?</li>
+        <li>What do the warranties exclude, and what would void them?</li>
+        <li>Which impact or wind rating does this product carry, and where is it documented?</li>
+        <li>Have you installed this exact system before, and can I see recent jobs or talk to recent customers?</li>
+        <li>Who does the work: your own crew or a subcontractor?</li>
+        <li>What is your proof of insurance, and what is your license number if your area requires one?</li>
+        <li>What does the bid leave out, and how are extras priced and agreed?</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>Otter Quotes creates a written scope of work for your roofing project and sends it to multiple contractors, who compete with bids on that same scope. When you set up the project, you choose shingles or metal. You compare the bids and sign online, without a salesperson in your home. Homeowners who provide a copy of their insurance estimate pay nothing. Without one, if you order measurements from us, you pay as little as $22.63 up front for professional measurements that contractors use to bid. The report is yours to keep. If you complete a job on the platform, that money is refunded to you. Contractors pay Otter Quotes a fee on the accepted bid. We do not work with your insurance company or sell upgrades.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>Why do metal roof bids and shingle bids look so different?</h3>
+        <div class="faq-answer">
+          <p>They price different products. A metal roof bid names panels, metal, coating and a fastening system, while a shingle bid names a shingle line. The layers underneath, the warranties and the treatment of the old roof can also differ. Compare row by row, not by total, and put the same questions to each contractor.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What is the difference between exposed-fastener and standing seam metal roofing?</h3>
+        <div class="faq-answer">
+          <p>Exposed-fastener panels are held down by fasteners that pass through the panel face. Standing seam panels hide the fasteners. <a href="https://blog.mcelroymetal.com/metal-roofing-and-siding/metal-roofing-styles-exposed-fastener-vs.-concealed-fastener" target="_blank" rel="noopener">McElroy Metal</a>, a manufacturer, says exposed fasteners and washers may need periodic inspection and maintenance, and that standing seam systems are designed to accommodate thermal movement. Have each bid name the system it prices.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Can a metal roof go over my old roof?</h3>
+        <div class="faq-answer">
+          <p>Sometimes. The Metal Roofing Alliance says a metal roof may often be installed over an existing roof, which can eliminate tear-off, and it recommends checking with your installer on whether the old roof must be removed. ARMA says local building codes can limit reroofing options for shingles. Have every bidder state in writing whether the old roof comes off and why.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What warranties come with a metal roof?</h3>
+        <div class="faq-answer">
+          <p>The Metal Roofing Alliance lists several common ones: manufacturer material, paint and finish, weather and performance, workmanship, and transferable warranty options. Each can have its own terms and its own company standing behind it. Get each one as a document, and read what would void it.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>How do I find out whether a contractor has installed metal roofs before?</h3>
+        <div class="faq-answer">
+          <p>Put the question directly, then check. The Metal Roofing Alliance suggests confirming that the crew can install the system and has the experience or training to do so, and requesting recent references and job locations you can visit. Then call each reference and find out whether the contractor finished the work as written.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="step">
+      <h2>Sources</h2>
+      <ul>
+        <li><a href="https://blog.mcelroymetal.com/metal-roofing-and-siding/metal-roofing-styles-exposed-fastener-vs.-concealed-fastener" target="_blank" rel="noopener">McElroy Metal, "Metal Roofing Styles: Exposed Fastener vs. Concealed Fastener"</a></li>
+        <li><a href="https://www.metalroofing.com/_files/ugd/14ee74_bd89455bf91f443ca87686d83b1c4996.pdf" target="_blank" rel="noopener">Metal Roofing Alliance, "Choosing an Installer: MRA Buyer's Guide"</a></li>
+        <li><a href="https://www.asphaltroofing.org/installation-of-drip-edge-at-eaves-and-rakes/" target="_blank" rel="noopener">ARMA, "Installation of Drip Edge at Eaves and Rakes"</a></li>
+        <li><a href="https://www.asphaltroofing.org/reroofing-replacement-vs-recover/" target="_blank" rel="noopener">ARMA, "Reroofing: Replacement vs. Recover"</a></li>
+        <li><a href="https://www.nrca.net/roofing-guidelines/selecting-a-contractor" target="_blank" rel="noopener">National Roofing Contractors Association, "Selecting a Contractor"</a></li>
+        <li><a href="https://www.mcelroymetal.com/hubfs/assets/impact_resistance_ul2218_class4080117.pdf" target="_blank" rel="noopener">McElroy Metal Technical Bulletin No. 04-267-06, "Tests for Impact Resistance of Roof Covering Materials, UL 2218, Impact Resistance Class 4"</a></li>
+        <li><a href="https://www.ul.com/news/ul-solutions-ibhs-drive-trust-residential-roofing-shingles" target="_blank" rel="noopener">UL Solutions, "UL Solutions, IBHS Drive Trust in Residential Roofing Shingles"</a></li>
+      </ul>
+    </section>
+
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/guides/class-4-impact-resistant-shingles.html">Class 4 Impact-Resistant Shingles: What the Rating Means, What It Doesn't, and the Insurance Catch</a></li>
+        <li><a href="/guides/manufacturer-backed-roof-warranties.html">Golden Pledge, Platinum Protection and SureStart PLUS: The Manufacturer-Backed Roof Warranties Compared</a></li>
+        <li><a href="/guides/roof-wind-ratings-explained.html">Roof Wind Ratings Explained: What &ldquo;110,&rdquo; &ldquo;130&rdquo; and &ldquo;No Limit&rdquo; Really Promise</a></li>
+        <li><a href="/guides/contractor-workmanship-warranty.html">The Contractor Workmanship Warranty: What It Covers and Why It Is Only as Good as the Company</a></li>
+        <li><a href="/guides/roof-change-orders-hidden-damage.html">What Is a Roofing Change Order, and What if the Roofer Finds Hidden Damage?</a></li>
+        <li><a href="/guides/topics/shingles-warranties.html">Browse all: Shingles, Ratings and Warranties</a></li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Metal Roof or Asphalt Shingles? How to Compare Bids for Each",
+  "description": "Comparing a metal roof bid with a shingle bid? Line up panels, underlayment, tear-off, warranties and installer experience before you look at totals.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization", "logo": {"@type": "ImageObject", "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"}, "sameAs": ["https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ", "https://www.linkedin.com/company/otter-quotes", "https://www.facebook.com/OtterQuote", "https://www.instagram.com/otterquote/"],
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-11-05",
+  "dateModified": "2026-11-05",
+  "publisher": {
+    "@type": "Organization", "url": "https://otterquote.com/", "sameAs": ["https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ", "https://www.linkedin.com/company/otter-quotes", "https://www.facebook.com/OtterQuote", "https://www.instagram.com/otterquote/"],
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/metal-roof-vs-asphalt-shingle-bids.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Why do metal roof bids and shingle bids look so different?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "They price different products. A metal roof bid names panels, metal, coating and a fastening system, while a shingle bid names a shingle line. The layers underneath, the warranties and the treatment of the old roof can also differ. Compare row by row, not by total, and put the same questions to each contractor."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What is the difference between exposed-fastener and standing seam metal roofing?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Exposed-fastener panels are held down by fasteners that pass through the panel face. Standing seam panels hide the fasteners. McElroy Metal, a manufacturer, says exposed fasteners and washers may need periodic inspection and maintenance, and that standing seam systems are designed to accommodate thermal movement. Have each bid name the system it prices."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can a metal roof go over my old roof?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Sometimes. The Metal Roofing Alliance says a metal roof may often be installed over an existing roof, which can eliminate tear-off, and it recommends checking with your installer on whether the old roof must be removed. ARMA says local building codes can limit reroofing options for shingles. Have every bidder state in writing whether the old roof comes off and why."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What warranties come with a metal roof?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The Metal Roofing Alliance lists several common ones: manufacturer material, paint and finish, weather and performance, workmanship, and transferable warranty options. Each can have its own terms and its own company standing behind it. Get each one as a document, and read what would void it."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How do I find out whether a contractor has installed metal roofs before?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Put the question directly, then check. The Metal Roofing Alliance suggests confirming that the crew can install the system and has the experience or training to do so, and requesting recent references and job locations you can visit. Then call each reference and find out whether the contractor finished the work as written."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "Metal Roof or Asphalt Shingles? How to Compare Bids for Each",
+      "item": "https://otterquote.com/guides/metal-roof-vs-asphalt-shingle-bids.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -50,11 +50,11 @@ export const MEASUREMENTS_COPY = {
   // ── Path A card — Hover, PAID (help-measurements.html:572-583) ──
   hoverBadge: 'Recommended for Most',
   hoverIcon: '📐',
-  hoverCardTitle: 'Complete Property Report',
+  hoverCardTitle: 'Aerial Roof Report',
   // D-291 price line (repriced from D-205's $150) — LOCKED, exact.
   hoverCardPrice: '$22.63 (rebated if you complete a job on the platform)',
   hoverCardDescription:
-    "We order an aerial roof measurement report of your roof — squares, pitch, facets, ridge, hip, valley and eave lengths. Nothing for you to do: no photos, no ladder, no appointment. It is enough for a contractor to bid most roofing jobs.",
+    "We order an aerial roof measurement report of your roof — total squares and the area at each pitch. Nothing for you to do: no photos, no ladder, no appointment. It carries no ridge, hip, valley or eave lengths; a contractor who needs those can order a fuller report.",
   hoverCardFeatures: [
     'Precise, professional-grade measurements',
     'Nothing for you to photograph or upload',
@@ -80,19 +80,19 @@ export const MEASUREMENTS_COPY = {
   cardSelectButton: 'Choose This Option',
 
   // ── Hover flow section (help-measurements.html:607-647) ──
-  hoverSectionTitle: 'Complete Property Report',
+  hoverSectionTitle: 'Aerial Roof Report',
   hoverSectionIntro:
-    'An aerial roof measurement report — squares, pitch, facets, and the ridge, hip, valley and eave lengths a contractor needs to bid accurately. We order it for you; there is nothing for you to photograph.',
+    'An aerial roof measurement report — total squares and the area at each pitch, which contractors use to bid. It carries no ridge, hip, valley or eave lengths; a contractor who needs those can order a fuller report. We order it for you; there is nothing for you to photograph.',
 
   // Rebate callout (help-measurements.html:611) — D-291 financial terms (repriced from D-205's $150), LOCKED.
   // "<strong>How the $22.63 works:</strong> …" flattened.
   rebateCallout:
-    "How the $22.63 works: You pay $22.63 now for an aerial roof measurement report. When your project is completed with an Otter Quotes contractor, the full $22.63 is rebated to your original payment method. Either way, the file stays with you. We're building a suite of products around your home, and your data file is the foundation of every one of them.",
+    "How the $22.63 works: You pay $22.63 now for an aerial roof measurement report. When your project is completed with an Otter Quotes contractor, the full $22.63 is rebated to your original payment method. Either way, the report stays with you.",
 
   // Hover steps (help-measurements.html:614-636).
   hoverStep1Title: 'Purchase Your Report',
   hoverStep1Text:
-    'Pay the $22.63 fee securely through Stripe. This covers your Complete Property Report.',
+    'Pay the $22.63 fee securely through Stripe. This covers your Aerial Roof Report.',
   hoverStep2Title: 'We Order It',
   hoverStep2Text:
     "We place the order with our measurement service using your property address. Nothing is required from you at this step.",
@@ -105,7 +105,7 @@ export const MEASUREMENTS_COPY = {
     "What you'll need: Nothing. Your property address is already on file — that is all the report is built from.",
 
   // Hover purchase button (help-measurements.html:644).
-  hoverPurchaseButton: 'Purchase Property Data File — $22.63',
+  hoverPurchaseButton: 'Purchase Aerial Roof Report — $22.63',
   // Shared "go back" button (help-measurements.html:646/724).
   chooseDifferentButton: '← Choose Different Option',
 
@@ -131,7 +131,7 @@ export const MEASUREMENTS_COPY = {
   // ── Adjuster flow section (help-measurements.html:683-725) ──
   adjusterSectionTitle: 'Request Measurements from Your Adjuster',
   adjusterIntro:
-    "If you're working with an insurance claim, we can request property measurements from your adjuster. Many adjusters take measurements during their inspection and can share them at no cost. (If you're paying out of pocket, the Complete Property Report is your best option.)",
+    "If you're working with an insurance claim, we can request property measurements from your adjuster. Many adjusters take measurements during their inspection and can share them at no cost. (If you're paying out of pocket, the Aerial Roof Report is your best option.)",
   // "<strong>Good news:</strong> …" flattened (help-measurements.html:691).
   alreadySentEstimateNote:
     "Good news: We already sent an email to your adjuster requesting your insurance estimate. Since that email also requested measurements, you don't need to send another one. We'll capture any measurements they include in their response.",

@@ -115,6 +115,7 @@
 
 'use client';
 
+import { trackSignupCompleted } from '@/lib/heycatch';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
@@ -128,6 +129,7 @@ import { readFirstTouch } from '@/lib/attribution';
 import { withFirstTouchParam } from '@/lib/attribution-core';
 import { formatPhoneValue, isValidEmail, isValidZip, fullAddress, splitLeadName } from './utils';
 import { captureVariantFromUrl } from '@/lib/variant';
+import { captureReturnFromUrl } from '@/lib/return-target';
 import { stampRoleOwner } from '@/lib/role-breadcrumb-owner';
 import { stampSignup } from '@/lib/signup-storage';
 import { SMS_CONSENT_LABEL } from '../../constants/legal';
@@ -596,6 +598,12 @@ export default function GetStartedPage() {
   // from this origin. Runs once per mount; best-effort, never throws.
   useEffect(() => {
     captureVariantFromUrl();
+  }, []);
+
+  // gh-3471 (D-419): ?return=<token> from a signed-out measurement click. Kept for this tab until /auth-callback;
+  // only an allowlisted token is kept (see lib/return-target.ts). Does not change sign-up, consent or any redirect here.
+  useEffect(() => {
+    captureReturnFromUrl(window.location.search);
   }, []);
 
   // Form state
@@ -1141,6 +1149,7 @@ export default function GetStartedPage() {
     // gh-1817: Meta Pixel Lead event — fires on both the Google OAuth and
     // password sign-up paths, matching the GA4 call sites above exactly.
     fbq('track', 'Lead');
+    trackSignupCompleted(method);
     // gh-1926: LinkedIn Insight Tag + Reddit Pixel Lead events — shipped
     // dark/gated (LinkedInInsightGate/RedditPixelGate never mount their
     // real loader until a follow-up config drop lands real IDs), same
@@ -1413,7 +1422,7 @@ export default function GetStartedPage() {
           display: flex;
           align-items: flex-start;
           justify-content: center;
-          padding: 20px var(--sp-8, 2rem) 40px;
+          padding: 12px var(--sp-8, 2rem) 40px;
         }
         /* gh-3266: one contained card, one (left) alignment, tighter rhythm.
            Colours/radii follow the approved homepage reskin tokens
@@ -1441,7 +1450,7 @@ export default function GetStartedPage() {
         .gs-subtitle {
           color: var(--gs-ink-2);
           font-size: 0.95rem;
-          margin: 0 0 var(--sp-5, 1.25rem);
+          margin: 0 0 14px;
           line-height: 1.5;
         }
         /* gh-1901: two-step layout — step indicator + back link.
@@ -1508,6 +1517,12 @@ export default function GetStartedPage() {
         }
         /* gh-3266: legal line sits directly under the submit button; the
            sign-in / contractor links move to the card's footer row. */
+        .gs-pw-phone {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(213px, 1fr));
+          gap: 14px 16px;
+          align-items: start;
+        }
         .gs-form-wrap .gs-legal { margin-top: -6px; }
         .gs-card-foot {
           display: flex;
@@ -1619,7 +1634,7 @@ export default function GetStartedPage() {
           display: flex;
           align-items: center;
           gap: 12px;
-          margin: 14px 0 10px;
+          margin: 10px 0 8px;
           color: var(--gs-ink-2);
           font-size: 13px;
         }
@@ -2089,6 +2104,9 @@ export default function GetStartedPage() {
                   </>
                 )}
 
+                {/* gh-3266 follow-up: Password and Phone share one row on wide screens (layout only;
+                    DOM order, text and behaviour unchanged; stacks on phones). */}
+                <div className="gs-pw-phone">
                 {/* Password — the alternative to Google, per Dustin 2026-08-26.
                     gh-3136 (P14): Confirm Password CUT; show/hide toggle added. */}
                 <div className="form-group">
@@ -2098,7 +2116,7 @@ export default function GetStartedPage() {
                       type={showPassword ? 'text' : 'password'}
                       id="password"
                       className="form-input"
-                      style={{ paddingRight: '4.5rem' }}
+                      style={{ paddingRight: '3rem' }}
                       required
                       minLength={MIN_PASSWORD_LENGTH}
                       autoComplete="new-password"
@@ -2151,6 +2169,7 @@ export default function GetStartedPage() {
                   <span className="form-hint">For bid notifications and updates via text.</span>
                 </div>
                 )}
+                </div>
 
                 {/* SMS Consent — TWILIO MESSAGE_FLOW / TCPA */}
                 {/* Text source: legal.ts SMS_CONSENT_LABEL + inline privacy/terms links */}
@@ -2338,7 +2357,7 @@ export default function GetStartedPage() {
               <div className="benefit-icon">💰</div>
               <div className="benefit-text">
                 <h4>Contractors pay to earn your business</h4>
-                <p>No fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when they complete a job.</p>
+                <p>No fee to use Otter Quotes. Homeowners pay a small upfront fee for an aerial roof report, rebated in full when a job is completed through the platform; conditions apply.</p>
               </div>
             </div>
           </div>

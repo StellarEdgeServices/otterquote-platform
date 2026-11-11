@@ -13,6 +13,7 @@ import './globals.css';
 import { AttributionCapture } from './components/AttributionCapture';
 import { DoNotSellLink } from './components/DoNotSellLink';
 import { GA4Gate } from './components/GA4Gate';
+import { HeyCatchGate } from './components/HeyCatchGate';
 import { MetaPixelGate } from './components/MetaPixelGate';
 import { LinkedInInsightGate } from './components/LinkedInInsightGate';
 import { RedditPixelGate } from './components/RedditPixelGate';
@@ -107,6 +108,8 @@ export default function RootLayout({
         </Script>
         {/* GA4 — OtterQuote property; host-gated (gh-1619), see GA4Gate */}
         <GA4Gate />
+        {/* HeyCatch trial; host, opt-out and path gated, see HeyCatchGate */}
+        <HeyCatchGate />
         {/* Meta Pixel — OtterQuote property; host-gated (gh-1817), see MetaPixelGate */}
         <MetaPixelGate />
         {/* LinkedIn Insight Tag — shipped dark/gated (gh-1926), see LinkedInInsightGate */}

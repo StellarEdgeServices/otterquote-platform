@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>One Contractor or Many for Exterior Work? | Otter Quotes</title>
+<meta name="description" content="Replacing a roof, gutters, siding or windows? See where the trades meet, what to ask, and how to compare bids from one contractor or several.">
+<link rel="canonical" href="https://otterquote.com/guides/exterior-projects-one-contractor-or-separate-bids.html">
+<meta property="og:title" content="One Contractor or Many for Exterior Work? | Otter Quotes">
+<meta property="og:description" content="Replacing a roof, gutters, siding or windows? See where the trades meet, what to ask, and how to compare bids from one contractor or several.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/exterior-projects-one-contractor-or-separate-bids.html">
+<meta property="og:image" content="https://otterquote.com/img/social/og-default.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Otter Quotes: Contractors Compete. Homeowners Win. A cartoon otter in a hard hat.">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-11-05">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds (same values as PR #2499; defined here until it merges) */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+.definition-table td { color: var(--dark-gray); border-bottom: 1px solid #D9DEE7; }
+.definition-table td:first-child { color: var(--navy); }
+.definition-table tr:last-child td { border-bottom: none; }
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+<style id="breadcrumb-css">.breadcrumb ol{list-style:none;display:flex;flex-wrap:wrap;gap:.25rem .5rem;justify-content:inherit;margin:0 0 var(--sp-4);padding:0;font-size:.85rem}.breadcrumb li+li:before{content:"\203A";margin-right:.5rem;opacity:.7}.breadcrumb a{color:inherit;text-decoration:underline}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <nav class="breadcrumb" data-seo-crumb="1" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/guides/">Guides</a></li><li aria-current="page">Roof, Gutters, Siding and Windows: One Contractor or Separate Bids?</li></ol></nav>
+      <h1>Roof, Gutters, Siding and Windows: One Contractor or Separate Bids?</h1>
+    <p class="meta">Otter Quotes &middot; Updated November 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>One contractor or several is the smaller question. What matters more is whether every trade is priced on its own line and who answers for the places where two trades meet: roof and gutters, roof and siding, windows and siding. Get both answers in writing before you compare any totals.</p>
+    </div>
+
+    <section class="step">
+      <h2>Should you hire one contractor or collect separate bids?</h2>
+      <p>Both can work, and the choice is yours. One contractor means one contract and one person to call. Separate bids mean a contract for each trade and more comparing. Either way, insist on a price for each part of the job on its own line, so you can compare trade by trade and see what each part costs.</p>
+      <p>Neither route settles who does the work. A company that sells several trades may use its own crews for some and subcontractors for others. Have every contractor tell you in writing which parts their own crew will do and which they will hand to someone else.</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>One contractor for several trades</th>
+              <th>Separate bids for each trade</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Contracts</td>
+              <td>One</td>
+              <td>One per trade</td>
+            </tr>
+            <tr>
+              <td>Who you call</td>
+              <td>One company</td>
+              <td>Each company</td>
+            </tr>
+            <tr>
+              <td>Pricing</td>
+              <td>A price line for each trade</td>
+              <td>Each bid covers one trade</td>
+            </tr>
+            <tr>
+              <td>Who does the work</td>
+              <td>Which parts are their own crew and which are subcontracted</td>
+              <td>The same question, answered by each</td>
+            </tr>
+            <tr>
+              <td>Where trades meet</td>
+              <td>Who is responsible for the joints</td>
+              <td>What each contractor expects the other trades to do</td>
+            </tr>
+            <tr>
+              <td>Warranties</td>
+              <td>Whether one warranty covers every part</td>
+              <td>A separate warranty for each trade</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="step">
+      <h2>Where do the trades meet on a house?</h2>
+      <p>The trades meet in more places than any bid will list. Three of them are the roof edge and the gutters, the roof and the siding, and the windows and the siding. Water has to be directed away at each one, and manufacturers and technical groups publish instructions for those joints, which is why the joints belong in a bid.</p>
+      <p><strong>Roof and gutters.</strong> GAF's technical bulletin on drip edges describes drip edge as "a metal flashing that directs water away from the edge of the roof," and says it helps keep water from getting behind the soffit edge or siding. It also says: "If there is a gutter edge, make sure the shingles overhang the inside edge of the gutter," so that water goes into the gutter and not down the face of the building. The roofer and the gutter installer are working on the same edge.</p>
+      <p><strong>Roof and siding.</strong> Where a roof ends against a wall, a roofing crew and a siding crew both work the same spot. Settle before the job starts which of them owns the flashing there, and get that into the bid.</p>
+      <p><strong>Windows and siding.</strong> The <a href="https://basc.pnnl.gov/resource-guides/windows-and-doors-are-fully-flashed" target="_blank" rel="noopener">Building America Solution Center</a>, a U.S. Department of Energy resource, says windows and doors are "an interruption in the wall's house wrap or insulated sheathing drainage plane." It tells builders to "properly integrate all flashing with the drainage plane layer" and to "visually inspect the window and door flashing before siding is installed." Once the siding is on, that flashing is out of sight.</p>
+    </section>
+
+    <section class="step">
+      <h2>Does the order of the work matter?</h2>
+      <p>Sometimes it does, and the bid should say what order the contractor expects. At the roof edge, <a href="https://www.asphaltroofing.org/installation-of-drip-edge-at-eaves-and-rakes/" target="_blank" rel="noopener">ARMA</a> says drip edge generally goes under the underlayment along the eaves and over it on the rakes, and GAF says shingles are installed over the drip edge. At a window, the flashing is inspected before the siding covers it.</p>
+      <p>You do not have to plan the sequence yourself. Each bid should state which part of the job comes first, what has to be finished before the next trade starts, and who inspects the joint before it is covered. With separate bids, find out which other work each contractor assumes is already done.</p>
+      <p>The schedule matters too. A written start window for each trade shows conflicts before you sign, so settle what happens if one of them slips.</p>
+    </section>
+
+    <section class="step">
+      <h2>Who is responsible if a leak shows up where two trades meet?</h2>
+      <p>Settle this before you sign, because the answer depends on the contracts and warranties involved. A leak at a joint may involve two contractors and two manufacturers. Get each contractor to state in writing which parts of the joint their warranty covers and which it does not.</p>
+      <p>Warranties come with conditions. The <a href="https://www.nrca.net/roofing-guidelines/selecting-a-contractor" target="_blank" rel="noopener">National Roofing Contractors Association (NRCA)</a> advises homeowners to read a roofing warranty closely and understand the conditions that would void it.</p>
+      <p>Put one question to every contractor in the same words: "If water gets in where your work meets another trade's work, whose warranty applies, and what would void it?" The answers show how each one thinks about the joint. Our guide to the <a href="/guides/contractor-workmanship-warranty.html">contractor workmanship warranty</a> explains what a workmanship warranty covers.</p>
+    </section>
+
+    <section class="step">
+      <h2>What about older homes and lead-safe rules?</h2>
+      <p>If your home was built before 1978, lead-safe work rules may apply to the job. EPA says its <a href="https://www.epa.gov/lead/lead-renovation-repair-and-painting-program" target="_blank" rel="noopener">Renovation, Repair and Painting rule</a> covers anyone paid to perform work that disturbs painted surfaces in homes built before 1978, including all firms, even sole proprietorships. Whether a given job disturbs paint is a question for each contractor.</p>
+      <p>The federal rule's definition of renovation, in <a href="https://www.ecfr.gov/current/title-40/chapter-I/subchapter-R/part-745/subpart-E/section-745.83" target="_blank" rel="noopener">40 CFR 745.83</a>, lists window repair and the removal of building components among its examples. The same section names windows, siding, gutters and painted roofing as building components. For any of these bids, the useful question is whether the work will disturb painted surfaces and how the crew will contain and clean up dust.</p>
+    </section>
+
+    <section class="step">
+      <h2>How do you compare bids that cover different trades?</h2>
+      <p>Compare each trade against the other bids for that trade, then look at the total. Three bids are not a comparison if they price three different jobs. A bundled number for roof, gutters and siding cannot be set beside three single-trade bids until it is broken into separate lines.</p>
+      <p>Decide what you want first, then send the same specs to every contractor so the bids compare apples to apples. Our guides cover each trade: the <a href="/guides/roof-bid-comparison-worksheet.html">roof bid comparison worksheet</a>, <a href="/guides/siding-bid-comparison.html">siding replacement bids</a>, <a href="/guides/gutter-bid-comparison.html">gutter replacement bids</a> and <a href="/guides/window-replacement-bid-comparison.html">how to compare window replacement bids</a>. Fill in the same table for every contractor so a blank cell shows up as a question.</p>
+      <p>Do not treat the lowest total as the answer. NRCA advises <a href="https://www.nrca.net/roofing-guidelines/selecting-a-contractor" target="_blank" rel="noopener">a healthy skepticism</a> about the lowest bid and says price is only one criterion for selecting a roofing contractor. A lower total may price fewer parts, a different material or a thinner warranty.</p>
+    </section>
+
+    <section class="step">
+      <h2>What to ask every contractor</h2>
+      <p>Copy this list into a note and send it to each contractor before you compare totals.</p>
+      <ul>
+        <li>Which parts of this job will your own crew do, and which will be subcontracted?</li>
+        <li>Can you price each trade on its own line, so I can compare it to other bids?</li>
+        <li>In what order will the work happen, and what must be finished before the next trade starts?</li>
+        <li>Where the roof meets the gutters, and where the roof or windows meet the siding, who is responsible for the flashing and the joint?</li>
+        <li>Who inspects the flashing before it is covered?</li>
+        <li>If water gets in where your work meets another trade's work, whose warranty applies, and what would void it?</li>
+        <li>Which warranties come with each part, who backs each one, and can I see the documents?</li>
+        <li>My home was built before 1978. How do you follow the EPA's lead-safe work rules?</li>
+        <li>What are your license number and proof of insurance?</li>
+        <li>What does the bid leave out, and how are extras priced and agreed?</li>
+        <li>Who pulls any permits, and is the cost in the price?</li>
+        <li>When can you start, how long will each part take, and what happens if the schedule slips?</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>Otter Quotes covers roofing, siding, gutters and windows. We create a written scope of work and send it to multiple contractors, who compete with bids on that same scope. A contractor bidding on several trades can price each trade and a bundled total. You compare the bids and sign online, without a salesperson in your home. Homeowners who provide a copy of their insurance estimate pay nothing. For a roof, without one, if you order measurements from us, you pay as little as $22.63 up front for professional measurements that contractors use to bid. The report is yours to keep. If you complete a job on the platform, that money is refunded to you. Contractors pay Otter Quotes a fee on the accepted bid. We do not work with your insurance company or sell upgrades.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>Is it better to hire one contractor for the roof, gutters, siding and windows?</h3>
+        <div class="faq-answer">
+          <p>Neither is better in every case. One contractor gives you one contract and one point of contact. Separate bids give you a contract for each trade. In both cases, get each part priced on its own line and find out which work the contractor's own crew will do.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Why do the roof and the gutters need to be planned together?</h3>
+        <div class="faq-answer">
+          <p>They share the roof edge. GAF's technical bulletin says drip edge directs water away from the edge of the roof, and that where there is a gutter, shingles should overhang its inside edge so water goes into the gutter. Settle who is responsible for that edge when two companies are involved.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What should I check about warranties when several trades work on one house?</h3>
+        <div class="faq-answer">
+          <p>Find out which parts of the work each contractor's warranty covers, who backs it, and what would void it. Then settle whose warranty applies if a leak appears where two trades meet. Get the answers and the warranty documents in writing before you sign anything.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Do lead-safe rules apply to siding and window work?</h3>
+        <div class="faq-answer">
+          <p>EPA says its rule covers anyone paid to perform work that disturbs painted surfaces in homes built before 1978. The federal definition of renovation includes the removal of building components, and the same section names windows and siding as building components. If your home is older than that, confirm with each contractor whether the job will disturb paint.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Can I compare a bundled bid with separate bids?</h3>
+        <div class="faq-answer">
+          <p>Yes, if the bundled bid shows each trade as its own line, with the same scope and the same level of detail. Without separate lines, you cannot see what each part is priced at. Fill in the same comparison table for every contractor.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="step">
+      <h2>Sources</h2>
+      <ul>
+        <li><a href="https://www.gaf.com/en-us/document-library/documents/technical-bulletins-&amp;-notes/r-141-drip-edges-and-shingles.pdf" target="_blank" rel="noopener">GAF Technical Bulletin TAB-R-141, "Drip Edges and Shingles"</a></li>
+        <li><a href="https://www.asphaltroofing.org/installation-of-drip-edge-at-eaves-and-rakes/" target="_blank" rel="noopener">Asphalt Roofing Manufacturers Association (ARMA), "Installation of Drip Edge at Eaves and Rakes"</a></li>
+        <li><a href="https://basc.pnnl.gov/resource-guides/windows-and-doors-are-fully-flashed" target="_blank" rel="noopener">Building America Solution Center (U.S. Department of Energy resource), "Windows and Doors are Fully Flashed"</a></li>
+        <li><a href="https://www.epa.gov/lead/lead-renovation-repair-and-painting-program" target="_blank" rel="noopener">U.S. Environmental Protection Agency, "Renovation, Repair and Painting Program"</a></li>
+        <li><a href="https://www.ecfr.gov/current/title-40/chapter-I/subchapter-R/part-745/subpart-E/section-745.83" target="_blank" rel="noopener">U.S. Environmental Protection Agency, 40 CFR 745.83 (definitions), via the Electronic Code of Federal Regulations</a></li>
+        <li><a href="https://www.nrca.net/roofing-guidelines/selecting-a-contractor" target="_blank" rel="noopener">National Roofing Contractors Association, "Selecting a Contractor"</a></li>
+      </ul>
+    </section>
+
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/guides/siding-bid-comparison.html">Siding Replacement Bids: What a Quote Should Include and How to Compare</a></li>
+        <li><a href="/guides/gutter-bid-comparison.html">Gutter Replacement Bids: Linear Feet, Downspouts and What to Check</a></li>
+        <li><a href="/guides/window-replacement-bid-comparison.html">How to Compare Window Replacement Bids</a></li>
+        <li><a href="/guides/contractor-workmanship-warranty.html">The Contractor Workmanship Warranty: What It Covers and Why It Is Only as Good as the Company</a></li>
+        <li><a href="/guides/siding-replacement-cost-factors.html">What Affects the Cost of Siding Replacement?</a></li>
+        <li><a href="/guides/topics/siding-gutters-windows.html">Browse all: Siding, Gutters and Windows</a></li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Roof, Gutters, Siding and Windows: One Contractor or Separate Bids?",
+  "description": "Replacing a roof, gutters, siding or windows? See where the trades meet, what to ask, and how to compare bids from one contractor or several.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization", "logo": {"@type": "ImageObject", "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"}, "sameAs": ["https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ", "https://www.linkedin.com/company/otter-quotes", "https://www.facebook.com/OtterQuote", "https://www.instagram.com/otterquote/"],
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-11-05",
+  "dateModified": "2026-11-05",
+  "publisher": {
+    "@type": "Organization", "url": "https://otterquote.com/", "sameAs": ["https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ", "https://www.linkedin.com/company/otter-quotes", "https://www.facebook.com/OtterQuote", "https://www.instagram.com/otterquote/"],
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/exterior-projects-one-contractor-or-separate-bids.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is it better to hire one contractor for the roof, gutters, siding and windows?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Neither is better in every case. One contractor gives you one contract and one point of contact. Separate bids give you a contract for each trade. In both cases, get each part priced on its own line and find out which work the contractor's own crew will do."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Why do the roof and the gutters need to be planned together?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "They share the roof edge. GAF's technical bulletin says drip edge directs water away from the edge of the roof, and that where there is a gutter, shingles should overhang its inside edge so water goes into the gutter. Settle who is responsible for that edge when two companies are involved."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What should I check about warranties when several trades work on one house?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Find out which parts of the work each contractor's warranty covers, who backs it, and what would void it. Then settle whose warranty applies if a leak appears where two trades meet. Get the answers and the warranty documents in writing before you sign anything."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Do lead-safe rules apply to siding and window work?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EPA says its rule covers anyone paid to perform work that disturbs painted surfaces in homes built before 1978. The federal definition of renovation includes the removal of building components, and the same section names windows and siding as building components. If your home is older than that, confirm with each contractor whether the job will disturb paint."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I compare a bundled bid with separate bids?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, if the bundled bid shows each trade as its own line, with the same scope and the same level of detail. Without separate lines, you cannot see what each part is priced at. Fill in the same comparison table for every contractor."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "Roof, Gutters, Siding and Windows: One Contractor or Separate Bids?",
+      "item": "https://otterquote.com/guides/exterior-projects-one-contractor-or-separate-bids.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>

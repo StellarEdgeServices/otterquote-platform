@@ -1,8 +1,8 @@
 -- gh-2995 (part b of #2444): server-side, append-only contractor CPA acceptance via accept_cpa(p_version text).
--- STATUS (gh-1438, as of 2026-10-23T13:27:20Z): NOT APPLIED
--- EVIDENCE: drafted on PR branch gh-2995-accept-cpa; production read-only SELECT 2026-10-23: table public.contractor_cpa_acceptances absent (0 rows in information_schema.tables), function accept_cpa absent (0 rows in pg_proc), public.cpa_versions has one is_current row 'v1-2026-04'
--- REPO COPY: none
--- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3B path (migration-author, R-177 pair, R-097 24-hour notice, a recorded apply).
+-- STATUS (gh-1438, as of 2026-10-29): APPLIED
+-- EVIDENCE: APPLIED -- #2995 / Marty CTO RUN 85 apply 2026-10-28; ledger row 20261028152549 (claim cto-2026-10-28T14:54:19Z); filed byte for byte (sha256 a36bd8c1d395ca717a4d73b43147245aa92b3768da8adf833385f28064b8a6d3 = this draft at 0f9fd397) in supabase/migrations/20261028152549_gh2995_accept_cpa_append_only.sql by gh-3137. Earlier draft-time evidence, kept: drafted on PR branch gh-2995-accept-cpa; production read-only SELECT 2026-10-23: table public.contractor_cpa_acceptances absent (0 rows in information_schema.tables), function accept_cpa absent (0 rows in pg_proc), public.cpa_versions has one is_current row 'v1-2026-04'
+-- REPO COPY: supabase/migrations/20261028152549_gh2995_accept_cpa_append_only.sql (forward, byte for byte); rollback in supabase/migrations_rollbacks/gh2995_accept_cpa_append_only_rollback.sql. The draft stays here only because supabase/tests/gh2995_accept_cpa_proof_run.sh reads it; do not run it again.
+-- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 -- Rollback: supabase/migrations_rollbacks/gh2995_accept_cpa_append_only_rollback.sql
 -- Pre-flight: supabase/migrations_rollbacks/gh2995_accept_cpa_append_only_pre-flight.md  Proof (BEGIN ... ROLLBACK, is_test rows only): supabase/tests/gh2995_accept_cpa_proof.sql
 --

@@ -33,7 +33,7 @@ const SECTIONS = [
   ['Get multiple competitive bids.', 'Contractors know they are competing for work on Otter Quotes. So they offer the best pricing they can.'],
   ['See subcontractor pricing.', 'Clients can choose from local, well known contractors or work directly with the subcontractors who do the work.'],
   ['Reduce unnecessary expenses.', 'Otter Quotes reduces the need for sales and marketing costs, so contractors can pass those savings along to your clients.'],
-  ['Free when the job is done.', 'Clients pay an upfront charge of as little as $22.63 to purchase professional measurements that are used by every contractor. If they complete a job on the platform, that money is refunded to them.'],
+  ['Free when the job is done.', 'Clients pay an upfront charge of as little as $22.63 to purchase professional measurements that contractors use to bid. If they complete a job on the platform, that money is refunded to them.'],
   ['Earn $200 for qualified referrals.', 'For every client you refer to us that completes a job of $10,000 or more with one of our contractors, we will send you $200. Our app makes it quick and easy to send the link to your clients.'],
 ];
 ok(main.includes('<h1>' + HEADLINE + '</h1>'), 'headline is exactly "' + HEADLINE + '" in the h1');

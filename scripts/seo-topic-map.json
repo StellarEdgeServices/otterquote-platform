@@ -1,0 +1,619 @@
+{
+  "_about": "Shared topic map for related-article blocks, breadcrumbs and topic hubs (gh-3380). Each article belongs to exactly one topic. 'related' holds, per article, five hand-picked links in the order they render, followed by the topic hub. Existing on-topic links from the page come first; then one link into an adjacent topic where a page is truly related (otherwise another same-topic link); then same-topic fill. Nothing is positional or random. 'held' pages are kept out of topics, hubs and every related block. Edit this file, then run: python3 scripts/seo-article-links.py apply",
+  "topics": [
+    {
+      "id": "claims-first-steps",
+      "title": "After a Storm: Damage and Filing a Claim",
+      "adjacent": "claims-settlement",
+      "members": [
+        "blog/what-to-do-after-storm-damages-roof",
+        "blog/hail-damage-roof-inspection-first-72-hours",
+        "blog/hail-vs-wind-roof-damage",
+        "guides/prove-date-of-loss-hail",
+        "guides/hail-damage-found-months-later",
+        "guides/second-storm-open-claim",
+        "blog/does-homeowners-insurance-cover-roof-damage",
+        "blog/when-not-to-file-roof-insurance-claim",
+        "guides/how-to-file-property-damage-claim"
+      ]
+    },
+    {
+      "id": "claims-settlement",
+      "title": "Insurance Estimates and Settlements",
+      "adjacent": "choosing-contractor",
+      "members": [
+        "guides/after-adjuster-estimate-next-steps",
+        "blog/what-is-scope-of-loss-roofing",
+        "blog/rcv-vs-acv-roof-insurance",
+        "blog/what-is-recoverable-depreciation-roofing",
+        "blog/public-adjuster-vs-diy-roof-claim",
+        "blog/how-to-negotiate-better-roof-repair-insurance-claim",
+        "blog/how-long-does-roof-insurance-claim-take-indiana",
+        "guides/roof-insurance-check-mortgage-contractor-payment",
+        "guides/contractor-bid-higher-than-insurance-estimate",
+        "guides/show-contractor-insurance-estimate",
+        "guides/contractor-offers-to-waive-deductible"
+      ]
+    },
+    {
+      "id": "choosing-contractor",
+      "title": "Choosing a Contractor and Reading the Contract",
+      "adjacent": "comparing-bids",
+      "members": [
+        "guides/how-to-choose-contractor",
+        "guides/how-to-read-contractor-estimate",
+        "blog/roofing-estimate-red-flags",
+        "blog/storm-chaser-roofing-scams",
+        "guides/roofing-contract-checklist-before-you-sign",
+        "guides/roof-permit-in-your-bid",
+        "guides/roof-change-orders-hidden-damage",
+        "guides/hire-roofer-paying-out-of-pocket",
+        "blog/the-roadmap-to-eliminating-contractors"
+      ]
+    },
+    {
+      "id": "comparing-bids",
+      "title": "Comparing Bids and Roof Costs",
+      "adjacent": "siding-gutters-windows",
+      "members": [
+        "guides/multiple-bids-roof-insurance-claim",
+        "guides/roof-bid-comparison-worksheet",
+        "guides/roof-bid-comparison-tool",
+        "guides/roof-bid-much-lower-than-the-others",
+        "guides/starter-strip-ridge-cap-bid",
+        "guides/roof-underlayment-ice-barrier-bid",
+        "blog/why-roofers-quote-different-prices",
+        "guides/competitive-roof-bids-vs-single-referral",
+        "guides/online-roof-bids-no-salesperson",
+        "guides/drip-edge-roof-replacement-bid",
+        "blog/aerial-roof-measurement-reports",
+        "guides/roof-replacement-cost-breakdown",
+        "guides/otter-quotes-vs-thumbtack",
+        "guides/otter-quotes-vs-angi",
+        "guides/roof-repair-overlay-or-replacement-bids",
+        "guides/roof-flashing-replacement-bid"
+      ]
+    },
+    {
+      "id": "siding-gutters-windows",
+      "title": "Siding, Gutters and Windows",
+      "adjacent": "shingles-warranties",
+      "members": [
+        "guides/siding-bid-comparison",
+        "guides/siding-replacement-cost-factors",
+        "guides/hail-damaged-siding-matching-bids",
+        "guides/gutter-bid-comparison",
+        "guides/gutter-replacement-cost-factors",
+        "guides/hail-damaged-windows-gutters-bids",
+        "guides/window-replacement-bid-comparison",
+        "guides/window-replacement-cost-factors",
+        "guides/exterior-projects-one-contractor-or-separate-bids"
+      ]
+    },
+    {
+      "id": "shingles-warranties",
+      "title": "Shingles, Ratings and Warranties",
+      "adjacent": "choosing-contractor",
+      "members": [
+        "guides/limited-lifetime-shingle-warranty",
+        "guides/manufacturer-backed-roof-warranties",
+        "blog/roof-shingle-warranty-tiers-explained",
+        "guides/algae-resistant-shingle-warranties",
+        "guides/class-4-impact-resistant-shingles",
+        "guides/roof-wind-ratings-explained",
+        "guides/contractor-workmanship-warranty",
+        "guides/metal-roof-vs-asphalt-shingle-bids"
+      ]
+    },
+    {
+      "id": "timing-after-storm",
+      "title": "Roof Timing, Tarps and Scheduling",
+      "adjacent": "claims-first-steps",
+      "members": [
+        "guides/roofers-backed-up-after-storm",
+        "guides/roof-tarp-while-you-wait-for-repairs",
+        "guides/how-long-does-roof-replacement-take",
+        "guides/roof-replacement-in-cold-weather",
+        "news/roof-buying-season",
+        "news/realtors-buy-a-roof-in-winter"
+      ]
+    }
+  ],
+  "manual": {
+    "_about": "Partner articles keep their hand-chosen, audience-specific blocks (D-333: the inspector article must not link into pages that show referral-fee dollar amounts). The one partner article with no block gets a block of real-estate-audience links only.",
+    "partners/indianapolis-inspection-found-roof-damage": [
+      "/partner-re.html",
+      "/partners.html",
+      "/partners/roof-damage-found-before-closing.html",
+      "/partners/what-a-listing-agent-can-do-about-storm-damage-before-listing.html"
+    ]
+  },
+  "partner_articles_left_as_is": [
+    "partners/how-a-home-inspector-can-point-a-client-to-bids",
+    "partners/roof-damage-found-before-closing",
+    "partners/what-a-listing-agent-can-do-about-storm-damage-before-listing",
+    "partners/what-to-hand-a-policyholder-after-a-storm"
+  ],
+  "organization": {
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/",
+    "logo": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+    "sameAs_source": "Claude's Memories/otterquote-urls.md, Company profiles, rows given by Dustin 2026-11-03 (Nextdoor excluded: not confirmed)",
+    "sameAs": [
+      "https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ",
+      "https://www.linkedin.com/company/otter-quotes",
+      "https://www.facebook.com/OtterQuote",
+      "https://www.instagram.com/otterquote/"
+    ]
+  },
+  "held": {
+    "guides/how-to-negotiate-with-insurer": "Deliberately held: noindex, out of the sitemap, card removed from guides/index.html on 2026-10-03 (#2480) until a LEGAL-READ passes; CEO ruling pending. Not linked from any hub or related block."
+  },
+  "plain_titles": {
+    "/how-it-works.html": "How Otter Quotes Works for Homeowners"
+  },
+  "related": {
+    "blog/what-to-do-after-storm-damages-roof": [
+      "/blog/storm-chaser-roofing-scams.html",
+      "/guides/after-adjuster-estimate-next-steps.html",
+      "/blog/does-homeowners-insurance-cover-roof-damage.html",
+      "/guides/how-to-file-property-damage-claim.html",
+      "/blog/hail-damage-roof-inspection-first-72-hours.html"
+    ],
+    "blog/hail-damage-roof-inspection-first-72-hours": [
+      "/blog/hail-vs-wind-roof-damage.html",
+      "/guides/how-to-file-property-damage-claim.html",
+      "/blog/how-long-does-roof-insurance-claim-take-indiana.html",
+      "/blog/what-is-scope-of-loss-roofing.html",
+      "/blog/what-to-do-after-storm-damages-roof.html"
+    ],
+    "blog/hail-vs-wind-roof-damage": [
+      "/guides/how-to-file-property-damage-claim.html",
+      "/blog/hail-damage-roof-inspection-first-72-hours.html",
+      "/blog/what-is-scope-of-loss-roofing.html",
+      "/blog/what-to-do-after-storm-damages-roof.html",
+      "/how-it-works.html"
+    ],
+    "guides/prove-date-of-loss-hail": [
+      "/blog/what-to-do-after-storm-damages-roof.html",
+      "/guides/hail-damage-found-months-later.html",
+      "/guides/second-storm-open-claim.html",
+      "/guides/how-to-file-property-damage-claim.html",
+      "/blog/hail-vs-wind-roof-damage.html"
+    ],
+    "guides/hail-damage-found-months-later": [
+      "/guides/prove-date-of-loss-hail.html",
+      "/blog/hail-vs-wind-roof-damage.html",
+      "/guides/second-storm-open-claim.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/roof-bid-comparison-worksheet.html"
+    ],
+    "guides/second-storm-open-claim": [
+      "/guides/hail-damage-found-months-later.html",
+      "/guides/prove-date-of-loss-hail.html",
+      "/guides/roofers-backed-up-after-storm.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/how-to-file-property-damage-claim.html"
+    ],
+    "blog/does-homeowners-insurance-cover-roof-damage": [
+      "/blog/what-is-recoverable-depreciation-roofing.html",
+      "/blog/what-is-scope-of-loss-roofing.html",
+      "/guides/how-to-file-property-damage-claim.html",
+      "/blog/hail-vs-wind-roof-damage.html",
+      "/blog/rcv-vs-acv-roof-insurance.html"
+    ],
+    "blog/when-not-to-file-roof-insurance-claim": [
+      "/blog/public-adjuster-vs-diy-roof-claim.html",
+      "/blog/hail-vs-wind-roof-damage.html",
+      "/blog/what-to-do-after-storm-damages-roof.html",
+      "/how-it-works.html",
+      "/blog/does-homeowners-insurance-cover-roof-damage.html"
+    ],
+    "guides/how-to-file-property-damage-claim": [
+      "/blog/how-long-does-roof-insurance-claim-take-indiana.html",
+      "/blog/what-to-do-after-storm-damages-roof.html",
+      "/blog/hail-vs-wind-roof-damage.html",
+      "/blog/hail-damage-roof-inspection-first-72-hours.html",
+      "/blog/does-homeowners-insurance-cover-roof-damage.html"
+    ],
+    "guides/after-adjuster-estimate-next-steps": [
+      "/blog/what-to-do-after-storm-damages-roof.html",
+      "/blog/what-is-scope-of-loss-roofing.html",
+      "/blog/how-to-negotiate-better-roof-repair-insurance-claim.html",
+      "/guides/multiple-bids-roof-insurance-claim.html",
+      "/guides/how-to-read-contractor-estimate.html"
+    ],
+    "blog/what-is-scope-of-loss-roofing": [
+      "/guides/after-adjuster-estimate-next-steps.html",
+      "/blog/hail-vs-wind-roof-damage.html",
+      "/blog/what-to-do-after-storm-damages-roof.html",
+      "/how-it-works.html",
+      "/blog/rcv-vs-acv-roof-insurance.html"
+    ],
+    "blog/rcv-vs-acv-roof-insurance": [
+      "/blog/what-is-recoverable-depreciation-roofing.html",
+      "/blog/what-is-scope-of-loss-roofing.html",
+      "/blog/how-long-does-roof-insurance-claim-take-indiana.html",
+      "/blog/public-adjuster-vs-diy-roof-claim.html",
+      "/guides/after-adjuster-estimate-next-steps.html"
+    ],
+    "blog/what-is-recoverable-depreciation-roofing": [
+      "/blog/rcv-vs-acv-roof-insurance.html",
+      "/blog/what-is-scope-of-loss-roofing.html",
+      "/blog/how-long-does-roof-insurance-claim-take-indiana.html",
+      "/blog/how-to-negotiate-better-roof-repair-insurance-claim.html",
+      "/guides/how-to-file-property-damage-claim.html"
+    ],
+    "blog/public-adjuster-vs-diy-roof-claim": [
+      "/blog/rcv-vs-acv-roof-insurance.html",
+      "/guides/after-adjuster-estimate-next-steps.html",
+      "/blog/how-to-negotiate-better-roof-repair-insurance-claim.html",
+      "/guides/multiple-bids-roof-insurance-claim.html",
+      "/how-it-works.html"
+    ],
+    "blog/how-to-negotiate-better-roof-repair-insurance-claim": [
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/multiple-bids-roof-insurance-claim.html",
+      "/blog/why-roofers-quote-different-prices.html",
+      "/guides/contractor-workmanship-warranty.html",
+      "/guides/after-adjuster-estimate-next-steps.html"
+    ],
+    "blog/how-long-does-roof-insurance-claim-take-indiana": [
+      "/blog/how-to-negotiate-better-roof-repair-insurance-claim.html",
+      "/blog/hail-damage-roof-inspection-first-72-hours.html",
+      "/blog/what-to-do-after-storm-damages-roof.html",
+      "/blog/what-is-recoverable-depreciation-roofing.html",
+      "/guides/roof-tarp-while-you-wait-for-repairs.html"
+    ],
+    "guides/roof-insurance-check-mortgage-contractor-payment": [
+      "/guides/after-adjuster-estimate-next-steps.html",
+      "/guides/contractor-bid-higher-than-insurance-estimate.html",
+      "/guides/show-contractor-insurance-estimate.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html"
+    ],
+    "guides/contractor-bid-higher-than-insurance-estimate": [
+      "/guides/after-adjuster-estimate-next-steps.html",
+      "/guides/show-contractor-insurance-estimate.html",
+      "/guides/multiple-bids-roof-insurance-claim.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/blog/why-roofers-quote-different-prices.html"
+    ],
+    "guides/show-contractor-insurance-estimate": [
+      "/guides/after-adjuster-estimate-next-steps.html",
+      "/guides/multiple-bids-roof-insurance-claim.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/how-to-choose-contractor.html",
+      "/guides/roof-insurance-check-mortgage-contractor-payment.html"
+    ],
+    "guides/contractor-offers-to-waive-deductible": [
+      "/guides/how-to-choose-contractor.html",
+      "/guides/multiple-bids-roof-insurance-claim.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/after-adjuster-estimate-next-steps.html"
+    ],
+    "guides/how-to-choose-contractor": [
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/contractor-offers-to-waive-deductible.html",
+      "/guides/hire-roofer-paying-out-of-pocket.html",
+      "/how-it-works.html",
+      "/guides/multiple-bids-roof-insurance-claim.html"
+    ],
+    "guides/how-to-read-contractor-estimate": [
+      "/blog/roof-shingle-warranty-tiers-explained.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/blog/why-roofers-quote-different-prices.html",
+      "/blog/roofing-estimate-red-flags.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html"
+    ],
+    "blog/roofing-estimate-red-flags": [
+      "/guides/how-to-read-contractor-estimate.html",
+      "/blog/storm-chaser-roofing-scams.html",
+      "/blog/why-roofers-quote-different-prices.html",
+      "/blog/the-roadmap-to-eliminating-contractors.html",
+      "/how-it-works.html"
+    ],
+    "blog/storm-chaser-roofing-scams": [
+      "/blog/public-adjuster-vs-diy-roof-claim.html",
+      "/blog/what-to-do-after-storm-damages-roof.html",
+      "/guides/how-to-choose-contractor.html",
+      "/blog/roofing-estimate-red-flags.html",
+      "/how-it-works.html"
+    ],
+    "guides/roofing-contract-checklist-before-you-sign": [
+      "/guides/how-to-choose-contractor.html",
+      "/guides/roof-change-orders-hidden-damage.html",
+      "/guides/roof-permit-in-your-bid.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/how-to-read-contractor-estimate.html"
+    ],
+    "guides/roof-underlayment-ice-barrier-bid": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/manufacturer-backed-roof-warranties.html",
+      "/guides/roof-permit-in-your-bid.html"
+    ],
+    "guides/roof-permit-in-your-bid": [
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/how-to-choose-contractor.html",
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html"
+    ],
+    "guides/roof-change-orders-hidden-damage": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/how-long-does-roof-replacement-take.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html"
+    ],
+    "guides/hire-roofer-paying-out-of-pocket": [
+      "/guides/how-to-choose-contractor.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/roof-bid-much-lower-than-the-others.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/news/roof-buying-season.html"
+    ],
+    "guides/multiple-bids-roof-insurance-claim": [
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/how-to-choose-contractor.html",
+      "/blog/why-roofers-quote-different-prices.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roof-bid-comparison-tool.html"
+    ],
+    "guides/roof-bid-comparison-worksheet": [
+      "/guides/how-to-read-contractor-estimate.html",
+      "/blog/why-roofers-quote-different-prices.html",
+      "/blog/roof-shingle-warranty-tiers-explained.html",
+      "/blog/aerial-roof-measurement-reports.html",
+      "/guides/roof-bid-comparison-tool.html"
+    ],
+    "guides/roof-bid-comparison-tool": [
+      "/guides/online-roof-bids-no-salesperson.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/show-contractor-insurance-estimate.html",
+      "/guides/multiple-bids-roof-insurance-claim.html"
+    ],
+    "guides/drip-edge-roof-replacement-bid": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/manufacturer-backed-roof-warranties.html",
+      "/guides/roof-change-orders-hidden-damage.html"
+    ],
+    "guides/roof-bid-much-lower-than-the-others": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/blog/why-roofers-quote-different-prices.html",
+      "/blog/roofing-estimate-red-flags.html",
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/contractor-bid-higher-than-insurance-estimate.html"
+    ],
+    "blog/why-roofers-quote-different-prices": [
+      "/blog/roof-shingle-warranty-tiers-explained.html",
+      "/guides/how-to-choose-contractor.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/how-it-works.html"
+    ],
+    "guides/competitive-roof-bids-vs-single-referral": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/otter-quotes-vs-thumbtack.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/blog/roofing-estimate-red-flags.html",
+      "/guides/online-roof-bids-no-salesperson.html"
+    ],
+    "guides/exterior-projects-one-contractor-or-separate-bids": [
+      "/guides/siding-bid-comparison.html",
+      "/guides/gutter-bid-comparison.html",
+      "/guides/window-replacement-bid-comparison.html",
+      "/guides/contractor-workmanship-warranty.html",
+      "/guides/siding-replacement-cost-factors.html"
+    ],
+    "guides/metal-roof-vs-asphalt-shingle-bids": [
+      "/guides/class-4-impact-resistant-shingles.html",
+      "/guides/manufacturer-backed-roof-warranties.html",
+      "/guides/roof-wind-ratings-explained.html",
+      "/guides/contractor-workmanship-warranty.html",
+      "/guides/roof-change-orders-hidden-damage.html"
+    ],
+    "guides/roof-repair-overlay-or-replacement-bids": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roof-change-orders-hidden-damage.html",
+      "/guides/roof-tarp-while-you-wait-for-repairs.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/how-to-read-contractor-estimate.html"
+    ],
+    "guides/roof-flashing-replacement-bid": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/roof-change-orders-hidden-damage.html",
+      "/guides/manufacturer-backed-roof-warranties.html"
+    ],
+    "guides/online-roof-bids-no-salesperson": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/multiple-bids-roof-insurance-claim.html",
+      "/guides/how-to-choose-contractor.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/roof-bid-comparison-tool.html"
+    ],
+    "blog/aerial-roof-measurement-reports": [
+      "/guides/how-to-read-contractor-estimate.html",
+      "/blog/why-roofers-quote-different-prices.html",
+      "/guides/how-to-choose-contractor.html",
+      "/how-it-works.html",
+      "/guides/roof-bid-comparison-worksheet.html"
+    ],
+    "guides/roof-replacement-cost-breakdown": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/blog/why-roofers-quote-different-prices.html",
+      "/blog/roof-shingle-warranty-tiers-explained.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/roof-bid-much-lower-than-the-others.html"
+    ],
+    "guides/siding-bid-comparison": [
+      "/guides/how-to-choose-contractor.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/blog/why-roofers-quote-different-prices.html",
+      "/guides/siding-replacement-cost-factors.html",
+      "/guides/exterior-projects-one-contractor-or-separate-bids.html"
+    ],
+    "guides/siding-replacement-cost-factors": [
+      "/guides/siding-bid-comparison.html",
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/how-to-choose-contractor.html",
+      "/blog/why-roofers-quote-different-prices.html",
+      "/guides/hail-damaged-siding-matching-bids.html"
+    ],
+    "guides/hail-damaged-siding-matching-bids": [
+      "/guides/siding-bid-comparison.html",
+      "/guides/siding-replacement-cost-factors.html",
+      "/guides/hail-damage-found-months-later.html",
+      "/guides/hail-damaged-windows-gutters-bids.html",
+      "/guides/online-roof-bids-no-salesperson.html"
+    ],
+    "guides/gutter-bid-comparison": [
+      "/guides/gutter-replacement-cost-factors.html",
+      "/guides/how-to-choose-contractor.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/blog/why-roofers-quote-different-prices.html",
+      "/blog/what-to-do-after-storm-damages-roof.html"
+    ],
+    "guides/gutter-replacement-cost-factors": [
+      "/guides/gutter-bid-comparison.html",
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/siding-replacement-cost-factors.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/window-replacement-cost-factors.html"
+    ],
+    "guides/hail-damaged-windows-gutters-bids": [
+      "/guides/window-replacement-bid-comparison.html",
+      "/guides/gutter-bid-comparison.html",
+      "/guides/prove-date-of-loss-hail.html",
+      "/guides/how-to-choose-contractor.html",
+      "/guides/hail-damaged-siding-matching-bids.html"
+    ],
+    "guides/window-replacement-bid-comparison": [
+      "/guides/siding-bid-comparison.html",
+      "/guides/gutter-bid-comparison.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/how-it-works.html",
+      "/guides/window-replacement-cost-factors.html"
+    ],
+    "guides/window-replacement-cost-factors": [
+      "/guides/window-replacement-bid-comparison.html",
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/siding-replacement-cost-factors.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/gutter-replacement-cost-factors.html"
+    ],
+    "guides/limited-lifetime-shingle-warranty": [
+      "/blog/roof-shingle-warranty-tiers-explained.html",
+      "/guides/manufacturer-backed-roof-warranties.html",
+      "/guides/class-4-impact-resistant-shingles.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html"
+    ],
+    "guides/manufacturer-backed-roof-warranties": [
+      "/blog/roof-shingle-warranty-tiers-explained.html",
+      "/guides/limited-lifetime-shingle-warranty.html",
+      "/guides/roof-wind-ratings-explained.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html"
+    ],
+    "blog/roof-shingle-warranty-tiers-explained": [
+      "/guides/how-to-read-contractor-estimate.html",
+      "/blog/why-roofers-quote-different-prices.html",
+      "/guides/how-to-choose-contractor.html",
+      "/how-it-works.html",
+      "/guides/limited-lifetime-shingle-warranty.html"
+    ],
+    "guides/algae-resistant-shingle-warranties": [
+      "/blog/roof-shingle-warranty-tiers-explained.html",
+      "/guides/roof-wind-ratings-explained.html",
+      "/guides/class-4-impact-resistant-shingles.html",
+      "/guides/limited-lifetime-shingle-warranty.html",
+      "/guides/manufacturer-backed-roof-warranties.html"
+    ],
+    "guides/class-4-impact-resistant-shingles": [
+      "/blog/hail-vs-wind-roof-damage.html",
+      "/blog/rcv-vs-acv-roof-insurance.html",
+      "/blog/how-to-negotiate-better-roof-repair-insurance-claim.html",
+      "/blog/roof-shingle-warranty-tiers-explained.html",
+      "/guides/metal-roof-vs-asphalt-shingle-bids.html"
+    ],
+    "guides/roof-wind-ratings-explained": [
+      "/blog/roof-shingle-warranty-tiers-explained.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/algae-resistant-shingle-warranties.html",
+      "/guides/class-4-impact-resistant-shingles.html"
+    ],
+    "guides/contractor-workmanship-warranty": [
+      "/blog/roof-shingle-warranty-tiers-explained.html",
+      "/guides/manufacturer-backed-roof-warranties.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/how-to-choose-contractor.html",
+      "/blog/storm-chaser-roofing-scams.html"
+    ],
+    "guides/roofers-backed-up-after-storm": [
+      "/guides/multiple-bids-roof-insurance-claim.html",
+      "/guides/how-to-choose-contractor.html",
+      "/blog/storm-chaser-roofing-scams.html",
+      "/guides/online-roof-bids-no-salesperson.html",
+      "/guides/roof-tarp-while-you-wait-for-repairs.html"
+    ],
+    "guides/roof-tarp-while-you-wait-for-repairs": [
+      "/guides/roofers-backed-up-after-storm.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roof-repair-overlay-or-replacement-bids.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/blog/what-to-do-after-storm-damages-roof.html"
+    ],
+    "guides/starter-strip-ridge-cap-bid": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/manufacturer-backed-roof-warranties.html",
+      "/guides/algae-resistant-shingle-warranties.html"
+    ],
+    "guides/how-long-does-roof-replacement-take": [
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/guides/roof-tarp-while-you-wait-for-repairs.html",
+      "/guides/roof-replacement-in-cold-weather.html",
+      "/guides/roofers-backed-up-after-storm.html"
+    ],
+    "guides/roof-replacement-in-cold-weather": [
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/how-to-read-contractor-estimate.html",
+      "/news/roof-buying-season.html",
+      "/guides/how-long-does-roof-replacement-take.html",
+      "/news/realtors-buy-a-roof-in-winter.html"
+    ],
+    "news/roof-buying-season": [
+      "/guides/how-long-does-roof-replacement-take.html",
+      "/guides/class-4-impact-resistant-shingles.html",
+      "/guides/contractor-offers-to-waive-deductible.html",
+      "/blog/rcv-vs-acv-roof-insurance.html",
+      "/guides/roof-replacement-in-cold-weather.html"
+    ],
+    "blog/the-roadmap-to-eliminating-contractors": [
+      "/blog/why-roofers-quote-different-prices.html",
+      "/blog/roofing-estimate-red-flags.html",
+      "/guides/how-to-choose-contractor.html",
+      "/guides/hire-roofer-paying-out-of-pocket.html",
+      "/how-it-works.html"
+    ],
+    "news/realtors-buy-a-roof-in-winter": [
+      "/guides/roof-replacement-in-cold-weather.html",
+      "/guides/hire-roofer-paying-out-of-pocket.html",
+      "/blog/why-roofers-quote-different-prices.html",
+      "/guides/roofers-backed-up-after-storm.html",
+      "/news/roof-buying-season.html"
+    ]
+  }
+}

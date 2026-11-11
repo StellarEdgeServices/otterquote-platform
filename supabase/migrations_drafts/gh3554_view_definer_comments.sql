@@ -1,0 +1,25 @@
+-- STATUS (gh-1438, as of 2026-11-09T12:47:59Z): NOT APPLIED
+-- FILE ROLE: forward file of set gh3554_view_definer_comments (the STATUS is the set's; it describes the forward migration)
+-- EVIDENCE: drafted 2026-11-09 under #3554 from the amended closes-on (Marty, comment 6728491662, option b) and the read-only production evidence in comment 6728485033 (reloptions {security_barrier=true} on both views, no security_invoker; filters quoted from pg_get_viewdef). Tier 3A decided in comment 6740122004. No database was read or written to produce this file. Not applied: exec:cto applies it and pastes obj_description.
+-- REPO COPY: none. When applied, file under supabase/migrations/<ledger version>_gh3554_view_definer_comments.sql and the rollback under supabase/migrations_rollbacks/.
+-- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+--
+-- gh-3554: document why public.bidder_claim_summary and public.contractor_thread_messages stay SECURITY DEFINER
+-- (the Supabase advisor flags both as security_definer_view, ERROR) and which filter stands in for RLS.
+-- COMMENT ONLY. No view definition, grant, reloption or policy is touched; behaviour is identical before and after.
+-- security_invoker = true was REJECTED in #3554 (measured: bidder_claim_summary 10 -> 4 rows for the test contractor, homeowner-name
+-- redaction would stop, and the D-390 pre-fee message behaviour would change).
+-- ACL: the comments deliberately do not state the full authenticated ACL (the repo records authenticated=rm/postgres on bidder_claim_summary, i.e. SELECT plus PG17 MAINTAIN); the production relacl check is owed to exec:cto.
+-- Rollback: supabase/migrations_drafts/gh3554_view_definer_comments_rollback.sql (restores the comments written by 20261008231303 and 20261020162602).
+-- Proof (rolled back, owed against production by exec:cto): supabase/tests/gh3554_view_definer_comments_proof.sql
+
+BEGIN;
+SET LOCAL lock_timeout = '5s';
+
+COMMENT ON VIEW public.bidder_claim_summary IS
+  $c$gh-3554 / gh-2559 / D-368: SECURITY DEFINER (owner-run, no security_invoker) ON PURPOSE, do not switch to security_invoker = true. Definer is required because the view reads claims, profiles and related rows that base-table RLS hides from a bidding contractor and returns only a redacted projection of them: homeowner_notes are redacted for a bidder who is not the selected contractor (name, street, phone and e-mail; the profiles name is read to build the redaction pattern), the selected contractor reads them with only phone and e-mail removed (d390_redact_contact) until claims.platform_fee_charged IS TRUE and as typed after, and repair-job notes are NULL for a non-selected caller; selected_contractor_id and file names are masked unless the caller is the selected contractor (file names also need the fee charged). Under the caller's own RLS the marketplace feed would shrink and homeowner names would stop being stripped. The filter that stands in for RLS is the join contractors ct ON ct.user_id = (SELECT auth.uid()) plus the WHERE clause: (an active contractor, c.is_test = ct.is_test, on a ready_for_bids claim in active/bidding/pending) OR the selected contractor OR a contractor with a quote on the claim. A caller with no contractors row gets 0 rows; a non-open claim the caller has not bid on gets 0 rows. security_barrier = true keeps a caller's predicates from being pushed below that filter. anon has no privileges; the authenticated grant carries no INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES or TRIGGER (the full ACL is not stated here). Allow-list: supabase/migrations_drafts/gh2559_bidder_claims_view_pre-flight.md.$c$;
+
+COMMENT ON VIEW public.contractor_thread_messages IS
+  $c$gh-3554 / D-390 / gh-2619: SECURITY DEFINER (owner-run, no security_invoker) ON PURPOSE, do not switch to security_invoker = true. Definer is required because the RESTRICTIVE messages policy d390_homeowner_text_prefee hides homeowner-sent messages from the selected contractor until claims.platform_fee_charged IS TRUE, and this view is the only path that serves them, with phone and e-mail redacted by d390_redact_contact until the fee is charged; sender_full_name is filled only when the sender is the caller. Under the caller's own RLS the redacted pre-fee rows would not be returned at all. The filter that stands in for RLS is the join contractors ct ON ct.user_id = (SELECT auth.uid()) plus the WHERE clause: c.selected_contractor_id = ct.id AND the caller has a quote on that claim AND (no release or switch, or m.created_at >= COALESCE(c.contractor_released_at, c.contractor_switched_at)); this is the same predicate as the gh-2619 contractor_messages_select policy. A contractor who is not the selected one, including one who bid, gets 0 rows. security_barrier = true keeps a caller's predicates from being pushed below that filter. anon has no privileges; the authenticated grant carries no INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER or MAINTAIN (the full ACL is not stated here).$c$;
+
+COMMIT;

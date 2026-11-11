@@ -41,6 +41,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { findCompletedContractSigner, parsePayload } from "./payload-parser.ts";
+import { classifyEnvelope } from "./envelope-kind.ts"; // [D-407 / #3287]
 import {
   counterSignNudgeHtml,
   counterSignNudgeText,
@@ -87,6 +88,7 @@ import {
 // one; the local copy is deleted.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
+import { platformFeeCents } from "../_shared/platform-fee.ts"; // gh-3488 / D-267: the one fee definition (shown = charged)
 
 // [gh-1886 re-review #2, independent review on #2198, 2026-09-25T22:02:35Z] Mirrored VERBATIM as a literal
 // string constant in the platform-fee-charge function's own stripe-fetch.ts (Supabase Edge Functions
@@ -483,15 +485,27 @@ serve(async (req) => {
       );
     }
 
-    const isContract = claim.docusign_envelope_id === envelopeId;
-    const isColorConfirmation = claim.color_confirmation_envelope_id === envelopeId;
-    const isProjectConfirmation = claim.project_confirmation_envelope_id === envelopeId;
+    // [D-407 / #3287] Project Confirmation and colour envelopes are retired: create-docusign-envelope
+    // answers 410 for them and this function never creates an envelope. Ones minted earlier can still
+    // send events; they are recognised here, recorded for history, and kept out of every contract branch.
+    const envelopeKind = classifyEnvelope(claim, envelopeId);
+    const isContract = envelopeKind === "contract";
+    const isColorConfirmation = envelopeKind === "retired_color_confirmation";
+    const isProjectConfirmation = envelopeKind === "retired_project_confirmation";
 
     console.log(
       `Matched claim ${claim.id} (${
-        isContract ? "contract" : isColorConfirmation ? "color_confirmation" : "project_confirmation"
+        isContract ? "contract" : isColorConfirmation ? "retired color_confirmation (history only)" : isProjectConfirmation ? "retired project_confirmation (history only)" : "unmatched"
       })`
     );
+
+    if (envelopeKind === "unmatched") {
+      // Cannot happen after the .or() lookup above, but never fall into a confirmation branch by default.
+      return new Response(
+        JSON.stringify({ received: true, warning: "Envelope does not match a claim envelope column" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // ========== SIGNER STATUS (D-274 / #631; matcher re-keyed gh-1446) ==========
     // BoldSign's webhook payload DOES carry per-signer status directly
@@ -1250,8 +1264,12 @@ serve(async (req) => {
                 `[docusign-webhook] D-214 violation: no fee_pct on quote ${quote.id} and platform_settings unavailable — aborting payment to prevent fabricated rate charge`
               );
             }
-            const feeAmount = Math.round(
-              quote.total_price * (platformFeePercent / 100) * 100
+            // gh-3488 / D-267: whole cents from the one shared definition, so the charge is the figure the
+            // contractor was shown and accepted. The old float expression (total_price * (pct / 100) * 100)
+            // rounded a $1,296.10 bid at 5% to 6480 cents against the $64.81 shown.
+            const feeAmount = platformFeeCents(
+              Number(quote.total_price),
+              Number(platformFeePercent)
             );
 
             // ── #1467 GATE 1: live-charge authorization ──────────────────

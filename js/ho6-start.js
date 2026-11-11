@@ -103,6 +103,7 @@
     CORE.trackEvent('ho6_contact_submitted', stepParams('contact'));
     CORE.trackEvent('generate_lead', stepParams('contact', { event_id: leadId }));
     try { fbq('track', 'Lead', {}, { eventID: leadId }); } catch (e) {}
+    try { if (typeof window.__oqHcTrack === 'function') window.__oqHcTrack('lead_saved'); } catch (e) {} // gh-3389 (D-409): HeyCatch goal, no properties
   }
 
   function onSubmit(ev) {

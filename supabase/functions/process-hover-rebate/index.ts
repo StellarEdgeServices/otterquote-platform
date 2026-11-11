@@ -35,6 +35,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { type GetEnv, serviceGate } from "./caller-gate.ts"; // gh-2462
+import { selectRefundKey, selectStripeKey } from "../_shared/stripe-key-select.ts"; // gh-3323
 
 const FUNCTION_NAME = "process-hover-rebate";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -73,7 +74,8 @@ interface RebateResult {
  */
 async function rebateOne(
   supabase: any,
-  stripeSecretKey: string,
+  // gh-3323: the key is chosen PER CLAIM below (Ben's ruling 6578880344), not once per request from the Origin.
+  keyCtx: { isStaging: boolean; getEnv: GetEnv },
   order: any,
 ): Promise<RebateResult> {
   const base: RebateResult = {
@@ -102,7 +104,7 @@ async function rebateOne(
   // mark-job-complete when the contractor finishes the job.
   const { data: claimRow, error: cErr } = await supabase
     .from("claims")
-    .select("user_id, is_test, completion_date")
+    .select("user_id, is_test, completion_date, live_charge_authorized_at")
     .eq("id", order.claim_id)
     .maybeSingle();
   if (cErr) {
@@ -113,6 +115,31 @@ async function rebateOne(
   }
   const claimUserId = claimRow.user_id ?? null;
   const claimIsTest = claimRow.is_test ?? false;
+
+  // gh-3323: key by the claim's is_test (read server-side just above). An is_test claim never gets the live key; one
+  // that may hold a live charge gets no automatic refund at all (manual only, Tier C). Refusal is a skip, not a
+  // failure: nothing is attempted, rebate_due stays true, and no Stripe call is made.
+  const keyChoice = selectRefundKey({
+    isStaging: keyCtx.isStaging,
+    claimIsTest,
+    liveChargeAuthorizedAt: claimRow.live_charge_authorized_at ?? null,
+    env: keyCtx.getEnv,
+  });
+  if (!keyChoice.ok) {
+    const manual = keyChoice.reason === "live_charge_on_test_claim_manual_refund_only";
+    console.error(manual
+      ? `[rebate] OPS: automatic refund REFUSED (${keyChoice.reason}) -- order ${order.id}, claim ${order.claim_id}. Manual-only (Tier C, entry 7).`
+      : `[rebate] OPS: refund NOT attempted, no usable Stripe key (${keyChoice.reason}) -- order ${order.id}, claim ${order.claim_id}.`);
+    return { ...base, detail: manual ? `Automatic refund refused (${keyChoice.reason}); manual only.` : `Refund not attempted, no usable Stripe key (${keyChoice.reason}).` };
+  }
+  const stripeSecretKey = keyChoice.key;
+
+  // gh-3452: reuse a refund Stripe already holds for this order instead of creating another.
+  const existing = await findExistingRebateRefund(stripeSecretKey, order);
+  if (!existing.ok) {
+    return { ...base, status: "failed", detail: existing.detail };
+  }
+  const repairedFrom = existing.refund;
 
   // Stripe refund — idempotency key prevents double refund on retry.
   const basicAuth = btoa(`${stripeSecretKey}:`);
@@ -125,7 +152,7 @@ async function rebateOne(
   form.append("metadata[hover_order_id]", order.id);
 
   const idempotencyKey = `hover_rebate_${order.id}`;
-  const refundRes = await fetch(`${STRIPE_API_BASE}/refunds`, {
+  const refundRes = repairedFrom ? null : await fetch(`${STRIPE_API_BASE}/refunds`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${basicAuth}`,
@@ -135,7 +162,7 @@ async function rebateOne(
     body: form.toString(),
   });
 
-  if (!refundRes.ok) {
+  if (refundRes && !refundRes.ok) {
     const err = await refundRes.text();
     console.error("[rebate] Stripe refund failed:", order.id, refundRes.status, err);
     // Log to activity_log for visibility; leave rebate_due=true for retry.
@@ -156,7 +183,7 @@ async function rebateOne(
     return { ...base, status: "failed", detail: `Stripe refund error (HTTP ${refundRes.status}): ${err}` };
   }
 
-  const refund = await refundRes.json();
+  const refund = repairedFrom ?? await refundRes!.json();
 
   // Mark rebated — idempotent via rebate_paid_at guard on the update.
   const { error: updErr, data: updRows } = await supabase
@@ -231,6 +258,18 @@ async function rebateOne(
     } catch { /* non-fatal */ }
   }
 
+  if (repairedFrom && !updErr) {
+    try {
+      await supabase.from("activity_log").insert({
+        event_type: "hover_rebate_repaired",
+        title: "hover_rebate_repaired",
+        user_id: claimUserId,
+        is_test: claimIsTest,
+        metadata: { hover_order_id: order.id, claim_id: order.claim_id, stripe_refund_id: refund.id },
+      });
+    } catch { /* non-fatal */ }
+  }
+
   console.log("[rebate] Rebated order", order.id, "refund:", refund.id, "amount:", order.homeowner_charge_amount);
   return {
     ...base,
@@ -238,6 +277,36 @@ async function rebateOne(
     refund_id: refund.id,
     amount: order.homeowner_charge_amount,
   };
+}
+
+/**
+ * gh-3452 repair path. A refund that already succeeded at Stripe but whose hover_orders write failed leaves
+ * rebate_paid_at null, so the homeowner could buy a second report (D-413) and the scan would try to refund again once
+ * Stripe's 24-hour idempotency key had expired. Before creating any refund, look up the PaymentIntent's refunds and
+ * reuse the one tagged with this hover_order_id (metadata set at creation below). Read-only at Stripe.
+ * ok:false means the lookup could not be trusted, so the caller must NOT create a refund.
+ */
+async function findExistingRebateRefund(
+  stripeSecretKey: string,
+  order: any,
+): Promise<{ ok: true; refund: any | null } | { ok: false; detail: string }> {
+  try {
+    const res = await fetch(
+      `${STRIPE_API_BASE}/refunds?payment_intent=${encodeURIComponent(order.homeowner_stripe_payment_intent_id)}&limit=100`,
+      { method: "GET", headers: { Authorization: `Basic ${btoa(`${stripeSecretKey}:`)}` } },
+    );
+    if (!res.ok) return { ok: false, detail: `Refund lookup failed (HTTP ${res.status}); no refund created.` };
+    const list = await res.json();
+    if (!Array.isArray(list?.data)) return { ok: false, detail: "Refund lookup returned no data array; no refund created." };
+    const hit = list.data.find((r: any) =>
+      r?.metadata?.type === "hover_measurement_rebate" &&
+      r?.metadata?.hover_order_id === order.id &&
+      r?.status !== "failed" && r?.status !== "canceled"
+    );
+    return { ok: true, refund: hit ?? null };
+  } catch (e: any) {
+    return { ok: false, detail: `Refund lookup threw (${e?.message ?? e}); no refund created.` };
+  }
 }
 
 // gh-2462: exported so caller-gate.test.ts can drive the REAL handler (gh-2309 precedent:
@@ -278,10 +347,10 @@ export async function handler(
   const _reqOrigin = req.headers.get("Origin") || "";
   const isStaging = _reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
     _reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
-  const stripeSecretKey = isStaging
-    ? (getEnv("STRIPE_SECRET_KEY_TEST") || getEnv("STRIPE_SECRET_KEY"))
-    : getEnv("STRIPE_SECRET_KEY");
-  if (!stripeSecretKey) {
+  // gh-3323: this is only the "is Stripe configured at all" gate, unchanged for real claims; the key a refund really
+  // uses is chosen per claim in rebateOne.
+  const keyCtx = { isStaging, getEnv };
+  if (!selectStripeKey({ isStaging, claimIsTest: false, env: getEnv }).ok) {
     return new Response(JSON.stringify({ error: "Stripe secret key not configured." }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -316,7 +385,7 @@ export async function handler(
 
       const results: RebateResult[] = [];
       for (const order of orders ?? []) {
-        results.push(await rebateOne(supabase, stripeSecretKey, order));
+        results.push(await rebateOne(supabase, keyCtx, order));
       }
       return new Response(JSON.stringify({ mode: "single", claim_id, processed: results.length, results }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -335,7 +404,7 @@ export async function handler(
 
     const results: RebateResult[] = [];
     for (const order of pending ?? []) {
-      results.push(await rebateOne(supabase, stripeSecretKey, order));
+      results.push(await rebateOne(supabase, keyCtx, order));
     }
     const rebated = results.filter(r => r.status === "rebated").length;
     const failed = results.filter(r => r.status === "failed").length;

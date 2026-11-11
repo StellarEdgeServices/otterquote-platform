@@ -554,6 +554,21 @@ async function fetchHoverMeasurements(supabase, claimId) {
 // exists (gh-1245: roof_basic == RoofScope X) but the PDF-parse path is the
 // canonical one today and writes no product code at all, so keying off it would
 // mis-shape every claim measured through the path we actually use.
+// [gh-3288 / D-407 7/8] One signed document per job: what a Project Confirmation used to carry is read by the Scope of Work (Exhibit A) from
+// where the homeowner's selections now live. Nothing writes claims.project_confirmation any more (PC front end gone, #3300), so the shingle
+// line must come from the colour the homeowner saved on the colour page (claims.color_brand / claims.color_name). The PC columns are kept for
+// history (D-407): they still fill any field the selection does not carry. No new wording: the existing "Shingle:" line prints this value.
+// A saved brand that disagrees with the winning bid's brand (stale after switch-contractor, or the contractor's preferred brand differs from the
+// bid's) is NOT printed: the SOW would otherwise show two brands (Materials: vs Shingle:). Omission only; no wording added (review 6668152181 F2).
+function mergeSowSelections(pc: any, claim: any, bidBrand?: string | null) {
+  const name = typeof claim?.color_name === "string" ? claim.color_name.trim() : "";
+  if (!name) return pc ?? null;
+  const brand = typeof claim?.color_brand === "string" ? claim.color_brand.trim() : "";
+  const norm = (v: unknown) => String(v ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const nb = norm(bidBrand), ns = norm(brand);
+  if (nb && ns && !nb.includes(ns) && !ns.includes(nb)) return pc ?? null;
+  return { ...(pc ?? {}), shingleColor: name, shingleManufacturer: brand || pc?.shingleManufacturer || null };
+}
 function resolveMeasurementShape(measurements: any) {
   const m = measurements || {};
   const LINEAR = ["ridgeHipLf", "valleyLf", "rakeLf", "eaveLf", "dripEdgeLf", "stepFlashingLf", "flashingLf"];
@@ -2208,9 +2223,14 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
       const d390SowNotes = redactSowTextOrRefuse(claimData?.homeowner_notes ?? null, d390FeeCollected);
       // project_confirmation: the SOW reads homeownerNotes and workNotBeingDone; the form saves projectNotes and exclusions (key mismatch, not
       // changed here). All four free-text keys are wrapped, so aligning the keys later cannot print unredacted text.
+      // [gh-3288 / D-407] In-memory only (never written back): fold the saved colour selection into the PC-shaped object the SOW reads.
+      if (claimData) claimData.project_confirmation = mergeSowSelections(claimData.project_confirmation, claimData, bidBrand);
       const d390Pc = claimData?.project_confirmation
         ? {
           ...claimData.project_confirmation,
+          // [gh-3288 / D-390] colour and brand are homeowner-typed (free-text input): same redaction, same refusal, before the fee.
+          shingleColor: redactSowTextOrRefuse(claimData.project_confirmation.shingleColor ?? null, d390FeeCollected),
+          shingleManufacturer: redactSowTextOrRefuse(claimData.project_confirmation.shingleManufacturer ?? null, d390FeeCollected),
           homeownerNotes: redactSowTextOrRefuse(claimData.project_confirmation.homeownerNotes ?? null, d390FeeCollected),
           workNotBeingDone: redactSowTextOrRefuse(claimData.project_confirmation.workNotBeingDone ?? null, d390FeeCollected),
           projectNotes: redactSowTextOrRefuse(claimData.project_confirmation.projectNotes ?? null, d390FeeCollected),
@@ -2604,9 +2624,29 @@ function colorRefusal(status: any, code: any, corsHeaders: any) {
     }
   });
 }
+// ========== D-407 (#3287): PROJECT CONFIRMATION AND COLOUR ENVELOPES ARE RETIRED ==========
+// D-407 (Dustin, 2026-10-30): ONE signed document per job; Project Confirmations are eliminated and
+// the separate colour envelope goes with them (D-393 amended, #3145). Both document types are still
+// ACCEPTED by the document_type validator so a stale client gets a clear 410 instead of a 400, but
+// nothing is read, claimed, rate-limited, minted or sent for them. The 410 for colour carries the
+// code `color_envelope_retired` (carried over from #3253, #3110). Columns stay for history
+// (claims.color_confirmation_envelope_id, project_confirmation_envelope_id); docusign-webhook still
+// recognises envelopes that were minted before this change.
+const RETIRED_ENVELOPE_CODES = {
+  color_confirmation: "color_envelope_retired",
+  project_confirmation: "project_confirmation_retired"
+};
+function retiredEnvelopeRefusal(documentType: any, corsHeaders: any) {
+  if (typeof documentType !== "string" || !Object.prototype.hasOwnProperty.call(RETIRED_ENVELOPE_CODES, documentType)) return null;
+  return colorRefusal(410, RETIRED_ENVELOPE_CODES[documentType as keyof typeof RETIRED_ENVELOPE_CODES], corsHeaders);
+}
 // ========== HANDLER: LEGACY CONTRACT / COLOR / PROJECT CONFIRMATION ==========
 async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   const { claim_id, document_type, contractor_id, signer, fields: providedFields, return_url } = requestBody;
+  // D-407 (#3287): defence in depth. serve() refuses these first; this keeps the mint code below
+  // unreachable for a retired type even if a future caller reaches handleLegacyFlow directly.
+  const retiredLegacy = retiredEnvelopeRefusal(document_type, corsHeaders);
+  if (retiredLegacy) return retiredLegacy;
   // gh-2105 (review 6325420063 item 2): the colour addendum is signed by the contractor the
   // homeowner SELECTED, never one the caller names. With one document per claim a wrong
   // counter-signer would stay on that claim for good, so the check runs before the resume and
@@ -2823,7 +2863,7 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   // gh-1244: bounded wait for BoldSign's async document creation to settle
   // before asking for a signing link -- see waitForBoldSignDocumentReady().
   await waitForBoldSignDocumentReady(envelopeId);
-  const defaultReturnUrl = document_type === "project_confirmation" ? `https://otterquote.com/project-confirmation.html?claim_id=${claim_id}&signed=true` : "https://otterquote.com/contract-signing.html?signed=true";
+  const defaultReturnUrl = "https://otterquote.com/contract-signing.html?signed=true";
   const signingReturnUrl = return_url || defaultReturnUrl;
   // gh-1244: camelCase param names -- see the matching fix + comment in
   // handleContractorSign above.
@@ -3135,6 +3175,14 @@ serve(async (req)=>{
           "Content-Type": "application/json"
         }
       });
+    }
+    // ===== D-407 (#3287): retired document types are refused before ANY read or write =====
+    // No claim lookup, no ownership check, no rate-limit RPC, no BoldSign call: a PC or colour
+    // request creates nothing and spends nothing.
+    const retiredResponse = retiredEnvelopeRefusal(document_type, corsHeaders);
+    if (retiredResponse) {
+      console.warn(`[${FN_NAME}] refused retired document_type=${document_type} (D-407, 410)`);
+      return retiredResponse;
     }
     // ===== CALLER AUTHORIZATION + SERVER-SIDE SIGNER IDENTITY (86e1v6nnh) =====
     // Derive signer name/email from authenticated identity — never trust the request body.

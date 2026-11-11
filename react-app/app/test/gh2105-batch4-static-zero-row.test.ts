@@ -41,7 +41,8 @@ describe('project-info money pages: claims write requires a row (THROW)', () => 
       expect(b).toContain(`throw new Error('update_zero_rows: claims (project info ${tag})')`);
       // the zero-row throw comes before the analytics event and the success redirect
       expect(src.indexOf('update_zero_rows: claims')).toBeLessThan(src.indexOf("gtag('event', 'project_info_saved'"));
-      expect(src.indexOf('update_zero_rows: claims')).toBeLessThan(src.indexOf("window.location.href = '/dashboard.html'"));
+      // gh-3471: the redirect now goes through Auth.dashboardUrlWithReturn(), whose no-token default is still '/dashboard.html'
+      expect(src.indexOf('update_zero_rows: claims')).toBeLessThan(src.indexOf('window.location.href = Auth.dashboardUrlWithReturn(window.location.search)'));
     });
     it(`${file}: the token is logged, never shown (generic sentence on screen)`, () => {
       const src = read(file);
@@ -52,6 +53,18 @@ describe('project-info money pages: claims write requires a row (THROW)', () => 
       expect(c).not.toMatch(/textContent = err\.message \|\|/);
     });
   }
+  it('gh-3471: the redirect default is still /dashboard.html with no token; only an allowlisted ?return= is carried', () => {
+    const auth = read('js/auth.js');
+    const helpers = /var RETURN_TARGETS[\s\S]*?var RETURN_TOKEN_BY_PATH[^\n]*\n/.exec(auth);
+    const method = /dashboardUrlWithReturn\(search\) \{([\s\S]*?)\n  \},/.exec(auth);
+    expect(helpers && method).toBeTruthy();
+    const f = new Function('search', helpers![0] + method![1]) as (s: string) => string;
+    expect(f('')).toBe('/dashboard.html');
+    expect(f('?claim_id=abc')).toBe('/dashboard.html');
+    expect(f('?return=https://evil.example/')).toBe('/dashboard.html');
+    expect(f('?return=__proto__')).toBe('/dashboard.html');
+    expect(f('?claim_id=abc&return=measurements')).toBe('/dashboard.html?return=measurements');
+  });
   it('the screen-text predicate: a zero-row error shows the generic sentence, a real error keeps its message', () => {
     const show = (err: { message?: string }) =>
       (err.message && String(err.message).indexOf('update_zero_rows') !== 0) ? err.message : 'Something went wrong. Please try again.';

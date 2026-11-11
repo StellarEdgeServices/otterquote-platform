@@ -67,9 +67,9 @@ export const RESUME_COPY = {
 } as const;
 
 export const HOVER_RETIRED_COPY = {
-  title: 'Complete Property Report: temporarily unavailable',
+  title: 'Aerial Roof Report: temporarily unavailable',
   text:
-    "We have paused ordering the Complete Property Report while we change how measurements are provided, so you will not be charged for it right now. You can still get your measurements by asking your insurance adjuster to send them. Choose that option below, and we will take care of the request.",
+    "We have paused ordering the Aerial Roof Report while we change how measurements are provided, so you will not be charged for it right now. You can still get your measurements by asking your insurance adjuster to send them. Choose that option below, and we will take care of the request.",
 } as const;
 
 // ── Top-level page ───────────────────────────────────────────────────────────────

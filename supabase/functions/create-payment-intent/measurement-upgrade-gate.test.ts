@@ -1,4 +1,4 @@
-import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { assertEquals, assertThrows } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import {
   buildPriorUpgradeLookupQuery,
   evaluateMeasurementUpgradeGate,
@@ -139,18 +139,99 @@ Deno.test("resolveContractorAlreadyPurchased: no error, no row (null/undefined d
 // wiring the dedupe lookup must use, so a future edit that renames or drops
 // a filter (e.g. `requested_by_contractor_id`, or the UPGRADE_PRODUCT_CODE
 // scope) is caught without a database or a chainable Supabase-client mock.
-Deno.test("buildPriorUpgradeLookupQuery: correct table, select, and (claim_id, product_code, requested_by_contractor_id) filters", () => {
-  const query = buildPriorUpgradeLookupQuery({ claimId: "claim-1", contractorId: "contractor-1" });
+const CLAIM_ID = "66666666-7777-4888-8999-000000000000";
+const CONTRACTOR = "cccccccc-1111-4222-8333-444444444444";
+const OTHER_CONTRACTOR = "cccccccc-9999-4222-8333-444444444444";
+const BUYER = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+const OTHER_BUYER = "dddddddd-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+
+Deno.test("buildPriorUpgradeLookupQuery: correct table, select, (claim_id, product_code) filters, and the contractor-or-null-id-buyer OR filter", () => {
+  const query = buildPriorUpgradeLookupQuery({ claimId: "claim-1", contractorId: CONTRACTOR, buyerUserId: BUYER });
   assertEquals(query.table, "hover_orders");
   assertEquals(query.select, "id");
   assertEquals(query.eq, [
     ["claim_id", "claim-1"],
     ["product_code", UPGRADE_PRODUCT_CODE],
-    ["requested_by_contractor_id", "contractor-1"],
   ]);
   // The product-code filter must be the constant, not a copy-pasted literal
   // that could drift from it.
   assertEquals(query.eq[1][1], "roof_upgrade_detailed");
+  assertEquals(
+    query.or,
+    `requested_by_contractor_id.eq.${CONTRACTOR},and(requested_by_contractor_id.is.null,user_id.eq.${BUYER})`,
+  );
+});
+
+// [gh-3459] A tiny evaluator for the filters the query object names, so the test can ask the real question: which stored orders does the gate see?
+type Row = { claim_id: string; product_code: string; requested_by_contractor_id: string | null; user_id: string };
+function gateSees(q: ReturnType<typeof buildPriorUpgradeLookupQuery>, row: Row): boolean {
+  for (const [col, val] of q.eq) if ((row as unknown as Record<string, unknown>)[col] !== val) return false;
+  // `or` is optional here ON PURPOSE: before gh-3459 the query had no `or`; it matched on requested_by_contractor_id as a third `eq` pair.
+  const or = (q as { or?: string }).or;
+  if (or === undefined) return true;
+  return or.split(/,(?![^()]*\))/).some((branch) => {
+    const eq = branch.match(/^requested_by_contractor_id\.eq\.(.+)$/);
+    if (eq) return row.requested_by_contractor_id === eq[1];
+    // [gh-3459 contractor gate] any null-id order on this claim, whoever recorded it
+    if (branch === "requested_by_contractor_id.is.null") return row.requested_by_contractor_id === null;
+    const nul = branch.match(/^and\(requested_by_contractor_id\.is\.null,user_id\.eq\.(.+)\)$/);
+    return !!nul && row.requested_by_contractor_id === null && row.user_id === nul[1];
+  });
+}
+const baseRow: Row = { claim_id: CLAIM_ID, product_code: UPGRADE_PRODUCT_CODE, requested_by_contractor_id: null, user_id: BUYER };
+const lookup = (over: Partial<{ contractorId: string; buyerUserId: string; awardedContractorId: string | null }> = {}) =>
+  buildPriorUpgradeLookupQuery({ claimId: CLAIM_ID, contractorId: CONTRACTOR, buyerUserId: BUYER, ...over });
+
+Deno.test("gh-3459: a PAID upgrade recorded with a NULL contractor id is seen by the gate for the same buyer, so a second PaymentIntent is refused (fails before the fix)", () => {
+  assertEquals(gateSees(lookup(), baseRow), true);
+  const check = resolveContractorAlreadyPurchased({ data: gateSees(lookup(), baseRow) ? { id: "order-1" } : null, error: null });
+  assertEquals(check, { ok: true, alreadyPurchased: true });
+});
+
+Deno.test("gh-3459: the ordinary case still works -- an order with this contractor's id is seen", () => {
+  assertEquals(gateSees(lookup(), { ...baseRow, requested_by_contractor_id: CONTRACTOR, user_id: OTHER_BUYER }), true);
+});
+
+Deno.test("gh-3459: NEGATIVE CONTROLS -- the gate does not over-block", () => {
+  // a null-id order bought by a DIFFERENT user is not this buyer's purchase
+  assertEquals(gateSees(lookup(), { ...baseRow, user_id: OTHER_BUYER }), false);
+  // another contractor's order (real id) bought by the same user is not matched by the null-id branch
+  assertEquals(gateSees(lookup(), { ...baseRow, requested_by_contractor_id: OTHER_CONTRACTOR }), false);
+  // a different claim, a different product
+  assertEquals(gateSees(lookup(), { ...baseRow, claim_id: "other-claim" }), false);
+  assertEquals(gateSees(lookup(), { ...baseRow, product_code: "roof_basic" }), false);
+});
+
+// [gh-3459, CLOSE-REVIEW: FAIL 6740291401 / DECIDED Tier A] The gate is keyed on the contractor, not on the caller. A null-id upgrade row can
+// be recorded by a DIFFERENT signed-in account (create-measurement-order writes user_id from whoever calls it). When this contractor is the
+// claim's awarded contractor, that row is attributed to it (the same fallback create-measurement-order now records with), so a second
+// PaymentIntent is refused whoever recorded the first order.
+Deno.test("gh-3459: TWO ACCOUNTS -- a null-id paid upgrade recorded by a DIFFERENT account is seen for the claim's awarded contractor, so a second PaymentIntent is refused (fails before the fix)", () => {
+  const q = lookup({ awardedContractorId: CONTRACTOR });
+  const row = { ...baseRow, user_id: OTHER_BUYER };
+  assertEquals(gateSees(q, row), true);
+  const check = resolveContractorAlreadyPurchased({ data: gateSees(q, row) ? { id: "order-1" } : null, error: null });
+  assertEquals(check, { ok: true, alreadyPurchased: true });
+});
+
+Deno.test("gh-3459: contractor gate CONTROLS -- no over-block when this contractor is not the awarded one, and real-id rows still match only their contractor", () => {
+  // claim awarded to someone else (or to no one): a null-id row recorded by another account is not attributed to this contractor
+  assertEquals(gateSees(lookup({ awardedContractorId: OTHER_CONTRACTOR }), { ...baseRow, user_id: OTHER_BUYER }), false);
+  assertEquals(gateSees(lookup({ awardedContractorId: null }), { ...baseRow, user_id: OTHER_BUYER }), false);
+  // the same-buyer null-id branch from #3482 still holds whatever the award
+  assertEquals(gateSees(lookup({ awardedContractorId: OTHER_CONTRACTOR }), baseRow), true);
+  // even for the awarded contractor, another contractor's real-id order is NOT this contractor's purchase (D-317 cl. 4: later contractors pay)
+  assertEquals(gateSees(lookup({ awardedContractorId: CONTRACTOR }), { ...baseRow, requested_by_contractor_id: OTHER_CONTRACTOR, user_id: OTHER_BUYER }), false);
+  // other claim / other product still never match
+  assertEquals(gateSees(lookup({ awardedContractorId: CONTRACTOR }), { ...baseRow, claim_id: "other-claim" }), false);
+  assertEquals(gateSees(lookup({ awardedContractorId: CONTRACTOR }), { ...baseRow, product_code: "roof_basic" }), false);
+});
+
+Deno.test("gh-3459: a non-uuid id is refused before it reaches a filter string (no filter injection)", () => {
+  for (const bad of ["x),user_id.neq.0", "", "contractor-1"]) {
+    assertThrows(() => lookup({ contractorId: bad }));
+    assertThrows(() => lookup({ buyerUserId: bad }));
+  }
 });
 
 Deno.test("#1410 tolerance: measurement_shape absent, null, or the column missing entirely all resolve to 'basic' (purchase proceeds)", () => {

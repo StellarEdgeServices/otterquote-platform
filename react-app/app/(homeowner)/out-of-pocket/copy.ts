@@ -22,6 +22,15 @@ export const OOP_UPLOAD_BUTTON = 'Upload measurement report';
 export const OOP_UPLOADING = 'Uploading…';
 export const OOP_PURCHASE_LINK = 'Purchase a roof measurement';
 export const OOP_MEASUREMENT_DONE = 'Measurement attached';
+/**
+ * gh-3284 (Ben, #3284 6578290796): shown only for a stored ACV answer, so the page can do what the
+ * approved ACV text promises ("use your insurance estimate, or buy a roof measurement").
+ * NEW LABELS, functional only (no price, no legal or insurance claim); they need LEGAL-READ.
+ */
+export const OOP_ACV_MEASUREMENT_PROMPT =
+  'Upload your insurance estimate or a measurement report you already have, or purchase a measurement.';
+export const OOP_ESTIMATE_UPLOAD_BUTTON = 'Upload insurance estimate';
+export const OOP_ESTIMATE_DONE = 'Insurance estimate attached';
 export const OOP_UPLOAD_FAILED = 'We could not upload that file. Please try again.';
 
 /** project-info-cash.html submit button text and failure lines. */
@@ -38,5 +47,6 @@ export const MISSING_LABELS = {
   address: 'Property address',
   estimate: 'Insurance estimate upload',
   measurement: 'Measurement report',
+  estimate_or_measurement: 'Insurance estimate or measurement report',
   materials: 'Material selection',
 } as const;

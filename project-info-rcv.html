@@ -83,7 +83,7 @@ main.pi-main {
 
 <main class="pi-main">
   <div class="pi-banner">
-    <p>This job is being paid for via <strong>Insurance Claim (Replacement Cost Value)</strong>.</p>
+    <p id="pi-pay-line" style="visibility:hidden;">This job is being paid for via <strong>Insurance Claim (Replacement Cost Value)</strong>.</p>
     <a href="/trade-selector.html">Change</a>
   </div>
 
@@ -153,6 +153,32 @@ main.pi-main {
     Nav.renderFooter();
 
     wireEvents();
+    await applyStoredPolicy();
+  }
+
+  // gh-3282 (D-407 / Ben ruling 2026-10-31, D-079): an "I'm not sure" homeowner has policy_type
+  // 'idk' stored (trade-selector routes them here). For them the "paid for via ... (Replacement
+  // Cost Value)" line is hidden (removed, not reworded) and this page never writes policy_type.
+  // The stored value is read from the claim row through the same sb client / RLS the save uses.
+  // A failed read leaves the line shown, exactly as before.
+  async function loadStoredPolicyType(claimId) {
+    const { data, error } = await sb.from('claims').select('policy_type').eq('id', claimId).maybeSingle();
+    if (error) throw error;
+    return data ? data.policy_type : null;
+  }
+
+  async function applyStoredPolicy() {
+    const line = document.getElementById('pi-pay-line');
+    try {
+      const claimId = await resolveClaimId();
+      if (claimId && (await loadStoredPolicyType(claimId)) === 'idk') {
+        line.style.display = 'none';
+        return;
+      }
+    } catch (err) {
+      console.error('[project-info-rcv] stored policy_type read failed:', err);
+    }
+    line.style.visibility = 'visible';
   }
 
   function wireEvents() {
@@ -198,6 +224,9 @@ main.pi-main {
         throw new Error('No project found for your account. Please start from the beginning.');
       }
 
+      // gh-3282: re-read the stored answer at save time; an 'idk' homeowner keeps it (never rewritten to 'rcv').
+      const storedPolicy = await loadStoredPolicyType(claimId);
+
       const val = (id) => document.getElementById(id).value.trim();
       // gh-3136 (P14): send ONLY keys still on this form. Removed fields (carrier, date of
       // loss, damage type, deductible, adjuster, acv/rcv amounts) are never sent, so values
@@ -205,12 +234,12 @@ main.pi-main {
       const updates = {
         job_type: 'insurance_rcv',
         funding_type: 'insurance',
-        policy_type: 'rcv',
         urgency: val('urgency'),
         urgency_deadline: val('urgency') === 'asap' ? (val('urgency_deadline') || null) : null,
         urgency_reason: val('urgency') === 'asap' ? (val('urgency_reason') || null) : null,
         updated_at: new Date().toISOString(),
       };
+      if (storedPolicy !== 'idk') updates.policy_type = 'rcv';
       // Optional text keys are added only when filled, so a blank box cannot erase a saved value.
       if (val('claim_number')) updates.claim_number = val('claim_number');
       if (val('homeowner_notes')) updates.homeowner_notes = val('homeowner_notes');
@@ -224,7 +253,7 @@ main.pi-main {
       // gh-3136 (P14): D-046 adjuster upsert removed from this page (no adjuster fields here); dashboard.html has its own upsert.
 
       gtag('event', 'project_info_saved', { job_type: 'insurance_rcv' });
-      window.location.href = '/dashboard.html';
+      window.location.href = Auth.dashboardUrlWithReturn(window.location.search); // gh-3471: carries a valid ?return= token on to the dashboard
     } catch (err) {
       console.error('[project-info-rcv] submit failed:', err);
       // gh-2105: the internal update_zero_rows token is logged above, never shown.

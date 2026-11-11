@@ -33,17 +33,35 @@ import {
   REFUSAL_CODE,
 } from "./live-charge-guard.ts";
 import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-setting.ts";
+import { keyRefusalResponse, selectStripeKey } from "../_shared/stripe-key-select.ts";
 import { attachVariantMetadata } from "./variant-metadata.ts";
-import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
+import { buildStandardCreateForm, HOVER_MEASUREMENT_DESCRIPTION, standardIdempotencyKey } from "./standard-create-form.ts";
 import {
   buildPriorUpgradeLookupQuery,
   evaluateMeasurementUpgradeGate,
   resolveContractorAlreadyPurchased,
 } from "./measurement-upgrade-gate.ts";
+import {
+  assertCreatedIntentNotPaid,
+  cancelSupersededIntents,
+  checkClaimHasNotPaid,
+  loadHoverOrders,
+  type PaidVerdict,
+  refusalFor,
+  alertKindFor,
+  supersededPaidVerdict,
+} from "./measurement-paid-gate.ts";
+import {
+  makePaidAlertDbDeps,
+  PAID_GATE_ALERT_SEND_TIMEOUT_MS,
+  postPaidGateAlertEmail,
+  raisePaidGateAlert,
+} from "./measurement-paid-alert.ts";
 import { detectGpcSignal, makeGpcStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
 import { AMBIGUOUS_OUTCOME_CODE, fetchStripeWithTimeout } from "./stripe-fetch.ts";
 import { AmbiguousChargeOutcomeError, runOffSessionPlatformFeeCharge } from "./off-session-charge.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { platformFeeCents } from "../_shared/platform-fee.ts"; // gh-3488 / D-267
 
 const FUNCTION_NAME = "create-payment-intent";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -67,6 +85,43 @@ function buildCorsHeaders(req: Request): Record<string, string> {
       "authorization, x-client-info, apikey, content-type",
     "Vary": "Origin",
   };
+}
+
+/**
+ * gh-3356: tell an operator about a paid-claim refusal. A claim that PAID with no hover_orders row is a customer with no report queued
+ * for fulfilment ("paid_without_order"; a very recent charge may still be waiting for its order row, and the email says so); an
+ * unavailable check ("check_unavailable") means a broken Stripe search or orders read blocks purchases; a replayed cancelled intent
+ * ("cancelled_replay") means a homeowner is stuck at this price; a replayed fully refunded payment ("refunded_replay") is the same for that claim only. Each raises a platform_alerts_log row AND an admin email through notify-measurement-order, bounded to one per claim per
+ * window (measurement-paid-alert.ts). Never throws, never carries Stripe text.
+ */
+async function logPaidGateRefusal(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  supabaseUrl: string,
+  serviceKey: string,
+  verdict: PaidVerdict,
+  claimId: string,
+  stage: string,
+): Promise<void> {
+  console.error(`[${FUNCTION_NAME}] gh-3356 refusal (${stage}): ${verdict.kind}${verdict.kind === "paid" ? ` ${verdict.reason}` : ""} claim=${claimId}`);
+  // The FIRST refused request alerts (bounded per claim and kind in measurement-paid-alert.ts); there is no grace period.
+  const kind = alertKindFor(verdict);
+  if (!kind) return;
+  await raisePaidGateAlert(
+    {
+      ...makePaidAlertDbDeps(supabase),
+      sendAdminEmail: (body) =>
+        postPaidGateAlertEmail({ fetchImpl: fetch, supabaseUrl, serviceKey, body, timeoutMs: PAID_GATE_ALERT_SEND_TIMEOUT_MS }),
+      log: (m) => console.error(m),
+    },
+    {
+      kind,
+      claimId,
+      paymentIntentId: verdict.kind === "paid" || verdict.kind === "cancelled_replay" || verdict.kind === "refunded_replay" ? verdict.paymentIntentId : null,
+      stage: stage.replace(/[^a-z_ ]/g, " ").trim(),
+      reason: verdict.kind === "unavailable" ? verdict.why : undefined,
+    },
+  );
 }
 
 /**
@@ -275,7 +330,8 @@ serve(async (req) => {
             status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
-        amount = Math.round(Number(quote.total_price) * (Number(feePct) / 100) * 100);
+        // gh-3488 / D-267: the one shared whole-cent definition (shown fee = charged fee).
+        amount = platformFeeCents(Number(quote.total_price), Number(feePct));
         if (!Number.isFinite(amount) || amount <= 0) {
           return new Response(JSON.stringify({ error: "Computed platform fee amount is invalid" }), {
             status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -347,13 +403,16 @@ serve(async (req) => {
       const priorUpgradeLookup = buildPriorUpgradeLookupQuery({
         claimId: metadata.claim_id,
         contractorId: contractor_id,
+        buyerUserId: callerId,
+        // gh-3459: key null-id rows on the contractor (the claim's award), not only on the caller. upgradeClaimRow is select('*').
+        awardedContractorId: typeof upgradeClaimRow?.selected_contractor_id === "string" ? upgradeClaimRow.selected_contractor_id : null,
       });
       const { data: priorUpgradeForThisContractor, error: priorUpgradeErr } = await supabase
         .from(priorUpgradeLookup.table)
         .select(priorUpgradeLookup.select)
         .eq(priorUpgradeLookup.eq[0][0], priorUpgradeLookup.eq[0][1])
         .eq(priorUpgradeLookup.eq[1][0], priorUpgradeLookup.eq[1][1])
-        .eq(priorUpgradeLookup.eq[2][0], priorUpgradeLookup.eq[2][1])
+        .or(priorUpgradeLookup.or)
         .limit(1)
         .maybeSingle();
 
@@ -552,10 +611,22 @@ serve(async (req) => {
     const _reqOrigin = req.headers.get("Origin") || "";
     const isStaging = _reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
       _reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
-    const stripeSecretKey = isStaging
-      ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
-      : Deno.env.get("STRIPE_SECRET_KEY");
-    if (!stripeSecretKey) throw new Error("Stripe secret key not configured.");
+    // gh-3293: an is_test claim never gets the LIVE key (see stripe-key-select.ts).
+    const keyChoice = selectStripeKey({
+      isStaging,
+      claimIsTest: unconditionalGuardClaim?.is_test === true,
+      env: (n) => Deno.env.get(n),
+    });
+    if (!keyChoice.ok) {
+      console.error(`[${FUNCTION_NAME}] gh-3293 Stripe key refused: ${keyChoice.reason} claim=${metadata.claim_id}`);
+      // gh-3293 REVIEW B: a test-claim key refusal carries REFUSAL_CODE so docusign-webhook never routes it to dunning.
+      const refusal = keyRefusalResponse(keyChoice.reason, REFUSAL_CODE);
+      return new Response(
+        JSON.stringify(refusal.body),
+        { status: refusal.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    const stripeSecretKey = keyChoice.key;
     const basicAuth = btoa(`${stripeSecretKey}:`);
 
     let paymentIntentData: any;
@@ -696,9 +767,35 @@ serve(async (req) => {
       }
     } else {
       // ===== Standard flow (hover_measurement, deductible_escrow, measurement_upgrade) =====
-      // The create body and its idempotency key are functions of the claim, the request type and the amount ONLY (see
-      // standard-create-form.ts): Stripe refuses a reused key with a different body, so nothing per-request may ever be in
-      // this create. The router variant is attached AFTER it, below.
+      // The create body and its idempotency key (`<type>-<claim>-<amount>`) are functions of the claim, the request type and the
+      // amount ONLY (see standard-create-form.ts): Stripe refuses a reused key with a different body, and for a claim that has
+      // already paid that key is the only thing that returns the SAME PaymentIntent on a reload instead of a second chargeable
+      // one. So nothing per-request may be in this create, and neither the key nor the hover_measurement body may ever change:
+      // buildStandardCreateForm pins the hover_measurement description to the pre-rename string whatever the client sent
+      // (gh-3350). The router variant and the visible description ("Aerial Roof Report") are set AFTER it, below.
+      // gh-3356: a claim that has already paid for its report gets NO new PaymentIntent, whatever the age of the idempotency key.
+      // Checked BEFORE the create (once Stripe has removed the key the create would mint a second chargeable intent), against
+      // hover_orders AND Stripe (a card that succeeded whose order step failed has no order row). Fails closed: see
+      // measurement-paid-gate.ts. The key and the keyed create body below are deliberately untouched.
+      const paidGateDeps = {
+        fetchFn: fetch,
+        apiBase: STRIPE_API_BASE,
+        basicAuth,
+        claimId: String(metadata.claim_id),
+        loadOrders: () => loadHoverOrders(supabase, String(metadata.claim_id)),
+      };
+      // Unpaid intents of this claim the search returned: cancelled (best effort) once this request has its own intent, see below.
+      let supersedeCandidates: string[] = [];
+      if (metadata.type === "hover_measurement") {
+        const paidVerdict = await checkClaimHasNotPaid(paidGateDeps);
+        const paidRefusal = refusalFor(paidVerdict);
+        if (paidVerdict.kind === "not_paid") supersedeCandidates = paidVerdict.cancelable ?? [];
+        if (paidRefusal) {
+          await logPaidGateRefusal(supabase, supabaseUrl, supabaseKey, paidVerdict, metadata.claim_id, "before create");
+          return new Response(JSON.stringify(paidRefusal.body),
+            { status: paidRefusal.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
       const form = buildStandardCreateForm({ amount, currency, description, metadata, contractor_id });
       const idempotencyKey = standardIdempotencyKey(metadata, amount);
       // gh-1886: bounded timeout. This call has no surrounding try/catch, so a timeout (like any
@@ -720,12 +817,37 @@ serve(async (req) => {
       }
       paymentIntentData = await r.json();
       if (metadata.type === "hover_measurement") {
+        // gh-3356: while Stripe still holds the key the create above REPLAYS the first response, whose status can be stale: a
+        // PaymentIntent that has since succeeded still reads requires_payment_method. Re-read it (only when it looks like a
+        // replay) and never hand back the client_secret of one that has been paid. Before the variant/description update.
+        const replayVerdict = await assertCreatedIntentNotPaid(paidGateDeps, paymentIntentData, r);
+        const replayRefusal = refusalFor(replayVerdict);
+        if (replayRefusal) {
+          await logPaidGateRefusal(supabase, supabaseUrl, supabaseKey, replayVerdict, metadata.claim_id, "idempotent replay");
+          return new Response(JSON.stringify(replayRefusal.body),
+            { status: replayRefusal.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        // gh-3356: this request now has its intent (a new one, or the replayed one). Cancel the claim's OTHER unpaid intents (an older
+        // tab's client_secret), best effort, so only one stays payable. A cancel failure never stops the purchase; Stripe saying an
+        // older intent has since succeeded or is processing (a confirm in another tab won the race) refuses it. See
+        // cancelSupersededIntents in measurement-paid-gate.ts for what is and is not cancelled.
+        const supersede = await cancelSupersededIntents(paidGateDeps, supersedeCandidates, paymentIntentData.id);
+        if (supersede.paid) {
+          const racePaid: PaidVerdict = await supersededPaidVerdict(paidGateDeps, supersede.paid.id);
+          const raceRefusal = refusalFor(racePaid)!;
+          await logPaidGateRefusal(supabase, supabaseUrl, supabaseKey, racePaid, metadata.claim_id, "superseded intent paid");
+          return new Response(JSON.stringify(raceRefusal.body),
+            { status: raceRefusal.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
         // gh-2078c / D-330 (REVIEW: FAIL 5805531419, B1): the router variant is attached AFTER the create, in a separate
         // best-effort update, NOT as a create parameter. The create above carries a per-claim Idempotency-Key, and Stripe
         // refuses (HTTP 400) a reused key whose parameters differ, so a per-request value such as the browser's stored
         // variant must never be part of it. The create form stays byte-identical to main. Awaited: the client confirms the
         // card only after it has client_secret, so the metadata is in place before payment_intent.succeeded and the
         // server-side Meta CAPI Purchase (PR #2107) reads it. Never fails the payment.
+        // gh-3350: the same update sets the description "Aerial Roof Report" (server-chosen, so an old cached page is renamed
+        // too). If it fails or times out, the charge stands with the pre-rename description. On a replay of an intent that has
+        // already succeeded it rewrites only the description (and variant); see variant-metadata.ts.
         await attachVariantMetadata({
           fetchFn: fetch,
           apiBase: STRIPE_API_BASE,
@@ -733,6 +855,7 @@ serve(async (req) => {
           paymentIntentId: paymentIntentData.id,
           status: paymentIntentData.status,
           variant: metadata.variant,
+          description: HOVER_MEASUREMENT_DESCRIPTION,
           optOut: gpcSignalPresent,
         });
       }

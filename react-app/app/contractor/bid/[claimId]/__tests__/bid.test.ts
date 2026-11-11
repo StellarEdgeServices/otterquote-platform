@@ -20,9 +20,9 @@ import {
   PLATFORM_FEE_CONTRACT_SIGNING, QUOTE_FEE_PERCENTAGE,
   serializeWarrantySelection,
   bidGateRpcParams, interpretBidGate,
-  buildScopeSummary, buildQuoteInsert, buildQuoteUpdate, BID_RENEWAL_WINDOW_MS,
+  buildScopeSummary, buildQuoteInsert, buildQuoteUpdate, renewQuoteRpcMode, BID_RENEWAL_WINDOW_MS,
   applyCustomWarrantyReview, CUSTOM_WARRANTY_REVIEW_NOTE,
-  buildFeeAcceptanceInsert, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
+  buildFeeAcceptanceInsert, ipForInet, feeAcceptanceOutcome, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
   RESCINDABLE_STATUSES, isRescindable, buildRescindRequest, isBidSelected, readBidSelectedRefusal,
   resolveClaimId, resolveBidMode, wroteRow,
   type BidGateContractor, type BidClaim,
@@ -186,17 +186,35 @@ describe('fee math', () => {
 });
 
 // =============================================================================
-describe('buildFeeDisclosureText — VERBATIM (D-214/D-215, :5035)', () => {
-  it('matches the static generateExactFeeText byte-for-byte', () => {
-    expect(buildFeeDisclosureText(5, 500, 10000)).toBe(
-      'By submitting this bid, you agree to pay Otter Quotes a platform fee of 5.00% ($500.00) upon contract execution. ' +
-      'This fee is deducted from your bid amount before disbursement. You will receive $9,500.00 upon completion. ' +
-      'I understand and agree to the platform fee of 5.00% ($500.00)',
-    );
+describe('buildFeeDisclosureText — GC-approved #547 item 1A wording (gh-3480)', () => {
+  // Copied from contractor-bid-form.html generateExactFeeText(); must stay identical.
+  const APPROVED =
+    'Platform fee for this job: $500.00 (5.00% of your bid). By submitting this bid, you agree to pay Otter Quotes this fee if the homeowner selects your bid and a contract is signed. ' +
+    'The fee is due upon contract execution and will be charged to your card on file. Submitting this bid constitutes your acceptance of this fee.';
+  it('matches the HTML form wording character for character', () => {
+    expect(buildFeeDisclosureText(5, 500)).toBe(APPROVED);
+  });
+  it('is the same sentence the live HTML form generates (read from contractor-bid-form.html)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const html = readFileSync(`${process.cwd()}/../contractor-bid-form.html`, 'utf8'); // vitest runs from react-app/
+    const m = html.match(/function generateExactFeeText\(\)[\s\S]*?return `([^`]*)`;/);
+    expect(m).not.toBeNull();
+    const rendered = m![1]
+      .replace('${feeAmount.toLocaleString(\'en-US\', { style: \'currency\', currency: \'USD\' })}', '$500.00')
+      .replace('${feePct.toFixed(2)}', '5.00');
+    expect(rendered).not.toContain('${');
+    expect(buildFeeDisclosureText(5, 500)).toBe(rendered);
   });
   it('formats pct to 2 decimals and amounts as USD currency', () => {
-    expect(buildFeeDisclosureText(7.5, 750, 10000)).toContain('platform fee of 7.50% ($750.00)');
-    expect(buildFeeDisclosureText(7.5, 750, 10000)).toContain('You will receive $9,250.00 upon completion');
+    expect(buildFeeDisclosureText(7.5, 750)).toContain('Platform fee for this job: $750.00 (7.50% of your bid).');
+  });
+  it('never promises a payment: no deduction, disbursement or "you will receive" (D-229)', () => {
+    const t = buildFeeDisclosureText(7.5, 750);
+    expect(t).not.toMatch(/deducted from your bid amount/i);
+    expect(t).not.toMatch(/before disbursement/i);
+    expect(t).not.toMatch(/you will receive/i);
+    expect(t).not.toContain('$9,250.00');
+    expect(t).not.toMatch(/irrevocable/i);
   });
 });
 
@@ -309,24 +327,29 @@ describe('quote + acceptance + notify payloads', () => {
     expect(u.fee_amount).toBe(1000);
   });
 
-  it('buildQuoteUpdate renewal resets the 14-day window + increments renewals_count', () => {
-    const u = buildQuoteUpdate({ ...common, renewMode: true, existingRenewalsCount: 2, now: NOW });
-    expect(u.bid_status).toBe('active'); // gh-2564: 'submitted' is refused by quotes_bid_status_check
-    expect(u.expired_at).toBeNull();
-    expect(u.expires_at).toBe(new Date(NOW.getTime() + BID_RENEWAL_WINDOW_MS).toISOString());
-    expect(u.renewals_count).toBe(3);
+  it('buildQuoteUpdate renewal keeps bid_status, expired_at and expires_at OUT of the UPDATE payload (gh-3560)', () => {
+    const u = buildQuoteUpdate({ ...common, renewMode: true, now: NOW });
+    expect(u).not.toHaveProperty('bid_status'); // the quotes guard trigger refuses these to a direct UPDATE (42501)
+    expect(u).not.toHaveProperty('expired_at');
+    expect(u).not.toHaveProperty('expires_at');
+    expect(u).not.toHaveProperty('renewals_count'); // #3563 removed it: the column does not exist
+    expect(u.updated_at).toBe(NOW.toISOString());
     expect(BID_RENEWAL_WINDOW_MS).toBe(14 * 24 * 60 * 60 * 1000);
   });
 
-  it('gh-2564 Change Bid on a withdrawn (cancelled) quote sets bid_status back to active, with a fresh window', () => {
-    const u = buildQuoteUpdate({ ...common, renewMode: false, existingBidStatus: 'cancelled', existingRenewalsCount: 2, now: NOW });
-    expect(u.bid_status).toBe('active');
-    expect(u.expired_at).toBeNull();
-    expect(u.expires_at).toBe(new Date(NOW.getTime() + BID_RENEWAL_WINDOW_MS).toISOString());
-    expect(u).not.toHaveProperty('renewals_count'); // not an auto-renewal
+  it('gh-3560 Change Bid on a withdrawn (cancelled) quote sends no bid_status, expired_at or expires_at either', () => {
+    const u = buildQuoteUpdate({ ...common, renewMode: false, existingBidStatus: 'cancelled', now: NOW });
+    for (const k of ['bid_status', 'expired_at', 'expires_at', 'renewals_count']) expect(u).not.toHaveProperty(k);
   });
 
-  it('gh-2564 NEGATIVE CONTROL: Change Bid on a live quote still leaves bid_status alone', () => {
+  it('gh-3560 renewQuoteRpcMode: renew on Renew Bid, reopen on a cancelled bid, null on a plain change', () => {
+    expect(renewQuoteRpcMode(true, 'expired')).toBe('renew');
+    expect(renewQuoteRpcMode(true, null)).toBe('renew');
+    expect(renewQuoteRpcMode(false, 'cancelled')).toBe('reopen');
+    for (const s of ['active', 'expired', 'superseded', null, undefined]) expect(renewQuoteRpcMode(false, s)).toBeNull();
+  });
+
+  it('gh-2564 NEGATIVE CONTROL: Change Bid on a live quote leaves bid_status alone', () => {
     for (const s of ['active', 'expired', null, undefined]) {
       const u = buildQuoteUpdate({ ...common, renewMode: false, existingBidStatus: s, now: NOW });
       expect(u).not.toHaveProperty('bid_status');
@@ -349,6 +372,38 @@ describe('quote + acceptance + notify payloads', () => {
       contractor_id: 'con-1', claim_id: 'claim-1', bid_id: 'bid-1', fee_pct: 6, fee_basis: 'bid_amount',
       fee_amount: 1080, fee_text_displayed: 'TEXT', accepted_at: 'T', ip_address: '1.2.3.4', user_agent: 'UA',
     });
+  });
+
+  it('gh-3409: a failed IP lookup never costs the acceptance (ip_address is inet; \'unknown\' is refused with 22P02 before the guard runs)', () => {
+    for (const bad of ['unknown', '', '   ', null, undefined, 'not an ip', '999.1.1.1', '1.2.3', '1.2.3.4.5', '<script>']) expect(ipForInet(bad as string | null | undefined)).toBeNull();
+    expect(ipForInet('203.0.113.7')).toBe('203.0.113.7');
+    expect(ipForInet(' 203.0.113.7 ')).toBe('203.0.113.7');
+    expect(ipForInet('2001:db8::1')).toBe('2001:db8::1');
+    const base = { contractorId: 'c', claimId: 'cl', bidId: 'b', feePct: 5, feeAmount: 750, feeTextDisplayed: 'T', acceptedAtIso: 'T', userAgent: 'UA' };
+    expect(buildFeeAcceptanceInsert({ ...base, ipAddress: 'unknown' }).ip_address).toBeNull();
+    expect(buildFeeAcceptanceInsert({ ...base, ipAddress: null }).ip_address).toBeNull();
+    expect(buildFeeAcceptanceInsert({ ...base, ipAddress: '203.0.113.7' }).ip_address).toBe('203.0.113.7');
+  });
+
+  it('gh-3409: the fee_acceptances result is classified so a diversion or a failure is never silent', () => {
+    expect(feeAcceptanceOutcome({ data: [{ id: 'x' }], error: null })).toBe('recorded');
+    expect(feeAcceptanceOutcome({ data: [], error: null })).toBe('diverted');
+    expect(feeAcceptanceOutcome({ data: null, error: null })).toBe('diverted');
+    expect(feeAcceptanceOutcome({ data: null, error: { message: 'invalid input syntax for type inet', code: '22P02' } })).toBe('failed');
+  });
+
+  it('gh-3409: bid-form.tsx inserts with .select(\'id\') (never .single()), reads the result and reports it, and never sends \'unknown\'', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(`${process.cwd()}/app/contractor/bid/[claimId]/bid-form.tsx`, 'utf8'); // vitest runs from react-app/
+    const at = src.indexOf(".from('fee_acceptances').insert(");
+    expect(at).toBeGreaterThan(0);
+    const stmt = src.slice(at, src.indexOf(';', src.indexOf('userAgent', at)) + 1);
+    expect(stmt).toMatch(/\.select\('id'\)\s*;$/);
+    expect(stmt).not.toMatch(/\.(single|maybeSingle)\s*\(/);
+    expect(src).toMatch(/feeAcceptanceOutcome\(feeRes\)/);
+    expect(src).toMatch(/Sentry\.captureMessage\(feeMsg/);
+    expect(src).not.toMatch(/return 'unknown'/);
+    expect(src).not.toMatch(/\|\| 'unknown'/);
   });
 
   it('buildBidConfirmationBody (D-215 Layer 2)', () => {
@@ -469,9 +524,12 @@ describe('React route helpers (copy.ts)', () => {
     expect(rescindBidRoutePath('claim-1')).toBe('/contractor/bid/claim-1?action=rescind');
     expect(bidRoutePath('a/b')).toBe('/contractor/bid/a%2Fb'); // encoded
   });
-  it('fee info copy', () => {
-    expect(BID_COPY.fee.feeInfoInsurance('$20,000.00')).toBe('ℹ A flat 5% platform fee based on the RCV ($20,000.00) applies upon contract signing.');
-    expect(BID_COPY.fee.feeInfoRetail).toBe('ℹ A flat 5% platform fee applies to all projects upon contract signing.');
+  it('fee explainer is the GC-approved #547 item 1B text, verbatim', () => {
+    expect(BID_COPY.fee.feeExplainer).toBe(
+      'A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission.',
+    );
+    expect('feeInfoInsurance' in BID_COPY.fee).toBe(false);
+    expect('feeInfoRetail' in BID_COPY.fee).toBe(false);
   });
 });
 
@@ -520,6 +578,15 @@ describe('bid-form.tsx wiring (gh-2105, money — HIGH PRIORITY)', () => {
     expect(block).toContain(".select('id')");
     expect(block).toContain('wroteRow(upRows)');
     expect(block).toContain('bid_update_zero_rows');
+  });
+
+  it('gh-3560: the renew / reopen path calls supabase.rpc(\'renew_quote\') with p_quote_id and p_mode BEFORE the field UPDATE, and throws on its error', () => {
+    const idxRpc = compSrc.indexOf(".rpc('renew_quote', { p_quote_id: existingQuote!.id, p_mode: renewRpcMode })");
+    expect(idxRpc).toBeGreaterThan(-1);
+    const idxUpdate = compSrc.indexOf(".update(updatePayload).eq('id', existingQuote!.id)");
+    expect(idxRpc).toBeLessThan(idxUpdate);
+    expect(compSrc.slice(idxRpc, idxUpdate)).toContain('if (renewErr) throw renewErr;');
+    expect(compSrc).toContain('renewQuoteRpcMode(mode === \'renew\'');
   });
 
   it('mutation control: removing .select(\'id\') breaks the wroteRow(upRows) call from ever seeing real data', () => {

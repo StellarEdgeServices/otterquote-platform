@@ -253,7 +253,12 @@ async function acceptance(mod, startSrc) {
     chk('T1', /<span class="oq-trust-name">Otter Quotes<\/span>/.test(block), 'the wordmark text is "Otter Quotes"');
     const photo = /<img id="oqTrustPhoto"([^>]*)>/.exec(block);
     chk('T1', !!photo && /\bhidden\b/.test(photo[1]) && !/\bsrc=/.test(photo[1]) && /width="40"/.test(photo[1]) && /height="40"/.test(photo[1]), 'the photo slot ships HIDDEN with NO src (no placeholder, stock or AI image)');
-    chk('T1', !fs.existsSync(path.join(repoRoot, 'img/team')), 'no img/team/ directory or photo file ships in this PR');
+    // D-411 (commit 57d99005) put the approved founder photo on main legitimately. The guard keeps its intent (no
+    // placeholder, stock or AI photo ships with the trust header): img/team may hold ONLY the D-411 founder photo.
+    const teamDir = path.join(repoRoot, 'img/team');
+    const teamFiles = fs.existsSync(teamDir) ? fs.readdirSync(teamDir, { recursive: true }).map((f) => String(f).replaceAll('\\', '/')).sort() : [];
+    const D411_TEAM_FILES = ['dustin-stohler.webp'];
+    chk('T1', teamFiles.every((f) => D411_TEAM_FILES.includes(f)), 'no img/team file other than the D-411 founder photo ships (found: ' + (teamFiles.join(', ') || 'none') + ')');
     chk('T1', !/(Founder|CEO|licensed|insured|A\+|rated|reviews?|vetted|\$\d)/i.test(block.replace(WHO_WE_ARE, '')), 'no caption, credential, price or review text in the header (Ben: nothing beyond logo + who-we-are + photo)');
   });
 

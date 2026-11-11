@@ -202,6 +202,16 @@ describe('D-171 switch contractor', () => {
   it('disables switching within the 3-day install cutoff', () => {
     expect(isSwitchWithinCutoff('2026-06-24', now)).toBe(true);
   });
+  it('gh-3350: day three (start date 3 days out) is open, at any time of day; day two is closed', () => {
+    // 2026-10-26 is CDT (UTC-5): 00:00 Central = 05:00Z.
+    for (const iso of ['2026-10-26T05:00:00Z', '2026-10-26T12:00:00Z', '2026-10-27T04:59:59Z']) {
+      expect(isSwitchWithinCutoff('2026-10-29', new Date(iso))).toBe(false);
+    }
+    expect(isSwitchWithinCutoff('2026-10-29', new Date('2026-10-27T05:00:00Z'))).toBe(true);
+    expect(isSwitchWithinCutoff('2026-10-28', new Date('2026-10-26T12:00:00Z'))).toBe(true);
+    expect(isSwitchWithinCutoff('2026-10-20', new Date('2026-10-26T12:00:00Z'))).toBe(true);
+    expect(isSwitchWithinCutoff('2026-02-30', new Date('2026-10-26T12:00:00Z'))).toBe(false);
+  });
   it('allows switching well before install', () => {
     expect(isSwitchWithinCutoff('2026-07-30', now)).toBe(false);
   });

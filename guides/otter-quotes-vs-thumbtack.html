@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Otter Quotes vs Thumbtack: How They Differ | Otter Quotes</title>
+<meta name="description" content="Thumbtack lets you choose pros to contact. Otter Quotes sends one written scope to contractors who bid. See how they differ and when each may fit.">
+<link rel="canonical" href="https://otterquote.com/guides/otter-quotes-vs-thumbtack.html">
+<meta property="og:title" content="Otter Quotes vs Thumbtack: How They Differ | Otter Quotes">
+<meta property="og:description" content="Thumbtack lets you choose pros to contact. Otter Quotes sends one written scope to contractors who bid. See how they differ and when each may fit.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/otter-quotes-vs-thumbtack.html">
+<meta property="og:image" content="https://otterquote.com/img/social/og-default.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Otter Quotes: Contractors Compete. Homeowners Win. A cartoon otter in a hard hat.">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-11-10">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds (same values as PR #2499; defined here until it merges) */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+.definition-table td { color: var(--dark-gray); border-bottom: 1px solid #D9DEE7; }
+.definition-table td:first-child { color: var(--navy); }
+.definition-table tr:last-child td { border-bottom: none; }
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+<style id="breadcrumb-css">.breadcrumb ol{list-style:none;display:flex;flex-wrap:wrap;gap:.25rem .5rem;justify-content:inherit;margin:0 0 var(--sp-4);padding:0;font-size:.85rem}.breadcrumb li+li:before{content:"\203A";margin-right:.5rem;opacity:.7}.breadcrumb a{color:inherit;text-decoration:underline}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <nav class="breadcrumb" data-seo-crumb="1" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/guides/">Guides</a></li><li aria-current="page">Otter Quotes or Thumbtack: Which Fits Your Exterior Project?</li></ol></nav>
+      <h1>Otter Quotes or Thumbtack: Which Fits Your Exterior Project?</h1>
+    <p class="meta">Otter Quotes &middot; Updated November 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>Thumbtack and Otter Quotes start a job in different ways. On Thumbtack, <a href="https://help.thumbtack.com/article/how-thumbtack-works/" target="_blank" rel="noopener">you describe your project and choose pros to contact</a>. On Otter Quotes, we write one scope of work and send it to multiple contractors, who may reply with written bids. Pick the start that fits how you want to shop.</p>
+      <p>Otter Quotes is not affiliated with Thumbtack. The facts on this page about Thumbtack come from two Thumbtack help pages written for professionals, which we opened on November 4, 2026, and each statement links to the page it came from. The suggestions about who may prefer which site are ours. Thumbtack can change those pages at any time. We did not open the pages you see when you request a job there, so this guide does not describe that step by step. One more thing to weigh: contractors pay Otter Quotes a fee on the bid you accept, so we benefit when you choose a contractor on our site.</p>
+    </div>
+
+    <section class="step">
+      <h2>What is the main difference between Otter Quotes and Thumbtack?</h2>
+      <p>The main difference is what you end up comparing. On Thumbtack, according to its <a href="https://help.thumbtack.com/article/how-thumbtack-works/" target="_blank" rel="noopener">help page for pros</a>, customers describe their project, answer a few questions, see pros and reach out to the ones they choose. On Otter Quotes, you describe the project once and contractors who choose to bid price the scope of work we write.</p>
+      <p>On Thumbtack, your first task is choosing whom to contact. The <a href="https://help.thumbtack.com/article/how-thumbtack-works/" target="_blank" rel="noopener">same page</a> says that once a customer starts a conversation with a pro, it is up to the pro to win the job, so what you have to compare depends on what each pro sends back.</p>
+      <p>On Otter Quotes, you set up the project once, and then you read bids, because each one answers the same written scope. The bids can still differ in materials, warranties, schedule and what they leave out. Those differences are the part to read closely.</p>
+    </section>
+
+    <section class="step">
+      <h2>How do you find contractors on each one?</h2>
+      <p>On Thumbtack, you search and choose. The <a href="https://help.thumbtack.com/article/how-thumbtack-works/" target="_blank" rel="noopener">same help page</a> says customers describe the project in their own words, or with a photo in the app, and Thumbtack shows the pros that fit. Customers then reach out to the pros they like. That suits you if you want to look at profiles and decide who hears from you.</p>
+      <p>On Otter Quotes, you do not pick from a list. We send your scope of work to multiple contractors, and those who choose to bid reply with written bids. You compare the bids online, next to reviews and licensing information, and you sign online. The number of bids can vary by job and area.</p>
+      <p>Contractors do not see your name, phone number or street address until you choose one.</p>
+    </section>
+
+    <section class="step">
+      <h2>What do contractors pay on each one, and why does it matter to you?</h2>
+      <p>Contractors pay for different things on each. Thumbtack's <a href="https://help.thumbtack.com/article/pay-for-leads" target="_blank" rel="noopener">page on lead prices</a> says a pro pays for leads, which it describes as new customers who reach out to the pro directly. It says prices vary with the type and size of the job, how many pros are available and the market. Pros set their own lead prices.</p>
+      <p>For what it calls Opportunities, the <a href="https://help.thumbtack.com/article/pay-for-leads" target="_blank" rel="noopener">same page</a> says the pro reaches out first and pays the price shown only if the customer responds.</p>
+      <p>On Otter Quotes, contractors do not pay per lead. Our <a href="https://otterquote.com/terms.html">Terms</a> say Otter Quotes currently charges a service fee of 5% of the accepted bid amount, that the fee is charged to contractors, not directly to homeowners, and that it is charged once the contract is signed by both you and the contractor.</p>
+      <p>A payment model does not tell you whether a particular contractor is good, and we are not saying it does. It tells you when a contractor's main charge applies. On Thumbtack, <a href="https://help.thumbtack.com/article/pay-for-leads" target="_blank" rel="noopener">per its page</a>, that is when a customer reaches out or responds. On Otter Quotes, the platform fee is charged once the contract is signed. A contractor can also order a fuller roof report, which is a separate optional charge. Judge every contractor, on either site, by license, insurance, reviews, references and the written terms of the bid.</p>
+    </section>
+
+    <section class="step">
+      <h2>How does a bid on the same scope change the comparison?</h2>
+      <p>A scope of work is a written list of the work to be done: what comes off, what goes on, which materials, which parts of the house, and what is not included. When every contractor prices the same list, a difference in price is easier to read, because you are not guessing whether two prices cover the same job.</p>
+      <p>The bids will not be identical in every way. One contractor may name a better underlayment, another may offer a longer labor warranty, a third may exclude deck repair. Read each bid next to the scope and note what each one adds or leaves out. Our <a href="/guides/roof-bid-comparison-worksheet.html">roof bid comparison worksheet</a> gives you the rows to line up.</p>
+      <p>If you order the aerial roof report, you get professional measurements that contractors use to bid. A contractor who needs more can order a fuller report. If you would rather read prices at your own pace than take calls, this format may suit you. If you would rather talk first, Thumbtack's approach may suit you better.</p>
+    </section>
+
+    <section class="step">
+      <h2>What if the job is an insurance claim?</h2>
+      <p>If you have an insurance estimate, you can give Otter Quotes a copy, and there is no cost to you. Contractors then bid on the same scope. The insurance guides on our site explain how <a href="/blog/rcv-vs-acv-roof-insurance.html">ACV and RCV policies</a> pay and how to compare bids. We do not work with your insurance company, negotiate claims or act as a public adjuster. What your policy covers and pays stays between you and your insurer.</p>
+      <p>For a roof, if you do not have an insurance estimate, you can upload measurements you already have or order an aerial roof report from us for as little as $22.63 up front. It is refunded in full when you complete a job through the platform; the conditions are in our <a href="https://otterquote.com/terms.html">Terms</a>.</p>
+      <p>The Thumbtack pages we opened do not discuss insurance claims, so this guide says nothing about how Thumbtack handles them. If you use any site for a claim job, ask each contractor whether the price is in writing and whether it covers the same work as the other bids you are comparing. This guide does not tell you what your insurer will or should cover. For anything about your coverage, check your policy or ask your insurer. Our guide on <a href="/guides/how-to-choose-contractor.html">how to choose a contractor for insurance repairs</a> explains the steps.</p>
+    </section>
+
+    <section class="step">
+      <h2>When might Thumbtack suit you better?</h2>
+      <p>Repairs are not our specialty and we cover only roofing, siding and gutters, so for a small repair or another trade you may want a site that handles it. Thumbtack may also suit you if you want to talk with a pro before anyone writes a price.</p>
+      <p>If you want to look at pros yourself and decide whom to contact, that is how <a href="https://help.thumbtack.com/article/how-thumbtack-works/" target="_blank" rel="noopener">Thumbtack's help page describes the process</a>.</p>
+      <p>Otter Quotes may suit an exterior project where you want written bids on the same scope, compared side by side, without a salesperson in your home. Our guide on <a href="/guides/online-roof-bids-no-salesperson.html">how online roof bids work without a salesperson</a> shows the steps, and our comparison of <a href="/guides/competitive-roof-bids-vs-single-referral.html">competitive bids and a single referral</a> covers a related choice.</p>
+    </section>
+
+    <section class="step">
+      <h2>What should you ask before you choose anyone?</h2>
+      <p>Copy this list and use it with any contractor, on any site.</p>
+      <ul>
+        <li>Is your price in writing, and does it say what is included and what is not?</li>
+        <li>Does the bid name the products by brand and line, and say who backs each warranty?</li>
+        <li>Is this price for the same work and the same measurements as the other bids I have?</li>
+        <li>How would you price extra work, such as rotted boards found after the old material comes off?</li>
+        <li>Who will do the work: your own crew, or a subcontractor?</li>
+        <li>What are your license and insurance details, and where can I check them?</li>
+        <li>Who is my contract with, and what happens if the start date moves?</li>
+        <li>What reviews and references can I look at?</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>Otter Quotes creates a written scope of work for your roofing, siding or gutter project and sends it to multiple contractors. Contractors compete with bids on that same scope. You compare the bids online, next to reviews and licensing information, and sign online, without a salesperson in your home. Your contract is with the contractor, not with us. If something does not work out before work begins, you can switch to another Otter Quotes contractor at no cost, up to 3 days before your start date.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>Is Otter Quotes affiliated with Thumbtack?</h3>
+        <div class="faq-answer">
+          <p>No. Otter Quotes is a separate company and is not affiliated with Thumbtack. What this page says about Thumbtack comes from two Thumbtack help pages written for professionals, which we opened on November 4, 2026. Thumbtack can change those pages, so check them for current details.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does Otter Quotes charge contractors per lead?</h3>
+        <div class="faq-answer">
+          <p>No. Contractors pay Otter Quotes a service fee on the bid you accept, currently 5% of the accepted bid amount, charged once the contract is signed. Our Terms say the fee is charged to contractors, not directly to homeowners. Contractors are not charged a lead price to receive your project.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What does Otter Quotes cost a homeowner?</h3>
+        <div class="faq-answer">
+          <p>There is no cost for homeowners who provide a copy of their insurance estimate. For a roof, a homeowner without one can upload measurements or order an aerial roof report for as little as $22.63 up front. That amount is rebated in full if a job is completed through the platform; conditions apply.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does Otter Quotes work with my insurance company?</h3>
+        <div class="faq-answer">
+          <p>No. We do not work with your insurance company, negotiate claims or act as a public adjuster, and we are not a contractor. If you have an insurance estimate, you can give us a copy at no cost, and contractors bid on the same scope. What your policy covers stays between you and your insurer.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/guides/otter-quotes-vs-angi.html">Otter Quotes or Angi: Which Fits Your Exterior Project?</a></li>
+        <li><a href="/guides/online-roof-bids-no-salesperson.html">How Do Online Roof Bids Work Without a Salesperson?</a></li>
+        <li><a href="/guides/competitive-roof-bids-vs-single-referral.html">Competitive Roof Bids vs. a Single Referral: What Changes?</a></li>
+        <li><a href="/guides/how-to-choose-contractor.html">How to Choose a Contractor for Insurance Repairs</a></li>
+        <li><a href="/guides/roof-bid-comparison-worksheet.html">How to Compare Roofing Bids: A Side-by-Side Worksheet</a></li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Otter Quotes or Thumbtack: Which Fits Your Exterior Project?",
+  "description": "Thumbtack lets you choose pros to contact. Otter Quotes sends one written scope to contractors who bid. See how they differ and when each may fit.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-11-10",
+  "dateModified": "2026-11-10",
+  "publisher": {
+    "@type": "Organization",
+    "url": "https://otterquote.com/",
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/otter-quotes-vs-thumbtack.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is Otter Quotes affiliated with Thumbtack?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Otter Quotes is a separate company and is not affiliated with Thumbtack. What this page says about Thumbtack comes from two Thumbtack help pages written for professionals, which we opened on November 4, 2026. Thumbtack can change those pages, so check them for current details."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Otter Quotes charge contractors per lead?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Contractors pay Otter Quotes a service fee on the bid you accept, currently 5% of the accepted bid amount, charged once the contract is signed. Our Terms say the fee is charged to contractors, not directly to homeowners. Contractors are not charged a lead price to receive your project."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What does Otter Quotes cost a homeowner?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "There is no cost for homeowners who provide a copy of their insurance estimate. For a roof, a homeowner without one can upload measurements or order an aerial roof report for as little as $22.63 up front. That amount is rebated in full if a job is completed through the platform; conditions apply."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Otter Quotes work with my insurance company?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. We do not work with your insurance company, negotiate claims or act as a public adjuster, and we are not a contractor. If you have an insurance estimate, you can give us a copy at no cost, and contractors bid on the same scope. What your policy covers stays between you and your insurer."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "Otter Quotes or Thumbtack: Which Fits Your Exterior Project?",
+      "item": "https://otterquote.com/guides/otter-quotes-vs-thumbtack.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>

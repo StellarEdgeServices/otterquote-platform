@@ -1,0 +1,44 @@
+name: Static gh3629 Retired Combined Guide
+
+# gh-3629 -- the combined Thumbtack-and-Angi guide is retired: its URL must 301 in one hop to the
+# Thumbtack guide, nothing may link to it, and it must be out of the sitemap. Static check of
+# tracked files; no secrets, read-only token. See tests/gh3629-retire-combined-guide.mjs.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - '_redirects'
+      - 'sitemap.xml'
+      - 'llms.txt'
+      - 'about.html'
+      - 'guides/**'
+      - 'scripts/seo-topic-map.json'
+      - 'netlify/edge-functions/blog-guides-redirect.ts'
+      - 'tests/gh3629-retire-combined-guide.mjs'
+      - '.github/workflows/static-gh3629-retire-combined-guide.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3629-retire-combined-guide-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-gh3629-retire-combined-guide:
+    name: combined guide retired, single-hop 301, no inbound links (gh3629)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Retired guide checks
+        run: node tests/gh3629-retire-combined-guide.mjs
