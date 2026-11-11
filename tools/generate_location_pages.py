@@ -1786,7 +1786,7 @@ footer a:hover {{ color: var(--link-on-light-deep, #7A4200) !important; }}
 
 <script>
 (function() {{
-  var navHtml = '<nav class="site-nav"><div class="nav-inner container"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;"></a><div class="nav-links"><a href="/how-it-works.html" class="nav-link">How It Works</a><a href="/contractor-join.html" class="nav-link">For Contractors</a><a href="/start.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';
+  var navHtml = '<nav class="site-nav"><div class="nav-inner container"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-icon.webp" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;"></a><div class="nav-links"><a href="/how-it-works.html" class="nav-link">How It Works</a><a href="/contractor-join.html" class="nav-link">For Contractors</a><a href="/start.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';
   document.write(navHtml);
 }})();
 </script>
@@ -2062,7 +2062,7 @@ footer a:hover {{ color: var(--link-on-light-deep, #7A4200) !important; }}
 
 <script>
 (function() {{
-  var navHtml = '<nav class="site-nav"><div class="nav-inner container"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;"></a><div class="nav-links"><a href="/how-it-works.html" class="nav-link">How It Works</a><a href="/contractor-join.html" class="nav-link">For Contractors</a><a href="/start.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';
+  var navHtml = '<nav class="site-nav"><div class="nav-inner container"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-icon.webp" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;"></a><div class="nav-links"><a href="/how-it-works.html" class="nav-link">How It Works</a><a href="/contractor-join.html" class="nav-link">For Contractors</a><a href="/start.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';
   document.write(navHtml);
 }})();
 </script>
