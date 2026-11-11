@@ -214,6 +214,35 @@ export function resolveFeePct(
 }
 
 /**
+ * gh-3497: the rate out of a quotes_platform_fee_for() answer (a table of { fee_pct, fee_basis }), or null when there is
+ * no usable rate: no row, a null or non-numeric fee_pct, or a rate that is not above zero. Unlike resolveFeePct there is
+ * NO default: a missing answer must stop the submit, not become 5.00.
+ */
+export function parseConfiguredFeePct(data: unknown): number | null {
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row !== 'object') return null;
+  const raw = (row as { fee_pct?: unknown }).fee_pct;
+  if (raw === null || raw === undefined) return null;
+  const parsed = parseFloat(String(raw));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+/**
+ * gh-3497 (LEGAL-READ 6743062238): the rate stored on the quote that Change Bid / Renew updates, or null when the row has
+ * no usable rate. On the contractor's own UPDATE the quotes guard keeps the stored rate (gh2564, CEO ruling 6050104316:
+ * c_revised_bid_takes_current_config_rate := false) and recomputes fee_amount from COALESCE(platform_fee_pct,
+ * fee_percentage) and the new total_price. So a revised bid shows, accepts and sends this rate, never the configured one.
+ * A null counts as no answer: the submit stops, exactly as for a new bid whose configured rate cannot be read.
+ */
+export function storedQuoteFeePct(quote: Record<string, unknown> | null | undefined): number | null {
+  if (!quote) return null;
+  const raw = quote.platform_fee_pct !== null && quote.platform_fee_pct !== undefined ? quote.platform_fee_pct : quote.fee_percentage;
+  if (raw === null || raw === undefined) return null;
+  const parsed = parseFloat(String(raw));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+/**
  * Fee-calculator math (updateFeeCalculator, :4343-4353). For insurance_rcv jobs
  * the 5% fee base is the claim RCV; otherwise the bid amount.
  */

@@ -71,7 +71,9 @@ const h = vi.hoisted(() => {
   }
   const supabase = {
     from: (t: string) => builder(t),
-    rpc: () => {
+    rpc: (name?: string) => {
+      // gh-3497: the rate is read through rpc('quotes_platform_fee_for') (platform_fee_config itself is admin-only under RLS).
+      if (name === 'quotes_platform_fee_for') return Promise.resolve({ data: [{ fee_pct: 5, fee_basis: 'bid_amount' }], error: null });
       let signal: AbortSignal | null = null;
       const p: Record<string, unknown> = {
         abortSignal: (sig: AbortSignal) => { signal = sig; return p; },
@@ -384,7 +386,8 @@ describe('gh-3498 React bid form: stalled submit', () => {
   });
 
   // ── Widened closes-on (Marty, REVIEW 6688103147): every await between the submit lock and its finally ──
-  const existing = { id: 'q-1', bid_status: 'active', renewals_count: 0, total_price: 18000 };
+  // gh-3497: Change Bid shows, accepts and sends the quote's stored rate, so the fixture carries one.
+  const existing = { id: 'q-1', bid_status: 'active', renewals_count: 0, total_price: 18000, platform_fee_pct: 5, fee_percentage: 5 };
   const mountChange = () => render(<BidForm mode="change" claim={claim as never} contractor={contractor as never} existingQuote={existing as never} flags={flags} claimRcv={null} userId="u1" />);
 
   for (const call of ['fee_acceptances:insert', 'fn:send-bid-confirmation']) {
