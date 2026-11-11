@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PAGE = 'news/agents-get-ahead-of-roof-non-renewals.html';
-const PUBLISH_DATE_TEXT = 'November 5, 2026';
+const PUBLISH_DATE_TEXT = 'November 11, 2026';
 const UTM = 'utm_source=partner-release&utm_medium=onsite&utm_campaign=roof-buying-season&utm_content=agent';
 
 const RELEASE2 = `# The Best Agents Are Getting Ahead of Roof Non-Renewals
