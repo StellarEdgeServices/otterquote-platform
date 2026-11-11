@@ -5791,6 +5791,41 @@
               throw new Error('bid_update_zero_rows: no matching quote row was updated');
             }
 
+            // gh-3490 (Ben, ruling 6740655614, option A): the fee text on this form says submitting "constitutes your acceptance", so a
+            // changed or renewed bid records its own D-215 Layer 1 acceptance row for the bid just updated (non-fatal: the quote is
+            // committed). Same row shape as a new bid; insert-only. Needs the gh3490 guard (same bid AND same fee = duplicate) applied first.
+            // gh-3409: NO .single() (a diverted row returns zero rows; .single() would make PostgREST roll the quarantine row back).
+            let _chgFeeAccRows = null, _chgFeeAccError = null;
+            try {
+              ({ data: _chgFeeAccRows, error: _chgFeeAccError } = await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(sb.from('fee_acceptances').insert({
+                contractor_id: currentContractor.id,
+                claim_id: currentClaim.id,
+                bid_id: existingQuote.id,
+                fee_pct: _feePct,
+                fee_basis: 'bid_amount',
+                fee_amount: _feeAmount,
+                fee_text_displayed: _exactFeeText,
+                accepted_at: _acceptedAt,
+                ip_address: (_contractorIP && _contractorIP !== 'unknown') ? _contractorIP : null, // 'unknown' is not an inet value and made the whole insert fail
+                user_agent: _userAgent,
+              }).select('id'), signal)));
+            } catch (chgFeeAccTimeoutErr) { _chgFeeAccError = chgFeeAccTimeoutErr; }
+            if (_chgFeeAccError) {
+              console.error('[D-215] Fee acceptance record failed (non-fatal, quote committed):', _chgFeeAccError.message);
+              if (typeof Sentry !== 'undefined') {
+                try {
+                  Sentry.captureException(_chgFeeAccError, { extra: { bid_id: existingQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id } });
+                } catch (sentryErr) { console.warn('[gh-3490] Sentry report failed:', sentryErr); }
+              }
+            } else if (!_chgFeeAccRows || _chgFeeAccRows.length === 0) {
+              console.warn('[D-215] Fee acceptance kept for review instead of recorded (non-fatal, quote committed)');
+              if (typeof Sentry !== 'undefined') {
+                try {
+                  Sentry.captureMessage('[D-215] Fee acceptance diverted to quarantine', { level: 'warning', extra: { bid_id: existingQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id } });
+                } catch (sentryErr) { console.warn('[gh-3490] Sentry report failed:', sentryErr); }
+              }
+            }
+
             try {
               await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(sb.from('notifications').insert({
                 user_id: currentClaim.user_id || null,
