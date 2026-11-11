@@ -5740,7 +5740,8 @@
             // and expires_at to a contractor's direct UPDATE (42501). The RPC runs FIRST, then the field UPDATE below.
             const _renewRpcMode = renewMode ? 'renew' : (existingQuote.bid_status === 'cancelled' ? 'reopen' : null);
             if (_renewRpcMode) {
-              const { error: renewRpcError } = await sb.rpc('renew_quote', { p_quote_id: existingQuote.id, p_mode: _renewRpcMode });
+              // gh-3498: bounded like the UPDATE below; a stall ends through the catch (message, form unlocked). A retry is harmless (same row, same mode).
+              const { error: renewRpcError } = await callWithTimeout(BID_UPDATE_TIMEOUT_MS, (signal) => withAbortSignal(sb.rpc('renew_quote', { p_quote_id: existingQuote.id, p_mode: _renewRpcMode }), signal));
               if (renewRpcError) throw renewRpcError;
             }
             // gh-2105: payload hoisted to a named const so the ratchet scanner's
