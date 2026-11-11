@@ -8,7 +8,7 @@
  *   • Tier 2 — leftover bundle-label photo + brand/product/color.
  *   • Tier 3 — AI Photo Identification: COMING SOON STUB. Display-only, the
  *     action button is permanently disabled; NO AI integration (brief exclusion).
- *   • Tier 4 — ITEL Lab Analysis: photo upload + mailing address + a request
+ *   • Tier 4 — Lab Analysis: photo upload + mailing address + a request
  *     button that records a local "noted" acknowledgement only. NO payment, NO
  *     Stripe, NO functions.invoke (faithful to the static's alert-only stub).
  *
@@ -255,7 +255,7 @@ export function MaterialTiers({
         )}
       </div>
 
-      {/* Tier 4 — ITEL Lab Analysis */}
+      {/* Tier 4 — Lab Analysis */}
       <div className="ri-accordion">
         <button
           type="button"
@@ -264,7 +264,7 @@ export function MaterialTiers({
           onClick={() => toggle('tier4')}
         >
           <span>
-            🔬 Tier 4: ITEL Lab Analysis
+            🔬 Tier 4: Lab Analysis
             <span className="ri-tier-price">$75-100</span>
           </span>
           <span className="ri-acc-toggle" aria-hidden="true">
@@ -274,11 +274,11 @@ export function MaterialTiers({
         {open === 'tier4' && (
           <div className="ri-acc-content">
             <p>
-              For discontinued or hard-to-identify materials, our lab partner ITEL
+              For discontinued or hard-to-identify materials, our lab partner
               can identify from photos or physical samples.
             </p>
             <p>
-              ITEL covers 170+ manufacturers and 35,000+ products — including
+              The lab covers 170+ manufacturers and 35,000+ products — including
               discontinued materials.
             </p>
             <p>They can even source and ship discontinued shingles directly to your job site.</p>
@@ -301,9 +301,9 @@ export function MaterialTiers({
             />
             <p>Option 2: Mail a sample</p>
             <div className="ri-itel-address">
-              <p style={{ margin: 0 }}>ITEL Sample Mailing Address:</p>
+              <p style={{ margin: 0 }}>Lab Sample Mailing Address:</p>
               <p style={{ margin: '0.5rem 0 0' }}>
-                ITEL Labs
+                Attn: Sample Receiving
                 <br />
                 7 Westport Court
                 <br />
@@ -318,7 +318,7 @@ export function MaterialTiers({
             </div>
             {itelNoted ? (
               <div className="ri-itel-note" role="status">
-                ✓ ITEL analysis request noted. Our team will follow up with payment
+                ✓ Lab analysis request noted. Our team will follow up with payment
                 and lab-portal details.
               </div>
             ) : (
@@ -327,7 +327,7 @@ export function MaterialTiers({
                 className="ri-btn ri-btn-primary"
                 onClick={() => setItelNoted(true)}
               >
-                🔬 Request ITEL Analysis ($75)
+                🔬 Request Lab Analysis ($75)
               </button>
             )}
           </div>

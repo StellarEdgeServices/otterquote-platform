@@ -360,7 +360,7 @@ test.describe('gh-3488 contractor-bid-form.html fee timing (real page, Chromium)
     await clickSubmit(page);
     // 3fc20d19: stuck on "Submitting…". bab62017: filed at the rate on screen. gh-3497: the timeout ends the submit, nothing is filed.
     await expect.poll(() => dialogs.length, { timeout: 25000 }).toBe(1);
-    expect(dialogs[0]).toContain('fee_rate_unavailable');
+    expect(dialogs[0]).toContain("We couldn't load the platform fee for this bid, so your bid was not submitted and nothing was saved. Please try again in a moment.");
     expect((await inserted(page, 'quotes')).length).toBe(0);
     expect((await inserted(page, 'fee_acceptances')).length).toBe(0);
     await expect.poll(() => page.evaluate(() => (document.getElementById('submitBtn') as HTMLButtonElement).textContent)).toContain('Submit Bid');
@@ -499,7 +499,7 @@ test.describe('gh-3497 contractor-bid-form.html reads the rate through quotes_pl
       page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
       await clickSubmit(page);
       await expect.poll(() => dialogs.length, { timeout: 20000 }).toBe(1);
-      expect(dialogs[0]).toContain('Error submitting bid: fee_rate_unavailable');
+      expect(dialogs[0]).toContain("We couldn't load the platform fee for this bid, so your bid was not submitted and nothing was saved. Please try again in a moment.");
       expect((await inserted(page, 'quotes')).length).toBe(0);
       expect((await inserted(page, 'fee_acceptances')).length).toBe(0);
       expect(await page.locator('#retailBidPrice').inputValue()).toBe('25000');        // the bid is not lost
@@ -529,7 +529,7 @@ test.describe('gh-3497 contractor-bid-form.html reads the rate through quotes_pl
     page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
     await clickSubmit(page);
     await expect.poll(() => dialogs.length, { timeout: 15000 }).toBe(1);
-    expect(dialogs[0]).toContain('Error submitting bid: quotes: fee_rate_mismatch');
+    expect(dialogs[0]).toContain("The platform fee shown on this form was out of date, so your bid was not saved. The form now shows the current fee and your entries are still here. Please review the fee, accept it again, and select Submit Bid.");
     expect((await inserted(page, 'quotes')).length).toBe(0);
     expect((await inserted(page, 'fee_acceptances')).length).toBe(0);
     expect(await page.locator('#retailBidPrice').inputValue()).toBe('25000');                    // the bid is not lost

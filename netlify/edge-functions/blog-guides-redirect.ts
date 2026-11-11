@@ -146,8 +146,9 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/online-roof-bids-no-salesperson.html',
   '/guides/competitive-roof-bids-vs-single-referral':
     '/guides/competitive-roof-bids-vs-single-referral.html',
+  // gh-3629: the combined page is deleted; this entry goes straight to the Thumbtack guide (one hop, no chain).
   '/guides/otter-quotes-vs-thumbtack-angi':
-    '/guides/otter-quotes-vs-thumbtack-angi.html',
+    '/guides/otter-quotes-vs-thumbtack.html',
   '/guides/exterior-projects-one-contractor-or-separate-bids':
     '/guides/exterior-projects-one-contractor-or-separate-bids.html',
   '/guides/metal-roof-vs-asphalt-shingle-bids':
@@ -168,16 +169,26 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/roof-replacement-in-cold-weather.html',
   '/guides/how-long-does-roof-replacement-take':
     '/guides/how-long-does-roof-replacement-take.html',
+  '/guides/drip-edge-roof-replacement-bid':
+    '/guides/drip-edge-roof-replacement-bid.html',
   '/guides/roof-change-orders-hidden-damage':
     '/guides/roof-change-orders-hidden-damage.html',
   '/guides/roofing-contract-checklist-before-you-sign':
     '/guides/roofing-contract-checklist-before-you-sign.html',
   '/guides/roof-bid-much-lower-than-the-others':
     '/guides/roof-bid-much-lower-than-the-others.html',
+  '/guides/roof-underlayment-ice-barrier-bid':
+    '/guides/roof-underlayment-ice-barrier-bid.html',
   '/guides/roof-permit-in-your-bid':
     '/guides/roof-permit-in-your-bid.html',
+  '/guides/starter-strip-ridge-cap-bid':
+    '/guides/starter-strip-ridge-cap-bid.html',
   '/guides/roof-tarp-while-you-wait-for-repairs':
     '/guides/roof-tarp-while-you-wait-for-repairs.html',
+  '/guides/roof-repair-overlay-or-replacement-bids':
+    '/guides/roof-repair-overlay-or-replacement-bids.html',
+  '/guides/roof-flashing-replacement-bid':
+    '/guides/roof-flashing-replacement-bid.html',
   '/guides/roof-wind-ratings-explained':
     '/guides/roof-wind-ratings-explained.html',
   '/guides/class-4-impact-resistant-shingles':
@@ -210,6 +221,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/cuyahoga-county-oh/roofing/',
   '/locations/davidson-county-tn/roofing/index.html':
     '/locations/davidson-county-tn/roofing/',
+  '/locations/delaware-county-in/roofing/index.html':
+    '/locations/delaware-county-in/roofing/',
   '/locations/delaware-county-oh/roofing/index.html':
     '/locations/delaware-county-oh/roofing/',
   '/locations/franklin-county-oh/roofing/index.html':
@@ -242,14 +255,22 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/madison-county-in/roofing/',
   '/locations/marion-county-in/roofing/index.html':
     '/locations/marion-county-in/roofing/',
+  '/locations/monroe-county-in/roofing/index.html':
+    '/locations/monroe-county-in/roofing/',
   '/locations/montgomery-county-oh/roofing/index.html':
     '/locations/montgomery-county-oh/roofing/',
   '/locations/montgomery-county-tn/roofing/index.html':
     '/locations/montgomery-county-tn/roofing/',
+  '/locations/morgan-county-in/roofing/index.html':
+    '/locations/morgan-county-in/roofing/',
   '/locations/rutherford-county-tn/roofing/index.html':
     '/locations/rutherford-county-tn/roofing/',
+  '/locations/shelby-county-in/roofing/index.html':
+    '/locations/shelby-county-in/roofing/',
   '/locations/shelby-county-tn/roofing/index.html':
     '/locations/shelby-county-tn/roofing/',
+  '/locations/st-joseph-county-in/roofing/index.html':
+    '/locations/st-joseph-county-in/roofing/',
   '/locations/st-louis-county-mo/roofing/index.html':
     '/locations/st-louis-county-mo/roofing/',
   '/locations/stark-county-oh/roofing/index.html':
@@ -260,6 +281,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/summit-county-oh/roofing/',
   '/locations/sumner-county-tn/roofing/index.html':
     '/locations/sumner-county-tn/roofing/',
+  '/locations/tippecanoe-county-in/roofing/index.html':
+    '/locations/tippecanoe-county-in/roofing/',
   '/locations/warren-county-oh/roofing/index.html':
     '/locations/warren-county-oh/roofing/',
   '/locations/washington-county-tn/roofing/index.html':

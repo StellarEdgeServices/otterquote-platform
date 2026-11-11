@@ -100,7 +100,7 @@ describe('gh-3488 review fixes', () => {
   it('(2) the HTML "Platform Fee Breakdown" shows the disclosure figure: $1,296.10 -> $64.81 on both lines', () => {
     const els: Els = { totalPrice: { value: '1296.1' } };
     const run = new Function('document', 'window', 'formatCurrency', 'PLATFORM_FEES', 'updateFeeDisclosure',
-      `${sharedBlock(html)}\nfunction currentFeePct() { return window._feePct || 5; }\n${fnSource(html, 'paintFeeBreakdown')}\n${fnSource(html, 'updateFeeCalculator')}\nupdateFeeCalculator();`);
+      `${sharedBlock(html)}\nfunction currentFeePct() { return window._feePct || 5; }\nlet wizardMode = false; let wizardTradeQueue = []; let wizardStep = 1; let wizardCurrentTradeIdx = 0; let wizardTradePrices = {};\n${fnSource(html, 'effectiveBidAmount')}\n${fnSource(html, 'paintFeeBreakdown')}\n${fnSource(html, 'updateFeeCalculator')}\nupdateFeeCalculator();`);
     run(stubDocument(els), { _feePct: 5 }, usd, { contractSigning: 0.05 }, undefined);
     expect(els.feeContractSigning.textContent).toBe('$64.81');
     expect(els.totalFeeAmount.textContent).toBe('$64.81');
@@ -110,7 +110,7 @@ describe('gh-3488 review fixes', () => {
   it('(2) the calculator follows the fetched rate, not a hard-coded 5%', () => {
     const els: Els = { totalPrice: { value: '1000' } };
     const run = new Function('document', 'window', 'formatCurrency', 'PLATFORM_FEES', 'updateFeeDisclosure',
-      `${sharedBlock(html)}\nfunction currentFeePct() { return window._feePct || 5; }\n${fnSource(html, 'paintFeeBreakdown')}\n${fnSource(html, 'updateFeeCalculator')}\nupdateFeeCalculator();`);
+      `${sharedBlock(html)}\nfunction currentFeePct() { return window._feePct || 5; }\nlet wizardMode = false; let wizardTradeQueue = []; let wizardStep = 1; let wizardCurrentTradeIdx = 0; let wizardTradePrices = {};\n${fnSource(html, 'effectiveBidAmount')}\n${fnSource(html, 'paintFeeBreakdown')}\n${fnSource(html, 'updateFeeCalculator')}\nupdateFeeCalculator();`);
     run(stubDocument(els), { _feePct: 7.5 }, usd, { contractSigning: 0.05 }, undefined);
     expect(els.feeContractSigning.textContent).toBe('$75.00');
   });
@@ -118,7 +118,7 @@ describe('gh-3488 review fixes', () => {
   it('(2) the wizard summary net lines use the same whole-cent fee', () => {
     const els: Els = { wizardTradeSummaryRows: {}, wizardGrandTotal: {}, wizardGrandTotalNet: {} };
     const run = new Function('document', 'window', 'formatCurrency', 'wizardTradeQueue', 'wizardTradePrices',
-      `${sharedBlock(html)}\nfunction currentFeePct() { return 5; }\n${fnSource(html, 'buildWizardSummary')}\nbuildWizardSummary();`);
+      `${sharedBlock(html)}\nfunction currentFeePct() { return 5; }\n${fnSource(html, '_priceToCents')}\n${fnSource(html, 'buildWizardSummary')}\nbuildWizardSummary();`);
     run(stubDocument(els), {}, usd, ['roofing'], { roofing: 1296.1 });
     expect(els.wizardGrandTotalNet.textContent).toBe('Net to you: $1,231.29');
   });
@@ -129,7 +129,7 @@ describe('gh-3488 review fixes', () => {
     const lookups: Array<() => void> = [];
     const fetchPlatformFeePercentage = () => new Promise<number>((res) => lookups.push(() => res(5)));
     const run = new Function('document', 'window', 'fetchPlatformFeePercentage', 'updateFeeCheckboxState', 'formatCurrency',
-      `${sharedBlock(html)}\nlet _feeDisclosureSeq = 0; let _feeLookupInFlight = null; let _feeAcceptanceCheckbox = null;\nfunction currentFeePct() { return window._feePct || 5; }\n${fnSource(html, 'paintFeeBreakdown')}\n${fnSource(html, 'paintFeeDisclosure')}\n${fnSource(html, 'updateFeeDisclosure', true)}\nreturn updateFeeDisclosure;`);
+      `${sharedBlock(html)}\nlet _feeDisclosureSeq = 0; let _feeLookupInFlight = null; let _feeAcceptanceCheckbox = null;\nfunction currentFeePct() { return window._feePct || 5; }\nlet wizardMode = false; let wizardTradeQueue = []; let wizardStep = 1; let wizardCurrentTradeIdx = 0; let wizardTradePrices = {};\n${fnSource(html, 'effectiveBidAmount')}\n${fnSource(html, 'paintFeeBreakdown')}\n${fnSource(html, 'paintFeeDisclosure')}\n${fnSource(html, 'updateFeeDisclosure', true)}\nreturn updateFeeDisclosure;`);
     const updateFeeDisclosure = run(stubDocument(els), win, fetchPlatformFeePercentage, () => {}, usd) as () => Promise<void>;
     const older = updateFeeDisclosure();                 // bid $18,500 at call time
     els.totalPrice.value = '25000';
@@ -151,11 +151,12 @@ describe('gh-3488 review fixes', () => {
 
   it('(3) both forms normalise the typed bid to whole cents before it is shown, stored and charged', () => {
     // one snapshot at submit: whole cents, taken once; accepted fee, stored price and charge basis all use it
-    expect(html).toContain("const _snapBid = wholeCentDollars(parseFloat(document.getElementById('totalPrice').value) || 0)");
+    // gh-3495 (D-267): the bid is the sum of trades on a multi-trade bid (#totalPrice as typed otherwise), then whole cents
+    expect(html).toContain('const _snapBid = wholeCentDollars(effectiveBidAmount())');
     expect(html).toContain('const _bidAmount = _snapBid;');
     expect(html).toContain('const totalPrice = _snapBid;');
     expect(read('react-app/app/contractor/bid/[claimId]/bid-form.tsx'))
-      .toContain('const bidAmount = wholeCentDollars(parseFloat(form.bidPrice) || 0)');
+      .toContain('const bidAmount = wholeCentDollars(resolveBidAmount({ wizardMode, queue: wizard.queue, wizardPrices, bidPrice: form.bidPrice }))');
   });
 
   it('(3) a bid typed with a fraction of a cent: $9,734.095 shows $486.71, records 486.71 and charges 48671 (234ad802: 486.70)', () => {

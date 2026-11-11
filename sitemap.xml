@@ -314,8 +314,14 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://otterquote.com/guides/otter-quotes-vs-thumbtack-angi.html</loc>
-    <lastmod>2026-11-03</lastmod>
+    <loc>https://otterquote.com/guides/otter-quotes-vs-thumbtack.html</loc>
+    <lastmod>2026-11-10</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/otter-quotes-vs-angi.html</loc>
+    <lastmod>2026-11-10</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -328,6 +334,18 @@
   <url>
     <loc>https://otterquote.com/guides/metal-roof-vs-asphalt-shingle-bids.html</loc>
     <lastmod>2026-11-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/roof-repair-overlay-or-replacement-bids.html</loc>
+    <lastmod>2026-11-10</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/roof-flashing-replacement-bid.html</loc>
+    <lastmod>2026-11-10</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -380,6 +398,12 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://otterquote.com/guides/drip-edge-roof-replacement-bid.html</loc>
+    <lastmod>2026-11-10</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://otterquote.com/guides/roof-change-orders-hidden-damage.html</loc>
     <lastmod>2026-10-18</lastmod>
     <changefreq>monthly</changefreq>
@@ -398,6 +422,12 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://otterquote.com/guides/roof-underlayment-ice-barrier-bid.html</loc>
+    <lastmod>2026-11-10</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://otterquote.com/guides/roof-permit-in-your-bid.html</loc>
     <lastmod>2026-10-18</lastmod>
     <changefreq>monthly</changefreq>
@@ -406,6 +436,12 @@
   <url>
     <loc>https://otterquote.com/guides/roof-tarp-while-you-wait-for-repairs.html</loc>
     <lastmod>2026-10-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/guides/starter-strip-ridge-cap-bid.html</loc>
+    <lastmod>2026-11-10</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -651,6 +687,12 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://otterquote.com/locations/delaware-county-in/roofing/</loc>
+    <lastmod>2026-11-10</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://otterquote.com/locations/delaware-county-oh/roofing/</loc>
     <lastmod>2026-11-03</lastmod>
     <changefreq>monthly</changefreq>
@@ -747,6 +789,12 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://otterquote.com/locations/monroe-county-in/roofing/</loc>
+    <lastmod>2026-11-10</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://otterquote.com/locations/montgomery-county-oh/roofing/</loc>
     <lastmod>2026-11-03</lastmod>
     <changefreq>monthly</changefreq>
@@ -759,14 +807,32 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://otterquote.com/locations/morgan-county-in/roofing/</loc>
+    <lastmod>2026-11-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://otterquote.com/locations/rutherford-county-tn/roofing/</loc>
     <lastmod>2026-11-03</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://otterquote.com/locations/shelby-county-in/roofing/</loc>
+    <lastmod>2026-11-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://otterquote.com/locations/shelby-county-tn/roofing/</loc>
     <lastmod>2026-11-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/locations/st-joseph-county-in/roofing/</loc>
+    <lastmod>2026-11-10</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -797,6 +863,12 @@
   <url>
     <loc>https://otterquote.com/locations/sumner-county-tn/roofing/</loc>
     <lastmod>2026-11-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://otterquote.com/locations/tippecanoe-county-in/roofing/</loc>
+    <lastmod>2026-11-10</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>

@@ -18,6 +18,10 @@ const URL_KEY = /(url|href|action|src)$/i;
 const REFERRER_KEY = /referrer$/i;
 const OPAQUE_SCHEME = /^(mailto|tel|sms|javascript|data|blob):/i;
 const MAX_DEPTH = 10;
+// gh-3357: path properties that name a page HeyCatch must not see (see js/heycatch-privacy.js).
+const PATHNAME_KEY = /pathname$/i;
+const PREV_PATHNAME = "$prev_pageview_pathname";
+type PathAllowed = (path: string) => boolean;
 
 /** The one value rule for a kept campaign value, in a URL or as a standalone property: 1 to 100 characters,
  *  and no "@" (or fullwidth "@") at any level of percent-decoding, so "x%2540y.com" is caught. */
@@ -96,6 +100,11 @@ function scrubChain(chain: string): string {
   return chain.replace(/((?:attr__)?(?:href|action|src)=")((?:[^"\\]|\\.)*)"/g, (_all, head: string, val: string) => `${head}${scrubUrl(val, false)}"`);
 }
 
+// The path of an absolute URL, or null when it does not parse (so a pathAllowed check fails closed).
+function urlPath(v: string): string | null {
+  try { return new URL(v).pathname; } catch { return null; }
+}
+
 function isPlain(v: object): boolean {
   const p = Object.getPrototypeOf(v);
   return p === Object.prototype || p === null;
@@ -107,7 +116,7 @@ function isPlain(v: object): boolean {
 const HEATMAP_EVENT = "$$heatmap";
 const HEATMAP_PROP = "$heatmap_data";
 
-function walk(v: unknown, key: string, depth: number): unknown {
+function walk(v: unknown, key: string, depth: number, pathOk: PathAllowed | null): unknown {
   if (depth > MAX_DEPTH) return undefined;
   if (key === HEATMAP_PROP) return undefined;
   if (key) {
@@ -117,15 +126,17 @@ function walk(v: unknown, key: string, depth: number): unknown {
   }
   if (typeof v === "string") {
     if (key === "$elements_chain") return scrubChain(v);
+    if (pathOk && key && PATHNAME_KEY.test(key) && pathOk(v) !== true) return undefined;
+    if (pathOk && CURRENT_URL_KEYS.includes(key) && pathOk(urlPath(v) as string) !== true) return undefined;
     if (key && REFERRER_KEY.test(key)) return scrubReferrer(v);
     if (key && URL_KEY.test(key)) return scrubUrl(v, CURRENT_URL_KEYS.includes(key));
     return v;
   }
-  if (Array.isArray(v)) return v.map((x) => walk(x, key, depth + 1));
+  if (Array.isArray(v)) return v.map((x) => walk(x, key, depth + 1, pathOk));
   if (v && typeof v === "object" && isPlain(v)) {
     const out: Record<string, unknown> = {};
     for (const k of Object.keys(v)) {
-      const r = walk((v as Record<string, unknown>)[k], k, depth + 1);
+      const r = walk((v as Record<string, unknown>)[k], k, depth + 1, pathOk);
       if (r !== undefined) out[k] = r;
     }
     return out;
@@ -133,23 +144,38 @@ function walk(v: unknown, key: string, depth: number): unknown {
   return v;
 }
 
-/** A scrubbed copy of the event, or null if it cannot be scrubbed. Never throws. */
-export function scrubEvent<T>(event: T): T | null {
+/**
+ * A scrubbed copy of the event, or null if it cannot be scrubbed. Never throws.
+ * gh-3357: with pathAllowed, every property whose name ends in "pathname", and every current-page
+ * URL property, is dropped unless pathAllowed(its path) is true; without it, $prev_pageview_pathname is kept only when it is the
+ * event's own $pathname. A pathAllowed that throws drops the event.
+ */
+export function scrubEvent<T>(event: T, pathAllowed?: PathAllowed): T | null {
   try {
     if (!event || typeof event !== "object") return null;
     if ((event as { event?: unknown }).event === HEATMAP_EVENT) return null;
-    return walk(event, "", 0) as T;
+    const pathOk = typeof pathAllowed === "function" ? pathAllowed : null;
+    const out = walk(event, "", 0, pathOk) as { properties?: Record<string, unknown> } | undefined;
+    const p = out?.properties;
+    // gh-3357 (REVIEW 6775360563): when pathAllowed rejected $prev_pageview_pathname, the rest of that
+    // page's $prev_pageview_* data (id, duration, scroll, content) describes the denied page too: drop all of it.
+    const inP = (event as { properties?: Record<string, unknown> }).properties;
+    if (pathOk && p && typeof p === "object" && inP && typeof inP === "object" && PREV_PATHNAME in inP && !(PREV_PATHNAME in p)) {
+      for (const k of Object.keys(p)) if (k.startsWith("$prev_pageview_")) delete p[k];
+    }
+    if (!pathOk && p && typeof p === "object" && PREV_PATHNAME in p && p[PREV_PATHNAME] !== p.$pathname) delete p[PREV_PATHNAME];
+    return out as T;
   } catch {
     return null;
   }
 }
 
 /** The SDK calls beforeSend without a try/catch, so this never throws: a failure drops the event. */
-export function makeBeforeSend(gate?: () => boolean): <T>(event: T) => T | null {
+export function makeBeforeSend(gate?: () => boolean, pathAllowed?: PathAllowed): <T>(event: T) => T | null {
   return <T,>(event: T): T | null => {
     try {
       if (gate && !gate()) return null;
-      return scrubEvent(event);
+      return scrubEvent(event, pathAllowed);
     } catch {
       return null;
     }

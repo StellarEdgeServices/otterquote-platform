@@ -39,3 +39,33 @@ Deno.test("checklist-columns: isChecklistCompleteByColumns mirrors dashboard.htm
   assertEquals(isChecklistCompleteByColumns({ funding_type: "insurance", has_estimate: true, has_material_selection: true }), true);
   assertEquals(isChecklistCompleteByColumns({ funding_type: null, has_estimate: false, has_material_selection: true }), false);
 });
+
+// gh-3578 (D-407): ACV + purchased measurement, no estimate, is complete.
+Deno.test("checklist-columns: ACV claim accepts a measurement in place of the estimate (gh-3578)", () => {
+  const acv = { funding_type: "insurance", policy_type: "acv", has_estimate: false, has_measurements: true, has_material_selection: true };
+  assertEquals(isChecklistCompleteByColumns(acv), true);
+  assertEquals(resolveChecklistCompletedAt({ ...acv, status: "draft", updated_at: UPDATED }, undefined), UPDATED);
+  assertEquals(isChecklistCompleteByColumns({ ...acv, has_material_selection: false }), false);
+  assertEquals(isChecklistCompleteByColumns({ ...acv, policy_type: "rcv" }), false);
+  assertEquals(isChecklistCompleteByColumns({ ...acv, policy_type: null }), false);
+  assertEquals(isChecklistCompleteByColumns({ ...acv, has_measurements: false }), false);
+});
+
+Deno.test("checklist-columns: nudge and admin-tab derivations agree for ACV claims (gh-3578)", () => {
+  for (const policy_type of ["acv", "rcv", "idk", null]) {
+    for (const funding_type of ["cash", "insurance"]) {
+      for (const has_estimate of [true, false]) {
+        for (const has_measurements of [true, false]) {
+          for (const has_material_selection of [true, false]) {
+            const c = {
+              id: "c", user_id: "u", status: "draft", funding_type, policy_type, has_estimate, has_measurements, has_material_selection,
+              created_at: "2026-08-01T00:00:00Z", updated_at: UPDATED, trades: null, job_type: null,
+              is_test: false, homeowner_name: null,
+            };
+            assertEquals(resolveChecklistCompletedAt(c, undefined) ?? null, resolveChecklistCompleteAt(c, undefined), JSON.stringify(c));
+          }
+        }
+      }
+    }
+  }
+});

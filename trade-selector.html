@@ -1610,9 +1610,9 @@
         if (hasRepair) {
           redirectUrl = '/repair-intake.html';
         } else if (state.fundingType === 'insurance') {
-          redirectUrl = state.policyType === 'acv' ? '/project-info-acv.html' : '/project-info-rcv.html';
+          redirectUrl = state.policyType === 'acv' ? '/project-info-acv.html' : 'https://app.otterquote.com/insurance-rcv';
         } else {
-          redirectUrl = '/project-info-cash.html';
+          redirectUrl = 'https://app.otterquote.com/out-of-pocket';
         }
         if (savedClaimId) {
           redirectUrl += `?claim_id=${encodeURIComponent(savedClaimId)}`;

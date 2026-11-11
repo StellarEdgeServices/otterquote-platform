@@ -51,6 +51,12 @@ export const BID_COPY = {
   submitBtnChange: 'Update Bid',
   submitBtnRenew: 'Renew Bid',
 
+  // gh-3498 (REVIEW 6740720167 finding 2): a retry found that an earlier, timed-out attempt already filed the bid with other
+  // terms; the form switches to Change Bid with the figures on file. Same text as contractor-bid-form.html BID_ALREADY_FILED_MSG.
+  // Proposed under the open Q on #3498; exec:cto to approve.
+  bidAlreadyFiled:
+    'Your bid was already filed on an earlier try, so no second bid was sent. The form now shows the bid on file: if it is not what you meant to send, change it and select Update Bid.',
+
   // ── D-214/D-215 fee framework (VERBATIM — Tier-3) ──────────────────────────
   fee: {
     // GC-approved #547 item 1B explainer (VERBATIM, D-219; replaces the retired

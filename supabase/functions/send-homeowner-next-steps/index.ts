@@ -872,7 +872,7 @@ serve(async (req: Request) => {
     const { data: ccClaims, error: ccClaimsErr } = await supabase
       .from("claims")
       .select(
-        "id, user_id, status, ready_for_bids, created_at, updated_at, property_state, funding_type, has_estimate, has_measurements, has_material_selection",
+        "id, user_id, status, ready_for_bids, created_at, updated_at, property_state, funding_type, has_estimate, has_measurements, has_material_selection, policy_type",
       )
       .eq("is_test", scanIsTest)
       .in("status", [...CHECKLIST_NUDGE_ELIGIBLE_STATUSES])
@@ -886,6 +886,7 @@ serve(async (req: Request) => {
         id: string; user_id: string; status: string; ready_for_bids: boolean | null; created_at: string;
         updated_at: string | null; property_state: string | null; funding_type: string | null;
         has_estimate: boolean | null; has_measurements: boolean | null; has_material_selection: boolean | null;
+        policy_type: string | null;
       }[];
       // gh-1570 rail: same setting, same parser as notify-admin-new-homeowner
       // (gh-2421); missing row or malformed value -> FL/LA/TX. A READ ERROR

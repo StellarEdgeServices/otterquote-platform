@@ -113,8 +113,8 @@
   // flag. --
   var E_COPY = {
     p2: 'Otter Quotes helps homeowners get better deals on construction projects.  We generate your scope of work, submit it to multiple contractors, and they provide bids you can sign right here on our site.',
-    p4a: 'When multiple contractors know they are bidding on the same job, the competition encourages them to provide better materials, warranties, and pricing.  When they know you have options, they work harder to win your business.',
-    p4b: 'Contractors discourage homeowners from shopping around for contractors on insurance jobs by telling them their out of pocket expense is just your deductible.  What they don\'t tell you is that there is an upcharge for better materials and warranties.  When they are competing for your job, they are likely to throw these in for a reduced price or free to earn your business.',
+    p4a: 'When multiple contractors know they are bidding on the same job, they are competing for it.  When they know you have options, they work harder to win your business.',
+    p4b: 'Contractors discourage homeowners from shopping around for contractors on insurance jobs by telling them their out of pocket expense is just your deductible.  What they don\'t tell you is that there is an upcharge for better materials and warranties.',
     p7: 'Otter Quotes get contractors jobs without the need for a marketing budget, sales rep, and other overhead that adds nothing to the value of your home.   Since our contractors are competing for your business, these savings get passed along to you.',
     p9: 'A typical sales call with a contractor takes about two hours or more.  Getting 3 bids can take up your entire day.  With Otter Quotes, you spend about 15 minutes telling us about your project to get multiple bids from our contractors.',
     p11: 'Nearly 40% of the cost of your roof is money companies spend to look like they do great work.  The amazing sales rep at your kitchen table won\'t be swinging a hammer on your roof.   Otter Quotes helps you make your decision based on the information that really matters.'
@@ -133,7 +133,7 @@
     p8a: 'Who you send a client to reflects on you. If the job goes badly, your client remembers who referred them. When contractors compete for the work, no single name is riding on the outcome.',
     p10a: 'You\'re already doing this for your clients — finding them a contractor after an inspection, a repair need, or a deal that\'s stuck. It costs you time. This next question is about getting something back for it.',
     // Insurance branch.
-    p4b: 'Contractors often tell your policyholder their only cost is the deductible, then quietly upcharge for better materials or warranties. When contractors compete for the job, those upgrades stop costing your client extra.',
+    p4b: 'Contractors often tell your policyholder their only cost is the deductible, then quietly upcharge for better materials or warranties.',
     p6b: 'Explaining the claims process and vetting a contractor for every policyholder eats into your day. Sending one link lets Otter Quotes do that legwork instead of you.',
     p8b: 'The contractor a client works with reflects on you too. If the job goes badly, your client remembers who they called first. Competition among contractors takes that risk off you.',
     p10b: 'The shingle a contractor installs affects how long your client\'s roof lasts. Give them a reason to choose the option that holds up, not just the cheapest one.',

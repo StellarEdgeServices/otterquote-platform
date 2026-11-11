@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Roof Repair vs Replacement: Compare the Bids | Otter Quotes</title>
+<meta name="description" content="A repair, an overlay and a tear-off are three different jobs. Learn what each bid should say and how to compare them on the same roof.">
+<link rel="canonical" href="https://otterquote.com/guides/roof-repair-overlay-or-replacement-bids.html">
+<meta property="og:title" content="Roof Repair vs Replacement: Compare the Bids | Otter Quotes">
+<meta property="og:description" content="A repair, an overlay and a tear-off are three different jobs. Learn what each bid should say and how to compare them on the same roof.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/roof-repair-overlay-or-replacement-bids.html">
+<meta property="og:image" content="https://otterquote.com/img/social/og-default.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Otter Quotes: Contractors Compete. Homeowners Win. A cartoon otter in a hard hat.">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-11-10">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds (same values as PR #2499; defined here until it merges) */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+.definition-table td { color: var(--dark-gray); border-bottom: 1px solid #D9DEE7; }
+.definition-table td:first-child { color: var(--navy); }
+.definition-table tr:last-child td { border-bottom: none; }
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+<style id="breadcrumb-css">.breadcrumb ol{list-style:none;display:flex;flex-wrap:wrap;gap:.25rem .5rem;justify-content:inherit;margin:0 0 var(--sp-4);padding:0;font-size:.85rem}.breadcrumb li+li:before{content:"\203A";margin-right:.5rem;opacity:.7}.breadcrumb a{color:inherit;text-decoration:underline}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <nav class="breadcrumb" data-seo-crumb="1" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/guides/">Guides</a></li><li aria-current="page">Roof Repair, Overlay or Replacement? How to Get Bids You Can Compare</li></ol></nav>
+      <h1>Roof Repair, Overlay or Replacement? How to Get Bids You Can Compare</h1>
+    <p class="meta">Otter Quotes &middot; Updated November 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>Three bids are not a comparison if each one prices a different job. A repair, an overlay and a full replacement are three different jobs. Have each contractor price the repair and the replacement as separate options for the same roof, and write down what each price includes, what it leaves out and which warranty applies.</p>
+    </div>
+
+    <section class="step">
+      <h2>What is the difference between a repair, an overlay and a tear-off?</h2>
+      <p>A repair fixes part of a roof. An overlay, which roofers also call a recover, puts a new roof covering on top of the old one. A tear-off removes the old roof covering, repairs any damaged deck underneath and then installs a new covering. Bids for these jobs are not interchangeable, even when they are for the same house.</p>
+      <p>The Asphalt Roofing Manufacturers Association (ARMA) defines the last two this way. Roof replacement is "the process of removing the existing roof covering, repairing any damaged substrate, and installing a new roof covering." A roof recover is "the process of installing an additional roof covering on an existing roof covering."</p>
+    </section>
+
+    <section class="step">
+      <h2>What should a roof repair bid say?</h2>
+      <p>A repair bid should say exactly what will be replaced and how the repaired area will be finished. GAF's technical bulletin on replacing storm-damaged shingles confirms it is possible to replace individual shingles, and that hidden damage to neighboring shingles is hard to judge. The bid should name the area it covers.</p>
+      <p>The same bulletin gives specifics a bid can address. Nails removed from surrounding shingles must be replaced, and surrounding shingles must be resealed by hand. It adds that shingles that were nailed through, for example to hold a tarp, must be replaced, and that caulking those nail holes is not a permanent repair. It also notes that starter strips, ridge caps and other accessory products may be needed to complete a repair.</p>
+      <p>If the damage is limited to one slope, GAF says replacing just that roof plane may be possible. Find out whether the contractor is quoting a few shingles, a section or a whole slope, and why. Ask what their warranty says about repair work. Our guide to <a href="/guides/roof-tarp-while-you-wait-for-repairs.html">tarps on a roof while you wait for repairs</a> covers the temporary steps.</p>
+    </section>
+
+    <section class="step">
+      <h2>When might a bid recommend tearing off instead of covering over?</h2>
+      <p>A bid may recommend a tear-off when the deck or the existing layers make covering over a poor choice. ARMA says a roof is likely to need replacement if it has two layers, sagging, damaged deck boards, or shingles too uneven to flatten. A contractor who recommends a tear-off should tell you which of these conditions they saw.</p>
+      <p>ARMA also says a recover is appropriate only if the roof deck stays structurally sound and holds fasteners well, and that rotten, warped or otherwise damaged boards must be replaced before new shingles go on. Among the benefits of replacement it lists the chance to inspect the roof deck and repair any damage, and it notes that some roofing professionals insist on replacement because it puts a completely new roofing system on the house.</p>
+      <p>Find out what the contractor found and how they found it. A recommendation to tear off is easier to weigh when it names a condition you can look at yourself. Our guide to <a href="/guides/roof-change-orders-hidden-damage.html">change orders and hidden damage</a> explains how to get a price in the contract for damage that only shows up once the old roof is off.</p>
+    </section>
+
+    <section class="step">
+      <h2>When does an overlay fit?</h2>
+      <p>Whether an overlay fits depends on what you can inspect, what local codes allow and what the manufacturer recommends. ARMA notes that local building codes may limit your options, and that generally they do not allow more than two roof coverings on a building. It tells readers to consult the shingle manufacturer for specific recommendations.</p>
+      <p>ARMA also says that most manufacturers do not recommend installing new shingles over existing laminated shingles, and that impact resistance ratings for asphalt shingles "may be affected when new shingles are installed over existing shingles." Those are reasons to check with the manufacturer, not only the contractor, before you accept a bid that covers over the old roof.</p>
+      <p>So find out how many layers are on your roof now, what the bid assumes about the deck, and whether the shingle manufacturer allows the new shingles to be installed over the existing ones. Have the contractor put the answer in the bid, and settle what happens to the price if the deck turns out to need work.</p>
+    </section>
+
+    <section class="step">
+      <h2>How do you compare a repair bid, an overlay bid and a tear-off bid?</h2>
+      <p>Have each contractor price the same roof as separate options, and put each option in its own column. A repair, an overlay and a tear-off do not compete on total price alone. They differ in scope, in what you can inspect and in warranty terms.</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr>
+              <th>What to look for</th>
+              <th>Repair</th>
+              <th>Overlay</th>
+              <th>Tear-off</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Area covered</td>
+              <td>Which shingles, section or slope</td>
+              <td>The whole roof, or named sections</td>
+              <td>The whole roof</td>
+            </tr>
+            <tr>
+              <td>What happens to the old roof</td>
+              <td>Stays, with damaged parts replaced</td>
+              <td>Stays, covered by new material</td>
+              <td>Removed</td>
+            </tr>
+            <tr>
+              <td>Deck</td>
+              <td>Not visible unless opened</td>
+              <td>Not visible</td>
+              <td>Open for inspection and repair</td>
+            </tr>
+            <tr>
+              <td>Layers on the roof afterward</td>
+              <td>Unchanged</td>
+              <td>One more than today</td>
+              <td>One</td>
+            </tr>
+            <tr>
+              <td>Manufacturer's position</td>
+              <td>Check with the manufacturer</td>
+              <td>Check with the manufacturer</td>
+              <td>Check with the manufacturer</td>
+            </tr>
+            <tr>
+              <td>Contractor warranty</td>
+              <td>Terms for repair work, in writing</td>
+              <td>Terms for the new covering, in writing</td>
+              <td>Terms for the new roof, in writing</td>
+            </tr>
+            <tr>
+              <td>Exclusions and extras</td>
+              <td>What is left out; price for extra work</td>
+              <td>What is left out; price for extra work</td>
+              <td>What is left out; unit price for deck repair</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Put two or three contractors on the same table. Our <a href="/guides/roof-bid-comparison-worksheet.html">roof bid comparison worksheet</a> has the rows that every full-roof bid shares, such as underlayment, flashing, vents and cleanup. A repair bid can be shorter, but it should still say what it leaves out.</p>
+    </section>
+
+    <section class="step">
+      <h2>What if an insurance claim is involved?</h2>
+      <p>If an insurance claim is involved, check your policy and ask your insurer how it handles repairs before any work begins. Those questions belong with your insurer, not with a contractor. A contractor can still give you a written scope and price for the work.</p>
+      <p>Whoever pays, get the scope in writing and keep it. The National Roofing Contractors Association (NRCA) advises homeowners to insist on a written proposal with complete descriptions of the work and specifications, plus start and completion dates and payment procedures.</p>
+    </section>
+
+    <section class="step">
+      <h2>How do you choose among the contractors?</h2>
+      <p>Choose among contractors the way you would for any roof. NRCA advises homeowners to ask for proof of liability insurance and workers' compensation coverage, to ask for client references and a list of completed projects, and to keep a healthy skepticism about the lowest bid, since price is only one criterion.</p>
+      <p>For a repair, one more question matters. Does the contractor stand behind repair work in writing, and for how long? Pick the contractor who will put the scope, the price and the warranty on paper.</p>
+      <p>Read the contract before you sign. Our checklist for <a href="/guides/roofing-contract-checklist-before-you-sign.html">what belongs in a roofing contract</a> covers the clauses to look for, from payment schedule to cleanup.</p>
+    </section>
+
+    <section class="step">
+      <h2>What to ask every roofing contractor</h2>
+      <p>Copy this list into a note and send it to each contractor before you compare totals.</p>
+      <ul>
+        <li>Please price a repair and a replacement for the same roof as separate options.</li>
+        <li>What exactly will you replace in the repair: which shingles, which section, which slope?</li>
+        <li>How do you treat the shingles around a repair: are nails replaced and surrounding shingles hand-sealed?</li>
+        <li>How many layers are on my roof now?</li>
+        <li>If you recommend a tear-off, which condition did you see that led to it?</li>
+        <li>If you propose covering over the old roof, does the shingle manufacturer allow it, and does that change the warranty?</li>
+        <li>What do you assume about the deck, and what is the price per sheet or per board if the deck is damaged?</li>
+        <li>What warranty comes with a repair, and what warranty comes with a full roof?</li>
+        <li>What does the bid leave out, and how are extras priced and agreed?</li>
+        <li>What are your license number and proof of insurance?</li>
+        <li>Who does the work: your own crew or a subcontractor?</li>
+        <li>When can you start, and how long will the job take?</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>Otter Quotes creates a written scope of work for your roof replacement and sends it to multiple contractors, who compete with bids on that same scope. When you start, you choose Repair or Replace; there is no separate overlay choice. Repairs are not our specialty, and diagnosing one remotely is harder than pricing a full replacement. Homeowners who provide a copy of their insurance estimate pay nothing. For a replacement, a homeowner without one pays as little as $22.63 upfront for measurements that contractors use to bid, refunded if they complete a job on the platform. Contractors pay Otter Quotes a fee on the accepted bid. We do not offer inspections or damage assessments, work with your insurance company or sell upgrades.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>What is the difference between a roof overlay and a tear-off?</h3>
+        <div class="faq-answer">
+          <p>ARMA defines a roof recover, or overlay, as installing an additional roof covering on an existing roof covering. Roof replacement, or tear-off, removes the existing covering, repairs any damaged substrate and installs a new covering. A tear-off exposes the whole deck. An overlay does not. Have each bid say which one it prices.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>How many layers of roofing can a house have?</h3>
+        <div class="faq-answer">
+          <p>ARMA notes that local building codes may limit the options, and that generally they do not allow more than two roof coverings on a building. Find out how many layers your roof has now and what your local rules allow, and have the bid state whether the old layers come off.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Can a few damaged shingles be replaced without replacing the whole roof?</h3>
+        <div class="faq-answer">
+          <p>GAF's technical bulletin confirms it is possible to replace individual damaged shingles, though hidden damage to neighboring shingles is hard to judge. If damage is confined to one plane of the roof, replacing just that plane may be possible. Have the contractor say what area the repair bid covers and why.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does covering over my old shingles affect the new shingle warranty?</h3>
+        <div class="faq-answer">
+          <p>It may. Check with the shingle manufacturer, not only the contractor. ARMA reports that most manufacturers do not recommend installing new shingles over existing laminated shingles, and it tells readers to consult the manufacturer for specific recommendations. Have the contractor state in writing whether the manufacturer allows it.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Should I get a repair bid and a replacement bid from the same contractor?</h3>
+        <div class="faq-answer">
+          <p>Yes, it helps. Have each contractor price both for the same roof as separate options, with the scope, exclusions and warranty written out. That lets you compare the repair against the replacement from the same company, and against what other contractors offer for each.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="step">
+      <h2>Sources</h2>
+      <ul>
+        <li><a href="https://www.asphaltroofing.org/reroofing-replacement-vs-recover/" target="_blank" rel="noopener">Asphalt Roofing Manufacturers Association (ARMA), "Reroofing: Replacement vs. Recover"</a></li>
+        <li><a href="https://gaf.com/en-us/document-library/documents/technical-bulletins-&amp;-notes/r-126-replacement-of-storm-damaged-shingles.pdf" target="_blank" rel="noopener">GAF Technical Bulletin TAB-R-126, "Replacement of Storm Damaged Shingles"</a></li>
+        <li><a href="https://www.nrca.net/roofing-guidelines/selecting-a-contractor" target="_blank" rel="noopener">National Roofing Contractors Association, "Selecting a Contractor"</a></li>
+      </ul>
+    </section>
+
+      <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/guides/roof-bid-comparison-worksheet.html">How to Compare Roofing Bids: A Side-by-Side Worksheet</a></li>
+        <li><a href="/guides/roof-change-orders-hidden-damage.html">What Is a Roofing Change Order, and What if the Roofer Finds Hidden Damage?</a></li>
+        <li><a href="/guides/roof-tarp-while-you-wait-for-repairs.html">How Long Can a Tarp Stay on a Roof?</a></li>
+        <li><a href="/guides/roofing-contract-checklist-before-you-sign.html">What Should Be in a Roofing Contract Before You Sign?</a></li>
+        <li><a href="/guides/how-to-read-contractor-estimate.html">How to Read a Roofing Contractor Estimate</a></li>
+        <li><a href="/guides/topics/comparing-bids.html">Browse all: Comparing Bids and Roof Costs</a></li>
+      </ul>
+    </div>
+
+    </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Roof Repair, Overlay or Replacement? How to Get Bids You Can Compare",
+  "description": "A repair, an overlay and a tear-off are three different jobs. Learn what each bid should say and how to compare them on the same roof.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization", "logo": {"@type": "ImageObject", "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"}, "sameAs": ["https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ", "https://www.linkedin.com/company/otter-quotes", "https://www.facebook.com/OtterQuote", "https://www.instagram.com/otterquote/"],
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-11-10",
+  "dateModified": "2026-11-10",
+  "publisher": {
+    "@type": "Organization", "url": "https://otterquote.com/", "sameAs": ["https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ", "https://www.linkedin.com/company/otter-quotes", "https://www.facebook.com/OtterQuote", "https://www.instagram.com/otterquote/"],
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/roof-repair-overlay-or-replacement-bids.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is the difference between a roof overlay and a tear-off?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "ARMA defines a roof recover, or overlay, as installing an additional roof covering on an existing roof covering. Roof replacement, or tear-off, removes the existing covering, repairs any damaged substrate and installs a new covering. A tear-off exposes the whole deck. An overlay does not. Have each bid say which one it prices."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How many layers of roofing can a house have?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "ARMA notes that local building codes may limit the options, and that generally they do not allow more than two roof coverings on a building. Find out how many layers your roof has now and what your local rules allow, and have the bid state whether the old layers come off."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can a few damaged shingles be replaced without replacing the whole roof?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "GAF's technical bulletin confirms it is possible to replace individual damaged shingles, though hidden damage to neighboring shingles is hard to judge. If damage is confined to one plane of the roof, replacing just that plane may be possible. Have the contractor say what area the repair bid covers and why."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does covering over my old shingles affect the new shingle warranty?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It may. Check with the shingle manufacturer, not only the contractor. ARMA reports that most manufacturers do not recommend installing new shingles over existing laminated shingles, and it tells readers to consult the manufacturer for specific recommendations. Have the contractor state in writing whether the manufacturer allows it."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Should I get a repair bid and a replacement bid from the same contractor?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, it helps. Have each contractor price both for the same roof as separate options, with the scope, exclusions and warranty written out. That lets you compare the repair against the replacement from the same company, and against what other contractors offer for each."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "Roof Repair, Overlay or Replacement? How to Get Bids You Can Compare",
+      "item": "https://otterquote.com/guides/roof-repair-overlay-or-replacement-bids.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>

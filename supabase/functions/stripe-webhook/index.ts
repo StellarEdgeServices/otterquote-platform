@@ -48,6 +48,7 @@ import {
   postDisputeEvidence,
 } from "./dispute-routing.ts";
 import { assembleDisputeFeeEvidence, type FeeAcceptanceRow } from "./dispute-fee-evidence.ts";
+import { handleSwitchRefundFailed, REFUND_EVENT_TYPES, type StripeRefundObject } from "./refund-failed.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 import {
@@ -1350,6 +1351,14 @@ Deno.serve(async (req: Request) => {
     } else if (event.type === "payment_intent.payment_failed") {
       const piEvent = event as unknown as StripePaymentIntentEvent;
       await handlePlatformFeePaymentFailed(piEvent.data.object, supabase);
+    } else if (REFUND_EVENT_TYPES.includes(event.type)) {
+      // gh-3510: a switch refund that fails after creation. Alert only; no money, no email.
+      const outcome = await handleSwitchRefundFailed(event.type, event.data.object as unknown as StripeRefundObject, supabase, FN_NAME);
+      if (outcome === "error") {
+        // Let Stripe retry: free the ledger row so the redelivery is not skipped as a duplicate.
+        if (event.id) await supabase.from("stripe_webhook_events").delete().eq("event_id", event.id);
+        return new Response(JSON.stringify({ error: "Refund alert failed" }), { status: 500, headers: { "Content-Type": "application/json" } });
+      }
     } else {
       console.log(`[${FN_NAME}] Unhandled event type: ${event.type} — acknowledged`);
     }

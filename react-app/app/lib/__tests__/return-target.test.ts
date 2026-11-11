@@ -6,7 +6,9 @@ import {
   RETURN_STORAGE_KEY,
   RETURN_TTL_MS,
   RETURN_TARGETS,
+  HOMEOWNER_DASHBOARD_URL,
   captureReturnFromUrl,
+  dashboardUrlWithReturn,
   parseReturnToken,
   readReturnFromUrl,
   takeStoredReturn,
@@ -100,4 +102,21 @@ describe('stored return (get-started to auth-callback)', () => {
     expect(readReturnFromUrl('?return=//evil.example')).toBeNull();
     expect(readReturnFromUrl('')).toBeNull();
   });
+});
+
+describe('dashboardUrlWithReturn (gh-3283 / gh-3285: the RCV and OOP pages keep the return flag)', () => {
+  it('carries an allowlisted token forward to the static dashboard, ignoring other params', () => {
+    expect(dashboardUrlWithReturn('?claim_id=abc&return=measurements')).toBe(`${HOMEOWNER_DASHBOARD_URL}?return=measurements`);
+  });
+  it('no token: the bare dashboard, nothing appended', () => {
+    expect(dashboardUrlWithReturn('?claim_id=abc')).toBe(HOMEOWNER_DASHBOARD_URL);
+    expect(dashboardUrlWithReturn('')).toBe(HOMEOWNER_DASHBOARD_URL);
+  });
+  it.each(['https://evil.example/', '//evil.example', 'javascript:alert(1)', '__proto__', 'constructor', 'MEASUREMENTS', '/help-measurements.html'])(
+    'no open redirect: ?return=%s is dropped and the destination stays the dashboard',
+    (bad) => {
+      const url = dashboardUrlWithReturn('?return=' + encodeURIComponent(bad));
+      expect(url).toBe(HOMEOWNER_DASHBOARD_URL);
+    },
+  );
 });

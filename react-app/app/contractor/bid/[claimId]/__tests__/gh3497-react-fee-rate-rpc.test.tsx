@@ -22,6 +22,7 @@ const h = vi.hoisted(() => {
     const chain = () => b;
     for (const k of ['select', 'order', 'eq', 'limit', 'update', 'or']) b[k] = chain;
     b.insert = (row: Record<string, unknown>) => { if (!(table === 'quotes' && state.insertError)) state.inserts.push({ table, row }); return b; };
+    b.maybeSingle = async () => ({ data: null, error: null });   // gh-3498: the lookup for a bid already filed finds none
     b.single = async () => {
       if (table === 'quotes' && state.insertError) {
         const message = state.insertError; state.insertError = null; state.configured = 7.5;   // refused: no row stored; the configured rate had moved
@@ -111,7 +112,7 @@ describe('gh-3497 part 1: React bid form reads the rate through quotes_platform_
       fireEvent.click(feeBox(container));
       await waitFor(() => expect(submitBtn(container).disabled).toBe(false));
       fireEvent.click(submitBtn(container));
-      await waitFor(() => expect(container.textContent).toContain('Error submitting bid: fee_rate_unavailable'));
+      await waitFor(() => expect(container.textContent).toContain("We couldn't load the platform fee for this bid, so your bid was not submitted and nothing was saved. Please try again in a moment."));
       expect(inserted('quotes').length).toBe(0);
       expect(inserted('fee_acceptances').length).toBe(0);
       expect(priceInput(container).value).toBe('25000');           // the bid is not lost
@@ -126,7 +127,7 @@ describe('gh-3497 part 1: React bid form reads the rate through quotes_platform_
     fireEvent.click(feeBox(container));
     await waitFor(() => expect(submitBtn(container).disabled).toBe(false), { timeout: 8000 });
     fireEvent.click(submitBtn(container));
-    await waitFor(() => expect(container.textContent).toContain('Error submitting bid: fee_rate_unavailable'), { timeout: 8000 });
+    await waitFor(() => expect(container.textContent).toContain("We couldn't load the platform fee for this bid, so your bid was not submitted and nothing was saved. Please try again in a moment."), { timeout: 8000 });
     expect(inserted('quotes').length).toBe(0);
     expect(inserted('fee_acceptances').length).toBe(0);
   }, 25000);
@@ -139,7 +140,7 @@ describe('gh-3497 part 1: React bid form reads the rate through quotes_platform_
     fireEvent.click(feeBox(container));
     await waitFor(() => expect(submitBtn(container).disabled).toBe(false));
     fireEvent.click(submitBtn(container));
-    await waitFor(() => expect(container.textContent).toContain('fee_rate_unavailable'));
+    await waitFor(() => expect(container.textContent).toContain("We couldn't load the platform fee for this bid, so your bid was not submitted and nothing was saved. Please try again in a moment."));
     h.state.rpcMode = 'rate';                                                     // the rate is readable again: the fresh lookup
     fireEvent.click(submitBtn(container));                                         // shows 7.50 and asks for acceptance again
     await waitFor(() => expect(container.textContent).toContain('7.50%'));
@@ -161,7 +162,7 @@ describe('gh-3497 part 1: React bid form reads the rate through quotes_platform_
     await waitFor(() => expect(submitBtn(container).disabled).toBe(false));
     h.state.insertError = 'quotes: fee_rate_mismatch: the fee rate shown with this bid is 5.00 percent but the configured rate is 7.50 percent, so the bid was not saved (gh-3497)';
     fireEvent.click(submitBtn(container));
-    await waitFor(() => expect(container.textContent).toContain('Error submitting bid: quotes: fee_rate_mismatch'));
+    await waitFor(() => expect(container.textContent).toContain("The platform fee shown on this form was out of date, so your bid was not saved. The form now shows the current fee and your entries are still here. Please review the fee, accept it again, and select Submit Bid."));
     await waitFor(() => expect(container.textContent).toContain('7.50%'));
     expect(inserted('quotes').length).toBe(0);
     expect(inserted('fee_acceptances').length).toBe(0);
