@@ -276,10 +276,15 @@ def _target_matches_table(target_text: str, table: str) -> bool:
 # predates Supabase's 2026-10-30 auto-grant cutover). ONE entry, matched on the
 # full basename (version AND slug) so no other file can ride on it. Do not add
 # entries without an executive ruling.
+# gh-3324 (Marty DECIDED, PR #3665 comment 6806748788): second entry, same shape.
 ALLOWLISTED_APPLIED_MIGRATIONS = {
     "20261028152549_gh2995_accept_cpa_append_only.sql":
         "gh-3137: applied to production 2026-10-28; table predates the 2026-10-30 "
         "auto-grant cutover and production already grants service_role (Ben 6522540140)",
+    "20261029190222_gh3073_agreement_version_stamp.sql":
+        "gh-3324: applied to production 2026-10-29, file must stay byte-identical to the ledger; "
+        "service_role grant is added forward by draft gh3324b_agreement_version_current_service_role_grant "
+        "(DECIDED, PR #3665 comment 6806748788)",
 }
 
 

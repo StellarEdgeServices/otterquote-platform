@@ -516,7 +516,7 @@ def test_allowlisted_applied_migration_not_flagged_but_lookalikes_are():
         "supabase/migrations/20261028152550_gh2995_accept_cpa_append_only.sql", "", new_text)
     f_new, _ = check.evaluate_file(
         "supabase/migrations/20261101000000_some_new_table.sql", "", new_text)
-    ok = (len(check.ALLOWLISTED_APPLIED_MIGRATIONS) == 1 and f_ok == [] and len(n_ok) == 1
+    ok = (len(check.ALLOWLISTED_APPLIED_MIGRATIONS) == 2 and f_ok == [] and len(n_ok) == 1
           and len(f_other) == 1 and len(f_new) == 1)
     print("PASS  allowlist: only the exact applied migration is exempt; same table in any other file still fails"
           if ok else "FAIL  allowlist case: ok=%r other=%r new=%r" % (f_ok, f_other, f_new))
