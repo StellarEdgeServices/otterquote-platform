@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Realtor Referral Fee: How It Works | Otter Quotes</title>
+<meta name="description" content="How the Otter Quotes referral fee works for real estate agents: what earns it, the $10,000 floor, who pays it and what to tell clients.">
+<link rel="canonical" href="https://otterquote.com/partners/realtor-referral-fee-how-it-works.html">
+<meta property="og:title" content="Realtor Referral Fee: How It Works | Otter Quotes">
+<meta property="og:description" content="How the Otter Quotes referral fee works for real estate agents: what earns it, the $10,000 floor, who pays it and what to tell clients.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/partners/realtor-referral-fee-how-it-works.html">
+<meta property="og:image" content="https://otterquote.com/img/social/og-default.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Otter Quotes: Contractors Compete. Homeowners Win. A cartoon otter in a hard hat.">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-11-11">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds (same values as PR #2499; defined here until it merges) */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--amber);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--white);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step blockquote.fee-quote p { color: var(--navy); font-weight: 600; }
+.disclaimer-box { background: rgba(13,27,46,0.05); border-left: 4px solid var(--navy); padding: var(--sp-4) var(--sp-6); margin: var(--sp-6) 0; border-radius: var(--radius-md); }
+.disclaimer-box p { margin-bottom: 0; }
+.faq-section h2 { color: var(--white); }
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+<style id="breadcrumb-css">.breadcrumb ol{list-style:none;display:flex;flex-wrap:wrap;gap:.25rem .5rem;justify-content:inherit;margin:0 0 var(--sp-4);padding:0;font-size:.85rem}.breadcrumb li+li:before{content:"\203A";margin-right:.5rem;opacity:.7}.breadcrumb a{color:inherit;text-decoration:underline}</style>
+
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <nav class="breadcrumb" data-seo-crumb="1" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/partners.html">Referral Partner Program</a></li><li aria-current="page">Realtor Referral Fee: How It Works</li></ol></nav>
+      <h1>How Does the Otter Quotes Referral Fee Work for a Real Estate Agent?</h1>
+    <p class="meta">Otter Quotes &middot; For real estate agents &middot; Updated November 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/partners.html" class="back-link">&#8592; Referral Partner Program</a>
+
+    <div class="article-intro">
+      <p>Otter Quotes pays real estate partners a flat referral fee, stated in one sentence: "$200 when a homeowner you refer completes a project of $10,000 or more. $50 on the same terms for referrals from partners you recruit." The fee is not a percentage of anything. It is earned when the job is complete and approved for payout. No fee is earned on a homeowner whose property is in a state the Partner Agreement lists as excluded (section A4.4).</p>
+      <p>You send a client your referral link after a roof problem comes up. A few minutes later the client asks a fair question: do you get anything for this? You will answer better if you know how the fee works before you are asked. This guide covers what earns the fee, who pays it, where to read about payment, how a client is credited to you, and what to tell your client. Section numbers below are from the Partner Agreement, version v4-2026-10.</p>
+    </div>
+
+    <section class="step">
+      <h2>What does a real estate partner earn, and for what?</h2>
+      <p>A real estate partner earns the referral fee when a homeowner they referred completes a project of $10,000 or more and the job is approved for payout (<a href="/partner-agreement.html">Partner Agreement</a>, section A4.2). The fee is a fixed dollar amount, so a larger project does not make it larger. Otter Quotes states the amount in one sentence:</p>
+      <blockquote class="fee-quote">
+        <p>$200 when a homeowner you refer completes a project of $10,000 or more. $50 on the same terms for referrals from partners you recruit.</p>
+      </blockquote>
+      <p>Partner Agreement section 4 lists every fee that applies to a partner. Read it in full before you sign up.</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead><tr><th>Term</th><th>What it means</th></tr></thead>
+          <tbody>
+            <tr><td>Referral fee</td><td>The $200 in the sentence. It is earned when a homeowner you refer completes a qualifying project and the job is approved for payout.</td></tr>
+            <tr><td>Recruit bonus</td><td>The $50 in the sentence. It is earned on the same terms when the referral comes from a partner you recruited.</td></tr>
+            <tr><td>The $10,000 floor</td><td>The project must be $10,000 or more. A project of exactly $10,000 meets the floor.</td></tr>
+            <tr><td>Flat</td><td>Both amounts are fixed dollar amounts. Neither is a percentage of anything.</td></tr>
+            <tr><td>Not a discount</td><td>The agreement says every fee is paid to the partner for making a referral. No fee is a discount, rebate or credit against any price, and no fee may be described as one (section A4.6).</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Partner Agreement section A4.1 also provides a $5 measurement referral fee when a homeowner you refer purchases professional measurements. It has no $10,000 floor, and no recruit bonus is paid on it (section A4.3).</p>
+      <p>The size of the project is only a test. It decides whether the floor is met. It is not what the fee is figured from.</p>
+      <p>Completion is what earns the fee. A signed contract, a booked job or a started job has not been completed, so none of them earns it on its own. The job also has to be approved for payout.</p>
+      <p>Two limits apply. No fee is earned on a homeowner in a state the Partner Agreement excludes (section A4.4). And Otter Quotes may void an unpaid fee, or offset a paid one, if the underlying job is later refunded, cancelled, charged back or reversed (section 10.1).</p>
+    </section>
+
+    <section class="step">
+      <h2>How does the recruit bonus work?</h2>
+      <p>The recruit bonus is $50 when an agent you personally recruited refers a homeowner whose job earns a referral fee that is approved for payout (section A4.3). It is single-level, so you earn it only on agents you recruited directly, and forward-only, so it covers only referrals made after the recruiting link is in place.</p>
+      <p>Single-level means no bonus on agents your recruits recruit (section 4.1). Forward-only means no retroactive credit: if an agent was already referring clients before Otter Quotes' records linked them to you, you earn nothing on those earlier referrals. Section 9.5 adds that recruit bonuses are credited only on agents whom those records link to you as their recruiter.</p>
+    </section>
+
+    <section class="step">
+      <h2>Who pays the referral fee, and what does my client pay?</h2>
+      <p>Otter Quotes pays the referral fee to the partner who referred the homeowner. It is not taken from your client, and you pay nothing to sign up as a partner or to refer a client. Your client's costs are separate from the fee, and Partner Agreement section 4 lists every fee a partner can earn.</p>
+      <ul>
+        <li>A client who provides a copy of an insurance estimate does not need to purchase measurements.</li>
+        <li>A client without an insurance estimate pays an upfront charge of as little as $22.63 for the professional roof measurements that contractors use to bid, or can upload measurements they already have. That charge is refunded if the client completes a job on the platform.</li>
+        <li>Contractors pay Otter Quotes a fee on the accepted bid.</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>When is the referral fee paid?</h2>
+      <p>The fee is earned when a homeowner you refer completes a qualifying job and the job is approved for payout (section A4.2). Section 4.2 says fees accrue and are paid as section 5 provides. This page gives no date and no number of days. Read section 5 before you sign up, because the Partner Agreement governs the payout.</p>
+    </section>
+
+    <section class="step">
+      <h2>How does Otter Quotes know a client came from me?</h2>
+      <p>You get a personal referral link when you sign up as a real estate partner. A homeowner is credited to the partner whose link they clicked most recently, within 90 days, before creating their Otter Quotes account. That credit stays with that partner until 90 days after that click (section 9).</p>
+      <p>Otter Quotes' tracking records for your referral link decide attribution. Our app makes it quick and easy to send the link to your clients. If a client clicked links from more than one partner, the last click before the account was created gets the credit, and a later click does not change it while that credit lasts (sections 9.1 and 9.2). If no partner click falls within the window, the account stays unattributed. Make sure your client uses your correct, current link (section 9.5).</p>
+      <p>Here is the path for a client who comes from your link:</p>
+      <ol>
+        <li>The client opens your referral link and creates an account.</li>
+        <li>The client provides a copy of an insurance estimate if there is one, purchases professional measurements of the property, or uploads measurements they already have.</li>
+        <li>The client selects what needs to be quoted, such as the roof.</li>
+        <li>Otter Quotes sends the scope of work to contractors, who can submit bids.</li>
+        <li>The client compares the bids online, chooses one, and signs the contract online.</li>
+      </ol>
+      <p>The referral fee depends on the client completing the job, which is the last step of that path.</p>
+    </section>
+
+    <section class="step">
+      <h2>What should I tell my client about the fee?</h2>
+      <p>Tell your client that you are paid for the referral. Partner Agreement section 8.1 requires a partner to disclose that they are paid for referrals whenever they promote Otter Quotes, for example: "I get paid if you use my link." The disclosure has to appear in the content itself, not only in a bio or on a link page.</p>
+      <p>Do not share the fee with the client, and do not offer the client money, a gift card, a discount or any other reward for using Otter Quotes. Section 8.2 prohibits it. Do not describe the fee as a discount or a credit toward anything, which section A4.6 also rules out.</p>
+      <p>Describe the contractors only the way Otter Quotes does: they compete with bids on the same scope of work, and the client decides. Section 8.2 lists words partners must not use about contractors or about Otter Quotes, so read it before you write your own message. Do not promise a price, a saving or an outcome, and do not say what an insurer will cover (section 8.2).</p>
+      <p>Send the link to your own clients and contacts, one message at a time. Section 8.3 allows only individually written messages to named people, and no marketing text without the recipient's prior express written consent. Section 3 bars cold outreach in Otter Quotes' name. You are an independent contractor, not an Otter Quotes employee or agent, and you cannot speak for the company (section 2).</p>
+    </section>
+
+    <section class="step">
+      <h2>Am I allowed to accept the fee?</h2>
+      <p>That depends on your employment agreement and your governing licensing agency, and Otter Quotes cannot answer it for you. Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees. Both are yours to confirm.</p>
+      <p>Do this before you sign up. Signing up costs nothing, but the question is yours to settle first. Section 7 of the Partner Agreement says the same: a partner confirms their own eligibility before accepting any fee, and Otter Quotes does not evaluate it.</p>
+    </section>
+
+    <section class="step">
+      <h2>What should I ask?</h2>
+      <p>Copy these into your notes.</p>
+      <h3>For you, before you sign up</h3>
+      <ul>
+        <li>Does my employment agreement allow me to accept referral fees from a company like Otter Quotes?</li>
+        <li>Does my governing licensing agency have a rule on referral fees?</li>
+        <li>Where are the exact fee terms? (Partner Agreement, sections 4, 5 and 9.)</li>
+        <li>Is the property in a state the Partner Agreement excludes? (Section A4.4.)</li>
+        <li>What will I say when a client asks whether I am paid?</li>
+      </ul>
+      <h3>For your client, when you send the link</h3>
+      <ul>
+        <li>Does my message say that I get paid if you use my link?</li>
+        <li>Do you have a copy of an insurance estimate, or do you need to purchase measurements or upload ones you have?</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>Where does Otter Quotes fit?</h2>
+      <p>Otter Quotes is helping after the storm; it is not a storm contractor. It creates a written scope of work for a homeowner's project and sends it to multiple contractors, who compete with bids on that same scope. The homeowner compares the bids online, next to reviews and licensing information, and signs online if they choose one. Otter Quotes does not inspect or assess damage, does not work with insurance companies, and does not sell upgrades. Contractors Compete. Homeowners Win.</p>
+      <div class="cta-box cta-box-button">
+        <h3>Ready to refer a client?</h3>
+        <p>Sign up as a real estate partner to get your personal referral link, then send it to your client.</p>
+        <a href="/partner-re.html" class="btn btn-primary btn-lg">Become a real estate partner</a>
+      </div>
+      <div class="disclaimer-box">
+        <p>Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>Is the referral fee a percentage of the job?</h3>
+        <div class="faq-answer">
+          <p>No. It is a flat dollar amount, not a percentage of anything. The terms are: "$200 when a homeowner you refer completes a project of $10,000 or more. $50 on the same terms for referrals from partners you recruit." The size of the project only decides whether the $10,000 floor is met. No fee is earned on a homeowner whose property is in a state the Partner Agreement lists as excluded (section A4.4).</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does a project of exactly $10,000 qualify?</h3>
+        <div class="faq-answer">
+          <p>Yes. The floor is $10,000 or more, so a project of exactly $10,000 meets it. The fee is earned when the referred homeowner completes the project and the job is approved for payout, not when a contract is signed or work is booked. Read the Partner Agreement, section A4.2, for the full terms.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What is the recruit bonus?</h3>
+        <div class="faq-answer">
+          <p>It is the second part of the fee sentence: "$50 on the same terms for referrals from partners you recruit." In plain terms, when an agent you personally recruited refers a homeowner who completes a qualifying project, you earn the recruit bonus on the same terms as the referral fee. It is single-level and forward-only.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does it cost anything to become a partner?</h3>
+        <div class="faq-answer">
+          <p>No. You pay nothing to sign up as a partner or to refer a client. Contractors pay Otter Quotes a fee on the accepted bid. A client without an insurance estimate pays an upfront charge of as little as $22.63 for professional measurements, or can upload measurements they already have, and that charge is refunded if the client completes a job on the platform.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does Otter Quotes tell me whether I may accept a referral fee?</h3>
+        <div class="faq-answer">
+          <p>No. Otter Quotes does not give legal advice and cannot tell an agent what an employment agreement or licensing rules allow. Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/partners.html">Referral Partner Program</a></li>
+        <li><a href="/partner-re.html">Become a Real Estate Partner</a></li>
+        <li><a href="/partner-agreement.html">Partner Agreement</a></li>
+        <li><a href="/partners/roof-damage-found-before-closing.html">The Inspection Found Roof Damage Before Closing: What an Agent Can Do</a></li>
+        <li><a href="/guides/roof-bid-comparison-worksheet.html">How to Compare Roofing Bids: A Side-by-Side Worksheet</a></li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "How Does the Otter Quotes Referral Fee Work for a Real Estate Agent?",
+  "description": "How the Otter Quotes referral fee works for real estate agents: what earns it, the $10,000 floor, who pays it and what to tell clients.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    },
+    "sameAs": [
+      "https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ",
+      "https://www.linkedin.com/company/otter-quotes",
+      "https://www.facebook.com/OtterQuote",
+      "https://www.instagram.com/otterquote/"
+    ],
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-11-11",
+  "dateModified": "2026-11-11",
+  "publisher": {
+    "@type": "Organization",
+    "url": "https://otterquote.com/",
+    "sameAs": [
+      "https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ",
+      "https://www.linkedin.com/company/otter-quotes",
+      "https://www.facebook.com/OtterQuote",
+      "https://www.instagram.com/otterquote/"
+    ],
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/partners/realtor-referral-fee-how-it-works.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is the referral fee a percentage of the job?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. It is a flat dollar amount, not a percentage of anything. The terms are: \"$200 when a homeowner you refer completes a project of $10,000 or more. $50 on the same terms for referrals from partners you recruit.\" The size of the project only decides whether the $10,000 floor is met. No fee is earned on a homeowner whose property is in a state the Partner Agreement lists as excluded (section A4.4)."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does a project of exactly $10,000 qualify?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. The floor is $10,000 or more, so a project of exactly $10,000 meets it. The fee is earned when the referred homeowner completes the project and the job is approved for payout, not when a contract is signed or work is booked. Read the Partner Agreement, section A4.2, for the full terms."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What is the recruit bonus?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It is the second part of the fee sentence: \"$50 on the same terms for referrals from partners you recruit.\" In plain terms, when an agent you personally recruited refers a homeowner who completes a qualifying project, you earn the recruit bonus on the same terms as the referral fee. It is single-level and forward-only."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does it cost anything to become a partner?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. You pay nothing to sign up as a partner or to refer a client. Contractors pay Otter Quotes a fee on the accepted bid. A client without an insurance estimate pays an upfront charge of as little as $22.63 for professional measurements, or can upload measurements they already have, and that charge is refunded if the client completes a job on the platform."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Otter Quotes tell me whether I may accept a referral fee?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Otter Quotes does not give legal advice and cannot tell an agent what an employment agreement or licensing rules allow. Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Referral Partner Program",
+      "item": "https://otterquote.com/partners.html"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "Realtor Referral Fee: How It Works",
+      "item": "https://otterquote.com/partners/realtor-referral-fee-how-it-works.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>
