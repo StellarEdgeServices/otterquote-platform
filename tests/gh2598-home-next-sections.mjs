@@ -166,12 +166,12 @@ const HERO_COST_LINE = 'Free with your insurance estimate. Need measurements? As
 /* gh-3661 (P22 W-Q3): the #proof strip's own money-bearing strings, exact. LEGAL-READ and R-177 owed on the PR. */
 const PROOF_LINES = new Set([
   '$22.63', 'Refunded in full', '5%', '3 days',
-  'As little as $22.63 up front', 'When your job is completed', 'Contractors pay the fee', 'Switch at no cost',
-  'for professional measurements that contractors use to bid. Free if you provide a copy of your insurance estimate.',
+  'As little as $22.63 up front', 'When your job is completed', 'Contractors pay our fee', 'Switch at no cost',
+  'Professional measurements that contractors use to bid. There is no cost if you provide a copy of your insurance estimate.',
   'If you complete a job on the platform, the money you paid for measurements is refunded to you. Conditions apply.',
   'Contractors pay Otter Quotes a fee, currently 5%, on the bid you accept.',
   'If something does not work out before work begins, you can switch to another Otter Quotes contractor at no cost, up to 3 days before your start date.',
-  'See what everything costs and when the fee is refunded',
+  'See what everything costs and when the measurement charge is refunded',
 ]);
 const MONEY = /\$\s?\d|\brefund|\bfee\b|\bswitch (?:to )?another|at no cost|up to \d+ days|no cost\b/i;
 /* visible attribute text: placeholder, value, title, alt, aria-label (the string extractor reads text nodes only) */
