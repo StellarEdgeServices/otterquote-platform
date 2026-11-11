@@ -22,7 +22,7 @@ vi.mock('@/lib/supabase', () => {
   return {
     supabase: {
       auth: { onAuthStateChange: vi.fn() },
-      rpc: vi.fn(() => Promise.resolve({ data: true, error: null, status: 200 })),
+      rpc: vi.fn((fn: string) => Promise.resolve({ data: fn === 'is_admin_email' ? false : true, error: null, status: 200 })),
       from: vi.fn((table: string) =>
         table === 'resolved_user_role'
           ? chain({ data: { derived_role: 'homeowner' }, error: null })
