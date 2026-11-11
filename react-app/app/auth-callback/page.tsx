@@ -142,6 +142,8 @@ function readMismatchedTypedEmail(user: Session['user'] | null | undefined): str
 const CONTRACTOR_DASHBOARD_URL = 'https://otterquote.com/contractor-dashboard.html';
 const CONTRACTOR_SIGNUP_URL    = 'https://otterquote.com/contractor-pre-approval.html';
 const HOMEOWNER_DASHBOARD_URL  = 'https://otterquote.com/dashboard.html';
+// gh-3203: an allowlisted admin (public.is_admin_email()) lands here, ahead of any derived role.
+const ADMIN_LANDING_URL = 'https://app.otterquote.com/admin/contractors';
 const TRADE_SELECTOR_PATH      = '/trade-selector';
 const GET_STARTED_PATH         = '/get-started';
 
@@ -391,6 +393,21 @@ export default function AuthCallbackPage() {
 
       // gh-3471: taken (and cleared) for EVERY role before any early return, so a contractor sign-in cannot leave it behind for a later one.
       const returnToken = takeStoredReturn();
+
+      // gh-3203: admin is decided by the server allowlist BEFORE the derived role, so a login that is
+      // also a (test) contractor or partner still lands on admin. Only a literal `true` counts; an
+      // error, a thrown call or any other value falls through to the normal role routing (fail closed).
+      let isAdminCaller = false;
+      try {
+        const { data: adminAnswer } = await supabase.rpc('is_admin_email');
+        isAdminCaller = adminAnswer === true;
+      } catch {
+        isAdminCaller = false;
+      }
+      if (isAdminCaller) {
+        window.location.href = ADMIN_LANDING_URL;
+        return;
+      }
 
       // Contractor already has a record → straight to dashboard
       if (role === 'contractor') {
