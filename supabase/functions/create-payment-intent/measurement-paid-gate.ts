@@ -18,10 +18,13 @@
  *   - A REBATED order stays "paid". process-hover-rebate refunds the fee when the claim's job is marked complete (D-181 / D-205 /
  *     D-291) and sets hover_orders.rebate_paid_at; the report was delivered and the rebate is the product's own pricing model, not
  *     a cancellation. A homeowner who completed the job and was rebated must not be sold a second report. rebate_paid_at set => paid.
- *   - A payment fully refunded BY ANY OTHER ROUTE (a support refund, Tier C) has no code behind it that says whether a repurchase is
- *     legitimate. Today's behaviour is that a new intent can be created once Stripe has removed the key, so that is kept: a
- *     PaymentIntent whose charge is fully refunded and which has no rebate_paid_at is NOT counted as paid. FLAGGED in the PR for a
- *     decision. A PARTIAL refund still counts as paid (the report was bought and not wholly returned).
+ *   - A payment fully refunded BY ANY OTHER ROUTE (a support refund, Tier C) STILL COUNTS AS PAID. D-413 annotation, Dustin 2026-11-05
+ *     (issue #3356 comment 6668044293): "Refuse, send to support (Recommended)": after support fully refunds a homeowner's report, the
+ *     site refuses self-repurchase on that claim and routes the homeowner to support. This replaces the earlier gh-3356 behaviour (a
+ *     fully refunded, non-rebated payment did not count and a repurchase was allowed once the key expired). It also covers a rebate
+ *     refund that succeeded at Stripe but whose rebate_paid_at write failed (Ben, comment 6667521596). A PARTIAL refund counts as paid
+ *     too (the report was bought and not wholly returned). No new homeowner wording: the refusal is the existing MEASUREMENT_ALREADY_PAID
+ *     answer, whose approved sentence already points to support.
  *   - The refund test needs the charge, so every Stripe read here expands latest_charge. If it cannot be read as an object, the
  *     payment counts as paid (fails toward refusing).
  *
@@ -76,7 +79,7 @@ export interface HoverOrderRow {
 }
 
 /** order_row: an order names a PaymentIntent Stripe says does not exist (404). The order row is proof of payment (see the header), so it counts. */
-export type PaidReason = "rebated_order" | "succeeded" | "processing" | "order_row";
+export type PaidReason = "rebated_order" | "succeeded" | "processing" | "order_row" | "refunded";
 
 export type PaidVerdict =
   /** `cancelable`: unpaid intents of this claim the search returned (candidates for cancelSupersededIntents). */
@@ -135,7 +138,7 @@ export function evaluatePaymentIntent(pi: Pi): "paid_succeeded" | "paid_processi
   if (pi.status === "processing") return "paid_processing";
   if (pi.status !== "succeeded") return "unpaid"; // requires_payment_method / requires_action / requires_confirmation / canceled
   const charge = pi.latest_charge;
-  if (charge && typeof charge === "object" && charge.refunded === true) return "refunded"; // fully refunded, not by the rebate
+  if (charge && typeof charge === "object" && charge.refunded === true) return "refunded"; // fully refunded; the gate still counts it as paid (D-413 annotation, 2026-11-05)
   return "paid_succeeded"; // includes a partial refund, and a charge we could not read
 }
 
@@ -198,10 +201,10 @@ export async function checkClaimHasNotPaid(deps: PaidGateDeps): Promise<PaidVerd
     const cancelable: string[] = [];
     for (const [id, pi] of seen) {
       const v = evaluatePaymentIntent(pi);
-      if (v === "paid_succeeded" || v === "paid_processing") {
+      if (v === "paid_succeeded" || v === "paid_processing" || v === "refunded") {
         return {
           kind: "paid",
-          reason: v === "paid_processing" ? "processing" : "succeeded",
+          reason: v === "paid_processing" ? "processing" : v === "refunded" ? "refunded" : "succeeded",
           paymentIntentId: id,
           hasOrderRow: orderPiIds.has(id),
         };
@@ -314,12 +317,8 @@ export async function assertCreatedIntentNotPaid(
     // A -> B -> A inside the key's life (the key carries the amount): the create for A replays the first A intent, which the B request
     // superseded. Do not hand it back, and do not let the caller run its cancels (the only LIVE intent is the B one).
     if (r.body?.status === "canceled") return { kind: "cancelled_replay", paymentIntentId: created.id };
-    // A replayed intent that SUCCEEDED but is fully refunded (evaluatePaymentIntent: "refunded", not paid for the gate's purposes) must not
-    // be handed back either, whatever its refund state: its secret cannot be paid again, and the page's recovery of a succeeded intent
-    // would record an order for a refunded charge. Its own verdict: the page shows the cannot-start sentence (no statement about a charge),
-    // and an operator alert says what happened. A buyer whose payment was refunded outside the rebate flow can buy again once Stripe has
-    // removed the key.
-    if (r.body?.status === "succeeded") return { kind: "refunded_replay", paymentIntentId: created.id };
+    // D-413 annotation (2026-11-05): a fully refunded payment still counts as paid, so this is the ordinary 409 already-paid refusal.
+    if (r.body?.status === "succeeded") return { kind: "paid", reason: "refunded", paymentIntentId: created.id, hasOrderRow: false };
     // ALLOWLIST: only an unpaid status may have its secret handed back. Anything else (a malformed 200 with no status, an unknown value)
     // fails to the retry path instead of being treated as unpaid.
     if (typeof r.body?.status === "string" && REPLAY_UNPAID_STATUSES.includes(r.body.status)) return { kind: "not_paid" };
@@ -339,7 +338,7 @@ export function alertKindFor(v: PaidVerdict): "paid_without_order" | "check_unav
   if (v.kind === "unavailable") return "check_unavailable";
   if (v.kind === "cancelled_replay") return "cancelled_replay"; // a homeowner is stuck: a person must know
   if (v.kind === "refunded_replay") return "refunded_replay"; // same, for a fully refunded payment
-  if (v.kind === "paid" && !v.hasOrderRow) return "paid_without_order";
+  if (v.kind === "paid" && !v.hasOrderRow && v.reason !== "refunded") return "paid_without_order"; // a refunded payment was already handled by support
   return null;
 }
 

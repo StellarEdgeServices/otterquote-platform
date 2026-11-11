@@ -527,11 +527,15 @@ Deno.test("gh-3356 (2b) canceled, failed (requires_payment_method) and requires_
   }
 });
 
-Deno.test("gh-3356 (2c) refunds: a fully refunded payment with no rebate keeps today's behaviour (not blocked); a partial refund and an in-flight payment ARE blocked", async () => {
+Deno.test("gh-3356 (2c) refunds: a fully refunded payment with no rebate STILL BLOCKS self-repurchase (D-413 annotation 2026-11-05, 409 already-paid, no alert); a partial refund and an in-flight payment ARE blocked too", async () => {
   const wFull = paidWorld();
   const f = await gatedSequence(wFull);
   wFull.setStatus(f.piId!, "succeeded"); wFull.setRefunded(f.piId!, "true"); wFull.expireKeys();
-  assertEquals((await gatedSequence(wFull)).http, 200, "support-refunded in full, no rebate: repurchase allowed as today (FLAGGED in the PR)");
+  const fullAfter = await gatedSequence(wFull);
+  assertEquals([fullAfter.http, fullAfter.code, fullAfter.clientSecretReturned], [409, ALREADY_PAID_CODE, false], "support-refunded in full, no rebate, key expired: refused and routed to support (D-413 annotation, Dustin 2026-11-05)");
+  const fullPre = await checkClaimHasNotPaid({ fetchFn: wFull.fetchFn, apiBase: API, basicAuth: wFull.basicAuth, claimId: CLAIM, loadOrders: () => loadHoverOrders(wFull.sb(), CLAIM), log: () => {} });
+  assertEquals(fullPre.kind === "paid" && fullPre.reason, "refunded");
+  assertEquals(alertKindFor(fullPre), null, "support already handled a refunded payment: no paid-without-order alert");
   const wPartial = paidWorld();
   const p = await gatedSequence(wPartial);
   wPartial.setStatus(p.piId!, "succeeded"); wPartial.setRefunded(p.piId!, "partial"); wPartial.expireKeys();
@@ -799,31 +803,30 @@ Deno.test("gh-3356 (3n) the replay of a LIVE intent (same tab reload, same price
 });
 
 // REVIEW at afc53f50, F1: a fully REFUNDED payment whose key is still held is replayed with a stale status; its secret must not be handed back.
-Deno.test("gh-3356 (3q) a replayed intent that SUCCEEDED and was fully refunded is NOT handed back (503 retry code, nothing created); it is not 'paid' for the gate, so only the replay re-read can stop it", async () => {
+Deno.test("gh-3356 (3q) a replayed intent that SUCCEEDED and was fully refunded is NOT handed back: it is the 409 already-paid refusal (D-413 annotation 2026-11-05), and stays so after the key expires", async () => {
   const w = paidWorld();
   const a = await gatedSequence(w);
   assertEquals(a.http, 200);
   w.setStatus(a.piId!, "succeeded"); w.setRefunded(a.piId!, "true"); // paid, then refunded outside the rebate flow; the key is still held
   const again = await gatedSequence(w);
-  assertEquals([again.http, again.code, again.clientSecretReturned, again.piId], [503, CANCELLED_REPLAY_CODE, false, null], "own verdict: the page shows the cannot-start sentence, not the retry sentence");
-  assertEquals(alertKindFor({ kind: "refunded_replay", paymentIntentId: a.piId! }), "refunded_replay", "own operator alert");
-  // the pre-check saw "refunded" (not paid), which is why the pre-fix replay branch returned not_paid and handed the secret back
+  assertEquals([again.http, again.code, again.clientSecretReturned, again.piId], [409, ALREADY_PAID_CODE, false, null], "the page shows the existing already-paid sentence, which points to support");
   const sb = w.sb();
   const pre = await checkClaimHasNotPaid({ fetchFn: w.fetchFn, apiBase: API, basicAuth: w.basicAuth, claimId: CLAIM, loadOrders: () => loadHoverOrders(sb, CLAIM), log: () => {} });
-  assertEquals(pre.kind, "not_paid");
+  assertEquals(pre.kind, "paid", "NEGATIVE CONTROL: before this change the pre-check said not_paid for this same state, which is what let a repurchase through once the key expired");
   const raw = await w.fetchFn(`${API}/payment_intents/${a.piId}?expand[]=latest_charge`, { method: "GET", headers: { Authorization: `Basic ${w.basicAuth}` } });
-  assertEquals(evaluatePaymentIntent(await raw.json()), "refunded", "NEGATIVE CONTROL: evaluatePaymentIntent alone calls it refunded (not paid), so without the status check the replay is handed back");
+  assertEquals(evaluatePaymentIntent(await raw.json()), "refunded");
   // a partial refund is paid (409), unchanged
   const w2 = paidWorld();
   const p = await gatedSequence(w2); w2.setStatus(p.piId!, "succeeded"); w2.setRefunded(p.piId!, "partial");
   assertEquals((await gatedSequence(w2)).code, ALREADY_PAID_CODE);
-  // after Stripe removes the key a buyer whose payment was refunded outside the rebate flow can buy again
+  // after Stripe removes the key the refunded claim is STILL refused (no self-repurchase)
   w.expireKeys();
-  assertEquals((await gatedSequence(w)).http, 200);
+  const later = await gatedSequence(w);
+  assertEquals([later.http, later.code], [409, ALREADY_PAID_CODE]);
 });
 
 // REVIEW at dc5f4927: the replay re-read hands a secret back ONLY for an unpaid status.
-Deno.test("gh-3356 (3s) replay re-read allowlist: the three unpaid statuses are handed back; a malformed or unknown 200 fails to 503 (unavailable); succeeded is the refunded_replay verdict", async () => {
+Deno.test("gh-3356 (3s) replay re-read allowlist: the three unpaid statuses are handed back; a malformed or unknown 200 fails to 503 (unavailable); succeeded (fully refunded) is the paid verdict, reason refunded", async () => {
   const mk = (body: unknown) => ({
     fetchFn: (() => Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }))) as typeof fetch,
     apiBase: API, basicAuth: "QUJD", log: () => {},
@@ -840,9 +843,10 @@ Deno.test("gh-3356 (3s) replay re-read allowlist: the three unpaid statuses are 
     assertEquals([r?.status, r?.body.code], [503, PAID_CHECK_UNAVAILABLE_CODE]);
   }
   const refunded = await assertCreatedIntentNotPaid(mk({ id: "pi_x1", status: "succeeded", amount: 2263, amount_refunded: 2263, latest_charge: { refunded: true, amount_refunded: 2263, amount: 2263 } }), { id: "pi_x1" }, replay);
-  assertEquals(refunded, { kind: "refunded_replay", paymentIntentId: "pi_x1" });
+  assertEquals(refunded, { kind: "paid", reason: "refunded", paymentIntentId: "pi_x1", hasOrderRow: false });
   const rr = refusalFor(refunded);
-  assertEquals([rr?.status, rr?.body.code], [503, CANCELLED_REPLAY_CODE]);
+  assertEquals([rr?.status, rr?.body.code], [409, ALREADY_PAID_CODE]);
+  assertEquals(alertKindFor(refunded), null);
 });
 
 // REVIEW at afc53f50, F2: the supersede branch determined nothing about an order row and raised no alert.
