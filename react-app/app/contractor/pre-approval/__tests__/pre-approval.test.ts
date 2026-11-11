@@ -384,11 +384,10 @@ describe('verbatim Tier-3 legal copy', () => {
     expect(p.checkLabel).toContain('platform fee structure');
   });
 
-  it('cancellation policy: 3-day switch + sole-remedy clause', () => {
+  it('cancellation policy: info box removed, checkbox sentence only (gh-3401)', () => {
     const c = PRE_APPROVAL_COPY.step3.cancellation;
-    expect(c.heading).toBe('Homeowner Cancellation Policy');
-    expect(c.body).toContain('up to 3 days before their scheduled installation date');
-    expect(c.bodyStrong).toBe('A platform fee refund is your sole remedy if a homeowner exercises this right.');
+    expect(Object.keys(c)).toEqual(['checkLabel']);
+    expect(c.checkLabel).toContain('at least 3 days before the scheduled start date');
   });
 
   it('gh-2875 N6: the page carries no hard-coded SMS consent sentence and no consent checkbox state', () => {

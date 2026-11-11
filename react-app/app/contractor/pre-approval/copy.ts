@@ -153,10 +153,6 @@ export const PRE_APPROVAL_COPY = {
 
     // Homeowner Cancellation Policy — :369-377
     cancellation: {
-      heading: 'Homeowner Cancellation Policy',
-      body:
-        'Homeowners may switch to a different contractor in our network up to 3 days before their scheduled installation date, no questions asked. If this occurs: Otter Quotes handles the switch entirely, your platform fee is refunded in full, and the homeowner selects another contractor.',
-      bodyStrong: 'A platform fee refund is your sole remedy if a homeowner exercises this right.',
       checkLabel:
         'I understand that a homeowner may request a switch to another Otter Quotes contractor at least 3 days before the scheduled start date and before I begin work. As stated in Section 6.4 of the Agreement: if Otter Quotes confirms the switch, my Platform Fee is refunded, excluding any card processing fee. If the homeowner signs with a replacement Otter Quotes contractor before I begin work, I release the homeowner from our contract on that signing and will return any deposit, and the refund is my sole remedy. If I begin work before any such signing, the Platform Fee is due again. I agree to this as a condition of the platform.',
     },
