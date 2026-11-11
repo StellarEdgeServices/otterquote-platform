@@ -32,6 +32,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { selectFanOutContractors } from "./test-exclusion.ts";
 import { contractorSmsReleaseGate } from "../_shared/contractor-sms-release.ts"; // D-391 / #2875 TCR release gate
+import { resolveContractorTextableNumbers } from "../_shared/contractor-textable.ts"; // D-391 / #2875 layer 4: verified numbers only
 import { acceptedServiceKeys, deny, type GetEnv } from "./caller-gate.ts"; // gh-2462
 import { authorizeNotifyCaller, type NotifyBody, type OwnershipLookups } from "./user-gate.ts"; // gh-2462
 
@@ -125,13 +126,6 @@ function shouldNotify(
   return prefs[prefKey] !== false;
 }
 
-function normalizePhone(raw: string): string | null {
-  const digits = raw.replace(/\D/g, "");
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  return null;
-}
-
 function buildTradeLabel(trades: string[]): string {
   if (!trades || trades.length === 0) return "general";
   if (trades.length === 1) return trades[0].toLowerCase();
@@ -185,15 +179,10 @@ async function sendMailgunEmail(
 /**
  * Send SMS via the send-sms Edge Function. Returns true on success.
  *
- * gh-1916 / R-134 protective gate: refuse to even attempt a send unless the
- * contractor has a real, stored opt-in (`contractors.sms_opt_in = true`).
- * NULL (never asked — the pre-migration default for every existing row) and
- * false (declined) both refuse. This closes the gap the CEO's 2026-09-14 FYI
- * on #1916 flagged: this function previously gated only on the opt-OUT
- * `notification_preferences` map (shouldNotify()), which defaults every
- * contractor to "send" absent an explicit false — not the opt-IN TCPA
- * consent this issue requires. Single choke point for both SMS-sending
- * handlers that route through this helper (contract_signed, agreement_requested).
+ * D-391 / #2875 layer 4 (supersedes the gh-1916 / R-134 sms_opt_in gate): the recipient is always a
+ * one-time-code-verified number from contractor_textable_numbers(), resolved by verifiedSmsPhones() below.
+ * This helper only keeps the is_test / TCR release gate in front of the send. Single choke point for both
+ * SMS-sending handlers that route through this helper (contract_signed, agreement_requested).
  */
 async function sendSmsViaEdgeFunction(
   supabaseUrl: string,
@@ -201,15 +190,9 @@ async function sendSmsViaEdgeFunction(
   to: string,
   message: string,
   contractorId: string,
-  smsOptIn: boolean | null | undefined,
   isTest: boolean | null | undefined
 ): Promise<boolean> {
-  if (smsOptIn !== true) {
-    console.warn(
-      `[notify-contractors] SMS refused (gh-1916 R-134 gate) — sms_opt_in is not true for contractor ${contractorId} (value=${String(smsOptIn)}). No Twilio call attempted.`
-    );
-    return false;
-  }
+  // D-391 / #2875 layer 4: `to` is always a number returned by contractor_textable_numbers() (see verifiedSmsPhones).
   // D-391 / #2875: until the TCR message_flow read-back is pasted, only is_test contractors are texted.
   if (!contractorSmsReleaseGate({ id: contractorId, is_test: isTest }, { site: "notify-contractors/helper", phones: [to] }).allowed) {
     return false;
@@ -233,6 +216,24 @@ async function sendSmsViaEdgeFunction(
     return false;
   }
   return true;
+}
+
+/**
+ * D-391 / #2875 layer 4: the ONLY source of contractor SMS recipients in this file. Release gate first (no lookup
+ * for a contractor who may not be texted at all), then contractor_textable_numbers(). A contractor with no verified
+ * number gets [] and a logged `unverified_number` refusal. notification_phones / contractors.phone / sms_opt_in
+ * are never read for SMS.
+ */
+async function verifiedSmsPhones(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  contractor: { id: string; is_test?: boolean | null },
+  site: string,
+): Promise<string[]> {
+  const verdict = contractorSmsReleaseGate({ id: contractor.id, is_test: contractor.is_test }, { site });
+  if (!verdict.allowed) return [];
+  const recipients = await resolveContractorTextableNumbers(supabase, contractor.id, { site });
+  return recipients.map((r) => r.phone);
 }
 
 // =============================================================================
@@ -409,7 +410,7 @@ async function handleContractSigned(
 
   const { data: contractor, error: contractorErr } = await supabase
     .from("contractors")
-    .select("id, user_id, email, phone, contact_name, company_name, notification_emails, notification_phones, notification_preferences, sms_opt_in, is_test")
+    .select("id, user_id, email, contact_name, company_name, notification_emails, notification_preferences, is_test")
     .eq("id", claim.selected_contractor_id)
     .single();
 
@@ -434,14 +435,7 @@ async function handleContractSigned(
       ? contractor.notification_emails
       : contractor.email ? [contractor.email] : [];
 
-  const rawPhones: string[] =
-    contractor.notification_phones?.length > 0
-      ? contractor.notification_phones
-      : contractor.phone ? [contractor.phone] : [];
-
-  const phoneRecipients = rawPhones
-    .map((p: string) => normalizePhone(p))
-    .filter((p: string | null): p is string => p !== null);
+  const phoneRecipients: string[] = await verifiedSmsPhones(supabase, contractor, "notify-contractors/contract_signed");
 
   const contractorName = contractor.contact_name || contractor.company_name || "Contractor";
   const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
@@ -478,7 +472,7 @@ async function handleContractSigned(
 
   for (const phone of phoneRecipients) {
     try {
-      const ok = await sendSmsViaEdgeFunction(supabaseUrl, supabaseKey, phone, smsMessage, contractor.id, contractor.sms_opt_in, contractor.is_test);
+      const ok = await sendSmsViaEdgeFunction(supabaseUrl, supabaseKey, phone, smsMessage, contractor.id, contractor.is_test);
       if (ok) {
         smsSent = true;
         await supabase.from("notifications").insert({
@@ -814,7 +808,7 @@ async function notifyContractorsForSingleTrade(
   // Fetch all active contractors (no DB-level limit — we filter and cap below)
   const { data: contractors, error: contractorsError } = await supabase
     .from("contractors")
-    .select("id, user_id, email, phone, contact_name, notification_emails, notification_phones, notification_preferences, sms_opt_in, trades, service_counties, is_test")
+    .select("id, user_id, email, contact_name, notification_emails, notification_preferences, trades, service_counties, is_test")
     .eq("status", "active");
 
   if (contractorsError) {
@@ -887,14 +881,7 @@ async function notifyContractorsForSingleTrade(
         ? contractor.notification_emails
         : contractor.email ? [contractor.email] : [];
 
-    const rawPhones: string[] =
-      contractor.notification_phones?.length > 0
-        ? contractor.notification_phones
-        : contractor.phone ? [contractor.phone] : [];
-
-    const phoneRecipients = rawPhones
-      .map((p: string) => normalizePhone(p))
-      .filter((p: string | null): p is string => p !== null);
+    const phoneRecipients: string[] = await verifiedSmsPhones(supabase, contractor, "notify-contractors/new_opportunity");
 
     const contractorName = contractor.contact_name || "there";
     const emailText = newOpportunityEmailText(contractorName, claim_city, claim_state, tradeCap, job_type || "");
@@ -924,15 +911,8 @@ async function notifyContractorsForSingleTrade(
 
     for (const phone of phoneRecipients) {
       try {
-        // gh-1916 / R-134 protective gate — see sendSmsViaEdgeFunction's header
-        // comment. This handler calls send-sms directly (not via that helper),
-        // so the same gate is inlined here rather than routed through it.
-        if (contractor.sms_opt_in !== true) {
-          console.warn(
-            `[notify-contractors] SMS refused (gh-1916 R-134 gate) — sms_opt_in is not true for contractor ${contractor.id} [${tradeLower}] (value=${String(contractor.sms_opt_in)}). No Twilio call attempted.`
-          );
-          continue;
-        }
+        // D-391 / #2875 layer 4: `phone` came from verifiedSmsPhones() (verified numbers only); this handler calls
+        // send-sms directly (not via sendSmsViaEdgeFunction), so the release gate is repeated here.
         // D-391 / #2875: until the TCR message_flow read-back is pasted, only is_test contractors are texted.
         if (!contractorSmsReleaseGate(contractor, { site: "notify-contractors/new_opportunity", phones: [phone] }).allowed) {
           continue;
@@ -1199,7 +1179,7 @@ async function handleAgreementRequested(
 
   const { data: contractor, error: contractorErr } = await supabase
     .from("contractors")
-    .select("id, user_id, email, phone, contact_name, company_name, notification_emails, notification_phones, notification_preferences, sms_opt_in, is_test")
+    .select("id, user_id, email, contact_name, company_name, notification_emails, notification_preferences, is_test")
     .eq("id", contractor_id)
     .single();
 
@@ -1223,14 +1203,7 @@ async function handleAgreementRequested(
       ? contractor.notification_emails
       : contractor.email ? [contractor.email] : [];
 
-  const rawPhones: string[] =
-    contractor.notification_phones?.length > 0
-      ? contractor.notification_phones
-      : contractor.phone ? [contractor.phone] : [];
-
-  const phoneRecipients = rawPhones
-    .map((p: string) => normalizePhone(p))
-    .filter((p: string | null): p is string => p !== null);
+  const phoneRecipients: string[] = await verifiedSmsPhones(supabase, contractor, "notify-contractors/agreement_requested");
 
   const contractorName = contractor.contact_name || contractor.company_name || "Contractor";
   const fromAddress = `Otter Quotes <notifications@${mailgunDomain}>`;
@@ -1275,7 +1248,7 @@ async function handleAgreementRequested(
 
   for (const phone of phoneRecipients) {
     try {
-      const ok = await sendSmsViaEdgeFunction(supabaseUrl, supabaseKey, phone, smsMessage, contractor.id, contractor.sms_opt_in, contractor.is_test);
+      const ok = await sendSmsViaEdgeFunction(supabaseUrl, supabaseKey, phone, smsMessage, contractor.id, contractor.is_test);
       if (ok) {
         smsSent = true;
         await supabase.from("notifications").insert({

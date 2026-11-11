@@ -37,6 +37,8 @@ export interface ContractorSmsGateOptions {
   getEnv?: (name: string) => string | undefined;
   /** Defaults to console.warn; injectable for tests. */
   log?: (line: string) => void;
+  /** Optional machine-readable qualifier for the refusal line, e.g. "no_verified_number" or "lookup_failed". */
+  detail?: string;
 }
 
 export const TCR_RELEASE_ENV = "CONTRACTOR_SMS_TCR_RELEASED";
@@ -51,7 +53,7 @@ export function maskPhoneLast4(raw: string | null | undefined): string {
 export function logContractorSmsRefusal(
   reason: ContractorSmsRefusalReason,
   contractorId: string | null | undefined,
-  opts: Pick<ContractorSmsGateOptions, "site" | "phones" | "log">,
+  opts: Pick<ContractorSmsGateOptions, "site" | "phones" | "log" | "detail">,
 ): void {
   const line = JSON.stringify({
     event: "contractor_sms_refused",
@@ -59,6 +61,7 @@ export function logContractorSmsRefusal(
     contractor_id: contractorId ?? null,
     site: opts.site,
     phones: (opts.phones ?? []).map(maskPhoneLast4),
+    ...(opts.detail ? { detail: opts.detail } : {}),
   });
   (opts.log ?? ((l: string) => console.warn(l)))(`[contractor-sms-release] ${line}`);
 }
