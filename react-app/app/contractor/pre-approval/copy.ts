@@ -158,7 +158,7 @@ export const PRE_APPROVAL_COPY = {
         'Homeowners may switch to a different contractor in our network up to 3 days before their scheduled installation date, no questions asked. If this occurs: Otter Quotes handles the switch entirely, your platform fee is refunded in full, and the homeowner selects another contractor.',
       bodyStrong: 'A platform fee refund is your sole remedy if a homeowner exercises this right.',
       checkLabel:
-        'I understand homeowners may switch contractors up to 3 days before installation. I will receive a full platform fee refund. I agree to this as a condition of the platform.',
+        'I understand that a homeowner may request a switch to another Otter Quotes contractor at least 3 days before the scheduled start date and before I begin work. As stated in Section 6.4 of the Agreement: if Otter Quotes confirms the switch, my Platform Fee is refunded, excluding any card processing fee. If the homeowner signs with a replacement Otter Quotes contractor before I begin work, I release the homeowner from our contract on that signing and will return any deposit, and the refund is my sole remedy. If I begin work before any such signing, the Platform Fee is due again. I agree to this as a condition of the platform.',
     },
 
     // IC 24-5-11 Attestation & Indemnity — :379-394 (D-170, joint-and-several)
