@@ -14,6 +14,8 @@
  * (the approved drive originals still say "that every contractor uses"). Re-run the legal read on that line.
  * THIRD RULED EXCEPTION to "verbatim" (Dustin, chat, 2026-11-03, CEO RUN 144, the HeyCatch audit: "Quick wins first"): the hero claim line, the hero cost line, the 5% in #paid
  * and the pricing link are in the page AND in both committed fixtures; the drive originals do not carry them. Each needs the legal read.
+ * FOURTH RULED EXCEPTION to "verbatim" (gh-3633, P22 W-Q4; Dustin, #3633 comment 6803311385, 2026-11-11, "Q1 tighten.  Q2 tighten"; Ben's ruling 6803935931): the #ways section ("Two ways to use Otter Quotes", two cards) is in the page AND in both committed fixtures;
+ * the drive originals do not carry it. Its out-of-pocket card carries the one measurement-cost line, allowed outside #paid by CARD2_COST_LINE only (S4 still fails on any other money word there). LEGAL-READ and R-177 owed.
  * Slice 3 (How we're paid, What we do not do, You can change your mind) is built; it restates the fee, the $22.63 measurement charge and its refund and the
  * switch-contractor promise, so the PR that adds it carries an independent LEGAL-READ and the CEO's R-177 SIGNED line (D-377, D-378, D-291, D-313, D-371).
  *
@@ -45,7 +47,7 @@ const readDesign = (name) => { for (const f of [name + '.txt', name]) { const p 
 const DESK = readDesign('Recommended-desktop.dc.html');
 const PHONE = readDesign('Recommended-phone.dc.html');
 
-const BUILT = ['header', 'hero', 'facts', 'how', 'contractor', 'paid', 'promise', 'questions', 'closing'];       /* slices 1, 2 and 3 */
+const BUILT = ['header', 'hero', 'facts', 'ways', 'how', 'contractor', 'paid', 'promise', 'questions', 'closing'];       /* slices 1, 2 and 3 */
 const MONEY_SECTIONS = ['paid', 'promise'];                                                    /* slice 3: the only sections allowed to carry money or promise wording */
 /* slice 4 owns the footer (the page carries a minimal legal-links footer until then), so it is in neither list */
 const IDLE = 'Sample layout. Your bids appear here, side by side.';                            /* the design's {{ explain }} default */
@@ -74,7 +76,7 @@ function chunks(html) {
     const id = (p.match(/^<\w+[^>]*\sid="([^"]+)"/) || [])[1] || '';
     let key = null;
     if (tag === 'header') key = 'header'; else if (tag === 'footer') key = 'footer';
-    else if (id === 'top') key = 'hero'; else if (id === 'how') key = 'how'; else if (id === 'paid') key = 'paid'; else if (id === 'promise') key = 'promise';
+    else if (id === 'top') key = 'hero'; else if (id === 'how') key = 'how'; else if (id === 'ways') key = 'ways'; else if (id === 'paid') key = 'paid'; else if (id === 'promise') key = 'promise';
     else if (id === 'questions') key = 'questions'; else if (id === 'start') key = 'closing'; else if (id === 'facts') key = 'facts'; else if (id === 'contractor') key = 'contractor';
     else if (p.includes('Your details stay yours')) key = 'facts';
     else if (p.includes('What you see about each contractor')) key = 'contractor';
@@ -161,6 +163,7 @@ control('S3 (paid and promise swapped)', swapped2 !== PAGE && JSON.stringify(ord
 /* ---------- S4: money and promise wording stays inside #paid and #promise ---------- */
 /* Third ruled exception (see the header): this one exact hero line is allowed; any other wording still fails S4. */
 const HERO_COST_LINE = 'Free with your insurance estimate. Need measurements? As little as $22.63 up front for professional measurements, refunded in full if your job is completed through the platform; conditions apply. Switch to another Otter Quotes contractor at no cost up to 3 days before your start date.';
+const CARD2_COST_LINE = 'Without an insurance estimate, you pay as little as $22.63 up front for professional measurements that contractors use to bid. If you complete a job on the platform, that money is refunded to you. Conditions apply.';   /* gh-3633 (P22 W-Q4): the out-of-pocket card's own measurement line, the same D-400 / D-291 / D-388 wording as #paid; LEGAL-READ and R-177 owed on the PR */
 const MONEY = /\$\s?\d|\brefund|\bfee\b|\bswitch (?:to )?another|at no cost|up to \d+ days|no cost\b/i;
 /* visible attribute text: placeholder, value, title, alt, aria-label (the string extractor reads text nodes only) */
 function attrTexts(chunkHtml) {
@@ -181,7 +184,7 @@ function stray(html) {   /* money or promise wording found outside #paid and #pr
   const P = byKey(html), hits = [];
   for (const k of Object.keys(P)) {
     if (MONEY_SECTIONS.includes(k)) continue;
-    for (const x of sectionTextAll(P[k])) { if (x !== HERO_COST_LINE && (MONEY.test(x) || moneyOnly.has(x))) hits.push(k + ': ' + x); }
+    for (const x of sectionTextAll(P[k])) { if (x !== HERO_COST_LINE && !(k === 'ways' && x === CARD2_COST_LINE) && (MONEY.test(x) || moneyOnly.has(x))) hits.push(k + ': ' + x); }
   }
   return hits;
 }
