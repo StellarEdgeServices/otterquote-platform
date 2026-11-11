@@ -1200,6 +1200,8 @@ const Nav = {
               <a href="/start.html${this._attributionQuery()}">Get Started</a>
               <a href="/blog/">Blog</a>
               <a href="/guides/">Guides</a>
+              <a href="/guides/otter-quotes-vs-thumbtack.html">Otter Quotes vs Thumbtack</a>
+              <a href="/guides/otter-quotes-vs-angi.html">Otter Quotes vs Angi</a>
             `}
           </div>
           <!-- gh-2155 HI-05c (Ben, prod CLOSE-REVIEW FAIL 5840391259):
