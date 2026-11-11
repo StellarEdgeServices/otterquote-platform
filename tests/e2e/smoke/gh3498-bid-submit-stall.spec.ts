@@ -82,6 +82,8 @@ const FAKE_SUPABASE = `
   function rpc(name) {
     t.calls.push(name);
     const s = { signal: null };
+    // gh-3497: the rate is read through rpc('quotes_platform_fee_for') (platform_fee_config is admin-only under RLS).
+    if (name === 'quotes_platform_fee_for') return Promise.resolve({ data: [{ fee_pct: 5, fee_basis: 'bid_amount' }], error: null });
     const p = {
       abortSignal(sig) { s.signal = sig; return p; },
       then(res, rej) {

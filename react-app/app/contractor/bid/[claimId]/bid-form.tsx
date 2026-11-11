@@ -439,8 +439,8 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
       // gh-3497 (LEGAL-READ 6743062238): for Change Bid / Renew this is the quote's stored rate (see resolveBidFeePct).
       const freshPct = await resolveBidFeePct(mode, existingQuote, contractor, claim);
       // gh-3497: no answer from quotes_platform_fee_for means no submit. The rate on screen is not evidence of what the
-      // server will store. The form keeps the contractor's entries and the existing 'Error submitting bid: ' message
-      // reports it, as the other stops do.
+      // server will store. The form keeps the contractor's entries and the error line shows the plain
+      // fee_rate_unavailable text (FEE_RATE_UNAVAILABLE_TEXT, CEO DECIDED 6775653622), with no prefix.
       if (freshPct === null) {
         throw new Error('fee_rate_unavailable: the platform fee rate could not be read, so nothing was submitted');
       }
