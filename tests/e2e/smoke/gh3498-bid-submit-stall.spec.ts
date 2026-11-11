@@ -19,7 +19,7 @@ const FAKE_SUPABASE = `
     // yet (the insert lands after it); noColumn = the idempotency_key column does not exist yet (migration not applied)
     lookups: 0, hideFromLookup: false, noColumn: false });
   // gh-3498 (widened closes-on): t.hang names calls that never answer ('table:op' or 'fn:name'); t.changeMode loads an existing bid.
-  const existing = { id: 'q-1', claim_id: 'claim-1', contractor_id: 'c-1', total_price: 18000, bid_status: 'active', platform_fee_pct: 5, scope_summary: '{}', trade_type: 'roofing' };
+  const existing = { id: 'q-1', claim_id: 'claim-1', contractor_id: 'c-1', total_price: 18000, bid_status: /__cancelled=1/.test(location.search) ? 'cancelled' : 'active', platform_fee_pct: 5, scope_summary: '{}', trade_type: 'roofing' };
   const claim = { id: 'claim-1', trades: ['roofing'], selected_trades: ['roofing'], job_type: 'retail', funding_type: 'retail',
     damage_type: 'hail', material_category: 'shingle', is_test: true, rcv_amount: null, parsed_line_items: null, state: 'IN' };
   const contractor = { id: 'c-1', user_id: 'u-1', status: 'active', attestation_accepted_at: '2026-01-01T00:00:00Z',
@@ -82,6 +82,7 @@ const FAKE_SUPABASE = `
   function rpc(name) {
     t.calls.push(name);
     const s = { signal: null };
+    if (t.hang.includes('rpc:' + name)) { t.hung++; return { abortSignal(sig) { s.signal = sig; return this; }, then(res, rej) { return hang(s).then(res, rej); } }; }
     const p = {
       abortSignal(sig) { s.signal = sig; return p; },
       then(res, rej) {
@@ -113,7 +114,7 @@ window.Auth = new Proxy({ requireAuth: async () => ({ id: 'u-1', email: 'c@examp
   { get: (t, k) => (k in t ? t[k] : async () => null) });
 `;
 
-async function openForm(page: Page, opts: { changeMode?: boolean } = {}) {
+async function openForm(page: Page, opts: { changeMode?: boolean; cancelled?: boolean } = {}) {
   await page.clock.install();
   // gh-3498 (REVIEW 6740533205): ipify can answer its headers and then stall the body. window.__ipBodyStall makes the fake
   // ipify response do that; its json() settles only when the request signal aborts, as a real fetch body does.
@@ -143,7 +144,7 @@ async function openForm(page: Page, opts: { changeMode?: boolean } = {}) {
     if (url.includes('api.ipify.org')) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ip: '203.0.113.9' }) });
     return route.abort();
   });
-  await page.goto(opts.changeMode ? PAGE + '&__change=1' : PAGE);
+  await page.goto(opts.changeMode ? PAGE + '&__change=1' + (opts.cancelled ? '&__cancelled=1' : '') : PAGE);
   await page.waitForFunction(() => (window as any).__t && document.getElementById('retailBidPrice'));
   await page.waitForFunction(() => (window as any).isRetailJob === true || (document.getElementById('retailBidPrice') as HTMLElement).offsetParent !== null);
 }
@@ -579,6 +580,26 @@ test.describe('gh-3498 contractor-bid-form.html stalled submit (real page, Chrom
       expect(dialogs.length).toBe(0);
     });
   }
+
+  // gh-3498 (closes-on 6688126384, CLOSE-REVIEW 6808620469): the renew_quote RPC (gh-3560) runs inside the submit lock before the UPDATE.
+  test('change bid on a withdrawn bid: a renew_quote RPC that never answers ends with a message and an unlocked form', async ({ page }) => {
+    const dialogs: string[] = [];
+    page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
+    await openForm(page, { changeMode: true, cancelled: true });
+    await fillAndAccept(page);
+    await page.evaluate(() => { (window as any).__t.hang = ['rpc:renew_quote']; });
+    await clickSubmit(page);
+    await expect.poll(() => hungCount(page)).toBeGreaterThan(0);
+    await page.clock.fastForward(16_000);
+    await expect.poll(() => dialogs.length).toBe(1);
+    expect(dialogs[0]).toMatch(/^Error submitting bid: /);
+    const s = await state(page);
+    expect(s.priceLocked).toBe(false);
+    expect(s.btnDisabled).toBe(false);
+    await page.evaluate(() => { (window as any).__t.hang = []; });
+    await clickSubmit(page);
+    await expect.poll(async () => (await state(page)).success).toBe(true);
+  });
 
   test('change bid: the quotes UPDATE that never answers ends with a message and an unlocked form, and a retry updates once', async ({ page }) => {
     const dialogs: string[] = [];
