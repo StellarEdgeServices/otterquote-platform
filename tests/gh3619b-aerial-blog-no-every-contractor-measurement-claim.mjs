@@ -17,5 +17,5 @@ const ld = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>
 let ldOk = ld.length > 0;
 for (const b of ld) { try { const j = JSON.parse(b.replace(/<\/?script[^>]*>/g, '')); if (j.description && /every contractor/i.test(j.description)) ldOk = false; } catch { ldOk = false; } }
 check('S3 JSON-LD parses and description is clean', ldOk);
-check('S4 scope-based statement (compete from the same scope) left alone', /contractors compete from the same scope/.test(html));
+check('S4 scope-based statement (contractors bid on the same scope of work) left alone; row 139 now reads per COPY-READ 2 should-fix 2 (gh-3661, Ben 6808132304)', /contractors bid on the same scope of work for your project/.test(html));
 process.exit(fail ? 1 : 0);
