@@ -35,7 +35,7 @@ describe('FeeSection rendered output (gh-3480)', () => {
 
   it('shows the #547 item 1B explainer, verbatim, and never the retired flat-5% / RCV-basis lines', () => {
     const item1B =
-      'A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission.';
+      'A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission. If you pay by card, a processing fee of 2.9% + $0.30 is added to the platform fee shown above, as stated in Section 7.7 of your Contractor Partner Agreement.';
     expect(BID_COPY.fee.feeExplainer).toBe(item1B);
     // Every card state: all three modes, retail and insurance_rcv (RCV $20,000 vs bid $18,000).
     for (const mode of ['submit', 'change', 'renew'] as const) {
