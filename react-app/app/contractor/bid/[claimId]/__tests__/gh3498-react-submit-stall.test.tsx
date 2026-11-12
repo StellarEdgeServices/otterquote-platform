@@ -21,6 +21,9 @@ const h = vi.hoisted(() => {
     hideFromLookup: false, // a landed row the lookup does not see yet (an insert that lands after the lookup)
     noColumn: false, // the idempotency_key column does not exist yet (migration not applied)
     emails: 0, // send-bid-confirmation invocations
+    quoteStatus: 'cancelled', // the server's bid_status for q-1 (renew_quote moves it to 'active')
+    renewLands: false, // a hung renew_quote that the server still completes
+    renewCalls: 0,
   };
   const hang = (signal: AbortSignal | null) => new Promise((_, rej) => {
     signal?.addEventListener('abort', () => { state.aborted++; rej(signal.reason); });
@@ -55,6 +58,7 @@ const h = vi.hoisted(() => {
         const k = s.eqs.find(([c]) => c === 'idempotency_key')![1];
         return { data: state.rows.find((r) => r.idempotency_key === k) ?? null, error: null };
       }
+      if (table === 'quotes' && s.op === 'select' && s.eqs.some(([c, v]) => c === 'id' && v === 'q-1')) return { data: { id: 'q-1', bid_status: state.quoteStatus }, error: null };
       if (table === 'quotes' && s.eqs.some(([c]) => c === 'claim_id')) {
         state.lookups++;
         if (state.hideFromLookup) return { data: null, error: null };
@@ -75,8 +79,17 @@ const h = vi.hoisted(() => {
       let signal: AbortSignal | null = null;
       const p: Record<string, unknown> = {
         abortSignal: (sig: AbortSignal) => { signal = sig; return p; },
-        then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
-          (state.gate === 'hang' || (name && state.hang.includes(`rpc:${name}`)) ? hang(signal) : Promise.resolve({ data: { can_submit: true }, error: null })).then(res, rej),
+        then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => {
+          if (name === 'renew_quote') {
+            // Like the real RPC: it refuses a bid that is already live (55000), and a hung call can still complete server-side.
+            state.renewCalls++;
+            if (state.hang.includes('rpc:renew_quote')) { if (state.renewLands) state.quoteStatus = 'active'; return hang(signal).then(res, rej); }
+            if (state.quoteStatus === 'active') return Promise.resolve({ data: null, error: { code: '55000', message: 'renew_quote: mode reopen needs a cancelled bid' } }).then(res, rej);
+            state.quoteStatus = 'active';
+            return Promise.resolve({ data: null, error: null }).then(res, rej);
+          }
+          return (state.gate === 'hang' || (name && state.hang.includes(`rpc:${name}`)) ? hang(signal) : Promise.resolve({ data: { can_submit: true }, error: null })).then(res, rej);
+        },
       };
       return p;
     },
@@ -105,12 +118,12 @@ const mount = () => render(<BidForm mode="new" claim={claim as never} contractor
 const priceInput = (c: HTMLElement) => c.querySelector('.oqb-money input') as HTMLInputElement;
 const feeBox = (c: HTMLElement) => Array.from(c.querySelectorAll('input[type="checkbox"]'))
   .find((el) => /platform fee/.test(el.parentElement?.textContent || '')) as HTMLInputElement;
-const submitBtn = (c: HTMLElement) => Array.from(c.querySelectorAll('button')).find((b) => /Submit|Submitting|Update Bid/.test(b.textContent || '')) as HTMLButtonElement;
+const submitBtn = (c: HTMLElement) => Array.from(c.querySelectorAll('button')).find((b) => /Submit|Submitting|Update Bid|Renew/.test(b.textContent || '')) as HTMLButtonElement;
 
 beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }); });
 afterEach(() => {
   cleanup(); vi.useRealTimers();
-  Object.assign(h.state, { gate: 'ok', insert: 'ok', aborted: 0, readbacks: 0, feeAcceptances: 0, hung: 0, updates: 0, lookups: 0, hideFromLookup: false, noColumn: false, emails: 0 });
+  Object.assign(h.state, { gate: 'ok', insert: 'ok', aborted: 0, readbacks: 0, feeAcceptances: 0, hung: 0, updates: 0, lookups: 0, hideFromLookup: false, noColumn: false, emails: 0, quoteStatus: 'cancelled', renewLands: false, renewCalls: 0 });
   sentry.captureMessage.mockReset(); sentry.captureException.mockReset();
   delete (window as unknown as { gtag?: unknown }).gtag;
   h.state.hang.length = 0;
@@ -456,5 +469,45 @@ describe('gh-3498 React bid form: stalled submit', () => {
     await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
     expect(container.textContent).toContain('Bid updated');
     expect(h.state.updates).toBe(1);
+  });
+
+  // gh-3498 (REVIEW 6809644127 F1): renew_quote times out in the browser but the server completes it. The page still holds the old
+  // bid status, so a retry sends the same mode and the RPC refuses it (55000) until the page is reloaded. The retry reads the status first.
+  for (const kind of ['reopen', 'renew'] as const) {
+    it(`${kind}: renew_quote completes server-side after the browser timed out, and the retry still updates once`, async () => {
+      const stale = { ...existing, bid_status: kind === 'renew' ? 'expired' : 'cancelled' };
+      const { container } = render(<BidForm mode={kind === 'renew' ? 'renew' : 'change'} claim={claim as never} contractor={contractor as never} existingQuote={stale as never} flags={flags} claimRcv={null} userId="u1" />);
+      await ready(container);
+      h.state.renewLands = true;
+      h.state.hang.push('rpc:renew_quote');
+      await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+      await advance(16_000);
+      expect(container.textContent).toContain('Error submitting bid: ');
+      expect(h.state.quoteStatus).toBe('active'); // the server finished the renewal
+      expect(h.state.updates).toBe(0);
+      h.state.hang.length = 0;
+      if (!feeBox(container).checked) fireEvent.click(feeBox(container));
+      await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+      expect(container.textContent).not.toContain('needs a');
+      expect(container.textContent).toContain(kind === 'renew' ? 'Bid renewed' : 'Bid updated');
+      expect(h.state.updates).toBe(1);
+      expect(h.state.renewCalls).toBe(1); // the retry did not call renew_quote again
+    });
+  }
+
+  it('renew_quote timed out and the server did NOT complete it: the retry calls renew_quote again', async () => {
+    const cancelled = { ...existing, bid_status: 'cancelled' };
+    const { container } = render(<BidForm mode="change" claim={claim as never} contractor={contractor as never} existingQuote={cancelled as never} flags={flags} claimRcv={null} userId="u1" />);
+    await ready(container);
+    h.state.hang.push('rpc:renew_quote');
+    await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+    await advance(16_000);
+    expect(h.state.quoteStatus).toBe('cancelled');
+    h.state.hang.length = 0;
+    if (!feeBox(container).checked) fireEvent.click(feeBox(container));
+    await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+    expect(container.textContent).toContain('Bid updated');
+    expect(h.state.renewCalls).toBe(2);
+    expect(h.state.quoteStatus).toBe('active');
   });
 });
