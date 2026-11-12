@@ -4861,6 +4861,8 @@
     // Id of the filed bid whose fee_acceptances row and confirmation email this page has already sent, so a retry that finds
     // that same bid finishes on the success screen without writing them a second time.
     var _bidPostWritesDoneId = null;
+    // gh-3498 (F1): a renew_quote call went unanswered; the next attempt reads the bid status again before calling it.
+    var _renewRpcTimedOut = false;
     // GA4 events are best-effort: a missing or failing gtag (blocked, or ga-gate not loaded) must never turn a filed bid into
     // an error (REVIEW 6743281622 finding 1; same as React's track()).
     function trackBidEvent(name, params) {
@@ -5738,10 +5740,20 @@
             // gh-3560: Renew Bid (expired bid, D-150) and Change Bid on a withdrawn ('cancelled') bid (gh-2564 rescind and
             // re-bid) make the bid live again through renew_quote(): the quotes guard trigger refuses bid_status, expired_at
             // and expires_at to a contractor's direct UPDATE (42501). The RPC runs FIRST, then the field UPDATE below.
-            const _renewRpcMode = renewMode ? 'renew' : (existingQuote.bid_status === 'cancelled' ? 'reopen' : null);
+            let _renewRpcMode = renewMode ? 'renew' : (existingQuote.bid_status === 'cancelled' ? 'reopen' : null);
+            if (_renewRpcMode && _renewRpcTimedOut) {
+              // gh-3498 (REVIEW 6809644127 F1): an earlier renew_quote timed out in the browser, but the server may have finished it. The page's copy of
+              // the bid status is stale then, and renew_quote refuses a bid that is already live (55000). Read the status again before calling it.
+              const { data: _curQuote, error: _curErr } = await callWithTimeout(BID_UPDATE_TIMEOUT_MS, (signal) => withAbortSignal(
+                sb.from('quotes').select('bid_status').eq('id', existingQuote.id).maybeSingle(), signal));
+              if (_curErr) throw _curErr; // the catch shows the message and unlocks; nothing was changed
+              if (_curQuote && _curQuote.bid_status === 'active') _renewRpcMode = null; // already renewed: go on to the UPDATE
+            }
             if (_renewRpcMode) {
-              // gh-3498: bounded like the UPDATE below; a stall ends through the catch (message, form unlocked). A retry is harmless (same row, same mode).
+              // gh-3498: bounded like the UPDATE below; a stall ends through the catch (message, form unlocked).
+              _renewRpcTimedOut = true; // cleared once the RPC answers; while set, a retry re-reads the status first
               const { error: renewRpcError } = await callWithTimeout(BID_UPDATE_TIMEOUT_MS, (signal) => withAbortSignal(sb.rpc('renew_quote', { p_quote_id: existingQuote.id, p_mode: _renewRpcMode }), signal));
+              _renewRpcTimedOut = false;
               if (renewRpcError) throw renewRpcError;
             }
             // gh-2105: payload hoisted to a named const so the ratchet scanner's
