@@ -116,6 +116,27 @@ a{color:#0D1B2E}a:hover{color:#B45309}
 </div>
 </section>
 
+<section id="ways" style="background: #FFFFFF; padding: 40px 20px; display: flex; flex-direction: column; gap: 18px">
+<h2 style="margin: 0; font-size: 28px; font-weight: 800; color: #0D1B2E">Two ways to use Otter Quotes</h2>
+<div>
+<div style="padding: 20px; border: 1px solid #DCE2E8; border-radius: 10px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 800">You have an insurance claim</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #3D4F60">Once you have the insurance company's estimate, add it to your job. Contractors bid on that same scope of work, so you can compare their bids side by side. Your bids are free with your estimate.</p>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #3D4F60">If your policy pays actual cash value (ACV), the first check from the insurance company is most likely all you will get. Unless your mortgage company is named on the check, you can spend it on whatever you choose.</p>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #3D4F60">If your policy pays replacement cost value (RCV), your out-of-pocket cost for the work the insurance company pays for is your deductible, and deductibles cannot be waived.</p>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #3D4F60">We do not work with your insurance company.</p>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #3D4F60"><a href="/guides/multiple-bids-roof-insurance-claim.html">See how an insurance job works</a></p>
+</div>
+<div style="padding: 20px; border: 1px solid #DCE2E8; border-radius: 10px">
+<h3 style="margin: 0; font-size: 20px; font-weight: 800">No claim? You are paying out of pocket</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #3D4F60">If your roof is old, an inspection flagged it, or you simply need it replaced and you are paying for it, tell us about the job. Contractors compete on price, materials and warranties, and you compare their bids online, with no salesperson in your home.</p>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #3D4F60">Without an insurance estimate, you pay as little as $22.63 up front for professional measurements that contractors use to bid. If you complete a job on the platform, that money is refunded to you. Conditions apply.</p>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #3D4F60">We do not offer free inspections or assessments of your roof.</p>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #3D4F60"><a href="/guides/hire-roofer-paying-out-of-pocket.html">How to hire a roofer when you are paying out of pocket</a></p>
+</div>
+</div>
+</section>
+
 <section id="how" style="background: #F4F6F9; padding: 40px 20px; display: flex; flex-direction: column; gap: 18px">
 <h2 style="margin: 0; font-size: 28px; font-weight: 800; color: #0D1B2E">How it works</h2>
 <div style="background: #FFFFFF; border: 1px solid #DCE2E8; border-radius: 10px; padding: 22px; display: flex; flex-direction: column; gap: 8px">
