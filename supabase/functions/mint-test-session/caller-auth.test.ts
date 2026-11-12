@@ -42,6 +42,7 @@ function fakeDb(over: Partial<DbAdapter> = {}, logs: ActivityLogRow[] = []): DbA
   return {
     getContractorById: async () => ({ data: null, error: null }),
     getClaimsByUserId: async () => ({ data: null, error: null }),
+    getContractorsByUserId: async () => ({ data: [], error: null }),
     getProfileById: async () => ({ data: { id: "stub", is_test: true }, error: null }),
     getAuthUserById: async () => ({
       data: { id: "stub", email: "resolved@otterquote-internal.test" },

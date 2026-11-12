@@ -12,7 +12,9 @@
  *   - contractor_id: 403 unless contractors.is_test is literally true.
  *     Mints for that contractor's linked auth user (contractors.user_id).
  *   - user_id (homeowner): 403 unless the user owns at least one claim AND
- *     every claim they own has is_test = true (claims.is_test).
+ *     every claim they own has is_test = true (claims.is_test). gh-3690: OR, for
+ *     a user with no claims, the user_id of a contractors row where every such
+ *     row has is_test = true (an is_test contractor owner).
  *
  * gh-1513 cross-table fix (#1773 forensics): a single table's is_test column
  * is not a safe inference on its own (production measurement: 8 of 13
@@ -145,6 +147,13 @@ serve(async (req) => {
       async getClaimsByUserId(userId) {
         const { data, error } = await supabase
           .from("claims")
+          .select("id, is_test")
+          .eq("user_id", userId);
+        return { data, error: error ? { message: error.message } : null };
+      },
+      async getContractorsByUserId(userId) {
+        const { data, error } = await supabase
+          .from("contractors")
           .select("id, is_test")
           .eq("user_id", userId);
         return { data, error: error ? { message: error.message } : null };

@@ -44,6 +44,12 @@ export interface ContractorRow {
   is_test: boolean;
 }
 
+/** gh-3690: the contractors rows linked to one auth user (user_id path, contractor-owner fallback). */
+export interface OwnedContractorRow {
+  id: string;
+  is_test: boolean | null;
+}
+
 export interface ClaimRow {
   id: string;
   is_test: boolean;
@@ -104,6 +110,10 @@ export interface DbAdapter {
   getClaimsByUserId(
     userId: string,
   ): Promise<{ data: ClaimRow[] | null; error: AdapterError | null }>;
+  /** gh-3690: contractors rows whose user_id is this auth user. */
+  getContractorsByUserId(
+    userId: string,
+  ): Promise<{ data: OwnedContractorRow[] | null; error: AdapterError | null }>;
   getProfileById(
     userId: string,
   ): Promise<{ data: ProfileRow | null; error: AdapterError | null }>;
@@ -389,9 +399,10 @@ async function profileAgreesIsTest(
  *     that row AND the linked profiles row also has is_test = true (cross-
  *     table agreement, gh-1513 fix). Target is the contractor's linked auth
  *     user (user_id).
- *   - user_id: 403 unless the user owns at least one claim AND every claim
- *     they own has is_test = true, AND the linked profiles row also has
- *     is_test = true. Target is that user_id directly.
+ *   - user_id: 403 unless (the user owns at least one claim AND every claim
+ *     they own has is_test = true) OR (gh-3690: the user owns no claims but is
+ *     the user_id of at least one contractors row and every such row has
+ *     is_test = true), AND the linked profiles row also has is_test = true. Target is that user_id directly.
  *
  * On success, resolves the target's email from the auth user record itself
  * (never from a joined table's email column, which is not guaranteed to
@@ -453,9 +464,18 @@ export async function resolveAndMint(
     // gh-1562 fixup: same leak class as getContractorById above.
     if (error) return unexpectedErrorResponse(error);
     if (!claims || claims.length === 0) {
-      return jsonError(403, "Forbidden: user owns no claims");
-    }
-    if (!claims.every((c) => c.is_test === true)) {
+      // gh-3690: a user with no claims may still qualify as an is_test CONTRACTOR owner:
+      // at least one contractors row has user_id = this user, and every such row is_test = true.
+      // The profiles.is_test agreement, denylist and admin refusal below apply unchanged.
+      const { data: owned, error: ownedErr } = await db.getContractorsByUserId(normalizedUserId);
+      if (ownedErr) return unexpectedErrorResponse(ownedErr);
+      if (!owned || owned.length === 0) {
+        return jsonError(403, "Forbidden: user owns no claims");
+      }
+      if (!owned.every((c) => c.is_test === true)) {
+        return jsonError(403, "Forbidden: not every contractor row owned by user is is_test");
+      }
+    } else if (!claims.every((c) => c.is_test === true)) {
       return jsonError(403, "Forbidden: not every claim owned by user is is_test");
     }
     targetUserId = normalizedUserId;

@@ -29,6 +29,7 @@ function fakeDb(overrides: Partial<DbAdapter> = {}): DbAdapter {
   return {
     getContractorById: async () => ({ data: null, error: null }),
     getClaimsByUserId: async () => ({ data: null, error: null }),
+    getContractorsByUserId: async () => ({ data: [], error: null }),
     getProfileById: async () => ({ data: { id: "stub", is_test: true }, error: null }),
     getAuthUserById: async () => ({
       data: { id: "stub", email: "resolved-from-auth-user@otterquote-internal.test" },
@@ -838,4 +839,116 @@ Deno.test("R-134 E: non-test target is still refused as before (not-is_test 403 
   assertEquals(r.status, 403);
   assertStringIncludes(String(r.body.error), "not marked is_test");
   assertEquals(minted(), 0);
+});
+
+// ── gh-3690: is_test CONTRACTOR owner on the user_id path (exec path mints for it) ──
+const CONTRACTOR_OWNER_UID = "00000000-0000-0000-0000-0000000036a0";
+const CONTRACTOR_OWNER_EMAIL = "test-contractor-owner@otterquote-internal.test";
+
+function contractorOwnerDb(overrides: Partial<DbAdapter> = {}): DbAdapter {
+  return fakeDb({
+    getClaimsByUserId: async () => ({ data: [], error: null }),
+    getContractorsByUserId: async () => ({ data: [{ id: "c-own-1", is_test: true }], error: null }),
+    getAuthUserById: async () => ({
+      data: { id: CONTRACTOR_OWNER_UID, email: CONTRACTOR_OWNER_EMAIL },
+      error: null,
+    }),
+    ...overrides,
+  });
+}
+
+Deno.test("gh-3690: exec path mints for an is_test contractor owner (user_id, no claims, profile is_test)", async () => {
+  const logs: ActivityLogRow[] = [];
+  const db = contractorOwnerDb({ insertActivityLog: async (r) => { logs.push(r); return { error: null }; } });
+  const result = await resolveAndMint({ user_id: CONTRACTOR_OWNER_UID }, db, "exec_service", "exec_service");
+  assertEquals(result.status, 200);
+  assertEquals(result.body.ok, true);
+  assertEquals(result.body.email, CONTRACTOR_OWNER_EMAIL);
+  assertEquals(result.body.user_id, CONTRACTOR_OWNER_UID);
+  assertEquals(logs[0].metadata.caller, "exec_service");
+});
+
+Deno.test("gh-3690: refuses a NON-test contractor owner (contractors.is_test false)", async () => {
+  const db = contractorOwnerDb({
+    getContractorsByUserId: async () => ({ data: [{ id: "c-own-2", is_test: false }], error: null }),
+  });
+  const result = await resolveAndMint({ user_id: CONTRACTOR_OWNER_UID }, db, "exec_service", "exec_service");
+  assertEquals(result.status, 403);
+});
+
+Deno.test("gh-3690: refuses when ANY owned contractor row is not is_test", async () => {
+  const db = contractorOwnerDb({
+    getContractorsByUserId: async () => ({
+      data: [{ id: "a", is_test: true }, { id: "b", is_test: false }],
+      error: null,
+    }),
+  });
+  const result = await resolveAndMint({ user_id: CONTRACTOR_OWNER_UID }, db, "exec_service", "exec_service");
+  assertEquals(result.status, 403);
+});
+
+Deno.test("gh-3690: refuses an is_test contractor owner whose profiles.is_test is not true", async () => {
+  const db = contractorOwnerDb({
+    getProfileById: async () => ({ data: { id: CONTRACTOR_OWNER_UID, is_test: false }, error: null }),
+  });
+  const result = await resolveAndMint({ user_id: CONTRACTOR_OWNER_UID }, db, "exec_service", "exec_service");
+  assertEquals(result.status, 403);
+});
+
+Deno.test("gh-3690: refuses an ADMIN contractor owner (template_review_role admin) even when is_test everywhere", async () => {
+  const db = contractorOwnerDb({
+    getAdminSignals: async () => ({
+      data: { profile_role: "contractor", contractor_roles: ["admin"], app_metadata_role: null },
+      error: null,
+    }),
+  });
+  const result = await resolveAndMint({ user_id: CONTRACTOR_OWNER_UID }, db, "exec_service", "exec_service");
+  assertEquals(result.status, 403);
+  assertEquals(result.body.code, "ADMIN_ACCOUNT_REFUSED");
+});
+
+Deno.test("gh-3690: refuses an admin-email contractor owner", async () => {
+  const db = contractorOwnerDb({
+    getAuthUserById: async () => ({ data: { id: CONTRACTOR_OWNER_UID, email: "dustin@otterquote.com" }, error: null }),
+  });
+  const result = await resolveAndMint({ user_id: CONTRACTOR_OWNER_UID }, db, "exec_service", "exec_service");
+  assertEquals(result.status, 403);
+  assertEquals(result.body.code, "ADMIN_ACCOUNT_REFUSED");
+});
+
+Deno.test("gh-3690: a user with no claims and no contractor row still gets 'owns no claims'", async () => {
+  const db = contractorOwnerDb({ getContractorsByUserId: async () => ({ data: [], error: null }) });
+  const result = await resolveAndMint({ user_id: CONTRACTOR_OWNER_UID }, db, "exec_service", "exec_service");
+  assertEquals(result.status, 403);
+  assertStringIncludes(String(result.body.error), "owns no claims");
+});
+
+Deno.test("gh-3690: homeowner path unchanged: is_test claims -> 200, non-test claim -> 403, contractor lookup not consulted", async () => {
+  let lookups = 0;
+  const base = {
+    getContractorsByUserId: async () => { lookups++; return { data: [{ id: "x", is_test: true }], error: null }; },
+    getAuthUserById: async () => ({ data: { id: CONTRACTOR_OWNER_UID, email: "ho@otterquote-internal.test" }, error: null }),
+  };
+  const ok = await resolveAndMint(
+    { user_id: CONTRACTOR_OWNER_UID },
+    fakeDb({ ...base, getClaimsByUserId: async () => ({ data: [{ id: "c1", is_test: true }], error: null }) }),
+    ACTOR_EMAIL,
+  );
+  assertEquals(ok.status, 200);
+  const bad = await resolveAndMint(
+    { user_id: CONTRACTOR_OWNER_UID },
+    fakeDb({ ...base, getClaimsByUserId: async () => ({ data: [{ id: "c1", is_test: false }], error: null }) }),
+    ACTOR_EMAIL,
+  );
+  assertEquals(bad.status, 403);
+  assertEquals(lookups, 0);
+});
+
+Deno.test("gh-3690: contractor lookup error -> generic 500, no leak", async () => {
+  const db = contractorOwnerDb({
+    getContractorsByUserId: async () => ({ data: null, error: { message: "secret pg detail" } }),
+  });
+  const result = await resolveAndMint({ user_id: CONTRACTOR_OWNER_UID }, db, "exec_service", "exec_service");
+  assertEquals(result.status, 500);
+  assertEquals(result.body.error, "Internal server error");
 });
