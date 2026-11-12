@@ -1366,6 +1366,15 @@
 
             currentUser = session.user;
 
+            // gh-3002: a contractor magic link lands HERE, not on /auth-callback.html
+            // (js/auth.js sendMagicLink / contractor-join.html redirect), and this page
+            // never ran Auth.handleAuthCallback(), so record_first_touch_attribution was
+            // never called for contractor signups (profile cf12a80d, 2026-10-31: null
+            // first touch). Same bounded, non-fatal, write-once RPC auth-callback.html
+            // uses; it reads only the existing oq_ft cookie / localStorage copy, so the
+            // D-397 consent rails (GPC, oq_ad_optout) are inherited and nothing new is collected.
+            try { if (window.Auth && typeof window.Auth.recordFirstTouchAttribution === 'function') await window.Auth.recordFirstTouchAttribution(); } catch (e) { /* non-fatal */ }
+
             // Load contractor record
             let { data: ct, error: ctErr } = await sb.from('contractors')
                 .select('*')
