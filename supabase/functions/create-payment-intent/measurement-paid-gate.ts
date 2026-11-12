@@ -199,21 +199,24 @@ export async function checkClaimHasNotPaid(deps: PaidGateDeps): Promise<PaidVerd
     const unpaged = found.has_more === true;
 
     const cancelable: string[] = [];
+    // A fully refunded intent is only a FALLBACK verdict: a paid (non-refunded) intent anywhere in the list must win, or a refunded
+    // intent listed first hides the paid-without-order alert for a second, paid, order-less intent (REVIEW at 0bb18e05, F1).
+    let refundedFallback: PaidVerdict | null = null;
     for (const [id, pi] of seen) {
       const v = evaluatePaymentIntent(pi);
-      if (v === "paid_succeeded" || v === "paid_processing" || v === "refunded") {
-        return {
-          kind: "paid",
-          reason: v === "paid_processing" ? "processing" : v === "refunded" ? "refunded" : "succeeded",
-          paymentIntentId: id,
-          hasOrderRow: orderPiIds.has(id),
-        };
+      if (v === "paid_succeeded" || v === "paid_processing") {
+        return { kind: "paid", reason: v === "paid_processing" ? "processing" : "succeeded", paymentIntentId: id, hasOrderRow: orderPiIds.has(id) };
+      }
+      if (v === "refunded") {
+        refundedFallback ??= { kind: "paid", reason: "refunded", paymentIntentId: id, hasOrderRow: orderPiIds.has(id) };
+        continue;
       }
       if ((pi.status === "requires_payment_method" || pi.status === "requires_confirmation") &&
           pi.metadata?.claim_id === deps.claimId && pi.metadata?.type === "hover_measurement") {
         cancelable.push(id);
       }
     }
+    if (refundedFallback) return refundedFallback;
     if (unpaged) return { kind: "unavailable", why: "Stripe search returned more than one page" };
     return { kind: "not_paid", cancelable };
   } catch (e) {

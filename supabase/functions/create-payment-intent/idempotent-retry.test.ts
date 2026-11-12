@@ -546,6 +546,24 @@ Deno.test("gh-3356 (2c) refunds: a fully refunded payment with no rebate STILL B
   assertEquals((await gatedSequence(wFlight)).code, ALREADY_PAID_CODE);
 });
 
+// REVIEW at 0bb18e05, F1: a refunded intent that the loop met FIRST hid a second, paid, order-less intent (no paid_without_order alert).
+Deno.test("gh-3356 (2c-2) a claim with BOTH a fully refunded intent and a paid, order-less intent raises paid_without_order whichever Stripe lists first (paid-first and refunded-first)", async () => {
+  for (const refundedFirst of [true, false]) {
+    const w = paidWorld();
+    const a = await gatedSequence(w, CLAIM, { amount: 2263 });
+    const b = await gatedSequence(w, CLAIM, { amount: 2264 }); // a different price is a different idempotency key: a second intent on the same claim
+    assert(a.piId && b.piId && a.piId !== b.piId);
+    const [refundedId, paidId] = refundedFirst ? [a.piId, b.piId] : [b.piId, a.piId];
+    w.setStatus(refundedId, "succeeded"); w.setRefunded(refundedId, "true");
+    w.setStatus(paidId, "succeeded"); // paid, no hover_orders row
+    w.expireKeys();
+    const v = await checkClaimHasNotPaid({ fetchFn: w.fetchFn, apiBase: API, basicAuth: w.basicAuth, claimId: CLAIM, loadOrders: () => loadHoverOrders(w.sb(), CLAIM), log: () => {} });
+    assertEquals(v.kind === "paid" && [v.reason, v.paymentIntentId, v.hasOrderRow], ["succeeded", paidId, false], `refundedFirst=${refundedFirst}`);
+    assertEquals(alertKindFor(v), "paid_without_order", `refundedFirst=${refundedFirst}: Dustin's D-413 signal must fire`);
+    assertEquals(refusalFor(v)?.status, 409);
+  }
+});
+
 Deno.test("gh-3356 (2d) another claim's payment, and a contractor's detailed-upgrade order on this claim, do not block this claim", async () => {
   const w = paidWorld();
   const other = await gatedSequence(w, OTHER_CLAIM);
