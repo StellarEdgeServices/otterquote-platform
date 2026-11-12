@@ -1,0 +1,1 @@
+INSERT INTO public.reserved_slugs (slug) VALUES ('insurance-rcv') ON CONFLICT (slug) DO NOTHING;
