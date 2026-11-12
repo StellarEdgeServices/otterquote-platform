@@ -112,6 +112,12 @@
   padding-bottom: var(--sp-6);
 }
 
+/* gh-3643: the 100-hour guarantee answer is ~2,250 characters, far more than the 500px cap above, which would clip the
+   claim process and the "not both" term. Scoped to that one item so every other answer keeps its 500px cap. */
+.faq-item.oq-guarantee.open .faq-answer {
+  max-height: 3200px;
+}
+
 .faq-answer p {
   font-size: 0.95rem;
   line-height: 1.7;
