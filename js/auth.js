@@ -951,6 +951,27 @@ window.Auth = {
     // definition as requireAuth() via _isPartnerSurfaceFile().
     const onPartnerPage = _isPartnerSurfaceFile(window.location.pathname);
 
+    // gh-3203: admin is decided by the server allowlist (public.is_admin_email())
+    // BEFORE any derived role or saved cs_redirect, so a login that is also a (test)
+    // contractor or partner still lands on admin. Same logic as the React
+    // auth-callback (PR #3674). Only a literal `true` with no error counts; an
+    // error, a throw, null, false or any other value falls through to the existing
+    // routing below (fail closed). Skipped on partner surfaces so #643's
+    // partner-stay-put guard is untouched.
+    if (!onPartnerPage) {
+      let isAdminCaller = false;
+      try {
+        const { data: adminAnswer, error: adminErr } = await sb.rpc('is_admin_email');
+        isAdminCaller = !adminErr && adminAnswer === true;
+      } catch (_) {
+        isAdminCaller = false;
+      }
+      if (isAdminCaller) {
+        window.location.href = 'https://app.otterquote.com/admin/contractors';
+        return;
+      }
+    }
+
     // gh-817: cs_redirect is saved by requireAuth() on ANY earlier unauthenticated
     // page hit in this tab's session (e.g. a contractor page visited before
     // the partner magic-link login) and this shortcut used to run BEFORE the #783
