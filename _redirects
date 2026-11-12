@@ -307,3 +307,10 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 /hc/warranties/   /hc-warranties.html   200
 /hc/decisions     /hc-decisions.html    200
 /hc/decisions/    /hc-decisions.html    200
+
+# gh-3556: pages deliberately removed and reported by Search Console as Not found (404). No successor page exists, so answer 410 Gone
+# (drops out of the index faster than 404). project-confirmation.html removed 2026-10-31 (D-407 / gh-3286); /democracy/ removed 2026-09-30.
+/project-confirmation.html   /404.html   410!
+/project-confirmation        /404.html   410!
+/democracy                   /404.html   410!
+/democracy/*                 /404.html   410!

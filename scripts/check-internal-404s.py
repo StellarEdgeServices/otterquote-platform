@@ -44,7 +44,9 @@ def main():
         for line in fh:
             parts = line.split()
             if parts and not line.startswith("#") and len(parts) >= 2 and not parts[0].startswith("http"):
-                rules.append(parts[0])
+                # A 4xx rule (e.g. a 410 for a removed page) does not make the path reachable.
+                if not re.match(r"4\d\d", parts[-1].rstrip("!")):
+                    rules.append(parts[0])
 
     def resolves(path):
         p = path.lstrip("/").lower()
