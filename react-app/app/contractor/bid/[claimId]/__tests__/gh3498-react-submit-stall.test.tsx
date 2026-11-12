@@ -495,6 +495,30 @@ describe('gh-3498 React bid form: stalled submit', () => {
     });
   }
 
+  // gh-3498 (REVIEW F-A): renew_quote ANSWERS (the bid is live), then the field UPDATE times out. The retry must not call renew_quote again
+  // (it refuses a live bid, 55000); it goes straight to the UPDATE.
+  for (const kind of ['reopen', 'renew'] as const) {
+    it(`${kind}: renew_quote succeeded and the following UPDATE timed out: the retry skips renew_quote and updates once`, async () => {
+      const stale = { ...existing, bid_status: kind === 'renew' ? 'expired' : 'cancelled' };
+      const { container } = render(<BidForm mode={kind === 'renew' ? 'renew' : 'change'} claim={claim as never} contractor={contractor as never} existingQuote={stale as never} flags={flags} claimRcv={null} userId="u1" />);
+      await ready(container);
+      h.state.hang.push('quotes:update');
+      await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+      await advance(16_000);
+      expect(container.textContent).toContain('Error submitting bid: ');
+      expect(h.state.quoteStatus).toBe('active'); // renew_quote answered
+      expect(h.state.renewCalls).toBe(1);
+      expect(h.state.updates).toBe(0);
+      h.state.hang.length = 0;
+      if (!feeBox(container).checked) fireEvent.click(feeBox(container));
+      await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+      expect(container.textContent).not.toContain('needs a');
+      expect(container.textContent).toContain(kind === 'renew' ? 'Bid renewed' : 'Bid updated');
+      expect(h.state.renewCalls).toBe(1); // not called a second time
+      expect(h.state.updates).toBe(1);
+    });
+  }
+
   it('renew_quote timed out and the server did NOT complete it: the retry calls renew_quote again', async () => {
     const cancelled = { ...existing, bid_status: 'cancelled' };
     const { container } = render(<BidForm mode="change" claim={claim as never} contractor={contractor as never} existingQuote={cancelled as never} flags={flags} claimRcv={null} userId="u1" />);
