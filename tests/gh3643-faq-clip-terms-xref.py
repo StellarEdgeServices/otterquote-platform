@@ -9,6 +9,7 @@ Run: python3 tests/gh3643-faq-clip-terms-xref.py [repo-dir]   Exit 0 = all pass.
 import sys, os, threading, http.server, functools, re
 from playwright.sync_api import sync_playwright
 ROOT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), '..'))
+SENT84 = 'It also does not apply to payments under Our 100-hour guarantee.'
 SENT = 'This Section 8.5 does not limit Our 100-hour guarantee below.'
 class Q(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -36,8 +37,16 @@ m = re.search(r'<p([^>]*)>' + re.escape(SENT) + '</p>', t)
 check('A2 sentence is in a <p class=oq-guarantee hidden>', bool(m) and 'oq-guarantee' in m.group(1) and re.search(r'\bhidden\b', m.group(1)) is not None, m.group(1) if m else 'no <p> wrapper')
 i = t.find(SENT); j = t.find('id="guarantee-terms"'); k = t.find('8.5 Measurement Fee')
 check('A3 sentence sits inside Section 8.5 (after its heading, before the guarantee section)', 0 < k < i < j)
+# D: Terms 8.4 carve-out (Ben ruling 6824846681), gated like the 8.5 sentence
+check('D1 8.4 sentence present exactly once in terms.html', t.count(SENT84) == 1, f'count={t.count(SENT84)}')
+m4 = re.search(r'<(span|p)([^>]*)>\s*' + re.escape(SENT84) + r'\s*</\1>', t)
+check('D2 8.4 sentence is in a hidden .oq-guarantee element', bool(m4) and 'oq-guarantee' in m4.group(2) and re.search(r'\bhidden\b', m4.group(2)) is not None, m4.group(2) if m4 else 'no gated wrapper')
 with sync_playwright() as p:
     b = p.chromium.launch()
+    pg = page(b, '/terms.html', 1280, False)
+    check('D3 flag off: 8.4 sentence not rendered', SENT84 not in pg.evaluate('document.body.innerText')); pg.context.close()
+    pg = page(b, '/terms.html', 1280, True)
+    check('D4 flag on: 8.4 sentence IS rendered', SENT84 in pg.evaluate('document.body.innerText')); pg.context.close()
     for path in ('/terms.html', '/faq.html'):
         pg = page(b, path, 1280, False)
         txt = pg.evaluate('document.body.innerText')
