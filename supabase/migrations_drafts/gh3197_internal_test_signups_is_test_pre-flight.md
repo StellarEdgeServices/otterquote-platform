@@ -1,5 +1,5 @@
 <!--
-STATUS (as of 2026-10-30): NOT APPLIED -- DRAFT
+STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261031181105, name gh3197_internal_test_signups_is_test; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 FILE ROLE: pre-flight file of set gh3197_internal_test_signups_is_test
 EVIDENCE: production read-only 2026-10-30 (project yeszghaspzwwstvsrioa); nothing was written.
 DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md

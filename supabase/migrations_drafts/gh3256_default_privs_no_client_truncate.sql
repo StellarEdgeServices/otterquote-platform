@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-30T21:30:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261031181138, name gh3256_default_privs_no_client_truncate; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3256_default_privs_no_client_truncate (rollback and pre-flight beside it)
 -- EVIDENCE: drafted 2026-10-30 under #3256. Production read-only 2026-10-30 (project yeszghaspzwwstvsrioa, PG 17.6): pg_default_acl for (postgres, public, tables) = {postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}; the same for (supabase_admin, public, tables) with grantor supabase_admin. current_user of the migration path is postgres, rolsuper = false, pg_has_role('postgres','supabase_admin','MEMBER') = false; every public table (63) and view (11) is owned by postgres. No database was written to produce this file.
 -- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.

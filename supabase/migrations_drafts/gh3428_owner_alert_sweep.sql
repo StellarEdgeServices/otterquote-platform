@@ -1,5 +1,5 @@
 -- gh-3428: owner alert sweep. Schema half: table public.owner_alerts + two service-role-only functions + a no-ring baseline.
--- STATUS (gh-1438, as of 2026-11-05): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261105212726, name gh3428_owner_alert_sweep; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- EVIDENCE: drafted on main 32193ce7 by reading the repo (supabase/migrations/20260101000000_v000_baseline_schema.sql, create-measurement-order/index.ts, dashboard.html submitForBids,
 -- the gh3197 draft). No production read was made by the author (no database connection, by instruction): column names below are the repo's; the applier re-reads them (pre-flight, checks 1-4).
 -- REPO COPY: none

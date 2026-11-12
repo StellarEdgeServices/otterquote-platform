@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-14T15:58:46Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261019193234, name gh2785_profiles_freeze_is_test_role_email; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh2785_profiles_freeze_is_test_role_email (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: issue #2785 (triage comments 6171651955, 6172413408); production read-only 2026-10-14 (CTO RUN 67): authenticated holds table-level UPDATE on public.profiles, policy profiles_user_update has no column limit, the only trigger is BEFORE INSERT; rolled-back proof in supabase/tests/gh2785_profiles_freeze_proof.sql
 -- REPO COPY: none in supabase/migrations/ yet

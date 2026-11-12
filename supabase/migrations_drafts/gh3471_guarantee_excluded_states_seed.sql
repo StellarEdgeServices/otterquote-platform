@@ -1,5 +1,5 @@
 -- gh-3471 (#3427 D6): SEED of the excluded-state list for the covered-state check. DATA ONLY, separate from the schema draft gh3471_guarantee_covered.sql.
--- STATUS (gh-1438, as of 2026-11-09): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261109170434, name gh3471_guarantee_excluded_states_seed; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- SOURCE: Dustin, 2026-11-09 10:33 ET, in Marty's chat (CTO RUN 100), verbatim, recorded on #3471 comment 6744041238:
 --   "#3471: excluded states are FL, LA, TX, OK, AR, KS, NE, MI, KY (Dustin 11-09), stored as config."
 --   (Also Ben, #3471 comment 6743820392: "Approve the 9", 2026-11-09 10:23 ET.)

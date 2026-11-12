@@ -1,5 +1,5 @@
 <!--
-STATUS (gh-1438, as of 2026-10-30T17:30:00Z): NOT APPLIED
+STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261030164941, name gh3237_reserved_slugs_add; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 FILE ROLE: pre-flight file of set gh3237_reserved_slugs_add (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: drafted 2026-10-30 under #3239 / #3237; production read-only queries the same day (project yeszghaspzwwstvsrioa). No database was written to produce this file.
 REPO COPY: none. When applied, move to supabase/migrations_rollbacks/.

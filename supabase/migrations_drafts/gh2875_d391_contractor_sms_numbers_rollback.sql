@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-19T22:51:02Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261021013907); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh2875_d391_contractor_sms_numbers
 -- EVIDENCE: drafted 2026-10-19 under #2875 with its forward file; proven on a throwaway Postgres only (supabase/tests/gh2875_d391_contractor_sms_numbers_proof_run.sh).
 -- REPO COPY: none.

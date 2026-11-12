@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-30): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261030144542, name gh3199_submit_template_for_admin_review; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3199_submit_template_for_admin_review (rollback and pre-flight are siblings in this directory; proof is supabase/tests/gh3199_submit_template_proof.sql, runner gh3199_submit_template_proof_run.sh)
 -- EVIDENCE: drafted 2026-10-30 under #3199 (clause 6 of #2105, #2717 Q2, Ben's ruling on #3199 comment 6522660494). Live definitions read with pg_get_functiondef on production (read-only SELECT) the same day; no database was written to produce this file.
 -- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and the rollback and pre-flight in supabase/migrations_rollbacks/.

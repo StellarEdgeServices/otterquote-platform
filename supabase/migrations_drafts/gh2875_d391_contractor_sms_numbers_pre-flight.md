@@ -1,4 +1,4 @@
-<!-- STATUS (gh-1438, as of 2026-10-19T22:51:02Z): NOT APPLIED -->
+<!-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261021013907, name gh2875_d391_contractor_sms_numbers; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record) -->
 # Pre-flight: gh2875_d391_contractor_sms_numbers (#2875, D-391 layer 1)
 
 Tier 3B. Draft only: nothing here is applied until `tier:3b-approved` (R-097 notice #2875 comment 6256733805, window closes

@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-23T13:27:30Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261028230910, name gh2997_inherit_is_test; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh2997_inherit_is_test (rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-10-23 under #2997. Production read-only 2026-10-23 (project yeszghaspzwwstvsrioa): quotes.is_test and
 --   activity_log.is_test are boolean NOT NULL DEFAULT false; no trigger on quotes or activity_log sets is_test from the claim;

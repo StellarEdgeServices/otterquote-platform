@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-30T13:30Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261030144605); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh3224_template_verdict_log (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: drafted 2026-10-30 under #3224; the forward file is not applied (production read-only 2026-10-30, project yeszghaspzwwstvsrioa: no contractor_template_verdicts table)
 -- REPO COPY: none (not applied)

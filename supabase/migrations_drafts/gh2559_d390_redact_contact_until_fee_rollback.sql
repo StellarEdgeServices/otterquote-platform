@@ -1,4 +1,4 @@
--- STATUS (gh-1438, D-390): NOT APPLIED -- rollback of gh2559_d390_redact_contact_until_fee
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261020162602); this rollback is NOT run
 -- DO NOT RUN FROM THIS DIRECTORY. Restores public.bidder_claim_summary to the fee-gated text (the applied ledger 20261008231303 view plus the #2931 gate on the
 -- estimate_filename and measurements_filename CASEs; the selected contractor reads the notes as typed), then drops the thread view, the restrictive policy and the function. Order matters: the view is restored BEFORE the function is
 -- dropped. No data is touched. Run in one transaction.

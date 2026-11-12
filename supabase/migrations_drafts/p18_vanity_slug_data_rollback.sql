@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-30T14:00:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261030141912); this rollback is NOT run
 -- EVIDENCE: rollback half of p18_vanity_slug_data.sql (#3218). Before that migration, read-only production reads on 2026-10-30 show none of the objects below exist and referral_agents has 46 columns (no vanity_slug), 12 indexes, 7 policies, 6 triggers (referral_agents_generate_code, _generate_recruit_code, _guard_agent_type, _guard_payout_columns, _set_is_test_internal, trg_notify_admin_new_partner); this file removes exactly what the forward file adds and touches nothing else.
 -- REPO COPY: none (draft). GATED: dropping the column and tables DELETES every chosen slug and all slug history, so this file RAISES (nothing is dropped) if any vanity_slug or history row exists, unless the session first confirms an export was taken:
 --   SET oq.p18_rollback_confirm_export = 'export-taken';

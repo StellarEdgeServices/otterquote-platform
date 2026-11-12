@@ -1,5 +1,5 @@
 <!--
-STATUS (gh-1438, as of 2026-10-19): NOT APPLIED
+STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261020165939, name gh2849_get_lead_prefill_zip; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 FILE ROLE: pre-flight file of set gh2849_get_lead_prefill_zip (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: drafted 2026-10-19 under #2849; production definition read-only (pg_get_functiondef) the same day
 REPO COPY: none

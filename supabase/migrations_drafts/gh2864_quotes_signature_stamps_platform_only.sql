@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-19): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261020164812, name gh2864_quotes_signature_stamps_platform_only; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh2864_quotes_signature_stamps_platform_only (rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-10-19 under #2864 (Marty ruling 6274566683, tier:3b notice; window closes 2026-10-20T18:40:35Z). The live guard quotes_guard_homeowner_columns() admits homeowner_signed_at for the claim owner and contractor_signed_at for the bid contractor (read-only pg_get_functiondef, 2026-10-19). Probe N17 on PR #2863 (contractor clears its own contractor_signed_at, ACCEPTED rows=1) is the contractor half. No database was written to produce this file.
 -- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.

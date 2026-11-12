@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-31T17:15:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261109134936, name gh3283_reserved_slugs_add; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3283_reserved_slugs_add (rollback is a sibling in this directory)
 -- EVIDENCE: drafted 2026-10-31 under #3283 (D-407, #3273). No database was written or read. The repo gate scripts/vanity-reserved.test.py requires every
 --   served top-level path in the reserved_slugs seed; this PR serves the new top-level route /insurance-rcv.

@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-19T20:20:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261020165607, name gh2442_dunning_retry_unknown_guard; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh2442_dunning_retry_unknown_guard
 -- EVIDENCE: function body taken from the APPLIED gh2442_dunning_retry_request.sql (ledger 20261009000257) with the one change below; proved on a scratch PostgreSQL (see the proof file), not on production
 -- REPO COPY: none

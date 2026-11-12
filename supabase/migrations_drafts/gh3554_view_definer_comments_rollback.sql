@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-11-09T12:42:18Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261110200854); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh3554_view_definer_comments (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: drafted 2026-11-09 under #3554. Restores the comments as written in the repo by supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql:353 (bidder_claim_summary) and supabase/migrations/20261020162602_gh2559_d390_redact_contact_until_fee.sql:412 (contractor_thread_messages); later migrations replace the views with CREATE OR REPLACE, which keeps comments. Production comment text was NOT read for this draft: before relying on it, exec:cto should paste obj_description from production and, if it differs from the text below, correct this file.
 -- REPO COPY: none. When applied, move to supabase/migrations_rollbacks/ beside the filed forward migration.
