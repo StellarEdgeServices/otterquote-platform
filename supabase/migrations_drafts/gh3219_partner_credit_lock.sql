@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-30T13:00:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261030144528, name gh3219_partner_credit_lock; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3219_partner_credit_lock (rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-10-30 under #3219 (P18). Production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): referrals has no
 --   homeowner_user_id column; referral_attribution_window() is IMMUTABLE, body `SELECT interval '30 days'`, ACL postgres only;

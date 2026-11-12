@@ -1,5 +1,5 @@
 <!--
-STATUS (gh-1438, as of 2026-10-30T13:30Z): NOT APPLIED
+STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261030144605, name gh3224_template_verdict_log; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 FILE ROLE: pre-flight file of set gh3224_template_verdict_log (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: drafted 2026-10-30 under #3224; production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): table absent
 REPO COPY: none (not applied)

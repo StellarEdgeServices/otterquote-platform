@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-19T22:51:02Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261021013907, name gh2875_d391_contractor_sms_numbers; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh2875_d391_contractor_sms_numbers (rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-10-19 under #2875 (D-391 + D-391 AMENDMENT 1). Production read-only 2026-10-19: none of the five tables
 --   below exists (to_regclass NULL for sms_suppression_list and contractor_sms_numbers); public.is_admin_email() exists;

@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-30T13:00:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261030144528); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh3219_partner_credit_lock
 -- EVIDENCE: drafted 2026-10-30 under #3219; production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): the forward file is not applied, so nothing here has anything to undo yet. The three restored function bodies are the LIVE definitions read with pg_get_functiondef that day (prosrc md5 advance_referral_registered 12f25d9ee84d4a58211e08e5c92f4c74, claims_advance_referral 99cb315ff314f88fd33ea5b5e5d61d13, referral_attribution_window 4b45984d8648af2b7027987969c6135f); the local proof run compares the md5 of the restored bodies to those values.
 -- REPO COPY: none. When the set is applied, move this rollback to supabase/migrations_rollbacks/ under the forward file's ledger version.

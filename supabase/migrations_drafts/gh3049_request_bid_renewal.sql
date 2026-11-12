@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-24): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261026135539, name gh3049_request_bid_renewal; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3049_request_bid_renewal (rollback is a sibling in this directory; proof is supabase/tests/gh3049_request_bid_renewal_proof.sql)
 -- EVIDENCE: drafted 2026-10-24 under #3049. No database was written to produce this file. Proof run on a scratch local Postgres 16 with stub tables (see PR body).
 -- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and the rollback in supabase/migrations_rollbacks/.

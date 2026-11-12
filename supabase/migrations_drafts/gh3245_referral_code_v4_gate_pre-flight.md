@@ -1,5 +1,5 @@
 <!--
-STATUS (gh-1438, as of 2026-11-02T14:10:00Z): NOT APPLIED
+STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261106192927, name gh3245_referral_code_v4_gate; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 FILE ROLE: pre-flight file of set gh3245_referral_code_v4_gate (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: drafted 2026-11-02 under #3245; production read-only SELECT of pg_get_functiondef (project yeszghaspzwwstvsrioa). No database was written to produce this file.
 REPO COPY: none. When applied, move to supabase/migrations_rollbacks/.

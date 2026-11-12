@@ -1,5 +1,5 @@
 <!--
-STATUS (gh-1438, as of 2026-11-05): NOT APPLIED
+STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261110182332, name gh3321_no_fee_states; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 FILE ROLE: pre-flight file of set gh3321_no_fee_states (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: drafted 2026-11-05 under #3321 on top of PR #3337. Built from the repo and a throwaway Postgres; no production read and no database write were made to produce this file. The production facts it quotes come from the #3321 thread (Kevin's 2026-11-04 read and Marty's CTO RUN 94).
 REPO COPY: none. When applied, move to supabase/migrations_rollbacks/.

@@ -1,5 +1,5 @@
 -- gh-3471: the 100-hour clock, stored on the hover_orders row create-measurement-order writes after it verifies the PaymentIntent. Two nullable columns and one CHECK. Nothing else.
--- STATUS (gh-1438, as of 2026-11-05): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261108222038, name gh3471_guarantee_clock; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- EVIDENCE: drafted on main 9e67d3eda by reading the repo (supabase/migrations/20260101000000_v000_baseline_schema.sql hover_orders, create-measurement-order/index.ts, the gh3428 draft). No production read was made by the author (no database connection, by instruction): the applier runs the pre-flight checks.
 -- REPO COPY: none
 -- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3B path (migration-author, review, R-097 notice, a recorded apply). tier:3b was set by Marty on #3471.

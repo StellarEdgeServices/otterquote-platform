@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-30T21:30:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261031181138); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh3256_default_privs_no_client_truncate (forward and pre-flight beside it)
 -- EVIDENCE: drafted 2026-10-30 under #3256. Restores the production default ACL read 2026-10-30 (project yeszghaspzwwstvsrioa): (postgres, public, tables) = {postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}. No database was written to produce this file.
 -- REPO COPY: none. When the forward is applied, move this file to supabase/migrations_rollbacks/ under the forward's ledger version.

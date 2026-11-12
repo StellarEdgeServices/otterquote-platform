@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-30T13:30Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261030144605, name gh3224_template_verdict_log; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3224_template_verdict_log (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: drafted 2026-10-30 under #3224 (CEO scope comment 6523657464); production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): no contractor_template_verdicts table, no log_template_admin_verdict trigger; contractor_templates has 13 rows (0 rejected, 1 admin_validated); live bodies of contractor_templates_freeze_verdict and enforce_template_privileged_columns read via pg_get_functiondef and NOT modified by this set
 -- REPO COPY: none (not applied; when applied, file under its real ledger version in supabase/migrations/ and the rollback in supabase/migrations_rollbacks/)

@@ -1,5 +1,5 @@
 -- gh-3428: owner alert sweep. Schedule half: one pg_cron job that calls the Edge Function owner-alert-sweep every 30 seconds.
--- STATUS (gh-1438, as of 2026-11-05): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261109135015, name gh3428_owner_alert_sweep_cron; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- EVIDENCE: drafted on main 32193ce7. pg_cron 1.6.4 was recorded as installed on production on 2026-08-18 (supabase/migrations/20260101000001_v000b_pg_cron_extension.sql, #1022); the '30 seconds'
 -- interval syntax needs pg_cron 1.5 or later. Not re-read by the author (no database connection): the applier re-reads cron.extversion first (pre-flight check 6). If it is older than 1.5, do NOT
 -- apply this file as written: the closes-on says 60 seconds, a 1-minute cron plus run time can miss it, and that must be put on #3428 first.

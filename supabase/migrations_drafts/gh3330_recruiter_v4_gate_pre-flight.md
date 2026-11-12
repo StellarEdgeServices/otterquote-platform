@@ -1,5 +1,5 @@
 <!--
-STATUS (gh-1438, as of 2026-11-02): NOT APPLIED
+STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261109161141, name gh3330_recruiter_v4_gate; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 FILE ROLE: pre-flight file of set gh3330_recruiter_v4_gate (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: drafted 2026-11-02 under #3330; one production read-only SELECT (pg_get_functiondef + md5(prosrc)) the same day (project yeszghaspzwwstvsrioa). No database was written to produce this file.
 REPO COPY: none. When applied, move to supabase/migrations_rollbacks/.

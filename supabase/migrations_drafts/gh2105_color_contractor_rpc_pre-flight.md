@@ -1,5 +1,5 @@
 <!--
-STATUS (gh-1438, as of 2026-10-21): NOT APPLIED
+STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261026135606, name gh2105_color_contractor_rpc; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 FILE ROLE: pre-flight file of set gh2105_color_contractor_rpc (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: drafted 2026-10-21 under #2105 (CTO RUN 76, checklist item C, comment 6305573044; Dustin's answer on #2974, comment 6323378714). No database was read or written to produce this file; the production facts it relies on (homeowners have no SELECT on public.contractors; contractors.company_name text NOT NULL and contractors.preferred_brands text[] exist; claims.user_id and claims.selected_contractor_id exist) are those recorded in comment 6305573044 and supabase/migrations/20260101000000_v000_baseline_schema.sql, and are to be re-measured in the pre-flight before apply.
 REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.

@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-11-05): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261110182332, name gh3321_no_fee_states; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3321_no_fee_states (rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-11-05 under #3321 on top of PR #3337 (gh3330). No production read was needed to write it: the body it restates is the gh3330 draft's, whose pre-image
 --   (production md5 2eba9b9601c731cb20f45ef5a18c742b) was read on 2026-11-02. No database was written to produce this file.

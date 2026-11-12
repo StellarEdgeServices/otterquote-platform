@@ -1,5 +1,5 @@
 -- gh-3409: a contractor session cannot insert a forged public.fee_acceptances row (UETA fee-acceptance evidence, D-214 / D-215).
--- STATUS (gh-1438, as of 2026-11-05): NOT APPLIED. REVISED at the second head after REVIEW FAIL 6668449870 and LEGAL-READ FAIL 6668344412: a genuine acceptance is never refused or lost; see below.
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261106215945, name gh3409_fee_acceptances_client_insert_guard; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- EVIDENCE: drafted on main e39d091 under #3409 (CTO RUN 96, claim cto-2026-11-05T19:06:47Z, subagent cto96-b3409). Production read-only SELECTs 2026-11-05 (project yeszghaspzwwstvsrioa, nothing written):
 --   fee_acceptances: RLS on, not forced; policies admin read / admin UPDATE / contractor INSERT own (WITH CHECK contractor_id only) / contractor read own; NO trigger; 8 rows; anon holds INSERT, SELECT, UPDATE;
 --   authenticated holds INSERT, SELECT, UPDATE, DELETE. platform_fee_config: 1 row (fee_pct 5.00, bid_amount). quotes_platform_fee_for(uuid,uuid) exists (gh-2519 applied, ledger 20261015205902), so quotes.platform_fee_pct /

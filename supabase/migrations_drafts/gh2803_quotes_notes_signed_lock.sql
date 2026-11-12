@@ -1,6 +1,6 @@
 -- gh-2803 (D-381; PR #2844 review finding 1): once EITHER party has signed, no client caller can change quotes.notes.
 -- BOUND per Dustin's ruling on #2846 (2026-10-18T22:11:53Z, option (b) "At contractor signature"): homeowner_signed_at IS NOT NULL OR contractor_signed_at IS NOT NULL.
--- STATUS (gh-1438): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261019191903, name gh2803_quotes_notes_signed_lock; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- EVIDENCE: independent review 6254508202 on PR #2844 reproduced, with the gh2564 price lock live, a direct table write of quotes.notes on a signed bid
 --   (probe ACCEPTED, rows=1). notes print into the signed contract PDF ("Message from Contractor"), so a contractor could rewrite signed contract text.
 --   Before/after proof: supabase/tests/gh2803_notes_signed_lock_proof.sql, run by supabase/tests/gh2803_notes_signed_lock_proof_run.sh.

@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-30): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261030144542); this rollback is NOT run
 -- FILE ROLE: rollback of set gh3199_submit_template_for_admin_review
 -- EVIDENCE: drafted 2026-10-30 under #3199. Function body below is the production definition read with pg_get_functiondef on 2026-10-30 (read-only), reproduced verbatim.
 -- REPO COPY: none.

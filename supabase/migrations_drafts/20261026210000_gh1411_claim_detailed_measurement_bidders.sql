@@ -1,4 +1,4 @@
--- gh-1411 / D-317 cl. 5 -- DRAFT, NOT APPLIED (Tier 3: new SECURITY DEFINER function; needs approval).
+-- gh-1411 / D-317 cl. 5 -- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261108221931, name gh1411_claim_detailed_measurement_bidders; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record).
 -- Lets the HOMEOWNER's bids.html learn which contractors bought the detailed measurement upgrade
 -- (hover_orders.product_code = 'roof_upgrade_detailed') for the homeowner's own claim, so the bid card can
 -- carry the D-317 cl. 5 mark "Bid on detailed measurements". hover_orders SELECT RLS is user_id = auth.uid(),

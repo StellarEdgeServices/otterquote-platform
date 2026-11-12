@@ -1,5 +1,5 @@
 -- gh-3320: make public.fee_acceptances append-only for the client roles, as D-214 says (UETA acceptance evidence: "append-only (no updates, no deletes)").
--- STATUS (gh-1438, as of 2026-11-04): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261109145733, name gh3320_fee_acceptances_append_only; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- EVIDENCE: drafted on main 33f7c8ae. No production read was made by the author (no database connection, by instruction). The state this changes is the one measured on #3320
 -- (Supabase MCP SELECT, CEO RUN 143, 2026-11-02, project yeszghaspzwwstvsrioa): authenticated holds UPDATE and DELETE, anon holds UPDATE and not DELETE, RLS on and not forced, policies
 -- admin read / admin update / contractor insert own / contractor read own, no DELETE policy, no triggers, 8 rows. Those figures match supabase/migrations/20260101000000_v000_baseline_schema.sql

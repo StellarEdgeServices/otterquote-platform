@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-30T17:30:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261030164941); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh3237_reserved_slugs_add (forward and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-10-30 under #3239 / #3237; see the forward file. No database was written.
 -- REPO COPY: none. When applied, move to supabase/migrations_rollbacks/.

@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-30T13:00:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261102145340, name gh3228_measurement_price_2263; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3228_measurement_price_2263 (rollback: gh3228_measurement_price_2263_rollback.sql, same directory)
 -- EVIDENCE: production read-only SELECT 2026-10-30 (project yeszghaspzwwstvsrioa): platform_settings.hover_measurement_price = 1500 and measurement_products.roof_basic.homeowner_price_cents = 1500; not applied by this PR
 -- REPO COPY: none in supabase/migrations/ yet
