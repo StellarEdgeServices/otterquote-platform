@@ -497,6 +497,31 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
         if (!wroteRow(upRows)) {
           throw new Error('bid_update_zero_rows: no matching quote row was updated');
         }
+        // gh-3490 (Ben, ruling 6740655614, option A): the fee text on this form says submitting "constitutes your acceptance", so a
+        // changed or renewed bid records its own D-215 Layer 1 acceptance row for the bid just updated (non-fatal: the quote is
+        // committed). Same row shape as a new bid; insert-only. Needs the gh3490 guard (same bid AND same fee = duplicate) applied first.
+        try {
+          const ip = await getContractorIP();
+          // gh-3409: .select('id') and NEVER .single() (a diverted row returns zero rows; .single() would make PostgREST roll the quarantine row back).
+          const feeIns = supabase.from('fee_acceptances').insert(buildFeeAcceptanceInsert({
+            contractorId: contractor.id, claimId: String(claim.id), bidId: existingQuote!.id as string, feePct, feeAmount,
+            feeTextDisplayed: exactFeeText, acceptedAtIso: nowIso, ipAddress: ip,
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+          })).select('id');
+          const feeRes = await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(feeIns, signal));
+          const feeOutcome = feeAcceptanceOutcome(feeRes);
+          if (feeOutcome !== 'recorded') {
+            const feeMsg = feeOutcome === 'failed' ? '[D-215] Fee acceptance record failed (non-fatal, quote committed)' : '[D-215] Fee acceptance diverted to quarantine';
+            console.error(feeMsg, feeRes.error?.message);
+            try {
+              Sentry.captureMessage(feeMsg, { level: feeOutcome === 'failed' ? 'error' : 'warning', extra: { bid_id: existingQuote!.id, claim_id: String(claim.id), contractor_id: contractor.id, code: feeRes.error?.code, message: feeRes.error?.message } });
+            } catch (se) { console.warn('[gh-3490] Sentry report failed:', se); }
+          }
+        } catch (e) {
+          console.error('[D-215] fee acceptance failed (non-fatal):', e);
+          try { Sentry.captureException(e, { extra: { bid_id: existingQuote!.id, claim_id: String(claim.id), contractor_id: contractor.id } }); }
+          catch (se) { console.warn('[gh-3490] Sentry report failed:', se); }
+        }
         // Homeowner "bid updated" notification + activity log + GA + contractor email (all non-fatal).
         try {
           await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(supabase.from('notifications').insert(buildBidUpdatedNotification({
