@@ -550,35 +550,39 @@
 <footer id="site-footer"></footer>
 
 <script>
-  // gh-3680: an open answer's max-height is its own scrollHeight, so no answer is clipped however long it grows
-  // (the CSS 500px cap is only the no-JS / pre-script fallback; an inline max-height beats any .open rule in the
-  // stylesheet, including the scoped .oq-guarantee one). Closing clears the inline value so the CSS 0 applies and the
-  // 0.4s transition still animates. Open items are re-fitted on resize, orientation change, web-font load and load.
-  function fitFaqAnswer(item, instant) {
+  // gh-3680: an open answer's max-height is its own scrollHeight, so no answer is clipped however long it grows. An inline
+  // max-height beats any .open rule in the stylesheet (the 500px cap and the scoped .oq-guarantee one), so the CSS caps no
+  // longer apply once this runs. Transitions stay ON: the target height is measured on an off-screen clone in its final
+  // (open) layout, then set inline, so the 0.4s max-height animation still plays. Closing clears the inline value so the
+  // CSS 0 applies. Open items are re-fitted on resize, orientationchange, load and web-font load.
+  function measureFaqAnswer(item) {
+    var clone = item.cloneNode(true);
+    clone.classList.add('open');
+    clone.removeAttribute('hidden');
+    clone.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;pointer-events:none;transition:none;width:' + item.getBoundingClientRect().width + 'px';
+    var cans = clone.querySelector('.faq-answer');
+    cans.style.transition = 'none';
+    cans.style.maxHeight = 'none';
+    item.parentNode.appendChild(clone);
+    var h = cans.scrollHeight;
+    item.parentNode.removeChild(clone);
+    return h;
+  }
+  function fitFaqAnswer(item, willOpen) {
     var ans = item.querySelector('.faq-answer');
     if (!ans) return;
-    if (!item.classList.contains('open')) { ans.style.maxHeight = ''; return; }
-    // Measure in the FINAL layout: with the item's padding-left/border and the answer's padding-bottom transitions off,
-    // so the text wraps at its settled width and scrollHeight counts the full open padding. Measured mid-transition it
-    // comes up one line / one padding short and clips the last line.
-    var prevA = ans.style.transition, prevI = item.style.transition;
-    ans.style.transition = 'none';
-    item.style.transition = 'none';
-    var h = ans.scrollHeight;
-    if (instant) ans.style.maxHeight = h + 'px';
-    void ans.offsetHeight;
-    ans.style.transition = prevA;
-    item.style.transition = prevI;
-    if (!instant) { void ans.offsetHeight; ans.style.maxHeight = h + 'px'; }
+    if (willOpen === false || (willOpen === undefined && !item.classList.contains('open'))) { ans.style.maxHeight = ''; return; }
+    ans.style.maxHeight = measureFaqAnswer(item) + 'px';
   }
   function fitOpenFaqAnswers() {
-    document.querySelectorAll('.faq-item.open').forEach(function(item) { fitFaqAnswer(item, true); });
+    document.querySelectorAll('.faq-item.open').forEach(function(item) { fitFaqAnswer(item); });
   }
   document.querySelectorAll('.faq-question').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var item = btn.closest('.faq-item');
+      var opening = !item.classList.contains('open');
+      fitFaqAnswer(item, opening);  // measure and set the target first, with no layout read in between, so the transition runs from 0
       item.classList.toggle('open');
-      fitFaqAnswer(item, false);
     });
   });
   window.addEventListener('resize', fitOpenFaqAnswers);

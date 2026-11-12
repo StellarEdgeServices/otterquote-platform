@@ -29,6 +29,19 @@ with sync_playwright() as p:
             print("%s w=%d client=%d scroll=%d  %s" % ("ok  " if ok else "FAIL", w, r["c"], r["s"], r["q"]))
             pg.evaluate("i => document.querySelectorAll('.faq-item')[i].querySelector('.faq-question').click()", i)
             pg.wait_for_timeout(450)
+        # animation check (gh-3680 review 6825375633): ~50ms after the click the height is strictly between 0 and final
+        if w == 320:
+            for i in (0, 6):
+                r = pg.evaluate("""async i => { var it=document.querySelectorAll('.faq-item')[i], a=it.querySelector('.faq-answer');
+                  it.querySelector('.faq-question').click(); await new Promise(r=>setTimeout(r,50));
+                  var mid=a.clientHeight; await new Promise(r=>setTimeout(r,700));
+                  return {mid: mid, fin: a.clientHeight}; }""", i)
+                total += 1
+                ok = 0 < r["mid"] < r["fin"]
+                print("%s animation item=%d mid(50ms)=%d final=%d" % ("ok  " if ok else "FAIL", i, r["mid"], r["fin"]))
+                if not ok: bad.append(("anim", i, r))
+                pg.evaluate("i => document.querySelectorAll('.faq-item')[i].querySelector('.faq-question').click()", i)
+                pg.wait_for_timeout(450)
         # resize: open the longest item at 1280 -> shrink to 320 must refit
         if w == 1280:
             pg.evaluate("document.querySelectorAll('.faq-item')[%d].querySelector('.faq-question').click()" % 6)
