@@ -171,6 +171,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/how-long-does-roof-replacement-take.html',
   '/guides/drip-edge-roof-replacement-bid':
     '/guides/drip-edge-roof-replacement-bid.html',
+  '/guides/roof-ventilation-in-your-replacement-bid':
+    '/guides/roof-ventilation-in-your-replacement-bid.html',
   '/guides/roof-change-orders-hidden-damage':
     '/guides/roof-change-orders-hidden-damage.html',
   '/guides/roofing-contract-checklist-before-you-sign':

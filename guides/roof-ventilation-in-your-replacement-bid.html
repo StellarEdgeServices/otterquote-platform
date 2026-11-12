@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Roof Ventilation in a Replacement Bid | Otter Quotes</title>
+<meta name="description" content="Two roof bids can look alike and differ on attic ventilation. Learn what to ask each contractor to write down about vents before you sign.">
+<link rel="canonical" href="https://otterquote.com/guides/roof-ventilation-in-your-replacement-bid.html">
+<meta property="og:title" content="Roof Ventilation in a Replacement Bid | Otter Quotes">
+<meta property="og:description" content="Two roof bids can look alike and differ on attic ventilation. Learn what to ask each contractor to write down about vents before you sign.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/roof-ventilation-in-your-replacement-bid.html">
+<meta property="og:image" content="https://otterquote.com/img/social/og-default.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Otter Quotes: Contractors Compete. Homeowners Win. A cartoon otter in a hard hat.">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-11-12">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds (same values as PR #2499; defined here until it merges) */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+.definition-table td { color: var(--dark-gray); border-bottom: 1px solid #D9DEE7; }
+.definition-table td:first-child { color: var(--navy); }
+.definition-table tr:last-child td { border-bottom: none; }
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+<style id="breadcrumb-css">.breadcrumb ol{list-style:none;display:flex;flex-wrap:wrap;gap:.25rem .5rem;justify-content:inherit;margin:0 0 var(--sp-4);padding:0;font-size:.85rem}.breadcrumb li+li:before{content:"\203A";margin-right:.5rem;opacity:.7}.breadcrumb a{color:inherit;text-decoration:underline}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <nav class="breadcrumb" data-seo-crumb="1" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/guides/">Guides</a></li><li aria-current="page">Does Your Roof Replacement Bid Include Attic Ventilation?</li></ol></nav>
+      <h1>Does Your Roof Replacement Bid Include Attic Ventilation?</h1>
+    <p class="meta">Otter Quotes &middot; Updated November 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>Your roof replacement bid should say what happens to the attic vents, because a bid that is silent on them can lead to an extra charge during the job. Before you compare totals, ask each contractor to write down the vents they will use, where they go and who answers if the attic runs hot or damp afterward.</p>
+    </div>
+
+    <section class="step">
+      <h2>Why does attic ventilation belong in a roof bid?</h2>
+      <p>Because the vents work with the roof, not beside it. The Asphalt Roofing Manufacturers Association (ARMA), the shingle makers' trade group, says excessive heat on a residential roof speeds the aging of roofing materials and raises attic temperature. It describes ventilation as a way to move that heat out of the attic space.</p>
+      <p>GAF, a shingle manufacturer, lists moisture build-up in the attic, higher energy costs and ice dams among the problems excess attic heat can lead to. Neither source promises a result for your house. They give you a reason to ask each bidder what the plan for the attic is, because a bid that is silent on vents may leave you to find out later.</p>
+    </section>
+
+    <section class="step">
+      <h2>What does a balanced ventilation system look like?</h2>
+      <p>It has air coming in low and air going out high. ARMA describes the standard practice as hot air rising and leaving through exhaust vents at or near the ridge of the roof, replaced by air entering through intake vents generally located in the eave or soffit area.</p>
+      <p>ARMA says it is the combination of balanced intake and exhaust that provides the airflow that ventilates the space. GAF's bulletin adds that the amount of ridge or hip (exhaust) ventilation should not exceed the amount of soffit (intake) ventilation, and that a properly balanced system provides half of the airflow through the soffit. You do not need to do the math yourself. You need each bid to name what goes in at the eaves and what goes out at the ridge, so you can see whether two bids describe the same system.</p>
+    </section>
+
+    <section class="step">
+      <h2>How much ventilation does a bid need to list?</h2>
+      <p>There is a published recommended minimum, and there are exceptions, so ask the contractor to show the calculation for your attic. ARMA says that in most cases the recommended minimum free flow ventilation area equals one square foot per 150 square feet of attic floor area.</p>
+      <p>ARMA says one square foot per 300 may be sufficient and allowed in certain circumstances, combined with specific building features. It also says how well a system works depends on climate, home design, roof type and slope, roofing materials, insulation and vapor barriers. For complex roofs it says help from an experienced contractor or building designer may be suitable. GAF's bulletin calculates the amount with what it calls the FHA (Federal Housing Administration/HUD) 1/300 rule, for soffit-to-ridge venting. Ask each bidder which rule they used and why it fits your house.</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr>
+              <th>What to look for</th>
+              <th>A bid that helps you compare</th>
+              <th>A bid that leaves you guessing</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Exhaust vents</td>
+              <td>Names the type and where it goes, such as ridge</td>
+              <td>"Vents included"</td>
+            </tr>
+            <tr>
+              <td>Intake vents</td>
+              <td>Names the type and where it goes, such as soffit</td>
+              <td>Says nothing about the eaves</td>
+            </tr>
+            <tr>
+              <td>Amount of ventilation</td>
+              <td>Shows the calculation or the rule used</td>
+              <td>No number or method</td>
+            </tr>
+            <tr>
+              <td>Existing vents</td>
+              <td>Says which old vents stay, come out or are covered</td>
+              <td>Silent on old vents</td>
+            </tr>
+            <tr>
+              <td>Attic condition</td>
+              <td>Says whether blocked or missing intake was checked</td>
+              <td>No mention of the attic</td>
+            </tr>
+            <tr>
+              <td>Warranty link</td>
+              <td>Names the manufacturer warranty that applies</td>
+              <td>Only "warranty included"</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="step">
+      <h2>Can you mix different kinds of vents?</h2>
+      <p>Not casually. GAF's technical bulletin warns that combining soffit and ridge vents with a power fan could result in reverse airflow, which it says could cause water to leak into the attic. It advises removing or disconnecting power fans, roof louvers and other roof vents when continuous soffit or fascia and ridge vents are used.</p>
+      <p>That is one manufacturer's guidance for its own products, so treat it as a question to put to each contractor. Ask what the plan is for any fans, louvers or gable vents already on your house, and ask them to write down what stays and what is removed. If two bids handle the old vents differently, find out why before you compare the prices.</p>
+    </section>
+
+    <section class="step">
+      <h2>Does ventilation affect the shingle warranty?</h2>
+      <p>It may, and manufacturers do not all say the same thing. GAF states that its Shingle &amp; Accessory Limited Warranty, which covers manufacturing defects, stays in effect regardless of the ventilation used, but that damage to the roofing system or structure caused by inadequate ventilation is not covered.</p>
+      <p>Gibraltar Building Products, which sells roof ventilation products, says on its help page that most major shingle manufacturers require attic ventilation. Those two statements are not identical, and neither one is your warranty. Read the warranty for the shingle your bid names and look for the ventilation language. NRCA, the National Roofing Contractors Association, advises homeowners to read the warranty carefully and understand the provisions that will void it. Our guide to <a href="/guides/manufacturer-backed-roof-warranties.html">manufacturer-backed roof warranties</a> shows what else to look for.</p>
+    </section>
+
+    <section class="step">
+      <h2>Is ventilation a separate line item or a change order?</h2>
+      <p>Ask which one it is before work starts. Some bids fold vents into the roof price, and some list them as separate items. A contractor who finds blocked or missing intake after the old roof is off may propose extra work. Where that happens, a price in writing beforehand is far better than a surprise during the job.</p>
+      <p>NRCA advises homeowners to insist on a written proposal with complete descriptions of the work and specifications, as well as start and completion dates and payment procedures. Ask each bidder how vent work is priced if it turns out to be bigger than planned. Our guide to <a href="/guides/roof-change-orders-hidden-damage.html">change orders and hidden damage</a> explains how to get that answer in writing.</p>
+    </section>
+
+    <section class="step">
+      <h2>What to ask every roofing contractor about ventilation</h2>
+      <p>Put the same questions to every bidder, and keep the answers in writing so you can set them side by side. Several of these follow what ARMA and GAF describe: the type of vents, where they go, how much ventilation the attic needs and what happens to what is already on the roof.</p>
+      <p>Copy this list into a note and send it to each contractor before you compare totals.</p>
+      <ul>
+        <li>What exhaust vents will you install, and where do they go?</li>
+        <li>What intake vents will you rely on, and where are they?</li>
+        <li>How much ventilation does my attic need, and what rule did you use to work that out?</li>
+        <li>Which of my existing vents stay, which come out and which are covered?</li>
+        <li>Are there any power fans, louvers or gable vents now, and what is the plan for them?</li>
+        <li>Will you check that the intake at my eaves is open before you finish?</li>
+        <li>Is vent work a line in the bid, or is it included in the roof price?</li>
+        <li>If you find the attic needs more ventilation than planned, how is the extra work priced and agreed?</li>
+        <li>Which manufacturer warranty applies, and what does it say about ventilation?</li>
+        <li>Who answers if the attic runs hot or damp after the job?</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>Otter Quotes creates a written scope of work for your roof replacement and sends it to multiple contractors, who compete with bids on that same scope. Homeowners who provide a copy of their insurance estimate pay nothing. For a replacement, a homeowner without one pays as little as $22.63 upfront for professional measurements that contractors use to bid, refunded if they complete a job on the platform. Contractors pay Otter Quotes a fee on the accepted bid. We do not offer inspections or damage assessments, work with your insurance company or sell upgrades.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+      <p>Related guides: <a href="/guides/roof-bid-comparison-worksheet.html">roof bid comparison worksheet</a>, <a href="/guides/roofing-contract-checklist-before-you-sign.html">roofing contract checklist before you sign</a>, <a href="/guides/roof-replacement-cost-breakdown.html">roof replacement cost breakdown</a>.</p>
+    </section>
+
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>Why does a roof replacement bid need to mention ventilation?</h3>
+        <div class="faq-answer">
+          <p>Ventilation is part of how a roof system performs. ARMA says excessive heat speeds the aging of roofing materials and raises attic temperature, and GAF lists moisture build-up and ice dams among the problems excess attic heat can lead to. A bid that is silent on vents leaves you to find out later what was or was not planned.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What is balanced attic ventilation?</h3>
+        <div class="faq-answer">
+          <p>It is air coming in at the eaves and going out at the ridge. ARMA describes intake vents generally located in the eave or soffit area and exhaust vents at or near the ridge. GAF says the amount of ridge or hip exhaust should not exceed the amount of soffit intake. Ask each bid to name both.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>How much attic ventilation do I need?</h3>
+        <div class="faq-answer">
+          <p>It depends on your attic. ARMA says the recommended minimum is in most cases one square foot of free flow ventilation area per 150 square feet of attic floor area, and that one per 300 may be sufficient in certain circumstances. Ask each contractor which rule they used and to show the calculation for your house.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Can I add a power fan to a ridge and soffit vent system?</h3>
+        <div class="faq-answer">
+          <p>Ask before you do. GAF's technical bulletin warns that combining soffit and ridge vents with a power fan could result in reverse airflow and water leakage into the attic. It advises removing or disconnecting power fans and other roof vents when continuous soffit or fascia and ridge vents are used. Have your contractor explain the plan in writing.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Can poor ventilation affect my shingle warranty?</h3>
+        <div class="faq-answer">
+          <p>It may. GAF says damage caused by inadequate ventilation is not covered by its warranty, and Gibraltar Building Products, which sells roof ventilation products, says most major shingle manufacturers require attic ventilation. Read the warranty for the shingle your bid names, and ask the contractor to point to the ventilation language and explain how the plan meets it.</p>
+        </div>
+      </div>
+
+    </section>
+
+      <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/guides/roof-bid-comparison-worksheet.html">How to Compare Roofing Bids: A Side-by-Side Worksheet</a></li>
+        <li><a href="/guides/roofing-contract-checklist-before-you-sign.html">What Should Be in a Roofing Contract Before You Sign?</a></li>
+        <li><a href="/guides/roof-replacement-cost-breakdown.html">What Goes Into the Cost of a Roof Replacement?</a></li>
+        <li><a href="/guides/manufacturer-backed-roof-warranties.html">Golden Pledge, Platinum Protection and SureStart PLUS: The Manufacturer-Backed Roof Warranties Compared</a></li>
+        <li><a href="/guides/roof-change-orders-hidden-damage.html">What Is a Roofing Change Order, and What if the Roofer Finds Hidden Damage?</a></li>
+        <li><a href="/guides/topics/comparing-bids.html">Browse all: Comparing Bids and Roof Costs</a></li>
+      </ul>
+    </div>
+
+    </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Does Your Roof Replacement Bid Include Attic Ventilation?",
+  "description": "Two roof bids can look alike and differ on attic ventilation. Learn what to ask each contractor to write down about vents before you sign.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization", "logo": {"@type": "ImageObject", "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"}, "sameAs": ["https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ", "https://www.linkedin.com/company/otter-quotes", "https://www.facebook.com/OtterQuote", "https://www.instagram.com/otterquote/"],
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-11-12",
+  "dateModified": "2026-11-12",
+  "publisher": {
+    "@type": "Organization", "url": "https://otterquote.com/", "sameAs": ["https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ", "https://www.linkedin.com/company/otter-quotes", "https://www.facebook.com/OtterQuote", "https://www.instagram.com/otterquote/"],
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/roof-ventilation-in-your-replacement-bid.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Why does a roof replacement bid need to mention ventilation?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Ventilation is part of how a roof system performs. ARMA says excessive heat speeds the aging of roofing materials and raises attic temperature, and GAF lists moisture build-up and ice dams among the problems excess attic heat can lead to. A bid that is silent on vents leaves you to find out later what was or was not planned."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What is balanced attic ventilation?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It is air coming in at the eaves and going out at the ridge. ARMA describes intake vents generally located in the eave or soffit area and exhaust vents at or near the ridge. GAF says the amount of ridge or hip exhaust should not exceed the amount of soffit intake. Ask each bid to name both."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How much attic ventilation do I need?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It depends on your attic. ARMA says the recommended minimum is in most cases one square foot of free flow ventilation area per 150 square feet of attic floor area, and that one per 300 may be sufficient in certain circumstances. Ask each contractor which rule they used and to show the calculation for your house."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I add a power fan to a ridge and soffit vent system?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Ask before you do. GAF's technical bulletin warns that combining soffit and ridge vents with a power fan could result in reverse airflow and water leakage into the attic. It advises removing or disconnecting power fans and other roof vents when continuous soffit or fascia and ridge vents are used. Have your contractor explain the plan in writing."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can poor ventilation affect my shingle warranty?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It may. GAF says damage caused by inadequate ventilation is not covered by its warranty, and Gibraltar Building Products, which sells roof ventilation products, says most major shingle manufacturers require attic ventilation. Read the warranty for the shingle your bid names, and ask the contractor to point to the ventilation language and explain how the plan meets it."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "Does Your Roof Replacement Bid Include Attic Ventilation?",
+      "item": "https://otterquote.com/guides/roof-ventilation-in-your-replacement-bid.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>
