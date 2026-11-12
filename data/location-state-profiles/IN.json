@@ -1034,5 +1034,304 @@
         }
       ]
     }
+  },
+  "cities": {
+    "Carmel": {
+      "county": "Hamilton"
+    },
+    "Fishers": {
+      "county": "Hamilton"
+    },
+    "Noblesville": {
+      "county": "Hamilton"
+    },
+    "Westfield": {
+      "county": "Hamilton"
+    }
+  },
+  "city_content": {
+    "Carmel": {
+      "roofing": "Carmel, Indiana: hail, wind and one tornado in NOAA's storm files, 2016 to 2026\n\nNOAA's Storm Events detail files for 2016 through 2026 list every Carmel report under Hamilton County, never under the city, so this page assigns each entry to a city by its map point. Of the 128 hail, thunderstorm wind and tornado entries filed under Hamilton County, the Census Bureau's geocoder places 40 inside the city of Carmel: 18 hail entries on 11 dates, 21 thunderstorm wind entries on 15 dates and one tornado. Hail first appears on August 26, 2016 (07:35 EST, 08:35 daylight time) and last on May 16, 2025. By year, entries then dates, the hail list reads 2016 with 1 and 1, 2017 with 2 and 1, 2018 with 1 and 1, 2020 with 6 and 2, 2021 with 6 and 4, 2024 with 1 and 1, and 2025 with 1 and 1. No Carmel hail is filed for 2019, 2022, 2023 or 2026.\n\nReported stone sizes in inches, with entry counts, are 0.75 (7), 0.88 (1), 1.00 (7), 1.25 (1), 1.50 (1) and 1.75 (1), so 10 entries on 6 dates reach one inch. March holds 8 hail entries on 4 dates, June 4 on 2, April 3 on 2, May 2 on 2 and August 1. The busiest hail day is March 28, 2020 with four entries, the largest a 1.50 typed under a Fishers label and relayed through Twitter. The biggest stone is a 1.75 from a trained spotter at College Meadows at 17:42 EST (18:42 daylight time) on June 18, 2021, with a 1.25 two minutes later and a 1.00 filed at Home Place the same minute. On March 25, 2021 the emergency manager recorded \"Two separate reports of nickel size hail in downtown Carmel.\"\n\nWind runs from November 18, 2016 to July 27, 2026. Nineteen entries are estimated gusts (EG) and 2 are measured (MG). Year by year, entries then dates: 2016 1 and 1, 2017 3 and 2, 2018 1 and 1, 2019 6 and 3, 2021 2 and 1, 2022 3 and 2, 2023 1 and 1, 2024 1 and 1, 2025 1 and 1, 2026 2 and 2; nothing is filed for 2020. July holds 5 entries on 4 dates, May 6 on 3, August 4 on 3, March and June 2 each, and January and November one apiece. Values run from 45 to 61 knots: 45 (1), 48 (1), 50 (4), 51 (1), 52 (8), 54 (2), 55 (1), 56 (1), 60 (1) and 61 (1). The top value is a measured 61 at Home Place at 04:09 EST (05:09 daylight time) on May 23, 2019, where \"A 70 mph thunderstorm wind gust was measured in this location by a mesonet station.\" The 60-knot estimate, March 27, 2021 at 21:42 EST (22:42 daylight time), is described as \"an isolated area of much stronger winds than the otherwise modest 50kt gusts nearby,\" with drone footage showing trees uprooted and falling along the storm's motion, which the forecaster read as straight-line wind.\n\nMay 16, 2019 is the busiest wind day, with four entries between 16:16 and 16:24 EST. One reads \"The Home Place area had numerous trees down blocking roads.\" Houses appear in other narratives. On July 11, 2017 at 11:45 EST (12:45 daylight time) a trained spotter reported trees down \"across Carmel\" and \"several reports of trees and large tree limbs on houses.\" On January 22, 2018 at 21:00 EST a tree was uprooted and fell on a house, a report that \"came in via Twitter.\" On March 27, 2021 at 21:33 EST (22:33 daylight time) the emergency manager wrote of several trees down and \"One tree had fallen on a home,\" and NOAA's damage field for that entry reads $50,000, the highest of any Carmel wind entry. On May 18, 2026 power lines were reported down.\n\nThe one tornado is an EF1 on April 2, 2025, filed at 20:28 EST (21:28 daylight time) under a Home Place label and ending under a Fishers label. NOAA's storm survey gives its length as 6.6 miles and its width as 150 yards, running from near 116th Street and Pennsylvania Street to 146th Street and Community Drive, with peak gusts of 105 mph. It says \"numerous homes and apartment buildings\" had \"roof and siding damage\" and that damage was uneven, with breaks of up to one-third mile where little occurred. NOAA lists property damage of $600,000 for the entry. Because the entry's starting point is inside Carmel, it is counted here even though the path crossed toward Fishers.\n\nHow the Carmel rows were read\n\nThe geocoder was run on the starting point of all 128 Hamilton County hail, wind and tornado entries. Of the 128, 40 fall in Carmel; the rest are 19 in Westfield, 18 in Fishers, 14 in Noblesville, 5 in Sheridan, 3 in Cicero and 1 in the balance of Indianapolis, while 28 sit outside any incorporated place. A label is only the place name a forecaster typed, not a city limit. Of the 26 Hamilton entries labeled Carmel, 22 fall inside the city; the other four fall elsewhere and are not counted. The 40 entries here carry five labels: Carmel 22, Home Place 8, College Meadows 6, Fishers 3 and Indianapolis Metro A 1. By source, NOAA credits the public with 20, emergency managers 6, amateur radio operators 4, trained spotters 4, mesonet stations 2, and one each a fire department, a National Weather Service employee, a storm survey and broadcast media. Times in NOAA's files are, per its format guide, \"usually in LST\", meaning local standard time. These entries are stamped EST, so an hour is added where daylight time applies, which covers 38 of the 40. Left out of every count are entries for other event types. NOAA stamped the 2026 file used here October 26, 2026, and its README says \"We will update the current yearly file each month,\" so recent counts can move.\n\nThe forecast zone and the state's roof table\n\nFor forecasts, the National Weather Service places Hamilton County in zone INC057, served by its Indianapolis office (IND). An Indiana Department of Homeland Security sheet on ice and water shield, titled \"Ice and Water Shield Update 2020-02-25\", reprints Table R301.2(1) as amended for Indiana. Its Hamilton row lists a 115 mph wind speed, Seismic Design Category A, 20 psf of ground snow, a 30-inch foundation depth, and \"No\" under Ice Shield Underlayment Required. The same sheet says that where the table reads \"No\", the roofing maker's written installation instructions can still require the layer.\n\nCarmel houses and their ages\n\nTable DP04 of the Census Bureau's 2020 to 2024 American Community Survey counts 40,859 housing units in Carmel city. Of these, 38,426 are occupied and 2,433 vacant (6.0 percent). Owners live in 28,551 of the occupied units (74.3 percent) and renters in 9,875 (25.7 percent). Detached single-family houses total 28,576 (69.9 percent) and mobile homes 97. The city has 3,748 units in buildings of 20 or more. Table B25035 gives a median year built of 1998, margin of error 2. By age, 8,888 units (21.8 percent) predate 1980, 13,660 (33.4 percent) went up from 1980 through 1999 and 18,311 (44.8 percent) in 2000 or later. The 2000s are the largest decade at 8,980 units (22.0 percent), then the 1990s at 8,538 (20.9 percent). Neither table gives a roof's replacement date; both count houses.\n\nWho issues permits in Carmel\n\nThe city's Building and Code Services office is at 1 Civic Square, Carmel, IN 46032, and its inspection line is (317) 571-2444. Its residential inspection procedures give business hours of 8 a.m. to 5 p.m., Monday through Friday, and ask that inspections be scheduled \"at least one business day in advance.\" The only roofing mention in that document is a requirement that a new structure be weather-tight, with roofing and shingles installed, before the sheathing inspection. The permit fee schedule, effective April 1, 2024, mentions no roofing or re-roof fee, and the other Carmel documents read for this page do not say whether replacing shingles needs a permit. A separate rule, quoted on Carmel's code enforcement page, says \"The roof and flashing shall be sound, tight, and not have defects that admit rain,\" and that a temporary covering such as a tarp may stay no more than seven consecutive days.\n\nCarmel's posted city code, whose host site warns it may not reflect the latest legislation, has a contractor registration section in Article 4. Section 4-89 says contractors \"of all trades\" must file a \"General Contractor's Registration\" with the city before a building permit is issued. Subsection (a) applies the registration requirement to construction that requires a permit, so whether it reaches a reroof depends on the permit question above. Section 4-90, as posted, lists an annual registration fee of $75, a $10,000 surety bond to the city, and proof of insurance and workers' compensation. Neither section names roofing, so a homeowner should confirm with the office what it asks of a roofer for the job.\n\nCarmel's Historic Preservation Commission and older buildings\n\nCarmel has a Historic Preservation Commission, formed by Ordinance D-2064-11 in December 2011. Its city page says it meets at 6 p.m., usually on the fourth Monday of the month, in the Caucus Room on the second floor of City Hall, 1 Civic Square, and it lists staff at 317-639-4534. The City Council adopted the 2014 City of Carmel and Clay Township Historic Architecture Survey on November 3, 2014. That survey rates properties Outstanding, Notable, Contributing or Non-Contributing, and the page defines a Contributing property as one at least 40 years old that falls short of the higher two ratings.\n\nThe commission's page ties those ratings to a demolition delay ordinance, D-2338-16, which the city adopted in 2017. For buildings rated Outstanding, Notable or Contributing, it makes the owner wait 60 days between applying to demolish and receiving an improvement relocation permit, and the director of the Department of Community Services may extend the wait to 90 days. The same page describes a historic facade incentive grant, offered since 2016, for owners of surveyed properties who restore the character seen from the public right-of-way; its current round closed to applications on May 1, 2026. Nothing on that page says a reroof needs commission review, and this page does not claim that one does. Whether your own house appears in the survey, which the city publishes as an online ArcGIS map, is a question for the commission's staff.\n\nRoofing licenses in Indiana\n\nThe Indiana Professional Licensing Agency's profession list names plumbing, real estate and home inspectors, among others, and has no roofing entry. The Attorney General's storm-chaser leaflet says to contact the local building department to see if a permit is needed and that \"Licensing requirements vary from community to community.\" In Carmel, that leaves the registration above and whatever the office says about a given job.\n\nQuestions for your Carmel bids\n\n- Ask the Building and Code Services office whether a shingle replacement at your address needs a permit, and write down who answered.\n\n- Ask each bidder whether it holds a current Carmel contractor registration, and what bond and insurance sit behind it.\n\n- Ask whether the quote includes drip edge and flashing, and whether decking will be replaced if it is found damaged.\n\n- Ask whether the shingle maker's instructions call for ice and water shield, since the state table says \"No\" for Hamilton County.\n\n- Give every bidder the same copy of any written estimate from your insurer."
+    },
+    "Fishers": {
+      "roofing": "Fishers, Indiana: thunderstorm wind and a little hail in NOAA's storm files, 2016 to 2026\n\nFishers is mostly a wind story in NOAA's records. NOAA's Storm Events files for 2016 through 2026 list Fishers reports under Hamilton County, not the city, so the Census Bureau's geocoder was run on the map point of all 128 hail, thunderstorm wind and tornado entries in the county, and each was assigned to the incorporated place that contains it, if any. Eighteen land inside the city of Fishers: 15 thunderstorm wind entries on 14 dates and 3 hail entries on a single date, with no tornado. The wind list begins February 28, 2017 and ends May 19, 2026. Twelve entries are estimated gusts (EG) and 3 are measured (MG). By year, entries then dates, it reads 2017 with 2 and 2, 2019 with 1 and 1, 2020 with 4 and 3, 2021 with 1 and 1, 2022 with 2 and 2, 2023 with 1 and 1, 2025 with 3 and 3, and 2026 with 1 and 1; nothing is filed for 2018 or 2024.\n\nBy month, May, March and August each hold 3 entries, on 3, 2 and 3 dates, April and July hold 2 each on 2 dates, and February and June one apiece. Values run from 48 to 60 knots: 48 (1), 50 (3), 52 (4), 54 (3), 55 (2), 56 (1) and 60 (1). March 28, 2020 is the only date with two entries. The highest is a measured 60 knots at 21:20 EST (22:20 daylight time) that evening, from a trained spotter, who \"measured a 69 mph thunderstorm wind gust.\" Two other measured entries are a 56-knot gust on February 28, 2017 at 23:05 EST, described as \"A 65 mph thunderstorm wind gust was measured in this location,\" and a 54-knot reading at 21:00 EST (22:00 daylight time) on August 16, 2025 from the airport's automated weather station, \"62 mph recorded at Indianapolis Metro Airport AWOS in Fishers.\"\n\nBuildings show up in three narratives. At 21:20 EST (22:20 daylight time) on March 28, 2020, someone reported \"Concrete siding ripped from a couple of houses.\" At 19:43 EST (20:43 daylight time) on April 8, 2020 there was structural damage to a CVS at 131st Street and State Road 37. At 03:20 EST on March 6, 2022, before daylight time began that year, a trained spotter wrote that \"Thunderstorm winds blew many shingles off of roofs while bits of siding were ripped from houses\"; NOAA's damage field for it reads $18,000, the highest on the Fishers list. A July 17, 2023 entry from an NWS employee reports a few large trees down between Fishers and Fortville amid small hail. Most other entries are limbs and power lines, such as the 2017 report of limbs that \"downed several power lines\" with outages, and a tree across a roadway on Quarry Court on May 19, 2026.\n\nThe hail is thin. All three entries fall on March 30, 2017: a 0.88 at 15:27 EST (16:27 daylight time) from a trained spotter, who noted that \"No damage was spotted,\" and two 0.75 entries at 15:38 and 17:40 EST. None reaches an inch. By comparison, the same method puts 18 hail entries inside Carmel and 11 inside Westfield.\n\nHow the Fishers rows were read\n\nOf the 128 entries, the geocoder put 18 in Fishers. The others split 40 in Carmel, 28 outside any incorporated place, 19 in Westfield, 14 in Noblesville, 5 in Sheridan, 3 in Cicero and 1 in the balance of Indianapolis. A label records the spot a forecaster typed, not where a boundary runs. Fifteen Hamilton entries carry the label Fishers, and only 8 of them fall inside the city; the 18 here carry three labels: Fishers 8, Clarksville 6 and Indianapolis Metro A 4. Clarksville is the label NOAA typed for those six entries; this page makes no claim about where a place of that name lies. By source, NOAA credits the public with 8, trained spotters 3, emergency managers 3, and one each broadcast media, a storm chaser, an NWS employee and the airport weather station. The format guide describes NOAA's times as \"usually in LST\", meaning local standard time. Fishers entries are stamped EST, so daylight time adds an hour to 16 of the 18; the two exceptions are February 28, 2017 and March 6, 2022. Other event types are left out of every count. The 2026 file was last stamped by NOAA on October 26, 2026; the README says the current year's file is refreshed monthly, so newer entries may change these totals.\n\nThe forecast zone and the state's roof rules\n\nHamilton County is zone INC057 in the National Weather Service's records, under the Indianapolis forecast office (IND). The Indiana Department of Homeland Security sheet titled \"Ice and Water Shield Update 2020-02-25\" reprints Hamilton's row of Table R301.2(1), as amended for Indiana, which gives 115 mph, Seismic Design Category A, 20 psf of ground snow and a 30-inch foundation depth. That sheet also reprints the shingle rule: \"A drip edge shall be provided at eaves and rake edges of shingle roofs,\" with adjacent pieces overlapped \"not less than 2 inches.\" Where an ice barrier is required it must reach at least 24 inches inside the exterior wall line. For Hamilton the table says \"No\" under Ice Shield Underlayment Required, though the sheet adds that a maker's instructions can still call for it.\n\nFishers houses and their ages\n\nIn the Census Bureau's American Community Survey for 2020 to 2024, housing profile table DP04 shows 38,859 housing units in Fishers city. Of these, 37,305 are occupied and 1,554 vacant (4.0 percent). Owners live in 28,420 of the occupied units (76.2 percent) and renters in 8,885 (23.8 percent). Detached houses total 29,617 (76.2 percent), attached one-unit homes 2,520 and mobile homes 92. Table B25035 gives a median year built of 2002, margin of error 1. Only 1,770 units (4.6 percent) predate 1980, against 15,295 (39.4 percent) built from 1980 through 1999 and 21,794 (56.1 percent) in 2000 or later. The 2000s are the largest decade at 12,375 units (31.8 percent), then the 1990s at 11,447 (29.5 percent). The tables count houses and say nothing about when a roof was last replaced.\n\nWho issues permits and registers contractors in Fishers\n\nThe city's Planning and Zoning page says that department handles permitting and inspections and gives 317-595-3155 for zoning questions. The city's fee schedule, in section 35.30 of its posted code, lists a Reroof entry under the Building Division at $75 for one and two family inspections and $100 for all other construction types, so ask permit staff what a reroof at your address requires. None of the Fishers pages read for this page gives the building office's street address or hours, so call before assuming how a given job is handled.\n\nWhat the city does state is a contractor registration rule. Its Contractor Registration page says contractors and permit holders must register to perform work in the city, \"except a homeowner performing the work themselves,\" and that registration is done online through ViewPoint Cloud. The city's registration ordinance, section 115.01, asks applicants for a general liability certificate with at least $500,000 for each occurrence of death or bodily injury and at least $100,000 for property damage, or a combined single limit of $500,000. It says coverage must not be limited to a single job and that the Engineering Department must receive written notice at least 15 days before cancellation. The page says the city does \"not in any manner ensure or warrant the competency of the contractors registered,\" so a registration shows paperwork on file, not a judgment of the work. Section 115.02 makes a registration valid for one year and section 115.03 sets the fee at $100; sections 115.01 through 115.03 name no bond and do not mention roofers.\n\nThe Nickel Plate Review Committee and the city's design districts\n\nFishers also has a Nickel Plate Review Committee. The city's page for it says the committee helps review projects in the Nickel Plate District, looking at a proposal's design, architecture, materials and compatibility with surrounding development, and that it can act on waivers from the district's code standards. Its territory is the Nickel Plate District together with the City Center Residential Zoning District. Meetings start at 5 p.m. on the fourth Wednesday of the month: from January through July at Launch Fishers Theatre, 12175 Visionary Way, and from August through December at the Municipal Center Theater, 1 Municipal Drive.\n\nThe page says the committee handles only projects that reach certain size, intensity or density thresholds, and it names no roof work on a single house. A homeowner who lives in or near those two districts can ask Community Development, at 317-595-3120, whether the committee has any part in a reroof. Outside those districts, the registration rule and the permit question above are the local items to raise with each bidder.\n\nRoofing licenses in Indiana\n\nThe Indiana Professional Licensing Agency's profession list names plumbing, real estate and home inspectors and has no roofing entry. The Attorney General's storm-chaser leaflet asks, \"Is the contractor licensed, bonded and insured?\" and says licensing requirements vary from community to community. In Fishers, that leaves the city registration and whatever the permit office says about your job.\n\nQuestions for your Fishers bids\n\n- Ask the city's permit staff whether a reroof at your address needs a permit, and keep a note of who answered and when.\n\n- Ask each bidder for its Fishers contractor registration and the liability certificate behind it, and whether that coverage is limited to one job.\n\n- Ask whether shingles and siding are priced separately, since two Fishers narratives mention siding and one mentions shingles.\n\n- Ask whether the quote includes drip edge, and whether decking will be replaced if it is found damaged.\n\n- Hand each bidder an identical copy of your insurer's written estimate, if there is one."
+    },
+    "Noblesville": {
+      "roofing": "Noblesville, Indiana: what NOAA's storm files hold for the city, 2016 to 2026\n\nNoblesville's record in NOAA's Storm Events files is short, and the biggest numbers in it are about outages, not stone size. The files for 2016 through 2026 list these reports under Hamilton County, so the city was found by map point: the Census Bureau's geocoder was applied to the point of each of the 128 hail, thunderstorm wind and tornado entries in the county. Fourteen land inside the city of Noblesville: 11 thunderstorm wind entries on 9 dates and 3 hail entries on 2 dates. No tornado falls inside the city.\n\nThe wind list runs from July 7, 2017 to May 19, 2026, with 10 estimated gusts (EG) and one measured gust (MG). Year by year, entries then dates, it reads 2017 with 1 and 1, 2020 with 2 and 2, 2021 with 1 and 1, 2022 with 1 and 1, 2023 with 1 and 1, 2025 with 2 and 2, and 2026 with 3 and 1. Nothing is filed for 2018, 2019 or 2024. May holds 4 entries on 2 dates, July 3 on 3, April 2 on 2, and June and December one each. Values are 50 knots (5), 52 (1), 53 (1), 55 (2), 56 (1) and 60 (1). The 60-knot estimate comes from April 8, 2020 at 19:25 EST (20:25 daylight time), where the emergency manager reported \"Widespread wind damage\" across the county, \"30,000 power outages\" and \"numerous tree [sic] and tree limbs snapped\"; NOAA's damage field reads $250,000.\n\nThe largest damage figure is $600,000, on June 29, 2023 at 14:58 EST (15:58 daylight time). Its text describes a 60 mph estimated gust \"with a 6 inch tree limb downed nearby\" and notes \"Over 13000 power outages across the county caused by the storm\"; NOAA does not say what the $600,000 covers, so it may reflect the wider storm more than this one point. The entry is filed under a Fishers label even though its point is inside Noblesville. A 56-knot entry from July 7, 2017 at 15:20 EST (16:20 daylight time), filed under a Cicero label, reads \"Numerous trees and power lines were downed along Carrigan Road near Morse Reservoir.\" The only measured gust is 53 knots at 02:36 EST on December 11, 2021, relayed through social media \"Near the Ruoff Music Center\"; December has no daylight time, so no hour is added.\n\nThe newest wind date matters most to a homeowner looking for roof damage. On May 19, 2026 three entries span 18 minutes: at 15:56 EST (16:56 daylight time), \"Tree downed by thunderstorm winds onto a house and through the roof,\" rated $40,000; at 16:02 EST (17:02 daylight time), a utility pole leaning at Olio Road and State Road 38; and at 16:14 EST (17:14 daylight time), another downed tree. All three gusts are estimated at 50 knots. Most other narratives involve trees. On April 19, 2025 at 04:52 EST (05:52 daylight time) a report says \"Trees downed by thunderstorm wind gusts through Noblesville,\" with $30,000 in damage, and on July 11, 2020 reports on social media showed \"several trees downed in and around the town of Noblesville.\"\n\nThe hail is on two dates, both in March. On March 28, 2020 at 15:48 EST (16:48 daylight time) a member of the public reported a 1.50 inch stone, the largest on the list. On March 27, 2021 at 21:42 EST (22:42 daylight time) an emergency manager reported 1.00 and an NWS employee 0.88. Two of the three entries reach an inch, on 2 dates.\n\nHow the Noblesville rows were read\n\nFourteen of the 128 entries landed in Noblesville. The geocoder put 40 in Carmel, 19 in Westfield and 18 in Fishers, gave Sheridan 5, Cicero 3 and the balance of Indianapolis 1, and left 28 outside any incorporated place. Labels are typed by forecasters and do not follow city lines. Eleven Hamilton entries carry the label Noblesville, and 7 are inside the city. The 14 here carry six labels: Noblesville 7, Clarksville 3, and one each Cicero, Fishers, Durbin and Deming. By source, NOAA credits emergency managers with 6, the public 5, NWS employees 2 and social media 1. According to NOAA's format guide the times are \"usually in LST\", meaning local standard time. These entries are stamped EST and an hour is added when daylight time applies, which holds for 13 of the 14; the exception is the December entry. No other event types are counted anywhere on this page. Counts for 2026 come from a file NOAA stamped on October 26, 2026, and NOAA's README says that file is updated every month, so the latest numbers can shift.\n\nThe forecast zone and the state's code\n\nIn National Weather Service records the county is zone INC057, handled by the Indianapolis forecast office (IND). Table R301.2(1) as amended for Indiana appears in an Indiana Department of Homeland Security sheet filed as \"Ice and Water Shield Update 2020-02-25\"; Hamilton's row there has 115 mph for wind, Seismic Design Category A, 20 psf of ground snow, a 30-inch foundation depth and \"No\" for Ice Shield Underlayment Required. The sheet says the 2020 Indiana Residential Code governs Class 2 residential construction statewide, \"Regardless of any established local enforcement policies or practices to the contrary,\" and that local governments must require compliance. So a job without a permit is still a job under the code.\n\nNoblesville houses and their ages\n\nThe 2020 to 2024 American Community Survey housing profile (table DP04) lists 28,672 housing units for Noblesville city. Of these, 27,115 are occupied and 1,557 vacant (5.4 percent). Owners live in 19,312 of the occupied units (71.2 percent) and renters in 7,803 (28.8 percent). Detached houses total 20,607 (71.9 percent) and mobile homes 643 (2.2 percent). In table B25035 the median year built is 2002, with a margin of error of 1. By age, 5,865 units (20.5 percent) predate 1980, 6,855 (23.9 percent) went up from 1980 through 1999 and 15,952 (55.6 percent) in 2000 or later. The 2000s are the largest decade at 8,337 units (29.1 percent). Units built in 1939 or earlier number 1,782 (6.2 percent), a larger share than in Carmel, Fishers or Westfield. The tables count houses, not roofs.\n\nWho issues permits in Noblesville\n\nThe city's Residential Permit Guide, which shows no date in its text (its file name says it was updated in 2025), lists what needs a permit and what usually does not. Under \"PERMIT REQUIRED FOR\" it names \"Room additions, changes to roof area, or patio enclosures,\" and it says \"Work such as flooring, painting, or replacing shingles or siding does not typically require a permit.\" It does not mention re-roofing by name. The guide gives 16 S 10th Street, Noblesville, IN 46060 and (317) 776-6325. A separate city Residents page says the building division of Planning and Development is responsible for plan reviews, inspections and enforcement of the building code, lists the city's general phone as 317-773-4614, and gives 8 a.m. to 4:30 p.m., Monday through Friday. The word \"typically\" in the guide is the city's own, so a reroof that touches decking or changes roof area is a question for the office.\n\nNeither Noblesville page read for this draft mentions a contractor registration, and a search of the city's site did not turn one up, so this page does not say whether one exists.\n\nNoblesville's historic districts and older neighborhoods\n\nA preservation group's site, noblesvillepreservation.org, lists three National Register historic districts by name on its National Register page, though another page on the same site counts four. The South 9th Street Historic District has 39 contributing buildings and 1 contributing site, the Noblesville Commercial Historic District has 54 contributing buildings, and the Catherine Street Historic District, also called the North 9th St. Historic District, has 50 contributing buildings and 1 contributing site. The same site says National Register listing does not stop private owners from altering their property and does not restrict its use or sale.\n\nThe site also divides the city into twelve Zones of Significance, which it describes as an educational tool with no legal meaning for historic districts. Its descriptions give a sense of how old the housing is. Gentlemen Farmers has large homes built in the 1880s and 1890s as country homes for local businessmen, Gilded Age holds many of the more ornate homes from the 1870s through the 1920s, Midland began as worker housing in the 1920s, and New Frontier and Broadview Manor are 1940s and 1950s houses. None of these descriptions mentions roofs.\n\nThe city's own rule is separate. Noblesville's Unified Development Ordinance says its site plan review applies to any development, redevelopment or minor modification in a Historic Preservation Overlay District. The portion read for this page does not say whether a shingle replacement counts as a minor modification, so a homeowner in an older neighborhood should ask the permit office whether a given address sits in such a district before the work is scheduled.\n\nRoofing licenses in Indiana\n\nOn the Indiana Professional Licensing Agency's list of professions, plumbing, real estate and home inspectors appear, and roofing does not. The Attorney General's storm-chaser leaflet says to \"Contact your local building department to see if a permit is needed\" and that \"A contractor should not start work until the permit is issued.\" In Noblesville that leaves a city guide that says shingle replacement does not typically need a permit and an office to ask about anything beyond it.\n\nQuestions for your Noblesville bids\n\n- Ask the permit office whether your job counts as replacing shingles or as changing roof area, since the city's guide treats them differently.\n\n- Ask each bidder whether it checked with the city, and what it was told.\n\n- Ask whether the quote covers replacing damaged decking, and how it is priced per sheet.\n\n- Ask whether the shingle maker's written instructions require ice and water shield, even though the state table says \"No\" for Hamilton County.\n\n- If your insurer wrote an estimate, give every bidder the same copy."
+    },
+    "Westfield": {
+      "roofing": "Westfield, Indiana: hail first, in NOAA's storm entries for 2016 to 2026\n\nHail dominates the Westfield record in NOAA's Storm Events files, and none of the 128 Hamilton County entries counted here carries Westfield as its place label. The agency lists these reports under Hamilton County, which meant placing them by map point; the Census Bureau's geocoder was run on each of the 128 hail, thunderstorm wind and tornado entries in the county. Nineteen land inside the city of Westfield: 11 hail entries on 8 dates and 8 thunderstorm wind entries on 4 dates, with no tornado. The hail runs from March 20, 2017 to April 2, 2025. By year, entries then dates, it reads 2017 with 1 and 1, 2020 with 3 and 2, 2021 with 3 and 1, 2022 with 1 and 1, 2023 with 1 and 1, 2024 with 1 and 1, and 2025 with 1 and 1. Nothing is filed for 2018 or 2019, or for 2026.\n\nReported stone sizes in inches, with entry counts, are 0.75 (3), 0.88 (1), 1.00 (6) and 1.75 (1), so 7 entries on 6 dates reach one inch. March holds 7 of the 11 entries on 4 dates, April 2 on 2, and June and July one each. The busiest hail day is March 27, 2021, with two 1.00 entries at 21:35 EST (22:35 daylight time), one from the public by mPing and one from an emergency manager, and a 0.75 five minutes later. The one 1.75 was filed by the public at 18:33 EST (19:33 daylight time) on March 14, 2024, under a Carmel label. Two entries need a caution. The July 17, 2023 entry at 16:50 EST (17:50 daylight time) is typed 1.00, yet its narrative says that \"Hail was also reported to be as large as 1.75 inches 1 mile southwest of Westfield.\" And a June 6, 2022 entry typed 1.00 says \"few hailstones were as big as a quarter\" and \"Most were 0.75 to 0.88 inches in diameter.\"\n\nWind is thinner, with 8 entries on 4 dates, May 16, 2019 to July 27, 2026: 7 estimated (EG) and 1 measured (MG). Five of the eight are from one afternoon, May 16, 2019, stamped across four minutes, 16:15 to 16:19 EST (17:15 to 17:19 daylight time). They include a large tree \"split in two near the base along New Haven Drive,\" a small tree snapped on Bridgeport Drive, a construction trailer \"rolled over at 146th Street and Towne Road,\" and a 12-inch branch down at 156th Street and Ditch Road, where \"Numerous similar sized trees were down in the area.\" The other three are April 8, 2020 at 19:37 EST (20:37 daylight time), with several power lines down near 171st Street and State Road 32, August 16, 2025 at 20:51 EST (21:51 daylight time), and July 27, 2026 at 16:25 EST (17:25 daylight time), a tree damaged. Values are 43 knots (1), 48 (1), 50 (1), 51 (1) and 52 (4). The one measurement, 51 knots on August 16, 2025, is \"Thunderstorm gust of 59 mph recorded at Grand Park mesonet station,\" and its narrative adds \"numerous trees from Westfield to Carmel, including two trees into houses,\" with $40,000 in damage, the largest on the list.\n\nHow the Westfield rows were read\n\nOf the 128 entries, 19 fall in Westfield. The geocoder put 40 in Carmel, 18 in Fishers, 14 in Noblesville, 5 in Sheridan, 3 in Cicero and 1 in the balance of Indianapolis, and left 28 outside any incorporated place. A label is the spot a forecaster typed, not a boundary, and the 19 here carry only three: Eagletown 12, Hortonville 4 and Carmel 3. By source, NOAA credits the public with 11, trained spotters 3, emergency managers 2, and one each an amateur radio operator, law enforcement and social media. NOAA's format guide gives its times as \"usually in LST\", meaning local standard time. Westfield's entries are stamped EST, so all 19 get an hour added for daylight time. Entries for event types other than these three are not counted. This page reads the 2026 file as NOAA stamped it on October 26, 2026; the README says the current year's file is updated each month, which means recent counts can move.\n\nThe forecast zone and the state's roofing rule\n\nThe National Weather Service record for Hamilton County is zone INC057, with the Indianapolis office (IND) as its forecast office. In the Indiana Department of Homeland Security sheet titled \"Ice and Water Shield Update 2020-02-25\", the amended Table R301.2(1) row for Hamilton shows 115 mph, Seismic Design Category A and 20 psf of ground snow, with \"No\" under Ice Shield Underlayment Required. The sheet says roof coverings \"shall be applied in accordance with the applicable provisions of this section and the manufacturer's installation instructions.\"\n\nWestfield houses and their ages\n\nWestfield city has 22,030 housing units in the Census Bureau's 2020 to 2024 American Community Survey housing profile, table DP04. Of these, 20,984 are occupied and 1,046 vacant (4.7 percent). Owners live in 16,681 of the occupied units (79.5 percent) and renters in 4,303 (20.5 percent). Detached houses total 17,149 (77.8 percent) and mobile homes 304 (1.4 percent). Table B25035 gives a median year built of 2010, margin of error 1. Westfield's housing stock is younger than that of Carmel, Fishers or Noblesville: 16,032 units (72.8 percent) were built in 2000 or later, 4,342 (19.7 percent) from 1980 through 1999 and only 1,656 (7.5 percent) before 1980. The 2010s are the largest decade at 8,115 units (36.8 percent), and 2,848 units (12.9 percent) date from 2020 or later. Roof replacement dates are not in either table, which count houses.\n\nWho issues permits in Westfield\n\nThe city's offices, at 2728 East 171st Street, Westfield, IN 46074, are open Monday through Friday 8 a.m. to 4:30 p.m. and closed from noon to 1 p.m.; the Building Division lists 317-804-3150, extension 5, and building@westfield.in.gov. Westfield has a page devoted to roofing questions. Its Roofing FAQs page says no permit is required to replace shingles or to replace a roof, that the work must still meet the current Indiana Residential Code, and that \"Roofing materials must be installed in accordance with the manufacturer's installation instructions.\" It adds that the city sets no ice and water shield requirement beyond the state code, that shield must go on if the maker's instructions require it, and that ignoring those instructions is treated as a code violation. The Building Division page says all permit applications are submitted through the City's Citizens Portal.\n\nThe residential single-family permit page says nothing about contractor registration, so this draft makes no statement about whether Westfield registers or licenses roofers. Ask the Building Division.\n\nWhat Westfield's Building Division page says about the permit process\n\nThe Building Division page describes a portal workflow rather than a counter visit. Applicants use the Citizens Portal to track an application's status, to request inspections and to read the results, and the page puts the burden of asking for an inspection on the applicant, who must also make sure the site can be reached during the scheduled inspection window. It states that fees must be completed, along with all required inspections, approvals and documentation, before a Certificate of Occupancy is released, and it points to a separate Fee Schedule page. The Building Division page lists no contractor requirements, gives no fee amounts and does not say how far ahead an inspection must be requested, so those are three more questions for building@westfield.in.gov or 317-804-3150.\n\nWestfield's historic preservation rules\n\nWestfield's city code has a subchapter that establishes a Historic Preservation Commission, and its definitions section, 33.131, sets the vocabulary. A historic district can be a single property or a larger grouping, with its boundaries shown on a map that the City Council adopts by ordinance. Primary areas hold the main historic or architectural significance, and secondary areas are adjacent zones that must stay compatible with them. Properties are rated Outstanding, Notable, Contributing or Non-contributing, and a Contributing property is one at least 40 years old.\n\nTwo definitions matter to a homeowner. An alteration is a material or color change in the external architectural features of a property in a historic district, and routine maintenance is work for which no certificate of appropriateness is required. The definitions section does not mention roofs and does not say what counts as routine, so this page does not claim that a reroof is or is not routine. The Building Division's roofing page, quoted above, says no permit is needed to replace shingles, which answers the building permit question only. For a house in or beside a mapped district, ask the Building Division at building@westfield.in.gov whether any preservation step applies as well.\n\nRoofing licenses in Indiana\n\nRoofing has no entry on the Indiana Professional Licensing Agency's profession list, which does name plumbing, real estate and home inspectors. The Attorney General's storm-chaser leaflet says \"Licensing requirements vary from community to community.\" In Westfield, the city's own page says a permit is not required for a reroof, and the remaining question is the contractor's local status.\n\nQuestions for your Westfield bids\n\n- Ask each bidder whether the quote follows the shingle maker's written installation instructions, since the city treats that as a code matter.\n\n- Ask whether the maker's instructions call for ice and water shield on your roof, since the state table says \"No\" for Hamilton County.\n\n- Ask the Building Division whether the contractor needs to be registered or licensed for your job.\n\n- Ask whether the quote covers replacing damaged decking and how that is priced, since the city's roofing page speaks only to shingles and the roof as a whole.\n\n- Show each bidder the same copy of any insurer estimate in writing."
+    }
+  },
+  "city_sources": {
+    "Carmel": {
+      "roofing": [
+        {
+          "label": "NOAA Storm Events bulk files, 2016 to 2026",
+          "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/"
+        },
+        {
+          "label": "NOAA Storm Events bulk files README",
+          "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/README"
+        },
+        {
+          "label": "NOAA Storm Events bulk data format guide",
+          "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/Storm-Data-Bulk-csv-Format.pdf"
+        },
+        {
+          "label": "U.S. Census Bureau geocoder, coordinates endpoint (incorporated places)",
+          "url": "https://geocoding.geo.census.gov/geocoder/geographies/coordinates"
+        },
+        {
+          "label": "U.S. Census Bureau ACS 2020-2024 housing profile (DP04), Carmel city, Indiana",
+          "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=160XX00US1810342"
+        },
+        {
+          "label": "U.S. Census Bureau ACS 2020-2024 median year structure built (B25035), Carmel city, Indiana",
+          "url": "https://data.census.gov/table/ACSDT5Y2024.B25035?g=160XX00US1810342"
+        },
+        {
+          "label": "National Weather Service county record INC057",
+          "url": "https://api.weather.gov/zones/county/INC057"
+        },
+        {
+          "label": "Indiana DHS ice and water shield sheet with Table R301.2(1)",
+          "url": "https://www.greenwood.in.gov/egov/apps/document/center.egov?view=item;id=4200"
+        },
+        {
+          "label": "City of Carmel Residential Inspection Procedures",
+          "url": "https://carmel.in.gov/DocumentCenter/View/2762/Residential-Inspection-Procedures"
+        },
+        {
+          "label": "City of Carmel Building Permit Fees (effective April 1, 2024)",
+          "url": "https://www.carmel.in.gov/DocumentCenter/View/223/Building-Permit-Fees-2024-PDF"
+        },
+        {
+          "label": "City of Carmel Solar PV Permitting Checklist (office address and phone)",
+          "url": "https://carmel.in.gov/DocumentCenter/View/598/Solar-Photovoltaic-PV-System-Permitting-Checklist---English-PDF"
+        },
+        {
+          "label": "City of Carmel Code Enforcement Common Complaints",
+          "url": "https://www.carmel.in.gov/government/departments-services/community-services/code-enforcement/code-enforcement-common-complaints"
+        },
+        {
+          "label": "Carmel City Code, section 4-89 (contractor registration)",
+          "url": "https://codelibrary.amlegal.com/codes/carmel/latest/carmel_in/0-0-0-3417"
+        },
+        {
+          "label": "Carmel City Code, section 4-90 (registration fee, bond, insurance)",
+          "url": "https://codelibrary.amlegal.com/codes/carmel/latest/carmel_in/0-0-0-3421"
+        },
+        {
+          "label": "Indiana Attorney General, Storm Chaser Scams",
+          "url": "https://secure.in.gov/attorneygeneral/consumer-protection-division/files/Storm-Chasers-webversion_4_24.pdf"
+        },
+        {
+          "label": "Indiana Professional Licensing Agency professions",
+          "url": "https://www.in.gov/pla/professions/"
+        },
+        {
+          "label": "City of Carmel Historic Preservation Commission",
+          "url": "https://www.carmel.in.gov/government/boards-commissions-committees/historic-preservation-commission"
+        }
+      ]
+    },
+    "Fishers": {
+      "roofing": [
+        {
+          "label": "NOAA Storm Events bulk files, 2016 to 2026",
+          "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/"
+        },
+        {
+          "label": "NOAA Storm Events bulk files README",
+          "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/README"
+        },
+        {
+          "label": "NOAA Storm Events bulk data format guide",
+          "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/Storm-Data-Bulk-csv-Format.pdf"
+        },
+        {
+          "label": "U.S. Census Bureau geocoder, coordinates endpoint (incorporated places)",
+          "url": "https://geocoding.geo.census.gov/geocoder/geographies/coordinates"
+        },
+        {
+          "label": "U.S. Census Bureau ACS 2020-2024 housing profile (DP04), Fishers city, Indiana",
+          "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=160XX00US1823278"
+        },
+        {
+          "label": "U.S. Census Bureau ACS 2020-2024 median year structure built (B25035), Fishers city, Indiana",
+          "url": "https://data.census.gov/table/ACSDT5Y2024.B25035?g=160XX00US1823278"
+        },
+        {
+          "label": "National Weather Service county record INC057",
+          "url": "https://api.weather.gov/zones/county/INC057"
+        },
+        {
+          "label": "Indiana DHS ice and water shield sheet with Table R301.2(1)",
+          "url": "https://www.greenwood.in.gov/egov/apps/document/center.egov?view=item;id=4200"
+        },
+        {
+          "label": "City of Fishers Contractor Registration",
+          "url": "https://fishersin.gov/?p=2457"
+        },
+        {
+          "label": "Fishers Code of Ordinances, sections 115.01 to 115.03 (registration requirements, term, fee)",
+          "url": "https://codelibrary.amlegal.com/codes/fishers/latest/fishers_in/0-0-0-31340"
+        },
+        {
+          "label": "City of Fishers Planning and Zoning",
+          "url": "https://fishersin.gov/departments/planning-zoning/"
+        },
+        {
+          "label": "Indiana Attorney General, Storm Chaser Scams",
+          "url": "https://secure.in.gov/attorneygeneral/consumer-protection-division/files/Storm-Chasers-webversion_4_24.pdf"
+        },
+        {
+          "label": "Indiana Professional Licensing Agency professions",
+          "url": "https://www.in.gov/pla/professions/"
+        },
+        {
+          "label": "City of Fishers Nickel Plate Review Committee",
+          "url": "https://fishersin.gov/boards-commissions/nickel-plate-review-committee/"
+        },
+        {
+          "label": "Fishers City Code, section 35.30 (fee schedule, Building Division reroof entry)",
+          "url": "https://codelibrary.amlegal.com/codes/fishers/latest/fishers_in/0-0-0-28728"
+        },
+        {
+          "label": "Fishers City Code, section 115.02 (registration valid one year)",
+          "url": "https://codelibrary.amlegal.com/codes/fishers/latest/fishers_in/0-0-0-31353"
+        },
+        {
+          "label": "Fishers City Code, section 115.03 (registration fee)",
+          "url": "https://codelibrary.amlegal.com/codes/fishers/latest/fishers_in/0-0-0-31356"
+        }
+      ]
+    },
+    "Noblesville": {
+      "roofing": [
+        {
+          "label": "NOAA Storm Events bulk files, 2016 to 2026",
+          "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/"
+        },
+        {
+          "label": "NOAA Storm Events bulk files README",
+          "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/README"
+        },
+        {
+          "label": "NOAA Storm Events bulk data format guide",
+          "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/Storm-Data-Bulk-csv-Format.pdf"
+        },
+        {
+          "label": "U.S. Census Bureau geocoder, coordinates endpoint (incorporated places)",
+          "url": "https://geocoding.geo.census.gov/geocoder/geographies/coordinates"
+        },
+        {
+          "label": "U.S. Census Bureau ACS 2020-2024 housing profile (DP04), Noblesville city, Indiana",
+          "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=160XX00US1854180"
+        },
+        {
+          "label": "U.S. Census Bureau ACS 2020-2024 median year structure built (B25035), Noblesville city, Indiana",
+          "url": "https://data.census.gov/table/ACSDT5Y2024.B25035?g=160XX00US1854180"
+        },
+        {
+          "label": "National Weather Service county record INC057",
+          "url": "https://api.weather.gov/zones/county/INC057"
+        },
+        {
+          "label": "Indiana DHS ice and water shield sheet with Table R301.2(1)",
+          "url": "https://www.greenwood.in.gov/egov/apps/document/center.egov?view=item;id=4200"
+        },
+        {
+          "label": "City of Noblesville Residential Permit Guide",
+          "url": "https://www.noblesville.in.gov/DocumentCenter/View/289/Residential-Permit-Guide--Does-the-Project-Need-a-Permit-PDF"
+        },
+        {
+          "label": "City of Noblesville Residents page",
+          "url": "https://www.noblesville.in.gov/31/Residents"
+        },
+        {
+          "label": "Indiana Attorney General, Storm Chaser Scams",
+          "url": "https://secure.in.gov/attorneygeneral/consumer-protection-division/files/Storm-Chasers-webversion_4_24.pdf"
+        },
+        {
+          "label": "Indiana Professional Licensing Agency professions",
+          "url": "https://www.in.gov/pla/professions/"
+        },
+        {
+          "label": "Noblesville's Historic Districts (noblesvillepreservation.org)",
+          "url": "https://www.noblesvillepreservation.org/noblesville-s-historic-districts"
+        },
+        {
+          "label": "National Register of Historic Places in Noblesville (noblesvillepreservation.org)",
+          "url": "https://www.noblesvillepreservation.org/national-register-of-historic-places"
+        },
+        {
+          "label": "Noblesville Unified Development Ordinance, Technical Advisory Committee site plan review (Historic Preservation Overlay District)",
+          "url": "https://codelibrary.amlegal.com/codes/noblesville/latest/noblesville_in/0-0-0-8652"
+        }
+      ]
+    },
+    "Westfield": {
+      "roofing": [
+        {
+          "label": "NOAA Storm Events bulk files, 2016 to 2026",
+          "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/"
+        },
+        {
+          "label": "NOAA Storm Events bulk files README",
+          "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/README"
+        },
+        {
+          "label": "NOAA Storm Events bulk data format guide",
+          "url": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/Storm-Data-Bulk-csv-Format.pdf"
+        },
+        {
+          "label": "U.S. Census Bureau geocoder, coordinates endpoint (incorporated places)",
+          "url": "https://geocoding.geo.census.gov/geocoder/geographies/coordinates"
+        },
+        {
+          "label": "U.S. Census Bureau ACS 2020-2024 housing profile (DP04), Westfield city, Indiana",
+          "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=160XX00US1882700"
+        },
+        {
+          "label": "U.S. Census Bureau ACS 2020-2024 median year structure built (B25035), Westfield city, Indiana",
+          "url": "https://data.census.gov/table/ACSDT5Y2024.B25035?g=160XX00US1882700"
+        },
+        {
+          "label": "National Weather Service county record INC057",
+          "url": "https://api.weather.gov/zones/county/INC057"
+        },
+        {
+          "label": "Indiana DHS ice and water shield sheet with Table R301.2(1)",
+          "url": "https://www.greenwood.in.gov/egov/apps/document/center.egov?view=item;id=4200",
+          "note": "The R905.1 quote corrects an OCR error in the source PDF text (\"tlte\" read as \"the\")."
+        },
+        {
+          "label": "City of Westfield Roofing FAQs",
+          "url": "https://www.westfieldin.gov/633/Roofing-FAQs"
+        },
+        {
+          "label": "City of Westfield Building Division",
+          "url": "https://www.westfieldin.gov/178/Building-Division"
+        },
+        {
+          "label": "City of Westfield Residential Single Family permits page",
+          "url": "https://www.westfieldin.gov/185/Residential---Single-Family"
+        },
+        {
+          "label": "Indiana Attorney General, Storm Chaser Scams",
+          "url": "https://secure.in.gov/attorneygeneral/consumer-protection-division/files/Storm-Chasers-webversion_4_24.pdf"
+        },
+        {
+          "label": "Indiana Professional Licensing Agency professions",
+          "url": "https://www.in.gov/pla/professions/"
+        },
+        {
+          "label": "Westfield City Code, section 33.131 (historic preservation definitions)",
+          "url": "https://codelibrary.amlegal.com/codes/westfieldin/latest/westfield_in/0-0-0-779"
+        }
+      ]
+    }
   }
 }
