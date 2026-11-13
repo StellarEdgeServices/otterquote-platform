@@ -171,6 +171,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/how-long-does-roof-replacement-take.html',
   '/guides/drip-edge-roof-replacement-bid':
     '/guides/drip-edge-roof-replacement-bid.html',
+  '/guides/roof-ventilation-in-your-replacement-bid':
+    '/guides/roof-ventilation-in-your-replacement-bid.html',
   '/guides/roof-change-orders-hidden-damage':
     '/guides/roof-change-orders-hidden-damage.html',
   '/guides/roofing-contract-checklist-before-you-sign':
@@ -217,6 +219,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/boone-county-in/roofing/',
   '/locations/butler-county-oh/roofing/index.html':
     '/locations/butler-county-oh/roofing/',
+  '/locations/carmel-city-in/roofing/index.html':
+    '/locations/carmel-city-in/roofing/',
   '/locations/cuyahoga-county-oh/roofing/index.html':
     '/locations/cuyahoga-county-oh/roofing/',
   '/locations/davidson-county-tn/roofing/index.html':
@@ -225,6 +229,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/delaware-county-in/roofing/',
   '/locations/delaware-county-oh/roofing/index.html':
     '/locations/delaware-county-oh/roofing/',
+  '/locations/fishers-city-in/roofing/index.html':
+    '/locations/fishers-city-in/roofing/',
   '/locations/franklin-county-oh/roofing/index.html':
     '/locations/franklin-county-oh/roofing/',
   '/locations/hamilton-county-in/roofing/index.html':
@@ -263,6 +269,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/montgomery-county-tn/roofing/',
   '/locations/morgan-county-in/roofing/index.html':
     '/locations/morgan-county-in/roofing/',
+  '/locations/noblesville-city-in/roofing/index.html':
+    '/locations/noblesville-city-in/roofing/',
   '/locations/rutherford-county-tn/roofing/index.html':
     '/locations/rutherford-county-tn/roofing/',
   '/locations/shelby-county-in/roofing/index.html':
@@ -287,6 +295,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/warren-county-oh/roofing/',
   '/locations/washington-county-tn/roofing/index.html':
     '/locations/washington-county-tn/roofing/',
+  '/locations/westfield-city-in/roofing/index.html':
+    '/locations/westfield-city-in/roofing/',
   '/locations/williamson-county-tn/roofing/index.html':
     '/locations/williamson-county-tn/roofing/',
   '/locations/wilson-county-tn/roofing/index.html':

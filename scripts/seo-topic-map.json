@@ -66,6 +66,7 @@
         "guides/competitive-roof-bids-vs-single-referral",
         "guides/online-roof-bids-no-salesperson",
         "guides/drip-edge-roof-replacement-bid",
+        "guides/roof-ventilation-in-your-replacement-bid",
         "blog/aerial-roof-measurement-reports",
         "guides/roof-replacement-cost-breakdown",
         "guides/otter-quotes-vs-thumbtack",
@@ -130,6 +131,7 @@
   },
   "partner_articles_left_as_is": [
     "partners/how-a-home-inspector-can-point-a-client-to-bids",
+    "partners/realtor-referral-fee-how-it-works",
     "partners/roof-damage-found-before-closing",
     "partners/what-a-listing-agent-can-do-about-storm-damage-before-listing",
     "partners/what-to-hand-a-policyholder-after-a-storm"
@@ -378,6 +380,13 @@
       "/guides/multiple-bids-roof-insurance-claim.html"
     ],
     "guides/drip-edge-roof-replacement-bid": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/manufacturer-backed-roof-warranties.html",
+      "/guides/roof-change-orders-hidden-damage.html"
+    ],
+    "guides/roof-ventilation-in-your-replacement-bid": [
       "/guides/roof-bid-comparison-worksheet.html",
       "/guides/roofing-contract-checklist-before-you-sign.html",
       "/guides/roof-replacement-cost-breakdown.html",

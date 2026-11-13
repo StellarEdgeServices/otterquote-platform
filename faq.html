@@ -571,12 +571,45 @@
 <footer id="site-footer"></footer>
 
 <script>
+  // gh-3680: an open answer's max-height is its own scrollHeight, so no answer is clipped however long it grows. An inline
+  // max-height beats any .open rule in the stylesheet (the 500px cap and the scoped .oq-guarantee one), so the CSS caps no
+  // longer apply once this runs. Transitions stay ON: the target height is measured on an off-screen clone in its final
+  // (open) layout, then set inline, so the 0.4s max-height animation still plays. Closing clears the inline value so the
+  // CSS 0 applies. Open items are re-fitted on resize, orientationchange, load and web-font load.
+  function measureFaqAnswer(item) {
+    var clone = item.cloneNode(true);
+    clone.classList.add('open');
+    clone.removeAttribute('hidden');
+    clone.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;pointer-events:none;transition:none;width:' + item.getBoundingClientRect().width + 'px';
+    var cans = clone.querySelector('.faq-answer');
+    cans.style.transition = 'none';
+    cans.style.maxHeight = 'none';
+    item.parentNode.appendChild(clone);
+    var h = cans.scrollHeight;
+    item.parentNode.removeChild(clone);
+    return h;
+  }
+  function fitFaqAnswer(item, willOpen) {
+    var ans = item.querySelector('.faq-answer');
+    if (!ans) return;
+    if (willOpen === false || (willOpen === undefined && !item.classList.contains('open'))) { ans.style.maxHeight = ''; return; }
+    ans.style.maxHeight = measureFaqAnswer(item) + 'px';
+  }
+  function fitOpenFaqAnswers() {
+    document.querySelectorAll('.faq-item.open').forEach(function(item) { fitFaqAnswer(item); });
+  }
   document.querySelectorAll('.faq-question').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var item = btn.closest('.faq-item');
+      var opening = !item.classList.contains('open');
+      fitFaqAnswer(item, opening);  // measure and set the target first, with no layout read in between, so the transition runs from 0
       item.classList.toggle('open');
     });
   });
+  window.addEventListener('resize', fitOpenFaqAnswers);
+  window.addEventListener('orientationchange', fitOpenFaqAnswers);
+  window.addEventListener('load', fitOpenFaqAnswers);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitOpenFaqAnswers);
 </script>
 <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>

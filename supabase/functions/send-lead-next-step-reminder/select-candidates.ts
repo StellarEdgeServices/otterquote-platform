@@ -34,7 +34,28 @@ export const REMINDER_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 // gh-2378 (CRO51): the /ho6 landing page (PR #2384, js/oq-lead-core.js create
 // ({ variant: 'ho6' })) writes leads.variant = 'ho6'. Exact match only, like
 // the others. ho6 leads get their own copy (Variant A, email-content.ts).
-export const REMINDER_ELIGIBLE_VARIANTS: readonly string[] = ["f", "HO-2", "ho6"];
+//
+// gh-3420: the live front-door arm is 'd' (start.html LIVE_VARIANTS, gh-3136);
+// without it a homeowner who stops at sign-up on the front door is never
+// reminded. Exact match only. 'd' leads get their own reduced copy
+// (email-content.ts, Ben's ruling on PR #3425, comment 6776272506) and are
+// held to a daily send cap (D_VARIANT_DAILY_SEND_CAP) so the first run does
+// not mail the whole 1-to-7-day backlog at once.
+export const REMINDER_ELIGIBLE_VARIANTS: readonly string[] = ["f", "HO-2", "ho6", "d"];
+
+export const D_VARIANT = "d";
+/** Max reminders to variant-'d' leads in any rolling 24 h (Ben, #3420 /
+ * PR #3425 comment 6776272506: "stay inside the 10/day cap in #3302/#3306").
+ * Enforced in index.ts against rows already stamped in the last 24 h. */
+export const D_VARIANT_DAILY_SEND_CAP = 10;
+
+/** True when a lead of `variant` must be skipped because the daily cap for
+ * its variant is already used up. Only 'd' is capped; every other variant
+ * is unaffected. `dSentLast24h` is the count of 'd' leads already stamped in
+ * the last 24 h plus any sent earlier in this run. */
+export function isDailyCapReached(variant: string | null, dSentLast24h: number): boolean {
+  return variant === D_VARIANT && dSentLast24h >= D_VARIANT_DAILY_SEND_CAP;
+}
 
 export type SkipReason =
   | "disabled"
@@ -48,7 +69,8 @@ export type SkipReason =
   | "already_sent"
   | "opted_out"
   | "goal_recorded"
-  | "duplicate_email_in_batch";
+  | "duplicate_email_in_batch"
+  | "daily_cap_reached";
 
 export interface CandidateLead {
   id: string;

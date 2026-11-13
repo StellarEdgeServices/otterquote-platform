@@ -5,6 +5,8 @@ import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.
 import {
   BODY_TEMPLATE,
   BODY_TEMPLATE_NO_PHONE,
+  D_VARIANT,
+  D_VARIANT_BODY_TEMPLATE,
   FROM_ADDRESS,
   HO6_BODY_TEMPLATE,
   HO6_REPLY_TO,
@@ -18,6 +20,7 @@ import {
   measurementCtaUrl,
   replyToForVariant,
 } from "./email-content.ts";
+import { D_VARIANT as SELECTOR_D_VARIANT } from "./select-candidates.ts";
 
 function countOccurrences(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
@@ -209,4 +212,50 @@ Deno.test("existing variants are unchanged: f / HO-2 / no variant render identic
   }
   assertStringIncludes(legacy.textBody, "Dustin will still call you");
   assertEquals(legacy.subject, "Your next step with Otter Quotes");
+});
+
+// -- gh-3420: variant d copy (Ben's ruling, PR #3425 comment 6776272506) --
+Deno.test("gh-3420 d: no preheader, no call promise, whatever the phone flag", () => {
+  assertEquals(D_VARIANT, SELECTOR_D_VARIANT);
+  for (const hasPhone of [true, false]) {
+    const e = buildLeadReminderEmail("lead-1", "Jane", OPT, hasPhone, "d");
+    assertEquals(e.preheader, "");
+    assertEquals(countOccurrences(e.htmlBody, "display:none"), 0);
+    for (const body of [e.textBody, e.htmlBody]) {
+      const lower = body.toLowerCase();
+      for (const banned of ["wait to hear from dustin", "will still call", "call you", "local contractors"]) {
+        if (lower.includes(banned)) throw new Error(`d copy contains "${banned}"`);
+      }
+    }
+    assertEquals(e.textBody, buildLeadReminderEmail("lead-1", "Jane", OPT, true, "d").textBody);
+  }
+});
+
+Deno.test("gh-3420 d: price reads 'as little as $22.63' once, never the flat figure; contractors are 'multiple'", () => {
+  const e = buildLeadReminderEmail("lead-1", "Jane", OPT, true, "d");
+  assertStringIncludes(e.textBody, "as little as $22.63");
+  assertEquals(countOccurrences(e.textBody, "$22.63"), 2); // body sentence + CTA label
+  assertEquals(e.textBody.includes("a $22.63 measurement"), false);
+  assertEquals(e.textBody.includes("the $22.63 measurement"), false);
+  assertStringIncludes(e.textBody, "multiple contractors");
+  assertStringIncludes(e.htmlBody, "as little as $22.63");
+});
+
+Deno.test("gh-3420 d: only the ruled substitutions differ from the no-phone body", () => {
+  const norm = (s: string) => s.replace(/\s+/g, " ");
+  const expected = norm(BODY_TEMPLATE_NO_PHONE)
+    .replace("local contractors", "multiple contractors")
+    .replace("Get a $22.63 measurement report ($22.63, rebated if you complete",
+      "Get a measurement report for as little as $22.63 (rebated if you complete");
+  assertEquals(norm(D_VARIANT_BODY_TEMPLATE), expected);
+});
+
+Deno.test("gh-3420 d: footer, opt-out and CTA links intact; f copy unchanged", () => {
+  const e = buildLeadReminderEmail("lead-1", "Jane", OPT, true, "d");
+  assertStringIncludes(e.textBody, POSTAL_ADDRESS);
+  assertEquals(countOccurrences(e.textBody, "Stop these updates"), 1);
+  assertStringIncludes(e.textBody, lossSheetCtaUrl("lead-1"));
+  assertStringIncludes(e.textBody, measurementCtaUrl("lead-1"));
+  assertEquals(replyToForVariant("d"), undefined);
+  assertStringIncludes(buildLeadReminderEmail("lead-1", "Jane", OPT, true, "f").textBody, "Dustin will still call you");
 });
