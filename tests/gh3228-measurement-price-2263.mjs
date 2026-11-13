@@ -72,7 +72,11 @@ const notOwed = /<strong>When the Rebate Is Not Owed\.<\/strong>[\s\S]*?<\/p>/.e
 ok(!!notOwed && !/\$\d/.test(notOwed[0]) && /the Measurement Fee compensates Otter Quotes for the cost of ordering the report on your behalf/.test(notOwed[0]), 'S2b: Terms 8.5 "When the Rebate Is Not Owed" states no figure and says "the Measurement Fee compensates"');
 ok(/Payment processing and billing services, including processing of the Measurement Fee and any associated rebate/.test(privacy), 'S2b: privacy.html Stripe line names the Measurement Fee with no figure');
 ok(!/Stripe:<\/strong>[^<]*\$\d/.test(privacy), 'S2b: negative control -- no dollar figure on the privacy.html Stripe line');
-ok(/<strong>Effective Date:<\/strong> (October 31|November 3), 2026/.test(terms) && /Effective Date: (October 31|November 3|November 4), 2026/.test(privacy), 'S2b: terms.html and privacy.html Effective Date is October 31, 2026 or later');
+// gh-3698: the privacy.html Effective Date moves whenever its visible text changes, so parse it and require a real date on or after 2026-10-31 instead of pinning a list of days.
+const privacyEff = /Effective Date: (January|February|March|April|May|June|July|August|September|October|November|December) (\d{1,2}), (\d{4})/.exec(privacy);
+const privacyEffMs = privacyEff ? Date.UTC(+privacyEff[3], ['January','February','March','April','May','June','July','August','September','October','November','December'].indexOf(privacyEff[1]), +privacyEff[2]) : NaN;
+const privacyEffReal = !!privacyEff && new Date(privacyEffMs).getUTCDate() === +privacyEff[2] && new Date(privacyEffMs).getUTCMonth() === ['January','February','March','April','May','June','July','August','September','October','November','December'].indexOf(privacyEff[1]);
+ok(/<strong>Effective Date:<\/strong> (October 31|November 3), 2026/.test(terms) && privacyEffReal && privacyEffMs >= Date.UTC(2026, 9, 31), 'S2b: terms.html Effective Date is October 31, 2026 or later and privacy.html carries a real Effective Date on or after October 31, 2026');
 const faq = read('faq.html');
 ok(faq.includes('The fee pays for ordering the report for you.') && !/covers (Otter Quotes\'|our) cost/.test(faq), 'S2b: FAQ says "The fee pays for ordering the report for you." (no "covers ... cost")');
 const hpf = read('react-app/app/(homeowner)/help-measurements/HoverPaymentForm.tsx');
