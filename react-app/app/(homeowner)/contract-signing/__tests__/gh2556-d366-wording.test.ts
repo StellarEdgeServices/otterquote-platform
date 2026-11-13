@@ -40,7 +40,8 @@ const NEW = {
   s41Added: "We share your name and contact information with the contractor you select, so they can prepare and perform your contract.",
   s71: "4 years from creation, then deleted unless the lead has become an account or we hold a call or text consent record for it",
   // D-366 amendment (#2556 comment 6022019578, 2026-10-06T17:43:49Z): Effective Date line with the Section 18.1 carve-out.
-  effective: "Effective Date: November 3, 2026. For Contractors who accepted an earlier version, the changes apply to new Opportunities posted after the date stated in the written notice sent under Section 18.1.",
+  // gh-3698: the date moves whenever the page text changes, so only the carve-out sentence is pinned; the date is parsed and floored below.
+  effectiveCarveOut: ". For Contractors who accepted an earlier version, the changes apply to new Opportunities posted after the date stated in the written notice sent under Section 18.1.",
 };
 
 describe('gh-2556 item 1: Contractor Agreement 9.3', () => {
@@ -86,7 +87,15 @@ describe('gh-2556 item 3: homeowner signing screens, static and React byte-equal
 
 describe('gh-2556 amendment: Contractor Agreement Effective Date line (D-366, comment 6022019578)', () => {
   it('prints the date plus the Section 18.1 carve-out, once; the bare date line is gone', () => {
-    expect(count(agreement, NEW.effective)).toBe(1);
+    // Effective Date is a real calendar date on or after 2026-10-06 (the D-366 amendment) followed by the Section 18.1 carve-out, exactly once.
+    const m = /Effective Date: (January|February|March|April|May|June|July|August|September|October|November|December) (\d{1,2}), (\d{4})/.exec(agreement);
+    expect(m).not.toBeNull();
+    const month = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].indexOf(m![1]);
+    const d = new Date(Date.UTC(Number(m![3]), month, Number(m![2])));
+    expect(d.getUTCMonth()).toBe(month);
+    expect(d.getUTCDate()).toBe(Number(m![2]));
+    expect(d.getTime()).toBeGreaterThanOrEqual(Date.UTC(2026, 9, 6));
+    expect(count(agreement, m![0] + NEW.effectiveCarveOut)).toBe(1);
     expect(agreement).not.toContain('Effective Date: October 6, 2026</p>');
   });
 });
