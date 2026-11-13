@@ -390,6 +390,24 @@ function readPage(file) {
   return fs.readFileSync(p, 'utf8');
 }
 
+// gh-3661 / #3663 (Ben ruling 6840116255, Tier B): the #proof strip's first tile on index.html carries a bare "$22.63" heading (the amount, with its
+// context in the tile's own title "As little as $22.63 up front" and paragraph; LEGAL-READ 6808077577, D-400/D-291). The guard exists to stop a bare price with no
+// context; this tile is context-bound by design. Exemption is as narrow as it can be: ONLY the exact element <h3 class="hr-h3">$22.63</h3>, ONLY inside the
+// <section id="proof"> of index.html, removed once. Any other dollar amount in #proof, or the same "$22.63" heading anywhere outside #proof, is untouched and still fails.
+const PROOF_TILE_H3 = '<h3 class="hr-h3">$22.63</h3>';
+function stripProofTile(file, html) {
+  if (file !== 'index.html') return html;
+  const m = /<section\b[^>]*\bid="proof"[^>]*>[\s\S]*?<\/section>/i.exec(html);
+  if (!m) return html;
+  const i = m[0].indexOf(PROOF_TILE_H3);
+  if (i < 0) return html;
+  const sec = m[0].slice(0, i) + ' ' + m[0].slice(i + PROOF_TILE_H3.length);
+  return html.slice(0, m.index) + sec + html.slice(m.index + m[0].length);
+}
+const isMeasurementChargeHit = (h) => h.term === '$22' && /^\$22\.63 up front/.test(h.context.slice(h.context.indexOf('$22')));
+/* the homepage's un-exempted fee-pattern hits, by the same two exemptions the crawl applies (used by the negative controls below) */
+const indexUnexempted = (html) => findFeeHits(staticRenderedText(stripProofTile('index.html', html))).filter((h) => !isMeasurementChargeHit(h));
+
 // ── BFS crawl ────────────────────────────────────────────────────────────
 async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspectorContext = true }) {
   const visited = new Map(); // file -> depth
@@ -408,13 +426,13 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspector
     // TEXT_EXEMPT_PAGES, or the shared not-on-the-partner-track reason).
     if (textExemptReason(file) === null) {
       const forText = respectInspectorHiding ? stripInspectorHiddenElements(html) : html;
-      const text = staticRenderedText(forText);
+      const text = staticRenderedText(stripProofTile(file, forText));
       for (const h of findFeeHits(text)) {
         // gh-2598 slice 5: the new homepage states the $22.63 homeowner measurement charge in #paid (legal-read copy). That is the same unrelated homeowner
         // charge terms.html / privacy.html are exempt for, never a referral fee or recruit bonus. Narrow on purpose: ONLY the "$22" term (FEE_TERM_RE stops at the decimal point; the context check pins it to "$22.63 up front"), ONLY on index.html;
         // any other dollar amount, "referral fee" or "recruit bonus" on the homepage still fails. Needs Ben's ruling (QUESTION on the slice-5 PR): the alternative is
         // data-hide-when-inspector on that paragraph, which would make the homepage differ from the page the legal read covered.
-        if (file === 'index.html' && h.term === '$22' && /^\$22\.63 up front/.test(h.context.slice(h.context.indexOf('$22')))) { homepageMeasurementCharge.push(h); continue; }
+        if (file === 'index.html' && isMeasurementChargeHit(h)) { homepageMeasurementCharge.push(h); continue; }
         hits.push({ file, term: h.term, context: h.context });
       }
     }
@@ -521,8 +539,23 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspector
   }
 
   // gh-2598 slice 5: the exemption above is exercised and is exactly the $22.63 homeowner charge, nothing else.
-  ok(visited.includes('index.html') && homepageMeasurementCharge.length >= 1 && homepageMeasurementCharge.every((h) => h.term === '$22' && /\$22\.63 up front for professio/.test(h.context)),
+  ok(visited.includes('index.html') && homepageMeasurementCharge.length >= 1 && homepageMeasurementCharge.every((h) => h.term === '$22' && /\$22\.63 up front (?:for professio|Professional measurements)/.test(h.context)),
     'JS-ON crawler: index.html is reached and its only let-through fee-pattern hit is the "$22.63" homeowner measurement charge (' + homepageMeasurementCharge.length + ' hit(s)); nothing else on the homepage matches');
+  // gh-3661: the #proof tile exemption, with its negative controls, run on the real page text.
+  const idx = readPage('index.html');
+  const PH = '<h3 class="hr-h3">$22.63</h3>';
+  ok(idx.includes('id="proof"') && idx.includes(PH) && indexUnexempted(idx).length === 0,
+    'gh-3661: index.html #proof carries the exact "$22.63" tile heading and the homepage has no other un-exempted fee-pattern hit');
+  ok(indexUnexempted(idx.replace(PH, '<h3 class="hr-h3">$23.63</h3>')).length > 0,
+    'gh-3661 NEGATIVE CONTROL: a different dollar amount in the #proof tile heading FAILS');
+  ok(indexUnexempted(idx.replace(PH, PH + '<p class="hr-p">$22.63</p>')).length > 0,
+    'gh-3661 NEGATIVE CONTROL: a second bare "$22.63" inside #proof (not the exact tile heading) FAILS');
+  ok(indexUnexempted(idx.replace(PH, '<h3 class="hr-h3">$22.64</h3>')).length > 0,
+    'gh-3661 NEGATIVE CONTROL: "$22.64" in place of the tile heading FAILS');
+  ok(indexUnexempted(idx.replace('<section class="hr-sec hr-facts" id="facts">', '<section class="hr-sec hr-facts" id="facts">' + PH)).length > 0,
+    'gh-3661 NEGATIVE CONTROL: the same bare "$22.63" heading placed outside #proof (in #facts) FAILS');
+  ok(indexUnexempted(idx.replace('id="proof"', 'id="proofx"')).length > 0,
+    'gh-3661 NEGATIVE CONTROL: the tile heading with no #proof section around it FAILS');
   // The three leaks named in #2152 comment 5839667108, confirmed FIXED
   // (also exercised in isolation by tests/gh2155-hi0c-inspector-sweep.mjs,
   // but pinned here directly against the crawl's own findings).
