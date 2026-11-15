@@ -2987,9 +2987,11 @@
       const btn        = document.getElementById('loadHoverSidingDataBtn');
       const content    = document.getElementById('hoverDesignContent');
       const noDataHelp = document.getElementById('hoverNoDesignHelp');
-      if (!currentClaim || !btn || !content) return;
-      btn.disabled = true;
-      btn.textContent = 'Unavailable';
+      if (!currentClaim || !content) return;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Unavailable';
+      }
       content.innerHTML = '<span style="color:#6B7280;">Vendor siding design data is no longer available. Use the homeowner\'s uploaded measurements, or enter your own.</span>';
       if (noDataHelp) noDataHelp.style.display = 'none';
     }
