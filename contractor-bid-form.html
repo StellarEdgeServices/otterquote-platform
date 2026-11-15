@@ -5178,10 +5178,10 @@
     // "declared" == a radio in the row's group is checked; nothing is
     // checked on load, so an untouched row is unambiguously undeclared.
     //
-    // This gate applies ONLY where valueAddsSection actually renders today:
-    // retail (out-of-pocket) roofing bids (isRetailJob && roofing trade,
-    // wizard or non-wizard). It never renders for insurance-funded roofing,
-    // gutters-only, or siding-only bids, so those paths are unaffected.
+    // This gate applies ONLY to retail (out-of-pocket) roofing bids
+    // (isRetailJob && roofing trade, wizard or non-wizard; see _section2Required).
+    // gh-3731: insurance-funded bids never require it, even though the
+    // section is on screen for them; gutters-only and siding-only are unaffected.
     const VALUE_ADD_DECLARATION_ROWS = [
       {
         key: 'gutters',
@@ -5264,7 +5264,10 @@
     // keep their state while hidden, so the same validate/build code reads them unchanged.
     function _section2Required() {
       if (wizardMode) return !!isRetailJob && wizardTradeQueue.includes('roofing');
-      return _valueAddsSectionVisible();
+      // gh-3731 (CTO ruling on #1339, comment 6776723904; #3711 trigger scope): retail/cash roofing only. The section is also
+      // on screen for insurance jobs (value adds), where it stays optional. isRetailJob is the same retail/cash test the form
+      // uses everywhere (job_type 'retail' or funding_type 'cash').
+      return !!isRetailJob && _valueAddsSectionVisible();
     }
 
     // gh-1339 (REVIEW 6898001468): trade_type comes from the wizard queue, never from the hidden
