@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-11-15T17:30Z): NOT APPLIED. EVIDENCE: read-only production SELECT 2026-11-15 (pg_get_viewdef of public.lead_goal_events equals the 20260927143606 S16 view, no gh3722 columns); PR #3729 (REVIEW 6898394451, Ben ruling: unapplied, so a draft). REPO COPY: this file only. DO NOT RUN FROM THIS DIRECTORY; at apply, Marty files it under its ledger version in supabase/migrations/ and the rollback in supabase/migrations_rollbacks/.
+-- STATUS (gh-1438, as of 2026-11-15T17:41Z): NOT APPLIED. EVIDENCE: read-only production SELECT 2026-11-15 (pg_get_viewdef of public.lead_goal_events equals the 20260927143606 S16 view, no gh3722 columns); PR #3729 (REVIEW 6898394451, Ben ruling: unapplied, so a draft). REPO COPY: this file only. DO NOT RUN FROM THIS DIRECTORY; at apply, Marty files it under its ledger version in supabase/migrations/ and the rollback in supabase/migrations_rollbacks/.
 -- Rollback for gh3722_lead_goal_events_paid_click.sql (gh-3722).
 -- CREATE OR REPLACE cannot drop columns, so drop and recreate the view with the
 -- S16 definition (20260927143606_gh2121_s16_lead_goal_security_fix.sql). Nothing
