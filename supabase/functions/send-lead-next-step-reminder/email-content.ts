@@ -81,6 +81,9 @@ Either one keeps your project moving.`;
 // substituted. No CTA links (the reply IS the next step), no call promise, no
 // price. The footer below is the existing template footer, unchanged.
 export const HO6_VARIANT = "ho6";
+// Re-declared here (not imported) to keep email-content.ts dependency-free;
+// the same literal as select-candidates.ts's D_VARIANT (a test pins them equal).
+export const D_VARIANT = "d";
 export const HO6_SUBJECT = "Your next step with Otter Quotes";
 export const HO6_PREHEADER =
   "Reply with a few lines about your job and we'll take it from there.";
@@ -101,6 +104,37 @@ export const HO6_REPLY_TO = "dustinstohler1@gmail.com";
 export function replyToForVariant(variant: string | null | undefined): string | undefined {
   return variant === HO6_VARIANT ? HO6_REPLY_TO : undefined;
 }
+
+// gh-3420 (variant d, the live front-door arm) -- Ben's ruling on PR #3425,
+// comment 6776272506 (Tier A, R-015; otterquote-value-proposition.md 4.4 and
+// 4.7 bar call-back promises with no staffed call path, and arm d has none):
+//  - no preheader (the "while you wait to hear from Dustin" line is dropped);
+//  - always the no-phone body (D-332), whether or not a phone is on file;
+//  - "$22.63" -> the approved "as little as $22.63" (site FAQ / guides use the
+//    same wording); the duplicate "($22.63," in the parenthetical is dropped
+//    so the figure appears once;
+//  - "local contractors" -> "multiple contractors" (approved non-geographic
+//    wording, value-proposition 'Otter Quotes ... submit it to multiple
+//    contractors'; D-169 bars geographic coverage claims).
+// Every other word is BODY_TEMPLATE_NO_PHONE's, unchanged and in order.
+// Pending: fresh REVIEW + LEGAL-READ (Ben, same comment).
+export const D_VARIANT_BODY_TEMPLATE =
+  `Hi {first_name},
+
+We've got your request.
+
+Two quick options:
+
+Already have your insurance loss sheet? Upload it now and we'll start
+sending your scope of work to multiple contractors.
+
+Want bids ready sooner? Get a measurement report for as little as $22.63
+(rebated if you complete a job on the platform) -- no ladder, no appointment,
+nothing to photograph.
+
+Either one keeps your project moving.`;
+export const D_VARIANT_PREHEADER = "";
+export const D_VARIANT_MEASUREMENT_CTA_LABEL = "Get the measurement report for as little as $22.63";
 
 export const LOSS_SHEET_CTA_LABEL = "Upload your loss sheet";
 export const MEASUREMENT_CTA_LABEL = "Get the $22.63 measurement report";
@@ -212,7 +246,10 @@ export function buildLeadReminderEmail(
   if (variant === HO6_VARIANT) {
     return buildHo6Email(firstName, optOutUrl);
   }
-  const template = hasPhone ? BODY_TEMPLATE : BODY_TEMPLATE_NO_PHONE;
+  const isD = variant === D_VARIANT;
+  const template = isD ? D_VARIANT_BODY_TEMPLATE : hasPhone ? BODY_TEMPLATE : BODY_TEMPLATE_NO_PHONE;
+  const preheader = isD ? D_VARIANT_PREHEADER : PREHEADER;
+  const measurementLabel = isD ? D_VARIANT_MEASUREMENT_CTA_LABEL : MEASUREMENT_CTA_LABEL;
   // Fix round 1 (should-fix, adversarial test A11): a function replacer
   // (`() => firstName`) is used instead of `template.replace("{first_name}",
   // firstName)` — the string form of replace() treats "$&", "$1", "$$" etc.
@@ -228,21 +265,21 @@ export function buildLeadReminderEmail(
   const textBody =
     `${body}\n\n` +
     `${LOSS_SHEET_CTA_LABEL}: ${lossSheetUrl}\n` +
-    `${MEASUREMENT_CTA_LABEL}: ${measurementUrl}\n\n` +
+    `${measurementLabel}: ${measurementUrl}\n\n` +
     `${FROM_ADDRESS}\n\n` +
     `${POSTAL_ADDRESS}\n\n` +
     `${OPTOUT_TEXT_LINE} ${OPTOUT_LINK_TEXT}: ${optOutUrl}`;
 
   const htmlBody =
     `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#1a1a1a;">` +
-    `<p style="display:none;max-height:0;overflow:hidden;">${escapeHtml(PREHEADER)}</p>` +
+    (preheader ? `<p style="display:none;max-height:0;overflow:hidden;">${escapeHtml(preheader)}</p>` : "") +
     body
       .split("\n\n")
       .map((para) => `<p>${escapeHtml(para).replace(/\n/g, "<br>")}</p>`)
       .join("\n") +
     `<p>` +
     `<a href="${lossSheetUrl}" style="color:#0a5;">${escapeHtml(LOSS_SHEET_CTA_LABEL)}</a><br>` +
-    `<a href="${measurementUrl}" style="color:#0a5;">${escapeHtml(MEASUREMENT_CTA_LABEL)}</a>` +
+    `<a href="${measurementUrl}" style="color:#0a5;">${escapeHtml(measurementLabel)}</a>` +
     `</p>` +
     `<hr style="border:none;border-top:1px solid #ddd;margin:24px 0;">` +
     `<p style="font-size:12px;color:#666;">${escapeHtml(FROM_ADDRESS)}<br>` +
@@ -251,5 +288,5 @@ export function buildLeadReminderEmail(
     `</p>` +
     `</div>`;
 
-  return { subject: SUBJECT, preheader: PREHEADER, textBody, htmlBody };
+  return { subject: SUBJECT, preheader, textBody, htmlBody };
 }

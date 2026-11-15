@@ -690,11 +690,6 @@ function Step3Card({ contractor, onAdvance }: { contractor: ContractorRecord; on
         <span>{T.step3.partnerAgreement.checkLabel}</span>
       </label>
 
-      <div className="oqp-info-box">
-        <strong>{T.step3.cancellation.heading}</strong>
-        <p>{T.step3.cancellation.body}</p>
-        <p><strong className="oqp-white">{T.step3.cancellation.bodyStrong}</strong></p>
-      </div>
       <label className="oqp-check">
         <input type="checkbox" checked={cancellation} onChange={(e) => setCancellation(e.target.checked)} />
         <span>{T.step3.cancellation.checkLabel}</span>
