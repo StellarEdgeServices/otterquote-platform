@@ -30,6 +30,27 @@
     // silently no-op'ing on every guarded call.
     return;
   }
+  // gh-3704 (Sentry JAVASCRIPT-3T): supabase-js@2.116.0's GoTrueClient constructor fires
+  // initialize() without a .catch. In a browser where Error instances come back
+  // non-extensible (seen once: Chrome 138 / Windows, a patched or locked-down Error),
+  // AuthError's `this.__isAuthError = true` throws "Cannot add property __isAuthError,
+  // object is not extensible" inside _initialize's catch, so the init promise rejects with
+  // nobody listening -> an unhandled rejection Sentry reports as a new issue. The throw is
+  // in vendor code we load from the CDN, so we cannot fix it at the source; we keep this one
+  // known environment fault out of Sentry. Registered in the CAPTURE phase BEFORE
+  // createClient() so it runs ahead of Sentry's own unhandledrejection listener, and matched
+  // narrowly (TypeError + exact message + a supabase frame) so real errors still report.
+  if (typeof window.addEventListener === 'function') {
+    window.addEventListener('unhandledrejection', function (ev) {
+      var r = ev && ev.reason;
+      if (!r || r.name !== 'TypeError' || typeof r.message !== 'string') return;
+      if (r.message.indexOf('Cannot add property __isAuthError') !== 0) return;
+      if (String(r.stack || '').indexOf('supabase') === -1) return;
+      if (typeof ev.preventDefault === 'function') ev.preventDefault();
+      if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+      try { console.warn('[gh-3704] supabase-js init hit a non-extensible Error; suppressed from Sentry'); } catch (_) {}
+    }, true);
+  }
   window.sb = factory(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, {
     auth: {
       storage: window.OtterQuoteCookieStorage,
