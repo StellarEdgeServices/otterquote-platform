@@ -3,8 +3,8 @@
 //   ->  stripe-webhook's REAL loadFeeAcceptanceForDispute (rescinded_at IS NULL) must return the FRESH row, not "no_row_for_selected_bid".
 // The table below is an in-memory stand-in. The guard trigger is modelled by `guard` and PROVEN on a real Postgres by
 // supabase/tests/gh3750_reopen_acceptance_proof.sql (before the migration the fresh row is quarantined duplicate_bid; after, it is recorded).
-// FAIL-FIRST on head 8042784a: the stamp alone (no reopen insert in either form) leaves the dispute path with no row, and the two form-wiring tests fail.
-import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+// The 'hazard' test documents what the stamp alone does without the reopen insert; the form-side tests that fail on 8042784a are the vitest wiring test and the Chromium test.
+import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { stampFeeAcceptancesRescinded } from "./fee-acceptance-rescind.ts";
 import { loadFeeAcceptanceForDispute } from "../stripe-webhook/fee-acceptance-select.ts";
 
@@ -81,26 +81,5 @@ Deno.test("NEGATIVE CONTROL: with today's guard (no migration) the fresh row is 
   assertEquals((await pick(st)).reason, "no_row_for_selected_bid");
 });
 
-const html = await Deno.readTextFile(new URL("../../../contractor-bid-form.html", import.meta.url));
-const tsx = await Deno.readTextFile(new URL("../../../react-app/app/contractor/bid/[claimId]/bid-form.tsx", import.meta.url));
-
-Deno.test("form wiring (HTML): the reopen path inserts fee_acceptances for the SAME quote id after the field UPDATE, once", () => {
-  const reopenFlag = html.indexOf("const _reopenedWithdrawnBid = _renewRpcMode === 'reopen'");
-  const updateZero = html.indexOf("bid_update_zero_rows: no matching quote row was updated");
-  const ins = html.indexOf("if (_reopenedWithdrawnBid && existingQuote.id !== _reopenAcceptanceDoneId)");
-  assert(reopenFlag > 0 && updateZero > reopenFlag && ins > updateZero, "flag read before the RPC; insert after the UPDATE's zero-row check");
-  const block = html.slice(ins, ins + 2200);
-  assert(/from\('fee_acceptances'\)\.insert\(\{/.test(block) && /bid_id: existingQuote\.id,/.test(block));
-  assert(/fee_text_displayed: _exactFeeText,/.test(block) && /fee_amount: _feeAmount,/.test(block));
-  assert(/_reopenAcceptanceDoneId = existingQuote\.id;/.test(block));
-});
-
-Deno.test("form wiring (React twin): same, through buildFeeAcceptanceInsert", () => {
-  const flag = tsx.indexOf("const reopenedWithdrawnBid = renewRpcMode === 'reopen'");
-  const zero = tsx.indexOf("bid_update_zero_rows: no matching quote row was updated");
-  const ins = tsx.indexOf("if (reopenedWithdrawnBid && existingQuote && reopenAcceptanceDoneRef.current !== existingQuote.id)");
-  assert(flag > 0 && zero > flag && ins > zero);
-  const block = tsx.slice(ins, ins + 2600);
-  assert(/from\('fee_acceptances'\)\.insert\(buildFeeAcceptanceInsert\(\{/.test(block) && /bidId: reopenBidId/.test(block) && /feeTextDisplayed: exactFeeText/.test(block));
-  assert(/reopenAcceptanceDoneRef\.current = reopenBidId;/.test(block));
-});
+// The two forms' wiring is asserted where the CI read scope allows it: react-app vitest (gh3750-reopen-acceptance-wiring.test.ts, both forms)
+// and the real-browser test tests/gh3750-reopen-acceptance-chromium.mjs. (CI runs this suite with --allow-read scoped to supabase/, so it cannot read the pages.)
