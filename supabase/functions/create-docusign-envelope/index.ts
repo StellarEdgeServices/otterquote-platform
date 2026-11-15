@@ -1282,14 +1282,18 @@ function generateRetailScopeOfWorkPdf(params) {
       else if (go.includes("5inch") && go.includes("additional")) gutterDesc = '5" Gutters - homeowner out-of-pocket, see Contingencies';
       else if (go.includes("6inch") && go.includes("additional")) gutterDesc = '6" Gutters - homeowner out-of-pocket, see Contingencies';
       else if (go === "none") gutterDesc = "No gutter work included";
-      // [gh-3745] "No gutter work included" is false when gutters is a contracted trade or the bid carries gutter scope/pricing (a gutters-only
-      // bid has no gutterOption radio, so the form saves the default 'none'). Omit the line; no replacement wording (printing the bid's actual
-      // gutter scope is a separate Tier C decision). Roofing jobs where the contractor chose "none" keep the line exactly as before.
-      const gutterNoneIsFalse = go === "none" && (hasGutters
-        || va.gutter_5inch_price != null || va.gutter_6inch_price != null || va.gutters?.linearFootage != null);
+      // [gh-3745] "No gutter work included" is false only when 'none' is the bid form's DEFAULT, not the contractor's choice: a gutters-only bid
+      // has no gutterOption radio, so the form saves 'none' (and no declarations). On a roofing/siding+gutters bid the radio exists and "Not
+      // included / N/A" is a real declaration (declarations.gutters.state === "not_offered"); the exclusion is kept. Omit the line only when
+      // 'none' is not declared not_offered AND (the job is gutters-only OR the bid carries gutter trade fields). No replacement wording
+      // (printing the bid's gutter scope is a separate Tier C decision).
+      const gutterNoneIsDefault = go === "none"
+        && !(declarations && typeof declarations === "object" && declarations.gutters?.state === "not_offered")
+        && ((!hasRoofing && !hasSiding)
+          || va.gutter_5inch_price != null || va.gutter_6inch_price != null || va.gutters?.linearFootage != null);
       // [gh-3719] The out-of-pocket value is a "see Contingencies" reference: with no matching Contingencies gutters row it is omitted.
       const gutterIsRef = gutterDesc.includes("see Contingencies");
-      if (!(gutterIsRef && !sowContingenciesRowExists(declarations, "gutters")) && !gutterNoneIsFalse) {
+      if (!(gutterIsRef && !sowContingenciesRowExists(declarations, "gutters")) && !gutterNoneIsDefault) {
         gutterLines.push({ label: "Gutters:", value: gutterDesc });
       }
     }

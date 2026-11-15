@@ -48,10 +48,25 @@ Deno.test("gutters-only job with bid gutter prices / footage and option 'none': 
   }
 });
 
-Deno.test("roofing+gutters job, option 'none': line omitted; a bid gutter-guard line still prints under the heading", () => {
-  const pdf = sow({ trades: ["roofing", "gutters"], va: { ...NONE, gutter_guards: { pricing_on_request: true } } });
+Deno.test("roofing+gutters bid, contractor CHOSE 'none' (declarations.gutters = not_offered): the exclusion line IS kept", () => {
+  const pdf = sow({ trades: ["roofing", "gutters"], va: NONE, declarations: { gutters: { state: "not_offered", rate_cents: null } } });
+  assert(pdf.includes("No gutter work included"));
+  assert(has(pdf, "GUTTERS") && has(pdf, "Gutters:"));
+});
+
+Deno.test("roofing+gutters bid, 'none' with gutter trade fields and NOT declared not_offered (form default): omitted; a bid guard line still prints", () => {
+  const va = { ...NONE, gutter_5inch_price: 11, gutter_guards: { pricing_on_request: true } };
+  const pdf = sow({ trades: ["roofing", "gutters"], va });
   assert(!pdf.includes("No gutter work included"));
   assert(has(pdf, "GUTTERS") && has(pdf, "Gutter Guards:"));
+});
+
+Deno.test("roofing+gutters bid, 'none', no gutter trade fields, no declaration: exclusion kept (not provably the form default)", () => {
+  assert(sow({ trades: ["roofing", "gutters"], va: NONE }).includes("No gutter work included"));
+});
+
+Deno.test("gutters-only job, not_offered declared for another row only: default 'none' still omitted", () => {
+  assert(!sow({ trades: ["gutters"], va: NONE, declarations: { chimney: { state: "not_offered" } } }).includes("No gutter work included"));
 });
 
 Deno.test("CONTROL (unchanged by #3745): roofing-only job, option 'none': the GUTTERS block is gated on a gutters trade, so nothing prints, before and after", () => {
