@@ -1,0 +1,44 @@
+name: Static Winter Guides Test
+
+# gh-3737 -- the window, siding and gutter winter guides are built, listed in the sitemap and wired into the guides index.
+# Runs tests/gh3737-winter-guides.mjs (no browser, no secrets). `pull_request` only, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'guides/window-replacement-in-winter-what-your-bid-should-say.html'
+      - 'guides/siding-installation-in-cold-weather-what-to-ask.html'
+      - 'guides/gutter-installation-in-winter-what-to-ask.html'
+      - 'guides/index.html'
+      - 'sitemap.xml'
+      - 'llms.txt'
+      - '_redirects'
+      - 'netlify/edge-functions/blog-guides-redirect.ts'
+      - 'tests/gh3737-winter-guides.mjs'
+      - '.github/workflows/static-gh3737-winter-guides.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3737-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  winter-guides:
+    name: Winter guides (gh-3737)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Guides exist, FAQPage JSON-LD, listed (gh3737)
+        run: node tests/gh3737-winter-guides.mjs
