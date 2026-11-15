@@ -1,4 +1,4 @@
-<!-- STATUS (gh-1438, as of 2026-10-19): NOT APPLIED -->
+<!-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261019220737, name gh2819_quotes_client_select_refused; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record) -->
 <!-- FILE ROLE: pre-flight of set gh2819_quotes_client_select_refused (the STATUS is the set's; it describes the forward migration) -->
 <!-- EVIDENCE: drafted without database access; the writer search below is from Kevin's pre-flight on #2819 comment 6253767326 -->
 <!-- REPO COPY: none -->

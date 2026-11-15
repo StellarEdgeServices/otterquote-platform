@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-11-10): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261111190352, name cto101_revoke_anon_secdef_nonpublic; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- EVIDENCE: CTO RUN 101 (claim cto-2026-11-10T17:30:11Z). The Supabase security advisor, observed 2026-11-10T17:35:48Z, lists 12 anon-executable SECURITY DEFINER functions in public.
 --   This file touches 2 of them. No database was read or written to produce this file (repository-only work); the live grants are the advisor's word, not re-measured here.
 -- REPO COPY: none

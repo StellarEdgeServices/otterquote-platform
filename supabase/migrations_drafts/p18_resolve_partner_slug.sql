@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-30T13:30:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261030141959, name p18_resolve_partner_slug; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- EVIDENCE: drafted 2026-10-30 under #3232 (P18 routing). Read-only production reads the same day (yeszghaspzwwstvsrioa): public.resolve_partner_slug does not exist; referral_agents.status holds only 'active' (74) and 'pending' (1) and there is no separate suspended column, so "active, not suspended" is status = 'active'; the P18 data layer (vanity_slug, reserved_slugs, p18_slug_is_reserved, referral_agent_slug_history) from PR #3223 is itself NOT APPLIED, so THIS FILE CANNOT RUN until #3223 is applied.
 -- REPO COPY: none (draft). Rollback: p18_resolve_partner_slug_rollback.sql. Tier 3A (one new read-only function, no table change), but it is granted to anon, so REVIEW first.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md

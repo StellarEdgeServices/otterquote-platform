@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-11-02T14:10:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261106192927); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh3245_referral_code_v4_gate (forward, rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-11-02 under #3245 (refs #3243, #3244; CTO RUN 92 claim cto-2026-11-02T13:06:08Z). Live definition read with pg_get_functiondef on project yeszghaspzwwstvsrioa 2026-11-02: md5(prosrc) first 8 characters = 654640a4, byte-identical to
 --   supabase/migrations/20260101000000_v000_baseline_schema.sql lines 1971-2070 (SECURITY DEFINER, search_path public, pg_temp). No database was written.
