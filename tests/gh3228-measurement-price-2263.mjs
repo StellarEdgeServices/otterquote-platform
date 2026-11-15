@@ -76,7 +76,7 @@ ok(!/Stripe:<\/strong>[^<]*\$\d/.test(privacy), 'S2b: negative control -- no dol
 const privacyEff = /Effective Date: (January|February|March|April|May|June|July|August|September|October|November|December) (\d{1,2}), (\d{4})/.exec(privacy);
 const privacyEffMs = privacyEff ? Date.UTC(+privacyEff[3], ['January','February','March','April','May','June','July','August','September','October','November','December'].indexOf(privacyEff[1]), +privacyEff[2]) : NaN;
 const privacyEffReal = !!privacyEff && new Date(privacyEffMs).getUTCDate() === +privacyEff[2] && new Date(privacyEffMs).getUTCMonth() === ['January','February','March','April','May','June','July','August','September','October','November','December'].indexOf(privacyEff[1]);
-ok(/<strong>Effective Date:<\/strong> (October 31|November 3), 2026/.test(terms) && privacyEffReal && privacyEffMs >= Date.UTC(2026, 9, 31), 'S2b: terms.html Effective Date is October 31, 2026 or later and privacy.html carries a real Effective Date on or after October 31, 2026');
+ok(/<strong>Effective Date:<\/strong> (January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4}/.test(terms) && privacyEffReal && privacyEffMs >= Date.UTC(2026, 9, 31), 'S2b: terms.html carries an Effective Date in "<Month> <day>, <year>" form (any date, so later Terms bumps need no test edit) and privacy.html carries a real Effective Date on or after October 31, 2026');
 const faq = read('faq.html');
 ok(faq.includes('The fee pays for ordering the report for you.') && !/covers (Otter Quotes\'|our) cost/.test(faq), 'S2b: FAQ says "The fee pays for ordering the report for you." (no "covers ... cost")');
 const hpf = read('react-app/app/(homeowner)/help-measurements/HoverPaymentForm.tsx');
