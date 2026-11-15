@@ -40,6 +40,15 @@ with tempfile.TemporaryDirectory() as d:
              "index.html": '<a href="/about">a</a><a href="/old">r</a>', "about.html": "<p>hi</p>"})
     rc, out = run(d)
     check("consistent tree passes", rc == 0)
+# gh-3556: a 410 rule must not hide a link to the removed page.
+with tempfile.TemporaryDirectory() as d:
+    tree(d, {"sitemap.xml": "<urlset></urlset>", "_redirects": "/gone-page 410!\n", "index.html": '<a href="/gone-page">x</a>'})
+    rc, out = run(d)
+    check("link to a 410-removed page is still flagged", rc == 1 and "/gone-page" in out)
+# gh-3556: removed pages answer 410 (rules exist in the real _redirects).
+red = Path("_redirects").read_text(encoding="utf8").splitlines()
+for src in ("/project-confirmation.html", "/project-confirmation", "/democracy", "/democracy/*"):
+    check("410 rule for " + src, any(l.split()[:1] == [src] and l.split()[-1].rstrip("!") == "410" for l in red if l.strip() and not l.startswith("#")))
 rc, out = run(".")
 print(out.strip())
 check("real repo has no 404-bound internal targets", rc == 0)

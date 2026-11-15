@@ -389,11 +389,6 @@
                     </div>
 
                     <!-- Cancellation Policy -->
-                    <div class="info-box">
-                        <strong>Homeowner Cancellation Policy</strong>
-                        <p style="margin-top: var(--sp-2);">Homeowners may switch to a different contractor in our network up to 3 days before their scheduled installation date, no questions asked. If this occurs: Otter Quotes handles the switch entirely, your platform fee is refunded in full, and the homeowner selects another contractor.</p>
-                        <p><strong style="color:var(--white);">A platform fee refund is your sole remedy if a homeowner exercises this right.</strong></p>
-                    </div>
                     <div class="check-group" style="margin-bottom: var(--sp-8);">
                         <input type="checkbox" id="agreeToCancellationPolicy" required>
                         <label for="agreeToCancellationPolicy">I understand that a homeowner may request a switch to another Otter Quotes contractor at least 3 days before the scheduled start date and before I begin work. As stated in Section 6.4 of the Agreement: if Otter Quotes confirms the switch, my Platform Fee is refunded, excluding any card processing fee. If the homeowner signs with a replacement Otter Quotes contractor before I begin work, I release the homeowner from our contract on that signing and will return any deposit, and the refund is my sole remedy. If I begin work before any such signing, the Platform Fee is due again. I agree to this as a condition of the platform.</label>
@@ -1370,6 +1365,15 @@
             }
 
             currentUser = session.user;
+
+            // gh-3002: a contractor magic link lands HERE, not on /auth-callback.html
+            // (js/auth.js sendMagicLink / contractor-join.html redirect), and this page
+            // never ran Auth.handleAuthCallback(), so record_first_touch_attribution was
+            // never called for contractor signups (profile cf12a80d, 2026-10-31: null
+            // first touch). Same bounded, non-fatal, write-once RPC auth-callback.html
+            // uses; it reads only the existing oq_ft cookie / localStorage copy, so the
+            // D-397 consent rails (GPC, oq_ad_optout) are inherited and nothing new is collected.
+            try { if (window.Auth && typeof window.Auth.recordFirstTouchAttribution === 'function') await window.Auth.recordFirstTouchAttribution(); } catch (e) { /* non-fatal */ }
 
             // Load contractor record
             let { data: ct, error: ctErr } = await sb.from('contractors')

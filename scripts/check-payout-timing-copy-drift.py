@@ -123,6 +123,15 @@ ALLOWLIST = [
         "minimum (Section 5.1), no number of days. Nothing here promises when money moves.",
     ),
     (
+        "locations/carmel-city-in/roofing/index.html",
+        "demolition delay ordinance, D-2338-16",
+        "historic-commission keyword proximity",
+        "gh-3601: the Carmel city page. Category (c) keyword proximity: 'commission' here is Carmel's Historic "
+        "Preservation Commission, not a partner or contractor commission. The durations (a 60-day wait, "
+        "extendable to 90, in the city's demolition delay ordinance) are the city's own, quoted from the "
+        "commission's published page; nothing is said about when any money moves.",
+    ),
+    (
         "contractor-agreement.html",
         "typically approved and processed within five (5) business days",
         "approval-step timing",

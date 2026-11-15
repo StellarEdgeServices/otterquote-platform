@@ -63,7 +63,7 @@ export const BID_COPY = {
     // "flat 5%" / "based on the RCV" notes). Same text for every job type: D-267 says
     // no fee computation references RCV or any other basis. HTML form: contractor-bid-form.html:2295.
     feeExplainer:
-      'A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission.',
+      'A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission. If you pay by card, a processing fee of 2.9% + $0.30 is added to the platform fee shown above, as stated in Section 7.7 of your Contractor Partner Agreement.',
   },
 
   // ── D-199 bid-time validation gate prompts (contractor-bid-form.html) ──────

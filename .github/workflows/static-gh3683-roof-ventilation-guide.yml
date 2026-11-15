@@ -1,0 +1,42 @@
+name: Static Roof Ventilation Guide Test
+
+# gh-3683 -- the roof ventilation guide is built, listed in the sitemap and wired into the guides index.
+# Runs tests/gh3683-roof-ventilation-guide.mjs (no browser, no secrets). `pull_request` only, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'guides/roof-ventilation-in-your-replacement-bid.html'
+      - 'guides/index.html'
+      - 'sitemap.xml'
+      - 'llms.txt'
+      - '_redirects'
+      - 'netlify/edge-functions/blog-guides-redirect.ts'
+      - 'tests/gh3683-roof-ventilation-guide.mjs'
+      - '.github/workflows/static-gh3683-roof-ventilation-guide.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3683-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  roof-ventilation-guide:
+    name: Roof ventilation guide (gh-3683)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Guide exists, FAQPage JSON-LD, listed (gh3683)
+        run: node tests/gh3683-roof-ventilation-guide.mjs

@@ -204,6 +204,14 @@
     },
     {
       "@type": "Question",
+      "name": "How does Otter Quotes compare with Thumbtack or Angi?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "We wrote two side-by-side guides: Otter Quotes vs Thumbtack (https://otterquote.com/guides/otter-quotes-vs-thumbtack.html) and Otter Quotes vs Angi (https://otterquote.com/guides/otter-quotes-vs-angi.html)."
+      }
+    },
+    {
+      "@type": "Question",
       "name": "What is a \"Help Me\" tool?",
       "acceptedAnswer": {
         "@type": "Answer",
@@ -297,6 +305,14 @@
         "@type": "Answer",
         "text": "There is no fee to use Otter Quotes. Homeowners pay as little as $22.63 for an aerial roof report, or nothing if they provide a copy of their insurance estimate. The fee is rebated in full when a job is completed through the platform; our Terms list the conditions. The report helps contractors provide more accurate bids."
       }
+    },
+    {
+      "@type": "Question",
+      "name": "What is the referral fee when a job completes?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "$200 when a homeowner you refer completes a project of $10,000 or more. $50 on the same terms for referrals from partners you recruit. It is a flat referral fee, not a percentage. The Partner Agreement (section A4.4) lists the states where no fee is earned. Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees."
+      }
     }
   ]
 }
@@ -357,6 +373,16 @@
         </button>
         <div class="faq-answer">
           <p>Just your name, email, phone number, and address. That's it to create an account. After that, we'll walk you through gathering what contractors need &mdash; your project scope, property measurements, and material preferences. If you have an insurance estimate, that helps too. For anything you don't have, our "Help Me" tools will guide you through getting it.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          How does Otter Quotes compare with Thumbtack or Angi?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>We wrote two side-by-side guides: <a href="/guides/otter-quotes-vs-thumbtack.html">Otter Quotes vs Thumbtack</a> and <a href="/guides/otter-quotes-vs-angi.html">Otter Quotes vs Angi</a>.</p>
         </div>
       </div>
 
@@ -503,6 +529,19 @@
 
       <div class="faq-item">
         <button class="faq-question">
+          What is the referral fee when a job completes?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>$200 when a homeowner you refer completes a project of $10,000 or more. $50 on the same terms for referrals from partners you recruit. It is a flat referral fee, not a percentage. The <a href="/partner-agreement.html">Partner Agreement</a> (section A4.4) lists the states where no fee is earned.</p>
+          <p class="referral-fee-disclaimer" style="color: var(--slate, #94A3B8); font-size: 0.85rem; margin-top: 0.75rem; line-height: 1.5;">
+            Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
+          </p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
           What if my client doesn't have their insurance estimate yet?
           <span class="faq-arrow">&#x25BC;</span>
         </button>
@@ -550,12 +589,45 @@
 <footer id="site-footer"></footer>
 
 <script>
+  // gh-3680: an open answer's max-height is its own scrollHeight, so no answer is clipped however long it grows. An inline
+  // max-height beats any .open rule in the stylesheet (the 500px cap and the scoped .oq-guarantee one), so the CSS caps no
+  // longer apply once this runs. Transitions stay ON: the target height is measured on an off-screen clone in its final
+  // (open) layout, then set inline, so the 0.4s max-height animation still plays. Closing clears the inline value so the
+  // CSS 0 applies. Open items are re-fitted on resize, orientationchange, load and web-font load.
+  function measureFaqAnswer(item) {
+    var clone = item.cloneNode(true);
+    clone.classList.add('open');
+    clone.removeAttribute('hidden');
+    clone.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;pointer-events:none;transition:none;width:' + item.getBoundingClientRect().width + 'px';
+    var cans = clone.querySelector('.faq-answer');
+    cans.style.transition = 'none';
+    cans.style.maxHeight = 'none';
+    item.parentNode.appendChild(clone);
+    var h = cans.scrollHeight;
+    item.parentNode.removeChild(clone);
+    return h;
+  }
+  function fitFaqAnswer(item, willOpen) {
+    var ans = item.querySelector('.faq-answer');
+    if (!ans) return;
+    if (willOpen === false || (willOpen === undefined && !item.classList.contains('open'))) { ans.style.maxHeight = ''; return; }
+    ans.style.maxHeight = measureFaqAnswer(item) + 'px';
+  }
+  function fitOpenFaqAnswers() {
+    document.querySelectorAll('.faq-item.open').forEach(function(item) { fitFaqAnswer(item); });
+  }
   document.querySelectorAll('.faq-question').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var item = btn.closest('.faq-item');
+      var opening = !item.classList.contains('open');
+      fitFaqAnswer(item, opening);  // measure and set the target first, with no layout read in between, so the transition runs from 0
       item.classList.toggle('open');
     });
   });
+  window.addEventListener('resize', fitOpenFaqAnswers);
+  window.addEventListener('orientationchange', fitOpenFaqAnswers);
+  window.addEventListener('load', fitOpenFaqAnswers);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitOpenFaqAnswers);
 </script>
 <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
