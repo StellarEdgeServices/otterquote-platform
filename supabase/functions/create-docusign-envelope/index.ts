@@ -1467,8 +1467,21 @@ function generateRetailScopeOfWorkPdf(params) {
       const scopeLabels = [];
       if (hasRoofing) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
       if (hasSiding) scopeLabels.push(TRADE_SCOPE_LABEL.siding);
-      if (hasGutters) scopeLabels.push(TRADE_SCOPE_LABEL.gutters);
-      if (scopeLabels.length === 0) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
+      // [gh-3747] "Complete gutter installation" prints only when the BID shows gutter work included, never because the claim lists the
+      // trade. Signal, in order: declarations.gutters.state ('included' prints; 'not_offered' / 'extra' / 'other' never print); with no
+      // gutters declaration, an included option on the bid ('5inch_included' / '6inch_included'), or, on a gutters-only job (the only
+      // job whose form saves gutter trade fields), a bid gutter price or footage. Existing string only; no new wording.
+      if (hasGutters) {
+        const gState = declValid ? declarations.gutters?.state : undefined;
+        const gOpt = va.gutters?.option;
+        const gutterTradeFields = va.gutter_5inch_price != null || va.gutter_6inch_price != null || va.gutters?.linearFootage != null;
+        const gutterIncludedByBid = gState === "included"
+          || (gState == null && (gOpt === "5inch_included" || gOpt === "6inch_included"
+            || (!hasRoofing && !hasSiding && gutterTradeFields)));
+        if (gutterIncludedByBid) scopeLabels.push(TRADE_SCOPE_LABEL.gutters);
+      }
+      // [gh-3747] The roofing fallback is for a claim with no recognised trade; a gutters claim whose bid excludes gutters must not become "Complete roofing installation".
+      if (scopeLabels.length === 0 && !hasGutters) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
       ensure(20 + (scopeLabels.length + includedLines.length) * 11);
       addText(LEFT_X, y, 12, "F2", "Included in Your Price - $" + Number(contractPrice || 0).toLocaleString("en-US"));
       y -= 14;
