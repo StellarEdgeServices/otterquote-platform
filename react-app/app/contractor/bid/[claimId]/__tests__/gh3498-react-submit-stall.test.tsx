@@ -71,12 +71,12 @@ const h = vi.hoisted(() => {
   }
   const supabase = {
     from: (t: string) => builder(t),
-    rpc: () => {
+    rpc: (name?: string) => {
       let signal: AbortSignal | null = null;
       const p: Record<string, unknown> = {
         abortSignal: (sig: AbortSignal) => { signal = sig; return p; },
         then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
-          (state.gate === 'hang' ? hang(signal) : Promise.resolve({ data: { can_submit: true }, error: null })).then(res, rej),
+          (state.gate === 'hang' || (name && state.hang.includes(`rpc:${name}`)) ? hang(signal) : Promise.resolve({ data: { can_submit: true }, error: null })).then(res, rej),
       };
       return p;
     },
@@ -438,4 +438,23 @@ describe('gh-3498 React bid form: stalled submit', () => {
       expect(h.state.aborted).toBe(1);
     });
   }
+
+  // gh-3498 (closes-on 6688126384, CLOSE-REVIEW 6808620469): the renew_quote RPC (gh-3560) runs inside the submit lock before the UPDATE.
+  it('change bid on a withdrawn bid: a renew_quote RPC that never answers ends with a message and an unlocked form, and a retry updates once', async () => {
+    const cancelled = { ...existing, bid_status: 'cancelled' };
+    const { container } = render(<BidForm mode="change" claim={claim as never} contractor={contractor as never} existingQuote={cancelled as never} flags={flags} claimRcv={null} userId="u1" />);
+    await ready(container);
+    h.state.hang.push('rpc:renew_quote');
+    await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+    await advance(16_000);
+    expect(container.textContent).toContain('Error submitting bid: ');
+    expect(submitBtn(container).textContent).not.toMatch(/Submitting/);
+    expect(feeBox(container).disabled).toBe(false);
+    expect(h.state.updates).toBe(0);
+    h.state.hang.length = 0;
+    if (!feeBox(container).checked) fireEvent.click(feeBox(container));
+    await act(async () => { fireEvent.click(submitBtn(container)); await vi.advanceTimersByTimeAsync(4000); });
+    expect(container.textContent).toContain('Bid updated');
+    expect(h.state.updates).toBe(1);
+  });
 });
