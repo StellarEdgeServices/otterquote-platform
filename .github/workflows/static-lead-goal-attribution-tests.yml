@@ -1,0 +1,45 @@
+name: Static Lead Goal Attribution Tests
+
+# gh-3722 -- lead_goal_events exposes utm_source/utm_medium/click-id flag/paid_click. Static check of the
+# migration text; CI never touches the database. `pull_request` + `push` to main, no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/migrations_rollbacks/**'
+      - 'tests/gh3722-static-lead-goal-attribution.mjs'
+      - '.github/workflows/static-lead-goal-attribution-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/migrations_rollbacks/**'
+      - 'tests/gh3722-static-lead-goal-attribution.mjs'
+      - '.github/workflows/static-lead-goal-attribution-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-lead-goal-attribution-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-lead-goal-attribution-tests:
+    name: Lead goal attribution (gh3722)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: lead_goal_events paid-click columns (gh3722)
+        run: node tests/gh3722-static-lead-goal-attribution.mjs
