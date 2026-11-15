@@ -54,7 +54,7 @@ const FAKE_SUPABASE = `
       const k = s.eqs.find((e) => e[0] === 'idempotency_key')[1];
       return { data: t.rows.find((r) => r.idempotency_key === k) || null, error: null };
     }
-    if (s.table === 'quotes' && s.op === 'select' && t.changeMode) return { data: existing, error: null };
+    if (s.table === 'quotes' && s.op === 'select' && t.changeMode) return { data: Object.assign({}, existing, { bid_status: t.quoteStatus || existing.bid_status }), error: null }; // quoteStatus: the server's bid_status once renew_quote has run
     if (s.table === 'quotes' && s.op === 'select' && (s.eqs || []).some((e) => e[0] === 'claim_id')) {
       t.lookups++;
       if (t.hideFromLookup) return { data: null, error: null };
@@ -82,6 +82,17 @@ const FAKE_SUPABASE = `
   function rpc(name) {
     t.calls.push(name);
     const s = { signal: null };
+    if (name === 'renew_quote') {
+      // Like the real RPC: it refuses a bid that is already live (55000), and a hung call can still complete server-side (t.renewLands).
+      t.renewCalls = (t.renewCalls || 0) + 1;
+      const hung = t.hang.includes('rpc:renew_quote');
+      return { abortSignal(sig) { s.signal = sig; return this; }, then(res, rej) {
+        if (hung) { t.hung++; if (t.renewLands) t.quoteStatus = 'active'; return hang(s).then(res, rej); }
+        if (t.quoteStatus === 'active' || (!t.quoteStatus && !/__cancelled=1/.test(location.search))) return Promise.resolve({ data: null, error: { code: '55000', message: 'renew_quote: mode reopen needs a cancelled bid' } }).then(res, rej);
+        t.quoteStatus = 'active';
+        return Promise.resolve({ data: null, error: null }).then(res, rej);
+      } };
+    }
     if (t.hang.includes('rpc:' + name)) { t.hung++; return { abortSignal(sig) { s.signal = sig; return this; }, then(res, rej) { return hang(s).then(res, rej); } }; }
     const p = {
       abortSignal(sig) { s.signal = sig; return p; },
@@ -599,6 +610,29 @@ test.describe('gh-3498 contractor-bid-form.html stalled submit (real page, Chrom
     await page.evaluate(() => { (window as any).__t.hang = []; });
     await clickSubmit(page);
     await expect.poll(async () => (await state(page)).success).toBe(true);
+  });
+
+  // gh-3498 (REVIEW 6809644127 F1): renew_quote times out in the browser but the server completes it. The page still holds the old
+  // bid status, so a retry used to send the same mode and the RPC refused it (55000) until a reload. The retry reads the status first.
+  test('renew_quote completes server-side after the browser timed out: the retry updates once and does not call renew_quote again', async ({ page }) => {
+    const dialogs: string[] = [];
+    page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
+    await openForm(page, { changeMode: true, cancelled: true });
+    await fillAndAccept(page);
+    await page.evaluate(() => { (window as any).__t.hang = ['rpc:renew_quote']; (window as any).__t.renewLands = true; });
+    await clickSubmit(page);
+    await expect.poll(() => hungCount(page)).toBeGreaterThan(0);
+    await page.clock.fastForward(16_000);
+    await expect.poll(() => dialogs.length).toBe(1);
+    expect(dialogs[0]).toMatch(/^Error submitting bid: /);
+    expect((await page.evaluate(() => (window as any).__t.quoteStatus))).toBe('active');
+    await page.evaluate(() => { (window as any).__t.hang = []; });
+    await clickSubmit(page);
+    await expect.poll(async () => (await state(page)).success).toBe(true);
+    expect(dialogs.length).toBe(1); // no second error dialog (no 55000 refusal)
+    const t = await page.evaluate(() => (window as any).__t);
+    expect(t.renewCalls).toBe(1);
+    expect(t.inserts.filter((i: any) => i.table === 'quotes' && i.op === 'update').length).toBe(1);
   });
 
   test('change bid: the quotes UPDATE that never answers ends with a message and an unlocked form, and a retry updates once', async ({ page }) => {
