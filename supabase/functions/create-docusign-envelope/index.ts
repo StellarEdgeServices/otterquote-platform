@@ -569,6 +569,19 @@ function mergeSowSelections(pc: any, claim: any, bidBrand?: string | null) {
   if (nb && ns && !nb.includes(ns) && !ns.includes(nb)) return pc ?? null;
   return { ...(pc ?? {}), shingleColor: name, shingleManufacturer: brand || pc?.shingleManufacturer || null };
 }
+// [gh-3288 / D-407 7/8, default 1] The drip-edge line comes from the contractor's bid, never from a homeowner colour. Options are the
+// contractor-bid-form.html dripEdgeOption values; "oop" reuses the SOW's existing "see Contingencies" phrasing (the price lives there, once).
+// "na" / missing prints nothing.
+function sowDripEdgeFromBid(va: any): string | null {
+  const opt = va?.drip_edge?.option;
+  const map: Record<string, string> = {
+    included_black: "Black - Included",
+    included_white: "White - Included",
+    included_custom: "Custom color / special order - Included",
+    oop: "Homeowner out-of-pocket option - see Contingencies",
+  };
+  return typeof opt === "string" && Object.prototype.hasOwnProperty.call(map, opt) ? map[opt] : null;
+}
 function resolveMeasurementShape(measurements: any) {
   const m = measurements || {};
   const LINEAR = ["ridgeHipLf", "valleyLf", "rakeLf", "eaveLf", "dripEdgeLf", "stepFlashingLf", "flashingLf"];
@@ -1175,10 +1188,13 @@ function generateRetailScopeOfWorkPdf(params) {
       addText(160, y, 10, "F1", shingleStr);
       y -= 14;
     }
-    if (pc?.dripEdgeColor) {
+    // [gh-3288 / D-407 7/8, default 1 accepted by Dustin 2026-11-05 (issue comment 6668572026)] Drip edge is no longer a homeowner choice
+    // (nothing collects pc.dripEdgeColor): the SOW prints what the contractor's bid says (value_adds.drip_edge). No new contract wording.
+    const dripEdgeLine = sowDripEdgeFromBid(va);
+    if (dripEdgeLine) {
       ensure(14);
-      addText(60, y, 10, "F2", "Drip Edge Color:");
-      addText(160, y, 10, "F1", pc.dripEdgeColor);
+      addText(60, y, 10, "F2", "Drip Edge:");
+      addText(160, y, 10, "F1", dripEdgeLine);
       y -= 14;
     }
     if (va.underlayment?.type) {
