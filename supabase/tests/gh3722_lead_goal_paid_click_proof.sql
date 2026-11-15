@@ -3,7 +3,7 @@
 -- Paste the forward migration body and the rollback body WITHOUT their own BEGIN;/COMMIT; lines,
 -- or the inner COMMIT will commit the change. The batch must end in ROLLBACK. Never COMMIT.
 BEGIN;
--- A: paste supabase/migrations/gh3722_lead_goal_events_paid_click.sql (minus BEGIN;/COMMIT;)
+-- A: paste supabase/migrations_drafts/gh3722_lead_goal_events_paid_click.sql (minus BEGIN;/COMMIT;)
 
 SELECT string_agg(column_name||':'||data_type, ',' ORDER BY ordinal_position) FROM information_schema.columns
  WHERE table_schema='public' AND table_name='lead_goal_events';
@@ -35,7 +35,7 @@ SELECT lead_has_click_id, lead_paid_click FROM public.lead_goal_events WHERE lea
 
 SELECT count(*) FROM public.lead_goal_events;  -- expect 8 (same as before)
 
--- E: paste the rollback body (minus BEGIN;/COMMIT;)
+-- E: paste supabase/migrations_drafts/gh3722_lead_goal_events_paid_click_rollback.sql (minus BEGIN;/COMMIT;)
 SELECT md5(pg_get_viewdef('public.lead_goal_events'::regclass, true));  -- expect 7cdde879ab108d0683e1ac72cc147986
 SELECT md5(obj_description('public.lead_goal_events'::regclass));      -- expect b7874ae428d3d5a95e9ed4495d212997
 SELECT reloptions, pg_get_userbyid(relowner), relacl FROM pg_class WHERE oid='public.lead_goal_events'::regclass;  -- expect {postgres=arwdDxtm,service_role=arwdDxtm}
