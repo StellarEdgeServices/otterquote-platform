@@ -5341,11 +5341,11 @@
       if (chimneyTypeChecked && chimneyTypeChecked.value !== 'na') {
         const chimneyOptionChecked = document.querySelector('input[type="radio"][name="chimneyOption"]:checked');
         if (!chimneyOptionChecked) {
-          if (_required) {
-            _showValueAddRowError('chimneyOptionRowError', 'Chimney work — say Included, Reuse/inspect, or Out of pocket.');
-            ok = false;
-            firstBadEl = firstBadEl || document.getElementById('chimneyTypeRow');
-          }
+          // gh-3731 (Ben, RUN 152): a chimney type with no option is a half-declared row, refused on every job type
+          // (never silently dropped). Only a fully blank chimney row is optional on insurance.
+          _showValueAddRowError('chimneyOptionRowError', 'Chimney work — say Included, Reuse/inspect, or Out of pocket.');
+          ok = false;
+          firstBadEl = firstBadEl || document.getElementById('chimneyTypeRow');
         } else if (chimneyOptionChecked.value === 'oop') {
           const rate = parseFloat(document.getElementById('chimneyOopPrice')?.value);
           if (!(rate > 0)) {

@@ -206,6 +206,26 @@ try {
     ok(await c2.page.evaluate(vis('#dripEdgeOptionRowError')), name + ': the rate message is shown');
     await c2.context.close();
   }
+  // 1c. Insurance, chimney type chosen but option blank: refused with the existing chimney message (no silent drop). A fully blank
+  //     chimney row stays optional (cases 1 and 1b).
+  {
+    const name = 'insurance chimney type chosen, option blank';
+    console.log('--- ' + name);
+    const { context, page } = await open(browser, base, ['roofing'], true);
+    await fillInsurance(page);
+    await page.evaluate(() => { document.querySelector('input[type="radio"][name="chimneyType"][value="reflash"]').click(); });
+    await submit(page);
+    ok(!(await quoteRow(page)), name + ': submit is refused, no row');
+    ok(await page.evaluate(vis('#chimneyOptionRowError')), name + ': the chimney message is shown');
+    const msg = await page.evaluate(() => document.getElementById('chimneyOptionRowError').textContent);
+    ok(msg === 'Chimney work \u2014 say Included, Reuse/inspect, or Out of pocket.', name + ': it is the existing message (' + msg + ')');
+    await page.evaluate(() => { document.querySelector('input[type="radio"][name="chimneyOption"][value="included"]').click(); });
+    await submit(page);
+    const row = await quoteRow(page);
+    const d = row ? decl(row) : null;
+    ok(!!d && d.chimney && d.chimney.state === 'included', name + ': with the option chosen it is written ' + JSON.stringify(d));
+    await context.close();
+  }
   // 2. Retail roofing, single trade: still blocked without declarations, written with them.
   {
     const name = 'retail single-trade roofing';
