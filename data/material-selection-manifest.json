@@ -128,7 +128,7 @@
       }
     },
     "siding": {
-      "_note": "Each siding selection cascades: Manufacturer → Product Line → Profile → Color. The 3D design studio (D-164) is the canonical homeowner-facing color picker for siding — this manifest is the contractor-facing fallback list and validation set.",
+      "_note": "Each siding selection cascades: Manufacturer → Product Line → Profile → Color. This manifest is the contractor-facing list and validation set.",
       "manufacturers": [
         {
           "name": "James Hardie",
@@ -184,7 +184,7 @@
           { "name": "Generic Cedar Shingle",      "profiles": ["Straight Edge", "Staggered Edge"] }
         ], "colorSets": ["Generic — color specified in notes"] }
       ],
-      "primaryDesignSource": "3D design studio link — homeowner selects exact product/color in the studio; manifest values populate fallback contractor dropdowns and the SOW line items."
+      "primaryDesignSource": "Manifest values populate contractor dropdowns and the SOW line items."
     },
     "gutters": {
       "_note": "Gutter style + size + material + color all populate the contractor bid form. Color cascade: select material → narrow color list.",
