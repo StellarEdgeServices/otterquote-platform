@@ -67,7 +67,7 @@ Deno.test("END TO END: stamp + reopen + the form's fresh insert -> the real stri
   assertEquals(st.clientInsert(freshRow()).length, 1);
   const r = await pick(st);
   assertEquals(r.reason, "ok");
-  assertEquals((r.row as Row).id, "fa-2");
+  assertEquals((r.row as unknown as Row).id, "fa-2");
   assertEquals(st.fa.filter((x) => x.rescinded_at == null).length, 1);
   assertEquals(st.fa[0].rescinded_at, "2026-11-15T19:56:00Z"); // the withdrawn acceptance stays on file, stamped
   assertEquals(st.quarantine.length, 0);
