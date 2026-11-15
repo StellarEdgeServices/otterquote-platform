@@ -31,7 +31,11 @@ for (const g of GUIDES) {
   if (g.title) check('title tag is the approved title', page.includes(`<title>${g.title}</title>`));
   check('canonical points at the guide URL', page.includes(`<link rel="canonical" href="${URL}">`));
   check('byline is the company only (D-414)', page.includes('Otter Quotes &middot; Updated November 2026') && !/Dustin/.test(page));
-  check('closing box is the neutral form (no trades, no price)', page.includes('We are not a contractor, we do not sell upgrades and we do not work with your insurance company.') && !/\$22\.63/.test(page));
+  if (slug.startsWith('window-')) {
+    check('window page closing box is the live window box (D-375): plain how-it-works link, no start button, no Nebraska (D-169)', page.includes('<p>You compare the bids online, next to reviews and licensing information, and you do not need a salesperson to visit your home. Contractors pay Otter Quotes a fee on the accepted bid. We do not sell upgrades, and we are not a contractor.</p>') && page.includes('<a href="/how-it-works.html">How Otter Quotes works</a>') && !page.includes('Get my bids today') && !page.includes('<a href="/start.html"') && !/Nebraska/.test(page));
+  } else {
+    check('closing box is the neutral form (no trades, no price)', page.includes('We are not a contractor, we do not sell upgrades and we do not work with your insurance company.') && !/\$22\.63/.test(page));
+  }
   check('no em or en dashes, no exclamation marks in the page text', !/[\u2013\u2014]/.test(page.replace(/<[^>]+>/g, '')) && !/!/.test(page.replace(/<!--[\s\S]*?-->|<!DOCTYPE[^>]*>/g, '').replace(/<script[\s\S]*?<\/script>/g, '')));
   const blocks = [...page.matchAll(/<script type="application\/ld\+json">\s*([\s\S]*?)<\/script>/g)];
   let faq = null;
