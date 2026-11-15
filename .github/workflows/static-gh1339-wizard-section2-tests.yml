@@ -13,6 +13,7 @@ on:
       - 'js/config.js'
       - 'js/supabase-client.js'
       - 'tests/gh1339-wizard-section2-declarations.mjs'
+      - 'tests/gh3731-section2-retail-only.mjs'
       - 'tests/e2e/package.json'
       - 'tests/e2e/package-lock.json'
       - '.github/workflows/static-gh1339-wizard-section2-tests.yml'
@@ -47,3 +48,5 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Wizard Section 2 declarations (gh1339-wizard-section2-declarations)
         run: node tests/gh1339-wizard-section2-declarations.mjs
+      - name: Section 2 retail/cash only, recorded wherever declared (gh3731-section2-retail-only)
+        run: node tests/gh3731-section2-retail-only.mjs

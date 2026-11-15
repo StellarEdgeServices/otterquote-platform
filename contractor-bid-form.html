@@ -5182,10 +5182,10 @@
     // "declared" == a radio in the row's group is checked; nothing is
     // checked on load, so an untouched row is unambiguously undeclared.
     //
-    // This gate applies ONLY where valueAddsSection actually renders today:
-    // retail (out-of-pocket) roofing bids (isRetailJob && roofing trade,
-    // wizard or non-wizard). It never renders for insurance-funded roofing,
-    // gutters-only, or siding-only bids, so those paths are unaffected.
+    // This gate applies ONLY to retail (out-of-pocket) roofing bids
+    // (isRetailJob && roofing trade, wizard or non-wizard; see _section2Required).
+    // gh-3731: insurance-funded bids never require it, even though the
+    // section is on screen for them; gutters-only and siding-only are unaffected.
     const VALUE_ADD_DECLARATION_ROWS = [
       {
         key: 'gutters',
@@ -5268,6 +5268,18 @@
     // keep their state while hidden, so the same validate/build code reads them unchanged.
     function _section2Required() {
       if (wizardMode) return !!isRetailJob && wizardTradeQueue.includes('roofing');
+      // gh-3731 (CTO ruling on #1339, comment 6776723904; #3711 trigger scope): retail/cash roofing only. The section is also
+      // on screen for insurance jobs (value adds), where it stays optional. isRetailJob is the same retail/cash test the form
+      // uses everywhere (job_type 'retail' or funding_type 'cash').
+      return !!isRetailJob && _valueAddsSectionVisible();
+    }
+
+    // gh-3731 (REVIEW 6898935932): "required" is not "recorded". Whatever the contractor declares in Section 2 is written to
+    // scope_summary.declarations wherever the section applies (on screen outside the wizard; roofing in a retail wizard queue),
+    // insurance included, because bids.html and create-docusign-envelope read only that key (gh-1378, D-317 cl. 3). On insurance
+    // blank rows are simply absent (readers treat absent as not declared) and are not an error.
+    function _section2Recorded() {
+      if (wizardMode) return !!isRetailJob && wizardTradeQueue.includes('roofing');
       return _valueAddsSectionVisible();
     }
 
@@ -5299,7 +5311,8 @@
     // Shows per-row inline messages — not one banner — and scrolls to the
     // first offending row. Returns true/false.
     function validateValueAddDeclarations() {
-      if (!_section2Required()) return true; // gate applies only where Section 2 applies (see _section2Required)
+      if (!_section2Recorded()) return true; // nothing to check where Section 2 does not apply
+      const _required = _section2Required(); // gh-3731: blank rows are an error on retail/cash only
 
       let firstBadEl = null;
       let ok = true;
@@ -5308,9 +5321,11 @@
         _clearValueAddRowError(row.errorElId);
         const checkedEl = document.querySelector(`input[type="radio"][name="${row.radioName}"]:checked`);
         if (!checkedEl) {
-          _showValueAddRowError(row.errorElId, `${row.rowLabel} — say Included, Extra, or Not offered.`);
-          ok = false;
-          firstBadEl = firstBadEl || document.getElementById(row.containerId);
+          if (_required) {
+            _showValueAddRowError(row.errorElId, `${row.rowLabel} — say Included, Extra, or Not offered.`);
+            ok = false;
+            firstBadEl = firstBadEl || document.getElementById(row.containerId);
+          }
           continue;
         }
         const resolved = row.resolve(checkedEl.value);
@@ -5330,6 +5345,8 @@
       if (chimneyTypeChecked && chimneyTypeChecked.value !== 'na') {
         const chimneyOptionChecked = document.querySelector('input[type="radio"][name="chimneyOption"]:checked');
         if (!chimneyOptionChecked) {
+          // gh-3731 (Ben, RUN 152): a chimney type with no option is a half-declared row, refused on every job type
+          // (never silently dropped). Only a fully blank chimney row is optional on insurance.
           _showValueAddRowError('chimneyOptionRowError', 'Chimney work — say Included, Reuse/inspect, or Out of pocket.');
           ok = false;
           firstBadEl = firstBadEl || document.getElementById('chimneyTypeRow');
@@ -5362,7 +5379,7 @@
     // scope_summary, and every reader (gh-1378) must treat absence as
     // "not declared", never as "not offered".
     function buildValueAddDeclarations() {
-      if (!_section2Required()) return null;
+      if (!_section2Recorded()) return null;
 
       const declarations = {};
       const centsFrom = (fieldId) => {
@@ -5397,7 +5414,8 @@
         }
       }
 
-      return declarations;
+      // gh-3731: an insurance bid with every row left blank carries no declarations key (absent == not declared)
+      return Object.keys(declarations).length ? declarations : null;
     }
 
     // Clear a row's inline error the moment the contractor interacts with it,
