@@ -2,6 +2,10 @@
  * gh-3036 / gh-1873 (Hover retirement, step (a) of resend-hover-link's retirement order): no client references the
  * resend-hover-link Edge Function, so the function can be deleted under its own R-097 notice.
  *
+ * #3706 (CEO RUN 152): the function directory has now been deleted (it was not deployed; the Hover integration is
+ * retired). The no-callers scan stays as the guard against anything re-introducing a caller, and the directory-gone
+ * assertion below pins the deletion so the function cannot come back unnoticed.
+ *
  * Source scan, no network. It walks
  *   - react-app/app (non-test .ts/.tsx/.js/.jsx),
  *   - the static site (every *.html at the root and in subfolders, and js/*.js), and
@@ -10,7 +14,7 @@
  * client helper `resendHoverLink`.
  */
 import { describe, it, expect } from 'vitest';
-import { readdirSync, readFileSync, statSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import path from 'path';
 
 const APP_DIR = path.resolve(__dirname, '..');
@@ -73,11 +77,13 @@ describe('gh-3036 no client references resend-hover-link', () => {
   });
 
   it('no other Edge Function calls it', () => {
-    const files = walk(FN_DIR, (n) => /\.ts$/.test(n) && !/\.test\.ts$/.test(n)).filter(
-      (f) => !f.startsWith(path.join(FN_DIR, SELF_FN) + path.sep),
-    );
+    const files = walk(FN_DIR, (n) => /\.ts$/.test(n) && !/\.test\.ts$/.test(n));
     expect(files.length).toBeGreaterThan(100);
     expect(files.filter((f) => REF.test(codeOnly(readFileSync(f, 'utf-8')))).map(rel)).toEqual([]);
+  });
+
+  it('the function directory is gone (#3706): supabase/functions/resend-hover-link/ must not exist', () => {
+    expect(existsSync(path.join(FN_DIR, SELF_FN))).toBe(false);
   });
 
   it('the scan itself can fail: it flags known-bad lines (negative control)', () => {
