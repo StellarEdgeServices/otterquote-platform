@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-11-05T20:30:30Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261108221339, name gh3460_held_fee_release; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3460_held_fee_release (rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-11-05 under #3460 (P18, parent #3447). Reads only the repo: supabase/migrations_drafts/gh3229_partner_measurement_fee.sql (the accrual trigger function, unchanged here)
 --   and supabase/migrations/20260825113857_gh1245_admin_measurements_rls.sql (hover_orders: admin all, owner SELECT only). No database was written or read to produce this file.

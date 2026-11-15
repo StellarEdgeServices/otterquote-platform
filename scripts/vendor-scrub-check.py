@@ -32,8 +32,9 @@ The first version of this script scanned the seven surfaces #1339 names and was
 wired into no workflow, so the criterion stayed hand-run and the other 70-odd
 pages were not measured at all. Both halves are fixed:
 
-  - `--repo` mode now walks EVERY root-level *.html page plus js/*.js, not a
-    hand-list. A new page cannot join the tree unmeasured.
+  - `--repo` mode walks the PUBLISHED TREE (gh-1339 cl. 8): every text file under every top-level
+    entry netlify.toml's build command copies into _site/, so blog/, guides/, locations/ and data/
+    are measured too, not just root *.html and js/*.js. A new page or folder cannot join unmeasured.
   - `--ratchet` compares each file against scripts/vendor-scrub-baseline.json and
     fails ONLY on an increase. That is what makes this wirable today: the residue
     is 296 client-only hits whose removal needs the D-312 scope ruling recorded on
@@ -154,19 +155,75 @@ def read_repo(root: pathlib.Path, path: str) -> str:
     return (root / path).read_text(encoding="utf-8", errors="replace")
 
 
+# gh-1339 clause 8 (Ben 6777243088): the meter must measure what the site SERVES, not just root *.html and js/*.js.
+# The published tree is whatever netlify.toml's build command copies into _site/: every top-level entry except the
+# denylist (matched case-insensitively), then nested junk pruned. The denylist is READ from netlify.toml so this meter
+# cannot drift from the deploy; if the build command is reshaped so the pattern is not found it raises, never guesses.
+NETLIFY_TOML = "netlify.toml"
+TEXT_SUFFIXES = {".html", ".htm", ".js", ".mjs", ".json", ".css", ".txt", ".xml", ".svg", ".webmanifest"}
+TEXT_NAMES = {"_redirects", "_headers"}
+# Mirrors the `find _site ... -prune` and `-delete` lines of the build command.
+PRUNED_DIRS = {"node_modules", ".git"}
+PRUNED_SUFFIXES = {".md", ".py", ".sh", ".toml", ".ts", ".tsx"}
+
+
+def publish_denylist(root: pathlib.Path):
+    """(exact_names, suffix_globs) from the `case "$l" in ... ) continue ;;` line of netlify.toml."""
+    toml = (root / NETLIFY_TOML).read_text(encoding="utf-8")
+    m = re.search(r'case "\$l" in\s*\n\s*(.*?)\) continue ;;', toml, re.S)
+    if not m:
+        raise RuntimeError("netlify.toml build command no longer has the denylist `case` line; "
+                           "update publish_denylist() instead of scanning the wrong tree")
+    exact, suffixes = set(), set()
+    for item in m.group(1).split("|"):
+        item = item.strip().lower()
+        if item.startswith("*."):
+            suffixes.add(item[1:])
+        elif item:
+            exact.add(item)
+    return exact, suffixes
+
+
 def repo_surfaces(root: pathlib.Path) -> list[str]:
-    """Every customer-facing page in the tree, discovered -- never hand-listed.
+    """Every text file the site publishes, discovered from netlify.toml -- never hand-listed.
 
     A hand-list is how the first version of this script measured 7 of 78 pages and
-    reported a number that sounded like coverage.
+    reported a number that sounded like coverage; the second walk (root *.html + js/*.js)
+    never measured blog/, guides/, locations/ or data/, which live otterquote.com serves
+    (#1339 comment 6776823150).
     """
-    pages = sorted(p.name for p in root.glob("*.html"))
-    scripts = sorted("js/" + p.name for p in (root / "js").glob("*.js")) if (root / "js").is_dir() else []
-    return pages + scripts
+    exact, suffixes = publish_denylist(root)
+    out = []
+    for top in sorted(root.iterdir(), key=lambda p: p.name):
+        name = top.name.lower()
+        if top.name.startswith(".") and top.name != ".well-known":
+            continue  # the build's `*` glob never matches dotfiles
+        if name in exact or any(name.endswith(sfx) for sfx in suffixes):
+            continue
+        files = [top] if top.is_file() else sorted(
+            f for f in top.rglob("*")
+            if f.is_file() and not any(part in PRUNED_DIRS for part in f.relative_to(root).parts[:-1]))
+        for f in files:
+            low = f.name.lower()
+            if low == ".ds_store" or any(low.endswith(sfx) for sfx in PRUNED_SUFFIXES):
+                continue
+            if f.suffix.lower() in TEXT_SUFFIXES or low in TEXT_NAMES:
+                out.append(f.relative_to(root).as_posix())
+    return sorted(out)
 
 
-def count_surface(raw: str):
-    """(client_hits, wire_hits) for one surface's bytes."""
+CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+
+
+def count_surface(raw: str, path: str = ""):
+    """(client_hits, wire_hits) for one surface's bytes.
+
+    A stylesheet's /* comments */ are stripped first: in CSS the word "hover" there is the English
+    verb about hover states ("Hover is conveyed by the darker colour"), never the vendor, and the
+    published-tree walk (gh-1339 cl. 8) would otherwise score four such comments as vendor hits.
+    """
+    if path.lower().endswith(".css"):
+        raw = CSS_COMMENT.sub("", raw)
     body = strip_css_hover(raw)
     client, wire = [], []
     for token in VENDOR_TOKENS:
@@ -205,6 +262,12 @@ def self_test() -> int:
           classify("resend-hover-btn"), "client")
     for vendor in VENDOR_TOKENS:
         check(f"D-312 vendor '{vendor}' is searched for", vendor in VENDOR_TOKENS, True)
+    check("CSS comment saying 'hover' is the English word, not the vendor",
+          count_surface("/* Hover is conveyed by the darker colour */ a{color:red}", "x.css")[0], [])
+    check("NEG: the same words in a .html file ARE a vendor hit",
+          count_surface("/* Hover is conveyed */", "x.html")[0], ["Hover"])
+    check("NEG: a vendor id inside a .css rule (not a comment) still counts",
+          count_surface(".hoverPhotoModal{}", "x.css")[0], [".hoverPhotoModal"])
     check("NEG: a clean surface scores a true zero",
           count_surface('<div id="photoModal">')[0], [])
     check("the positive-control list is ordered and non-empty",
@@ -238,7 +301,7 @@ def main() -> int:
             if n:
                 control, control_n = candidate, n
                 break
-        client, wire = count_surface(raw)
+        client, wire = count_surface(raw, path)
         client_total += len(client)
         wire_total += len(wire)
         report.append({

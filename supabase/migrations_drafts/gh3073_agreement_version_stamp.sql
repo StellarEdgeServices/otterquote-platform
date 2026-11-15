@@ -1,5 +1,5 @@
 -- gh-3073 (follow-up to #2995 / PR #3037, D-366): stamp contractors.agreement_version SERVER-SIDE inside accept_cpa().
--- STATUS (gh-1438, as of 2026-10-28T15:58:26Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261029190222, name gh3073_agreement_version_stamp; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- EVIDENCE: drafted on PR branch kv/gh3073-mzya on top of main 29be3b24 (the merge of PR #3037). No production read was made by the author (no database connection). Base = the accept_cpa() body in supabase/migrations_drafts/gh2995_accept_cpa_append_only.sql on main; the pre-flight lists the read-only SELECTs the applier runs first (the live body must still equal that base, and public.agreement_version_current must be absent).
 -- REPO COPY: none
 -- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3B path (migration-author, R-177 pair, R-097 24-hour notice, a recorded apply). Apply only AFTER the gh-2995 forward file is applied (accept_cpa() and contractor_cpa_acceptances must exist).

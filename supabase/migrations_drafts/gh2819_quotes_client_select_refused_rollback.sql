@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-19): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261019220737); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh2819_quotes_client_select_refused (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: forward file not applied; see gh2819_quotes_client_select_refused.sql
 -- REPO COPY: none

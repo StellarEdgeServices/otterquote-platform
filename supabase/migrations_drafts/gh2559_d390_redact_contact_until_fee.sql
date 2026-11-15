@@ -1,4 +1,4 @@
--- STATUS (gh-1438, D-390): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261020162602, name gh2559_d390_redact_contact_until_fee; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh2559_d390_redact_contact_until_fee (the STATUS is the set's)
 -- EVIDENCE: written by CTO RUN 70 worker cto70-d390 against main 2c063a8. Production read-only (Supabase MCP SELECT, project yeszghaspzwwstvsrioa, this session): claims.contractor_released_at ABSENT (PR #2777 not applied); public.messages carries 3 policies; counts in the pre-flight (blast radius). Proof on a throwaway Postgres 16.15: supabase/tests/gh2559_d390_redact_proof.sql (run by gh2559_d390_redact_proof_run.sh).
 -- REPO COPY: none

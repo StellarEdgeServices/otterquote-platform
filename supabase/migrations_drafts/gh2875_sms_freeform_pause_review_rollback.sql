@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-23): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261028191242); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh2875_sms_freeform_pause_review (rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-10-23 under #2875. Production read-only (Supabase MCP execute_sql, SELECT only) 2026-10-23: sms_optout_review is absent
 --   (to_regclass NULL); layer 1 (ledger 20261021013907 gh2875_d391_contractor_sms_numbers) is applied, contractor_sms_numbers and

@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-30T12:50:00Z): NOT APPLIED -- DRAFT
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261031180959, name gh3212_freeze_claims_is_test; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3212_freeze_claims_is_test (rollback and pre-flight are siblings in this directory; proof in supabase/tests/)
 -- REPO COPY: none
 -- EVIDENCE: production read-only 2026-10-30 (project yeszghaspzwwstvsrioa), SELECT / pg_get_functiondef only:
