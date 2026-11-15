@@ -14,14 +14,14 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
-const MIG_NAME = '20261115172000_gh3722_lead_goal_events_paid_click.sql';
-const ROLLBACK_NAME = '20261115172000_gh3722_lead_goal_events_paid_click_rollback.sql';
+const MIG_NAME = 'gh3722_lead_goal_events_paid_click.sql';
+const ROLLBACK_NAME = 'gh3722_lead_goal_events_paid_click_rollback.sql';
 
 let passed = 0, failed = 0;
 function ok(cond, msg) { if (cond) { passed++; console.log('PASS: ' + msg); } else { failed++; console.log('FAIL: ' + msg); } }
 const norm = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--.*$/gm, '').replace(/\s+/g, ' ');
 
-const migPath = process.argv[2] ? path.resolve(process.argv[2]) : path.join(ROOT, 'supabase/migrations', MIG_NAME);
+const migPath = process.argv[2] ? path.resolve(process.argv[2]) : path.join(ROOT, 'supabase/migrations_drafts', MIG_NAME);
 ok(fs.existsSync(migPath), `migration file exists (${path.relative(ROOT, migPath)})`);
 const sql = fs.existsSync(migPath) ? norm(fs.readFileSync(migPath, 'utf8')) : '';
 
@@ -73,7 +73,7 @@ ok(!/GRANT[^;]*lead_goal_events[^;]*(anon|authenticated)/i.test(sql.replace(/REV
 ok(!/ALTER TABLE|ADD COLUMN|DROP TABLE|DROP VIEW/i.test(sql), 'migration changes no table and does not drop the view');
 
 // rollback exists and restores the ten-column view
-const rbPath = path.join(ROOT, 'supabase/migrations_rollbacks', ROLLBACK_NAME);
+const rbPath = path.join(ROOT, 'supabase/migrations_drafts', ROLLBACK_NAME);
 ok(fs.existsSync(rbPath), 'rollback file exists');
 const rb = fs.existsSync(rbPath) ? norm(fs.readFileSync(rbPath, 'utf8')) : '';
 ok(/DROP VIEW IF EXISTS public\.lead_goal_events/i.test(rb) && !/lead_paid_click/.test(rb.replace(/COMMENT[^;]*;/gi, '')), 'rollback drops the view and recreates it without the new columns');

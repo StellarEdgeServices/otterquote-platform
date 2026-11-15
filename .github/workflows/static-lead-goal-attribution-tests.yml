@@ -7,6 +7,7 @@ on:
   pull_request:
     branches: [main, staging]
     paths:
+      - 'supabase/migrations_drafts/**'
       - 'supabase/migrations/**'
       - 'supabase/migrations_rollbacks/**'
       - 'tests/gh3722-static-lead-goal-attribution.mjs'
@@ -14,6 +15,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'supabase/migrations_drafts/**'
       - 'supabase/migrations/**'
       - 'supabase/migrations_rollbacks/**'
       - 'tests/gh3722-static-lead-goal-attribution.mjs'

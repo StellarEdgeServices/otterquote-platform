@@ -3,7 +3,7 @@
 -- Paste the forward migration body and the rollback body WITHOUT their own BEGIN;/COMMIT; lines,
 -- or the inner COMMIT will commit the change. The batch must end in ROLLBACK. Never COMMIT.
 BEGIN;
--- A: paste supabase/migrations/20261115172000_gh3722_lead_goal_events_paid_click.sql (minus BEGIN;/COMMIT;)
+-- A: paste supabase/migrations/gh3722_lead_goal_events_paid_click.sql (minus BEGIN;/COMMIT;)
 
 SELECT string_agg(column_name||':'||data_type, ',' ORDER BY ordinal_position) FROM information_schema.columns
  WHERE table_schema='public' AND table_name='lead_goal_events';

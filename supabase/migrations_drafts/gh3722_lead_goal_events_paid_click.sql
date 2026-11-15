@@ -1,9 +1,10 @@
+-- STATUS (gh-1438, as of 2026-11-15T17:30Z): NOT APPLIED. EVIDENCE: read-only production SELECT 2026-11-15 (pg_get_viewdef of public.lead_goal_events equals the 20260927143606 S16 view, no gh3722 columns); PR #3729 (REVIEW 6898394451, Ben ruling: unapplied, so a draft). REPO COPY: this file only. DO NOT RUN FROM THIS DIRECTORY; at apply, Marty files it under its ledger version in supabase/migrations/ and the rollback in supabase/migrations_rollbacks/.
 -- gh-3722 (P12) -- lead_goal_events cannot tell a paid goal from an organic one.
 --
 -- SHIPPED, NOT APPLIED. Tier 3B per the issue (view replace, append-only). The
 -- author does not apply it; the CTO decides apply timing. Companion static
 -- test: tests/gh3722-static-lead-goal-attribution.mjs. Rollback:
--- supabase/migrations_rollbacks/20261115172000_gh3722_lead_goal_events_paid_click_rollback.sql
+-- supabase/migrations_drafts/gh3722_lead_goal_events_paid_click_rollback.sql
 --
 -- Appends four columns to public.lead_goal_events (CREATE OR REPLACE VIEW may
 -- only append, so the existing ten columns keep name, type and order):
