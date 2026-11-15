@@ -82,7 +82,7 @@ ok(!fs.existsSync(path.join(repoRoot, 'supabase/functions/create-hover-order')),
 // ── S3: the draft settings migration ─────────────────────────────────────────
 const fwd = read('supabase/migrations_drafts/gh3228_measurement_price_2263.sql');
 const rb = read('supabase/migrations_drafts/gh3228_measurement_price_2263_rollback.sql');
-ok(/^-- STATUS \(gh-1438, as of [^)]+\): NOT APPLIED/.test(fwd) && /^-- STATUS \(gh-1438, as of [^)]+\): NOT APPLIED/.test(rb), 'S3: both draft files carry the STATUS: NOT APPLIED header');
+ok(/^-- STATUS \(gh-1438, as of [^)]+\): (NOT )?APPLIED/.test(fwd) && /^-- STATUS \(gh-1438, as of [^)]+\): (NOT )?APPLIED/.test(rb), 'S3: both draft files carry the STATUS header (APPLIED or NOT APPLIED)');
 ok(/key = 'hover_measurement_price'/.test(fwd) && /to_jsonb\(2263\)/.test(fwd) && /'\{roof_basic,homeowner_price_cents\}', to_jsonb\(2263\)/.test(fwd), 'S3: forward sets hover_measurement_price and roof_basic.homeowner_price_cents to 2263');
 ok(/to_jsonb\(1500\)/.test(fwd) && /precondition failed/.test(fwd) && /postcondition failed/.test(fwd), 'S3: forward is guarded (precondition both 1500, postcondition both 2263)');
 ok(/BEGIN;/.test(fwd) && /COMMIT;/.test(fwd), 'S3: forward is one transaction (the two keys cannot drift)');

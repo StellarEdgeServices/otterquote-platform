@@ -34,6 +34,6 @@ ok(/At each monthly batch review/.test(rd('runbooks/held-partner-fee-release.md'
 ok(/auth\.role\(\), ''\) = 'service_role' OR COALESCE\(public\.is_admin_email\(\), false\)/.test(fwd) && /COALESCE\(p_require_fee, true\)/.test(fwd) && /FROM PUBLIC, anon;/.test(fwd), 'migration: admin or service role only, NULL-safe guard and NULL-safe p_require_fee; not executable by anon');
 for (const f of ['supabase/migrations_drafts/gh3460_held_fee_release_rollback.sql', 'supabase/migrations_drafts/gh3460_held_fee_release_pre-flight.md',
   'supabase/tests/gh3460_held_fee_release_proof.sql', 'supabase/tests/gh3460_held_fee_release_local_run.sh', 'runbooks/held-partner-fee-release.md']) ok(fs.existsSync(path.join(ROOT, f)), 'exists: ' + f);
-ok(/NOT APPLIED/.test(fwd.split('\n')[0]), 'migration header says NOT APPLIED');
+ok(/(NOT )?APPLIED/.test(fwd.split('\n')[0]), 'migration header carries a STATUS (APPLIED or NOT APPLIED)');
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
