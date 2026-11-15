@@ -97,3 +97,17 @@ Deno.test("breakdown present with matching extra rows: the reference prints AND 
   assert(has(pdf, "Drip Edge") && pdf.includes("Homeowner elects drip edge"), "drip-edge Contingencies row");
   assert(has(pdf, "Chimney Flashing") && pdf.includes("Homeowner elects chimney flashing work"), "chimney Contingencies row");
 });
+
+// Gutters out-of-pocket ("see Contingencies") follows the same rule.
+Deno.test("gutters oop, no breakdown: line omitted; with a matching extra row with a rate: line and row both present", () => {
+  const va = { gutters: { option: "5inch_additional" } };
+  const none = sow({ trades: ["gutters"], va, declarations: null });
+  assert(!has(none, "Gutters:") && !none.includes("see Contingencies"), "no cross-reference to nothing");
+  const norate = sow({ trades: ["gutters"], va, declarations: { gutters: { state: "extra" } } });
+  assert(!has(norate, "Gutters:"));
+  const ok = sow({ trades: ["gutters"], va, declarations: { gutters: { state: "extra", rate_cents: 120000 } } });
+  assert(has(ok, "Gutters:") && ok.includes("homeowner out-of-pocket, see Contingencies"));
+  assert(ok.includes("Extra Charges If Needed") && ok.includes("Homeowner elects gutters upgrade"));
+  // non-reference gutter values still print without any breakdown
+  assert(has(sow({ trades: ["gutters"], va: { gutters: { option: "6inch_included" } } }), "Gutters:"));
+});

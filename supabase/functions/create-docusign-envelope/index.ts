@@ -1281,10 +1281,14 @@ function generateRetailScopeOfWorkPdf(params) {
       else if (go.includes("5inch") && go.includes("additional")) gutterDesc = '5" Gutters - homeowner out-of-pocket, see Contingencies';
       else if (go.includes("6inch") && go.includes("additional")) gutterDesc = '6" Gutters - homeowner out-of-pocket, see Contingencies';
       else if (go === "none") gutterDesc = "No gutter work included";
-      ensure(14);
-      addText(60, y, 10, "F2", "Gutters:");
-      addText(160, y, 10, "F1", gutterDesc);
-      y -= 14;
+      // [gh-3719] The out-of-pocket value is a "see Contingencies" reference: with no matching Contingencies gutters row it is omitted.
+      const gutterIsRef = gutterDesc.includes("see Contingencies");
+      if (!(gutterIsRef && !sowContingenciesRowExists(declarations, "gutters"))) {
+        ensure(14);
+        addText(60, y, 10, "F2", "Gutters:");
+        addText(160, y, 10, "F1", gutterDesc);
+        y -= 14;
+      }
     }
     if (va.gutter_guards) {
       const gg = va.gutter_guards;
