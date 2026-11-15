@@ -10,6 +10,7 @@
  * base class that returns a frozen Error (exact V8 message), then drives a fake
  * window with a capture-phase-first dispatcher and a Sentry-like listener.
  *
+ * CEO RUN 152 revision: handled warning, not a drop.
  * Run: node tests/gh3704-supabase-isautherror-unhandled-rejection.mjs
  * Exit 0 = pass, 1 = fail.
  */
@@ -57,29 +58,47 @@ function makeWindow() {
   };
 }
 
-function run(reason) {
+function run(reason, dispatchTwice) {
   const window = makeWindow();
   const sentrySeen = [];
   const sandbox = {
     window, CONFIG: { SUPABASE_URL: 'https://x.supabase.co', SUPABASE_ANON: 'anon' },
     console: { warn() {}, log() {}, error() {} },
+    navigator: { userAgent: 'TestUA/1.0' },
   };
+  const captured = [];
+  window.navigator = sandbox.navigator;
+  window.Sentry = { captureMessage: (m, ctx) => captured.push({ m, ctx }) };
   window.supabase = { createClient: () => ({ auth: {} }) };
   vm.createContext(sandbox);
   vm.runInContext(src, sandbox);
   // Sentry-like listener registered AFTER supabase-client.js, bubble phase (as Sentry.init does later)
   window.addEventListener('unhandledrejection', ev => sentrySeen.push(ev.reason));
-  window.dispatch('unhandledrejection', { reason });
+  const ev = { reason };
+  window.dispatch('unhandledrejection', ev);
+  if (dispatchTwice) window.dispatch('unhandledrejection', { reason });
+  sentrySeen.captured = captured; sentrySeen.ev = ev;
   return sentrySeen;
 }
 
 const seenKnown = run(thrown);
-check('the known supabase __isAuthError rejection does NOT reach Sentry', seenKnown.length === 0,
-  'Sentry-like listener received ' + seenKnown.length + ' event(s)');
+check('the known supabase __isAuthError rejection no longer surfaces as an unhandled rejection to Sentry', seenKnown.length === 0,
+  'Sentry-like unhandledrejection listener received ' + seenKnown.length + ' event(s)');
+check('preventDefault was called on the matching rejection', seenKnown.ev.defaultPrevented === true, 'not prevented');
+check('exactly one handled warning event is reported', seenKnown.captured.length === 1, 'captured ' + seenKnown.captured.length);
+const c = seenKnown.captured[0] || { m: '', ctx: {} };
+check('event is level warning with the stable fingerprint',
+  c.ctx.level === 'warning' && JSON.stringify(c.ctx.fingerprint) === '["gh3704-supabase-auth-init-nonextensible"]', JSON.stringify(c.ctx));
+check('event carries the message prefix and the browser UA, nothing else identifying',
+  /Cannot add property __isAuthError/.test(c.m) && c.ctx.contexts && c.ctx.contexts.gh3704.userAgent === 'TestUA/1.0'
+  && Object.keys(c.ctx.contexts.gh3704).join() === 'userAgent', JSON.stringify(c));
+const twice = run(thrown, true);
+check('a second matching rejection on the same page reports no second event', twice.captured.length === 1 && twice.length === 0, 'captured ' + twice.captured.length);
 
 // Negative controls: unrelated and lookalike rejections must still be reported.
 const other = new TypeError('Cannot read properties of undefined (reading "x")');
-check('control: an unrelated TypeError still reaches Sentry', run(other).length === 1, 'dropped');
+const rOther = run(other);
+check('control: an unrelated TypeError still reaches Sentry', rOther.length === 1 && rOther.captured.length === 0, 'dropped or mis-reported');
 const lookalike = new TypeError('Cannot add property __isAuthError, object is not extensible');
 lookalike.stack = 'TypeError: ...\n  at somethingElse (/js/app.js:1:1)';
 check('control: same message with no supabase frame still reaches Sentry', run(lookalike).length === 1, 'dropped');

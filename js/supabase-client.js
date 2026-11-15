@@ -35,12 +35,15 @@
   // non-extensible (seen once: Chrome 138 / Windows, a patched or locked-down Error),
   // AuthError's `this.__isAuthError = true` throws "Cannot add property __isAuthError,
   // object is not extensible" inside _initialize's catch, so the init promise rejects with
-  // nobody listening -> an unhandled rejection Sentry reports as a new issue. The throw is
-  // in vendor code we load from the CDN, so we cannot fix it at the source; we keep this one
-  // known environment fault out of Sentry. Registered in the CAPTURE phase BEFORE
-  // createClient() so it runs ahead of Sentry's own unhandledrejection listener, and matched
-  // narrowly (TypeError + exact message + a supabase frame) so real errors still report.
+  // nobody listening. The throw is in vendor code we load from the CDN, so we cannot fix it
+  // at the source. CEO ruling (RUN 152): do NOT swallow it -- the original init error is
+  // lost inside that catch, so this may hide a real auth-init failure. Instead: preventDefault
+  // (no longer an unhandled TypeError) and report ONE handled warning to Sentry, with a stable
+  // fingerprint, the message prefix and the browser UA (no PII, no tokens). Registered in the
+  // CAPTURE phase BEFORE createClient() so it runs ahead of Sentry's own unhandledrejection
+  // listener; matched narrowly (TypeError + message prefix + a supabase frame).
   if (typeof window.addEventListener === 'function') {
+    var gh3704Reported = false;
     window.addEventListener('unhandledrejection', function (ev) {
       var r = ev && ev.reason;
       if (!r || r.name !== 'TypeError' || typeof r.message !== 'string') return;
@@ -48,7 +51,19 @@
       if (String(r.stack || '').indexOf('supabase') === -1) return;
       if (typeof ev.preventDefault === 'function') ev.preventDefault();
       if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
-      try { console.warn('[gh-3704] supabase-js init hit a non-extensible Error; suppressed from Sentry'); } catch (_) {}
+      if (gh3704Reported) return;
+      gh3704Reported = true;
+      try {
+        var S = window.Sentry;
+        if (S && typeof S.captureMessage === 'function') {
+          S.captureMessage('supabase-js init: Cannot add property __isAuthError (non-extensible Error)', {
+            level: 'warning',
+            fingerprint: ['gh3704-supabase-auth-init-nonextensible'],
+            tags: { gh: '3704', handled: 'yes' },
+            contexts: { gh3704: { userAgent: (window.navigator && window.navigator.userAgent) || 'unknown' } },
+          });
+        }
+      } catch (_) {}
     }, true);
   }
   window.sb = factory(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, {
