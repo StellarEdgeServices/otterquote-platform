@@ -552,3 +552,9 @@ verify_jwt = false
 # service-role key (sweep.ts authorizeServiceOnly, 401/403) before any database read or Twilio call.
 [functions.owner-alert-sweep]
 verify_jwt = false
+
+# gh-1413: fetch-roof-image is called from bids.html with the homeowner's user JWT (sb.functions.invoke). Auth is enforced in the handler as well
+# (auth.getUser + claims.user_id must equal the caller; contractors get 404, D-371). verify_jwt = true like get-contractor-info; the service-role and
+# anon-only callers it would block do not exist (no cron or EF caller). Browser CORS preflight is answered by the handler. Flag OFF by default (ROOF_IMAGE_ENABLED).
+[functions.fetch-roof-image]
+verify_jwt = true

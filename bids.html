@@ -378,6 +378,8 @@
             </div>
           </div>
 
+          <div id="roofImageSlot"></div><!-- gh-1413: homeowner-only aerial image, rendered only when ROOF_IMAGE_ENABLED -->
+
           <!-- Guarantee Banner -->
           <div class="guarantee-banner">
             <span style="font-size:1.3rem;">🛡</span>
@@ -525,6 +527,7 @@
 <script src="js/config.js"></script>
 <script src="js/supabase-client.js"></script>
   <script src="js/auth.js"></script>
+  <script src="js/claim-roof-image.js"></script>
   <script src="js/nav.js"></script>
   <script src="js/services.js"></script>
 
@@ -595,6 +598,7 @@
       }
       const { data } = await query.maybeSingle();
       if (data) currentClaim = data;
+      if (data && window.OQRoofImage) window.OQRoofImage.render(sb, data.id, 'roofImageSlot'); // gh-1413, flag OFF by default
     }
 
     async function loadBids() {

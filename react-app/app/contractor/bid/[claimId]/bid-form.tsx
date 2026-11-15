@@ -474,7 +474,8 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
         // them to a direct UPDATE, 42501). RPC first, then the field UPDATE below.
         const renewRpcMode = renewQuoteRpcMode(mode === 'renew', (existingQuote?.bid_status as string | null) ?? null);
         if (renewRpcMode) {
-          const { error: renewErr } = await supabase.rpc('renew_quote', { p_quote_id: existingQuote!.id, p_mode: renewRpcMode });
+          // gh-3498: bounded like the UPDATE below; a stall ends through the catch (message, form unlocked). A retry is harmless (same row, same mode).
+          const { error: renewErr } = await callWithTimeout(BID_UPDATE_TIMEOUT_MS, (signal) => withAbortSignal(supabase.rpc('renew_quote', { p_quote_id: existingQuote!.id, p_mode: renewRpcMode }), signal));
           if (renewErr) throw renewErr;
         }
         // gh-3491: an UPDATE that never answers ends through the catch below (message, form unlocked). Abort the request and stop waiting.

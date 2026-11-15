@@ -92,6 +92,8 @@ import {
   type CandidateLead,
   dedupeByNormalizedEmail,
   REMINDER_ELIGIBLE_VARIANTS,
+  D_VARIANT,
+  isDailyCapReached,
   REMINDER_MAX_AGE_MS,
   REMINDER_MIN_AGE_MS,
   selectLeadForReminder,
@@ -99,6 +101,8 @@ import {
 
 const FUNCTION_NAME = "send-lead-next-step-reminder";
 const BATCH_LIMIT = 200;
+// Fail-closed sentinel for the variant-d cap count (>= any cap value).
+const D_VARIANT_CAP_UNKNOWN = Number.MAX_SAFE_INTEGER;
 // Fix round 1 (should-fix): derived from SUPABASE_URL rather than
 // hardcoded, so this file works unmodified against any project (including a
 // Supabase branch / preview environment used for testing).
@@ -324,6 +328,24 @@ serve(async (req: Request) => {
       });
     }
 
+    // gh-3420: variant-'d' daily cap (Ben, PR #3425 comment 6776272506). Count
+    // 'd' leads already stamped in the last 24 h; a read error fails closed
+    // (treated as the cap already reached, so no 'd' lead is sent this run).
+    let dSentLast24h = D_VARIANT_CAP_UNKNOWN;
+    {
+      const since = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+      const { count, error: capErr } = await supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .eq("variant", D_VARIANT)
+        .gte("next_step_reminder_sent_at", since);
+      if (capErr) {
+        console.error(`[${FUNCTION_NAME}] d-variant cap count failed: ${capErr.message} — failing closed for variant d`);
+      } else {
+        dSentLast24h = count ?? 0;
+      }
+    }
+
     let sent = 0;
     const skipped: Record<string, number> = {};
 
@@ -355,6 +377,14 @@ serve(async (req: Request) => {
         continue;
       }
 
+      // gh-3420: daily cap for variant 'd'. Skipped BEFORE the stamp, so the
+      // lead stays unreminded and is picked up by a later hourly run (oldest
+      // first) while still inside the 7-day window.
+      if (isDailyCapReached(row.variant, dSentLast24h)) {
+        skipped["daily_cap_reached"] = (skipped["daily_cap_reached"] || 0) + 1;
+        continue;
+      }
+
       // Atomic check-and-stamp — same UPDATE...RETURNING shape as
       // get_lead_prefill(): if another run already claimed this row between
       // the SELECT above and here, this UPDATE touches zero rows and we skip
@@ -381,6 +411,10 @@ serve(async (req: Request) => {
         skipped["already_sent"] = (skipped["already_sent"] || 0) + 1;
         continue;
       }
+
+      // Count the stamp itself (the row is stamped even if Mailgun then fails),
+      // so a failing send cannot be retried past the cap.
+      if (row.variant === D_VARIANT) dSentLast24h += 1;
 
       const token = await signLeadOptOutToken(row.id, optOutSecrets[0]);
       const optOutUrl = buildLeadOptOutUrl(baseUrl, token);

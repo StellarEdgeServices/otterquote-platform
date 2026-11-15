@@ -8,7 +8,9 @@
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   type CandidateLead,
+  D_VARIANT_DAILY_SEND_CAP,
   dedupeByNormalizedEmail,
+  isDailyCapReached,
   normalizeEmailKey,
   REMINDER_ELIGIBLE_VARIANTS,
   REMINDER_MIN_AGE_MS,
@@ -211,8 +213,47 @@ Deno.test("gh-2378: ho6 still needs role='homeowner', and a synthetic ho6 lead i
     { send: false, skip_reason: "synthetic_lead" });
 });
 
-Deno.test("gh-2378: eligible variants are exactly f, HO-2, ho6", () => {
-  assertEquals([...REMINDER_ELIGIBLE_VARIANTS], ["f", "HO-2", "ho6"]);
+Deno.test("gh-3420: eligible variants are exactly f, HO-2, ho6, d", () => {
+  assertEquals([...REMINDER_ELIGIBLE_VARIANTS], ["f", "HO-2", "ho6", "d"]);
+});
+
+// -- gh-3420: the live front-door arm 'd' --
+Deno.test("gh-3420: a d homeowner lead 25h old sends; 6d23h sends", () => {
+  assertEquals(selectLeadForReminder(baseLead({ variant: "d" }), true, NOW), { send: true });
+  const old = baseLead({ variant: "d", created_at: new Date(NOW - (7 * 24 - 1) * H).toISOString() });
+  assertEquals(selectLeadForReminder(old, true, NOW), { send: true });
+});
+
+Deno.test("gh-3420: d window edges: 23h too_young, 8d too_old", () => {
+  assertEquals(selectLeadForReminder(baseLead({ variant: "d", created_at: new Date(NOW - 23 * H).toISOString() }), true, NOW),
+    { send: false, skip_reason: "too_young" });
+  assertEquals(selectLeadForReminder(baseLead({ variant: "d", created_at: new Date(NOW - 8 * 24 * H).toISOString() }), true, NOW),
+    { send: false, skip_reason: "too_old" });
+});
+
+Deno.test("gh-3420: d still honors role, goal, already-sent, opt-out, synthetic and the kill switch", () => {
+  assertEquals(selectLeadForReminder(baseLead({ variant: "d", role: "contractor" }), true, NOW).skip_reason, "not_reminder_eligible_variant");
+  assertEquals(selectLeadForReminder(baseLead({ variant: "d", has_goal_event: true }), true, NOW).skip_reason, "goal_recorded");
+  assertEquals(selectLeadForReminder(baseLead({ variant: "d", next_step_reminder_sent_at: "2026-09-25T00:00:00Z" }), true, NOW).skip_reason, "already_sent");
+  assertEquals(selectLeadForReminder(baseLead({ variant: "d", next_step_reminder_opted_out_at: "2026-09-25T00:00:00Z" }), true, NOW).skip_reason, "opted_out");
+  assertEquals(selectLeadForReminder(baseLead({ variant: "d", is_synthetic: true }), true, NOW).skip_reason, "synthetic_lead");
+  assertEquals(selectLeadForReminder(baseLead({ variant: "d" }), false, NOW).skip_reason, "disabled");
+});
+
+Deno.test("gh-3420: the d match is exact -- a/b/c/e/D/dd/'d ' stay excluded", () => {
+  for (const v of ["a", "b", "c", "e", "D", "dd", "d "]) {
+    assertEquals(selectLeadForReminder(baseLead({ variant: v }), true, NOW),
+      { send: false, skip_reason: "not_reminder_eligible_variant" }, v);
+  }
+});
+
+Deno.test("gh-3420: daily cap -- only variant d is capped, at D_VARIANT_DAILY_SEND_CAP (10)", () => {
+  assertEquals(D_VARIANT_DAILY_SEND_CAP, 10);
+  assertEquals(isDailyCapReached("d", 0), false);
+  assertEquals(isDailyCapReached("d", 9), false);
+  assertEquals(isDailyCapReached("d", 10), true);
+  assertEquals(isDailyCapReached("d", Number.MAX_SAFE_INTEGER), true); // fail-closed sentinel
+  for (const v of ["f", "HO-2", "ho6", null]) assertEquals(isDailyCapReached(v, 1000), false);
 });
 
 Deno.test("gh-2300: skips a synthetic HO-2 lead (synthetic check still wins)", () => {
