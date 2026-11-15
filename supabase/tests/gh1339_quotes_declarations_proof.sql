@@ -14,7 +14,8 @@ END $$;
 INSERT INTO claims(id,job_type,funding_type,trades) VALUES
  ('00000000-0000-0000-0000-000000000001','retail','cash',ARRAY['roofing']),
  ('00000000-0000-0000-0000-000000000002','insurance_rcv','insurance',ARRAY['roofing']),
- ('00000000-0000-0000-0000-000000000003','retail','cash',ARRAY['siding']);
+ ('00000000-0000-0000-0000-000000000003','retail','cash',ARRAY['siding']),
+ ('00000000-0000-0000-0000-000000000004','retail','cash',ARRAY['roofing','gutters']);
 -- a legacy retail roofing quote with NO declarations, inserted before any guard is considered (trigger disabled for the seed)
 DO $$ BEGIN
   IF to_regprocedure('public.enforce_quote_section2_declarations()') IS NOT NULL THEN ALTER TABLE quotes DISABLE TRIGGER quotes_require_section2_declarations; END IF;
@@ -27,6 +28,8 @@ END $$;
 \set C1 '00000000-0000-0000-0000-000000000001'
 \set C2 '00000000-0000-0000-0000-000000000002'
 \set C3 '00000000-0000-0000-0000-000000000003'
+\set C4 '00000000-0000-0000-0000-000000000004'
+\set noextrarate '''{"brand":"x","declarations":{"gutters":{"state":"extra"},"chimney":{"state":"not_offered","rate_cents":null},"skylights":{"state":"not_offered","rate_cents":null},"ice_water_shield":{"state":"included","rate_cents":null},"drip_edge":{"state":"included","rate_cents":null}}}'''
 SELECT try('N1 retail roofing, NO declarations key', format($q$INSERT INTO quotes(claim_id,trade_type,scope_summary) VALUES (%L,'roofing','{"brand":"x"}')$q$, :'C1'));
 SELECT try('N2 retail roofing, scope_summary NULL', format($q$INSERT INTO quotes(claim_id,trade_type,scope_summary) VALUES (%L,'roofing',NULL)$q$, :'C1'));
 SELECT try('N3 retail roofing, scope_summary not JSON', format($q$INSERT INTO quotes(claim_id,trade_type,scope_summary) VALUES (%L,'roofing','Auto text')$q$, :'C1'));
@@ -42,6 +45,11 @@ SELECT try('N7 legacy quote, UPDATE scope_summary to still-no-declarations', $q$
 SELECT try('P6 legacy quote, UPDATE scope_summary adds all five', format($q$UPDATE quotes SET scope_summary=%L WHERE id='00000000-0000-0000-0000-0000000000a1'$q$, :good));
 SELECT try('N8 declared quote, UPDATE strips declarations', $q$UPDATE quotes SET scope_summary='{"brand":"z"}' WHERE id='00000000-0000-0000-0000-0000000000a1'$q$);
 SELECT try('N9 insurance quote re-pointed to retail roofing claim without declarations', format($q$UPDATE quotes SET claim_id=%L WHERE claim_id=%L$q$, :'C1', :'C2'));
+SELECT try('X1a wizard roofing+gutters claim, roofing bid with NO declarations (the form defect, REVIEW 6898001468)', format($q$INSERT INTO quotes(claim_id,trade_type,scope_summary) VALUES (%L,'roofing','{"brand":"x"}')$q$, :'C4'));
+SELECT try('X1b wizard roofing+gutters claim, roofing bid WITH the five declarations (fixed form payload)', format($q$INSERT INTO quotes(claim_id,trade_type,scope_summary) VALUES (%L,'roofing',%L)$q$, :'C4', :good));
+SELECT try('X2a wizard gutters bid mis-tagged roofing on that claim, no declarations (old form)', format($q$INSERT INTO quotes(claim_id,trade_type,scope_summary) VALUES (%L,'roofing','{"brand":"x"}')$q$, :'C4'));
+SELECT try('X2b same gutters bid tagged gutters, no declarations (fixed form)', format($q$INSERT INTO quotes(claim_id,trade_type,scope_summary) VALUES (%L,'gutters','{"brand":"x"}')$q$, :'C4'));
+SELECT try('X3 extra row with NO rate_cents key', format($q$INSERT INTO quotes(claim_id,trade_type,scope_summary) VALUES (%L,'roofing',%L)$q$, :'C1', :noextrarate));
 SELECT 'GUARD PROOF' AS hdr;
 SELECT format('%s | %s', label, outcome) FROM results ORDER BY n;
 SELECT 'FN_EXEC anon='||has_function_privilege('anon','public.enforce_quote_section2_declarations()','EXECUTE')||' authenticated='||has_function_privilege('authenticated','public.enforce_quote_section2_declarations()','EXECUTE')

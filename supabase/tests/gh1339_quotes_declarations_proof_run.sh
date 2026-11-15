@@ -30,9 +30,9 @@ run 1-TODAY ""
 run 2-AFTER "$F"
 run 3-ROLLBACK "$F" 1
 rc=0
-for k in 'N1 .*REFUSED 23514' 'N2 .*REFUSED 23514' 'N3 .*REFUSED 23514' 'N4 .*REFUSED 23514.*drip_edge' 'N5 .*REFUSED 23514.*gutters' 'N6 .*REFUSED 23514' 'P1 .*ACCEPTED' 'P2 .*ACCEPTED' 'P3 .*ACCEPTED' 'P4 .*ACCEPTED' 'P5 .*ACCEPTED' 'N7 .*REFUSED 23514' 'P6 .*ACCEPTED' 'N8 .*REFUSED 23514' 'N9 .*REFUSED 23514' 'FN_EXEC anon=false authenticated=false'; do
+for k in 'N1 .*REFUSED 23514' 'N2 .*REFUSED 23514' 'N3 .*REFUSED 23514' 'N4 .*REFUSED 23514.*drip_edge' 'N5 .*REFUSED 23514.*gutters' 'N6 .*REFUSED 23514' 'P1 .*ACCEPTED' 'P2 .*ACCEPTED' 'P3 .*ACCEPTED' 'P4 .*ACCEPTED' 'P5 .*ACCEPTED' 'N7 .*REFUSED 23514' 'P6 .*ACCEPTED' 'N8 .*REFUSED 23514' 'N9 .*REFUSED 23514' 'X1a .*REFUSED 23514' 'X1b .*ACCEPTED' 'X2a .*REFUSED 23514' 'X2b .*ACCEPTED' 'X3 .*REFUSED 23514' 'FN_EXEC anon=false authenticated=false'; do
   grep -Eq "$k" "$OUT/2-AFTER.txt" || { echo "EXPECT FAIL (after): $k"; rc=1; }; done
-for k in 'N1 .*ACCEPTED' 'N3 .*ACCEPTED' 'N4 .*ACCEPTED' 'N5 .*ACCEPTED'; do
+for k in 'N1 .*ACCEPTED' 'N3 .*ACCEPTED' 'N4 .*ACCEPTED' 'N5 .*ACCEPTED' 'X1a .*ACCEPTED' 'X2a .*ACCEPTED' 'X3 .*ACCEPTED'; do
   grep -Eq "$k" "$OUT/1-TODAY.txt" || { echo "EXPECT FAIL (today, negative control): $k"; rc=1; }; done
 diff <(grep ' | ' "$OUT/1-TODAY.txt") <(grep ' | ' "$OUT/3-ROLLBACK.txt") >/dev/null && echo "ROLLBACK matches TODAY" || { echo "ROLLBACK differs from TODAY"; rc=1; }
 echo "EXIT=$rc"; exit $rc

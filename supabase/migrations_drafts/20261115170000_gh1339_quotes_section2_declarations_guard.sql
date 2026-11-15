@@ -18,6 +18,9 @@
 --   * UPDATE is checked only when scope_summary, trade_type or claim_id changes. Status, payment, signature and webhook
 --     updates never hit the check, and the 4 existing retail-roofing quotes (none has declarations, read 2026-11-15) stay
 --     updatable. No backfill.
+--   * An `extra` row with no rate_cents key is refused (coalesce of jsonb_typeof to 'missing'; REVIEW 6898001468 LOW).
+--   * DO NOT APPLY until the form PR (wizard declarations + trade_type from the queue) is merged and deployed: until then a multi-trade
+--     retail wizard bid carries no declarations and this trigger would refuse it (REVIEW 6898001468 HIGH).
 --   * Applies to every caller, service_role included (a server write must not bypass the rule either).
 --   * scope_summary is text (information_schema, 2026-11-15). Non-JSON or non-object text is refused on a retail-roofing bid.
 --   * New function: SECURITY DEFINER (reads claims), EXECUTE revoked from PUBLIC, anon, authenticated (migration-author
@@ -78,7 +81,7 @@ BEGIN
        OR (v_row ->> 'state') NOT IN ('included', 'extra', 'not_offered', 'other') THEN
       v_bad := v_bad || v_key;
     ELSIF (v_row ->> 'state') = 'extra'
-          AND (jsonb_typeof(v_row -> 'rate_cents') <> 'number' OR (v_row ->> 'rate_cents')::numeric <= 0) THEN
+          AND (coalesce(jsonb_typeof(v_row -> 'rate_cents'), 'missing') <> 'number' OR (v_row ->> 'rate_cents')::numeric <= 0) THEN
       v_bad := v_bad || (v_key || ' (extra needs rate_cents > 0)');
     END IF;
   END LOOP;
