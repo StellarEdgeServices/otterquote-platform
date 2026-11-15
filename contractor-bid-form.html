@@ -5257,6 +5257,29 @@
       return el.style.display !== 'none' && window.getComputedStyle(el).display !== 'none';
     }
 
+    // gh-1339 (REVIEW 6898001468): are the Section 2 declarations REQUIRED on this submit? Outside the
+    // multi-trade wizard that is "the section is on screen", as before. In the wizard the section is
+    // hidden after the roofing step (_showWizardTrade), so on-screen visibility says nothing at submit:
+    // the declarations are required whenever roofing is in the wizard queue of a retail job. The radios
+    // keep their state while hidden, so the same validate/build code reads them unchanged.
+    function _section2Required() {
+      if (wizardMode) return !!isRetailJob && wizardTradeQueue.includes('roofing');
+      return _valueAddsSectionVisible();
+    }
+
+    // gh-1339 (REVIEW 6898001468): trade_type comes from the wizard queue, never from the hidden
+    // input's default of "roofing" (a gutters-only wizard bid was tagged roofing). Roofing wins when
+    // it is in the queue (the primary trade of a bundle); otherwise the first queued trade.
+    function _wizardTradeType() {
+      if (!wizardMode || wizardTradeQueue.length === 0) return null;
+      return wizardTradeQueue.includes('roofing') ? 'roofing' : wizardTradeQueue[0];
+    }
+    function _syncWizardTradeType() {
+      const t = _wizardTradeType();
+      const el = document.getElementById('selectedTradeType');
+      if (t && el) el.value = t;
+    }
+
     function _clearValueAddRowError(errorElId) {
       const el = document.getElementById(errorElId);
       if (el) { el.style.display = 'none'; el.textContent = ''; }
@@ -5272,7 +5295,7 @@
     // Shows per-row inline messages — not one banner — and scrolls to the
     // first offending row. Returns true/false.
     function validateValueAddDeclarations() {
-      if (!_valueAddsSectionVisible()) return true; // gate applies only where this section renders
+      if (!_section2Required()) return true; // gate applies only where Section 2 applies (see _section2Required)
 
       let firstBadEl = null;
       let ok = true;
@@ -5316,6 +5339,11 @@
         }
       }
 
+      if (!ok && wizardMode && !_valueAddsSectionVisible()) {
+        // gh-1339: the contractor is on another wizard step; the per-row messages above sit inside the
+        // hidden Section 2 block, so take them back to the roofing step where they can be seen and fixed.
+        wizardGoTo(2, wizardTradeQueue.indexOf('roofing'), true);
+      }
       if (!ok && firstBadEl) {
         firstBadEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
@@ -5330,7 +5358,7 @@
     // scope_summary, and every reader (gh-1378) must treat absence as
     // "not declared", never as "not offered".
     function buildValueAddDeclarations() {
-      if (!_valueAddsSectionVisible()) return null;
+      if (!_section2Required()) return null;
 
       const declarations = {};
       const centsFrom = (fieldId) => {
@@ -5453,6 +5481,7 @@
       // locked until submit finishes or fails (see the finally below).
       const _snapBid = wholeCentDollars(effectiveBidAmount()); // gh-3495 (D-267): sum of trades on a multi-trade bid
       const _shownAtClick = { pct: window._feePct, amount: window._feeAmount };
+      _syncWizardTradeType(); // gh-1339: trade_type from the wizard queue, before FormData reads the hidden input
       const formData = new FormData(bidForm); // before the lock: disabled controls are left out of a FormData
       _submitInFlight = true;
       lockBidInputs();
