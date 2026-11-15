@@ -173,6 +173,10 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/drip-edge-roof-replacement-bid.html',
   '/guides/roof-ventilation-in-your-replacement-bid':
     '/guides/roof-ventilation-in-your-replacement-bid.html',
+  '/guides/roof-valleys-open-closed-woven-in-your-bid':
+    '/guides/roof-valleys-open-closed-woven-in-your-bid.html',
+  '/guides/roofing-nails-vs-staples-in-your-bid':
+    '/guides/roofing-nails-vs-staples-in-your-bid.html',
   '/guides/roof-change-orders-hidden-damage':
     '/guides/roof-change-orders-hidden-damage.html',
   '/guides/roofing-contract-checklist-before-you-sign':
