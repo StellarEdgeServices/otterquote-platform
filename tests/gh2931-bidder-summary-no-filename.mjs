@@ -39,7 +39,7 @@ if (ex(F) && ex(R)) {
   ok(/c8ad94c45c52b5468ddf7c4979a2607c/.test(fwd) && /7b0f2430b1cb7482ac34af28e17553db/.test(fwd) && /c8ad94c45c52b5468ddf7c4979a2607c/.test(rb), 'forward and rollback assert the definition md5s');
   ok(!/\bGRANT\b/.test(fwd.replace(/'[^']*'/g, '').replace(/--[^\n]*/g, '')), 'forward: no GRANT');
   const hdr = (s) => s.split('\n').slice(0, 12).join('\n');
-  ok(/STATUS \(gh-1438, as of [^)]+\): NOT APPLIED/.test(hdr(fwd)) && /STATUS \(gh-1438, as of [^)]+\): NOT APPLIED/.test(hdr(rb)), 'both files carry the gh-1438 STATUS header');
+  ok(/STATUS \(gh-1438, as of [^)]+\): (NOT )?APPLIED/.test(hdr(fwd)) && /STATUS \(gh-1438, as of [^)]+\): (NOT )?APPLIED/.test(hdr(rb)), 'both files carry the gh-1438 STATUS header');
 }
 const dir = path.join(ROOT, 'supabase/migrations_drafts');
 for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.sql') && !x.startsWith('gh2931_'))) {

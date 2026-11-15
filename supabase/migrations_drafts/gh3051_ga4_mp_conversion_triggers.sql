@@ -1,4 +1,4 @@
--- STATUS: DRAFT, NOT APPLIED. Tier 3 -- needs Dustin's approval to apply (migration-author protocol). Do NOT run from this directory;
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261026135841, name gh3051_ga4_mp_conversion_triggers; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- promote to supabase/migrations/ under a 14-digit UTC version only after it is actually applied (supabase/migrations_drafts/README.md).
 -- Rollback: supabase/migrations_rollbacks/gh3051_ga4_mp_conversion_triggers_rollback.sql
 --

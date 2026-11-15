@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-30T12:50:00Z): NOT APPLIED -- DRAFT
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261031180959); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh3212_freeze_claims_is_test
 -- REPO COPY: none
 -- EVIDENCE: the forward file adds only the trigger and function below; before it, no claims trigger or function named claims_freeze_is_test existed (read-only 2026-10-30, project yeszghaspzwwstvsrioa).

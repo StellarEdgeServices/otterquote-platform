@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-29): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261030162652, name gh3077_last_logins_is_admin_email; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3077_last_logins_is_admin_email (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: drafted 2026-10-29 (CTO RUN 87, tid cto87-b3077) under #3077; live definition read via SELECT pg_get_functiondef (read-only) the same day. No apply_migration was made.
 -- REPO COPY: none in supabase/migrations/

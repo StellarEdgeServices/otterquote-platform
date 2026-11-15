@@ -635,6 +635,28 @@ test.describe('gh-3498 contractor-bid-form.html stalled submit (real page, Chrom
     expect(t.inserts.filter((i: any) => i.table === 'quotes' && i.op === 'update').length).toBe(1);
   });
 
+  // gh-3498 (REVIEW F-A): renew_quote answers, then the field UPDATE times out. The retry must not call renew_quote again (55000); it updates once.
+  test('renew_quote succeeded and the following UPDATE timed out: the retry skips renew_quote and updates once', async ({ page }) => {
+    const dialogs: string[] = [];
+    page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
+    await openForm(page, { changeMode: true, cancelled: true });
+    await fillAndAccept(page);
+    await page.evaluate(() => { (window as any).__t.hang = ['quotes:update']; });
+    await clickSubmit(page);
+    await expect.poll(() => hungCount(page)).toBeGreaterThan(0);
+    await page.clock.fastForward(16_000);
+    await expect.poll(() => dialogs.length).toBe(1);
+    expect(dialogs[0]).toMatch(/^Error submitting bid: /);
+    expect((await page.evaluate(() => (window as any).__t.renewCalls))).toBe(1);
+    await page.evaluate(() => { (window as any).__t.hang = []; });
+    await clickSubmit(page);
+    await expect.poll(async () => (await state(page)).success).toBe(true);
+    expect(dialogs.length).toBe(1); // no second error dialog (no 55000 refusal)
+    const t = await page.evaluate(() => (window as any).__t);
+    expect(t.renewCalls).toBe(1);
+    expect(t.inserts.filter((i: any) => i.table === 'quotes' && i.op === 'update').length).toBe(1);
+  });
+
   test('change bid: the quotes UPDATE that never answers ends with a message and an unlocked form, and a retry updates once', async ({ page }) => {
     const dialogs: string[] = [];
     page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });
