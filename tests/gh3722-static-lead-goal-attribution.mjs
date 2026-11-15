@@ -9,6 +9,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -40,11 +41,24 @@ ok(aliases.length === 14, 'exactly 14 output columns');
 
 ok(/l\.utm_source AS lead_utm_source/i.test(sel), 'lead_utm_source reads leads.utm_source');
 ok(/l\.utm_medium AS lead_utm_medium/i.test(sel), 'lead_utm_medium reads leads.utm_medium');
-ok(/\(l\.fbclid IS NOT NULL OR l\.fbc IS NOT NULL\) AS lead_has_click_id/i.test(sel), 'lead_has_click_id = fbclid or fbc present');
-ok(/lead_paid_click/.test(sel) && /lower\(coalesce\(l\.utm_medium, ''\)\) IN \('paid', 'cpc', 'paid_social', 'ppc'\)/i.test(sel)
-  && /\(l\.fbclid IS NOT NULL OR l\.fbc IS NOT NULL\)\s*OR/i.test(sel), 'lead_paid_click = click id OR utm_medium in paid/cpc/paid_social/ppc');
+ok(/\(l\.fbclid IS NOT NULL OR l\.fbc IS NOT NULL OR l\.gclid IS NOT NULL\) AS lead_has_click_id/i.test(sel), 'lead_has_click_id = fbclid, fbc or gclid present (M1: a gclid-only lead is a click-id lead)');
+const paidExpr = (sel.match(/AS lead_has_click_id,(.*)AS lead_paid_click/i) || ['', ''])[1];
+ok(/l\.gclid IS NOT NULL/i.test(paidExpr) && /l\.fbclid IS NOT NULL/i.test(paidExpr) && /l\.fbc IS NOT NULL/i.test(paidExpr), 'lead_paid_click includes fbclid, fbc and gclid (gclid-only lead is paid)');
+ok(/l\.source = 'meta_leadgen'/i.test(paidExpr), "lead_paid_click counts source 'meta_leadgen' as paid (M2, Ben ruling)");
+const mediumList = (paidExpr.match(/lower\(btrim\(coalesce\(l\.utm_medium, ''\)\)\) IN \(([^)]*)\)/i) || ['', ''])[1]
+  .split(',').map((x) => x.trim().replace(/^'|'$/g, '')).filter(Boolean);
+ok(['paid', 'cpc', 'paid_social', 'paid-social', 'ppc', 'lead_form'].every((m) => mediumList.includes(m)), 'utm_medium list (trimmed, lower-cased) has paid, cpc, paid_social, paid-social, ppc, lead_form: ' + mediumList.join(','));
+ok(mediumList.length === 6, 'no other medium values added');
+// behavioural mirror of the predicate, evaluated on the cases the review named
+const isPaid = (l) => !!(l.fbclid || l.fbc || l.gclid) || l.source === 'meta_leadgen' || mediumList.includes(String(l.utm_medium ?? '').trim().toLowerCase());
+ok(isPaid({ gclid: 'x' }) === true, 'case: gclid-only lead is paid');
+ok(isPaid({ source: 'meta_leadgen', utm_source: 'meta', utm_medium: 'lead_form' }) === true, 'case: meta_leadgen lead is paid');
+ok(isPaid({ utm_medium: ' Paid-Social ' }) === true, 'case: whitespace/case-insensitive paid-social is paid');
+ok(isPaid({ fbclid: 'x', utm_medium: 'paid' }) === true, 'case: fbclid + utm_medium paid is paid');
+ok(isPaid({ utm_source: 'chatgpt.com', utm_medium: null, source: 'router' }) === false, 'control: organic chatgpt.com lead (147641e5) is not paid');
+ok(isPaid({ utm_medium: 'organic' }) === false && isPaid({}) === false, 'control: organic / empty is not paid');
 // click id never exposed raw
-ok(!/l\.fbclid\s+AS\s/i.test(sel) && !/l\.fbc\s+AS\s/i.test(sel) && !/l\.fbp/i.test(sel), 'raw click id (fbclid/fbc) and fbp are not selected as columns');
+ok(!/l\.fbclid\s+AS\s/i.test(sel) && !/l\.gclid\s+AS\s/i.test(sel) && !/l\.fbc\s+AS\s/i.test(sel) && !/l\.fbp/i.test(sel), 'raw click id (fbclid/fbc) and fbp are not selected as columns');
 // PII-free: no email / name / phone / address
 ok(!/l\.(email|first_name|last_name|name|phone|property_address|ip|user_agent)\b/i.test(sel), 'no PII column selected');
 
@@ -63,6 +77,10 @@ const rbPath = path.join(ROOT, 'supabase/migrations_rollbacks', ROLLBACK_NAME);
 ok(fs.existsSync(rbPath), 'rollback file exists');
 const rb = fs.existsSync(rbPath) ? norm(fs.readFileSync(rbPath, 'utf8')) : '';
 ok(/DROP VIEW IF EXISTS public\.lead_goal_events/i.test(rb) && !/lead_paid_click/.test(rb.replace(/COMMENT[^;]*;/gi, '')), 'rollback drops the view and recreates it without the new columns');
+
+const cm = (fs.existsSync(rbPath) ? fs.readFileSync(rbPath, 'utf8') : '').match(/COMMENT ON VIEW public\.lead_goal_events IS\s*'(.*?)';/s);
+const md5 = cm ? crypto.createHash('md5').update(cm[1].replace(/''/g, "'")).digest('hex') : '';
+ok(md5 === 'b7874ae428d3d5a95e9ed4495d212997', 'rollback restores the live view comment word for word (md5 ' + md5 + ')');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

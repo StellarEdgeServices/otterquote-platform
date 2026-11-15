@@ -66,7 +66,6 @@ REVOKE ALL ON public.lead_goal_events FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.lead_goal_events TO service_role;
 
 COMMENT ON VIEW public.lead_goal_events IS
-  'gh-2121 (LRS HO-1 S16), restored by gh-3722 rollback: for a lead that converted (leads.converted_user_id set by set_lead_converted()), the SINGLE earliest CONFIRMED-PAID goal event (a hover_orders row with a real PaymentIntent + charge amount, or a parsed loss-sheet upload) at or after the lead''s own created_at, exactly one row per lead_id.'
-;
+  'gh-2121 (LRS HO-1 S16), revised 2026-09-26 (REVIEW: FAIL 5849942876, D1/D5): for a lead that converted (leads.converted_user_id set by set_lead_converted()), the SINGLE earliest CONFIRMED-PAID goal event (a hover_orders row with a real PaymentIntent + charge amount, or a parsed loss-sheet upload) at or after the lead''s own created_at, across all of that lead''s account''s claims -- exactly one row per lead_id. A pending/unpaid hover_orders row and a pre-lead-existence claim are both excluded. security_invoker; SELECT granted to service_role only.';
 
 COMMIT;

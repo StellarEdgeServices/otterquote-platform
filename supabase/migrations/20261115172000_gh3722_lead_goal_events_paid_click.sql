@@ -9,9 +9,11 @@
 -- only append, so the existing ten columns keep name, type and order):
 --   lead_utm_source   leads.utm_source
 --   lead_utm_medium   leads.utm_medium
---   lead_has_click_id boolean: fbclid IS NOT NULL OR fbc IS NOT NULL
---   lead_paid_click   boolean: lead_has_click_id OR lower(coalesce(utm_medium,''))
---                     IN ('paid','cpc','paid_social','ppc')
+--   lead_has_click_id boolean: fbclid, fbc or gclid IS NOT NULL (gclid: REVIEW 6898262141 M1)
+--   lead_paid_click   boolean: lead_has_click_id OR source = 'meta_leadgen' (native Meta
+--                     lead-form leads are paid Meta ads; Ben ruling, M2) OR
+--                     lower(btrim(coalesce(utm_medium,''))) IN ('paid','cpc','paid_social',
+--                     'paid-social','ppc','lead_form')
 -- The click id itself is never selected. No table column is added and no new
 -- identifier is stored: every value is already on public.leads (gh-1983,
 -- gh-2122). The view body is otherwise byte-for-byte the live definition from
@@ -74,9 +76,10 @@ SELECT DISTINCT ON (l.id)
   -- gh-3722: appended columns (order of the ten above is unchanged).
   l.utm_source             AS lead_utm_source,
   l.utm_medium             AS lead_utm_medium,
-  (l.fbclid IS NOT NULL OR l.fbc IS NOT NULL) AS lead_has_click_id,
-  ((l.fbclid IS NOT NULL OR l.fbc IS NOT NULL)
-    OR lower(coalesce(l.utm_medium, '')) IN ('paid', 'cpc', 'paid_social', 'ppc')) AS lead_paid_click
+  (l.fbclid IS NOT NULL OR l.fbc IS NOT NULL OR l.gclid IS NOT NULL) AS lead_has_click_id,
+  ((l.fbclid IS NOT NULL OR l.fbc IS NOT NULL OR l.gclid IS NOT NULL)
+    OR l.source = 'meta_leadgen'
+    OR lower(btrim(coalesce(l.utm_medium, ''))) IN ('paid', 'cpc', 'paid_social', 'paid-social', 'ppc', 'lead_form')) AS lead_paid_click
 FROM public.leads l
 JOIN claim_goals g ON g.user_id = l.converted_user_id
 WHERE l.converted_user_id IS NOT NULL
@@ -92,6 +95,6 @@ REVOKE ALL ON public.lead_goal_events FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.lead_goal_events TO service_role;
 
 COMMENT ON VIEW public.lead_goal_events IS
-  'gh-2121 (LRS HO-1 S16) + gh-3722: for a lead that converted (leads.converted_user_id set by set_lead_converted()), the SINGLE earliest CONFIRMED-PAID goal event (a hover_orders row with a real PaymentIntent + charge amount, or a parsed loss-sheet upload) at or after the lead''s own created_at, exactly one row per lead_id. gh-3722 appends lead_utm_source, lead_utm_medium, lead_has_click_id (fbclid or fbc present; the id itself is never exposed) and lead_paid_click (click id present OR utm_medium in paid/cpc/paid_social/ppc) so a goal can be classed paid vs organic. security_invoker; SELECT granted to service_role only.';
+  'gh-2121 (LRS HO-1 S16) + gh-3722: for a lead that converted (leads.converted_user_id set by set_lead_converted()), the SINGLE earliest CONFIRMED-PAID goal event (a hover_orders row with a real PaymentIntent + charge amount, or a parsed loss-sheet upload) at or after the lead''s own created_at, exactly one row per lead_id. gh-3722 appends lead_utm_source, lead_utm_medium, lead_has_click_id (fbclid, fbc or gclid present; the id itself is never exposed) and lead_paid_click (click id present OR source meta_leadgen OR utm_medium in paid/cpc/paid_social/paid-social/ppc/lead_form) so a goal can be classed paid vs organic. security_invoker; SELECT granted to service_role only.';
 
 COMMIT;
