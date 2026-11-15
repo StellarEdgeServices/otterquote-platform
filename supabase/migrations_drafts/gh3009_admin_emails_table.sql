@@ -1,5 +1,5 @@
 -- gh-3009 item 2: ONE source for the admin email allow-list.
--- DRAFT ONLY. NOT APPLIED. Tier 3 (RLS / auth helper) -- needs CTO + owner approval.
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261101192634, name gh3009_admin_emails_table; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record). Tier 3 (RLS / auth helper) -- needs CTO + owner approval.
 -- Rollback: gh3009_admin_emails_table_rollback.sql. Pre-flight: gh3009_admin_emails_table_pre-flight.md.
 --
 -- Before: public.is_admin_email() held the emails as literals, duplicated in

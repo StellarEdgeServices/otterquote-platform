@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-19T19:32:54Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261020165604, name gh2442_dunning_retry_pass_column; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh2442_dunning_retry_pass_column
 -- EVIDENCE: payment_failures.retry_handled_at absence on production is to be confirmed by the pre-flight SELECT (see the pre-flight file); authoring session read-only check noted there
 -- REPO COPY: none

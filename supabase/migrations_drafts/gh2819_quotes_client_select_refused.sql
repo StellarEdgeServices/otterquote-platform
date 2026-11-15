@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-19): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261019220737, name gh2819_quotes_client_select_refused; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh2819_quotes_client_select_refused (rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-10-19 under #2819 (Marty ruling 6272462274, option 1; tier:3b-approved 6272917213 on Dustin's early-GO 6269637351). The #2620 proof (supabase/tests/gh2620_claims_payment_guard_proof.sql) printed AFTER-5b "rows=1 ACCEPTED" on production on 2026-10-15. No database was touched to write this file.
 -- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.

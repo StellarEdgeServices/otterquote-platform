@@ -4861,6 +4861,10 @@
     // Id of the filed bid whose fee_acceptances row and confirmation email this page has already sent, so a retry that finds
     // that same bid finishes on the success screen without writing them a second time.
     var _bidPostWritesDoneId = null;
+    // gh-3498 (F1): a renew_quote call went unanswered; the next attempt reads the bid status again before calling it.
+    var _renewRpcTimedOut = false;
+    // gh-3498 (F-A): id of the quote whose renew_quote call already succeeded; if the field UPDATE then times out, the retry must not call the RPC again (it refuses a live bid, 55000).
+    var _renewDoneQuoteId = null;
     // GA4 events are best-effort: a missing or failing gtag (blocked, or ga-gate not loaded) must never turn a filed bid into
     // an error (REVIEW 6743281622 finding 1; same as React's track()).
     function trackBidEvent(name, params) {
@@ -4943,7 +4947,7 @@
     var BID_ALREADY_FILED_MSG = 'Your bid was already filed on an earlier try, so no second bid was sent. The form now shows the bid on file: if it is not what you meant to send, change it and select Update Bid.';
     function showFiledBidAsChangeBid(quote) {
       existingQuote = quote;
-      _bidUnconfirmedFps = []; _bidIdemKey = null; _bidIdemFp = null; _bidPostWritesDoneId = null;
+      _bidUnconfirmedFps = []; _bidIdemKey = null; _bidIdemFp = null; _bidPostWritesDoneId = null; _renewDoneQuoteId = null;
       if (isSelectedBidLocked(quote, currentClaim, currentContractor)) { showSelectedBidLock(); return; }
       changeBidMode = true; renewMode = false;
       // Not awaited: the prefill loads warranty options over the network, and nothing between the submit lock and its finally
@@ -5785,10 +5789,23 @@
             // gh-3560: Renew Bid (expired bid, D-150) and Change Bid on a withdrawn ('cancelled') bid (gh-2564 rescind and
             // re-bid) make the bid live again through renew_quote(): the quotes guard trigger refuses bid_status, expired_at
             // and expires_at to a contractor's direct UPDATE (42501). The RPC runs FIRST, then the field UPDATE below.
-            const _renewRpcMode = renewMode ? 'renew' : (existingQuote.bid_status === 'cancelled' ? 'reopen' : null);
+            let _renewRpcMode = renewMode ? 'renew' : (existingQuote.bid_status === 'cancelled' ? 'reopen' : null);
+            if (_renewRpcMode && _renewDoneQuoteId === existingQuote.id) _renewRpcMode = null; // gh-3498 (F-A): the RPC already succeeded for this quote; only the field UPDATE is left
+            if (_renewRpcMode && _renewRpcTimedOut) {
+              // gh-3498 (REVIEW 6809644127 F1): an earlier renew_quote timed out in the browser, but the server may have finished it. The page's copy of
+              // the bid status is stale then, and renew_quote refuses a bid that is already live (55000). Read the status again before calling it.
+              const { data: _curQuote, error: _curErr } = await callWithTimeout(BID_UPDATE_TIMEOUT_MS, (signal) => withAbortSignal(
+                sb.from('quotes').select('bid_status').eq('id', existingQuote.id).maybeSingle(), signal));
+              if (_curErr) throw _curErr; // the catch shows the message and unlocks; nothing was changed
+              if (_curQuote && _curQuote.bid_status === 'active') _renewRpcMode = null; // already renewed: go on to the UPDATE
+            }
             if (_renewRpcMode) {
-              const { error: renewRpcError } = await sb.rpc('renew_quote', { p_quote_id: existingQuote.id, p_mode: _renewRpcMode });
+              // gh-3498: bounded like the UPDATE below; a stall ends through the catch (message, form unlocked).
+              _renewRpcTimedOut = true; // cleared once the RPC answers; while set, a retry re-reads the status first
+              const { error: renewRpcError } = await callWithTimeout(BID_UPDATE_TIMEOUT_MS, (signal) => withAbortSignal(sb.rpc('renew_quote', { p_quote_id: existingQuote.id, p_mode: _renewRpcMode }), signal));
+              _renewRpcTimedOut = false;
               if (renewRpcError) throw renewRpcError;
+              _renewDoneQuoteId = existingQuote.id; // gh-3498 (F-A): a retry after a failed UPDATE skips the RPC
             }
             // gh-2105: payload hoisted to a named const so the ratchet scanner's
             // 25-line statement window can see the .select('id') chained below.
@@ -5830,6 +5847,7 @@
             } finally { clearTimeout(_updTimer); }
 
             if (updateError) throw updateError;
+            _renewDoneQuoteId = null; // gh-3498 (F-A): the UPDATE answered; the flag is spent
             // gh-2105 (decision a, money): a zero-row RLS/id-mismatch match used to
             // show the "Bid updated" success screen while total_price never changed.
             // Same throw as the React twin (bid-form.tsx); surfaces through the

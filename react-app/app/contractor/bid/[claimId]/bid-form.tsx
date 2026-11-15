@@ -336,6 +336,8 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
   const mode: BidMode = filedQuote ? 'change' : modeProp;
   const existingQuote = filedQuote ?? existingQuoteProp;
   const router = useRouter();
+  const renewDoneQuoteIdRef = useRef<string | null>(null); // gh-3498 (F-A): the quote whose renew_quote call already succeeded; a retry after a failed field UPDATE skips the RPC (it refuses a live bid, 55000)
+  const renewTimedOutRef = useRef(false); // gh-3498 (F1): a renew_quote call went unanswered; the next attempt reads the bid status again first
   const claimTrades = useMemo(() => (Array.isArray(claim.trades) ? (claim.trades as string[]) : []), [claim.trades]);
   const hasRoofing = claimTrades.includes('roofing');
   const showRoofing = !flags.gutterTradeActive && !(flags.sidingTradeActive && !hasRoofing);
@@ -472,10 +474,23 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
         });
         // gh-3560: renew / reopen set bid_status, expired_at and expires_at server-side (the quotes guard trigger refuses
         // them to a direct UPDATE, 42501). RPC first, then the field UPDATE below.
-        const renewRpcMode = renewQuoteRpcMode(mode === 'renew', (existingQuote?.bid_status as string | null) ?? null);
+        let renewRpcMode = renewQuoteRpcMode(mode === 'renew', (existingQuote?.bid_status as string | null) ?? null);
+        if (renewRpcMode && renewDoneQuoteIdRef.current === existingQuote!.id) renewRpcMode = null; // gh-3498 (F-A): the RPC already succeeded for this quote; only the field UPDATE is left
+        if (renewRpcMode && renewTimedOutRef.current) {
+          // gh-3498 (REVIEW 6809644127 F1): an earlier renew_quote timed out in the browser, but the server may have finished it. The page's copy of
+          // the bid status is stale then, and renew_quote refuses a bid that is already live (55000). Read the status again before calling it.
+          const { data: cur, error: curErr } = await callWithTimeout(BID_UPDATE_TIMEOUT_MS, (signal) => withAbortSignal(
+            supabase.from('quotes').select('bid_status').eq('id', existingQuote!.id).maybeSingle(), signal));
+          if (curErr) throw curErr; // the catch shows the message and unlocks; nothing was changed
+          if (cur && (cur as { bid_status?: string }).bid_status === 'active') renewRpcMode = null; // already renewed: go on to the UPDATE
+        }
         if (renewRpcMode) {
-          const { error: renewErr } = await supabase.rpc('renew_quote', { p_quote_id: existingQuote!.id, p_mode: renewRpcMode });
+          // gh-3498: bounded like the UPDATE below; a stall ends through the catch (message, form unlocked).
+          renewTimedOutRef.current = true; // cleared once the RPC answers; while set, a retry re-reads the status first
+          const { error: renewErr } = await callWithTimeout(BID_UPDATE_TIMEOUT_MS, (signal) => withAbortSignal(supabase.rpc('renew_quote', { p_quote_id: existingQuote!.id, p_mode: renewRpcMode }), signal));
+          renewTimedOutRef.current = false;
           if (renewErr) throw renewErr;
+          renewDoneQuoteIdRef.current = existingQuote!.id; // gh-3498 (F-A): a retry after a failed UPDATE skips the RPC
         }
         // gh-3491: an UPDATE that never answers ends through the catch below (message, form unlocked). Abort the request and stop waiting.
         const updCtl = new AbortController();
@@ -488,6 +503,7 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
           ]));
         } finally { if (updTimer) clearTimeout(updTimer); }
         if (upErr) throw upErr;
+        renewDoneQuoteIdRef.current = null; // gh-3498 (F-A): the UPDATE answered; the flag is spent
         // gh-2105 (decision a, money — HIGH PRIORITY): `.update()` without
         // `.select()` reports success even on a zero-row RLS/id-mismatch
         // match. This write is the bid's own price/terms change or renewal

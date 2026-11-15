@@ -1,5 +1,5 @@
 <!--
-STATUS (gh-1438, as of 2026-10-30T13:00:00Z): NOT APPLIED
+STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261030144528, name gh3219_partner_credit_lock; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 FILE ROLE: pre-flight file of set gh3219_partner_credit_lock (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: drafted 2026-10-30 under #3219; production read-only 2026-10-30 (project yeszghaspzwwstvsrioa): referrals has no homeowner_user_id; referral_attribution_window() is IMMUTABLE `SELECT interval '30 days'`; platform_settings has no partner_attribution_window_days key. The set is a new draft, nothing applied.
 REPO COPY: none. When the set is applied, move this pre-flight to supabase/migrations_rollbacks/ under the forward file's ledger version.

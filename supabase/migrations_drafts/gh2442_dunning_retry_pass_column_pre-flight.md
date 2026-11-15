@@ -1,4 +1,4 @@
-<!-- STATUS (gh-1438, as of 2026-10-19T19:32:54Z): NOT APPLIED -->
+<!-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261020165604, name gh2442_dunning_retry_pass_column; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record) -->
 <!-- FILE ROLE: pre-flight of set gh2442_dunning_retry_pass_column -->
 <!-- EVIDENCE: the SELECTs below are to be run read-only by the applying session; the authoring session ran SELECT 1 and 2 on production, results in the PR body -->
 <!-- REPO COPY: none -->

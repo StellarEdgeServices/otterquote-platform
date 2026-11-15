@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-11-02): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261109161141, name gh3330_recruiter_v4_gate; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3330_recruiter_v4_gate (rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-11-02 under #3330; production read-only SELECT of pg_get_functiondef('public.apply_referral_commission()') the same day
 --   (project yeszghaspzwwstvsrioa): md5(prosrc) = 2eba9b9601c731cb20f45ef5a18c742b, 12965 characters (13009 bytes), SECURITY DEFINER, search_path public, pg_temp; that is

@@ -40,32 +40,27 @@ describe('DetailedMeasurementBadge (gh-1411 / D-317 cl. 5-6)', () => {
     expect(shouldShowDetailedMeasurementBadge(undefined)).toBe(false);
   });
 
-  it('renders copy naming no vendor (D-312) and stating the free upgrade (D-317 cl. 5), and nothing beyond what D-317 decided', () => {
+  it('renders the approved copy VERBATIM (gh-3018 / #3689, COPY-READ: PASS), naming no vendor (D-312) and nothing beyond D-317', () => {
     const model = buildDetailedMeasurementBadge();
-    expect(model.header).toContain('Detailed measurement report');
+    // Final text from Marketing/drafts/cro93-shapeb-badge-copy.md. Do not reword
+    // without a new COPY-READ + LEGAL-READ.
+    expect(model.header).toBe('Detailed roof measurements added');
+    expect(model.body).toBe('Your roof measurement report now includes detailed measurements, at no charge.');
     expect(model.body.toLowerCase()).not.toContain('roofscope');
     expect(model.body.toLowerCase()).not.toContain('hover');
-    expect(model.body.toLowerCase()).toContain('no charge');
-    // LEGAL-READ FIX (PR #2236 comment 5850580181): these two clauses were
-    // flagged as "beyond D-numbers" (disclosing a contractor paid) and
-    // "beyond, and conflicts with, D-317" (a new promise about every future
-    // bidder, contradicting D-317 cl. 4's "every later upgrade... is
-    // margin" -- an unresolved Tier C question). Locked out here so a
-    // future edit cannot reintroduce either without this test catching it.
+    expect(model.body.toLowerCase()).not.toContain('3d');
+    // LEGAL-READ FIX (PR #2236 comment 5850580181): locked out so a future edit
+    // cannot reintroduce a contractor-paid disclosure or a promise about every
+    // bidder (D-317 cl. 4 is an open Tier C question).
     expect(model.body.toLowerCase()).not.toContain('every contractor');
     expect(model.body.toLowerCase()).not.toContain('a contractor purchased');
+    expect(model.body.toLowerCase()).not.toContain('contractor');
   });
 
-  it('PLACEHOLDER GUARD: the copy is marked as not production-approved, and both strings carry the marker', () => {
-    // This is not final copy (see utils.ts's PLACEHOLDER comment) -- it has not
-    // been drafted by Sloane or cleared by LEGAL-READ. The flag and the literal
-    // marker text exist so a future wiring-in of this component cannot miss
-    // that the strings need replacing first, and so this test starts failing
-    // loudly (not silently) once someone actually writes real copy without
-    // also flipping the flag and removing the marker deliberately.
-    expect(DETAILED_MEASUREMENT_BADGE_COPY_IS_PLACEHOLDER).toBe(true);
+  it('PLACEHOLDER GUARD: the flag is off and no placeholder marker remains in either string', () => {
+    expect(DETAILED_MEASUREMENT_BADGE_COPY_IS_PLACEHOLDER).toBe(false);
     const model = buildDetailedMeasurementBadge();
-    expect(model.header).toContain('PLACEHOLDER COPY');
-    expect(model.body).toContain('PLACEHOLDER COPY');
+    expect(model.header).not.toContain('PLACEHOLDER');
+    expect(model.body).not.toContain('PLACEHOLDER');
   });
 });

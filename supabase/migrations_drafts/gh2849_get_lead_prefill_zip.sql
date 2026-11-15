@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-19): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261020165939, name gh2849_get_lead_prefill_zip; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh2849_get_lead_prefill_zip (rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-10-19 under #2849 (tier:3b, Ben 6256645058). Production definition read-only via pg_get_functiondef on 2026-10-19: RETURNS TABLE(name text, email text, phone text), SECURITY DEFINER, VOLATILE, search_path=public, pg_temp, proacl {postgres=X,service_role=X,anon=X,authenticated=X}, body identical to supabase/migrations/20260916132127_gh1994_router_leads_columns.sql:318-334; leads.zip exists (text). No database was written to produce this file.
 -- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.

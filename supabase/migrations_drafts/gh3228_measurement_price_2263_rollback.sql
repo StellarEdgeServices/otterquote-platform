@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-30T13:00:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261102145340); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh3228_measurement_price_2263 (reverses gh3228_measurement_price_2263.sql)
 -- EVIDENCE: not applied; the forward file is not applied either (production read 1500 / 1500 on 2026-10-30)
 -- REPO COPY: none in supabase/migrations_rollbacks/ yet

@@ -24,6 +24,7 @@ import sys
 import tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
+REAL_TOML = (HERE.parent / "netlify.toml").read_text(encoding="utf-8")
 spec = importlib.util.spec_from_file_location("vsc", HERE / "vendor-scrub-check.py")
 vsc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(vsc)
@@ -79,18 +80,50 @@ check("fetch refuses to count a non-200",
 #    first version measured 7 of 78 pages and reported it as a sweep.
 with tempfile.TemporaryDirectory() as tmp:
     root = pathlib.Path(tmp)
-    (root / "js").mkdir()
+    (root / "netlify.toml").write_text(REAL_TOML)
+    for d in ("js", "blog", "data", "Archive", "scripts", "node_modules"):
+        (root / d).mkdir()
     for name in ("index.html", "brand-new-page.html"):
         (root / name).write_text("<html>otterquote</html>")
     (root / "js" / "config.js").write_text("// otterquote")
+    # gh-1339 cl. 8: the published subfolders are measured, the denylisted and pruned ones are not
+    (root / "blog" / "post.html").write_text("<html>otterquote</html>")
+    (root / "blog" / "notes.md").write_text("Hover")
+    (root / "data" / "m.json").write_text('{"a": "Hover 3D"}')
+    (root / "data" / "logo.png").write_bytes(b"\x89PNG Hover")
+    (root / "Archive" / "old.html").write_text("Hover")
+    (root / "scripts" / "x.js").write_text("Hover")
+    (root / "node_modules" / "m.js").write_text("Hover")
+    (root / "README.md").write_text("Hover")
     found = vsc.repo_surfaces(root)
     check("a page nobody listed is still scanned", "brand-new-page.html" in found, True)
     check("js/ is scanned too", "js/config.js" in found, True)
+    check("blog/ (a published subfolder) is scanned", "blog/post.html" in found, True)
+    check("data/*.json (a published data file) is scanned", "data/m.json" in found, True)
+    check("a denylisted top-level dir is NOT scanned (case-insensitive: Archive)", "Archive/old.html" in found, False)
+    check("a denylisted top-level dir is NOT scanned (scripts)", "scripts/x.js" in found, False)
+    check("node_modules is NOT scanned", "node_modules/m.js" in found, False)
+    check("a pruned *.md under a published dir is NOT scanned", "blog/notes.md" in found, False)
+    check("a binary is NOT scanned", "data/logo.png" in found, False)
+    check("a denylisted root *.md is NOT scanned", "README.md" in found, False)
+    # negative control: the old root-only walk would have missed exactly the new hits
+    old_walk = sorted(p.name for p in root.glob("*.html")) + sorted("js/" + p.name for p in (root / "js").glob("*.js"))
+    check("NEG: the old root-only walk never saw blog/ or data/", [f for f in old_walk if f.startswith(("blog/", "data/"))], [])
+    check("the denylist is read from netlify.toml", "archive" in vsc.publish_denylist(root)[0], True)
+with tempfile.TemporaryDirectory() as tmp:
+    (pathlib.Path(tmp) / "netlify.toml").write_text("[build]\ncommand = 'echo no case line'\n")
+    try:
+        vsc.repo_surfaces(pathlib.Path(tmp))
+        raised = False
+    except RuntimeError:
+        raised = True
+    check("a reshaped netlify.toml raises rather than scanning the wrong tree", raised, True)
 
 # 7. The ratchet fires in BOTH directions, driven through the real CLI.
 def ratchet(baseline: dict, page_body: str):
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
+        (root / "netlify.toml").write_text(REAL_TOML)
         (root / "p.html").write_text(page_body)
         bl = root / "baseline.json"
         bl.write_text(json.dumps(baseline))

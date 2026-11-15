@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-23): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261030132248, name gh3002_first_touch_untagged; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- EVIDENCE: new draft for gh-3002 (PR #3044); prod record_first_touch_attribution still has the no_tagged_touch gate (SELECT on pg_proc, 2026-10-23). Awaiting CEO ruling on the policy Q and the CTO apply.
 -- REPO COPY: none. After the CTO applies it, file it in supabase/migrations/ under its ledger version.
 -- DO NOT RUN FROM THIS DIRECTORY outside the Tier 3B apply path.

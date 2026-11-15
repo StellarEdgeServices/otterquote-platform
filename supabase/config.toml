@@ -211,10 +211,6 @@ verify_jwt = false
 # Auth enforced in-handler (homeowner ownership). Pin false (matches deployed v44).
 verify_jwt = false
 
-[functions.resend-hover-link]
-# Auth gated in-handler. Pin false (matches deployed v41).
-verify_jwt = false
-
 [functions.send-adjuster-email]
 # Auth gated in-handler. Pin false (matches deployed v57).
 verify_jwt = false
