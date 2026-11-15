@@ -5270,6 +5270,15 @@
       return !!isRetailJob && _valueAddsSectionVisible();
     }
 
+    // gh-3731 (REVIEW 6898935932): "required" is not "recorded". Whatever the contractor declares in Section 2 is written to
+    // scope_summary.declarations wherever the section applies (on screen outside the wizard; roofing in a retail wizard queue),
+    // insurance included, because bids.html and create-docusign-envelope read only that key (gh-1378, D-317 cl. 3). On insurance
+    // blank rows are simply absent (readers treat absent as not declared) and are not an error.
+    function _section2Recorded() {
+      if (wizardMode) return !!isRetailJob && wizardTradeQueue.includes('roofing');
+      return _valueAddsSectionVisible();
+    }
+
     // gh-1339 (REVIEW 6898001468): trade_type comes from the wizard queue, never from the hidden
     // input's default of "roofing" (a gutters-only wizard bid was tagged roofing). Roofing wins when
     // it is in the queue (the primary trade of a bundle); otherwise the first queued trade.
@@ -5298,7 +5307,8 @@
     // Shows per-row inline messages — not one banner — and scrolls to the
     // first offending row. Returns true/false.
     function validateValueAddDeclarations() {
-      if (!_section2Required()) return true; // gate applies only where Section 2 applies (see _section2Required)
+      if (!_section2Recorded()) return true; // nothing to check where Section 2 does not apply
+      const _required = _section2Required(); // gh-3731: blank rows are an error on retail/cash only
 
       let firstBadEl = null;
       let ok = true;
@@ -5307,9 +5317,11 @@
         _clearValueAddRowError(row.errorElId);
         const checkedEl = document.querySelector(`input[type="radio"][name="${row.radioName}"]:checked`);
         if (!checkedEl) {
-          _showValueAddRowError(row.errorElId, `${row.rowLabel} — say Included, Extra, or Not offered.`);
-          ok = false;
-          firstBadEl = firstBadEl || document.getElementById(row.containerId);
+          if (_required) {
+            _showValueAddRowError(row.errorElId, `${row.rowLabel} — say Included, Extra, or Not offered.`);
+            ok = false;
+            firstBadEl = firstBadEl || document.getElementById(row.containerId);
+          }
           continue;
         }
         const resolved = row.resolve(checkedEl.value);
@@ -5329,9 +5341,11 @@
       if (chimneyTypeChecked && chimneyTypeChecked.value !== 'na') {
         const chimneyOptionChecked = document.querySelector('input[type="radio"][name="chimneyOption"]:checked');
         if (!chimneyOptionChecked) {
-          _showValueAddRowError('chimneyOptionRowError', 'Chimney work — say Included, Reuse/inspect, or Out of pocket.');
-          ok = false;
-          firstBadEl = firstBadEl || document.getElementById('chimneyTypeRow');
+          if (_required) {
+            _showValueAddRowError('chimneyOptionRowError', 'Chimney work — say Included, Reuse/inspect, or Out of pocket.');
+            ok = false;
+            firstBadEl = firstBadEl || document.getElementById('chimneyTypeRow');
+          }
         } else if (chimneyOptionChecked.value === 'oop') {
           const rate = parseFloat(document.getElementById('chimneyOopPrice')?.value);
           if (!(rate > 0)) {
@@ -5361,7 +5375,7 @@
     // scope_summary, and every reader (gh-1378) must treat absence as
     // "not declared", never as "not offered".
     function buildValueAddDeclarations() {
-      if (!_section2Required()) return null;
+      if (!_section2Recorded()) return null;
 
       const declarations = {};
       const centsFrom = (fieldId) => {
@@ -5396,7 +5410,8 @@
         }
       }
 
-      return declarations;
+      // gh-3731: an insurance bid with every row left blank carries no declarations key (absent == not declared)
+      return Object.keys(declarations).length ? declarations : null;
     }
 
     // Clear a row's inline error the moment the contractor interacts with it,

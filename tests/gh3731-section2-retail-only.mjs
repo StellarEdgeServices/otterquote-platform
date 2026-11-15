@@ -177,6 +177,35 @@ try {
     ok(!(await page.evaluate(vis('#gutterOptionRowError'))), name + ': no Section 2 row message is shown');
     await context.close();
   }
+  // 1b. Insurance, a row the contractor DOES declare is recorded (REVIEW 6898935932): drip edge "Out of pocket $350" and gutters
+  //     5" included are written to scope_summary.declarations; blank rows stay absent. (Fails at 4af9fb35.)
+  {
+    const name = 'insurance single-trade roofing, declared extra';
+    console.log('--- ' + name);
+    const { context, page, dialogs } = await open(browser, base, ['roofing'], true);
+    await fillInsurance(page);
+    await page.evaluate(() => {
+      document.querySelector('input[type="radio"][name="dripEdgeOption"][value="oop"]').click();
+      document.getElementById('dripEdgeOopPrice').value = '350';
+      document.querySelector('input[type="radio"][name="gutterOption"][value="5inch_included"]').click();
+    });
+    await submit(page);
+    const row = await quoteRow(page);
+    ok(!!row, name + ': a quotes row is written (alerts: ' + JSON.stringify(dialogs) + ')');
+    const d = row ? decl(row) : null;
+    ok(!!d && d.drip_edge && d.drip_edge.state === 'extra' && d.drip_edge.rate_cents === 35000, name + ': drip_edge extra 35000 cents is recorded ' + JSON.stringify(d));
+    ok(!!d && d.gutters && d.gutters.state === 'included', name + ': gutters included is recorded');
+    ok(!!d && !d.skylights && !d.ice_water_shield, name + ': blank rows stay absent');
+    await context.close();
+    // an extra with no rate is still refused on insurance
+    const c2 = await open(browser, base, ['roofing'], true);
+    await fillInsurance(c2.page);
+    await c2.page.evaluate(() => { document.querySelector('input[type="radio"][name="dripEdgeOption"][value="oop"]').click(); });
+    await submit(c2.page);
+    ok(!(await quoteRow(c2.page)), name + ': a declared extra with no rate is refused');
+    ok(await c2.page.evaluate(vis('#dripEdgeOptionRowError')), name + ': the rate message is shown');
+    await c2.context.close();
+  }
   // 2. Retail roofing, single trade: still blocked without declarations, written with them.
   {
     const name = 'retail single-trade roofing';
