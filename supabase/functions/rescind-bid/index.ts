@@ -7,7 +7,7 @@ import {
   RESCINDED_BID_STATUS,
   SELECTED_QUOTE_STATUS,
 } from "./status.ts";
-import { stampFeeAcceptancesRescinded } from "./fee-acceptance-rescind.ts";
+import { alertStampFailure, stampFeeAcceptancesRescinded } from "./fee-acceptance-rescind.ts";
 import { mailgunSender, notifyHomeownerOfWithdrawal } from "./notify.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
@@ -270,16 +270,16 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // gh-3750: record the withdrawal on the bid's fee acceptance (rescinded_at / rescission_reason). Non-fatal: the bid is
+  // gh-3750: record the withdrawal on the bid's fee acceptance (rescinded_at, rescission_reason = 'bid_withdrawn'; the free-text reason stays in activity_log). Non-fatal: the bid is
   // already withdrawn, so a failure is logged and the rescind still succeeds; a retry is safe (only NULL rows are stamped).
   const feeStamp = await stampFeeAcceptancesRescinded(supabase, {
     quoteId: body.quote_id,
     contractorId: body.contractor_id,
     rescindedAt,
-    reason: body.reason || null,
   });
   if (!feeStamp.ok) {
     console.error("[rescind-bid] fee_acceptances rescinded_at stamp failed (non-fatal):", body.quote_id, feeStamp.error);
+    await alertStampFailure(supabase, { quoteId: body.quote_id, contractorId: body.contractor_id, error: feeStamp.error });
   }
 
   // Insert activity log entry

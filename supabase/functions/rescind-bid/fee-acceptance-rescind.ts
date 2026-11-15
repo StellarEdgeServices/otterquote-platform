@@ -10,6 +10,11 @@
 // deno-lint-ignore no-explicit-any
 type Db = { from: (table: string) => any };
 
+// A fixed, machine-readable marker (a data value, not customer copy). It tells a withdrawal of the bid apart from a D-215 24-hour
+// rescission-link rescission, which would carry its own value. No other convention for rescission_reason exists in the repo (no writer
+// before this one). The contractor's free-text reason is NOT stored here: it stays in activity_log.metadata.reason (rescind-bid index.ts).
+export const BID_WITHDRAWN_REASON = "bid_withdrawn";
+
 export interface StampResult {
   ok: boolean;
   stamped: number;
@@ -18,12 +23,12 @@ export interface StampResult {
 
 export async function stampFeeAcceptancesRescinded(
   db: Db,
-  p: { quoteId: string; contractorId: string; rescindedAt: string; reason?: string | null },
+  p: { quoteId: string; contractorId: string; rescindedAt: string },
 ): Promise<StampResult> {
   try {
     const { data, error } = await db
       .from("fee_acceptances")
-      .update({ rescinded_at: p.rescindedAt, rescission_reason: p.reason ?? null })
+      .update({ rescinded_at: p.rescindedAt, rescission_reason: BID_WITHDRAWN_REASON })
       .eq("bid_id", p.quoteId)
       .eq("contractor_id", p.contractorId)
       .is("rescinded_at", null)
@@ -32,5 +37,22 @@ export async function stampFeeAcceptancesRescinded(
     return { ok: true, stamped: Array.isArray(data) ? data.length : 0 };
   } catch (e) {
     return { ok: false, stamped: 0, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// Visibility for a failed stamp beyond console.error: one platform_alerts_log row (the pattern platform-health-check and
+// watch-template-mapping use: alert_type, function_name, message; service_role INSERT policy, sql/v52b). Never throws.
+export const STAMP_FAILED_ALERT_TYPE = "fee_acceptance_rescind_stamp_failed";
+
+export async function alertStampFailure(db: Db, p: { quoteId: string; contractorId: string; error?: string }): Promise<boolean> {
+  try {
+    const { error } = await db.from("platform_alerts_log").insert({
+      alert_type: STAMP_FAILED_ALERT_TYPE,
+      function_name: "rescind-bid",
+      message: `quote=${p.quoteId} contractor=${p.contractorId} fee_acceptances rescinded_at stamp failed after the bid was withdrawn: ${(p.error ?? "unknown").slice(0, 300)}`,
+    });
+    return !error;
+  } catch {
+    return false;
   }
 }
