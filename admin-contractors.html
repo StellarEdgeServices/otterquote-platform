@@ -854,6 +854,7 @@
         let currentFilter = 'pending_approval';
         let contractors = [];
         let currentUser = null;
+        let smsOptAdmin = false; // gh-3769: true only after is_admin_email() passed in init()
 
         // Check authorization and initialize
         async function init() {
@@ -880,6 +881,8 @@
                     showUnauthorized();
                     return;
                 }
+                smsOptAdmin = true; // gh-3769: the staff SMS opt-out control is built only past this point
+                ensureSmsOptModal();
 
                 // Ensure DOM is ready before showing container
                 if (document.readyState === 'loading') {
@@ -1218,6 +1221,17 @@
                                     ${!c.insurance_verified ? `<button class="btn-sm btn-sm-primary" onclick="markInsuranceVerified('${c.id}')">Mark as Verified ✓</button>` : ''}
                                 </div>
                             </div>
+
+                            ${smsOptAdmin ? `
+                            <!-- gh-3769: staff SMS opt-out / opt-in record (admin-sms-optout) -->
+                            <div class="card-section">
+                                <div class="card-section-title">SMS opt-out</div>
+                                <div class="button-row">
+                                    <button class="btn-sm" onclick="openSmsOptModal('${escHtml(c.id)}', 'opt_out')">Record SMS opt-out</button>
+                                    <button class="btn-sm" onclick="openSmsOptModal('${escHtml(c.id)}', 'opt_in')">Record SMS opt-in</button>
+                                </div>
+                            </div>
+                            ` : ''}
 
                             <!-- Admin Notes -->
                             <div class="admin-notes-section">
@@ -1724,6 +1738,101 @@
                 console.error('acknowledgeAlert error:', err);
                 alert('Failed to acknowledge alert');
             }
+        }
+
+        // -- gh-3769: staff SMS opt-out / opt-in (calls admin-sms-optout, admin only) ----------
+        // The Edge Function is the authority: it re-checks admin, requires channel (email | support_call) and a note
+        // (sent as `reason`), and refuses an opt-in while a contractor's own STOP is on record (409). This UI shows its
+        // answer verbatim and never retries or offers another route after a refusal.
+        function ensureSmsOptModal() {
+            if (!smsOptAdmin || document.getElementById('smsOptModal')) return;
+            const wrap = document.createElement('div');
+            wrap.className = 'modal';
+            wrap.id = 'smsOptModal';
+            wrap.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-title" id="smsOptTitle"></div>
+                    <div class="modal-field">
+                        <label class="modal-label" for="smsOptChannel">Channel</label>
+                        <select id="smsOptChannel" class="modal-input">
+                            <option value="">Select...</option>
+                            <option value="email">email</option>
+                            <option value="support_call">support_call</option>
+                        </select>
+                    </div>
+                    <div class="modal-field">
+                        <label class="modal-label" for="smsOptNote">Note</label>
+                        <textarea id="smsOptNote" class="modal-textarea" maxlength="300"></textarea>
+                    </div>
+                    <div id="smsOptResult" class="error-message" style="display: none;"></div>
+                    <div class="modal-buttons">
+                        <button class="modal-btn modal-btn-secondary" onclick="closeSmsOptModal()">Close</button>
+                        <button class="modal-btn modal-btn-primary" id="smsOptSubmit" onclick="submitSmsOpt()">Submit</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(wrap);
+        }
+
+        function openSmsOptModal(contractorId, action) {
+            if (!smsOptAdmin) return;
+            ensureSmsOptModal();
+            const modal = document.getElementById('smsOptModal');
+            modal.dataset.contractorId = contractorId;
+            modal.dataset.action = action;
+            document.getElementById('smsOptTitle').textContent = action === 'opt_in' ? 'Record SMS opt-in' : 'Record SMS opt-out';
+            document.getElementById('smsOptChannel').value = '';
+            document.getElementById('smsOptNote').value = '';
+            const res = document.getElementById('smsOptResult');
+            res.style.display = 'none';
+            res.textContent = '';
+            document.getElementById('smsOptSubmit').disabled = false;
+            modal.classList.add('show');
+        }
+
+        function closeSmsOptModal() {
+            const m = document.getElementById('smsOptModal');
+            if (m) m.classList.remove('show');
+        }
+
+        // Pure of the DOM so it can be tested: returns { ok, text }. text is the function's own answer, verbatim.
+        async function callAdminSmsOptout(client, p) {
+            if (!smsOptAdmin) return { ok: false, text: 'Not authorized.' };
+            if (p.action !== 'opt_out' && p.action !== 'opt_in') return { ok: false, text: 'Unknown action.' };
+            if (p.channel !== 'email' && p.channel !== 'support_call') return { ok: false, text: 'Select a channel.' };
+            const note = String(p.note || '').trim();
+            if (!note) return { ok: false, text: 'Enter a note.' };
+            try {
+                const r = await client.functions.invoke('admin-sms-optout', {
+                    body: { action: p.action, contractor_id: p.contractorId, channel: p.channel, reason: note }
+                });
+                if (!r.error) return { ok: true, text: JSON.stringify(r.data) };
+                const resp = r.error.context;
+                if (resp && typeof resp.json === 'function') {
+                    let body = null;
+                    try { body = await resp.json(); } catch (e) { body = null; }
+                    return { ok: false, text: 'HTTP ' + resp.status + ' ' + (body !== null ? JSON.stringify(body) : String(r.error.message || '')) };
+                }
+                return { ok: false, text: String(r.error.message || r.error) };
+            } catch (e) {
+                return { ok: false, text: String((e && e.message) || e) };
+            }
+        }
+
+        async function submitSmsOpt() {
+            const modal = document.getElementById('smsOptModal');
+            const res = document.getElementById('smsOptResult');
+            const btn = document.getElementById('smsOptSubmit');
+            btn.disabled = true; // one attempt per click; a refusal is final, not retried
+            const out = await callAdminSmsOptout(sb, {
+                action: modal.dataset.action,
+                contractorId: modal.dataset.contractorId,
+                channel: document.getElementById('smsOptChannel').value,
+                note: document.getElementById('smsOptNote').value
+            });
+            res.className = out.ok ? 'success-message' : 'error-message';
+            res.textContent = out.text;
+            res.style.display = 'block';
+            btn.disabled = false;
         }
 
         // -- Rendering helpers --------------------------------------------------
