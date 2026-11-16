@@ -1,4 +1,4 @@
-// gh-3762 (child of gate #3726 item 5): process-dunning (cron, every 30 min) skips contractor SMS outside 08:00-21:00 local.
+// gh-3762 (child of gate #3726 item 5): process-dunning (cron, every 30 min) skips contractor SMS outside 08:00-20:00 local (Ben's ruling on PR #3774).
 // Run: deno test --allow-read=supabase/functions supabase/functions/process-dunning/sms-quiet-gate.test.ts
 
 import { assert, assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
@@ -17,13 +17,13 @@ Deno.test("NEGATIVE CONTROL: at 22:00 local the phone list is emptied (nothing r
   assertEquals(logs.length, 1);
 });
 
-Deno.test("skip-until-window holds for the */30 cron: across one day of runs the list is non-empty exactly 08:00..20:30 local (26 runs)", () => {
+Deno.test("skip-until-window holds for the */30 cron: across one day of runs the list is non-empty exactly 08:00..19:30 local (24 runs)", () => {
   let open = 0;
   for (let m = 0; m < 24 * 60; m += 30) {
     const now = new Date(Date.UTC(2026, 10, 15, 5, m)); // 00:00 EST onward, every 30 minutes
     if (quietHoursPhones(PHONES, ET, { now, log: () => {} }).length > 0) open++;
   }
-  assertEquals(open, 26);
+  assertEquals(open, 24);
 });
 
 Deno.test("an empty list stays empty without logging; a missing timezone/state uses the restrictive window", () => {

@@ -1,4 +1,4 @@
-// gh-3762 (child of gate #3726 item 5): contractor SMS quiet hours, recipient local time, window 08:00 <= t < 21:00.
+// gh-3762 (child of gate #3726 item 5): contractor SMS quiet hours, recipient local time, window 08:00 <= t < 20:00 (Ben's ruling on PR #3774).
 // Run: deno test --allow-read=supabase/functions supabase/functions/_shared/sms-quiet-hours.test.ts
 // Pure + fakes: no network, no Twilio. All instants are UTC; the comment gives the local time they stand for.
 
@@ -16,38 +16,38 @@ const CT = { timezone: "America/Chicago", state: "IL" };
 const PT = { timezone: "America/Los_Angeles", state: "CA" };
 const UNKNOWN = { timezone: "America/New_York", state: null };
 
-Deno.test("ET boundaries: 20:59 sends, 21:00 does not, 07:59 does not, 08:00 sends", () => {
-  assertEquals(ok("2026-11-16T01:59:00Z", ET), true);  // 20:59 EST
-  assertEquals(ok("2026-11-16T02:00:00Z", ET), false); // 21:00 EST
+Deno.test("ET boundaries: 19:59 sends, 20:00 does not, 07:59 does not, 08:00 sends", () => {
+  assertEquals(ok("2026-11-16T00:59:00Z", ET), true);  // 19:59 EST
+  assertEquals(ok("2026-11-16T01:00:00Z", ET), false); // 20:00 EST
   assertEquals(ok("2026-11-15T12:59:00Z", ET), false); // 07:59 EST
   assertEquals(ok("2026-11-15T13:00:00Z", ET), true);  // 08:00 EST
 });
 
 Deno.test("CT boundaries", () => {
-  assertEquals(ok("2026-11-16T02:59:00Z", CT), true);  // 20:59 CST
-  assertEquals(ok("2026-11-16T03:00:00Z", CT), false); // 21:00 CST
+  assertEquals(ok("2026-11-16T01:59:00Z", CT), true);  // 19:59 CST
+  assertEquals(ok("2026-11-16T02:00:00Z", CT), false); // 20:00 CST
   assertEquals(ok("2026-11-15T13:59:00Z", CT), false); // 07:59 CST
   assertEquals(ok("2026-11-15T14:00:00Z", CT), true);  // 08:00 CST
 });
 
 Deno.test("PT boundaries", () => {
-  assertEquals(ok("2026-11-16T04:59:00Z", PT), true);  // 20:59 PST
-  assertEquals(ok("2026-11-16T05:00:00Z", PT), false); // 21:00 PST
+  assertEquals(ok("2026-11-16T03:59:00Z", PT), true);  // 19:59 PST
+  assertEquals(ok("2026-11-16T04:00:00Z", PT), false); // 20:00 PST
   assertEquals(ok("2026-11-15T15:59:00Z", PT), false); // 07:59 PST
   assertEquals(ok("2026-11-15T16:00:00Z", PT), true);  // 08:00 PST
 });
 
 Deno.test("the same instant can be fine in one zone and refused in another (recipient local time, not server time)", () => {
-  const t = "2026-11-16T02:30:00Z"; // 21:30 ET, 20:30 CT, 18:30 PT
+  const t = "2026-11-16T01:30:00Z"; // 20:30 ET, 19:30 CT, 17:30 PT
   assertEquals([ok(t, ET), ok(t, CT), ok(t, PT)], [false, true, true]);
 });
 
 Deno.test("UNKNOWN timezone (no state) uses the restrictive window valid in every US zone", () => {
-  // Open only while it is 08:00-21:00 in Honolulu AND 08:00-21:00 in Eastern: 18:00Z .. 02:00Z in November.
+  // Open only while it is 08:00-20:00 in Honolulu AND 08:00-20:00 in Eastern: 18:00Z .. 01:00Z in November.
   assertEquals(ok("2026-11-15T17:59:00Z", UNKNOWN), false); // 12:59 ET, 07:59 HST
   assertEquals(ok("2026-11-15T18:00:00Z", UNKNOWN), true);  // 13:00 ET, 08:00 HST
-  assertEquals(ok("2026-11-16T01:59:00Z", UNKNOWN), true);  // 20:59 ET
-  assertEquals(ok("2026-11-16T02:00:00Z", UNKNOWN), false); // 21:00 ET
+  assertEquals(ok("2026-11-16T00:59:00Z", UNKNOWN), true);  // 19:59 ET
+  assertEquals(ok("2026-11-16T01:00:00Z", UNKNOWN), false); // 20:00 ET
   const v = checkQuietHours(at("2026-11-16T02:00:00Z"), UNKNOWN);
   assertEquals(v.basis, "fallback_all_us");
   assertEquals(v.nextAllowedAt?.toISOString(), "2026-11-16T18:00:00.000Z");
@@ -80,12 +80,12 @@ Deno.test("column timezone that disagrees with the state is ADDED, so the strict
   assertEquals(ok("2026-11-15T15:00:00Z", r), true);
 });
 
-Deno.test("split state Indiana (ET + CT): window is 09:00-21:00 Eastern", () => {
+Deno.test("split state Indiana (ET + CT): window is 09:00-20:00 Eastern", () => {
   const IN = { timezone: "America/New_York", state: "IN" };
   assertEquals(ok("2026-11-15T13:59:00Z", IN), false); // 08:59 ET = 07:59 CT
   assertEquals(ok("2026-11-15T14:00:00Z", IN), true);  // 09:00 ET = 08:00 CT
-  assertEquals(ok("2026-11-16T01:59:00Z", IN), true);
-  assertEquals(ok("2026-11-16T02:00:00Z", IN), false);
+  assertEquals(ok("2026-11-16T00:59:00Z", IN), true);  // 19:59 ET
+  assertEquals(ok("2026-11-16T01:00:00Z", IN), false); // 20:00 ET
   assertEquals(checkQuietHours(at("2026-11-15T13:59:00Z"), IN).nextAllowedAt?.toISOString(), "2026-11-15T14:00:00.000Z");
 });
 
@@ -95,7 +95,7 @@ Deno.test("an invalid IANA name in the column is ignored (state zones only), nev
   assertEquals(v.allowed, true);
 });
 
-Deno.test("nextAllowedAt: after 21:00 it is 08:00 local the next morning; before 08:00 it is 08:00 the same day", () => {
+Deno.test("nextAllowedAt: after 20:00 it is 08:00 local the next morning; before 08:00 it is 08:00 the same day", () => {
   assertEquals(checkQuietHours(at("2026-11-16T03:00:00Z"), ET).nextAllowedAt?.toISOString(), "2026-11-16T13:00:00.000Z"); // 22:00 EST -> 08:00 EST
   assertEquals(checkQuietHours(at("2026-11-15T10:00:00Z"), ET).nextAllowedAt?.toISOString(), "2026-11-15T13:00:00.000Z"); // 05:00 EST -> 08:00 EST
   assertEquals(checkQuietHours(at("2026-11-15T15:00:00Z"), ET).nextAllowedAt, null); // allowed
@@ -105,21 +105,21 @@ Deno.test("nextAllowedAt: after 21:00 it is 08:00 local the next morning; before
 Deno.test("DST spring forward (Sun 2026-03-08, ET): 07:59 EDT refused, 08:00 EDT sends; the evening before crosses the change", () => {
   assertEquals(ok("2026-03-08T11:59:00Z", ET), false); // 07:59 EDT
   assertEquals(ok("2026-03-08T12:00:00Z", ET), true);  // 08:00 EDT
-  assertEquals(ok("2026-03-08T01:59:00Z", ET), true);  // Sat 20:59 EST
-  const after = checkQuietHours(at("2026-03-08T02:00:00Z"), ET); // Sat 21:00 EST
+  assertEquals(ok("2026-03-08T00:59:00Z", ET), true);  // Sat 19:59 EST
+  const after = checkQuietHours(at("2026-03-08T01:00:00Z"), ET); // Sat 20:00 EST
   assertEquals(after.allowed, false);
   assertEquals(after.nextAllowedAt?.toISOString(), "2026-03-08T12:00:00.000Z"); // Sun 08:00 EDT, NOT 13:00Z
   assertEquals(ok("2026-03-08T20:59:00Z", ET), true);  // 16:59 EDT
-  assertEquals(ok("2026-03-09T00:59:00Z", ET), true);  // 20:59 EDT
-  assertEquals(ok("2026-03-09T01:00:00Z", ET), false); // 21:00 EDT
+  assertEquals(ok("2026-03-08T23:59:00Z", ET), true);  // 19:59 EDT
+  assertEquals(ok("2026-03-09T00:00:00Z", ET), false); // 20:00 EDT
 });
 
 Deno.test("DST fall back (Sun 2026-11-01, ET): 07:59 EST refused, 08:00 EST sends; Saturday night's next opening is 13:00Z", () => {
   assertEquals(ok("2026-11-01T12:59:00Z", ET), false); // 07:59 EST
   assertEquals(ok("2026-11-01T13:00:00Z", ET), true);  // 08:00 EST
-  assertEquals(ok("2026-11-02T01:59:00Z", ET), true);  // 20:59 EST
-  assertEquals(ok("2026-11-02T02:00:00Z", ET), false); // 21:00 EST
-  const sat = checkQuietHours(at("2026-11-01T01:00:00Z"), ET); // Sat 21:00 EDT
+  assertEquals(ok("2026-11-02T00:59:00Z", ET), true);  // 19:59 EST
+  assertEquals(ok("2026-11-02T01:00:00Z", ET), false); // 20:00 EST
+  const sat = checkQuietHours(at("2026-11-01T00:00:00Z"), ET); // Sat 20:00 EDT
   assertEquals(sat.allowed, false);
   assertEquals(sat.nextAllowedAt?.toISOString(), "2026-11-01T13:00:00.000Z"); // Sun 08:00 EST (an hour later than EDT would give)
 });
@@ -173,7 +173,7 @@ Deno.test("NEGATIVE CONTROL: a send at 22:00 local is refused (outside_quiet_hou
   const body = await r22!.json();
   assertEquals(body.error, "outside_quiet_hours");
   assertEquals(body.next_allowed_at, "2026-11-16T13:00:00.000Z");
-  assertEquals(body.window, { start_hour: 8, end_hour: 21 });
+  assertEquals(body.window, { start_hour: 8, end_hour: 20 });
   assert(lines.length === 1 && lines[0].includes("to_last4=0123") && !lines[0].includes("3175550123"));
   // deno-lint-ignore no-explicit-any
   assertEquals(await quietHoursRefusal(sb as any, CONTRACTOR_PHONE, CORS, "send-sms", at("2026-11-15T15:00:00Z"), () => {}), null); // 10:00 EST

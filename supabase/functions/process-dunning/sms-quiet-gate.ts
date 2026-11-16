@@ -2,7 +2,7 @@
  * gh-3762 (child of gate #3726 item 5): quiet-hours gate for process-dunning's direct-to-Twilio SMS.
  *
  * process-dunning is a cron sender (every 30 minutes) and decides its SMS recipients in ONE place, getContractorContacts().
- * That function calls quietHoursPhones(): outside 08:00 <= local < 21:00 for the contractor, the phone list for this run
+ * That function calls quietHoursPhones(): outside 08:00 <= local < 20:00 for the contractor (Ben's ruling on PR #3774), the phone list for this run
  * is empty (email is unaffected) and one structured line is logged.
  *
  * "Defer" = skip now: the hourly reminder is re-evaluated on every run, so the first run inside the window sends the next

@@ -1,9 +1,9 @@
 /**
  * gh-3762 (child of gate #3726 item 5): contractor SMS quiet hours, in the RECIPIENT'S local time.
  *
- * Window: 08:00 <= local time < 21:00 (the TCPA-safe default; neither #3726 nor D-391 names a window). 20:59:59 may be
- * texted, 21:00:00 may not; 07:59:59 may not, 08:00:00 may. Some state laws are tighter (Florida's FTSA is 08:00-20:00;
- * see the PR body): QUIET_HOURS_END_HOUR is the single place to change it.
+ * Window: 08:00 <= local time < 20:00. 19:59:59 may be texted, 20:00:00 may not; 07:59:59 may not, 08:00:00 may.
+ * Ben's ruling on PR #3774 (CEO RUN 152): one universal 20:00 end for everyone, the most protective of the US state windows
+ * we know of (Florida FTSA and others), instead of per-state rules. QUIET_HOURS_END_HOUR is the single place to change it.
  *
  * Pure: checkQuietHours(now, recipient) has no I/O and no clock of its own. It answers "allowed" or "refused, and the
  * next instant it would be allowed".
@@ -12,7 +12,7 @@
  * defaults to 'America/New_York' (15 of 16 production rows hold that default), so it is NOT trusted alone. The candidate
  * zones are the column value (if a valid IANA name) PLUS every zone the state touches (split states list all of them),
  * and a send is allowed only when the window is open in EVERY candidate zone: the intersection, the most restrictive
- * answer. With no recognisable state the candidates are every US zone (ALL_US_ZONES), i.e. roughly 14:00-21:00 Eastern.
+ * answer. With no recognisable state the candidates are every US zone (ALL_US_ZONES), i.e. roughly 13:00/14:00-20:00 Eastern.
  * An unreadable lookup lands on the same fallback. The check never fails open.
  *
  * Owner alerts: the owner's own number (OWNER_ALERT_NUMBER_E164) is exempt, by exact match on that one number. There is no
@@ -21,7 +21,7 @@
 import { toE164 } from "./sms-pause.ts";
 
 export const QUIET_HOURS_START_HOUR = 8;   // inclusive
-export const QUIET_HOURS_END_HOUR = 21;    // exclusive
+export const QUIET_HOURS_END_HOUR = 20;    // exclusive (Ben's ruling on PR #3774: 20:00 for everyone)
 
 /** The owner's own alert line (same literal as DUSTIN_ALERT_PHONE in send-contractor-nudge/index.ts; pinned by test). */
 export const OWNER_ALERT_NUMBER_E164 = "+13175019215";
