@@ -18,22 +18,24 @@ const deps: Deps = {
     return error ? null : (data ?? []);
   },
   suppress: async (phone, keyword, channel, at, sourceNumberId) => {
-    const { error } = await sb.from("sms_suppression_list").insert({
+    const { data, error } = await sb.from("sms_suppression_list").insert({
       phone_e164: phone,
       suppressed_at: at,
       keyword,
       channel,
       source_number_id: sourceNumberId,
-    });
-    // 23505 = an open row already exists for this number: that is the state we want.
-    return !error || error.code === "23505";
+    }).select("id").single();
+    if (!error) return data?.id ?? null;
+    // 23505 = an open row already exists for this number: that is the state we want; return its id.
+    if (error.code !== "23505") return null;
+    const { data: ex } = await sb.from("sms_suppression_list").select("id").eq("phone_e164", phone).is("released_at", null).limit(1);
+    return ex?.[0]?.id ?? null;
   },
   markOptedOut: async (contractorId, keyword, channel, at) => {
-    const { error } = await sb.from("contractor_sms_numbers")
-      // update-no-select-ok: zero rows is legitimate (every number already opted_out/disabled/removed); the suppression row is the write that matters.
+    const { data, error } = await sb.from("contractor_sms_numbers")
       .update({ status: "opted_out", opted_out_at: at, opt_out_keyword: keyword, opt_out_channel: channel })
-      .eq("contractor_id", contractorId).eq("status", "verified");
-    return !error;
+      .eq("contractor_id", contractorId).eq("status", "verified").select("id");
+    return error ? null : (data ?? []).map((r: { id: string }) => r.id);
   },
   openSuppressions: async (phones) => {
     const { data, error } = await sb.from("sms_suppression_list").select("id, phone_e164, channel")
@@ -47,9 +49,13 @@ const deps: Deps = {
       .in("id", ids).is("released_at", null);
     return !error;
   },
-  audit: async (row) => {
-    const { error } = await sb.from("activity_log").insert(row);
-    return !error;
+  auditBegin: async (row) => {
+    const { data, error } = await sb.from("activity_log").insert(row).select("id").single();
+    return error ? null : (data?.id ?? null);
+  },
+  auditFinish: async (id, metadata) => {
+    const { data, error } = await sb.from("activity_log").update({ metadata }).eq("id", id).select("id");
+    return !error && (data ?? []).length === 1;
   },
 };
 

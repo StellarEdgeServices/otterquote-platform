@@ -22,7 +22,11 @@
  *
  * Auth: the caller's JWT must pass requireAdmin (public.is_admin_email()). Anything else is refused BEFORE any read or
  * write (401 no/invalid token, 403 not an admin). Fails closed.
- * Audit: one public.activity_log row per action, user_id = the acting admin, metadata carries who/when/channel/last4.
+ * Audit: one public.activity_log row per action, user_id = the acting admin, metadata carries who/when/channel/reason/last4 and
+ * the ids of the suppression rows and contractor_sms_numbers rows touched. The row is written FIRST (status 'started'),
+ * before any store write, then finished (status 'completed' | 'blocked' | 'failed') with the ids, so a store write that
+ * succeeds can never go unattributed and a failed one is marked failed (REVIEW 6903556372 should-fix 2/4).
+ * Reason (D-391 rule 7): required on both actions, trimmed, 1..300 chars, no run of 7+ digits and no phone-shaped text.
  * No customer-facing wording is produced anywhere in this file.
  */
 import type { GateResult } from "../_shared/admin-gate.ts";
@@ -41,6 +45,16 @@ export interface AuditRow {
   title: string;
   metadata: Record<string, unknown>;
 }
+export const REASON_MAX = 300;
+/** D-391 rule 7 reason check. Returns the trimmed reason, or null when it must be refused. */
+export function cleanReason(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const r = raw.trim();
+  if (r.length === 0 || r.length > REASON_MAX) return null;
+  if (/\d{7,}/.test(r)) return null; // no phone numbers in the audit log
+  if (/\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}/.test(r)) return null; // nor a formatted one
+  return r;
+}
 
 export interface Deps {
   /** Verifies the caller is an admin (requireAdmin in production). */
@@ -48,15 +62,18 @@ export interface Deps {
   now: () => Date;
   /** Every contractor_sms_numbers row for the contractor, any status. */
   listNumbers: (contractorId: string) => Promise<NumberRow[] | null>;
-  /** Open a suppression row for the number (no-op if one is already open); true on success. */
-  suppress: (phone: string, keyword: string, channel: StaffChannel, atIso: string, sourceNumberId: string) => Promise<boolean>;
-  /** Mark the contractor's verified rows opted_out; true on success. */
-  markOptedOut: (contractorId: string, keyword: string, channel: StaffChannel, atIso: string) => Promise<boolean>;
+  /** Open a suppression row for the number (an already-open row is kept); returns the open row's id, null on failure. */
+  suppress: (phone: string, keyword: string, channel: StaffChannel, atIso: string, sourceNumberId: string) => Promise<string | null>;
+  /** Mark the contractor's verified rows opted_out; returns the ids of the rows changed, null on failure. */
+  markOptedOut: (contractorId: string, keyword: string, channel: StaffChannel, atIso: string) => Promise<string[] | null>;
   /** Open suppression rows for the given numbers (null = lookup failed). */
   openSuppressions: (phones: string[]) => Promise<OpenSuppression[] | null>;
   /** Release the given suppression rows (released_keyword START); true on success. */
   release: (ids: string[], atIso: string) => Promise<boolean>;
-  audit: (row: AuditRow) => Promise<boolean>;
+  /** Write the audit row (status 'started') BEFORE any store write; returns its id, null on failure. */
+  auditBegin: (row: AuditRow) => Promise<string | null>;
+  /** Replace the audit row's metadata with its final state; true on success. */
+  auditFinish: (id: string, metadata: Record<string, unknown>) => Promise<boolean>;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -102,63 +119,74 @@ export async function handle(req: Request, d: Deps): Promise<Response> {
   if (action !== "opt_out" && action !== "opt_in") return json(400, { error: "invalid_action" });
   if (!UUID.test(contractorId)) return json(400, { error: "invalid_contractor_id" });
   const channel = body.channel;
-  if (action === "opt_out" && !(STAFF_CHANNELS as readonly string[]).includes(channel as string)) {
+  if (!(STAFF_CHANNELS as readonly string[]).includes(channel as string)) {
     return json(400, { error: "invalid_channel", allowed: [...STAFF_CHANNELS] });
   }
-  const note = typeof body.note === "string" ? body.note.slice(0, 500) : null;
+  const ch = channel as StaffChannel;
+  const reason = cleanReason(body.reason);
+  if (reason === null) return json(400, { error: "invalid_reason" });
   const at = d.now().toISOString();
 
   const numbers = await d.listNumbers(contractorId);
   if (numbers === null) return json(500, { error: "lookup_failed" });
   if (numbers.length === 0) return json(404, { error: "no_sms_number_on_file" });
   const phones = [...new Set(numbers.map((n) => n.phone_e164))];
+  const event = action === "opt_out" ? EVENT_OPT_OUT : EVENT_OPT_IN;
+  const meta: Record<string, unknown> = {
+    status: "started",
+    contractor_id: contractorId,
+    channel: ch,
+    reason,
+    actor_email: actor.email,
+    at,
+    numbers_last4: phones.map(last4),
+    number_ids: numbers.map((n) => n.id),
+    suppression_ids: [] as string[],
+  };
+
+  // Audit FIRST: if this cannot be written, nothing is changed (fail closed).
+  const auditId = await d.auditBegin({ user_id: actor.id, event_type: event, title: event, metadata: { ...meta } });
+  if (!auditId) return json(500, { error: "audit_failed", store_written: false });
+  const finish = async (patch: Record<string, unknown>) => d.auditFinish(auditId, { ...meta, ...patch });
+  const fail = async (error: string) => {
+    await finish({ status: "failed", error });
+    return json(500, { error });
+  };
 
   if (action === "opt_out") {
-    const ch = channel as StaffChannel;
     const keyword = `STAFF_${ch.toUpperCase()}`;
     // Every number the contractor has ever registered is suppressed (by phone), whatever its status, so a later
     // re-verification of a disabled/removed row cannot make it textable again.
     const seen = new Set<string>();
+    const suppressionIds: string[] = [];
     for (const n of numbers) {
       if (seen.has(n.phone_e164)) continue;
       seen.add(n.phone_e164);
-      if (!(await d.suppress(n.phone_e164, keyword, ch, at, n.id))) return json(500, { error: "suppress_failed" });
+      const id = await d.suppress(n.phone_e164, keyword, ch, at, n.id);
+      if (!id) return await fail("suppress_failed");
+      suppressionIds.push(id);
     }
-    if (!(await d.markOptedOut(contractorId, keyword, ch, at))) return json(500, { error: "status_update_failed" });
-    const ok = await d.audit({
-      user_id: actor.id,
-      event_type: EVENT_OPT_OUT,
-      title: EVENT_OPT_OUT,
-      metadata: { contractor_id: contractorId, channel: ch, numbers_last4: phones.map(last4), actor_email: actor.email, at, note },
-    });
-    // The store is already written and the write is idempotent, so a retry is safe.
-    if (!ok) return json(500, { error: "audit_failed", store_written: true });
+    meta.suppression_ids = suppressionIds;
+    const changed = await d.markOptedOut(contractorId, keyword, ch, at);
+    if (changed === null) return await fail("status_update_failed");
+    meta.opted_out_number_ids = changed;
+    // The store is written and the write is idempotent, so a retry is safe.
+    if (!(await finish({ status: "completed" }))) return json(500, { error: "audit_failed", store_written: true });
     return json(200, { ok: true, action, contractor_id: contractorId, numbers_suppressed: phones.length });
   }
 
   // opt_in
   const open = await d.openSuppressions(phones);
-  if (open === null) return json(500, { error: "lookup_failed" });
+  if (open === null) return await fail("lookup_failed");
   const releasable = open.filter((o) => (STAFF_CHANNELS as readonly string[]).includes(o.channel));
   const blocked = open.filter((o) => !(STAFF_CHANNELS as readonly string[]).includes(o.channel));
-  if (releasable.length > 0 && !(await d.release(releasable.map((o) => o.id), at))) {
-    return json(500, { error: "release_failed" });
+  meta.blocked_last4 = blocked.map((o) => last4(o.phone_e164));
+  meta.blocked_suppression_ids = blocked.map((o) => o.id);
+  if (releasable.length > 0) {
+    meta.suppression_ids = releasable.map((o) => o.id);
+    meta.released_last4 = releasable.map((o) => last4(o.phone_e164));
+    if (!(await d.release(releasable.map((o) => o.id), at))) return await fail("release_failed");
   }
-  const ok = await d.audit({
-    user_id: actor.id,
-    event_type: EVENT_OPT_IN,
-    title: EVENT_OPT_IN,
-    metadata: {
-      contractor_id: contractorId,
-      channel: typeof channel === "string" ? channel : null,
-      released_last4: releasable.map((o) => last4(o.phone_e164)),
-      blocked_last4: blocked.map((o) => last4(o.phone_e164)),
-      actor_email: actor.email,
-      at,
-      note,
-    },
-  });
-  if (!ok) return json(500, { error: "audit_failed", store_written: true });
   const needsReverify = numbers.filter((n) => n.status === "opted_out").length;
   const result = {
     action,
@@ -168,6 +196,9 @@ export async function handle(req: Request, d: Deps): Promise<Response> {
     numbers_needing_reverification: needsReverify,
   };
   // A STOP the contractor texted is released only by their own START: staff cannot clear it.
+  if (!(await finish({ status: blocked.length > 0 ? "blocked" : "completed" }))) {
+    return json(500, { error: "audit_failed", store_written: releasable.length > 0 });
+  }
   if (blocked.length > 0) return json(409, { error: "stop_by_text_needs_contractor_start", ...result });
   return json(200, { ok: true, ...result });
 }
