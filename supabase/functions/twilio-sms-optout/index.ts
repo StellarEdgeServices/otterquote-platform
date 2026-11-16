@@ -32,6 +32,17 @@ const deps: Deps = {
       .eq("phone_e164", phone).eq("status", "verified");
     return !error;
   },
+  recordStopOverStaff: async (phone, keyword, _at) => {
+    // #3761: a contractor's own STOP over a staff-recorded opt-out must stay on record as the contractor's STOP.
+    const staff = ["email", "support_call"];
+    const a = await sb.from("sms_suppression_list")
+      .update({ channel: "sms_keyword", keyword })
+      .eq("phone_e164", phone).is("released_at", null).in("channel", staff).select("id");
+    const b = await sb.from("contractor_sms_numbers")
+      .update({ opt_out_channel: "sms_keyword", opt_out_keyword: keyword })
+      .eq("phone_e164", phone).eq("status", "opted_out").in("opt_out_channel", staff).select("id");
+    return !a.error && !b.error;
+  },
   release: async (phone, at) => {
     const { error } = await sb.from("sms_suppression_list")
       // update-no-select-ok: zero rows is legitimate (a START from a number with no open suppression row).

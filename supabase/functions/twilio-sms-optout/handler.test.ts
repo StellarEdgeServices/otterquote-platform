@@ -15,6 +15,7 @@ function make(over: Partial<Deps> = {}, env: Record<string, string | undefined> 
     now: () => new Date("2026-10-21T12:00:00.000Z"),
     suppress: (p, k) => { log.push(`suppress ${p} ${k}`); return Promise.resolve(true); },
     markOptedOut: (p, k) => { log.push(`optedout ${p} ${k}`); return Promise.resolve(true); },
+    recordStopOverStaff: () => Promise.resolve(true), // exercised by its own test below (kept out of `log` so the order assertions above are unchanged)
     release: (p) => { log.push(`release ${p}`); return Promise.resolve(true); },
     flag: (p, b, k, sid) => { log.push(`flag ${p} ${JSON.stringify(b)} [${k.join(",")}] ${sid}`); return Promise.resolve(true); },
     ...over,
@@ -190,4 +191,13 @@ Deno.test("an unsigned free-text keyword body is refused and flags nothing", asy
   const { deps, log } = make();
   assertEquals((await handle(await inbound({ From: PHONE, Body: "please stop" }, { sign: false }), deps)).status, 403);
   assertEquals(log, []);
+});
+
+Deno.test("#3761: a STOP also re-labels a staff-recorded open opt-out (recordStopOverStaff), and a failed re-label is a 500 so Twilio retries", async () => {
+  const seen: string[] = [];
+  const ok = make({ recordStopOverStaff: (p, k) => { seen.push(`${p} ${k}`); return Promise.resolve(true); } });
+  assertEquals((await handle(await inbound({ From: PHONE, Body: "STOP", OptOutType: "STOP" }), ok.deps)).status, 200);
+  assertEquals(seen, [`${PHONE} STOP`]);
+  const bad = make({ recordStopOverStaff: () => Promise.resolve(false) });
+  assertEquals((await handle(await inbound({ From: PHONE, Body: "STOP", OptOutType: "STOP" }), bad.deps)).status, 500);
 });
