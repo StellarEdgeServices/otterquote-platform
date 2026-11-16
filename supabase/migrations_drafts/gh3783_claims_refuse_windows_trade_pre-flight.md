@@ -13,7 +13,7 @@ Result: total 43, trades_windows 0, windows_released 0 (non-test windows rows: 0
 
 ## Writers that would now be refused
 - dashboard.html and react-app/app/(homeowner)/dashboard/actions.ts stamp windows_bid_released_at (guarded in the same PR, so the browser no longer attempts it).
-- trade-selector (static and React) saves claims.trades; PR #3781 stops Windows being selectable. Until #3781 is published, a homeowner who still selects Windows would get a save error after apply: publish #3781 first.
+- trade-selector (static and React) saves claims.trades; PR #3781 stops Windows being selectable. Until #3781 is published, a homeowner who still selects Windows would get a save error after apply: publish #3781 AND deploy the code of PR #3784 first (main's React submit would otherwise surface the trigger text).
 - supabase/functions/notify-contractors only reads the stamp; it does not write it.
 
 ## Rollback
