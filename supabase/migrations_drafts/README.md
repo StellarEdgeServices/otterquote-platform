@@ -193,3 +193,9 @@ Replay path (review of PR #3479, comment 6670233265): `gh3239_partner_agreement_
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh2875_contractor_sms_verify_rate_limits` | forward, rollback, pre-flight | NOT APPLIED | drafted 2026-10-23 under #2875 (CTO RUN 77 worker cto77-w2875rl); production read-only 2026-10-23: no `contractor-sms-verify-start` / `-check` row in `rate_limit_config`, `check_rate_limit(text,uuid)` md5 `905e1e53...`. Two `INSERT ... ON CONFLICT DO NOTHING` rows (start 5/10/30, cost 0.0292, cap 10.00; check 10/30/100, no cap). Throwaway-Postgres proof `bash supabase/tests/gh2875_contractor_sms_verify_rate_limits_proof_run.sh` (negative control: with no row the limiter refuses everyone). Additive; applied under the #2875 rollout runbook after review | none |
+
+## Added 2026-11-16 (gh-3783, D-375): forward, rollback and pre-flight here; not counted in the tables above
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh3783_claims_refuse_windows_trade` | forward, rollback, pre-flight | NOT APPLIED | drafted under #3783 (CEO RUN 153, b3783); read-only production SELECT the same day: 43 claims, 0 with a windows trade, 0 with `windows_bid_released_at`. Trigger refusing a windows trade or release stamp (23514). Tier 3B, R-097 24-hour notice before apply; publish PR #3781 first | none |
