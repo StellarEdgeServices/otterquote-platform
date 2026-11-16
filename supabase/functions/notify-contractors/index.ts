@@ -33,6 +33,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { selectFanOutContractors } from "./test-exclusion.ts";
 import { contractorSmsReleaseGate } from "../_shared/contractor-sms-release.ts"; // D-391 / #2875 TCR release gate
 import { resolveContractorTextableNumbers } from "../_shared/contractor-textable.ts"; // D-391 / #2875 layer 4: verified numbers only
+import { last4 } from "../_shared/sms-suppression.ts"; // gh-3773: last 4 digits only in logs
 import { acceptedServiceKeys, deny, type GetEnv } from "./caller-gate.ts"; // gh-2462
 import { authorizeNotifyCaller, type NotifyBody, type OwnershipLookups } from "./user-gate.ts"; // gh-2462
 
@@ -926,7 +927,11 @@ async function notifyContractorsForSingleTrade(
           console.warn(`SMS rate limit exceeded for contractor ${contractor.id} [${tradeLower}]`);
           continue;
         }
-        if (!smsResponse.ok) continue;
+        if (!smsResponse.ok) {
+          // gh-3773: a 403 (paused / suppressed / quiet hours) or 503 (lookup failed) used to be skipped silently.
+          console.warn(`send-sms refused for contractor ${contractor.id} [${tradeLower}]: HTTP ${smsResponse.status}, to_last4=${last4(phone)}`);
+          continue;
+        }
 
         const smsData = await smsResponse.json();
         smsSent = true;
