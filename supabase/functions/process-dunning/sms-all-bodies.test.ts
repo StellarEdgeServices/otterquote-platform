@@ -299,16 +299,9 @@ const FORBIDDEN_TRANSPORT = [
 const FETCH_ALLOW = [/api\.mailgun\.net/, /STRIPE_API_BASE/];
 
 /** Violations for one module's (comment-stripped) text, with the sendSMS body already removed. */
-// gh-3773: _shared/sms-suppression.ts is the send-time suppression GUARD process-dunning now imports (the same one send-sms uses). It
-// makes no request of its own; the string "send-sms" there is only the default log label (`fn = "send-sms"`). It is exempt from the
-// /send-sms/ pattern ALONE: every other forbidden-transport pattern and the fetch checks still apply to it.
-const SEND_SMS_LABEL_ONLY = /_shared\/sms-suppression\.ts$/;
 export function transportViolations(file: string, srcWithoutSendSms: string): string[] {
   const v: string[] = [];
-  for (const re of FORBIDDEN_TRANSPORT) {
-    if (re.source === "send-sms" && SEND_SMS_LABEL_ONLY.test(file)) continue;
-    if (re.test(srcWithoutSendSms)) v.push(`${file}: ${re} outside the sendSMS helper`);
-  }
+  for (const re of FORBIDDEN_TRANSPORT) if (re.test(srcWithoutSendSms)) v.push(`${file}: ${re} outside the sendSMS helper`);
   for (const r of nonCallReferences(maskLiterals(srcWithoutSendSms), "fetch")) v.push(`${file}: fetch used other than by a bare direct call: ${r}`);
   const re = /(?<![\w$.])fetch\s*\(/g;
   let m: RegExpExecArray | null;

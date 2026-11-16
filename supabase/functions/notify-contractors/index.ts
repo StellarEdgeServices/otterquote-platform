@@ -929,7 +929,8 @@ async function notifyContractorsForSingleTrade(
         }
         if (!smsResponse.ok) {
           // gh-3773: a 403 (paused / suppressed / quiet hours) or 503 (lookup failed) used to be skipped silently.
-          console.warn(`send-sms refused for contractor ${contractor.id} [${tradeLower}]: HTTP ${smsResponse.status}, to_last4=${last4(phone)}`);
+          const verb = smsResponse.status >= 500 ? "error" : "refused"; // 403/429 = a gate said no; 5xx = send-sms failed
+          console.warn(`send-sms ${verb} for contractor ${contractor.id} [${tradeLower}]: HTTP ${smsResponse.status}, to_last4=${last4(phone)}`);
           continue;
         }
 

@@ -60,14 +60,14 @@ async function runWith(sendSmsStatus: number): Promise<{ logs: string[]; sendSms
     globalThis.fetch = realFetch; console.warn = rw; console.log = rl; console.error = re;
   }
 }
-const nonOk = (logs: string[], code: number) => logs.filter((l) => l.includes("send-sms refused") && l.includes(`HTTP ${code}`));
+const nonOk = (logs: string[], code: number) => logs.filter((l) => /send-sms (refused|error) for contractor/.test(l) && l.includes(`HTTP ${code}`));
 
-Deno.test("NEGATIVE CONTROL 403: a refused send (paused / suppressed / quiet hours) produces a log line with the status and the last 4 digits", async () => {
+Deno.test("NEGATIVE CONTROL 403: a refused send (paused / suppressed / quiet hours) produces a 'refused' log line with the status and the last 4 digits", async () => {
   const r = await runWith(403);
   assertEquals(r.sendSmsCalls, 1, "the loop did call send-sms");
   const lines = nonOk(r.logs, 403);
   assertEquals(lines.length, 1, `expected one non-2xx line, logs: ${JSON.stringify(r.logs)}`);
-  assert(lines[0].includes("to_last4=1234") && lines[0].includes("c1"), lines[0]);
+  assert(lines[0].includes("send-sms refused") && lines[0].includes("to_last4=1234") && lines[0].includes("c1"), lines[0]);
   assert(!r.logs.some((l) => l.includes(PHONE) || l.includes("3175551234")), "no full number in any log line");
 });
 
@@ -75,11 +75,11 @@ Deno.test("NEGATIVE CONTROL 503: a fail-closed lookup (send-sms 503) produces a 
   const r = await runWith(503);
   const lines = nonOk(r.logs, 503);
   assertEquals(lines.length, 1, `expected one non-2xx line, logs: ${JSON.stringify(r.logs)}`);
-  assert(lines[0].includes("to_last4=1234"), lines[0]);
+  assert(lines[0].includes("send-sms error") && lines[0].includes("to_last4=1234"), lines[0]);
 });
 
 Deno.test("a 2xx from send-sms logs no refusal line and the SMS is counted as sent", async () => {
   const r = await runWith(200);
-  assertEquals(r.logs.filter((l) => l.includes("send-sms refused")).length, 0);
+  assertEquals(r.logs.filter((l) => /send-sms (refused|error) for contractor/.test(l)).length, 0);
   assert(String(r.smsSent).includes('"sms_sent":true'));
 });
