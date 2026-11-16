@@ -43,6 +43,12 @@ const deps: Deps = {
       .eq("phone_e164", phone).eq("status", "opted_out").in("opt_out_channel", staff).select("id");
     return !a.error && !b.error;
   },
+  hasOpenStop: async (phone) => {
+    // #3771: an open sms_keyword row for the number exists after the STOP's writes; any error reads as "no" (suppress again).
+    const { data, error } = await sb.from("sms_suppression_list").select("id")
+      .eq("phone_e164", phone).is("released_at", null).eq("channel", "sms_keyword").limit(1);
+    return !error && (data?.length ?? 0) > 0;
+  },
   release: async (phone, at) => {
     const { error } = await sb.from("sms_suppression_list")
       // update-no-select-ok: zero rows is legitimate (a START from a number with no open suppression row).

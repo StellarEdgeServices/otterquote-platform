@@ -16,6 +16,7 @@ function make(over: Partial<Deps> = {}, env: Record<string, string | undefined> 
     suppress: (p, k) => { log.push(`suppress ${p} ${k}`); return Promise.resolve(true); },
     markOptedOut: (p, k) => { log.push(`optedout ${p} ${k}`); return Promise.resolve(true); },
     recordStopOverStaff: () => Promise.resolve(true), // exercised by its own test below (kept out of `log` so the order assertions above are unchanged)
+    hasOpenStop: () => Promise.resolve(true), // #3771: exercised by the stateful race tests below
     release: (p) => { log.push(`release ${p}`); return Promise.resolve(true); },
     flag: (p, b, k, sid) => { log.push(`flag ${p} ${JSON.stringify(b)} [${k.join(",")}] ${sid}`); return Promise.resolve(true); },
     ...over,
@@ -200,4 +201,56 @@ Deno.test("#3761: a STOP also re-labels a staff-recorded open opt-out (recordSto
   assertEquals(seen, [`${PHONE} STOP`]);
   const bad = make({ recordStopOverStaff: () => Promise.resolve(false) });
   assertEquals((await handle(await inbound({ From: PHONE, Body: "STOP", OptOutType: "STOP" }), bad.deps)).status, 500);
+});
+
+// ---- #3771: a STOP racing a staff release must always leave an open sms_keyword row ----
+// Stateful in-memory store mirroring the live rules: ONE open row per phone (insert -> 23505 no-op), the relabel only touches
+// open staff rows, the staff release closes open staff rows. `beforeRelabel` injects the staff release between the STOP's
+// failed insert and its relabel (the exact interleaving of the issue). Deps are cast because the base handler has no hasOpenStop.
+type Row = { phone: string; channel: string; released_at: string | null };
+function store(beforeRelabel: (rows: Row[], n: number) => void = () => {}) {
+  const rows: Row[] = [{ phone: PHONE, channel: "support_call", released_at: null }]; // staff opt-out already open
+  let relabels = 0;
+  const open = () => rows.filter((r) => r.phone === PHONE && r.released_at === null);
+  const { deps } = make({
+    suppress: (p) => {
+      if (open().length === 0) rows.push({ phone: p, channel: "sms_keyword", released_at: null }); // else 23505: no-op, success
+      return Promise.resolve(true);
+    },
+    recordStopOverStaff: () => {
+      relabels++;
+      beforeRelabel(rows, relabels);
+      for (const r of open()) if (r.channel === "email" || r.channel === "support_call") r.channel = "sms_keyword";
+      return Promise.resolve(true);
+    },
+    ...({ hasOpenStop: () => Promise.resolve(open().some((r) => r.channel === "sms_keyword")) } as unknown as Partial<Deps>),
+  });
+  return { deps, rows, open };
+}
+const staffRelease = (rows: Row[]) => { for (const r of rows) if (r.released_at === null && r.channel !== "sms_keyword") r.released_at = "staff-release"; };
+
+Deno.test("#3771: staff release commits between the STOP's 23505 no-op and its relabel -> an open sms_keyword row still exists", async () => {
+  const s = store((rows, n) => { if (n === 1) staffRelease(rows); });
+  const r = await handle(await inbound({ From: PHONE, Body: "STOP", OptOutType: "STOP" }), s.deps);
+  assertEquals(r.status, 200);
+  assertEquals(s.open().length, 1);
+  assertEquals(s.open()[0].channel, "sms_keyword");
+});
+
+Deno.test("#3771: no race -> unchanged behaviour (staff row relabelled once, no extra row)", async () => {
+  const s = store();
+  assertEquals((await handle(await inbound({ From: PHONE, Body: "STOP", OptOutType: "STOP" }), s.deps)).status, 200);
+  assertEquals(s.rows.length, 1);
+  assertEquals(s.open()[0].channel, "sms_keyword");
+});
+
+Deno.test("#3771: staff releases on every pass -> bounded, ends 200 with an open row (insert wins) ", async () => {
+  const s = store((rows, n) => { if (n <= 2) staffRelease(rows); });
+  assertEquals((await handle(await inbound({ From: PHONE, Body: "STOP", OptOutType: "STOP" }), s.deps)).status, 200);
+  assertEquals(s.open().map((r) => r.channel), ["sms_keyword"]);
+});
+
+Deno.test("#3771: if no open STOP row can be confirmed, the answer is 500 (Twilio retries), never a 200 with nothing open", async () => {
+  const { deps } = make(({ hasOpenStop: () => Promise.resolve(false) } as unknown as Partial<Deps>));
+  assertEquals((await handle(await inbound({ From: PHONE, Body: "STOP", OptOutType: "STOP" }), deps)).status, 500);
 });

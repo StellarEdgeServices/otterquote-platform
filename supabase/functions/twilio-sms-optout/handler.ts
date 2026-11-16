@@ -40,6 +40,14 @@ export interface Deps {
    * release them (only the contractor's START can). Idempotent; zero rows is legitimate. Returns true on success.
    */
   recordStopOverStaff: (phone: string, keyword: string, atIso: string) => Promise<boolean>;
+  /**
+   * #3771 (mirror race after #3767): true only when an OPEN suppression row for the number exists with channel sms_keyword
+   * (i.e. attributable to the contractor's STOP). A staff release can commit between suppress()'s 23505 no-op and
+   * recordStopOverStaff()'s relabel, leaving no open row; the handler checks this after the relabel and re-asserts the row.
+   * Any read error must return false (when in doubt, suppress again). OPTIONAL only so the admin-sms-optout test fakes (outside
+   * this change's scope) still type-check; index.ts always supplies it, and a missing dep skips the check (pre-#3771 behaviour).
+   */
+  hasOpenStop?: (phone: string) => Promise<boolean>;
   /** Release the open suppression row with released_keyword = START; returns true on success. */
   release: (phone: string, atIso: string) => Promise<boolean>;
   /** Pause the number and queue the message for review (idempotent on messageSid); returns true on success. */
@@ -48,6 +56,8 @@ export interface Deps {
 
 const EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
 const twiml = () => new Response(EMPTY_TWIML, { status: 200, headers: { "Content-Type": "text/xml" } });
+/** #3771: how many suppress+relabel passes a STOP may take to end with an open sms_keyword row. */
+const STOP_VERIFY_PASSES = 3;
 const refuse = (status: number) => new Response("", { status });
 
 /** Twilio's request signature: base64(HMAC-SHA1(authToken, url + sorted(key+value...))). */
@@ -125,6 +135,14 @@ export async function handle(req: Request, d: Deps): Promise<Response> {
     if (!(await d.suppress(phone, keyword, at))) return refuse(500);
     if (!(await d.markOptedOut(phone, keyword, at))) return refuse(500);
     if (!(await d.recordStopOverStaff(phone, keyword, at))) return refuse(500);
+    // #3771: a staff release may have committed between a 23505 no-op in suppress() and the relabel above, leaving no open
+    // row. A STOP must never be lost: verify an open sms_keyword row exists; if not, open one again (suppress) and relabel,
+    // bounded. Still none after the last pass -> 500 so Twilio retries (never a 200 with the number left unsuppressed).
+    for (let pass = 1; d.hasOpenStop && !(await d.hasOpenStop(phone)); pass++) {
+      if (pass >= STOP_VERIFY_PASSES) return refuse(500);
+      if (!(await d.suppress(phone, keyword, at))) return refuse(500);
+      if (!(await d.recordStopOverStaff(phone, keyword, at))) return refuse(500);
+    }
     return twiml();
   }
   if (type === "START" && body === "START") {
