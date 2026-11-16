@@ -7,7 +7,7 @@
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
-import { type Deps, handle } from "./handler.ts";
+import { classifyRateLimit, type Deps, handle } from "./handler.ts";
 import { isSmsPaused } from "../_shared/sms-pause.ts";
 
 const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
@@ -44,7 +44,7 @@ const deps: Deps = {
   rateLimit: async (fn, bucket) => {
     const { data, error } = await sb.rpc("check_rate_limit", { p_function_name: fn, p_user_id: bucket });
     if (error) return "error";
-    return data?.allowed === true ? "allowed" : "denied";
+    return classifyRateLimit(data);
   },
   findVerified: async (contractorId, phone) => {
     const { data } = await sb.from("contractor_sms_numbers").select("id")

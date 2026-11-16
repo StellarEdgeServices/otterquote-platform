@@ -19,6 +19,7 @@
  * Safe defaults (every one fails CLOSED -- no text is sent, no record written):
  *   - TWILIO_VERIFY_SERVICE_SID unset            -> 503 verify_not_configured
  *   - no rate_limit_config row for the function  -> check_rate_limit denies -> 429
+ *   - monthly Twilio Verify spend cap reached     -> 503 sms_capacity_reached (distinct from 429 rate_limited)
  *   - rate-limit RPC error                       -> 503
  *   - no current disclosure version row          -> 409 disclosure_unavailable (none is seeded by layer 1)
  *   - consent box not ticked                     -> 400 consent_required
@@ -64,8 +65,11 @@ export interface Deps {
   isSuppressed: (phoneE164: string) => Promise<boolean>;
   /** True when the number has a pending free-text opt-out review (paused for ALL sends) or the lookup failed (fail closed). */
   isPaused: (phoneE164: string) => Promise<boolean>;
-  /** check_rate_limit(); returns allowed, or "error" if the RPC itself failed. */
-  rateLimit: (fn: string, bucketUuid: string) => Promise<"allowed" | "denied" | "error">;
+  /**
+   * check_rate_limit(); returns allowed, or "error" if the RPC itself failed. "budget_cap" is a denial because the
+   * monthly Twilio Verify spend cap is used up (see classifyRateLimit); any other denial is "denied".
+   */
+  rateLimit: (fn: string, bucketUuid: string) => Promise<"allowed" | "denied" | "budget_cap" | "error">;
   /** Current verified row for (contractor, phone), if any. */
   findVerified: (contractorId: string, phone: string) => Promise<{ id: string } | null>;
   /** Does the contractor already have a primary number? */
@@ -78,6 +82,18 @@ export interface Deps {
 // ---------------------------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------------------------
+
+/**
+ * Reads the jsonb that check_rate_limit() returns. Only an explicit `allowed: true` is allowed. A denial whose
+ * `reason` is the monthly-budget-cap message ("Monthly budget cap reached: $x/$y estimated spend.", the same
+ * string the RPC has returned since the baseline schema) is "budget_cap"; every other denial, and anything
+ * unrecognised, stays "denied" (fails closed, no text is sent either way).
+ */
+export function classifyRateLimit(data: unknown): "allowed" | "denied" | "budget_cap" {
+  const r = (data ?? {}) as { allowed?: unknown; reason?: unknown };
+  if (r.allowed === true) return "allowed";
+  return typeof r.reason === "string" && r.reason.startsWith("Monthly budget cap reached") ? "budget_cap" : "denied";
+}
 
 /** E.164 for US/Canada (NANP) input or an explicit +E.164. Returns null when it cannot be one. */
 export function normalizePhone(raw: unknown): string | null {
@@ -241,6 +257,8 @@ export async function handle(req: Request, d: Deps): Promise<Response> {
   for (const b of buckets) {
     const r = await d.rateLimit(rlName, b);
     if (r === "error") return fail(cors, 503, "rate_limit_unavailable");
+    // The monthly Verify spend cap is a distinct, non-429 state: the client shows its existing "not available yet" line.
+    if (r === "budget_cap") return fail(cors, 503, "sms_capacity_reached");
     if (r === "denied") return fail(cors, 429, "rate_limited");
   }
 

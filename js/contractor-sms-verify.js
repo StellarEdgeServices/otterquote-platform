@@ -41,6 +41,8 @@
     disclosure_stale: 'The text-alerts terms changed. Reload the page and try again.',
     disclosure_unavailable: 'Text alerts are not available yet. We will use email.',
     verify_not_configured: 'Text alerts are not available yet. We will use email.',
+    // gh-3763: monthly Twilio Verify spend cap reached. Same approved line as above (CEO ruling on #3763); no new wording.
+    sms_capacity_reached: 'Text alerts are not available yet. We will use email.',
     code_not_sent: 'We could not send the code. Try again in a minute.',
     not_owner: 'You are not signed in to this account.',
     auth_required: 'Please sign in again.',
@@ -72,9 +74,11 @@
    * The state machine, free of the DOM so tests can drive it with fakes.
    * deps: { loadDisclosure(): Promise<{id, disclosure_text}|null>,
    *         invoke(body): Promise<{data, error}>,   // supabase.functions.invoke('contractor-sms-verify', { body })
-   *         contractorId: string }
+   *         contractorId: string,
+   *         source?: 'settings' }   // omitted => 'signup'
    */
   function createController(deps) {
+    var source = deps.source === 'settings' ? 'settings' : SOURCE; // 'signup' unless the settings page says so
     var state = {
       disclosure: null,   // { id, disclosure_text } or null => nothing is offered
       consentChecked: false, // never pre-ticked
@@ -89,7 +93,7 @@
         action: action,
         contractor_id: deps.contractorId,
         phone: phone,
-        source: SOURCE,
+        source: source,
         consent_checked: state.consentChecked === true,
         disclosure_version_id: state.disclosure ? state.disclosure.id : ''
       };
@@ -221,12 +225,13 @@
    * Build the screen inside `mountEl`. Returns the controller. Idempotent per element.
    * With no current disclosure row the mount shows one plain line and no controls.
    */
-  async function mount(mountEl, sb, contractorId) {
+  async function mount(mountEl, sb, contractorId, opts) {
     if (!mountEl || mountEl.getAttribute('data-oq-sms-mounted') === '1') return null;
     mountEl.setAttribute('data-oq-sms-mounted', '1');
     var doc = mountEl.ownerDocument;
     var ctl = createController({
       contractorId: contractorId,
+      source: opts && opts.source,
       loadDisclosure: makeLoadDisclosure(sb),
       invoke: function (b) { return sb.functions.invoke(FUNCTION_NAME, { body: b }); }
     });
