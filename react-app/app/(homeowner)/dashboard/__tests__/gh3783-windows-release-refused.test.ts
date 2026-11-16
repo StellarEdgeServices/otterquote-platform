@@ -41,12 +41,25 @@ describe('gh-3783 submitForBids and windows', () => {
     expect(sb.functions.invoke).not.toHaveBeenCalled();
   });
 
-  it('never stamps windows_bid_released_at on a roofing + windows claim, still releases roofing', async () => {
+  it('refuses a roofing + windows claim too (any windows), writes nothing', async () => {
     wire(['roofing', 'windows']);
     const res = await submitForBids('c1');
-    expect(res.ok).toBe(true);
-    expect(updates[0]).not.toHaveProperty('windows_bid_released_at');
-    expect(updates[0]).toHaveProperty('roofing_bid_released_at');
+    expect(res).toEqual({ ok: false, error: 'Coming Soon' });
+    expect(updates).toHaveLength(0);
+    expect(sb.functions.invoke).not.toHaveBeenCalled();
+  });
+
+  it('maps the windows trigger refusal to the existing "Coming Soon" text, never the raw message', async () => {
+    wire(['roofing']);
+    sb.from.mockImplementation((table: string) => {
+      if (table !== 'claims') return {};
+      return {
+        select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { trades: ['roofing'] }, error: null }) }) }),
+        update: () => ({ eq: () => ({ select: () => Promise.resolve({ data: null, error: { message: 'claims: a windows trade cannot be saved or released yet (D-375, gh-3783)' } }) }) }),
+      };
+    });
+    const res = await submitForBids('c1');
+    expect(res).toEqual({ ok: false, error: 'Coming Soon' });
   });
 
   it('roofing-only claim still releases and notifies (positive control)', async () => {

@@ -18,3 +18,6 @@ Result: total 43, trades_windows 0, windows_released 0 (non-test windows rows: 0
 
 ## Rollback
 gh3783_claims_refuse_windows_trade_rollback.sql drops the trigger and function only.
+
+## Proof
+`bash supabase/tests/gh3783_claims_refuse_windows_trade_proof_run.sh` (throwaway Postgres: TODAY negative control, AFTER forward twice, ROLLBACK).

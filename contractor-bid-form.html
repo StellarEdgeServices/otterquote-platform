@@ -3418,6 +3418,10 @@
 
           if (!error && data) {
             data.carrier_profiles = data.carrier_profile_name ? { carrier_name: data.carrier_profile_name } : null;
+            // gh-3783 (D-375): windows is never shown, pre-ticked or priced for a contractor.
+            ['trades', 'selected_trades'].forEach(function (k) {
+              if (Array.isArray(data[k])) data[k] = data[k].filter(function (t) { return String(t).toLowerCase() !== 'windows'; });
+            });
             currentClaim = data;
 
             // Determine RCV for bid type selector

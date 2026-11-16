@@ -3446,10 +3446,10 @@
       async function submitForBids() {
         if (submitInFlight) return;
         if (!currentClaim) return;
-        // gh-3783 (D-375): Windows cannot be released to contractors yet. A claim whose only trade is windows
+        // gh-3783 (D-375): Windows cannot be released to contractors yet. A claim that includes windows
         // is refused here, before anything is written; no new wording, the existing "Coming Soon" text.
         const claimTradesLc = (Array.isArray(currentClaim.trades) ? currentClaim.trades : []).map(function (t) { return String(t).toLowerCase(); });
-        if (claimTradesLc.length > 0 && claimTradesLc.every(function (t) { return t === 'windows'; })) {
+        if (claimTradesLc.indexOf('windows') !== -1) {
           showError('Coming Soon');
           return;
         }
@@ -3519,6 +3519,7 @@
           if (btn) { btn.disabled = false; btn.textContent = 'Submit for Bids'; }
           if (readyBtn) { readyBtn.disabled = false; readyBtn.textContent = 'Submit for Bids'; }
           if (isBidOpenRefusal(err)) showError(BID_OPEN_REFUSAL_TEXT);
+          else if (err && typeof err.message === 'string' && err.message.indexOf('gh-3783') !== -1) showError('Coming Soon');  // gh-3783 trigger text never shown raw
           else showError('Failed to submit your project. Please try again.');
         } finally {
           // Always clears, success or failure — a failed submit must be

@@ -1,5 +1,5 @@
 /**
- * gh-3783 (D-375) -- a windows trade is never released to contractors from dashboard.html.
+ * gh-3783 (D-375) -- a claim that includes windows is never released to contractors from dashboard.html.
  * Extracts submitForBids from the page and runs it against a recording stub of the Supabase client.
  * Run: node tests/gh3783-windows-release-refused.mjs     GH3783_ROOT=<another tree> for a negative control (a checkout of main fails).
  */
@@ -40,8 +40,10 @@ if (m) {
   ok(w.updates.length === 0 && w.invokes.length === 0, 'windows-only: no claims update, no notify-contractors');
   ok(w.errors.length === 1 && w.errors[0] === 'Coming Soon', 'windows-only: shows the existing "Coming Soon" text');
   const mixed = await run(['roofing', 'windows']);
-  ok(mixed.updates.length === 1 && !('windows_bid_released_at' in mixed.updates[0]), 'roofing+windows: windows_bid_released_at is never stamped');
-  ok(mixed.updates.length === 1 && !!mixed.updates[0].roofing_bid_released_at, 'roofing+windows: roofing is still released');
+  ok(mixed.updates.length === 0 && mixed.invokes.length === 0, 'roofing+windows (mixed): refused, no claims update, no notify-contractors');
+  ok(mixed.errors.length === 1 && mixed.errors[0] === 'Coming Soon', 'roofing+windows (mixed): shows the existing "Coming Soon" text');
+  const upper = await run(['Roofing', 'WINDOWS']);
+  ok(upper.updates.length === 0, 'case-insensitive: Roofing+WINDOWS refused');
   const r = await run(['roofing']);
   ok(r.updates.length === 1 && !!r.updates[0].roofing_bid_released_at && r.invokes.length === 1, 'roofing-only: released and contractors notified (positive control)');
   const g = await run(['roofing', 'gutters']);

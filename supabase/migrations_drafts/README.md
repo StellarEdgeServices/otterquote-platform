@@ -198,4 +198,4 @@ Replay path (review of PR #3479, comment 6670233265): `gh3239_partner_agreement_
 
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
-| `gh3783_claims_refuse_windows_trade` | forward, rollback, pre-flight | NOT APPLIED | drafted under #3783 (CEO RUN 153, b3783); read-only production SELECT the same day: 43 claims, 0 with a windows trade, 0 with `windows_bid_released_at`. Trigger refusing a windows trade or release stamp (23514). Tier 3B, R-097 24-hour notice before apply; publish PR #3781 first | none |
+| `gh3783_claims_refuse_windows_trade` | forward, rollback, pre-flight | NOT APPLIED | drafted under #3783 (CEO RUN 153, b3783); read-only production SELECT the same day: 43 claims, 0 with a windows trade, 0 with `windows_bid_released_at`. Trigger refusing a windows trade or release stamp (23514). Tier 3B, R-097 24-hour notice before apply; publish PR #3781 and deploy PR #3784 code first; proof `supabase/tests/gh3783_claims_refuse_windows_trade_proof_run.sh` | none |
