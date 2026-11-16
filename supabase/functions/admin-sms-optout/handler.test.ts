@@ -87,6 +87,7 @@ function makeStore() {
       for (const n of numbers) if (n.phone_e164 === phone && n.status === "verified") Object.assign(n, { status: "opted_out", opted_out_at: at, opt_out_keyword: keyword, opt_out_channel: "sms_keyword" });
       return Promise.resolve(true);
     },
+    hasOpenStop: (phone) => Promise.resolve(open(phone)),
     recordStopOverStaff: (phone, keyword) => {
       for (const x of supp) if (x.phone_e164 === phone && x.released_at === null && STAFF_CHANNELS.includes(x.channel as "email")) Object.assign(x, { channel: "sms_keyword", keyword });
       for (const n of numbers) if (n.phone_e164 === phone && n.status === "opted_out" && STAFF_CHANNELS.includes(n.opt_out_channel as "email")) Object.assign(n, { opt_out_channel: "sms_keyword", opt_out_keyword: keyword });
