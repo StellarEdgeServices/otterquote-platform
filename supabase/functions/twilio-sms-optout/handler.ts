@@ -33,6 +33,13 @@ export interface Deps {
   suppress: (phone: string, keyword: string, atIso: string) => Promise<boolean>;
   /** Mark every verified row for the number opted_out (SMS keyword channel); returns true on success. */
   markOptedOut: (phone: string, keyword: string, atIso: string) => Promise<boolean>;
+  /**
+   * #3761 (REVIEW 6903556372 blocker 1): a STOP that lands on a number whose open suppression row (or opted_out number row)
+   * was recorded by STAFF (channel email / support_call) is the contractor's own revocation; the open-row 23505 no-op in
+   * suppress() would otherwise leave no trace of it. Re-label those rows sms_keyword (with the keyword) so staff cannot
+   * release them (only the contractor's START can). Idempotent; zero rows is legitimate. Returns true on success.
+   */
+  recordStopOverStaff: (phone: string, keyword: string, atIso: string) => Promise<boolean>;
   /** Release the open suppression row with released_keyword = START; returns true on success. */
   release: (phone: string, atIso: string) => Promise<boolean>;
   /** Pause the number and queue the message for review (idempotent on messageSid); returns true on success. */
@@ -117,6 +124,7 @@ export async function handle(req: Request, d: Deps): Promise<Response> {
     // Order matters: the suppression row is the write that stops texts; the status flip is bookkeeping.
     if (!(await d.suppress(phone, keyword, at))) return refuse(500);
     if (!(await d.markOptedOut(phone, keyword, at))) return refuse(500);
+    if (!(await d.recordStopOverStaff(phone, keyword, at))) return refuse(500);
     return twiml();
   }
   if (type === "START" && body === "START") {

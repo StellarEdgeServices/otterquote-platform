@@ -1131,7 +1131,9 @@ function generateRetailScopeOfWorkPdf(params) {
       { num: ++rowNum, item: "Roof/exhaust vents", qty: "field", unit: "EA", basis: "Field-verified", notes: "Reset or replace" },
       // [C3 2026-08-27] Rates removed -- decking and full re-deck are stated once,
       // in CONTINGENCIES AND CONDITIONAL PRICING, each beside its trigger.
-      { num: ++rowNum, item: "Decking replacement allowance", qty: "as req'd", unit: "SHEET", basis: "-", notes: "See Contingencies" },
+      // [gh-3743] The "See Contingencies" reference prints only when the Contingencies table carries the decking row (a bid decking price > 0).
+      // The bid form stores an entered 0 as null; with no decking price the line keeps its quantity and unit and drops the reference.
+      { num: ++rowNum, item: "Decking replacement allowance", qty: "as req'd", unit: "SHEET", basis: "-", notes: Number(deckingPricePerSheet) > 0 ? "See Contingencies" : "" },
     );
     const derivedCols = [
       { key: "num", x: colNum, chars: 4 },
@@ -1269,9 +1271,8 @@ function generateRetailScopeOfWorkPdf(params) {
   // gone. It is now row 1 of CONTINGENCIES AND CONDITIONAL PRICING, which is
   // where every price-changing condition lives.
   if (hasGutters) {
-    ensure(20);
-    addText(LEFT_X, y, 11, "F2", "GUTTERS");
-    y -= 14;
+    // [gh-3743] Collect the GUTTERS lines first; the heading prints only when at least one line does.
+    const gutterLines: { label: string; value: string }[] = [];
     if (va.gutters?.option) {
       const go = va.gutters.option;
       let gutterDesc = String(go);
@@ -1284,28 +1285,30 @@ function generateRetailScopeOfWorkPdf(params) {
       // [gh-3719] The out-of-pocket value is a "see Contingencies" reference: with no matching Contingencies gutters row it is omitted.
       const gutterIsRef = gutterDesc.includes("see Contingencies");
       if (!(gutterIsRef && !sowContingenciesRowExists(declarations, "gutters"))) {
-        ensure(14);
-        addText(60, y, 10, "F2", "Gutters:");
-        addText(160, y, 10, "F1", gutterDesc);
-        y -= 14;
+        gutterLines.push({ label: "Gutters:", value: gutterDesc });
       }
     }
     if (va.gutter_guards) {
       const gg = va.gutter_guards;
       if (gg.pricing_on_request) {
-        ensure(14);
-        addText(60, y, 10, "F2", "Gutter Guards:");
-        addText(160, y, 10, "F1", "Available - pricing on request");
-        y -= 14;
+        gutterLines.push({ label: "Gutter Guards:", value: "Available - pricing on request" });
       } else if (gg.mesh_oop || gg.screw_in_oop) {
         // [C3 2026-08-27] Amounts moved to CONTINGENCIES AND CONDITIONAL PRICING.
-        ensure(14);
-        addText(60, y, 10, "F2", "Gutter Guards:");
-        addText(160, y, 10, "F1", "Available at homeowner cost - see Contingencies");
-        y -= 14;
+        gutterLines.push({ label: "Gutter Guards:", value: "Available at homeowner cost - see Contingencies" });
       }
     }
-    y -= 8;
+    if (gutterLines.length > 0) {
+      ensure(20);
+      addText(LEFT_X, y, 11, "F2", "GUTTERS");
+      y -= 14;
+      for (const gl of gutterLines) {
+        ensure(14);
+        addText(60, y, 10, "F2", gl.label);
+        addText(160, y, 10, "F1", gl.value);
+        y -= 14;
+      }
+      y -= 8;
+    }
   }
   if (hasSiding) {
     ensure(20);
