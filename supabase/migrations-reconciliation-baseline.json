@@ -11,7 +11,7 @@
   },
   "counts": {
     "applied_versions_total": 295,
-    "applied_no_repo_file": 56,
+    "applied_no_repo_file": 58,
     "repo_file_no_applied": 18
   },
   "applied_versions": [
@@ -367,7 +367,9 @@
     "20261109135015",
     "20261109161141",
     "20261110182332",
-    "20261110201420"
+    "20261110201420",
+    "20261115185930",
+    "20261115185944"
   ],
   "repo_file_no_applied_versions": [
     "20260519221215",
