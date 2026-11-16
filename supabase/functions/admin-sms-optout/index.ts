@@ -43,11 +43,12 @@ const deps: Deps = {
     return error ? null : (data ?? []);
   },
   release: async (ids, at) => {
-    const { error } = await sb.from("sms_suppression_list")
-      // update-no-select-ok: a row released a moment ago by the contractor's own START is the state we want.
+    // Only rows still open AND still staff-recorded at write time: a contractor STOP that re-labelled the row since the
+    // read must not be released (the contractor's own START is the only release for it).
+    const { data, error } = await sb.from("sms_suppression_list")
       .update({ released_at: at, released_keyword: "START" })
-      .in("id", ids).is("released_at", null);
-    return !error;
+      .in("id", ids).is("released_at", null).in("channel", ["email", "support_call"]).select("id");
+    return error ? null : (data ?? []).map((r: { id: string }) => r.id);
   },
   auditBegin: async (row) => {
     const { data, error } = await sb.from("activity_log").insert(row).select("id").single();

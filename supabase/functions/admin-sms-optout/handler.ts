@@ -68,8 +68,12 @@ export interface Deps {
   markOptedOut: (contractorId: string, keyword: string, channel: StaffChannel, atIso: string) => Promise<string[] | null>;
   /** Open suppression rows for the given numbers (null = lookup failed). */
   openSuppressions: (phones: string[]) => Promise<OpenSuppression[] | null>;
-  /** Release the given suppression rows (released_keyword START); true on success. */
-  release: (ids: string[], atIso: string) => Promise<boolean>;
+  /**
+   * Release the given suppression rows (released_keyword START), but ONLY rows that are still open AND still a staff
+   * record (channel email / support_call) at write time (a STOP can land between the read and this write).
+   * Returns the ids actually released, null on failure.
+   */
+  release: (ids: string[], atIso: string) => Promise<string[] | null>;
   /** Write the audit row (status 'started') BEFORE any store write; returns its id, null on failure. */
   auditBegin: (row: AuditRow) => Promise<string | null>;
   /** Replace the audit row's metadata with its final state; true on success. */
@@ -178,15 +182,21 @@ export async function handle(req: Request, d: Deps): Promise<Response> {
   // opt_in
   const open = await d.openSuppressions(phones);
   if (open === null) return await fail("lookup_failed");
-  const releasable = open.filter((o) => (STAFF_CHANNELS as readonly string[]).includes(o.channel));
-  const blocked = open.filter((o) => !(STAFF_CHANNELS as readonly string[]).includes(o.channel));
+  const seenStaff = open.filter((o) => (STAFF_CHANNELS as readonly string[]).includes(o.channel));
+  let blocked = open.filter((o) => !(STAFF_CHANNELS as readonly string[]).includes(o.channel));
+  let releasable: OpenSuppression[] = [];
+  if (seenStaff.length > 0) {
+    // The release re-checks channel and released_at in the write itself and reports what it really released; a row whose
+    // channel changed after the read (a STOP landed) is NOT released and counts as blocked (REVIEW race fix).
+    const releasedIds = await d.release(seenStaff.map((o) => o.id), at);
+    if (releasedIds === null) return await fail("release_failed");
+    releasable = seenStaff.filter((o) => releasedIds.includes(o.id));
+    blocked = [...blocked, ...seenStaff.filter((o) => !releasedIds.includes(o.id))];
+  }
+  meta.suppression_ids = releasable.map((o) => o.id);
+  meta.released_last4 = releasable.map((o) => last4(o.phone_e164));
   meta.blocked_last4 = blocked.map((o) => last4(o.phone_e164));
   meta.blocked_suppression_ids = blocked.map((o) => o.id);
-  if (releasable.length > 0) {
-    meta.suppression_ids = releasable.map((o) => o.id);
-    meta.released_last4 = releasable.map((o) => last4(o.phone_e164));
-    if (!(await d.release(releasable.map((o) => o.id), at))) return await fail("release_failed");
-  }
   const needsReverify = numbers.filter((n) => n.status === "opted_out").length;
   const result = {
     action,

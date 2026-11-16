@@ -64,8 +64,10 @@ function makeStore() {
     openSuppressions: (phones) => Promise.resolve(supp.filter((s) => phones.includes(s.phone_e164) && s.released_at === null).map(({ id, phone_e164, channel }) => ({ id, phone_e164, channel }))),
     release: (ids, at) => {
       writes.push("release");
-      for (const s of supp) if (ids.includes(s.id) && s.released_at === null) Object.assign(s, { released_at: at, released_keyword: "START" });
-      return Promise.resolve(true);
+      const done: string[] = [];
+      // mirrors the real write: only rows still open AND still staff-channel are released
+      for (const s of supp) if (ids.includes(s.id) && s.released_at === null && STAFF_CHANNELS.includes(s.channel as "email")) { Object.assign(s, { released_at: at, released_keyword: "START" }); done.push(s.id); }
+      return Promise.resolve(done);
     },
     auditBegin: (row) => { writes.push("auditBegin"); audit.push(row); auditMeta.push(row.metadata); return Promise.resolve(auditFailsAtBegin ? null : `a${audit.length}`); },
     auditFinish: (id, metadata) => { writes.push("auditFinish"); auditMeta[Number(id.slice(1)) - 1] = metadata; return Promise.resolve(!auditFailsAtFinish); },
@@ -270,6 +272,24 @@ Deno.test("REGRESSION: staff opt-out, then the contractor's own STOP, then staff
   assertEquals(s.supp[0].released_at, null);
   assertEquals(s.auditMeta[1].status, "blocked");
   assertEquals(s.auditMeta[1].blocked_suppression_ids, [s.supp[0].id]);
+});
+
+Deno.test("RACE: the channel changes between the opt-in's read and its release -> not released, 409 blocked, audit names only released ids", async () => {
+  const s = makeStore();
+  assertEquals((await handle(optOut(C_OUT, "email"), s.deps(adminGate))).status, 200);
+  const d = s.deps(adminGate);
+  const realRelease = d.release;
+  // A contractor STOP lands after openSuppressions() read channel=email and before the release write.
+  d.release = (ids, at) => { s.supp[0].channel = "sms_keyword"; return realRelease(ids, at); };
+  const res = await handle(optIn(C_OUT), d);
+  assertEquals(res.status, 409);
+  assertEquals((await res.json()).error, "stop_by_text_needs_contractor_start");
+  assertEquals(s.supp[0].released_at, null);
+  assertEquals(s.supp[0].released_keyword, null);
+  const meta = s.auditMeta[1];
+  assertEquals(meta.status, "blocked");
+  assertEquals(meta.suppression_ids, []); // nothing released, so nothing attributed as released
+  assertEquals(meta.blocked_suppression_ids, [s.supp[0].id]);
 });
 
 // ---- Sender negative control (model test of contractor_textable_numbers(); real sender gating code) ----
