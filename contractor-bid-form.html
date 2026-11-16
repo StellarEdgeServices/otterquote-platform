@@ -2119,7 +2119,7 @@
         <!-- ── Siding Trade Section (retail siding jobs) ── -->
         <div class="form-section" id="sidingTradeSection" style="grid-column: 1 / -1; display: none;">
           <h3 style="font-size:1.1rem;margin-bottom:var(--sp-2);">🧱 Siding Project Details</h3>
-          <p style="font-size:0.85rem;color:#6B7280;margin-bottom:var(--sp-6);">This is a retail siding project. The homeowner designs their siding in our property design tool, so you can see exactly what product and color was selected before bidding.</p>
+          <p style="font-size:0.85rem;color:#6B7280;margin-bottom:var(--sp-6);">This is a retail siding project.</p>
 
           <!-- Design Summary Panel -->
           <div id="hoverDesignPanel" style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--radius-md);padding:var(--sp-5);margin-bottom:var(--sp-8);">
@@ -2137,7 +2137,6 @@
                     View property design ↗
                   </a>
                 </div>
-                <button type="button" id="loadHoverSidingDataBtn" class="btn-sm primary" onclick="loadHoverSidingData()" style="font-size:0.8rem;">Load Design Data</button>
               </div>
             </div>
 
@@ -2149,7 +2148,6 @@
 
             <!-- Material & labor table (populated by JS) -->
             <div id="hoverDesignContent" style="font-size:0.875rem;color:#6B7280;">
-              Click <strong>Load Design Data</strong> to fetch the homeowner's product and color selections.
             </div>
 
             <!-- No-data help prompt (shown when no material list exists) -->
@@ -2990,9 +2988,11 @@
       const btn        = document.getElementById('loadHoverSidingDataBtn');
       const content    = document.getElementById('hoverDesignContent');
       const noDataHelp = document.getElementById('hoverNoDesignHelp');
-      if (!currentClaim || !btn || !content) return;
-      btn.disabled = true;
-      btn.textContent = 'Unavailable';
+      if (!currentClaim || !content) return;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Unavailable';
+      }
       content.innerHTML = '<span style="color:#6B7280;">Vendor siding design data is no longer available. Use the homeowner\'s uploaded measurements, or enter your own.</span>';
       if (noDataHelp) noDataHelp.style.display = 'none';
     }

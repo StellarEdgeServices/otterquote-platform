@@ -173,6 +173,12 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/drip-edge-roof-replacement-bid.html',
   '/guides/roof-ventilation-in-your-replacement-bid':
     '/guides/roof-ventilation-in-your-replacement-bid.html',
+  '/guides/window-replacement-in-winter-what-your-bid-should-say':
+    '/guides/window-replacement-in-winter-what-your-bid-should-say.html',
+  '/guides/siding-installation-in-cold-weather-what-to-ask':
+    '/guides/siding-installation-in-cold-weather-what-to-ask.html',
+  '/guides/gutter-installation-in-winter-what-to-ask':
+    '/guides/gutter-installation-in-winter-what-to-ask.html',
   '/guides/roof-change-orders-hidden-damage':
     '/guides/roof-change-orders-hidden-damage.html',
   '/guides/roofing-contract-checklist-before-you-sign':
