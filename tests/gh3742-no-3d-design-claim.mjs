@@ -31,11 +31,19 @@ assert.ok(!/if \(!currentClaim \|\| !btn \|\| !content\) return;\n      btn\.dis
   let d = 0, k = form.indexOf('{', i), end = -1;
   for (let x = k; x < form.length; x++) { if (form[x] === '{') d++; else if (form[x] === '}' && --d === 0) { end = x; break; } }
   const fn = form.slice(i, end + 1);
-  const els = { hoverDesignContent: { innerHTML: '' }, hoverNoDesignHelp: { style: { display: 'block' } } }; // no loadHoverSidingDataBtn
+  const els = { hoverDesignContent: { innerHTML: '' } }; // no loadHoverSidingDataBtn, no hoverNoDesignHelp
   const ctx = { currentClaim: { id: 'c' }, document: { getElementById: (id) => els[id] || null } };
   vm.createContext(ctx);
   vm.runInContext(fn + '\nloadHoverSidingData();', ctx);
   assert.ok(/no longer available/.test(els.hoverDesignContent.innerHTML), 'unavailable message is written into the content div with no button present');
-  assert.equal(els.hoverNoDesignHelp.style.display, 'none', 'no-data help hidden');
 }
-console.log('gh3742: all assertions passed');
+// gh-3759: orphaned property-design remnants are gone (the panel and its heading stay; retitling is a copy decision).
+assert.ok(!/id="hoverDesignLink"/.test(form) && !/id="hoverJobLink"/.test(form), 'no hidden "View property design" link wrapper/anchor');
+assert.ok(!/View property design/.test(form), 'form has no "View property design" text');
+assert.ok(!/id="hoverPhotos3DBtn"/.test(form) && !/id="hoverPhotos3DLink"/.test(form), 'no hidden 3D link wrapper/anchor');
+assert.ok(!/Open 3D Property Design/.test(form), 'form has no "Open 3D Property Design" text');
+assert.ok(!/id="hoverNoDesignHelp"/.test(form), 'no hidden no-data help block');
+assert.ok(!/open their property design/.test(form), 'form has no "open their property design" help text');
+assert.ok(!/hoverNoDesignHelp/.test(form), 'no remaining reference to the deleted help block');
+assert.ok(/id="hoverDesignPanel"/.test(form) && /Homeowner's Property Design<\/strong>/.test(form), 'panel and its existing heading are kept unchanged');
+console.log('gh3742 + gh3759: all assertions passed');
