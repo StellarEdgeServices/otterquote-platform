@@ -97,7 +97,8 @@ ok(V.errorText('rate_limited') === 'Too many requests. Wait a few minutes and tr
   const inserted = []; const mounts = [];
   const section = { parentNode: { insertBefore: (n, ref) => inserted.push({ n, ref }) }, nextSibling: 'NEXT' };
   const fakeDocument = { getElementById: (id) => (id === 'phoneList' ? { closest: (sel) => (sel === '.notifications-section' ? section : null) } : null), createElement: () => ({ setAttribute() {} }) };
-  const run = new Function('window', 'document', 'sb', 'contractorRecord', 'console', fn + '; mountSmsVerify();');
+  ok(fn.startsWith('function mountSmsVerify'), 'contractor-settings.html has no mountSmsVerify()');
+  const run = fn.startsWith('function mountSmsVerify') ? new Function('window', 'document', 'sb', 'contractorRecord', 'console', fn + '; mountSmsVerify();') : () => {};
   run({ OQSmsVerify: { mount: (h, sbx, id, o) => mounts.push({ h, id, o }) } }, fakeDocument, { SB: 1 }, { id: CID }, console);
   ok(inserted.length === 1 && inserted[0].ref === 'NEXT' && inserted[0].n.id === 'smsVerifyMount', 'mountSmsVerify must insert the host right after the phone-list section');
   ok(mounts.length === 1 && mounts[0].id === CID && mounts[0].o && mounts[0].o.source === 'settings' && mounts[0].h === (inserted[0] && inserted[0].n), 'mountSmsVerify must mount on the new host with the contractor id and source settings');
