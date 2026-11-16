@@ -128,7 +128,7 @@ serve(async (req) => {
     if (suppressionRefusal) return suppressionRefusal;
 
     // ========== QUIET HOURS (gh-3762 / #3726 item 5) ==========
-    // No text outside 08:00-21:00 in the RECIPIENT'S local time (timezone + state of the contractor who owns the number;
+    // No text outside 08:00-20:00 (Ben's ruling on PR #3774) in the RECIPIENT'S local time (timezone + state of the contractor who owns the number;
     // an unknown or unreadable recipient gets the all-US restrictive window). Refusal is a distinct code,
     // outside_quiet_hours (403), carrying next_allowed_at; it never reaches Twilio and does not spend rate-limit budget.
     // The ONLY exemption is the owner's own alert number (OWNER_ALERT_NUMBER_E164, exact match inside the helper).

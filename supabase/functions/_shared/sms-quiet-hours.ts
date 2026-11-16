@@ -46,6 +46,9 @@ export const STATE_ZONES: Readonly<Record<string, readonly string[]>> = {
   NJ: [NY], NM: [DEN], NY: [NY], NC: [NY], ND: [CHI, DEN], OH: [NY], OK: [CHI], OR: [LA, DEN], PA: [NY], RI: [NY],
   SC: [NY], SD: [CHI, DEN], TN: [NY, CHI], TX: [CHI, DEN], UT: [DEN], VT: [NY], VA: [NY], WA: [LA], WV: [NY],
   WI: [CHI], WY: [DEN],
+  // Territories (gh-3762 N2). Not in ALL_US_ZONES: Guam/Samoa are a calendar day ahead/behind, so adding them to the
+  // unknown-recipient intersection would leave it empty. A recipient KNOWN to be there is judged in the local zone (+ column).
+  PR: ["America/Puerto_Rico"], VI: ["America/Puerto_Rico"], GU: ["Pacific/Guam"], MP: ["Pacific/Guam"], AS: ["Pacific/Pago_Pago"],
 };
 
 export interface QuietHoursRecipient {
@@ -109,14 +112,23 @@ function openInZone(at: Date, tz: string): boolean {
   return h >= QUIET_HOURS_START_HOUR && h < QUIET_HOURS_END_HOUR;
 }
 
-/** The zones to test for a recipient, and why. Unknown state -> every US zone. */
+/**
+ * The zones to test for a recipient, and why. A valid column timezone is ALWAYS a candidate (gh-3762 N2): with a known
+ * state it is added to the state's zones; with an unknown/absent state it is added to the all-US fallback, so a contractor
+ * tagged America/Puerto_Rico with no mapped state is still judged in AST.
+ */
 export function candidateZones(r: QuietHoursRecipient): { zones: string[]; basis: ZoneBasis } {
   const st = typeof r.state === "string" ? r.state.trim().toUpperCase() : "";
   const stateZones = STATE_ZONES[st];
-  if (!stateZones) return { zones: [...ALL_US_ZONES], basis: "fallback_all_us" };
-  const zones = new Set<string>(stateZones);
   const tz = typeof r.timezone === "string" ? r.timezone.trim() : "";
-  if (isValidZone(tz)) { zones.add(tz); return { zones: [...zones], basis: "timezone_and_state" }; }
+  const tzOk = isValidZone(tz);
+  if (!stateZones) {
+    const zones = new Set<string>(ALL_US_ZONES);
+    if (tzOk) zones.add(tz);
+    return { zones: [...zones], basis: "fallback_all_us" };
+  }
+  const zones = new Set<string>(stateZones);
+  if (tzOk) { zones.add(tz); return { zones: [...zones], basis: "timezone_and_state" }; }
   return { zones: [...zones], basis: "state" };
 }
 

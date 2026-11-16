@@ -228,3 +228,30 @@ Deno.test("the exemption is one named constant: no flag, option or request field
   assertEquals((src.match(/isOwnerAlertNumber\(/g) ?? []).length, 2); // the definition + the single use in quietHoursRefusal
   assert(!/bypass|skipQuiet|force/i.test(src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")));
 });
+
+// ---- gh-3762 N2: valid column timezone is honoured with no/unknown state; territories are mapped --------------------
+Deno.test("N2: a valid column timezone is a candidate even when the state is absent or unmapped (Puerto_Rico, 20:30 AST refused)", () => {
+  const t = "2026-12-02T00:30:00Z"; // 20:30 AST (UTC-4), 19:30 EST
+  assertEquals(ok(t, { timezone: "America/Puerto_Rico", state: null }), false);
+  assertEquals(ok(t, { timezone: "America/Puerto_Rico", state: "ZZ" }), false);
+  assertEquals(ok(t, { timezone: "America/Puerto_Rico", state: "PR" }), false);
+  assertEquals(ok(t, { timezone: "America/New_York", state: null }), true); // control: same instant with an Eastern column is open in every US zone (19:30 ET)
+});
+
+Deno.test("N2: an unmapped state with a valid column zone adds that zone to the all-US fallback; basis stays fallback", () => {
+  const c = candidateZones({ timezone: "America/Puerto_Rico", state: null });
+  assertEquals(c.basis, "fallback_all_us");
+  assert(c.zones.includes("America/Puerto_Rico") && c.zones.length === ALL_US_ZONES.length + 1);
+  assertEquals(candidateZones({ timezone: "Not/AZone", state: null }).zones.length, ALL_US_ZONES.length);
+});
+
+Deno.test("N2: PR, VI, GU, AS and MP are in the state map", () => {
+  assertEquals(candidateZones({ state: "PR" }).zones, ["America/Puerto_Rico"]);
+  assertEquals(candidateZones({ state: "vi" }).zones, ["America/Puerto_Rico"]);
+  assertEquals(candidateZones({ state: "GU" }).zones, ["Pacific/Guam"]);
+  assertEquals(candidateZones({ state: "MP" }).zones, ["Pacific/Guam"]);
+  assertEquals(candidateZones({ state: "AS" }).zones, ["Pacific/Pago_Pago"]);
+  assertEquals(ok("2026-11-15T21:30:00Z", { state: "GU" }), false); // 07:30 ChST
+  assertEquals(ok("2026-11-15T22:00:00Z", { state: "GU" }), true);  // 08:00 ChST
+  assert(!ALL_US_ZONES.includes("Pacific/Guam"), "Guam must stay out of the unknown-recipient intersection (it would be empty)");
+});
