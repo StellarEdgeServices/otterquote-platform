@@ -38,6 +38,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 // setInterval (_startAutoRefresh) inside createClient that never completes, which Deno < 2.8 test sanitizers flag as a leak.
 const SERVER_CLIENT_OPTS = { auth: { autoRefreshToken: false, persistSession: false } } as const;
 import { isSmsPaused } from "../_shared/sms-pause.ts";
+import { quietHoursPhones } from "./sms-quiet-gate.ts"; // gh-3762 / #3726 item 5: quiet hours, recipient local time
 import { contractorSmsReleaseGate } from "../_shared/contractor-sms-release.ts"; // D-391 / #2875 TCR release gate
 import { resolveContractorTextableNumbers } from "../_shared/contractor-textable.ts"; // D-391 / #2875 layer 4: verified numbers only
 import { appendPostalFooterHtml, appendPostalFooterText } from "./footer-append.ts"; // gh-1824 D-237
@@ -466,6 +467,11 @@ async function getContractorContacts(contractor: Record<string, any>, supabase: 
   }
   phones = (await resolveContractorTextableNumbers(supabase, contractor.id, { site: "process-dunning/getContractorContacts" })).map((r) => r.phone);
 
+  // gh-3762 / #3726 item 5: quiet hours, in the contractor's local time (08:00 <= t < 21:00). Outside the window phones is
+  // [] for this run (email unaffected). The hourly reminder is re-evaluated on the next */30 run, so a skip defers it;
+  // the one-shot notices (8 AM warning, proceeded, lost-project) are NOT retried: the skip is logged (see sms-quiet-gate.ts).
+  phones = quietHoursPhones(phones, { timezone: contractor.timezone ?? null, state: contractor.address_state ?? null }, { contractorId: contractor.id });
+
   return { emails, phones };
 }
 
@@ -589,7 +595,7 @@ export async function handler(
         .from("payment_failures")
         .select(`
           *,
-          contractors:contractor_id (id, company_name, email, notification_emails, user_id, is_test),
+          contractors:contractor_id (id, company_name, email, notification_emails, user_id, is_test, timezone, address_state),
           claims:claim_id (id, property_address, status, color_confirmation_envelope_id, color_confirmed_at)
         `)
         .eq("id", failId)
