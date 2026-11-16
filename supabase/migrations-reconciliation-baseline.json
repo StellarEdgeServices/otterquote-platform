@@ -7,10 +7,10 @@
     "supabase_project_ref": "yeszghaspzwwstvsrioa",
     "applied_migrations_query": "select version, name from supabase_migrations.schema_migrations order by version (read-only, Supabase MCP execute_sql) against project yeszghaspzwwstvsrioa at 2026-10-06T19:4xZ -- 213 rows; sorted-version md5 digest 863d9dbc equals this manifest's applied_versions",
     "repo_migrations_scan": "filesystem scan of supabase/migrations/ on this branch (excludes _rollback.sql and _pre-flight.md), de-duplicated -- 192 distinct version prefixes",
-    "gh3324_ledger_read": "2026-11-11 read-only SELECT of supabase_migrations.schema_migrations (295 rows) through the Supabase Management API; the 38 versions >= 20261026 with no filed copy were added; sorted-version list of those 38 is in PR #3665"
+    "gh3324_ledger_read": "2026-11-11 read-only SELECT of supabase_migrations.schema_migrations (295 rows) through the Supabase Management API; the 38 versions >= 20261026 with no filed copy were added; sorted-version list of those 38 is in PR #3665; 2026-11-16 (CEO RUN 153, b3324) re-read of the ledger found 3 more applied 2026-11-15 (20261115185916, 20261115185930, 20261115185944), filed and added to applied_versions"
   },
   "counts": {
-    "applied_versions_total": 292,
+    "applied_versions_total": 295,
     "applied_no_repo_file": 56,
     "repo_file_no_applied": 18
   },
@@ -306,7 +306,10 @@
     "20261110182332",
     "20261110200854",
     "20261110201420",
-    "20261111190352"
+    "20261111190352",
+    "20261115185916",
+    "20261115185930",
+    "20261115185944"
   ],
   "applied_no_repo_file_versions": [
     "20260423184557",
