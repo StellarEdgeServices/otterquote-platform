@@ -2469,6 +2469,7 @@
     let currentClaim = null;
     let currentContractor = null;
     let changeBidMode = false;
+    let _reopenAcceptanceDoneId = null; // gh-3750: the withdrawn bid whose fresh fee_acceptances row this form has already written
     let renewMode = false; // true when ?renew=true is in the URL (expired bid renewal — D-150)
     let existingQuote = null;
     let claimRcv = null; // RCV from parsed line items or rcv_amount column
@@ -5790,6 +5791,7 @@
             // re-bid) make the bid live again through renew_quote(): the quotes guard trigger refuses bid_status, expired_at
             // and expires_at to a contractor's direct UPDATE (42501). The RPC runs FIRST, then the field UPDATE below.
             let _renewRpcMode = renewMode ? 'renew' : (existingQuote.bid_status === 'cancelled' ? 'reopen' : null);
+            const _reopenedWithdrawnBid = _renewRpcMode === 'reopen'; // gh-3750: read before a retry nulls _renewRpcMode
             if (_renewRpcMode && _renewDoneQuoteId === existingQuote.id) _renewRpcMode = null; // gh-3498 (F-A): the RPC already succeeded for this quote; only the field UPDATE is left
             if (_renewRpcMode && _renewRpcTimedOut) {
               // gh-3498 (REVIEW 6809644127 F1): an earlier renew_quote timed out in the browser, but the server may have finished it. The page's copy of
@@ -5854,6 +5856,40 @@
             // existing 'Error submitting bid: ' alert below -- no new copy.
             if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
               throw new Error('bid_update_zero_rows: no matching quote row was updated');
+            }
+
+            // gh-3750 (D-214 / D-215 Layer 1): re-bidding a WITHDRAWN bid ('reopen') is a new act of fee acceptance. rescind-bid stamped the
+            // earlier acceptance row(s) rescinded, and stripe-webhook's dispute evidence only reads un-rescinded rows, so a reopened bid needs a
+            // fresh row, written exactly as a first submission writes it (same fields, same fee text shown). Runs AFTER the field UPDATE above:
+            // the insert guard compares the row with the bid's CURRENT fee. Non-fatal like the first-submission write; once per bid.
+            if (_reopenedWithdrawnBid && existingQuote.id !== _reopenAcceptanceDoneId) {
+              let reopenAccRows = null, reopenAccError = null;
+              try {
+              ({ data: reopenAccRows, error: reopenAccError } = await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(sb.from('fee_acceptances').insert({
+                contractor_id: currentContractor.id,
+                claim_id: currentClaim.id,
+                bid_id: existingQuote.id,
+                fee_pct: _feePct,
+                fee_basis: 'bid_amount',
+                fee_amount: _feeAmount,
+                fee_text_displayed: _exactFeeText,
+                accepted_at: _acceptedAt,
+                ip_address: (_contractorIP && _contractorIP !== 'unknown') ? _contractorIP : null,
+                user_agent: _userAgent,
+              }).select('id'), signal)));
+              } catch (reopenAccTimeoutErr) { reopenAccError = reopenAccTimeoutErr; }
+              _reopenAcceptanceDoneId = existingQuote.id;
+              if (reopenAccError || !reopenAccRows || reopenAccRows.length === 0) {
+                console.error('[D-215] Fee acceptance for the reopened bid not recorded (non-fatal, quote committed):', reopenAccError ? reopenAccError.message : 'kept for review');
+                if (typeof Sentry !== 'undefined') {
+                  try {
+                    Sentry.captureMessage('[D-215] Reopened-bid fee acceptance ' + (reopenAccError ? 'failed' : 'diverted to quarantine'), {
+                      level: reopenAccError ? 'error' : 'warning',
+                      extra: { bid_id: existingQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
+                    });
+                  } catch (sentryErr) { console.warn('[gh-3750] Sentry report failed:', sentryErr); }
+                }
+              }
             }
 
             try {
