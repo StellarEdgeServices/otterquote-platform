@@ -29,6 +29,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { authorizeServiceOnly, resolveTwilioSender } from "./sender-selection.ts";
 import { isSmsPaused } from "../_shared/sms-pause.ts";
+import { smsSuppressionRefusal } from "../_shared/sms-suppression.ts";
 
 const FUNCTION_NAME = "send-sms";
 
@@ -118,6 +119,12 @@ serve(async (req) => {
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // ========== SUPPRESSION CHECK (gh-3768 / #3726 defence in depth) ==========
+    // A number with an open sms_suppression_list row (released_at IS NULL) is refused for EVERY send, whoever the caller is.
+    // Distinct error codes (number_suppressed 403 / suppression_lookup_failed 503); fails closed; logs the last 4 digits only.
+    const suppressionRefusal = await smsSuppressionRefusal(supabase, to, corsHeaders, FUNCTION_NAME);
+    if (suppressionRefusal) return suppressionRefusal;
 
     // ========== RATE LIMIT CHECK ==========
     const { data: rateLimitResult, error: rlError } = await supabase.rpc(
