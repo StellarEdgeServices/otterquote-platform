@@ -490,6 +490,26 @@ function pendingMarker(held: boolean, kind: "reminder" | "warning", failure: Rec
   return failure.sms_pending_kind ? { sms_pending_kind: null, sms_pending_since: null } : {};
 }
 
+/** True when a PostgREST/Postgres error says the sms_pending_* marker columns do not exist (migration not applied yet). */
+function isMissingMarkerColumn(err: { code?: string; message?: string } | null | undefined): boolean {
+  if (!err) return false;
+  const msg = String(err.message ?? "");
+  return /sms_pending/.test(msg) && (err.code === "42703" || err.code === "PGRST204" || /column|schema cache/i.test(msg));
+}
+
+/**
+ * The state-advance update for a payment_failures row, carrying the pending-text marker. FAILS SAFE: if the marker is rejected
+ * because its columns are missing (the migration is not applied), the SAME state-advance update is retried without the marker
+ * fields and `sms_pending_marker_unavailable` is logged, so the state ALWAYS advances and the email can never loop (gh-2105).
+ * With no marker to write this is exactly one plain update.
+ */
+async function updateFailureWithMarker(supabase: any, id: string, base: Record<string, unknown>, marker: Record<string, unknown>) {
+  const first = await supabase.from("payment_failures").update({ ...base, ...marker }).eq("id", id).select("id");
+  if (Object.keys(marker).length === 0 || !isMissingMarkerColumn(first.error)) return first;
+  console.warn(`[process-dunning] ${JSON.stringify({ event: "sms_pending_marker_unavailable", failure_id: id, note: "apply the gh3762 marker migration; state advanced without the pending-text marker, so this text is not deferred" })}`);
+  return await supabase.from("payment_failures").update(base).eq("id", id).select("id");
+}
+
 /**
  * Start of every CRON run: send the reminder / warning texts that quiet hours held, if their window is now open.
  * Order per row: expiry (4 hours, or the row reached its next step, or the quote is now paid / in flight) -> every gate again
@@ -511,14 +531,19 @@ async function drainPendingDunningSms(supabase: any, now: Date): Promise<void> {
     if (pending.length === 0) return;
     const held = await heldQuoteIds(supabase, pending.map((r) => r.quote_id));
     for (const row of pending) {
-      const clear = async (event: string, reason: string) => {
-        console.warn(`[process-dunning] ${JSON.stringify({ event, failure_id: row.id, kind: row.sms_pending_kind, reason })}`);
-        const { error: clearErr } = await supabase
+      // Every write here is conditional on the marker we SAW (kind + since), so an overlapping run or a newer marker is never clobbered.
+      const seenKind = row.sms_pending_kind, seenSince = row.sms_pending_since;
+      const clear = async (event: string, reason: string): Promise<boolean> => {
+        console.warn(`[process-dunning] ${JSON.stringify({ event, failure_id: row.id, kind: seenKind, reason })}`);
+        const { data: cleared, error: clearErr } = await supabase
           .from("payment_failures")
           .update({ sms_pending_kind: null, sms_pending_since: null })
           .eq("id", row.id)
+          .eq("sms_pending_kind", seenKind)
+          .eq("sms_pending_since", seenSince)
           .select("id");
         if (clearErr) console.error(`[process-dunning] clearing pending text for failure ${row.id} failed:`, clearErr);
+        return !clearErr && Array.isArray(cleared) && cleared.length > 0;
       };
       const expiry = pendingTextExpiry(row, now);
       if (expiry) { await clear("sms_quiet_hours_expired", expiry); continue; }
@@ -528,13 +553,40 @@ async function drainPendingDunningSms(supabase: any, now: Date): Promise<void> {
       const contacts = await getContractorContacts(contractor, supabase);
       if (contacts.quietHeld) continue; // window still closed for this contractor: stays pending
       if (contacts.phones.length === 0) { await clear("sms_quiet_hours_dropped", "no_textable_number_now"); continue; }
-      const sent = await sendSMSToAll(contacts.phones, row.sms_pending_kind === "warning" ? WARNING_SMS : HOURLY_SMS);
-      if (sent > 0) {
-        console.log(`[process-dunning] ${JSON.stringify({ event: "sms_quiet_hours_sent_late", failure_id: row.id, kind: row.sms_pending_kind, numbers: sent })}`);
-        await clear("sms_quiet_hours_cleared", "sent");
-      } else {
-        console.warn(`[process-dunning] pending ${row.sms_pending_kind} text for failure ${row.id} not delivered this run; stays pending until it expires.`);
+
+      // CLAIM BEFORE SEND: clear the marker WHERE it is still the one we saw, returning the row. Only the run that wins the
+      // claim sends, so two overlapping drains can never text the same number twice.
+      const { data: claimed, error: claimErr } = await supabase
+        .from("payment_failures")
+        .update({ sms_pending_kind: null, sms_pending_since: null })
+        .eq("id", row.id)
+        .eq("sms_pending_kind", seenKind)
+        .eq("sms_pending_since", seenSince)
+        .select("id");
+      if (claimErr || !Array.isArray(claimed) || claimed.length === 0) {
+        console.warn(`[process-dunning] ${JSON.stringify({ event: "sms_pending_claim_lost", failure_id: row.id, kind: seenKind, error: claimErr ? String(claimErr.message ?? claimErr) : null })}`);
+        continue;
       }
+      const sent = await sendSMSToAll(contacts.phones, seenKind === "warning" ? WARNING_SMS : HOURLY_SMS);
+      if (sent > 0) {
+        console.log(`[process-dunning] ${JSON.stringify({ event: "sms_quiet_hours_sent_late", failure_id: row.id, kind: seenKind, numbers: sent })}`);
+        continue;
+      }
+      // Send failed. Re-mark ONCE (original timestamp, so the 4-hour clock is not extended) only while the text is still inside
+      // the expiry rules at this moment; otherwise drop and log. The re-mark is conditional on no newer marker having been set.
+      const recheck = pendingTextExpiry({ ...row, sms_pending_kind: seenKind, sms_pending_since: seenSince }, new Date());
+      if (recheck) {
+        console.warn(`[process-dunning] ${JSON.stringify({ event: "sms_quiet_hours_expired", failure_id: row.id, kind: seenKind, reason: `send_failed_${recheck}` })}`);
+        continue;
+      }
+      const { error: remarkErr } = await supabase
+        .from("payment_failures")
+        .update({ sms_pending_kind: seenKind, sms_pending_since: seenSince })
+        .eq("id", row.id)
+        .is("sms_pending_kind", null)
+        .select("id");
+      if (remarkErr) console.error(`[process-dunning] re-marking pending text for failure ${row.id} failed:`, remarkErr);
+      else console.warn(`[process-dunning] ${JSON.stringify({ event: "sms_pending_remarked", failure_id: row.id, kind: seenKind })}`);
     }
   } catch (e) {
     console.error("[process-dunning] pending-text drain failed (continuing):", e);
@@ -1295,15 +1347,11 @@ export async function handler(
         // below still drives off `next_reminder_at`/`dunning_status`, not
         // this counter, so a missed increment under-counts the reminder log
         // without stalling or skipping the actual dunning sequence.
-        const { data: firstReminderRows, error: firstReminderErr } = await supabase
-          .from("payment_failures")
-          .update({
-            reminder_count: 1,
-            // gh-3762: the immediate reminder text was withheld by quiet hours -> mark it pending (sent when the window opens).
-            ...(contacts.quietHeld ? { sms_pending_kind: "reminder", sms_pending_since: now.toISOString() } : {}),
-          })
-          .eq("id", failureRecord.id)
-          .select("id");
+        // gh-3762: the immediate reminder text was withheld by quiet hours -> mark it pending (sent when the window opens).
+        const { data: firstReminderRows, error: firstReminderErr } = await updateFailureWithMarker(
+          supabase, failureRecord.id, { reminder_count: 1 },
+          contacts.quietHeld ? { sms_pending_kind: "reminder", sms_pending_since: now.toISOString() } : {},
+        );
         if (firstReminderErr) {
           console.error(`[process-dunning] payment_failures reminder_count=1 update failed for failure ${failureRecord.id}:`, firstReminderErr);
         } else if (!checkRowsWritten(firstReminderRows).wroteRows) {
@@ -1419,16 +1467,11 @@ export async function handler(
         // AFTER the final-notice email went out, and PASS 2 below (which
         // only selects dunning_status='warning_sent') never picks this
         // failure up for homeowner notification.
-        const { data: warningRows, error: warningErr } = await supabase
-          .from("payment_failures")
-          .update({
-            dunning_status:  "warning_sent",
-            next_reminder_at: null,
-            // gh-3762: a warning text withheld by quiet hours is marked pending (state advance + email unchanged).
-            ...pendingMarker(contacts.quietHeld === true, "warning", failure, now),
-          })
-          .eq("id", failure.id)
-          .select("id");
+        // gh-3762: a warning text withheld by quiet hours is marked pending (state advance + email unchanged).
+        const { data: warningRows, error: warningErr } = await updateFailureWithMarker(
+          supabase, failure.id, { dunning_status: "warning_sent", next_reminder_at: null },
+          pendingMarker(contacts.quietHeld === true, "warning", failure, now),
+        );
         if (warningErr) {
           console.error(`[process-dunning] payment_failures dunning_status=warning_sent update failed for failure ${failure.id}:`, warningErr);
         } else if (!checkRowsWritten(warningRows).wroteRows) {
@@ -1452,16 +1495,11 @@ export async function handler(
         // tick (every ~few minutes) re-selects this same failure and
         // re-sends the hourly reminder email/SMS immediately, silently
         // turning one reminder into a spam loop.
-        const { data: hourlyRows, error: hourlyErr } = await supabase
-          .from("payment_failures")
-          .update({
-            reminder_count:   failure.reminder_count + 1,
-            next_reminder_at: nextReminder.toISOString(),
-            // gh-3762: a reminder text withheld by quiet hours is marked pending (schedule + email unchanged).
-            ...pendingMarker(contacts.quietHeld === true, "reminder", failure, now),
-          })
-          .eq("id", failure.id)
-          .select("id");
+        // gh-3762: a reminder text withheld by quiet hours is marked pending (schedule + email unchanged).
+        const { data: hourlyRows, error: hourlyErr } = await updateFailureWithMarker(
+          supabase, failure.id, { reminder_count: failure.reminder_count + 1, next_reminder_at: nextReminder.toISOString() },
+          pendingMarker(contacts.quietHeld === true, "reminder", failure, now),
+        );
         if (hourlyErr) {
           console.error(`[process-dunning] payment_failures reminder_count/next_reminder_at update failed for failure ${failure.id}:`, hourlyErr);
         } else if (!checkRowsWritten(hourlyRows).wroteRows) {

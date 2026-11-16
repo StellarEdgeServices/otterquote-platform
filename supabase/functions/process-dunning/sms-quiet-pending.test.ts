@@ -37,17 +37,32 @@ function failure(over: Row): Row {
 }
 
 interface Sent { at: string; to: string; body: string }
-interface World { rows: Row[]; textable: Array<{ number_id: string; phone_e164: string; is_primary: boolean }>; twilio: Sent[]; emails: Array<{ at: string; subject: string }>; logs: string[]; patches: Row[]; quotePaid: boolean; paused: boolean }
+interface World { rows: Row[]; textable: Array<{ number_id: string; phone_e164: string; is_primary: boolean }>; twilio: Sent[]; emails: Array<{ at: string; subject: string }>; logs: string[]; patches: Row[]; quotePaid: boolean; paused: boolean; noMarkerColumns: boolean; twilioFail: boolean; onTwilioFail?: () => void }
 const TEXTABLE2 = () => [
   { number_id: "n1", phone_e164: "+13175550101", is_primary: true },
   { number_id: "n2", phone_e164: "+13175550102", is_primary: false },
 ];
-function world(rows: Row[]): World { return { rows, textable: TEXTABLE2(), twilio: [], emails: [], logs: [], patches: [], quotePaid: false, paused: false }; }
+function world(rows: Row[]): World { return { rows, textable: TEXTABLE2(), twilio: [], emails: [], logs: [], patches: [], quotePaid: false, paused: false, noMarkerColumns: false, twilioFail: false }; }
 
+const missingColumn = () => new Response(JSON.stringify({ code: "PGRST204", message: "Could not find the 'sms_pending_kind' column of 'payment_failures' in the schema cache" }), { status: 400, headers: { "Content-Type": "application/json" } });
 const json = (v: unknown) => new Response(JSON.stringify(v), { status: 200, headers: { "Content-Type": "application/json" } });
 
+const cronRequest = () => new Request(BASE, { method: "POST", headers: { Authorization: `Bearer ${KEY}` } });
 /** One CRON run at `iso`. */
 async function runAt(w: World, iso: string): Promise<void> {
+  await withStubs(w, iso, async () => {
+    const res = await handler(cronRequest(), (n) => ENV[n]);
+    assertEquals(res.status, 200);
+  });
+}
+/** `n` CRON runs overlapping in one isolate (same stubs, same fake database). */
+async function runOverlapping(w: World, iso: string, n: number): Promise<void> {
+  await withStubs(w, iso, async () => {
+    const rs = await Promise.all(Array.from({ length: n }, () => handler(cronRequest(), (e) => ENV[e])));
+    for (const r of rs) assertEquals(r.status, 200);
+  });
+}
+async function withStubs(w: World, iso: string, fn: () => Promise<void>): Promise<void> {
   setNow(iso);
   const realFetch = globalThis.fetch, realEnv = Deno.env, rw = console.warn, rl = console.log, re = console.error;
   const cap = (...a: unknown[]) => { w.logs.push(a.map((x) => typeof x === "string" ? x : JSON.stringify(x)).join(" ")); };
@@ -58,6 +73,7 @@ async function runAt(w: World, iso: string): Promise<void> {
     if (url.hostname === "api.twilio.com") {
       const p = new URLSearchParams(await req.text());
       w.twilio.push({ at: iso, to: p.get("To") ?? "", body: p.get("Body") ?? "" });
+      if (w.twilioFail) { w.onTwilioFail?.(); return new Response("boom", { status: 500 }); }
       return json({ sid: "SMfixture" });
     }
     if (url.hostname === "api.mailgun.net") {
@@ -79,14 +95,20 @@ async function runAt(w: World, iso: string): Promise<void> {
         const ds = q.get("dunning_status"); if (ds?.startsWith("eq.")) out = out.filter((r) => r.dunning_status === ds.slice(3));
         const nr = q.get("next_reminder_at"); if (nr?.startsWith("lte.")) out = out.filter((r) => r.next_reminder_at && new Date(r.next_reminder_at) <= new Date(nr.slice(4)));
         const hn = q.get("homeowner_notify_at"); if (hn?.startsWith("lte.")) out = out.filter((r) => r.homeowner_notify_at && new Date(r.homeowner_notify_at) <= new Date(hn.slice(4)));
+        if (w.noMarkerColumns && (q.get("select") ?? "").includes("sms_pending")) return missingColumn();
         if (q.get("sms_pending_kind") === "not.is.null") out = out.filter((r) => r.sms_pending_kind != null);
         return json(single ? (out[0] ?? null) : out);
       }
       if (req.method === "PATCH") {
         const id = q.get("id")?.replace("eq.", "");
         const body = JSON.parse(await req.text());
+        if (w.noMarkerColumns && Object.keys(body).some((k) => k.startsWith("sms_pending"))) return missingColumn();
         w.patches.push({ id, ...body });
-        const row = w.rows.find((r) => r.id === id);
+        // honour the conditional filters the claim / clear / re-mark use (atomic: no await between match and assign)
+        const kindF = q.get("sms_pending_kind"), sinceF = q.get("sms_pending_since");
+        const row = w.rows.find((r) => r.id === id
+          && (kindF === null || (kindF === "is.null" ? r.sms_pending_kind == null : r.sms_pending_kind === kindF.replace("eq.", "")))
+          && (sinceF === null || r.sms_pending_since === sinceF.replace("eq.", "")));
         if (row) Object.assign(row, body);
         return json(row ? [{ id }] : []);
       }
@@ -95,8 +117,7 @@ async function runAt(w: World, iso: string): Promise<void> {
   }) as typeof fetch;
   Object.defineProperty(Deno, "env", { value: { get: (n: string) => ENV[n] }, configurable: true });
   try {
-    const res = await handler(new Request(BASE, { method: "POST", headers: { Authorization: `Bearer ${KEY}` } }), (n) => ENV[n]);
-    assertEquals(res.status, 200);
+    await fn();
   } finally {
     globalThis.fetch = realFetch; Object.defineProperty(Deno, "env", { value: realEnv, configurable: true });
     console.warn = rw; console.log = rl; console.error = re;
@@ -248,4 +269,94 @@ Deno.test("B1 the drain re-runs the pause gate: a number paused for an opt-out r
   assertEquals(w.twilio.length, 0);
   assertEquals(w.rows[0].sms_pending_kind, null);
   assert(events(w, "sms_quiet_hours_expired").length >= 1);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// REVISION 3: fail-safe when the marker columns are absent; claim-before-send in the drain.
+// ---------------------------------------------------------------------------------------------------------------------
+
+Deno.test("R3 fail-safe: marker columns MISSING -> the warning state advance is retried without the marker, state advances, email never loops", async () => {
+  const w = world([WARNING_DUE()]);
+  w.noMarkerColumns = true;
+  await runAt(w, "2026-11-16T13:00:00Z"); // 08:00 ET: text held, marker write rejected (column missing)
+  assertEquals(w.rows[0].dunning_status, "warning_sent", "state MUST still advance");
+  assertEquals(w.rows[0].next_reminder_at, null);
+  assertEquals(w.rows[0].sms_pending_kind ?? null, null);
+  assertEquals(events(w, "sms_pending_marker_unavailable").length, 1);
+  assertEquals(w.emails.length, 1);
+  assertEquals(w.twilio.length, 0);
+  await runAt(w, "2026-11-16T13:30:00Z"); // next tick: the row is no longer 'active', so no second warning email
+  await runAt(w, "2026-11-16T14:00:00Z");
+  assertEquals(w.emails.length, 1, "no gh-2105 loop: the warning email is sent once");
+  assertEquals(w.twilio.length, 0, "without the marker the held text is not deferred (the logged cost of a missing migration)");
+});
+
+Deno.test("R3 fail-safe: marker columns MISSING -> the hourly reminder still advances reminder_count and next_reminder_at", async () => {
+  const w = world([failure({ warning_at: "2026-11-17T13:00:00Z", next_reminder_at: "2026-11-16T11:00:00Z", homeowner_notify_at: "2026-11-17T15:00:00Z" })]);
+  w.noMarkerColumns = true;
+  await runAt(w, "2026-11-16T11:00:00Z");
+  assertEquals(w.rows[0].reminder_count, 1);
+  assertEquals(w.rows[0].next_reminder_at, "2026-11-16T12:00:00.000Z");
+  assertEquals(events(w, "sms_pending_marker_unavailable").length, 1);
+  await runAt(w, "2026-11-16T11:30:00Z"); // not due again: no second email
+  assertEquals(w.emails.length, 1);
+});
+
+Deno.test("R3 fail-safe: with the columns present the marker is written once and the unavailable path is never taken", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assert(/function isMissingMarkerColumn[\s\S]*?sms_pending/.test(src));
+  const w = world([WARNING_DUE()]); // marker columns present: normal path writes the marker once, no unavailable log
+  await runAt(w, "2026-11-16T13:00:00Z");
+  assertEquals(events(w, "sms_pending_marker_unavailable").length, 0);
+  assertEquals(w.rows[0].sms_pending_kind, "warning");
+});
+
+Deno.test("R3 claim-before-send: two OVERLAPPING drains send exactly once (one text per number), the loser logs sms_pending_claim_lost", async () => {
+  const w = world([failure({ dunning_status: "warning_sent", next_reminder_at: null, sms_pending_kind: "warning", sms_pending_since: "2026-11-16T13:00:00.000Z", warning_at: "2026-11-16T13:00:00Z", homeowner_notify_at: "2026-11-16T15:00:00Z" })]);
+  await runOverlapping(w, "2026-11-16T14:00:00Z", 2);
+  assertEquals(w.twilio.map((t) => t.to).sort(), ["+13175550101", "+13175550102"], "exactly one text per number across both runs");
+  assertEquals(events(w, "sms_pending_claim_lost").length, 1, "the second run reached the claim and lost it");
+  assertEquals(w.rows[0].sms_pending_kind, null);
+  // three-way overlap: still exactly once
+  const w3 = world([failure({ dunning_status: "warning_sent", next_reminder_at: null, sms_pending_kind: "warning", sms_pending_since: "2026-11-16T13:00:00.000Z", warning_at: "2026-11-16T13:00:00Z", homeowner_notify_at: "2026-11-16T15:00:00Z" })]);
+  await runOverlapping(w3, "2026-11-16T14:00:00Z", 3);
+  assertEquals(w3.twilio.length, 2);
+  assertEquals(events(w3, "sms_pending_claim_lost").length, 2);
+});
+
+Deno.test("R3 failed send: the claimed text is re-marked exactly once (original timestamp), then sent by a later run", async () => {
+  const w = world([failure({ dunning_status: "warning_sent", next_reminder_at: null, sms_pending_kind: "warning", sms_pending_since: "2026-11-16T13:00:00.000Z", warning_at: "2026-11-16T13:00:00Z", homeowner_notify_at: "2026-11-16T15:00:00Z" })]);
+  w.twilioFail = true;
+  await runAt(w, "2026-11-16T14:00:00Z");
+  assertEquals(w.twilio.length, 2, "both numbers attempted, both failed");
+  assertEquals(events(w, "sms_pending_remarked").length, 1, "exactly one re-mark");
+  assertEquals(w.rows[0].sms_pending_kind, "warning");
+  assertEquals(w.rows[0].sms_pending_since, "2026-11-16T13:00:00.000Z", "the 4-hour clock is not extended");
+  assertEquals(w.patches.filter((p) => p.sms_pending_kind === "warning").length, 1);
+  w.twilioFail = false; w.twilio.length = 0;
+  await runAt(w, "2026-11-16T14:30:00Z");
+  assertEquals(w.twilio.length, 2, "the next run delivers it");
+  assertEquals(w.rows[0].sms_pending_kind, null);
+});
+
+Deno.test("R3 failed send past expiry: NOT re-marked; dropped and logged sms_quiet_hours_expired (send_failed_stale_4h)", async () => {
+  // pending since 10:03Z: at the 14:00Z run it is 3h57m old (alive); the send fails and takes the clock to 14:04Z (4h01m): too old to re-mark.
+  const w = world([failure({ dunning_status: "warning_sent", next_reminder_at: null, sms_pending_kind: "warning", sms_pending_since: "2026-11-16T10:03:00.000Z", warning_at: "2026-11-16T10:03:00Z", homeowner_notify_at: "2026-11-16T15:00:00Z" })]);
+  w.twilioFail = true;
+  w.onTwilioFail = () => { setNow("2026-11-16T14:04:00Z"); };
+  await runAt(w, "2026-11-16T14:00:00Z");
+  assertEquals(w.rows[0].sms_pending_kind, null);
+  assertEquals(events(w, "sms_pending_remarked").length, 0);
+  const ex = events(w, "sms_quiet_hours_expired");
+  assertEquals(ex.length, 1);
+  assert(ex[0].includes('"reason":"send_failed_stale_4h"'));
+});
+
+Deno.test("R3 the claim is conditional on the marker seen: a newer marker set meanwhile is never clobbered by the clear/re-mark", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const raw = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  const drain = raw.slice(raw.indexOf("async function drainPendingDunningSms"), raw.indexOf("// MESSAGE TEXT"));
+  assertEquals((drain.match(/\.eq\("sms_pending_kind", seenKind\)\s*\.eq\("sms_pending_since", seenSince\)/g) ?? []).length, 2, "clear and claim are both conditional on kind + since");
+  assert(/\.is\("sms_pending_kind", null\)/.test(drain), "the re-mark only fills an empty marker");
+  assert(drain.indexOf("sms_pending_claim_lost") < drain.indexOf("sendSMSToAll("), "the claim is won BEFORE any send");
 });

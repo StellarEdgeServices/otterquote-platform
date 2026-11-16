@@ -70,5 +70,6 @@ Deno.test("source pin: gate in getContractorContacts after the lookup; drain run
   assert(/contractors:contractor_id \(id, company_name, email, notification_emails, user_id, is_test, timezone, address_state\)/.test(src));
   const drain = src.indexOf("await drainPendingDunningSms(supabase, now);");
   assert(drain > 0 && drain < src.indexOf('.eq("dunning_status", "active")', drain), "drain must run before the PASS 1 active-records query");
-  assertEquals((src.match(/\.\.\.pendingMarker\(/g) ?? []).length, 2);
+  assertEquals((src.match(/pendingMarker\(contacts\.quietHeld === true/g) ?? []).length, 2);
+  assertEquals((src.match(/await updateFailureWithMarker\(/g) ?? []).length, 3, "all three marker-carrying state advances go through the fail-safe helper");
 });

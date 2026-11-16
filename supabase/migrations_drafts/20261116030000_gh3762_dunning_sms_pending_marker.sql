@@ -10,7 +10,7 @@
 --   sms_pending_since  timestamptz  when the text was refused (drives the 4-hour expiry)
 -- No default, no backfill, no constraint, no index (the table is tiny and the drain filters on a NULL test), nothing rewritten,
 -- nothing dropped. Existing readers/writers are unaffected: neither column is read or written until the new process-dunning
--- is deployed. Email timing, state transitions and the D-130 schedule are NOT touched by this migration.
+-- is deployed. APPLY THIS BEFORE deploying process-dunning or send-sms (see the pre-flight: a deploy first makes the marker write fail; the code then retries without it and logs sms_pending_marker_unavailable, but texts are not deferred). Email timing, state transitions and the D-130 schedule are NOT touched by this migration.
 SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE public.payment_failures ADD COLUMN IF NOT EXISTS sms_pending_kind text;
