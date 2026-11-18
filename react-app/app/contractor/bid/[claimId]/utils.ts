@@ -151,6 +151,15 @@ export function withCarrierProfile<T extends Record<string, unknown>>(row: T): T
   return { ...row, carrier_profiles: name ? { carrier_name: name } : null };
 }
 
+/** gh-3783 (D-375): windows is never shown, pre-ticked or priced for a contractor; strip it from a loaded claim row. */
+export function stripWindowsTrades<T extends Record<string, unknown>>(row: T): T {
+  const out: Record<string, unknown> = { ...row };
+  for (const k of ['trades', 'selected_trades']) {
+    if (Array.isArray(out[k])) out[k] = (out[k] as unknown[]).filter((t) => String(t).toLowerCase() !== 'windows');
+  }
+  return out as T;
+}
+
 export interface BidClaim {
   id?: string;
   user_id?: string | null;
