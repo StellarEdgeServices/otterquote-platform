@@ -95,6 +95,12 @@ on the safe one -- run `--self-test`)
                         if either finds one: a text scan, and a scan of the
                         parsed YAML (jobs.*.uses and every steps[*].uses), so a
                         quoted `"uses":` key or a flow-mapping step cannot hide.
+                        The same rule, with the same exemptions, reads every
+                        composite action: **/action.yml and **/action.yaml,
+                        runs.steps[*].uses. A local `./` ref is exempt at the
+                        CALL site, so what is inside it must be checked itself
+                        (PR #3797 REVIEW: FAIL 6992571275). The workflow's CI
+                        job triggers on .github/actions/** and any action.yml.
 
 Allowlisted as structurally non-injectable scalars: see SAFE_EVENT_EXPRS.
 `github.event.pull_request.head.sha` is deliberately NOT allowlisted -- it is
@@ -120,6 +126,7 @@ Usage:
   python3 scripts/workflow-safety-ratchet.py --self-test               # rule self-test
 """
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -275,26 +282,45 @@ def _unpinned_text_findings(file_rel: str, text: str):
     return out
 
 
-def _unpinned_yaml_findings(file_rel: str, text: str):
-    """Rule 4, scan B -- parsed. Reads jobs.<job>.uses (reusable workflow) and every
-    jobs.<job>.steps[i].uses from the loaded document, so the quoted-key and
-    flow-mapping spellings are seen exactly as GitHub sees them (PR #3797 REVIEW:
-    FAIL 6991245114). A parse failure yields nothing here: evaluate() already
-    fails an unparseable workflow closed, and scan A still ran."""
+def _judge_refs(file_rel: str, refs):
+    out = []
+    for where, ref in refs:
+        if not isinstance(ref, str):
+            out.append(_unpinned_finding(file_rel, where, repr(ref)))  # not a string ref: cannot be a pinned SHA
+            continue
+        ref = ref.strip()
+        if not _ref_is_exempt(ref):
+            out.append(_unpinned_finding(file_rel, where, ref))
+    return out
+
+
+def _unpinned_yaml_findings(file_rel: str, text: str, is_action: bool = False):
+    """Rule 4, scan B -- parsed. For a workflow: jobs.<job>.uses (reusable workflow) and every
+    jobs.<job>.steps[i].uses. For a composite action (is_action): runs.steps[i].uses. Read from the
+    loaded document, so the quoted-key and flow-mapping spellings are seen exactly as GitHub sees
+    them (PR #3797 REVIEW: FAIL 6991245114, 6992571275). A parse failure yields nothing here:
+    the caller fails an unparseable file closed, and scan A still ran."""
     if not HAVE_YAML:
         return []
     try:
         doc = yaml.safe_load(text)
     except Exception:
         return []
+    refs = []
+    if is_action:
+        runs = doc.get("runs") if isinstance(doc, dict) else None
+        steps = runs.get("steps") if isinstance(runs, dict) else None
+        if isinstance(steps, list):
+            for i, step in enumerate(steps):
+                if isinstance(step, dict) and "uses" in step:
+                    refs.append((f"runs.steps[{i}].uses", step["uses"]))
+        return _judge_refs(file_rel, refs)
     jobs = doc.get("jobs") if isinstance(doc, dict) else None
     if not isinstance(jobs, dict):
         return []
-    out = []
     for job_name, job in jobs.items():
         if not isinstance(job, dict):
             continue
-        refs = []
         if "uses" in job:
             refs.append((f"jobs.{job_name}.uses", job["uses"]))
         steps = job.get("steps")
@@ -302,31 +328,55 @@ def _unpinned_yaml_findings(file_rel: str, text: str):
             for i, step in enumerate(steps):
                 if isinstance(step, dict) and "uses" in step:
                     refs.append((f"jobs.{job_name}.steps[{i}].uses", step["uses"]))
-        for where, ref in refs:
-            if not isinstance(ref, str):
-                out.append(_unpinned_finding(file_rel, where, repr(ref)))  # not a string ref: cannot be a pinned SHA
-                continue
-            ref = ref.strip()
-            if not _ref_is_exempt(ref):
-                out.append(_unpinned_finding(file_rel, where, ref))
-    return out
+    return _judge_refs(file_rel, refs)
 
 
-def unpinned_findings(file_rel: str, text: str):
+def unpinned_findings(file_rel: str, text: str, is_action: bool = False):
     """Rule 4 -- UNPINNED_ACTION: FAIL if EITHER the text scan or the parsed scan
     finds an unpinned ref. A ref both scans see is reported once (the text-scan
     line number wins); a ref only the parsed scan sees is reported with its
-    jobs.<job>.steps[i] path."""
+    jobs.<job>.steps[i] (workflow) or runs.steps[i] (composite action, is_action=True) path."""
     found = _unpinned_text_findings(file_rel, text)
     seen = {}
     for f in found:
         seen[f.ref] = seen.get(f.ref, 0) + 1
-    for f in _unpinned_yaml_findings(file_rel, text):
+    for f in _unpinned_yaml_findings(file_rel, text, is_action):
         if seen.get(f.ref, 0) > 0:
             seen[f.ref] -= 1  # same ref already reported by the text scan
         else:
             found.append(f)
     return found
+
+
+def find_action_files(root: Path):
+    """Every composite-action definition the repo could hold: **/action.yml and
+    **/action.yaml anywhere under root (a local `uses: ./x` ref is exempt from rule 4,
+    so what is INSIDE x must be scanned in its own right -- PR #3797 REVIEW: FAIL
+    6992571275). Skips .git, node_modules and this ratchet's own fixture directory
+    (fixtures are deliberately bad and are judged by --self-test, not by the tree scan)."""
+    skip_dirs = {".git", "node_modules"}
+    fixture_dir = (root / FIXTURE_DIR).resolve()
+    found = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dp = Path(dirpath)
+        dirnames[:] = sorted(d for d in dirnames if d not in skip_dirs and (dp / d).resolve() != fixture_dir)
+        for fn in sorted(filenames):
+            if fn in ("action.yml", "action.yaml"):
+                found.append(dp / fn)
+    return found
+
+
+def action_findings(file_rel: str, text: str):
+    """Rule 4 for one composite action file. An action file that cannot be parsed
+    fails closed (same stance as an unparseable workflow)."""
+    if HAVE_YAML:
+        try:
+            yaml.safe_load(text)
+        except Exception as exc:
+            return [Finding("UNPARSEABLE", file_rel, "file",
+                            f"action YAML could not be parsed ({exc.__class__.__name__}); "
+                            "cannot judge it, so it fails closed")]
+    return unpinned_findings(file_rel, text, is_action=True)
 
 
 # ── YAML mode ────────────────────────────────────────────────────────────────
@@ -540,6 +590,9 @@ def scan_root(root: Path):
         (applicable if is_prt else skipped).append(rel)
         findings.extend(f)
         findings.extend(unpinned_findings(rel, txt))  # rule 4: every workflow, PRT or not
+    for ap in find_action_files(root):  # rule 4: every composite action's own steps
+        rel = str(ap.relative_to(root))
+        findings.extend(action_findings(rel, ap.read_text(encoding="utf-8", errors="replace")))
     return findings, applicable, skipped, files
 
 
@@ -590,6 +643,11 @@ def self_test(root: Path):
         ("unpinned_action_flow_map_bad.yml", True),
         ("pinned_action_good.yml", False),
     ]
+    # Composite actions (PR #3797 REVIEW: FAIL 6992571275): judged with is_action=True.
+    composite_expectations = [
+        ("composite_action_unpinned_bad.yml", True),
+        ("composite_action_pinned_good.yml", False),
+    ]
     for name, expect_bad in pin_expectations:
         p = fx / name
         if not p.exists():
@@ -597,6 +655,19 @@ def self_test(root: Path):
             failures += 1
             continue
         found = unpinned_findings(name, p.read_text(encoding="utf-8"))
+        ok = bool(found) == expect_bad
+        detail = f"{len(found)} UNPINNED_ACTION finding(s)" if found else "no findings"
+        print(f"  {'PASS' if ok else 'FAIL'}  {name:44s} {detail}")
+        if not ok:
+            failures += 1
+
+    for name, expect_bad in composite_expectations:
+        p = fx / name
+        if not p.exists():
+            print(f"  FAIL  MISSING FIXTURE {name}")
+            failures += 1
+            continue
+        found = action_findings(name, p.read_text(encoding="utf-8"))
         ok = bool(found) == expect_bad
         detail = f"{len(found)} UNPINNED_ACTION finding(s)" if found else "no findings"
         print(f"  {'PASS' if ok else 'FAIL'}  {name:44s} {detail}")
@@ -612,7 +683,7 @@ def self_test(root: Path):
     if not ok:
         failures += 1
 
-    print(f"self-test: {len(expectations) + len(pin_expectations) + 1 - failures} passed | {failures} failed")
+    print(f"self-test: {len(expectations) + len(pin_expectations) + len(composite_expectations) + 1 - failures} passed | {failures} failed")
     return EXIT_FAIL if failures else EXIT_PASS
 
 
@@ -644,6 +715,7 @@ def main(argv=None):
     say(f"  workflow files read           : {len(files)}")
     say(f"  pull_request_target workflows : {len(applicable)} {applicable}")
     say(f"  skipped (not PRT-triggered)   : {len(skipped)}")
+    say(f"  composite action files read   : {len(find_action_files(root))}")
 
     if not files:
         say(f"UNMEASURED -- no workflow files were read under {root / WORKFLOW_DIR}. "
