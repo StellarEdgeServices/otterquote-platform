@@ -1053,19 +1053,19 @@
 
                 return `
                     <div class="contractor-card">
-                        <div class="contractor-card-header" onclick="toggleCardExpand(event, '${c.id}')">
+                        <div class="contractor-card-header" data-action="toggle-card" data-id="${escHtml(c.id)}">
                             <div class="contractor-header-left">
                                 <div class="contractor-header-cell">
                                     <div class="contractor-header-cell-label">Company</div>
-                                    <div class="contractor-header-cell-value">${c.company_name || '—'}</div>
+                                    <div class="contractor-header-cell-value">${escHtml(c.company_name || '—')}</div>
                                 </div>
                                 <div class="contractor-header-cell">
                                     <div class="contractor-header-cell-label">Owner</div>
-                                    <div class="contractor-header-cell-value">${c.contact_name || '—'}</div>
+                                    <div class="contractor-header-cell-value">${escHtml(c.contact_name || '—')}</div>
                                 </div>
                                 <div class="contractor-header-cell">
                                     <div class="contractor-header-cell-label">Email</div>
-                                    <div class="contractor-header-cell-value">${c.email || '—'}</div>
+                                    <div class="contractor-header-cell-value">${escHtml(c.email || '—')}</div>
                                 </div>
                                 <div class="contractor-header-cell">
                                     <div class="contractor-header-cell-label">Applied</div>
@@ -1073,8 +1073,8 @@
                                 </div>
                             </div>
                             <div class="contractor-header-badges">
-                                <span class="status-badge status-badge-${c.status}">${c.status.replace(/_/g, ' ')}</span>
-                                ${trades.map(t => `<span class="trade-badge">${t}</span>`).join('')}
+                                <span class="status-badge status-badge-${escHtml(c.status)}">${escHtml(String(c.status).replace(/_/g, ' '))}</span>
+                                ${trades.map(t => `<span class="trade-badge">${escHtml(t)}</span>`).join('')}
                                 ${c.pc_template_migration_pending ? `<span style="background:#fef3c7;color:#92400e;border:1px solid #E07B00;border-radius:0.25rem;padding:0.15rem 0.5rem;font-size:0.7rem;font-weight:600;">⚠️ PC Template</span>` : ''}
                                 ${(() => {
                                     const s = coiState(c);
@@ -1089,25 +1089,25 @@
                         </div>
                         ${renderDocumentSubCards(c)}
 
-                        <div class="contractor-card-body" id="body-${c.id}">
+                        <div class="contractor-card-body" id="body-${escHtml(c.id)}">
                             <!-- Contact Info -->
                             <div class="card-section">
                                 <div class="card-section-title">Contact Information</div>
                                 <div class="info-row">
                                     <div class="info-label">Email</div>
-                                    <div class="info-value"><a href="mailto:${c.email}">${c.email}</a></div>
+                                    <div class="info-value"><a href="mailto:${escHtml(c.email)}">${escHtml(c.email)}</a></div>
                                 </div>
                                 <div class="info-row">
                                     <div class="info-label">Phone</div>
-                                    <div class="info-value">${c.phone || '—'}</div>
+                                    <div class="info-value">${escHtml(c.phone || '—')}</div>
                                 </div>
                                 <div class="info-row">
                                     <div class="info-label">Company</div>
-                                    <div class="info-value">${c.company_name || '—'}</div>
+                                    <div class="info-value">${escHtml(c.company_name || '—')}</div>
                                 </div>
                                 <div class="info-row">
                                     <div class="info-label">Owner</div>
-                                    <div class="info-value">${c.contact_name || '—'}</div>
+                                    <div class="info-value">${escHtml(c.contact_name || '—')}</div>
                                 </div>
                             </div>
 
@@ -1116,7 +1116,7 @@
                                 <div class="card-section-title">Service Area</div>
                                 <div class="info-row">
                                     <div class="info-label">Counties</div>
-                                    <div class="info-value">${(c.service_counties || []).join(', ') || '—'}</div>
+                                    <div class="info-value">${escHtml((c.service_counties || []).join(', ') || '—')}</div>
                                 </div>
                                 <div class="info-row">
                                     <div class="info-label">States</div>
@@ -1126,13 +1126,13 @@
                                         // e.g. "IN:*" — state is the colon-delimited prefix) only for legacy
                                         // rows that predate the backfill.
                                         if (Array.isArray(c.service_states) && c.service_states.length > 0) {
-                                            return c.service_states.join(', ');
+                                            return escHtml(c.service_states.join(', '));
                                         }
                                         const counties = c.service_counties || [];
                                         const states = Array.from(new Set(counties
                                             .map(s => (typeof s === 'string' && s.includes(':')) ? s.split(':')[0] : null)
                                             .filter(Boolean)));
-                                        return states.join(', ') || '—';
+                                        return escHtml(states.join(', ') || '—');
                                     })()}</div>
                                 </div>
                             </div>
@@ -1175,8 +1175,8 @@
                                     ${c.contractor_licenses.map(lic => `
                                         <div class="license-record">
                                             <div class="license-info">
-                                                <div class="license-municipality">${lic.municipality || 'Unknown Municipality'}</div>
-                                                <div class="license-number">License #${lic.license_number || 'N/A'}</div>
+                                                <div class="license-municipality">${escHtml(lic.municipality || 'Unknown Municipality')}</div>
+                                                <div class="license-number">License #${escHtml(lic.license_number || 'N/A')}</div>
                                             </div>
                                         </div>
                                     `).join('')}
@@ -1186,15 +1186,15 @@
                                 ` : '<p style="color: var(--slate);">No license records submitted</p>'}
 
                                 <div class="button-row">
-                                    <button class="btn-sm" onclick="openLicenseBoard('${(function(){
+                                    <button class="btn-sm" data-action="license-board" data-state="${escHtml((function(){
                                         // Derive primary state from first service_counties entry suffix (Marion-IN → IN).
                                         const counties = c.service_counties || [];
                                         for (const s of counties) {
                                             if (typeof s === 'string' && s.includes('-')) return s.split('-').pop();
                                         }
                                         return 'IN';
-                                    })()}', '${c.contact_name}')">Search State License Board</button>
-                                    ${!c.license_verified ? `<button class="btn-sm btn-sm-primary" onclick="markLicenseVerified('${c.id}')">Mark as Verified ✓</button>` : ''}
+                                    })())}" data-name="${escHtml(c.contact_name)}">Search State License Board</button>
+                                    ${!c.license_verified ? `<button class="btn-sm btn-sm-primary" data-action="mark-license" data-id="${escHtml(c.id)}">Mark as Verified ✓</button>` : ''}
                                 </div>
                             </div>
 
@@ -1203,35 +1203,35 @@
                                 <div class="card-section-title">Insurance Verification</div>
                                 <div class="info-row">
                                     <div class="info-label">Workers Comp</div>
-                                    <div class="info-value">${c.workers_comp_carrier || '—'}</div>
+                                    <div class="info-value">${escHtml(c.workers_comp_carrier || '—')}</div>
                                 </div>
                                 <div class="info-row">
                                     <div class="info-label">General Liability</div>
-                                    <div class="info-value">${c.general_liability_carrier || '—'}</div>
+                                    <div class="info-value">${escHtml(c.general_liability_carrier || '—')}</div>
                                 </div>
                                 <div style="margin-top: 0.75rem; padding: 0.75rem; background: var(--light); border-radius: 0.4rem; font-size: 0.875rem;">
                                     Status: ${c.insurance_verified ? `✅ Verified ${new Date(c.insurance_verified_at).toLocaleDateString()}` : (c.insurance_verification_sent_at ? `Email sent ${new Date(c.insurance_verification_sent_at).toLocaleDateString()}` : 'Not verified')}
                                 </div>
 
                                 <div class="button-row">
-                                    <button class="btn-sm" onclick="openInsuranceModal('${c.id}', '${c.company_name}')">Request Verification Email</button>
-                                    ${!c.insurance_verified ? `<button class="btn-sm btn-sm-primary" onclick="markInsuranceVerified('${c.id}')">Mark as Verified ✓</button>` : ''}
+                                    <button class="btn-sm" data-action="insurance-modal" data-id="${escHtml(c.id)}" data-name="${escHtml(c.company_name)}">Request Verification Email</button>
+                                    ${!c.insurance_verified ? `<button class="btn-sm btn-sm-primary" data-action="mark-insurance" data-id="${escHtml(c.id)}">Mark as Verified ✓</button>` : ''}
                                 </div>
                             </div>
 
                             <!-- Admin Notes -->
                             <div class="admin-notes-section">
                                 <div class="admin-notes-label">Admin Notes</div>
-                                <textarea id="notes-${c.id}" class="admin-notes-textarea" placeholder="Add internal notes about this contractor...">${c.admin_notes || ''}</textarea>
-                                <button class="admin-notes-button" onclick="saveNotes('${c.id}')">Save Notes</button>
-                                <div id="notes-status-${c.id}" style="margin-top: 0.5rem; font-size: 0.875rem;"></div>
+                                <textarea id="notes-${escHtml(c.id)}" class="admin-notes-textarea" placeholder="Add internal notes about this contractor...">${escHtml(c.admin_notes || '')}</textarea>
+                                <button class="admin-notes-button" data-action="save-notes" data-id="${escHtml(c.id)}">Save Notes</button>
+                                <div id="notes-status-${escHtml(c.id)}" style="margin-top: 0.5rem; font-size: 0.875rem;"></div>
                             </div>
 
                             <!-- Actions -->
                             ${isPending ? `
                                 <div class="actions-final">
-                                    <button class="btn-action btn-action-approve" onclick="openApproveConfirmModal('${c.id}', '${c.company_name}')">✓ Approve Contractor</button>
-                                    <button class="btn-action btn-action-reject" onclick="openRejectModal('${c.id}', '${c.company_name}')">✗ Reject Application</button>
+                                    <button class="btn-action btn-action-approve" data-action="approve-modal" data-id="${escHtml(c.id)}" data-name="${escHtml(c.company_name)}">✓ Approve Contractor</button>
+                                    <button class="btn-action btn-action-reject" data-action="reject-modal" data-id="${escHtml(c.id)}" data-name="${escHtml(c.company_name)}">✗ Reject Application</button>
                                 </div>
                             ` : ''}
                         </div>
@@ -1239,6 +1239,30 @@
                 `;
             }).join('');
         }
+
+        // gh-3790: one delegated listener replaces every inline onclick that used to
+        // interpolate contractor-supplied text. Values are read from data-* attributes
+        // (HTML-attribute-escaped at render time), never evaluated as script.
+        function handleContractorAction(event) {
+            const el = event.target.closest('[data-action]');
+            if (!el || !event.currentTarget.contains(el)) return;
+            const id = el.dataset.id;
+            switch (el.dataset.action) {
+                case 'toggle-card':     toggleCardExpand(event, id); break;
+                case 'license-board':   openLicenseBoard(el.dataset.state, el.dataset.name); break;
+                case 'mark-license':    markLicenseVerified(id); break;
+                case 'insurance-modal': openInsuranceModal(id, el.dataset.name); break;
+                case 'mark-insurance':  markInsuranceVerified(id); break;
+                case 'save-notes':      saveNotes(id); break;
+                case 'approve-modal':   openApproveConfirmModal(id, el.dataset.name); break;
+                case 'reject-modal':    openRejectModal(id, el.dataset.name); break;
+            }
+        }
+        document.getElementById('contractorsContainer').addEventListener('click', handleContractorAction);
+        document.getElementById('cronHealthContent').addEventListener('click', function (event) {
+            const el = event.target.closest('[data-action="ack-alert"]');
+            if (el && this.contains(el)) acknowledgeAlert(el.dataset.alertId);
+        });
 
         function toggleCardExpand(event, contractorId) {
             if (event.target.closest('.contractor-header-actions')) return;
@@ -1576,7 +1600,7 @@
                         html += '<td style="padding:0.4rem 0.6rem;color:#e2e8f0;font-family:monospace;">' + escHtml(a.function_name) + '</td>';
                         html += '<td style="padding:0.4rem 0.6rem;color:#94a3b8;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + msg + '</td>';
                         html += '<td style="padding:0.4rem 0.6rem;">';
-                        html += '<button onclick="acknowledgeAlert(\'' + a.id + '\')" style="background:#0D1B2E;border:1px solid #334155;color:#94a3b8;font-size:0.75rem;padding:0.25rem 0.6rem;border-radius:0.3rem;cursor:pointer;">Acknowledge</button>';
+                        html += '<button data-action="ack-alert" data-alert-id="' + escHtml(a.id) + '" style="background:#0D1B2E;border:1px solid #334155;color:#94a3b8;font-size:0.75rem;padding:0.25rem 0.6rem;border-radius:0.3rem;cursor:pointer;">Acknowledge</button>';
                         html += '</td></tr>';
                     }
                     html += '</tbody></table></div>';
@@ -1631,12 +1655,12 @@
                         html += '<span style="font-size:0.85rem;font-weight:600;color:#e2e8f0;">📧 Signing Envelopes</span>';
                         html += '<span style="font-size:0.75rem;color:#64748b;">Last checked: ' + lastRun + ' &nbsp;' + badge + '</span>';
                         html += '</div>';
-                        html += '<div style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.4rem;">Plan: Basic API Plan · Monthly limit: ' + limit + ' envelopes</div>';
+                        html += '<div style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.4rem;">Plan: Basic API Plan · Monthly limit: ' + escHtml(limit) + ' envelopes</div>';
                         html += '<div style="display:flex;align-items:center;gap:0.75rem;">';
                         html += '<div style="flex:1;background:#0f172a;border-radius:4px;height:8px;overflow:hidden;">';
                         html += '<div style="width:' + barWidth + '%;height:100%;background:' + barColor + ';transition:width 0.3s;"></div>';
                         html += '</div>';
-                        html += '<span style="font-size:0.8rem;color:#e2e8f0;white-space:nowrap;">' + used + ' / ' + limit + ' (' + (pct != null ? pct : '—') + '%)</span>';
+                        html += '<span style="font-size:0.8rem;color:#e2e8f0;white-space:nowrap;">' + escHtml(used) + ' / ' + escHtml(limit) + ' (' + escHtml(pct != null ? pct : '—') + '%)</span>';
                         html += '</div>';
                         html += '<div style="font-size:0.75rem;color:#64748b;margin-top:0.35rem;">' + alertSent + '</div>';
                         html += '</div>';
@@ -1728,12 +1752,18 @@
 
         // -- Rendering helpers --------------------------------------------------
 
+        // gh-3790: also escapes the single quote and treats null/undefined as ''.
+        // Used for HTML text AND for double-quoted attribute values (data-* attributes).
+        // Never use it to build a JS string inside an inline handler -- bind listeners
+        // from data-* attributes instead (see the delegated listeners below).
         function escHtml(str) {
+            if (str === null || str === undefined) return '';
             return String(str)
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;');
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
         }
 
         function timeAgo(isoString) {
@@ -1839,7 +1869,7 @@
 
                 for (const [state, counts] of Object.entries(byState).sort((a,b) => a[0].localeCompare(b[0]))) {
                     html += `<tr style="border-bottom:1px solid #f1f5f9;">`;
-                    html += `<td style="padding:6px 10px;font-weight:500;">${state}</td>`;
+                    html += `<td style="padding:6px 10px;font-weight:500;">${escHtml(state)}</td>`;
                     html += `<td style="padding:6px 10px;text-align:right;">${counts.total}</td>`;
                     html += `<td style="padding:6px 10px;text-align:right;">${counts.optedIn}</td>`;
                     html += `</tr>`;

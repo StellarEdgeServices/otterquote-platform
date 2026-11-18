@@ -55,11 +55,14 @@ type PolicyType = 'rcv' | 'acv' | 'idk' | null;
 type TradeKey = 'roofing' | 'siding' | 'gutters' | 'windows';
 type RepairIntent = 'repair' | 'replace';
 
-const TRADE_OPTIONS: { key: TradeKey; label: string; icon: string }[] = [
+// gh-3757 / D-375: windows is not offered yet. `comingSoon` cards render the
+// generic "Coming Soon" badge (same markup as contractor-auto-bids.html) and
+// can never enter wizardState.trades.
+const TRADE_OPTIONS: { key: TradeKey; label: string; icon: string; comingSoon?: boolean }[] = [
   { key: 'roofing', label: 'Roofing', icon: '🏠' },
   { key: 'siding', label: 'Siding', icon: '🧱' },
   { key: 'gutters', label: 'Gutters', icon: '💧' },
-  { key: 'windows', label: 'Windows', icon: '🪟' },
+  { key: 'windows', label: 'Windows', icon: '🪟', comingSoon: true },
 ];
 
 // gh-1991: get-started Step 1's "what do you need help with?" chip
@@ -75,8 +78,11 @@ const PROJECT_TYPE_TO_TRADE: ReadonlyMap<string, TradeKey> = new Map([
   ['roof', 'roofing'],
   ['siding', 'siding'],
   ['gutters', 'gutters'],
-  ['windows', 'windows'],
+  // gh-3757 / D-375: no 'windows' entry — windows is Coming Soon, never pre-selected.
 ]);
+
+const isComingSoonTrade = (trade: TradeKey): boolean =>
+  TRADE_OPTIONS.some(o => o.key === trade && o.comingSoon === true);
 
 // gh-2004: 50 states + DC + Puerto Rico — byte-for-byte the same list as
 // get-started/page.tsx's STATE_CODE_OPTIONS (kept local rather than
@@ -248,11 +254,31 @@ function SelectionCard({
   selected,
   onClick,
   children,
+  disabled = false,
 }: {
   selected: boolean;
   onClick: () => void;
   children: ReactNode;
+  disabled?: boolean;
 }) {
+  if (disabled) {
+    // gh-3757 / D-375: non-selectable — no click handler, no tabIndex/role, no hover.
+    return (
+      <div
+        aria-disabled="true"
+        style={{
+          background: 'var(--navy-2, #0f2036)',
+          border: '2px solid rgba(255,255,255,0.06)',
+          borderRadius: '12px',
+          padding: '2rem',
+          cursor: 'not-allowed',
+          opacity: 0.7,
+        }}
+      >
+        {children}
+      </div>
+    );
+  }
   return (
     <div
       onClick={onClick}
@@ -426,7 +452,7 @@ export default function TradeSelectorPage() {
       const signup = JSON.parse(raw) as Record<string, unknown>;
       const projectType = typeof signup.project_type === 'string' ? signup.project_type : '';
       const mapped = PROJECT_TYPE_TO_TRADE.get(projectType);
-      if (mapped) {
+      if (mapped && !isComingSoonTrade(mapped)) {
         setWizardState(prev => (prev.trades.length === 0 ? { ...prev, trades: [mapped] } : prev));
       }
     } catch {
@@ -641,6 +667,7 @@ export default function TradeSelectorPage() {
 
   // ── Step 3: Trades ──
   const toggleTrade = (trade: TradeKey) => {
+    if (isComingSoonTrade(trade)) return; // gh-3757 / D-375
     setWizardState(prev => {
       const next = prev.trades.includes(trade)
         ? prev.trades.filter(t => t !== trade)
@@ -1361,6 +1388,8 @@ export default function TradeSelectorPage() {
           font-weight: 700;
         }
         .trade-icon { font-size: 2.5rem; }
+        .badge { display: inline-block; padding: 0.5rem 0.75rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+        .badge.coming-soon { background: #E5E7EB; color: #6B7280; }
         .trade-card-inner h3 { margin: 0; font-size: 1.1rem; color: var(--white, #fff); }
         .rr-grid {
           display: grid;
@@ -1721,18 +1750,20 @@ export default function TradeSelectorPage() {
               </div>
 
               <div className="trade-grid">
-                {TRADE_OPTIONS.map(({ key, label, icon }) => {
+                {TRADE_OPTIONS.map(({ key, label, icon, comingSoon }) => {
                   const selected = wizardState.trades.includes(key);
                   return (
                     <SelectionCard
                       key={key}
                       selected={selected}
+                      disabled={comingSoon === true}
                       onClick={() => toggleTrade(key)}
                     >
                       <div className="trade-card-inner">
                         {selected && <div className="trade-check">✓</div>}
                         <div className="trade-icon">{icon}</div>
                         <h3>{label}</h3>
+                        {comingSoon && <span className="badge coming-soon">Coming Soon</span>}
                       </div>
                     </SelectionCard>
                   );

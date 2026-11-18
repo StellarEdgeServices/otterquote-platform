@@ -34,7 +34,7 @@ import { RescindCard, type RescindQuote } from './rescind-card';
 import {
   type BidClaim, type BidGateContractor, type BidMode,
   resolveClaimId, resolveBidMode, preCpaBidGate, profileIncompleteRedirect,
-  deriveTradeFlags, BID_GATE_ROUTES, BIDDER_CLAIM_BID_COLS, withCarrierProfile, isBidSelected,
+  deriveTradeFlags, BID_GATE_ROUTES, BIDDER_CLAIM_BID_COLS, withCarrierProfile, stripWindowsTrades, isBidSelected,
 } from './utils';
 
 type LoadedClaim = BidClaim & Record<string, unknown> & { siding_bid_released_at?: string | null };
@@ -111,7 +111,7 @@ function BidPageContent() {
           .single();
         if (!active) return;
         if (error) { console.error('Error loading claim:', error); setClaim(null); }
-        else setClaim(data ? (withCarrierProfile(data as unknown as Record<string, unknown>) as LoadedClaim) : null);
+        else setClaim(data ? (stripWindowsTrades(withCarrierProfile(data as unknown as Record<string, unknown>)) as LoadedClaim) : null);
       } catch (err) {
         if (active) { console.error('Error loading claim:', err); setClaim(null); }
       } finally {

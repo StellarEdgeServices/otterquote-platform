@@ -1,8 +1,8 @@
--- STATUS (gh-1438, as of 2026-11-05T22:40:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-16T14:02:20Z): APPLIED (ledger version 20261115185930, name gh3470_create_monthly_fee_batch_guard_fail_closed; read-only ledger query, CEO RUN 153 b3324, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3470_create_monthly_fee_batch_guard_fail_closed (rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-11-05 under #3470. Production read-only SELECT (project yeszghaspzwwstvsrioa, 2026-11-05): pg_get_functiondef(public.create_monthly_fee_batch(date)) md5 a8f66ee8688a71d710d05a644623c4a6, 3871 chars,
 --   prosrc md5 1e48a0254db3b738f03f09d731ea90cf; the function body below equals that definition except the one guard line (byte-compared, see the pre-flight). Ledger version 20261105194055 (gh3229). No database was written to produce this file.
--- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.
+-- REPO COPY: supabase/migrations_applied_manually/20261115185930_gh3470_create_monthly_fee_batch_guard_fail_closed.sql (byte-identical to the ledger statements[1], md5 checked); rollback and pre-flight stay here
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- Migration: gh3470_create_monthly_fee_batch_guard_fail_closed
