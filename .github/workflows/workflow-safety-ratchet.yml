@@ -7,7 +7,8 @@ name: Workflow Safety Ratchet
 # 5561638561). The rule existed only as prose, and prose cannot fail a build.
 #
 # BUILD-FAILING, and deliberately path-filtered: it runs only on PRs that
-# touch `.github/workflows/**` or the ratchet's own script/fixtures. That is
+# touch `.github/workflows/**`, a composite action (`.github/actions/**`, any
+# `action.yml`/`action.yaml`), or the ratchet's own script/fixtures. That is
 # ~2% of this repo's PRs (gh-1731's own diff census of 45 sampled PRs), so it
 # adds roughly one billable job-minute per week against the #1731 Actions
 # budget -- the cheapest place to put this check, and the only PRs where its
@@ -24,6 +25,13 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/**'
+      # PR #3797 REVIEW: FAIL 6992571275 -- rule 4 now reads every composite action, so a PR that
+      # touches one must run this check (a `./` call site is exempt; the action's own steps are not).
+      - '.github/actions/**'
+      - 'action.yml'
+      - 'action.yaml'
+      - '**/action.yml'
+      - '**/action.yaml'
       - 'scripts/workflow-safety-ratchet.py'
       - 'scripts/workflow-safety-fixtures/**'
 
@@ -54,9 +62,9 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: '3.11'
 
