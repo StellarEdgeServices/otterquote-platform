@@ -82,7 +82,7 @@ function rows(trades, renew, breakdown, valueAdds, status) {
   return {
     bidder_claim_summary: { id: 'claim-1', trades, siding_bid_released_at: '2026-01-02T00:00:00Z', job_type: 'retail', funding_type: 'cash', damage_type: 'hail', location_city: 'Zionsville', location_zip: '46077', selected_contractor_id: null, is_test: true },
     contractors: { id: 'contractor-1', user_id: 'user-1', status: 'active', attestation_accepted_at: '2026-01-01T00:00:00Z', coi_file_url: 'coi.pdf', coi_expires_at: future, company_name: 'Test Roofing', phone: '8445550100', trades: ['roofing', 'gutters', 'siding'], service_area_description: 'Indiana', cpa_version: CPA_VERSION, needs_cpa_reattestation: false },
-    quotes: { id: 'quote-1', claim_id: 'claim-1', contractor_id: 'contractor-1', status: 'submitted', bid_status: status, total_price: total, fee_amount: Math.round(total * 5) / 100, expires_at: new Date(Date.now() + (renew ? -1 : 10) * 864e5).toISOString(), scope_summary: '{}', value_adds: valueAdds, notes: '', auto_renew: true, per_trade_breakdown: breakdown },
+    quotes: { id: 'quote-1', claim_id: 'claim-1', contractor_id: 'contractor-1', status: 'submitted', bid_status: status, total_price: total, fee_amount: Math.round(total * 5) / 100, platform_fee_pct: 5, fee_percentage: 5, /* gh-3497: Change Bid and Renew read the bid's stored rate */ expires_at: new Date(Date.now() + (renew ? -1 : 10) * 864e5).toISOString(), scope_summary: '{}', value_adds: valueAdds, notes: '', auto_renew: true, per_trade_breakdown: breakdown },
   };
 }
 

@@ -52,7 +52,7 @@ const contractor = { id: 'c1', address_state: 'IN', company_name: 'Acme Roofing'
 const flags = { isRetailJob: true, gutterTradeActive: false, sidingTradeActive: false };
 const mountMode = (mode: 'change' | 'renew', status: string) => render(
   <BidForm mode={mode} claim={claim as never} contractor={contractor as never}
-    existingQuote={{ id: 'q-1', bid_status: status, total_price: 18000 } as never} flags={flags} claimRcv={null} userId="u1" />);
+    existingQuote={{ id: 'q-1', bid_status: status, total_price: 18000, platform_fee_pct: 5, fee_percentage: 5 } as never} flags={flags} claimRcv={null} userId="u1" />);
 const priceInput = (c: HTMLElement) => c.querySelector('.oqb-money input') as HTMLInputElement;
 const feeBox = (c: HTMLElement) => Array.from(c.querySelectorAll('input[type="checkbox"]'))
   .find((el) => /platform fee/.test(el.parentElement?.textContent || '')) as HTMLInputElement;
