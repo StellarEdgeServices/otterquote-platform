@@ -107,6 +107,7 @@ import {
   FEE_GAP_ALERT_TYPE,
   FEE_GAP_FUNCTION_NAME,
   findQuotesMissingAcceptance,
+  partitionAcceptanceRows,
   shouldAlertOnGap,
   type QuoteRow,
 } from "./fee-acceptance-gap-check.ts"; // gh-3586
@@ -1038,7 +1039,7 @@ async function runFeeAcceptanceGapCheck(
   for (let from = 0; ; from += PAGE) {
     let q = supabase
       .from("quotes")
-      .select("id, claim_id, contractor_id, created_at, status, is_test, is_auto_bid, renewed_from_quote_id")
+      .select("id, claim_id, contractor_id, created_at, status, bid_status, is_test, is_auto_bid, renewed_from_quote_id")
       .gte("created_at", since)
       .is("renewed_from_quote_id", null)
       .lte("created_at", graceCutoff)
@@ -1055,22 +1056,25 @@ async function runFeeAcceptanceGapCheck(
     if (!data || data.length < PAGE) break;
   }
 
-  const accepted = new Set<string>();
+  const accepted = new Set<string>(); // rows with rescinded_at IS NULL (gh-3755)
+  const rescinded = new Set<string>(); // rows with rescinded_at set: cover only a bid that is no longer live
   const CHUNK = 150; // keeps the in.(...) URL well under PostgREST/proxy limits
   for (let i = 0; i < quotes.length; i += CHUNK) {
     const ids = quotes.slice(i, i + CHUNK).map((r) => r.id);
     const { data, error } = await supabase
       .from("fee_acceptances")
-      .select("bid_id")
-      .in("bid_id", ids) as { data: { bid_id: string }[] | null; error: { message: string } | null };
+      .select("bid_id, rescinded_at")
+      .in("bid_id", ids) as { data: { bid_id: string; rescinded_at: string | null }[] | null; error: { message: string } | null };
     if (error) {
       console.error("[platform-health-check] Phase 6 (fee acceptance gap): fee_acceptances read failed:", error.message);
       return { checked: false, alertsFired: 0, count: 0, skipped: "fee-acceptances-read-error" };
     }
-    for (const r of data ?? []) accepted.add(r.bid_id);
+    const part = partitionAcceptanceRows(data ?? []);
+    for (const id of part.accepted) accepted.add(id);
+    for (const id of part.rescinded) rescinded.add(id);
   }
 
-  const result = findQuotesMissingAcceptance(quotes, accepted, opts);
+  const result = findQuotesMissingAcceptance(quotes, accepted, opts, rescinded);
   const alert = evaluateFeeAcceptanceGap(result, includeTest);
   // Standing-gap throttle (gh-3586 review): newest log row of this type, acknowledged or not. A read error counts as "never alerted".
   const { data: lastRows } = await supabase

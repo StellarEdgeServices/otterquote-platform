@@ -33,6 +33,21 @@ export interface Deps {
   suppress: (phone: string, keyword: string, atIso: string) => Promise<boolean>;
   /** Mark every verified row for the number opted_out (SMS keyword channel); returns true on success. */
   markOptedOut: (phone: string, keyword: string, atIso: string) => Promise<boolean>;
+  /**
+   * #3761 (REVIEW 6903556372 blocker 1): a STOP that lands on a number whose open suppression row (or opted_out number row)
+   * was recorded by STAFF (channel email / support_call) is the contractor's own revocation; the open-row 23505 no-op in
+   * suppress() would otherwise leave no trace of it. Re-label those rows sms_keyword (with the keyword) so staff cannot
+   * release them (only the contractor's START can). Idempotent; zero rows is legitimate. Returns true on success.
+   */
+  recordStopOverStaff: (phone: string, keyword: string, atIso: string) => Promise<boolean>;
+  /**
+   * #3771 (mirror race after #3767): does an OPEN suppression row exist for the number that staff cannot release, i.e. any
+   * open row whose channel is NOT email / support_call (sms_keyword, sms_freeform, carrier_disconnect)? A staff release can
+   * commit between suppress()'s 23505 no-op and recordStopOverStaff()'s relabel, leaving no open row; the handler checks
+   * after the relabel and re-asserts the row. Returns null on a read error (treated as "not confirmed": suppress again).
+   * REQUIRED, so a later edit cannot silently drop the check.
+   */
+  hasOpenStop: (phone: string) => Promise<boolean | null>;
   /** Release the open suppression row with released_keyword = START; returns true on success. */
   release: (phone: string, atIso: string) => Promise<boolean>;
   /** Pause the number and queue the message for review (idempotent on messageSid); returns true on success. */
@@ -41,6 +56,8 @@ export interface Deps {
 
 const EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
 const twiml = () => new Response(EMPTY_TWIML, { status: 200, headers: { "Content-Type": "text/xml" } });
+/** #3771: how many suppress+relabel passes a STOP may take to end with an open sms_keyword row. */
+const STOP_VERIFY_PASSES = 3;
 const refuse = (status: number) => new Response("", { status });
 
 /** Twilio's request signature: base64(HMAC-SHA1(authToken, url + sorted(key+value...))). */
@@ -117,6 +134,20 @@ export async function handle(req: Request, d: Deps): Promise<Response> {
     // Order matters: the suppression row is the write that stops texts; the status flip is bookkeeping.
     if (!(await d.suppress(phone, keyword, at))) return refuse(500);
     if (!(await d.markOptedOut(phone, keyword, at))) return refuse(500);
+    if (!(await d.recordStopOverStaff(phone, keyword, at))) return refuse(500);
+    // #3771: a staff release may have committed between a 23505 no-op in suppress() and the relabel above, leaving no open
+    // row. A STOP must never be lost: verify an open non-staff row exists; if not, open one again (suppress) and relabel,
+    // bounded. Still none after the last pass -> 500 so Twilio retries (never a 200 with the number left unsuppressed).
+    for (let pass = 1;; pass++) {
+      const confirmed = await d.hasOpenStop(phone);
+      if (confirmed === true) break;
+      if (pass >= STOP_VERIFY_PASSES) {
+        console.error(`${FUNCTION_NAME}: STOP not confirmed after ${pass} passes for ***${phone.slice(-4)}: ${confirmed === null ? "READ ERROR on the open-row check" : "RACE, no open non-staff row remained"}; returning 500`);
+        return refuse(500);
+      }
+      if (!(await d.suppress(phone, keyword, at))) return refuse(500);
+      if (!(await d.recordStopOverStaff(phone, keyword, at))) return refuse(500);
+    }
     return twiml();
   }
   if (type === "START" && body === "START") {

@@ -1,8 +1,9 @@
--- STATUS (as of 2026-11-11): NOT APPLIED -- DRAFT (re-headed to the live set; supersedes the 2026-11-01 40/3 version, R-097 notice 6806240445)
+-- STATUS (gh-1438, as of 2026-11-16T14:02:20Z): APPLIED (ledger version 20261115185944, name gh3197_backfill_internal_test_is_test; read-only ledger query, CEO RUN 153 b3324, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3197_backfill_internal_test_is_test
 -- EVIDENCE: production read-only 2026-11-11 ~20:20Z (project yeszghaspzwwstvsrioa, SELECT only): 34 profiles with is_internal_test_email(email) and is_test IS NOT TRUE,
 --   and 2 claims owned by them with is_test IS NOT TRUE. Control (profiles NOT is_internal_test_email and is_test IS NOT TRUE): 10 rows, left(md5(string_agg(id::text, ',' ORDER BY id)),12) = 64f8f4a1eebd.
 --   (6 of the earlier 40 profiles and 1 of the earlier 3 claims were flagged by something else after 2026-11-01 and are NOT in this set.) No database was written to produce this file.
+-- REPO COPY: supabase/migrations_applied_manually/20261115185944_gh3197_backfill_internal_test_is_test.sql (byte-identical to the ledger statements[1], md5 checked); rollback stays here
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 -- MUST RUN AS service_role / postgres: profiles_freeze_privileged_columns refuses is_test changes from client roles (gh-2785).
 --

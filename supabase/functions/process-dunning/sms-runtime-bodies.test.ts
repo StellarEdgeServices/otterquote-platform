@@ -9,6 +9,18 @@
 import { assert, assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler } from "./index.ts";
 
+// gh-3762: process-dunning now withholds contractor SMS outside 08:00-20:00 in the contractor's local time (the fixture
+// contractor is IN/America/New_York, so the window is 09:00-20:00 ET). These runtime tests assert what the SMS path sends,
+// so they must not depend on the wall clock the suite happens to run at: freeze Date at 10:00 EST (15:00Z). Deno runs each
+// test file in its own isolate, so this does not leak into other files.
+{
+  const RealDate = Date;
+  const fixed = new RealDate("2026-11-16T15:00:00Z").getTime();
+  // deno-lint-ignore no-explicit-any
+  class FrozenDate extends RealDate { constructor(...a: any[]) { if (a.length === 0) super(fixed); else super(...(a as [number])); } static override now() { return fixed; } }
+  globalThis.Date = FrozenDate as unknown as DateConstructor;
+}
+
 const BRAND = "Otter Quotes";
 const KEY = "fixture-runtime-service-key-0123456789";
 const BASE = "https://x.supabase.co/functions/v1/process-dunning";

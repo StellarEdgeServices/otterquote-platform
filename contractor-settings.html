@@ -1688,6 +1688,7 @@
   <script src="js/auth.js"></script>
   <script src="js/contract-template-validation.js"></script>
   <script src="js/nav.js"></script>
+  <script src="js/contractor-sms-verify.js"></script>
 
   <script>
     // CPA version &mdash; must match contractor-dashboard.html. Bump both when the CPA changes.
@@ -2656,6 +2657,27 @@
             }
         }
 
+    // gh-3763 (#3726 item 7): offer the verified-per-number text-alert opt-in (source "settings") once the contractor row is known. Never throws into the page.
+    // The host is created here, straight after the "Phone Numbers (SMS)" block, so no wording and no markup is added to the page
+    // body (the consent sentence is the current sms_disclosure_versions row, rendered by js/contractor-sms-verify.js).
+    function mountSmsVerify() {
+      try {
+        if (!window.OQSmsVerify) return;
+        var host = document.getElementById('smsVerifyMount');
+        if (!host) {
+          var anchor = document.getElementById('phoneList');
+          var section = anchor && anchor.closest('.notifications-section');
+          if (!section || !section.parentNode) return;
+          host = document.createElement('div');
+          host.id = 'smsVerifyMount';
+          host.className = 'notifications-section';
+          host.setAttribute('data-oq-sms-mount', '1');
+          section.parentNode.insertBefore(host, section.nextSibling);
+        }
+        window.OQSmsVerify.mount(host, sb, contractorRecord && contractorRecord.id ? contractorRecord.id : null, { source: 'settings' });
+      } catch (e) { console.warn('[sms-verify] mount failed (text alerts are optional):', e); }
+    }
+
     async function initSettings() {
       currentUser = await Auth.requireAuth('contractor');
       if (!currentUser && !CONFIG.DEMO_MODE) return;
@@ -2684,6 +2706,8 @@
               return;
             }
           }
+
+          mountSmsVerify();
 
           // Populate auto-bid toggle
           if (data.auto_bid_enabled !== undefined && data.auto_bid_enabled !== null) {

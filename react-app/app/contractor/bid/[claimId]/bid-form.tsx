@@ -337,6 +337,7 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
   const existingQuote = filedQuote ?? existingQuoteProp;
   const router = useRouter();
   const renewDoneQuoteIdRef = useRef<string | null>(null); // gh-3498 (F-A): the quote whose renew_quote call already succeeded; a retry after a failed field UPDATE skips the RPC (it refuses a live bid, 55000)
+  const reopenAcceptanceDoneRef = useRef<string | null>(null); // gh-3750: the withdrawn bid whose fresh fee_acceptances row this form has already written
   const renewTimedOutRef = useRef(false); // gh-3498 (F1): a renew_quote call went unanswered; the next attempt reads the bid status again first
   const claimTrades = useMemo(() => (Array.isArray(claim.trades) ? (claim.trades as string[]) : []), [claim.trades]);
   const hasRoofing = claimTrades.includes('roofing');
@@ -475,6 +476,7 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
         // gh-3560: renew / reopen set bid_status, expired_at and expires_at server-side (the quotes guard trigger refuses
         // them to a direct UPDATE, 42501). RPC first, then the field UPDATE below.
         let renewRpcMode = renewQuoteRpcMode(mode === 'renew', (existingQuote?.bid_status as string | null) ?? null);
+        const reopenedWithdrawnBid = renewRpcMode === 'reopen'; // gh-3750: read before a retry nulls renewRpcMode
         if (renewRpcMode && renewDoneQuoteIdRef.current === existingQuote!.id) renewRpcMode = null; // gh-3498 (F-A): the RPC already succeeded for this quote; only the field UPDATE is left
         if (renewRpcMode && renewTimedOutRef.current) {
           // gh-3498 (REVIEW 6809644127 F1): an earlier renew_quote timed out in the browser, but the server may have finished it. The page's copy of
@@ -512,6 +514,33 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
         // and what any later award pays out on) never changed.
         if (!wroteRow(upRows)) {
           throw new Error('bid_update_zero_rows: no matching quote row was updated');
+        }
+        // gh-3750 (D-214 / D-215 Layer 1): re-bidding a WITHDRAWN bid ('reopen') is a new act of fee acceptance. rescind-bid stamped the earlier
+        // acceptance row(s) rescinded and stripe-webhook's dispute evidence reads only un-rescinded rows, so the reopened bid needs a fresh row,
+        // written as a first submission writes it. After the field UPDATE (the insert guard compares with the bid's current fee). Non-fatal; once per bid.
+        if (reopenedWithdrawnBid && existingQuote && reopenAcceptanceDoneRef.current !== existingQuote.id) {
+          const reopenBidId = existingQuote.id as string;
+          try {
+            const ip = await getContractorIP();
+            // gh-3409: .select('id') and NEVER .single() (a diverted row returns zero rows).
+            const reopenIns = supabase.from('fee_acceptances').insert(buildFeeAcceptanceInsert({
+              contractorId: contractor.id, claimId: String(claim.id), bidId: reopenBidId, feePct, feeAmount,
+              feeTextDisplayed: exactFeeText, acceptedAtIso: nowIso, ipAddress: ip,
+              userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+            })).select('id');
+            const reopenRes = await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(reopenIns, signal));
+            const reopenOutcome = feeAcceptanceOutcome(reopenRes);
+            if (reopenOutcome !== 'recorded') {
+              console.error('[D-215] Fee acceptance for the reopened bid not recorded (non-fatal):', reopenRes.error?.message);
+              try { Sentry.captureMessage('[D-215] Reopened-bid fee acceptance ' + (reopenOutcome === 'failed' ? 'failed' : 'diverted to quarantine'), { level: reopenOutcome === 'failed' ? 'error' : 'warning', extra: { bid_id: reopenBidId, claim_id: String(claim.id), contractor_id: contractor.id, code: reopenRes.error?.code } }); }
+              catch (se) { console.warn('[gh-3750] Sentry report failed:', se); }
+            }
+          } catch (e) {
+            console.error('[D-215] reopened-bid fee acceptance failed (non-fatal):', e);
+            try { Sentry.captureException(e, { extra: { bid_id: reopenBidId, claim_id: String(claim.id), contractor_id: contractor.id } }); }
+            catch (se) { console.warn('[gh-3750] Sentry report failed:', se); }
+          }
+          reopenAcceptanceDoneRef.current = reopenBidId;
         }
         // Homeowner "bid updated" notification + activity log + GA + contractor email (all non-fatal).
         try {
@@ -625,7 +654,7 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
       // Clear wizard localStorage state on success (parity with clearWizardState).
       try { localStorage.removeItem(`oq_wizard_${claim.id}`); } catch { /* ignore */ }
       idemRef.current = null; // gh-3498: this bid is filed; its key is spent
-      unconfirmedRef.current = []; postWritesDoneRef.current = null;
+      unconfirmedRef.current = []; postWritesDoneRef.current = null; reopenAcceptanceDoneRef.current = null;
       setSubmitState('done');
     } catch (err) {
       console.error('Error submitting bid:', err);
