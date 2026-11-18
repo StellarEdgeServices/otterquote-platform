@@ -67,8 +67,9 @@ Deno.test("gutters job with nothing bid at all: no GUTTERS heading", () => {
   assert(!has(sow({ trades: ["gutters"], va: {}, declarations: null }), "GUTTERS"));
 });
 
-Deno.test("controls: any printed gutters line keeps the heading (included, none, bid guards, matching extra row)", () => {
-  for (const va of [{ gutters: { option: "6inch_included" } }, { gutters: { option: "none" } }, { gutter_guards: { pricing_on_request: true } }, { gutter_guards: { mesh_oop: 800 } }]) {
+Deno.test("controls: any printed gutters line keeps the heading (included, bid guards, matching extra row)", () => {
+  // [gh-3745] option "none" on a gutters job no longer prints (see gh3745 test), so it is not a heading control here.
+  for (const va of [{ gutters: { option: "6inch_included" } }, { gutter_guards: { pricing_on_request: true } }, { gutter_guards: { mesh_oop: 800 } }]) {
     const pdf = sow({ trades: ["gutters"], va, declarations: null });
     assert(has(pdf, "GUTTERS"), `heading present for ${JSON.stringify(va)}`);
   }
