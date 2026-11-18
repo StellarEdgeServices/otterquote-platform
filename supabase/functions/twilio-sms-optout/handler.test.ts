@@ -1,6 +1,7 @@
 // D-391 layer 2 (#2875): twilio-sms-optout. Run: deno test supabase/functions/twilio-sms-optout/handler.test.ts
 // No network, no Twilio, no database, no SMS: every dependency is a counting fake.
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { hasOpenStopRow } from "./open-stop.ts";
 import { type Deps, findOptOutKeywords, handle, timingSafeEqual, twilioSignature } from "./handler.ts";
 
 const TOKEN = "fixture-auth-token";
@@ -16,6 +17,7 @@ function make(over: Partial<Deps> = {}, env: Record<string, string | undefined> 
     suppress: (p, k) => { log.push(`suppress ${p} ${k}`); return Promise.resolve(true); },
     markOptedOut: (p, k) => { log.push(`optedout ${p} ${k}`); return Promise.resolve(true); },
     recordStopOverStaff: () => Promise.resolve(true), // exercised by its own test below (kept out of `log` so the order assertions above are unchanged)
+    hasOpenStop: () => Promise.resolve(true), // #3771: exercised by the stateful race tests below
     release: (p) => { log.push(`release ${p}`); return Promise.resolve(true); },
     flag: (p, b, k, sid) => { log.push(`flag ${p} ${JSON.stringify(b)} [${k.join(",")}] ${sid}`); return Promise.resolve(true); },
     ...over,
@@ -200,4 +202,103 @@ Deno.test("#3761: a STOP also re-labels a staff-recorded open opt-out (recordSto
   assertEquals(seen, [`${PHONE} STOP`]);
   const bad = make({ recordStopOverStaff: () => Promise.resolve(false) });
   assertEquals((await handle(await inbound({ From: PHONE, Body: "STOP", OptOutType: "STOP" }), bad.deps)).status, 500);
+});
+
+// ---- #3771: a STOP racing a staff release must always leave an open sms_keyword row ----
+// Stateful in-memory store mirroring the live rules: ONE open row per phone (insert -> 23505 no-op), the relabel only touches
+// open staff rows, the staff release closes open staff rows. `beforeRelabel` injects the staff release between the STOP's
+// failed insert and its relabel (the exact interleaving of the issue). hasOpenStop mirrors the live check: any open row staff cannot release.
+type Row = { phone: string; channel: string; released_at: string | null };
+function store(beforeRelabel: (rows: Row[], n: number) => void = () => {}) {
+  const rows: Row[] = [{ phone: PHONE, channel: "support_call", released_at: null }]; // staff opt-out already open
+  let relabels = 0;
+  const open = () => rows.filter((r) => r.phone === PHONE && r.released_at === null);
+  const { deps } = make({
+    suppress: (p) => {
+      if (open().length === 0) rows.push({ phone: p, channel: "sms_keyword", released_at: null }); // else 23505: no-op, success
+      return Promise.resolve(true);
+    },
+    recordStopOverStaff: () => {
+      relabels++;
+      beforeRelabel(rows, relabels);
+      for (const r of open()) if (r.channel === "email" || r.channel === "support_call") r.channel = "sms_keyword";
+      return Promise.resolve(true);
+    },
+    hasOpenStop: () => Promise.resolve(open().some((r) => r.channel !== "email" && r.channel !== "support_call")),
+  });
+  return { deps, rows, open };
+}
+const staffRelease = (rows: Row[]) => { for (const r of rows) if (r.released_at === null && r.channel !== "sms_keyword") r.released_at = "staff-release"; };
+
+Deno.test("#3771: staff release commits between the STOP's 23505 no-op and its relabel -> an open sms_keyword row still exists", async () => {
+  const s = store((rows, n) => { if (n === 1) staffRelease(rows); });
+  const r = await handle(await inbound({ From: PHONE, Body: "STOP", OptOutType: "STOP" }), s.deps);
+  assertEquals(r.status, 200);
+  assertEquals(s.open().length, 1);
+  assertEquals(s.open()[0].channel, "sms_keyword");
+});
+
+Deno.test("#3771: no race -> unchanged behaviour (staff row relabelled once, no extra row)", async () => {
+  const s = store();
+  assertEquals((await handle(await inbound({ From: PHONE, Body: "STOP", OptOutType: "STOP" }), s.deps)).status, 200);
+  assertEquals(s.rows.length, 1);
+  assertEquals(s.open()[0].channel, "sms_keyword");
+});
+
+Deno.test("#3771: staff releases on every pass -> two releases in a row -> still ends 200 with an open row", async () => {
+  const s = store((rows, n) => { if (n <= 2) staffRelease(rows); });
+  assertEquals((await handle(await inbound({ From: PHONE, Body: "STOP", OptOutType: "STOP" }), s.deps)).status, 200);
+  assertEquals(s.open().map((r) => r.channel), ["sms_keyword"]);
+});
+
+Deno.test("#3771: if no open STOP row can be confirmed, the answer is 500 (Twilio retries), never a 200 with nothing open", async () => {
+  const { deps } = make({ hasOpenStop: () => Promise.resolve(false) });
+  assertEquals((await handle(await inbound({ From: PHONE, Body: "STOP", OptOutType: "STOP" }), deps)).status, 500);
+});
+
+Deno.test("#3771 B1: a STOP over an open sms_freeform row (staff cannot release it) -> 200, row still open, no extra row", async () => {
+  const s = store();
+  s.rows[0].channel = "sms_freeform";
+  assertEquals((await handle(await inbound({ From: PHONE, Body: "STOP", OptOutType: "STOP" }), s.deps)).status, 200);
+  assertEquals(s.open().map((r) => r.channel), ["sms_freeform"]);
+  assertEquals(s.rows.length, 1);
+});
+
+Deno.test("#3771: the 500 is logged with the cause (race vs read error), last 4 digits only", async () => {
+  const lines: string[] = [];
+  const orig = console.error;
+  console.error = (...a: unknown[]) => { lines.push(a.join(" ")); };
+  try {
+    const race = make({ hasOpenStop: () => Promise.resolve(false) });
+    assertEquals((await handle(await inbound({ From: PHONE, Body: "STOP", OptOutType: "STOP" }), race.deps)).status, 500);
+    const rd = make({ hasOpenStop: () => Promise.resolve(null) });
+    assertEquals((await handle(await inbound({ From: PHONE, Body: "STOP", OptOutType: "STOP" }), rd.deps)).status, 500);
+  } finally { console.error = orig; }
+  assertEquals(lines.length, 2);
+  assertEquals(lines[0].includes("RACE") && !lines[0].includes("READ ERROR"), true);
+  assertEquals(lines[1].includes("READ ERROR"), true);
+  for (const l of lines) assertEquals(l.includes("***0142") && !l.includes(PHONE) && !l.includes("5155550142"), true);
+});
+
+// hasOpenStopRow drives the REAL filter chain against a fake query builder that applies eq / is / not-in / limit to rows.
+function fakeClient(rows: Row[], fail = false) {
+  return { from: () => {
+    const f: ((r: Row) => boolean)[] = [];
+    const q = {
+      select: () => q,
+      eq: (c: string, v: string) => (f.push((r) => (c === "phone_e164" ? r.phone : r.channel) === v), q),
+      is: (_c: string, _v: null) => (f.push((r) => r.released_at === null), q),
+      not: (_c: string, op: string, v: string) => (op === "in" && f.push((r) => !v.slice(1, -1).split(",").includes(r.channel)), q),
+      limit: () => q,
+      then: (res: (x: unknown) => void) => res(fail ? { data: null, error: { code: "XX" } } : { data: rows.filter((r) => f.every((g) => g(r))).slice(0, 1), error: null }),
+    };
+    return q;
+  } };
+}
+Deno.test("#3771 B1: hasOpenStopRow counts sms_keyword, sms_freeform and carrier_disconnect; not staff rows, not released rows; null on error", async () => {
+  const row = (channel: string, released_at: string | null = null): Row => ({ phone: PHONE, channel, released_at });
+  for (const ch of ["sms_keyword", "sms_freeform", "carrier_disconnect"]) assertEquals(await hasOpenStopRow(fakeClient([row(ch)]), PHONE), true, ch);
+  for (const ch of ["email", "support_call"]) assertEquals(await hasOpenStopRow(fakeClient([row(ch)]), PHONE), false, ch);
+  assertEquals(await hasOpenStopRow(fakeClient([row("sms_keyword", "x")]), PHONE), false);
+  assertEquals(await hasOpenStopRow(fakeClient([], true), PHONE), null);
 });

@@ -1,7 +1,7 @@
--- STATUS (gh-1438, as of 2026-11-10): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-16T14:02:20Z): APPLIED (ledger version 20261115185916, name gh3256b_default_privs_no_anon_execute; read-only ledger query, CEO RUN 153 b3324, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3256b_default_privs_no_anon_execute (rollback and pre-flight beside it)
 -- EVIDENCE: Supabase security advisor 2026-11-10T17:35Z (CTO RUN 101 brief): default privileges also grant EXECUTE on NEW functions to anon/PUBLIC, which is how fee_acceptance_quarantine_add became anon-callable (fixed one-off in PR #3608). Production read-only 2026-11-05 (CLOSE-REVIEW 6667270139, project yeszghaspzwwstvsrioa): pg_default_acl (postgres, public, f) = {postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}; (supabase_admin, public, f) the same with grantor supabase_admin. The built-in PUBLIC=X default is not a pg_default_acl row at all, so it never shows in that listing. Production read-only again 2026-11-10 (CTO RUN 102 worker): the full pg_default_acl has no global (schema-less) row for postgres or supabase_admin, so the global PUBLIC revoke below starts from the built-in default; its listing is in the pre-flight. No database was written to produce this file.
--- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback and pre-flight to supabase/migrations_rollbacks/.
+-- REPO COPY: supabase/migrations/20261115185916_gh3256b_default_privs_no_anon_execute.sql (byte-identical to the ledger statements[1], md5 checked); rollback and pre-flight stay here
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- Migration: gh3256b_default_privs_no_anon_execute
