@@ -1,12 +1,12 @@
--- STATUS (gh-1438, as of 2026-11-09T13:40:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-18T18:55:05Z): NOT APPLIED -- RE-RENDERED 2026-11-18 (#3766): restores the post-gh3750 body (4649287a), not the gh3409 body
 -- FILE ROLE: rollback file of set gh3490_fee_acceptance_duplicate_same_fee (the STATUS is the set's; it describes the forward migration)
--- EVIDENCE: drafted 2026-11-09 under #3490. Restores the production body read 2026-11-09 (gh3409, ledger 20261106215945, prosrc md5 prefix 1142fe98), byte for byte. No database was written to produce this file.
+-- EVIDENCE: drafted 2026-11-09 under #3490. Restores the post-gh3750 production body (ledger 20261116152010, prosrc md5 4649287a, length 2666), byte for byte. No database was written to produce this file.
 -- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback to supabase/migrations_rollbacks/.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
--- Rollback of gh3490_fee_acceptance_duplicate_same_fee: puts back the gh3409 duplicate rule (ANY existing row for the bid_id makes a new client row a duplicate_bid diversion).
+-- Rollback of gh3490_fee_acceptance_duplicate_same_fee: puts back the gh3750 duplicate rule (ANY un-rescinded row for the bid_id makes a new client row a duplicate_bid diversion).
 -- Rows recorded while the forward was live (a second row for a bid at a different fee) are KEPT; this file changes no row. After rollback, a changed or renewed bid's acceptance is quarantined again.
--- Refuses unless the live body is the gh3490 body (3ff983cb) or already the gh3409 body (1142fe98, idempotent). Run ALONE: `psql -v ON_ERROR_STOP=1 -f`.
+-- Refuses unless the live body is the gh3490 body (daf3fc71) or already the gh3750 body (4649287a, idempotent). Run ALONE: `psql -v ON_ERROR_STOP=1 -f`.
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 
@@ -14,8 +14,8 @@ DO $pre$
 DECLARE live text;
 BEGIN
   SELECT p.prosrc INTO live FROM pg_proc p WHERE p.oid = to_regprocedure('public.fee_acceptances_guard_client_insert()');
-  IF live IS NULL OR left(md5(live), 8) NOT IN ('3ff983cb', '1142fe98') THEN
-    RAISE EXCEPTION 'gh3490 rollback: the live guard body (md5 prefix %) is neither the gh3490 body nor the gh3409 body; re-diff before rolling back', coalesce(left(md5(live), 8), 'absent');
+  IF live IS NULL OR left(md5(live), 8) NOT IN ('daf3fc71', '4649287a') THEN
+    RAISE EXCEPTION 'gh3490 rollback: the live guard body (md5 prefix %) is neither the gh3490 body nor the gh3750 body; re-diff before rolling back', coalesce(left(md5(live), 8), 'absent');
   END IF;
 END
 $pre$;
@@ -56,7 +56,7 @@ BEGIN
     v_chk := public.fee_acceptance_text_check(NEW.fee_text_displayed, v_pct, v_amt, q.total_price);
     IF v_chk <> 'ok' THEN v_reasons := array_append(v_reasons, v_chk); END IF;
   END IF;
-  IF EXISTS (SELECT 1 FROM public.fee_acceptances d WHERE d.bid_id = NEW.bid_id) THEN
+  IF EXISTS (SELECT 1 FROM public.fee_acceptances d WHERE d.bid_id = NEW.bid_id AND d.rescinded_at IS NULL) THEN
     v_reasons := array_append(v_reasons, 'duplicate_bid');
   END IF;
 
@@ -86,7 +86,7 @@ DO $post$
 DECLARE live text;
 BEGIN
   SELECT p.prosrc INTO live FROM pg_proc p WHERE p.oid = 'public.fee_acceptances_guard_client_insert()'::regprocedure;
-  IF left(md5(live), 8) <> '1142fe98' OR md5(live) IS DISTINCT FROM md5($old$
+  IF left(md5(live), 8) <> '4649287a' OR md5(live) IS DISTINCT FROM md5($old$
 DECLARE
   q record;
   v_pct numeric;
@@ -118,7 +118,7 @@ BEGIN
     v_chk := public.fee_acceptance_text_check(NEW.fee_text_displayed, v_pct, v_amt, q.total_price);
     IF v_chk <> 'ok' THEN v_reasons := array_append(v_reasons, v_chk); END IF;
   END IF;
-  IF EXISTS (SELECT 1 FROM public.fee_acceptances d WHERE d.bid_id = NEW.bid_id) THEN
+  IF EXISTS (SELECT 1 FROM public.fee_acceptances d WHERE d.bid_id = NEW.bid_id AND d.rescinded_at IS NULL) THEN
     v_reasons := array_append(v_reasons, 'duplicate_bid');
   END IF;
 
@@ -143,7 +143,7 @@ BEGIN
   RETURN NEW;
 END
 $old$) THEN
-    RAISE EXCEPTION 'gh3490 rollback: restored body is not the gh3409 body; nothing is applied';
+    RAISE EXCEPTION 'gh3490 rollback: restored body is not the gh3750 body (4649287a); nothing is applied';
   END IF;
 END
 $post$;
