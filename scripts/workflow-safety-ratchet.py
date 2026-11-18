@@ -90,8 +90,11 @@ on the safe one -- run `--self-test`)
                         action repo; the SHA cannot. Keep the tag as a trailing
                         `# v4` comment so Dependabot can still propose bumps.
                         Local `uses: ./path` refs and `docker://...@sha256:<64
-                        hex>` digests are exempt. A new unpinned `uses:` fails
-                        CI here.
+                        hex>` digests are exempt; a `docker://` tag is flagged.
+                        A new unpinned `uses:` fails CI here. Two scans, FAIL
+                        if either finds one: a text scan, and a scan of the
+                        parsed YAML (jobs.*.uses and every steps[*].uses), so a
+                        quoted `"uses":` key or a flow-mapping step cannot hide.
 
 Allowlisted as structurally non-injectable scalars: see SAFE_EVENT_EXPRS.
 `github.event.pull_request.head.sha` is deliberately NOT allowlisted -- it is
@@ -236,26 +239,94 @@ def secret_findings(file_rel: str, text: str):
     return out
 
 
-def unpinned_findings(file_rel: str, text: str):
-    """Rule 4 -- UNPINNED_ACTION. Text-based on purpose: it must not depend on
-    the YAML parser, on the trigger, or on a step being well-formed."""
+def _ref_is_exempt(ref: str) -> bool:
+    """Local `./` refs and docker:// sha256 digests cannot be repointed; a full
+    40-hex SHA is the pinned shape. Everything else (tag, branch, short sha,
+    docker:// tag) is unpinned."""
+    if ref.startswith("./") or ref.startswith("../"):
+        return True
+    return bool(SHA_REF_RE.search(ref) or DOCKER_DIGEST_RE.match(ref))
+
+
+def _unpinned_finding(file_rel: str, where: str, ref: str):
+    f = Finding(
+        "UNPINNED_ACTION", file_rel, where,
+        f"`uses: {ref}` is not pinned to a full 40-hex commit SHA -- resolve the tag with "
+        "`git ls-remote https://github.com/<owner>/<repo>.git <tag>` (peeled `^{}` line if annotated), "
+        "write `uses: <owner>/<repo>@<sha> # <tag>`",
+    )
+    f.ref = ref
+    return f
+
+
+def _unpinned_text_findings(file_rel: str, text: str):
+    """Rule 4, scan A -- line-based. Needs no parser, so it still runs when YAML
+    cannot be loaded or a step is malformed. It misses shapes the regex cannot
+    see (a quoted `"uses":` key, a flow-mapping step), which is what scan B is for."""
     out = []
     for n, line in enumerate(strip_comments(text).split("\n"), 1):
         m = USES_RE.match(line)
         if not m:
             continue
         ref = m.group(1)
-        if ref.startswith("./") or ref.startswith("../"):
-            continue  # local action / local reusable workflow: nothing to repoint
-        if SHA_REF_RE.search(ref) or DOCKER_DIGEST_RE.match(ref):
+        if _ref_is_exempt(ref):
             continue
-        out.append(Finding(
-            "UNPINNED_ACTION", file_rel, f"line {n}",
-            f"`uses: {ref}` is not pinned to a full 40-hex commit SHA -- resolve the tag with "
-            "`git ls-remote https://github.com/<owner>/<repo>.git <tag>` (peeled `^{}` line if annotated), "
-            "write `uses: <owner>/<repo>@<sha> # <tag>`",
-        ))
+        out.append(_unpinned_finding(file_rel, f"line {n}", ref))
     return out
+
+
+def _unpinned_yaml_findings(file_rel: str, text: str):
+    """Rule 4, scan B -- parsed. Reads jobs.<job>.uses (reusable workflow) and every
+    jobs.<job>.steps[i].uses from the loaded document, so the quoted-key and
+    flow-mapping spellings are seen exactly as GitHub sees them (PR #3797 REVIEW:
+    FAIL 6991245114). A parse failure yields nothing here: evaluate() already
+    fails an unparseable workflow closed, and scan A still ran."""
+    if not HAVE_YAML:
+        return []
+    try:
+        doc = yaml.safe_load(text)
+    except Exception:
+        return []
+    jobs = doc.get("jobs") if isinstance(doc, dict) else None
+    if not isinstance(jobs, dict):
+        return []
+    out = []
+    for job_name, job in jobs.items():
+        if not isinstance(job, dict):
+            continue
+        refs = []
+        if "uses" in job:
+            refs.append((f"jobs.{job_name}.uses", job["uses"]))
+        steps = job.get("steps")
+        if isinstance(steps, list):
+            for i, step in enumerate(steps):
+                if isinstance(step, dict) and "uses" in step:
+                    refs.append((f"jobs.{job_name}.steps[{i}].uses", step["uses"]))
+        for where, ref in refs:
+            if not isinstance(ref, str):
+                out.append(_unpinned_finding(file_rel, where, repr(ref)))  # not a string ref: cannot be a pinned SHA
+                continue
+            ref = ref.strip()
+            if not _ref_is_exempt(ref):
+                out.append(_unpinned_finding(file_rel, where, ref))
+    return out
+
+
+def unpinned_findings(file_rel: str, text: str):
+    """Rule 4 -- UNPINNED_ACTION: FAIL if EITHER the text scan or the parsed scan
+    finds an unpinned ref. A ref both scans see is reported once (the text-scan
+    line number wins); a ref only the parsed scan sees is reported with its
+    jobs.<job>.steps[i] path."""
+    found = _unpinned_text_findings(file_rel, text)
+    seen = {}
+    for f in found:
+        seen[f.ref] = seen.get(f.ref, 0) + 1
+    for f in _unpinned_yaml_findings(file_rel, text):
+        if seen.get(f.ref, 0) > 0:
+            seen[f.ref] -= 1  # same ref already reported by the text scan
+        else:
+            found.append(f)
+    return found
 
 
 # ── YAML mode ────────────────────────────────────────────────────────────────
@@ -515,6 +586,8 @@ def self_test(root: Path):
     # Rule 4 (PR #3797): each bad shape beside its negative control.
     pin_expectations = [
         ("unpinned_action_bad.yml", True),
+        ("unpinned_action_quoted_key_bad.yml", True),
+        ("unpinned_action_flow_map_bad.yml", True),
         ("pinned_action_good.yml", False),
     ]
     for name, expect_bad in pin_expectations:

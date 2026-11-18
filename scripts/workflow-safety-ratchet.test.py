@@ -295,6 +295,25 @@ check("rule 4: a docker sha256 digest PASSES", pin_rules("      - uses: docker:/
 check("rule 4: a commented-out unpinned uses PASSES", pin_rules("      # - uses: actions/checkout@v4\n"), [])
 check("rule 4: applies to a non-PRT workflow too (plain pull_request)", pin_rules("on: pull_request\njobs:\n  t:\n    steps:\n      - uses: actions/checkout@v4\n"), ["UNPINNED_ACTION"])
 
+# Rule 4, parsed scan (PR #3797 REVIEW: FAIL 6991245114): shapes a line regex cannot see.
+# Each must FAIL; the matching pinned spelling beside it must PASS. These also prove the
+# bypass was real: the text-only scan returns [] for them.
+JOBS = "on: pull_request\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n"
+check("rule 4 (parsed): a quoted \"uses\" key with a tag ref FAILS", pin_rules(JOBS + '      - "uses": actions/checkout@v4\n'), ["UNPINNED_ACTION"])
+check("rule 4 (parsed): a single-quoted 'uses' key with a tag ref FAILS", pin_rules(JOBS + "      - 'uses': actions/checkout@v4\n"), ["UNPINNED_ACTION"])
+check("rule 4 (parsed): a flow-mapping step with a tag ref FAILS", pin_rules(JOBS + "      - { name: x, uses: actions/checkout@v4 }\n"), ["UNPINNED_ACTION"])
+check("rule 4 (parsed): a flow-mapping step with a quoted key and quoted tag ref FAILS", pin_rules(JOBS + '      - { "uses": "actions/checkout@v4" }\n'), ["UNPINNED_ACTION"])
+check("rule 4 (parsed): a quoted job-level \"uses\" (reusable workflow) tag ref FAILS", pin_rules('on: pull_request\njobs:\n  t:\n    "uses": owner/repo/.github/workflows/x.yml@v1\n'), ["UNPINNED_ACTION"])
+check("rule 4 (parsed): a quoted-key docker tag ref FAILS", pin_rules(JOBS + '      - "uses": docker://alpine:3.19\n'), ["UNPINNED_ACTION"])
+check("rule 4 (parsed): a flow-mapping step with a 39-hex ref FAILS", pin_rules(JOBS + "      - { uses: owner/repo@" + SHA[:-1] + " }\n"), ["UNPINNED_ACTION"])
+check("rule 4 (control): the text-only scan misses the quoted key (so the parsed scan is what catches it)", [f.rule for f in wsr._unpinned_text_findings("inline.yml", JOBS + '      - "uses": actions/checkout@v4\n')], [])
+check("rule 4 (control): the text-only scan misses the flow-mapping step", [f.rule for f in wsr._unpinned_text_findings("inline.yml", JOBS + "      - { uses: actions/checkout@v4 }\n")], [])
+check("rule 4 (parsed): a quoted key with a full SHA PASSES", pin_rules(JOBS + '      - "uses": actions/checkout@' + SHA + "\n"), [])
+check("rule 4 (parsed): a flow-mapping step with a full SHA PASSES", pin_rules(JOBS + "      - { uses: actions/checkout@" + SHA + " }\n"), [])
+check("rule 4 (parsed): a quoted-key local action PASSES", pin_rules(JOBS + '      - "uses": ./.github/actions/x\n'), [])
+check("rule 4 (parsed): a flow-mapping docker sha256 digest PASSES", pin_rules(JOBS + "      - { uses: 'docker://alpine@sha256:" + "0" * 64 + "' }\n"), [])
+check("rule 4 (parsed): a normal tag step is reported once, not twice (both scans see it)", len(pin_rules(JOBS + "      - uses: actions/checkout@v4\n")), 1)
+
 # The live tree must be green, or this ratchet ships red on arrival.
 findings, applicable, skipped, files = wsr.scan_root(HERE.parent)
 check("live .github/workflows scan reports no findings", [f.rule for f in findings], [])
