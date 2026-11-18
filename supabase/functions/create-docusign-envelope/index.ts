@@ -303,9 +303,100 @@ function pitchRangeLabel(pitches) {
   return `${nums[0]}/12-${nums[nums.length - 1]}/12`;
 }
 
+// [gh-1315 hardening] contractors.pitch_bands is contractor-supplied JSON that
+// renders on a signed contract exhibit. Treat it as hostile until it proves its
+// shape. Anything malformed in ANY part returns null, and the callers then use
+// XACTIMATE_FALLBACK_BANDS (the documented fallback), never a repaired guess.
+// Self-contained (no module-level constants) so the tests can lift each function.
+function isPlainPitchObject(v) {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+}
+
+function isValidPitchLabel(label) {
+  // Printable ASCII letters, digits and a small punctuation set; no markup
+  // characters, no control characters, 1-60 chars, not blank.
+  return typeof label === "string" && label.length >= 1 && label.length <= 60
+    && label.trim().length > 0 && /^[A-Za-z0-9 .,()\/%&'+-]+$/.test(label);
+}
+
+function isValidPitchRate(rate) {
+  return rate === null || rate === undefined
+    || (typeof rate === "number" && Number.isFinite(rate) && rate >= 0 && rate <= 10000);
+}
+
+function sanitizeBands(bands) {
+  if (!Array.isArray(bands) || bands.length < 1 || bands.length > 12) return null;
+  const out = [];
+  for (const b of bands) {
+    if (!isPlainPitchObject(b)) return null;
+    for (const k of Object.keys(b)) {
+      if (k !== "label" && k !== "min_over_12" && k !== "max_over_12" && k !== "rate_per_square") return null;
+    }
+    if (!isValidPitchLabel(b.label)) return null;
+    const lo = b.min_over_12 === undefined ? null : b.min_over_12;
+    const hi = b.max_over_12 === undefined ? null : b.max_over_12;
+    for (const e of [lo, hi]) {
+      if (e !== null && !(typeof e === "number" && Number.isInteger(e) && e >= 0 && e <= 24)) return null;
+    }
+    if (lo !== null && hi !== null && lo > hi) return null;
+    if (!isValidPitchRate(b.rate_per_square)) return null;
+    out.push({
+      label: b.label,
+      min_over_12: lo,
+      max_over_12: hi,
+      rate_per_square: b.rate_per_square === undefined ? null : b.rate_per_square,
+    });
+  }
+  // No two bands may overlap (first-match-wins would otherwise decide the price
+  // silently). An open end is -Infinity / +Infinity.
+  for (let i = 0; i < out.length; i++) {
+    for (let j = i + 1; j < out.length; j++) {
+      const aLo = out[i].min_over_12 === null ? -Infinity : out[i].min_over_12;
+      const aHi = out[i].max_over_12 === null ? Infinity : out[i].max_over_12;
+      const bLo = out[j].min_over_12 === null ? -Infinity : out[j].min_over_12;
+      const bHi = out[j].max_over_12 === null ? Infinity : out[j].max_over_12;
+      if (aLo <= bHi && bLo <= aHi) return null;
+    }
+  }
+  return out;
+}
+
+function sanitizeTwoStoryAdder(adder) {
+  if (adder === null || adder === undefined) return null;
+  if (!isPlainPitchObject(adder)) return false;
+  for (const k of Object.keys(adder)) {
+    if (k !== "label" && k !== "rate_per_square") return false;
+  }
+  if (adder.label !== undefined && !isValidPitchLabel(adder.label)) return false;
+  if (!isValidPitchRate(adder.rate_per_square)) return false;
+  return { label: adder.label === undefined ? null : adder.label, rate_per_square: adder.rate_per_square === undefined ? null : adder.rate_per_square };
+}
+
+// Whole-object validation of the contractors.pitch_bands column value. Returns
+// { bands, twoStoryAdder } or null (null => no rate card => documented fallback).
+// A rate card whose bands are fine but whose two_story_adder is malformed is
+// rejected as a whole: a partly-valid card is not trusted.
+function sanitizePitchBands(raw) {
+  if (raw === null || raw === undefined) return null;
+  if (!isPlainPitchObject(raw)) return null;
+  for (const k of Object.keys(raw)) {
+    if (k !== "source" && k !== "bands" && k !== "two_story_adder") return null;
+  }
+  if (raw.source !== "contractor_rate_card") return null;
+  const bands = sanitizeBands(raw.bands);
+  if (bands === null) return null;
+  const adder = sanitizeTwoStoryAdder(raw.two_story_adder);
+  if (adder === false) return null;
+  return { bands, twoStoryAdder: adder };
+}
+
 function bucketByBands(areasByPitch, bands) {
   const list = Array.isArray(areasByPitch) ? areasByPitch : [];
-  const useBands = (Array.isArray(bands) && bands.length > 0) ? bands : XACTIMATE_FALLBACK_BANDS;
+  // [gh-1315] Validate here too, so no caller can feed unvalidated bands in.
+  const checkedBands = sanitizeBands(bands);
+  const useBands = checkedBands !== null ? checkedBands : XACTIMATE_FALLBACK_BANDS;
   const buckets = useBands.map((b) => ({ band: b, squares: 0, pitches: [] }));
   let unbandedSquares = 0;
   const unbandedPitches = [];
@@ -334,7 +425,7 @@ function bucketByBands(areasByPitch, bands) {
     unbandedSquares: round2(unbandedSquares),
     unbandedPitches,
     unparsedSquares: round2(unparsedSquares),
-    usedFallback: !(Array.isArray(bands) && bands.length > 0),
+    usedFallback: checkedBands === null,
   };
 }
 
@@ -1540,12 +1631,14 @@ function generateRetailScopeOfWorkPdf(params) {
     // homeowner needs to know that part of the roof is unpriced.
     if (hasRoofing && Array.isArray(pitchBands) && pitchBands.length > 0 && m.areasByPitch) {
       const split = bucketByBands(m.areasByPitch, pitchBands);
-      for (const b of split.buckets) {
+      // [gh-1315] Malformed bands fall back to the platform default, which has no
+      // rate card behind it: render no contractor-rate rows from it.
+      for (const b of (split.usedFallback ? [] : split.buckets)) {
         if (b.band.rate_per_square != null) {
           add(`Steep-slope charge - ${b.band.label}`, `${b.squares} SQ measured in this slope band`, `${fmt$(b.band.rate_per_square)} per square`);
         }
       }
-      if (split.unbandedSquares > 0) {
+      if (!split.usedFallback && split.unbandedSquares > 0) {
         add("Slope above priced bands", `${split.unbandedSquares} SQ measured at ${split.unbandedPitches.join(", ")}, above every band on the contractor's rate card`, "Quote required before work begins");
       }
     }
@@ -2307,8 +2400,10 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
         // lands this resolves to undefined and bucketByBands falls back to the
         // Xactimate-aligned 7/12 threshold, which is the documented behaviour,
         // not a silent default.
-        pitchBands: contractorData?.pitch_bands?.bands ?? null,
-        twoStoryAdder: contractorData?.pitch_bands?.two_story_adder ?? null,
+        // [gh-1315] The column is contractor-supplied JSON: validate the whole
+        // object once, here; null on anything malformed (documented fallback).
+        pitchBands: sanitizePitchBands(contractorData?.pitch_bands)?.bands ?? null,
+        twoStoryAdder: sanitizePitchBands(contractorData?.pitch_bands)?.twoStoryAdder ?? null,
         // [Part 2 2026-08-28] The insurer's own estimate, for the `insurance`
         // Exhibit A shape. parse-loss-sheet writes all five of these; no new
         // parser is needed. Every one is nullable and a retail claim carries
