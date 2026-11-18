@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Open vs Closed Roof Valleys in Your Bid | Otter Quotes</title>
+<meta name="description" content="Open, closed-cut or woven? Shingle makers disagree on valleys. Learn what each method is and what to ask each roofer to write in your bid.">
+<link rel="canonical" href="https://otterquote.com/guides/roof-valleys-open-closed-woven-in-your-bid.html">
+<meta property="og:title" content="Open vs Closed Roof Valleys in Your Bid | Otter Quotes">
+<meta property="og:description" content="Open, closed-cut or woven? Shingle makers disagree on valleys. Learn what each method is and what to ask each roofer to write in your bid.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/roof-valleys-open-closed-woven-in-your-bid.html">
+<meta property="og:image" content="https://otterquote.com/img/social/og-default.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Otter Quotes: Contractors Compete. Homeowners Win. A cartoon otter in a hard hat.">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-11-15">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Text-link colours for light backgrounds (same values as PR #2499; defined here until it merges) */
+:root { --link-on-light: #A85C00; --link-on-light-deep: #7A4200; }
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--dark-gray);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--dark-gray);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--dark-gray);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--navy);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--link-on-light-deep);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+  color: var(--white);
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--link-on-light);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--link-on-light-deep);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a:not(.btn) { color: var(--link-on-light); }
+.step a:not(.btn):hover { color: var(--link-on-light-deep); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a:not(.btn) { color: var(--link-on-light); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+.step table a:not(.btn) { color: var(--link-on-light); }
+.definition-table td { color: var(--dark-gray); border-bottom: 1px solid #D9DEE7; }
+.definition-table td:first-child { color: var(--navy); }
+.definition-table tr:last-child td { border-bottom: none; }
+</style>
+<style id="related-links-css">.related-links{background:var(--navy-2);border:1px solid rgba(255,255,255,0.06);padding:var(--sp-6) var(--sp-8);border-radius:var(--radius-lg);margin:var(--sp-10) 0}.related-links h3{color:var(--white);margin-bottom:var(--sp-4);font-size:1.05rem}.related-links ul{margin-left:var(--sp-6)}.related-links li{margin-bottom:var(--sp-2);line-height:1.7}</style>
+<style id="breadcrumb-css">.breadcrumb ol{list-style:none;display:flex;flex-wrap:wrap;gap:.25rem .5rem;justify-content:inherit;margin:0 0 var(--sp-4);padding:0;font-size:.85rem}.breadcrumb li+li:before{content:"\203A";margin-right:.5rem;opacity:.7}.breadcrumb a{color:inherit;text-decoration:underline}</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <nav class="breadcrumb" data-seo-crumb="1" aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/guides/">Guides</a></li><li aria-current="page">Open, Closed or Woven Valley: What Should Your Roofing Bid Say?</li></ol></nav>
+      <h1>Open, Closed or Woven Valley: What Should Your Roofing Bid Say?</h1>
+    <p class="meta">Otter Quotes &middot; Updated November 2026</p>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>Your roofing bid should name the valley method, because shingle makers do not agree on which to use. GAF requires open or closed-cut valleys on laminated Timberline shingles, ARMA says laminated shingles can also be woven, and IKO does not warrant shingles in the valley area of a closed or woven valley. Ask each bidder to write down the method.</p>
+    </div>
+
+    <section class="step">
+      <h2>What is a roof valley, and what are the valley methods?</h2>
+      <p>A valley is where two roof planes meet and form a channel for water. ARMA names three ways to finish one with laminated shingles: woven, open and closed-cut. In an open valley the shingles are trimmed back and a metal or rolled roofing lining stays exposed. In a closed-cut or woven valley the shingles cover the valley.</p>
+      <p>IKO, a shingle manufacturer, says closed valleys are often referred to as closed cut or woven, with the shingles overlapped or woven together during application to provide the valley covering, and describes open metal valleys as shingles trimmed back over a lining of metal or rolled roofing. In ARMA's closed-cut method, the shingles from the lower-sloped side run into and over the valley, and the shingles on the steeper side are trimmed along a chalk line near the valley center. Our guide to <a href="/guides/roof-flashing-replacement-bid.html">roof flashing in your bid</a> shows where valleys sit among the other flashing items.</p>
+      <p>You can see which method your roof has now. An open valley shows a metal or rolled roofing channel between the cut shingle edges, and a closed valley is covered by shingles. If a bid proposes a different method from the one on your roof, ask why before you sign. Two bids that name different valley methods are not bids for the same work, so do not compare their totals until you know why they differ.</p>
+    </section>
+
+    <section class="step">
+      <h2>Do shingle manufacturers agree on which valley method to use?</h2>
+      <p>No, and that is the useful part. GAF says woven valleys should not be used with laminated shingles such as its Timberline series, and requires open or closed-cut valleys for them. ARMA, the shingle makers' trade group, says laminated shingles can be installed at valleys using the woven, open or closed-cut method.</p>
+      <p>Those statements do not have to be wrong. They come from different organizations, one writing for its own products and one writing for the industry. They are why a bid that says only "valleys included" tells you little. The method that is acceptable depends on the shingle your bid names, and the safe move is to ask the contractor which manufacturer instruction covers it.</p>
+    </section>
+
+    <section class="step">
+      <h2>Is an open valley better than a closed valley?</h2>
+      <p>Manufacturers do not agree, so this guide does not rank them. IKO says open metal valleys should be used in all its shingle installations for best roof performance, and that metal valley linings resist deterioration better. GAF says open and closed-cut valleys can be used by all shingle types.</p>
+      <p>IKO's bulletin is dated December 2003 and revised August 2012, so check whether the manufacturer of your shingle has a more recent one. For a homeowner the practical question is not which method sounds better. It is which method the contractor is proposing for your roof, why, and what the shingle manufacturer's current instructions say about it.</p>
+    </section>
+
+    <section class="step">
+      <h2>Does the valley method affect the warranty?</h2>
+      <p>It can, and each brand sets its own terms. IKO says it does not warrant shingles in the valley area in a closed or woven valley, and says nothing in that bulletin about warranty for open valleys. GAF's bulletin does not address warranty terms generally, but it does say open California valleys should not be used for Golden Pledge installations.</p>
+      <p>California valleys are another variation. GAF's bulletin names them without defining them, so ask the contractor to describe one. For its Timberline series, GAF says closed-cut and open California valleys are acceptable on slopes of 4:12 or greater unless local codes prohibit them. For other shingles, GAF says it does not recommend California valleys. NRCA, the National Roofing Contractors Association, advises homeowners to read the warranty carefully and understand the provisions that will void it. Our guide to <a href="/guides/manufacturer-backed-roof-warranties.html">manufacturer-backed roof warranties</a> shows what else to look for.</p>
+    </section>
+
+    <section class="step">
+      <h2>What else belongs under a valley?</h2>
+      <p>A lining for an open valley, and the layers under every valley. For an open valley, the lining is the metal or rolled roofing that shows. IKO's bulletin assumes a valley has been properly constructed in terms of underlayment and flashing membrane, so ask what goes beneath the shingles in every valley on your roof.</p>
+      <p>Our guide to <a href="/guides/roof-underlayment-ice-barrier-bid.html">underlayment and ice barrier</a> explains why bids name those layers, and notes that manufacturers can set their own requirements.</p>
+      <p>For an open valley, ask what the metal is, how wide the exposed channel is and how the shingles are cut along it. IKO describes a metal or rolled roofing lining. Neither IKO nor GAF, in the bulletins read for this guide, gives the metal or its width, so those answers have to come from the contractor and the manufacturer's current instructions for your shingle.</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr>
+              <th>What to look for</th>
+              <th>A bid that helps you compare</th>
+              <th>A bid that leaves you guessing</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Valley method</td>
+              <td>Says open, closed-cut or woven</td>
+              <td>"Valleys included"</td>
+            </tr>
+            <tr>
+              <td>Shingle and instructions</td>
+              <td>Names the shingle and the manufacturer instruction behind the method</td>
+              <td>No instruction named</td>
+            </tr>
+            <tr>
+              <td>Open valley lining</td>
+              <td>Names the metal or rolled roofing and where it goes</td>
+              <td>No material named</td>
+            </tr>
+            <tr>
+              <td>Underlayment or leak barrier</td>
+              <td>Says what lies under the valley</td>
+              <td>Says nothing about the valley deck</td>
+            </tr>
+            <tr>
+              <td>Warranty link</td>
+              <td>Says whether the valley method affects the manufacturer warranty</td>
+              <td>Only "warranty included"</td>
+            </tr>
+            <tr>
+              <td>Existing valleys</td>
+              <td>Says whether the old valley lining is reused or replaced</td>
+              <td>Silent on old valleys</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="step">
+      <h2>What to ask every roofing contractor about valleys</h2>
+      <p>Put the same questions to every bidder and keep the answers in writing so you can set them side by side. NRCA advises homeowners to insist on a written proposal with complete descriptions of the work and specifications, which is where these answers belong.</p>
+      <p>Copy this list into a note and send it to each contractor before you compare totals.</p>
+      <ul>
+        <li>Which valley method will you use on my roof: open, closed-cut or woven?</li>
+        <li>Which manufacturer instruction for my shingle covers that method?</li>
+        <li>Does the method affect the manufacturer warranty on my shingle?</li>
+        <li>If the valley is open, what is the lining, and how far apart are the cut shingle edges?</li>
+        <li>What goes under the valley: underlayment, a leak barrier or both?</li>
+        <li>Will the old valley lining be removed or reused?</li>
+        <li>How will the shingles be cut and nailed along the valley?</li>
+        <li>Are there any California valleys, and does my slope meet the manufacturer's limit?</li>
+        <li>Will you write the valley method and the instruction in the proposal?</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>Otter Quotes creates a written scope of work for your roof replacement and sends it to multiple contractors, who compete with bids on that same scope. Homeowners who provide a copy of their insurance estimate pay nothing. For a replacement, a homeowner without one pays as little as $22.63 upfront for professional measurements that contractors use to bid, refunded if they complete a job on the platform. Contractors pay Otter Quotes a fee on the accepted bid. We do not offer inspections or damage assessments, work with your insurance company or sell upgrades.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+      <p>Related guides: <a href="/guides/roof-flashing-replacement-bid.html">roof flashing in your bid</a>, <a href="/guides/roof-underlayment-ice-barrier-bid.html">underlayment and ice barrier</a>, <a href="/guides/manufacturer-backed-roof-warranties.html">manufacturer-backed roof warranties</a>, <a href="/guides/roof-bid-comparison-worksheet.html">roof bid comparison worksheet</a>.</p>
+    </section>
+
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>What is the difference between an open valley and a closed valley?</h3>
+        <div class="faq-answer">
+          <p>IKO describes a closed valley as shingles overlapped or woven together to cover the valley, and an open metal valley as shingles trimmed back over an exposed metal or rolled roofing lining. Ask each contractor which one the bid uses and which manufacturer instruction for your shingle applies.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Can laminated shingles use a woven valley?</h3>
+        <div class="faq-answer">
+          <p>It depends on who you ask. ARMA says laminated shingles can be installed at valleys using the woven, open or closed-cut method. GAF says woven valleys should not be used with laminated shingles such as Timberline and requires open or closed-cut. Ask which instruction covers your shingle.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does a closed valley void the shingle warranty?</h3>
+        <div class="faq-answer">
+          <p>IKO says it does not warrant shingles in the valley area in a closed or woven valley. Other brands set their own terms, and this guide has not read every brand. Read the warranty for the shingle your bid names, and ask the contractor to say whether the valley method affects it.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Is an open metal valley better?</h3>
+        <div class="faq-answer">
+          <p>Manufacturers differ. IKO says open metal valleys should be used in all its installations for best performance, while GAF says open and closed-cut valleys can be used by all shingle types. Ask each contractor why they propose their method for your roof and what the manufacturer's current instruction says.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Are California valleys allowed?</h3>
+        <div class="faq-answer">
+          <p>GAF's valley bulletin names California valleys without defining them, so ask the contractor to describe one. For its Timberline series, GAF says closed-cut and open California valleys are acceptable on slopes of 4:12 or greater unless local codes prohibit them, and that open ones should not be used for Golden Pledge installations. For other shingles, GAF says it does not recommend them.</p>
+        </div>
+      </div>
+
+    </section>
+
+        <div class="related-links" data-related="1">
+      <h3>Keep Reading</h3>
+      <ul>
+        <li><a href="/guides/roof-flashing-replacement-bid.html">Does Your Roof Replacement Bid Say What Happens to the Flashing?</a></li>
+        <li><a href="/guides/roof-underlayment-ice-barrier-bid.html">What Underlayment and Ice Barrier Should Your Roof Replacement Bid Name?</a></li>
+        <li><a href="/guides/manufacturer-backed-roof-warranties.html">Golden Pledge, Platinum Protection and SureStart PLUS: The Manufacturer-Backed Roof Warranties Compared</a></li>
+        <li><a href="/guides/roof-bid-comparison-worksheet.html">How to Compare Roofing Bids: A Side-by-Side Worksheet</a></li>
+        <li><a href="/guides/roof-replacement-cost-breakdown.html">What Goes Into the Cost of a Roof Replacement?</a></li>
+        <li><a href="/guides/topics/comparing-bids.html">Browse all: Comparing Bids and Roof Costs</a></li>
+      </ul>
+    </div>
+
+    </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Open, Closed or Woven Valley: What Should Your Roofing Bid Say?",
+  "description": "Open, closed-cut or woven? Shingle makers disagree on valleys. Learn what each method is and what to ask each roofer to write in your bid.",
+  "image": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+  "author": {
+    "@type": "Organization", "logo": {"@type": "ImageObject", "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"}, "sameAs": ["https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ", "https://www.linkedin.com/company/otter-quotes", "https://www.facebook.com/OtterQuote", "https://www.instagram.com/otterquote/"],
+    "name": "Otter Quotes",
+    "url": "https://otterquote.com/"
+  },
+  "datePublished": "2026-11-15",
+  "dateModified": "2026-11-15",
+  "publisher": {
+    "@type": "Organization", "url": "https://otterquote.com/", "sameAs": ["https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ", "https://www.linkedin.com/company/otter-quotes", "https://www.facebook.com/OtterQuote", "https://www.instagram.com/otterquote/"],
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/roof-valleys-open-closed-woven-in-your-bid.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is the difference between an open valley and a closed valley?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "IKO describes a closed valley as shingles overlapped or woven together to cover the valley, and an open metal valley as shingles trimmed back over an exposed metal or rolled roofing lining. Ask each contractor which one the bid uses and which manufacturer instruction for your shingle applies."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can laminated shingles use a woven valley?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It depends on who you ask. ARMA says laminated shingles can be installed at valleys using the woven, open or closed-cut method. GAF says woven valleys should not be used with laminated shingles such as Timberline and requires open or closed-cut. Ask which instruction covers your shingle."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does a closed valley void the shingle warranty?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "IKO says it does not warrant shingles in the valley area in a closed or woven valley. Other brands set their own terms, and this guide has not read every brand. Read the warranty for the shingle your bid names, and ask the contractor to say whether the valley method affects it."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is an open metal valley better?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Manufacturers differ. IKO says open metal valleys should be used in all its installations for best performance, while GAF says open and closed-cut valleys can be used by all shingle types. Ask each contractor why they propose their method for your roof and what the manufacturer's current instruction says."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Are California valleys allowed?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "GAF's valley bulletin names California valleys without defining them, so ask the contractor to describe one. For its Timberline series, GAF says closed-cut and open California valleys are acceptable on slopes of 4:12 or greater unless local codes prohibit them, and that open ones should not be used for Golden Pledge installations. For other shingles, GAF says it does not recommend them."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "Open, Closed or Woven Valley: What Should Your Roofing Bid Say?",
+      "item": "https://otterquote.com/guides/roof-valleys-open-closed-woven-in-your-bid.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>

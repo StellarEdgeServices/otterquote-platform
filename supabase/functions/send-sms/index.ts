@@ -31,6 +31,7 @@ import { authorizeServiceOnly, resolveTwilioSender } from "./sender-selection.ts
 import { isSmsPaused } from "../_shared/sms-pause.ts";
 import { smsSuppressionRefusal } from "../_shared/sms-suppression.ts";
 import { quietHoursRefusal } from "../_shared/sms-quiet-hours.ts";
+import { maskPhone, maskPhoneNumbersInText } from "../_shared/sms-log-mask.ts"; // gh-3773: no full number in any log line
 
 const FUNCTION_NAME = "send-sms";
 
@@ -55,7 +56,10 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
-serve(async (req) => {
+// gh-3773: exported so a test can drive the REAL handler and capture its console output. serve() is guarded by
+// import.meta.main (same precedent as process-dunning); the Edge runtime runs this file as the entry point, so it is still
+// true in deployment.
+export async function handler(req: Request): Promise<Response> {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -207,8 +211,8 @@ serve(async (req) => {
     formData.append(senderField.field, senderField.value);
     console.log(
       senderField.field === "MessagingServiceSid"
-        ? `Sending SMS via MessagingServiceSid to: ${to}`
-        : `Sending SMS via phone number to: ${to} from: ${senderField.value}`
+        ? `Sending SMS via MessagingServiceSid to: ${maskPhone(to)}`
+        : `Sending SMS via phone number to: ${maskPhone(to)} from: ${maskPhone(senderField.value)}`
     );
 
     const twilioResponse = await fetch(
@@ -225,13 +229,16 @@ serve(async (req) => {
 
     if (!twilioResponse.ok) {
       const errorData = await twilioResponse.text();
+      // gh-3773: Twilio's error body can name the To number; mask it before it is logged or thrown (the thrown text is
+      // returned to the caller and logged by the catch below).
+      const maskedError = maskPhoneNumbersInText(errorData);
       console.error(
         "Twilio SMS send failed:",
         twilioResponse.status,
-        errorData
+        maskedError
       );
       throw new Error(
-        `Twilio API error (HTTP ${twilioResponse.status}): ${errorData}`
+        `Twilio API error (HTTP ${twilioResponse.status}): ${maskedError}`
       );
     }
 
@@ -296,10 +303,15 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error("send-sms error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    const safeErr = maskPhoneNumbersInText(error instanceof Error ? error.message : String(error));
+    console.error("send-sms error:", safeErr);
+    return new Response(JSON.stringify({ error: safeErr }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-});
+}
+
+if (import.meta.main) {
+  serve(handler);
+}

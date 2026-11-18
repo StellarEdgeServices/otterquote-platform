@@ -55,7 +55,7 @@ export async function smsSuppressionRefusal(
   sb: SuppressionClient,
   rawTo: string | null | undefined,
   corsHeaders: Record<string, string>,
-  fn = "send-sms",
+  fn: string, // gh-3773: REQUIRED (no default label), so this shared module never carries a "send-sms" string of its own
   log: (line: string) => void = console.warn,
 ): Promise<Response | null> {
   const v = await isSmsSuppressed(sb, rawTo);

@@ -67,6 +67,8 @@
         "guides/online-roof-bids-no-salesperson",
         "guides/drip-edge-roof-replacement-bid",
         "guides/roof-ventilation-in-your-replacement-bid",
+        "guides/roof-valleys-open-closed-woven-in-your-bid",
+        "guides/roofing-nails-vs-staples-in-your-bid",
         "blog/aerial-roof-measurement-reports",
         "guides/roof-replacement-cost-breakdown",
         "guides/otter-quotes-vs-thumbtack",
@@ -388,6 +390,20 @@
       "/guides/roof-replacement-cost-breakdown.html",
       "/guides/manufacturer-backed-roof-warranties.html",
       "/guides/roof-change-orders-hidden-damage.html"
+    ],
+    "guides/roofing-nails-vs-staples-in-your-bid": [
+      "/guides/roof-wind-ratings-explained.html",
+      "/guides/manufacturer-backed-roof-warranties.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/roof-replacement-cost-breakdown.html"
+    ],
+    "guides/roof-valleys-open-closed-woven-in-your-bid": [
+      "/guides/roof-flashing-replacement-bid.html",
+      "/guides/roof-underlayment-ice-barrier-bid.html",
+      "/guides/manufacturer-backed-roof-warranties.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roof-replacement-cost-breakdown.html"
     ],
     "guides/roof-ventilation-in-your-replacement-bid": [
       "/guides/roof-bid-comparison-worksheet.html",
