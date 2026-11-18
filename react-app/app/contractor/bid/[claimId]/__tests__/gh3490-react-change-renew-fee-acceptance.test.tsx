@@ -89,6 +89,15 @@ describe('gh-3490 React bid form: a changed or renewed bid records its own accep
     });
   }
 
+  it('rebase on #3750: re-bidding a WITHDRAWN bid (reopen) writes exactly ONE row, not one per block', async () => {
+    const { container } = mountMode('change', 'cancelled');
+    await submitChange(container);
+    expect(container.textContent).toContain('Bid updated');
+    expect(h.state.updates).toBe(1);
+    expect(h.state.feeInserts).toHaveLength(1);
+    expect(h.state.feeInserts[0]).toMatchObject({ bid_id: 'q-1', fee_amount: 925 });
+  });
+
   it('a failed acceptance write is non-fatal (the update is saved) and leaves a Sentry trace; it is not retried', async () => {
     h.state.feeResult = 'error';
     const { container } = mountMode('change', 'active');

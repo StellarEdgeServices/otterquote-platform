@@ -7,6 +7,7 @@
  *   (b) that insert names bid_id: existingQuote.id and uses .select('id') and no .single() (gh-3409)                           (fails on main)
  *   (c) it comes AFTER the zero-row check on the quote UPDATE (the acceptance follows a saved update, never precedes it)         (fails on main)
  *   (d) the first-time-bid insert is still there (one write for the new-bid branch)
+ *   (e) reopen, change and renew share ONE insert block (after the #3750 rebase); the once-per-bid flag is reopen-only                      (fails on main)
  * Run: node tests/gh3490-html-change-renew-fee-acceptance.mjs      Exit 0 = all green.
  */
 import fs from 'node:fs';
@@ -30,4 +31,9 @@ ok(/bid_id:\s*existingQuote\.id/.test(branch.slice(ins)) && /\.select\('id'\)/.t
   "(b) the insert names bid_id: existingQuote.id, uses .select('id') and no .single()");
 ok(zero > 0 && ins > zero, '(c) the acceptance follows the zero-row check on the quote UPDATE');
 ok((html.match(/from\('fee_acceptances'\)\.insert\(/g) || []).length === 2, '(d) exactly two fee_acceptances inserts: first-time bid and change/renew');
+// (e) rebase on #3750 (reopen insert): reopen, change and renew share ONE block. A reopen alone no longer gates the insert (that left change/renew
+//     without a row, and keeping a second block would write two rows on a reopen), and the once-per-bid flag still applies to a reopen only.   (fails on main)
+ok(branch.includes('if (!_reopenedWithdrawnBid || existingQuote.id !== _reopenAcceptanceDoneId) {') && !branch.includes('if (_reopenedWithdrawnBid && existingQuote.id !== _reopenAcceptanceDoneId)'),
+  '(e) one shared block: the insert is not gated on a reopen alone');
+ok(/if \(_reopenedWithdrawnBid\) _reopenAcceptanceDoneId = existingQuote\.id;/.test(branch), '(e2) the once-per-bid flag is set for a reopen only');
 process.exit(fail ? 1 : 0);

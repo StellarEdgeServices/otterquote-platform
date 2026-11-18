@@ -2,7 +2,7 @@
  * gh-3750 -- REAL headless-Chromium proof that Change Bid on a WITHDRAWN bid (bid_status 'cancelled') on contractor-bid-form.html
  * reopens it through renew_quote('reopen') and then writes a FRESH fee_acceptances row, built as a first submission builds it
  * (same fields, the fee text the contractor was shown), AFTER the quotes field UPDATE. A live bid's Change Bid and an expired bid's Renew
- * write no such row (negative controls). Same harness as gh3495 (real page over local HTTP, stub Supabase client, no network, no secrets).
+ * write exactly one row as well since gh-3490 (one block, one row per submission, never two on a reopen). Same harness as gh3495 (real page over local HTTP, stub Supabase client, no network, no secrets).
  * Run: node tests/gh3750-reopen-acceptance-chromium.mjs        Negative control: ROOT=<checkout at 8042784a> ... (expected exit 1)
  */
 import http from 'node:http';
@@ -155,19 +155,21 @@ async function run(browser, base, c) {
   ok(qi >= 0, label + ': submit writes the quote');
   if (c.expectFresh) {
     ok(!!rpc && rpc.method === 'renew_quote' && rpc.payload.p_mode === 'reopen' && rpc.payload.p_quote_id === 'quote-1', label + ': renew_quote(reopen) is called on the same quote id (' + JSON.stringify(rpc) + ')');
-    ok(fa.length === 1 && fa[0].method === 'insert', label + ': exactly one fee_acceptances insert (' + fa.length + ')');
-    if (fa.length) {
-      const p = fa[0].payload;
-      ok(p.bid_id === 'quote-1' && p.claim_id === 'claim-1' && p.contractor_id === 'contractor-1', label + ': row names this bid, claim and contractor');
-      ok(p.fee_basis === 'bid_amount' && money(p.fee_amount) === expectFee && Number(p.fee_pct) === pct, label + ': fee_pct / fee_amount are the fee shown (' + p.fee_pct + ' / ' + p.fee_amount + ')');
-      ok(typeof p.fee_text_displayed === 'string' && p.fee_text_displayed.includes('$' + expectFee.toLocaleString('en-US', { minimumFractionDigits: 2 })) && /By submitting this bid, you agree to pay Otter Quotes/.test(p.fee_text_displayed), label + ': fee_text_displayed is the same disclosure a first submission stores');
-      ok(!!p.accepted_at && 'ip_address' in p && 'user_agent' in p, label + ': accepted_at, ip_address, user_agent present as in a first submission');
-      ok(!('rescinded_at' in p) && !('rescission_reason' in p) && !('invoice_url' in p), label + ': row carries no rescission or invoice fields');
-      const rpcIdx = writes.indexOf(rpc), faIdx = writes.indexOf(fa[0]);
-      ok(rpcIdx < qi && qi < faIdx, label + ': order is renew_quote, then the quotes UPDATE, then the acceptance insert (' + rpcIdx + '/' + qi + '/' + faIdx + ')');
-    }
   } else {
-    ok(fa.length === 0, label + ': NEGATIVE CONTROL no fee_acceptances write (' + fa.length + ')');
+    // gh-3490 rebase: a live bid's Change Bid and an expired bid's Renew are not reopens (no renew_quote('reopen')), but they now record their own acceptance too.
+    ok(!rpc || rpc.payload.p_mode !== 'reopen', label + ': not a reopen (' + JSON.stringify(rpc) + ')');
+  }
+  // One block, one row per submission on EVERY path (gh-3750 reopen; gh-3490 change and renew): exactly one, never two.
+  ok(fa.length === 1 && fa[0].method === 'insert', label + ': exactly one fee_acceptances insert (' + fa.length + ')');
+  if (fa.length) {
+    const p = fa[0].payload;
+    ok(p.bid_id === 'quote-1' && p.claim_id === 'claim-1' && p.contractor_id === 'contractor-1', label + ': row names this bid, claim and contractor');
+    ok(p.fee_basis === 'bid_amount' && money(p.fee_amount) === expectFee && Number(p.fee_pct) === pct, label + ': fee_pct / fee_amount are the fee shown (' + p.fee_pct + ' / ' + p.fee_amount + ')');
+    ok(typeof p.fee_text_displayed === 'string' && p.fee_text_displayed.includes('$' + expectFee.toLocaleString('en-US', { minimumFractionDigits: 2 })) && /By submitting this bid, you agree to pay Otter Quotes/.test(p.fee_text_displayed), label + ': fee_text_displayed is the same disclosure a first submission stores');
+    ok(!!p.accepted_at && 'ip_address' in p && 'user_agent' in p, label + ': accepted_at, ip_address, user_agent present as in a first submission');
+    ok(!('rescinded_at' in p) && !('rescission_reason' in p) && !('invoice_url' in p), label + ': row carries no rescission or invoice fields');
+    const rpcIdx = writes.indexOf(rpc), faIdx = writes.indexOf(fa[0]);
+    ok(rpcIdx < qi && qi < faIdx, label + ': order is renew_quote (when called), then the quotes UPDATE, then the acceptance insert (' + rpcIdx + '/' + qi + '/' + faIdx + ')');
   }
   await context.close();
 }
