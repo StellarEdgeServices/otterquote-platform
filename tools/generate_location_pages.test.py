@@ -166,12 +166,12 @@ class GeneratorTests(unittest.TestCase):
         # Hamilton, Hendricks, Johnson, Boone, Hancock, Madison, Morgan, Shelby, Monroe, Delaware, Tippecanoe and St. Joseph roofing only, and city_content for Carmel, Fishers, Noblesville and Westfield roofing (gh-3601). Those nineteen pages clear the strict gate; every other
         # county/trade page is template text shared with other pages and fails it.
         summary = self.run_gen(["IN"])
-        self.assertEqual(summary["written"], 19)
+        self.assertEqual(summary["written"], 22)
         self.assertEqual(len(summary["skipped_thin"]), 92 * 4 - 15)
         self.assertEqual(sorted(summary["paths"]),
-                         [("allen-county-in", "roofing"), ("boone-county-in", "roofing"),
-                          ("carmel-city-in", "roofing"), ("delaware-county-in", "roofing"),
-                          ("fishers-city-in", "roofing"), ("hamilton-county-in", "roofing"), ("hancock-county-in", "roofing"),
+                         [("allen-county-in", "roofing"), ("avon-city-in", "roofing"), ("boone-county-in", "roofing"),
+                          ("brownsburg-city-in", "roofing"), ("carmel-city-in", "roofing"), ("delaware-county-in", "roofing"),
+                          ("fishers-city-in", "roofing"), ("greenwood-city-in", "roofing"), ("hamilton-county-in", "roofing"), ("hancock-county-in", "roofing"),
                           ("hendricks-county-in", "roofing"), ("johnson-county-in", "roofing"),
                           ("lake-county-in", "roofing"), ("madison-county-in", "roofing"),
                           ("marion-county-in", "roofing"), ("monroe-county-in", "roofing"),
@@ -181,8 +181,8 @@ class GeneratorTests(unittest.TestCase):
                           ("westfield-city-in", "roofing")])
         self.assertLess(summary["median_strict_unique_words"], glp.MIN_WORDS)
         self.assertEqual(sorted(p.name for p in self.out.iterdir()),
-                         ["allen-county-in", "boone-county-in", "carmel-city-in", "delaware-county-in",
-                          "fishers-city-in", "hamilton-county-in",
+                         ["allen-county-in", "avon-city-in", "boone-county-in", "brownsburg-city-in", "carmel-city-in", "delaware-county-in",
+                          "fishers-city-in", "greenwood-city-in", "hamilton-county-in",
                           "hancock-county-in", "hendricks-county-in", "index.html", "johnson-county-in",
                           "lake-county-in", "madison-county-in", "marion-county-in", "monroe-county-in",
                           "morgan-county-in", "noblesville-city-in", "shelby-county-in", "st-joseph-county-in",

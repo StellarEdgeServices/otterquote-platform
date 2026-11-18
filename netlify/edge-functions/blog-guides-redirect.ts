@@ -223,10 +223,14 @@ const REDIRECT_MAP: Record<string, string> = {
   '/locations/index.html': '/locations/',
   '/locations/allen-county-in/roofing/index.html':
     '/locations/allen-county-in/roofing/',
+  '/locations/avon-city-in/roofing/index.html':
+    '/locations/avon-city-in/roofing/',
   '/locations/blount-county-tn/roofing/index.html':
     '/locations/blount-county-tn/roofing/',
   '/locations/boone-county-in/roofing/index.html':
     '/locations/boone-county-in/roofing/',
+  '/locations/brownsburg-city-in/roofing/index.html':
+    '/locations/brownsburg-city-in/roofing/',
   '/locations/butler-county-oh/roofing/index.html':
     '/locations/butler-county-oh/roofing/',
   '/locations/carmel-city-in/roofing/index.html':
@@ -243,6 +247,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/fishers-city-in/roofing/',
   '/locations/franklin-county-oh/roofing/index.html':
     '/locations/franklin-county-oh/roofing/',
+  '/locations/greenwood-city-in/roofing/index.html':
+    '/locations/greenwood-city-in/roofing/',
   '/locations/hamilton-county-in/roofing/index.html':
     '/locations/hamilton-county-in/roofing/',
   '/locations/hamilton-county-oh/roofing/index.html':
