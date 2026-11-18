@@ -1465,8 +1465,17 @@ function generateRetailScopeOfWorkPdf(params) {
     }
     if (includedLines.length > 0) {
       const scopeLabels = [];
-      if (hasRoofing) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
-      if (hasSiding) scopeLabels.push(TRADE_SCOPE_LABEL.siding);
+      // [gh-3751] On a multi-trade claim (roofing AND siding) "Complete siding installation" / "Complete roofing installation" print only from
+      // the bid's per-trade declaration (declarations.siding / declarations.roofing .state, the same values as gutters: included / extra /
+      // not_offered / other), never because the claim lists the trade. Siding: prints only when declared 'included'; no siding declaration
+      // omits it (fail-safe: the SOW never promises siding the bid did not declare). Roofing: the anchor trade (Section 2 declarations exist
+      // only on roofing bids), so it prints unless explicitly declared 'extra' / 'not_offered' / 'other'. A single-trade claim is unchanged.
+      // Existing strings only; no new wording.
+      const multiTrade = hasRoofing && hasSiding;
+      const rState = declValid ? declarations.roofing?.state : undefined;
+      const sState = declValid ? declarations.siding?.state : undefined;
+      if (hasRoofing && (!multiTrade || rState == null || rState === "included")) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
+      if (hasSiding && (!multiTrade || sState === "included")) scopeLabels.push(TRADE_SCOPE_LABEL.siding);
       // [gh-3747] "Complete gutter installation" prints only when the BID shows gutter work included, never because the claim lists the
       // trade. Signal, in order: declarations.gutters.state ('included' prints; 'not_offered' / 'extra' / 'other' never print); with no
       // gutters declaration, an included option on the bid ('5inch_included' / '6inch_included'), or, on a gutters-only job (the only
@@ -1481,7 +1490,8 @@ function generateRetailScopeOfWorkPdf(params) {
         if (gutterIncludedByBid) scopeLabels.push(TRADE_SCOPE_LABEL.gutters);
       }
       // [gh-3747] The roofing fallback is for a claim with no recognised trade; a gutters claim whose bid excludes gutters must not become "Complete roofing installation".
-      if (scopeLabels.length === 0 && !hasGutters) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
+      // [gh-3751] Likewise for a roofing/siding claim whose bid declares neither: the fallback is only for a claim with no recognised trade.
+      if (scopeLabels.length === 0 && !hasGutters && !hasRoofing && !hasSiding) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
       ensure(20 + (scopeLabels.length + includedLines.length) * 11);
       addText(LEFT_X, y, 12, "F2", "Included in Your Price - $" + Number(contractPrice || 0).toLocaleString("en-US"));
       y -= 14;
