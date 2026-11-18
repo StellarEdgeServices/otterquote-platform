@@ -9,7 +9,7 @@
 #   3-ROLLBACK  gh3490 rollback: behaves as BEFORE (guard body md5 back to 4649287a)
 #   4-REAPPLY   forward again: behaves as AFTER
 #   PRE         the forward refuses a live body that is not the gh3750 body (4649287a), incl. the pre-gh3750 body 1142fe98 (nothing committed; #3766 negative control); the rollback refuses an unknown body
-#   N1..N5      mutants of the forward file: each must apply cleanly and then FAIL the AFTER expectations
+#   N1..N7      mutants of the forward file: each must apply cleanly and then FAIL the AFTER expectations
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 OUT="${1:-$(mktemp -d)}"; mkdir -p "$OUT"
@@ -75,6 +75,7 @@ M={
  'N4_tolerance_zero': (RULE, BODY+"AND (v_amt IS NULL OR abs(d.fee_amount - v_amt) = 0)) THEN"),
  'N5_tolerance_five_cents': (RULE, BODY+"AND (v_amt IS NULL OR abs(d.fee_amount - v_amt) <= 0.05)) THEN"),
  'N6_fee_check_dropped': ("    v_chk := public.fee_acceptance_text_check(NEW.fee_text_displayed, v_pct, v_amt, q.total_price);\n    IF v_chk <> 'ok' THEN", "    v_chk := 'ok';\n    IF v_chk <> 'ok' THEN"),
+ 'N7_rescinded_condition_dropped': (RULE, "\n  IF EXISTS (SELECT 1 FROM public.fee_acceptances d WHERE d.bid_id = NEW.bid_id AND (v_amt IS NULL OR abs(d.fee_amount - v_amt) <= 0.01)) THEN"),   # RV1/RV2: a rescinded row must not count as a duplicate
 }
 # mutate only the new function body (the file also carries the gh3409 body as the pre-apply md5 literal, and quotes the rule in its header)
 head, sep, body = src.partition("AS $guard$")

@@ -1,6 +1,6 @@
 -- STATUS (gh-1438, as of 2026-11-18T18:55:05Z): NOT APPLIED -- RE-RENDERED 2026-11-18 (#3766): restores the post-gh3750 body (4649287a), not the gh3409 body
 -- FILE ROLE: rollback file of set gh3490_fee_acceptance_duplicate_same_fee (the STATUS is the set's; it describes the forward migration)
--- EVIDENCE: drafted 2026-11-09 under #3490. Restores the post-gh3750 production body (ledger 20261116152010, prosrc md5 4649287a4c679878d413e9e7107768d6, length 2666), byte for byte. No database was written to produce this file.
+-- EVIDENCE: drafted 2026-11-09 under #3490. Restores the post-gh3750 production body (ledger 20261116152010, prosrc md5 4649287a, length 2666), byte for byte. No database was written to produce this file.
 -- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback to supabase/migrations_rollbacks/.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
