@@ -1,7 +1,7 @@
--- STATUS (gh-1438, as of 2026-11-09T13:40:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-18T18:55:05Z): NOT APPLIED -- RE-RENDERED 2026-11-18 (#3766) against the post-gh3750 guard body (prosrc md5 4649287a4c679878d413e9e7107768d6, applied 2026-11-16, ledger 20261116152010); the 2026-11-09 render pinned 1142fe98 and would refuse to run
 -- FILE ROLE: forward file of set gh3490_fee_acceptance_duplicate_same_fee (the rollback is a sibling in this directory; the proof is supabase/tests/gh3490_fee_acceptance_duplicate_same_fee_proof.sql and its runner)
 -- EVIDENCE: drafted 2026-11-09 under #3490 (CTO RUN 100, claim cto-2026-11-09T12:23:59Z) on Ben's ruling 6740655614 (option A). Production read-only SELECTs 2026-11-09 (project yeszghaspzwwstvsrioa, nothing written):
---   public.fee_acceptances_guard_client_insert() is the gh3409 body (ledger 20261106215945): prosrc md5 prefix 1142fe98 (pg_get_functiondef md5 prefix c6b0b547), owner postgres, SET search_path=public, pg_temp,
+--   public.fee_acceptances_guard_client_insert() WAS the gh3409 body on 2026-11-09 (ledger 20261106215945, prosrc md5 prefix 1142fe98); since 2026-11-16 it is the gh3750 body (ledger 20261116152010, prosrc md5 4649287a4c679878d413e9e7107768d6, length 2666, read by #3750 comment 6920580867 and by SELECT 2026-11-18T18:44:18Z: prefix 4649287a), owner postgres, SET search_path=public, pg_temp,
 --   EXECUTE for PUBLIC, anon, authenticated, service_role; trigger fee_acceptances_guard_client_insert BEFORE INSERT FOR EACH ROW, enabled 'O'. The live prosrc equals, byte for byte, the body in
 --   supabase/migrations_drafts/gh3409_fee_acceptances_client_insert_guard.sql (same md5). The body below is that body with ONE line changed (the duplicate_bid rule). No database was written to produce this file.
 -- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback to supabase/migrations_rollbacks/.
@@ -12,8 +12,9 @@
 -- Proof (throwaway Postgres, before / after / rollback / reapply, mutants): supabase/tests/gh3490_fee_acceptance_duplicate_same_fee_proof_run.sh
 --
 -- What this changes, and only this. Ben (6740655614): "only a row with the same bid_id AND the same fee_amount (within 1 cent) counts as a duplicate. A different fee is a new acceptance and must be kept, not quarantined."
---   before: IF EXISTS (SELECT 1 FROM public.fee_acceptances d WHERE d.bid_id = NEW.bid_id) THEN
---   after:  IF EXISTS (SELECT 1 FROM public.fee_acceptances d WHERE d.bid_id = NEW.bid_id AND (v_amt IS NULL OR abs(d.fee_amount - v_amt) <= 0.01)) THEN
+--   before (live, gh3750 body 4649287a): IF EXISTS (SELECT 1 FROM public.fee_acceptances d WHERE d.bid_id = NEW.bid_id AND d.rescinded_at IS NULL) THEN
+--   after:  IF EXISTS (SELECT 1 FROM public.fee_acceptances d WHERE d.bid_id = NEW.bid_id AND d.rescinded_at IS NULL AND (v_amt IS NULL OR abs(d.fee_amount - v_amt) <= 0.01)) THEN
+--   (the gh3750 condition AND d.rescinded_at IS NULL is kept; only the fee condition is added. md5 prefix of the new body: daf3fc71)
 -- "The same fee_amount" is the fee the new row would be RECORDED with, which is v_amt (the bid's current server-set fee; the guard overwrites NEW.fee_amount with it on the record path). The client's own
 --   NEW.fee_amount column is not used: it is browser-chosen and never stored, so comparing it would let a client dodge the duplicate rule by sending a different number with an honest text (proof case D4b, mutant N1).
 --   A row whose stored fee equals the bid's current fee is therefore a duplicate; a changed or renewed bid whose fee moved writes a new row.
@@ -29,15 +30,15 @@
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 
--- refuse to replace a body that is not the one this file was written against (the gh3409 body, prosrc md5 prefix 1142fe98). The full body is compared through md5 of the literal below.
+-- refuse to replace a body that is not the one this file was written against (the gh3750 body, prosrc md5 prefix 4649287a). The full body is compared through md5 of the literal below.
 DO $pre$
 DECLARE live text;
 BEGIN
   SELECT p.prosrc INTO live FROM pg_proc p WHERE p.oid = to_regprocedure('public.fee_acceptances_guard_client_insert()');
   IF live IS NULL THEN
-    RAISE EXCEPTION 'gh3490: public.fee_acceptances_guard_client_insert() does not exist; gh3409 must be applied first';
+    RAISE EXCEPTION 'gh3490: public.fee_acceptances_guard_client_insert() does not exist; gh3409 and gh3750 must be applied first';
   END IF;
-  IF left(md5(live), 8) <> '1142fe98' OR md5(live) IS DISTINCT FROM md5($old$
+  IF left(md5(live), 8) <> '4649287a' OR md5(live) IS DISTINCT FROM md5($old$
 DECLARE
   q record;
   v_pct numeric;
@@ -69,7 +70,7 @@ BEGIN
     v_chk := public.fee_acceptance_text_check(NEW.fee_text_displayed, v_pct, v_amt, q.total_price);
     IF v_chk <> 'ok' THEN v_reasons := array_append(v_reasons, v_chk); END IF;
   END IF;
-  IF EXISTS (SELECT 1 FROM public.fee_acceptances d WHERE d.bid_id = NEW.bid_id) THEN
+  IF EXISTS (SELECT 1 FROM public.fee_acceptances d WHERE d.bid_id = NEW.bid_id AND d.rescinded_at IS NULL) THEN
     v_reasons := array_append(v_reasons, 'duplicate_bid');
   END IF;
 
@@ -94,7 +95,7 @@ BEGIN
   RETURN NEW;
 END
 $old$) THEN
-    RAISE EXCEPTION 'gh3490: the live guard body (md5 prefix %) is not the gh3409 body this file was written against (1142fe98); re-diff before applying', left(md5(live), 8);
+    RAISE EXCEPTION 'gh3490: the live guard body (md5 prefix %) is not the gh3750 body this file was written against (4649287a); re-diff before applying', left(md5(live), 8);
   END IF;
 END
 $pre$;
@@ -135,7 +136,7 @@ BEGIN
     v_chk := public.fee_acceptance_text_check(NEW.fee_text_displayed, v_pct, v_amt, q.total_price);
     IF v_chk <> 'ok' THEN v_reasons := array_append(v_reasons, v_chk); END IF;
   END IF;
-  IF EXISTS (SELECT 1 FROM public.fee_acceptances d WHERE d.bid_id = NEW.bid_id AND (v_amt IS NULL OR abs(d.fee_amount - v_amt) <= 0.01)) THEN
+  IF EXISTS (SELECT 1 FROM public.fee_acceptances d WHERE d.bid_id = NEW.bid_id AND d.rescinded_at IS NULL AND (v_amt IS NULL OR abs(d.fee_amount - v_amt) <= 0.01)) THEN
     v_reasons := array_append(v_reasons, 'duplicate_bid');
   END IF;
 
@@ -166,8 +167,8 @@ DO $post$
 DECLARE live text; n integer;
 BEGIN
   SELECT p.prosrc INTO live FROM pg_proc p WHERE p.oid = 'public.fee_acceptances_guard_client_insert()'::regprocedure;
-  IF left(md5(live), 8) <> '3ff983cb' THEN
-    RAISE EXCEPTION 'gh3490: guard body after replace has md5 prefix %, expected 3ff983cb; nothing is applied', left(md5(live), 8);
+  IF left(md5(live), 8) <> 'daf3fc71' THEN
+    RAISE EXCEPTION 'gh3490: guard body after replace has md5 prefix %, expected daf3fc71; nothing is applied', left(md5(live), 8);
   END IF;
   SELECT count(*) INTO n FROM pg_trigger WHERE tgrelid = 'public.fee_acceptances'::regclass AND NOT tgisinternal
      AND tgname = 'fee_acceptances_guard_client_insert' AND tgenabled = 'O' AND (tgtype & 1) = 1 AND (tgtype & 2) = 2 AND (tgtype & 4) = 4;

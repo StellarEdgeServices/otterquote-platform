@@ -1,5 +1,5 @@
 -- gh-3490 proof: the fee_acceptances guard's duplicate_bid rule counts only a row with the same bid_id AND the same fee (one cent). Run by gh3490_fee_acceptance_duplicate_same_fee_proof_run.sh.
--- THROWAWAY Postgres only (schema: gh3409_throwaway_schema.sql, then the gh3409 forward file = today's production guard). Never run against production.
+-- THROWAWAY Postgres only (schema: gh3409_throwaway_schema.sql, then the gh3409 forward file, then the gh3750 forward file = today's production guard (4649287a)). Never run against production.
 -- psql -v phase=before|after|rollback -f texts.psql -f this_file. before / rollback = today's gh3409 guard; after = gh3490 forward applied.
 -- Everything is inside BEGIN ... ROLLBACK. Output: PROOF|phase|case|expected|actual|OK/FAIL ... then FAILING=n of m.
 -- An insert result reads `<ok|REFUSED:sqlstate> -> fa=<rows in fee_acceptances for that bid> q=<rows in the quarantine table for that bid>[:reasons]`.
@@ -155,7 +155,7 @@ ALTER TABLE public.quotes ENABLE TRIGGER quotes_model_server_fee;
 SELECT proof.rec('D8 bid lost its fee: bid_has_no_fee AND duplicate_bid, as today', 'ok -> fa=1 q=1:bid_has_no_fee+duplicate_bid', 'ok -> fa=1 q=1:bid_has_no_fee+duplicate_bid', proof.ins('d8', :'html_750', 750.00));
 
 -- ======================= STATE =======================
-SELECT proof.rec('S1 guard body md5 prefix', '1142fe98', '3ff983cb', (SELECT left(md5(prosrc), 8) FROM pg_proc WHERE oid = 'public.fee_acceptances_guard_client_insert()'::regprocedure));
+SELECT proof.rec('S1 guard body md5 prefix', '4649287a', 'daf3fc71', (SELECT left(md5(prosrc), 8) FROM pg_proc WHERE oid = 'public.fee_acceptances_guard_client_insert()'::regprocedure));
 SELECT proof.rec('S2 trigger enabled, BEFORE INSERT FOR EACH ROW', '1', '1', (SELECT count(*)::text FROM pg_trigger WHERE tgrelid = 'public.fee_acceptances'::regclass AND NOT tgisinternal
    AND tgname = 'fee_acceptances_guard_client_insert' AND tgenabled = 'O' AND tgtype = 7));
 SELECT proof.rec('S3 function comment, owner and search_path kept', 'gh-3409|postgres|search_path=public, pg_temp', 'gh-3409|postgres|search_path=public, pg_temp',
