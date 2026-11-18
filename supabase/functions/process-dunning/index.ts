@@ -38,6 +38,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 // setInterval (_startAutoRefresh) inside createClient that never completes, which Deno < 2.8 test sanitizers flag as a leak.
 const SERVER_CLIENT_OPTS = { auth: { autoRefreshToken: false, persistSession: false } } as const;
 import { isSmsPaused } from "../_shared/sms-pause.ts";
+import { smsSuppressionRefusal } from "../_shared/sms-suppression.ts"; // gh-3773: send-time suppression guard (shared with send-sms, gh-3768)
+import { maskPhone, maskPhoneNumbersInText } from "../_shared/sms-log-mask.ts";
 import { pendingTextExpiry, quietHoursPhones } from "./sms-quiet-gate.ts"; // gh-3762 / #3726 item 5: quiet hours, recipient local time
 import { contractorSmsReleaseGate } from "../_shared/contractor-sms-release.ts"; // D-391 / #2875 TCR release gate
 import { resolveContractorTextableNumbers } from "../_shared/contractor-textable.ts"; // D-391 / #2875 layer 4: verified numbers only
@@ -375,14 +377,18 @@ async function sendSMS(to: string, message: string): Promise<boolean> {
   if (!svcSid && !from) { console.warn("No Twilio sender configured — skipping SMS"); return false; }
 
   // D-391 / #2875 free-text opt-out flagger: a number with a pending opt-out review is paused for every send. Fails closed.
-  const pause = await isSmsPaused(
-    createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", SERVER_CLIENT_OPTS),
-    to,
-  );
+  const guardClient = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", SERVER_CLIENT_OPTS);
+  const pause = await isSmsPaused(guardClient, to);
   if (pause.paused) {
     console.warn(`[process-dunning] SMS refused: number paused (${pause.reason}). No Twilio call attempted.`);
     return false;
   }
+
+  // gh-3773 (#3772 review item 4): send-time suppression check, the SAME shared guard send-sms uses (gh-3768). The recipient
+  // list is pre-filtered by contractor_textable_numbers(), but a number suppressed after that read (an overnight STOP, or
+  // between the list read and this send) must not be texted. Fails closed; logs the last 4 digits only; no Twilio call.
+  const suppressed = await smsSuppressionRefusal(guardClient, to, {}, "process-dunning");
+  if (suppressed) return false;
 
   const body = new URLSearchParams();
   body.append("To", to);
@@ -402,9 +408,9 @@ async function sendSMS(to: string, message: string): Promise<boolean> {
         body: body.toString(),
       }
     );
-    if (!r.ok) { console.error(`Twilio error (${r.status}):`, await r.text()); return false; }
+    if (!r.ok) { console.error(`Twilio error (${r.status}):`, maskPhoneNumbersInText(await r.text())); return false; }
     const data = await r.json();
-    console.log("SMS sent. SID:", data.sid, "to:", to);
+    console.log("SMS sent. SID:", data.sid, "to:", maskPhone(to));
     return true;
   } catch (e) { console.error("Twilio send error:", e); return false; }
 }
