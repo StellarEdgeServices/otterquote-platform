@@ -99,7 +99,8 @@ await t('F1: submit snapshots the sum of trades, refreshes the disclosure BEFORE
   assert.ok(HTML.includes('const _snapBid = wholeCentDollars(effectiveBidAmount());'), '_snapBid is not the sum of trades');
   const cap = HTML.indexOf('const _feeAmount = platformFeeDollars(_bidAmount, _feePct);');
   assert.ok(cap > 0);
-  assert.ok(/await updateFeeDisclosure\(\);\s*const _bidAmount = _snapBid;/.test(HTML.slice(Math.max(0, cap - 900), cap)),
+  // gh-3497: the no-answer stop (`if (!_feeLookupAnswered) { throw ... }`) sits between the refresh and the capture.
+  assert.ok(/await updateFeeDisclosure\(\);\s*(\/\/[^\n]*\n\s*)*if \(!_feeLookupAnswered\) \{\s*throw new Error\('fee_rate_unavailable[^\n]*\n\s*\}\s*const _bidAmount = _snapBid;/.test(HTML.slice(Math.max(0, cap - 1200), cap)),
     'no await updateFeeDisclosure() before the fee capture');
   assert.ok(HTML.includes('const totalPrice = _snapBid;'), 'total_price is not the snapshot');
   assert.ok(!/wholeCentDollars\(parseFloat\(document\.getElementById\('totalPrice'\)\.value\)/.test(HTML),
