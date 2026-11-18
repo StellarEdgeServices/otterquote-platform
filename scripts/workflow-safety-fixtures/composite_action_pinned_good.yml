@@ -1,0 +1,11 @@
+# Fixture for rule 4 (PR #3797 REVIEW: FAIL 6992571275): the safe composite action.
+# Full-SHA pin and a local ./ ref are exempt; must PASS. (The docker sha256-digest exemption is covered inline in the test file: a 64-hex literal here trips credential-sweep.)
+name: good composite
+description: pinned steps inside a composite action
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+    - uses: ./.github/actions/other
+    - run: echo ok
+      shell: bash
