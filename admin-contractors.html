@@ -1227,8 +1227,8 @@
                             <div class="card-section">
                                 <div class="card-section-title">SMS opt-out</div>
                                 <div class="button-row">
-                                    <button class="btn-sm" onclick="openSmsOptModal('${escHtml(c.id)}', 'opt_out')">Record SMS opt-out</button>
-                                    <button class="btn-sm" onclick="openSmsOptModal('${escHtml(c.id)}', 'opt_in')">Record SMS opt-in</button>
+                                    <button class="btn-sm" data-action="sms-opt" data-sms-action="opt_out" data-id="${escHtml(c.id)}">Record SMS opt-out</button>
+                                    <button class="btn-sm" data-action="sms-opt" data-sms-action="opt_in" data-id="${escHtml(c.id)}">Record SMS opt-in</button>
                                 </div>
                             </div>
                             ` : ''}
@@ -1270,6 +1270,7 @@
                 case 'save-notes':      saveNotes(id); break;
                 case 'approve-modal':   openApproveConfirmModal(id, el.dataset.name); break;
                 case 'reject-modal':    openRejectModal(id, el.dataset.name); break;
+                case 'sms-opt':         openSmsOptModal(id, el.dataset.smsAction); break; // gh-3769
             }
         }
         document.getElementById('contractorsContainer').addEventListener('click', handleContractorAction);
@@ -1790,11 +1791,13 @@
                     </div>
                     <div id="smsOptResult" class="error-message" style="display: none;"></div>
                     <div class="modal-buttons">
-                        <button class="modal-btn modal-btn-secondary" onclick="closeSmsOptModal()">Close</button>
-                        <button class="modal-btn modal-btn-primary" id="smsOptSubmit" onclick="submitSmsOpt()">Submit</button>
+                        <button class="modal-btn modal-btn-secondary" id="smsOptClose">Close</button>
+                        <button class="modal-btn modal-btn-primary" id="smsOptSubmit">Submit</button>
                     </div>
                 </div>`;
             document.body.appendChild(wrap);
+            document.getElementById('smsOptClose').addEventListener('click', closeSmsOptModal);
+            document.getElementById('smsOptSubmit').addEventListener('click', submitSmsOpt);
         }
 
         function openSmsOptModal(contractorId, action) {
