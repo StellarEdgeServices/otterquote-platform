@@ -53,7 +53,7 @@ const mk = (name) => ({
 
 function renderHtml(name) {
   const container = { innerHTML: '', addEventListener() {} };
-  const ctx = { document: { getElementById: () => container }, contractors: [mk(name)], currentFilter: 'all', console };
+  const ctx = { document: { getElementById: () => container }, contractors: [mk(name)], currentFilter: 'all', smsOptAdmin: true, console }; // gh-3769: render the admin-only SMS opt-out buttons too
   vm.createContext(ctx);
   vm.runInContext(src + '\n;renderContractors();', ctx);
   return container.innerHTML;
@@ -99,6 +99,7 @@ if (!chromium) {
         'function openInsuranceModal(i,n){__calls.push(["insurance",i,n]);}' +
         'function openApproveConfirmModal(i,n){__calls.push(["approve",i,n]);}' +
         'function openRejectModal(i,n){__calls.push(["reject",i,n]);}' +
+        'var smsOptAdmin=true;function openSmsOptModal(i,a){__calls.push(["smsopt",i,a]);}' +
         'function markLicenseVerified(i){__calls.push(["mlic",i]);}' +
         'function markInsuranceVerified(i){__calls.push(["mins",i]);}' +
         'function saveNotes(i){__calls.push(["notes",i]);}' +
