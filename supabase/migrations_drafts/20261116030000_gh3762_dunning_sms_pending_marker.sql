@@ -1,6 +1,6 @@
--- STATUS (gh-1438, as of 2026-11-16): NOT APPLIED
--- EVIDENCE: payment_failures has no column named sms% (information_schema SELECT, project yeszghaspzwwstvsrioa, 2026-11-16); table holds 2 rows.
--- REPO COPY: none.
+-- STATUS (gh-1438, as of 2026-11-18T19:59:38Z): APPLIED (ledger version 20261118193243, name gh3762_dunning_sms_pending_marker; the lines below are the pre-apply drafting record)
+-- EVIDENCE: applied to production 2026-11-18 on Dustin's chat word "Go A-H." (14:30 ET) by Ben, CEO RUN 155 (claim ceo-2026-11-18T18:18:18Z): issue #3762 comment 6989531182 (APPLIED; sha256 7c19036055c9b686... MATCH, ledger row 20261118193243). Read-only SELECT of supabase_migrations.schema_migrations, project yeszghaspzwwstvsrioa: statements[1] is 2031 bytes, md5 054e020d966daf3fcadc40c2309c05aa, equal to this file as it was when applied (before this header edit).
+-- REPO COPY: supabase/migrations/20261118193243_gh3762_dunning_sms_pending_marker.sql (byte-identical to the SQL that ran, with its old NOT APPLIED header; the filed copy is the record, do not run this draft again). This draft stays because sql/schema-pending.json names it. Pre-flight and rollback stay in this directory unchanged.
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md. Tier 3A (R-097): additive, needs a recorded apply BEFORE the process-dunning deploy that reads it.
 -- gh-3762 (#3726 item 5, PR #3774 REVISION 2) -- DRAFT, NOT APPLIED (Tier 3A, additive).
 --

@@ -8,10 +8,11 @@
     "applied_migrations_query": "select version, name from supabase_migrations.schema_migrations order by version (read-only, Supabase MCP execute_sql) against project yeszghaspzwwstvsrioa at 2026-10-06T19:4xZ -- 213 rows; sorted-version md5 digest 863d9dbc equals this manifest's applied_versions",
     "repo_migrations_scan": "filesystem scan of supabase/migrations/ on this branch (excludes _rollback.sql and _pre-flight.md), de-duplicated -- 192 distinct version prefixes",
     "gh3324_ledger_read": "2026-11-11 read-only SELECT of supabase_migrations.schema_migrations (295 rows) through the Supabase Management API; the 38 versions >= 20261026 with no filed copy were added; sorted-version list of those 38 is in PR #3665; 2026-11-16 (CEO RUN 153, b3324) re-read of the ledger found 3 more applied 2026-11-15 (20261115185916, 20261115185930, 20261115185944), filed and added to applied_versions",
-    "gh_ceo153_ledger_read": "2026-11-16 read-only SELECT of supabase_migrations.schema_migrations for 4 versions (20261116152010, 20261116154933, 20261116155308, 20261116155311); added to applied_versions; the 3 filed under migrations_applied_manually/ also added to applied_no_repo_file_versions, as PR #3665 did"
+    "gh_ceo153_ledger_read": "2026-11-16 read-only SELECT of supabase_migrations.schema_migrations for 4 versions (20261116152010, 20261116154933, 20261116155308, 20261116155311); added to applied_versions; the 3 filed under migrations_applied_manually/ also added to applied_no_repo_file_versions, as PR #3665 did",
+    "gh_ceo155_ledger_read": "2026-11-18 read-only SELECT of supabase_migrations.schema_migrations (CEO RUN 155, bfile, claim ceo-2026-11-18T18:18:18Z) for 3 versions applied that day (20261118193243, 20261118193522, 20261118193824); all 3 filed under supabase/migrations/ as byte-identical copies, so added to applied_versions only (not applied_no_repo_file_versions)"
   },
   "counts": {
-    "applied_versions_total": 299,
+    "applied_versions_total": 302,
     "applied_no_repo_file": 61,
     "repo_file_no_applied": 18
   },
@@ -314,7 +315,10 @@
     "20261116152010",
     "20261116154933",
     "20261116155308",
-    "20261116155311"
+    "20261116155311",
+    "20261118193243",
+    "20261118193522",
+    "20261118193824"
   ],
   "applied_no_repo_file_versions": [
     "20260423184557",
