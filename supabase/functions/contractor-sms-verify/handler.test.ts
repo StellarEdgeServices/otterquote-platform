@@ -1,6 +1,7 @@
 // D-391 layer 2 (#2875): contractor-sms-verify. Run: deno test supabase/functions/contractor-sms-verify/handler.test.ts
 // No network, no Twilio, no database, no SMS: every dependency is a counting fake.
 import { assert, assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import * as H from "./handler.ts";
 import { type ContractorRow, type Deps, handle, maskPhone, normalizePhone, type NumberInsert } from "./handler.ts";
 
 const USER = "7d6c5b4a-3f2e-4d1c-8b0a-9e8f7d6c5b4a";
@@ -262,4 +263,40 @@ Deno.test("consent_ip: cf-connecting-ip wins; else the LAST x-forwarded-for hop,
   r.headers.set("cf-connecting-ip", "198.51.100.7");
   await handle(r, m.deps);
   assertEquals(m.spy.inserts[0].consent_ip, "198.51.100.7");
+});
+
+// gh-3763 (#3726 item 7): the monthly Twilio Verify spend cap is its own, non-429 error code.
+Deno.test("gh-3763 budget cap: start AND check answer 503 sms_capacity_reached (not 429), nothing is sent or written", async () => {
+  for (const body of [start, check]) {
+    const m = make({ rateLimit: () => Promise.resolve("budget_cap") });
+    const r = await handle(post(body), m.deps);
+    assertEquals([r.status, await code(r)], [503, "sms_capacity_reached"]);
+    nothingHappened(m.spy);
+  }
+  // control: an ordinary denial (hourly/daily/monthly count) is still 429 rate_limited
+  const d = make({ rateLimit: () => Promise.resolve("denied") });
+  const r = await handle(post(start), d.deps);
+  assertEquals([r.status, await code(r)], [429, "rate_limited"]);
+});
+
+Deno.test("gh-3763 classifyRateLimit: only the monthly-budget-cap reason is budget_cap; unknown shapes fail closed", () => {
+  assertEquals(H.classifyRateLimit({ allowed: true }), "allowed");
+  assertEquals(H.classifyRateLimit({ allowed: false, reason: "Monthly budget cap reached: $10/$10 estimated spend.", estimated_spend: 10 }), "budget_cap");
+  assertEquals(H.classifyRateLimit({ allowed: false, reason: "Hourly limit reached: 5/5 calls this hour." }), "denied");
+  assertEquals(H.classifyRateLimit({ allowed: false, reason: "Daily limit reached: 20/20 calls today." }), "denied");
+  assertEquals(H.classifyRateLimit({ allowed: false, reason: "Monthly limit reached: 100/100 calls this month." }), "denied");
+  assertEquals(H.classifyRateLimit({ allowed: false, reason: "No rate limit config for function" }), "denied");
+  assertEquals(H.classifyRateLimit({ allowed: "true", reason: "Monthly budget cap reached: x" }), "budget_cap"); // not strictly true => never allowed
+  assertEquals(H.classifyRateLimit(null), "denied");
+  assertEquals(H.classifyRateLimit(undefined), "denied");
+  assertEquals(H.classifyRateLimit({}), "denied");
+});
+
+Deno.test("gh-3763 settings source: a verified number added from settings is recorded with source 'settings' through the same check path", async () => {
+  const m = make({}, { twilioStatus: "approved" });
+  const r = await handle(post({ ...check, source: "settings" }), m.deps);
+  assertEquals(r.status, 200);
+  assertEquals(m.spy.inserts.length, 1);
+  assertEquals(m.spy.inserts[0].source, "settings");
+  assertEquals(m.spy.inserts[0].disclosure_text, DB_TEXT);
 });

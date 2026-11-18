@@ -1,4 +1,4 @@
--- STATUS (as of 2026-10-30): NOT APPLIED -- DRAFT
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261031181105, name gh3197_internal_test_signups_is_test; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3197_internal_test_signups_is_test (rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: production read-only 2026-10-30 (project yeszghaspzwwstvsrioa), pg_get_functiondef / pg_trigger / SELECT only:
 --   set_is_test_for_internal_test_domain() matches only '%@otterquote-internal.test'; is_internal_test_email() also accepts

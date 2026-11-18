@@ -569,6 +569,28 @@ function mergeSowSelections(pc: any, claim: any, bidBrand?: string | null) {
   if (nb && ns && !nb.includes(ns) && !ns.includes(nb)) return pc ?? null;
   return { ...(pc ?? {}), shingleColor: name, shingleManufacturer: brand || pc?.shingleManufacturer || null };
 }
+// [gh-3288 / D-407 7/8, default 1] The drip-edge line comes from the contractor's bid, never from a homeowner colour. Options are the
+// contractor-bid-form.html dripEdgeOption values; "oop" reuses the SOW's existing "see Contingencies" phrasing (the price lives there, once).
+// "na" / missing prints nothing.
+function sowDripEdgeFromBid(va: any): string | null {
+  const opt = va?.drip_edge?.option;
+  const map: Record<string, string> = {
+    included_black: "Black - Included",
+    included_white: "White - Included",
+    included_custom: "Custom color / special order - Included",
+    oop: "Homeowner out-of-pocket option - see Contingencies",
+  };
+  return typeof opt === "string" && Object.prototype.hasOwnProperty.call(map, opt) ? map[opt] : null;
+}
+// [gh-3719 / D-407, default 1] A "see Contingencies" cross-reference prints only when the document really carries the matching Contingencies row.
+// The row (see "Extra Charges If Needed" below) exists only for declarations[key] = { state: "extra", rate_cents > 0 }. Bids from before gh-1377 and
+// every React-form bid carry no declarations, so no row is built for them. Same predicate as the declExtra loop below; no wording.
+function sowContingenciesRowExists(declarations: any, key: string): boolean {
+  if (!declarations || typeof declarations !== "object") return false;
+  const decl = declarations[key];
+  if (!decl || typeof decl !== "object") return false;
+  return decl.state === "extra" && Number(decl.rate_cents) > 0;
+}
 function resolveMeasurementShape(measurements: any) {
   const m = measurements || {};
   const LINEAR = ["ridgeHipLf", "valleyLf", "rakeLf", "eaveLf", "dripEdgeLf", "stepFlashingLf", "flashingLf"];
@@ -1109,7 +1131,9 @@ function generateRetailScopeOfWorkPdf(params) {
       { num: ++rowNum, item: "Roof/exhaust vents", qty: "field", unit: "EA", basis: "Field-verified", notes: "Reset or replace" },
       // [C3 2026-08-27] Rates removed -- decking and full re-deck are stated once,
       // in CONTINGENCIES AND CONDITIONAL PRICING, each beside its trigger.
-      { num: ++rowNum, item: "Decking replacement allowance", qty: "as req'd", unit: "SHEET", basis: "-", notes: "See Contingencies" },
+      // [gh-3743] The "See Contingencies" reference prints only when the Contingencies table carries the decking row (a bid decking price > 0).
+      // The bid form stores an entered 0 as null; with no decking price the line keeps its quantity and unit and drops the reference.
+      { num: ++rowNum, item: "Decking replacement allowance", qty: "as req'd", unit: "SHEET", basis: "-", notes: Number(deckingPricePerSheet) > 0 ? "See Contingencies" : "" },
     );
     const derivedCols = [
       { key: "num", x: colNum, chars: 4 },
@@ -1175,10 +1199,14 @@ function generateRetailScopeOfWorkPdf(params) {
       addText(160, y, 10, "F1", shingleStr);
       y -= 14;
     }
-    if (pc?.dripEdgeColor) {
+    // [gh-3288 / D-407 7/8, default 1 accepted by Dustin 2026-11-05 (issue comment 6668572026)] Drip edge is no longer a homeowner choice
+    // (nothing collects pc.dripEdgeColor): the SOW prints what the contractor's bid says (value_adds.drip_edge). No new contract wording.
+    // [gh-3719] The out-of-pocket value is a "see Contingencies" reference: with no matching Contingencies row it is omitted.
+    const dripEdgeLine = (va?.drip_edge?.option === "oop" && !sowContingenciesRowExists(declarations, "drip_edge")) ? null : sowDripEdgeFromBid(va);
+    if (dripEdgeLine) {
       ensure(14);
-      addText(60, y, 10, "F2", "Drip Edge Color:");
-      addText(160, y, 10, "F1", pc.dripEdgeColor);
+      addText(60, y, 10, "F2", "Drip Edge:");
+      addText(160, y, 10, "F1", dripEdgeLine);
       y -= 14;
     }
     if (va.underlayment?.type) {
@@ -1218,7 +1246,9 @@ function generateRetailScopeOfWorkPdf(params) {
     // Legacy shapes are still read so historical bids keep rendering.
     const chim = va.chimney ?? va.chimney_flashing ?? va.chimney_reflash ?? null;
     const chimOption = chim?.option && chim.option !== "na" ? String(chim.option) : null;
-    if (chimOption) {
+    // [gh-3719] "oop" / "replace_oop" are "see Contingencies" references: printed only when the Contingencies chimney row exists.
+    const chimIsRef = chimOption === "oop" || chimOption === "replace_oop";
+    if (chimOption && !(chimIsRef && !sowContingenciesRowExists(declarations, "chimney"))) {
       const cfMap = { reuse: "Reuse existing", replace: "Replace - Included", included: "Included", oop: "Homeowner out-of-pocket option - see Contingencies", replace_oop: "Homeowner out-of-pocket option - see Contingencies" };
       ensure(14);
       addText(60, y, 10, "F2", "Chimney Flashing:");
@@ -1231,34 +1261,18 @@ function generateRetailScopeOfWorkPdf(params) {
       addText(160, y, 10, "F1", va.skylights === "reflash" ? "Reflash" : "Replace");
       y -= 14;
     }
-    if (pc?.valleyType) {
-      ensure(14);
-      addText(60, y, 10, "F2", "Valleys:");
-      addText(160, y, 10, "F1", pc.valleyType === "closed" ? "Closed Cut" : "Open / Metal");
-      y -= 14;
-    }
-    if (pc?.gutterGuards) {
-      ensure(14);
-      addText(60, y, 10, "F2", "Gutter Guards:");
-      addText(160, y, 10, "F1", pc.gutterGuards);
-      y -= 14;
-    }
-    if (pc?.satelliteDish && pc.satelliteDish !== "NONE") {
-      const satMap = { "REMOVE-TRASH": "Remove & discard", "REMOVE-RESET": "Remove & reset after install" };
-      ensure(14);
-      addText(60, y, 10, "F2", "Satellite Dish:");
-      addText(160, y, 10, "F1", satMap[pc.satelliteDish] || String(pc.satelliteDish));
-      y -= 14;
-    }
+    // [gh-3719 / D-407, default 1 on #3288] Valleys, gutter guards and satellite dish used to print here from the retired project-confirmation
+    // data (pc.valleyType / pc.gutterGuards / pc.satelliteDish). Nothing collects them any more, and on a legacy claim they put homeowner choices
+    // the contractor never bid into the signed SOW. Removed: the SOW prints from the bid or omits. The bid's own gutter guards still print under
+    // GUTTERS (va.gutter_guards); the bid's valleys appear as the line item "Closed-cut valley".
     y -= 8;
   }
   // [C3 2026-08-27] The standalone SECOND-LAYER TEAR-OFF CONTINGENCY heading is
   // gone. It is now row 1 of CONTINGENCIES AND CONDITIONAL PRICING, which is
   // where every price-changing condition lives.
   if (hasGutters) {
-    ensure(20);
-    addText(LEFT_X, y, 11, "F2", "GUTTERS");
-    y -= 14;
+    // [gh-3743] Collect the GUTTERS lines first; the heading prints only when at least one line does.
+    const gutterLines: { label: string; value: string }[] = [];
     if (va.gutters?.option) {
       const go = va.gutters.option;
       let gutterDesc = String(go);
@@ -1268,27 +1282,42 @@ function generateRetailScopeOfWorkPdf(params) {
       else if (go.includes("5inch") && go.includes("additional")) gutterDesc = '5" Gutters - homeowner out-of-pocket, see Contingencies';
       else if (go.includes("6inch") && go.includes("additional")) gutterDesc = '6" Gutters - homeowner out-of-pocket, see Contingencies';
       else if (go === "none") gutterDesc = "No gutter work included";
-      ensure(14);
-      addText(60, y, 10, "F2", "Gutters:");
-      addText(160, y, 10, "F1", gutterDesc);
-      y -= 14;
+      // [gh-3745] "No gutter work included" is false only when 'none' is the bid form's DEFAULT, not the contractor's choice: a gutters-only bid
+      // has no gutterOption radio, so the form saves 'none' (and no declarations). On a roofing/siding+gutters bid the radio exists and "Not
+      // included / N/A" is a real declaration (declarations.gutters.state === "not_offered"); the exclusion is kept. Omit the line only when
+      // 'none' is not declared not_offered AND (the job is gutters-only OR the bid carries gutter trade fields). No replacement wording
+      // (printing the bid's gutter scope is a separate Tier C decision).
+      const gutterNoneIsDefault = go === "none"
+        && !(declarations && typeof declarations === "object" && declarations.gutters?.state === "not_offered")
+        && ((!hasRoofing && !hasSiding)
+          || va.gutter_5inch_price != null || va.gutter_6inch_price != null || va.gutters?.linearFootage != null);
+      // [gh-3719] The out-of-pocket value is a "see Contingencies" reference: with no matching Contingencies gutters row it is omitted.
+      const gutterIsRef = gutterDesc.includes("see Contingencies");
+      if (!(gutterIsRef && !sowContingenciesRowExists(declarations, "gutters")) && !gutterNoneIsDefault) {
+        gutterLines.push({ label: "Gutters:", value: gutterDesc });
+      }
     }
     if (va.gutter_guards) {
       const gg = va.gutter_guards;
       if (gg.pricing_on_request) {
-        ensure(14);
-        addText(60, y, 10, "F2", "Gutter Guards:");
-        addText(160, y, 10, "F1", "Available - pricing on request");
-        y -= 14;
+        gutterLines.push({ label: "Gutter Guards:", value: "Available - pricing on request" });
       } else if (gg.mesh_oop || gg.screw_in_oop) {
         // [C3 2026-08-27] Amounts moved to CONTINGENCIES AND CONDITIONAL PRICING.
-        ensure(14);
-        addText(60, y, 10, "F2", "Gutter Guards:");
-        addText(160, y, 10, "F1", "Available at homeowner cost - see Contingencies");
-        y -= 14;
+        gutterLines.push({ label: "Gutter Guards:", value: "Available at homeowner cost - see Contingencies" });
       }
     }
-    y -= 8;
+    if (gutterLines.length > 0) {
+      ensure(20);
+      addText(LEFT_X, y, 11, "F2", "GUTTERS");
+      y -= 14;
+      for (const gl of gutterLines) {
+        ensure(14);
+        addText(60, y, 10, "F2", gl.label);
+        addText(160, y, 10, "F1", gl.value);
+        y -= 14;
+      }
+      y -= 8;
+    }
   }
   if (hasSiding) {
     ensure(20);
@@ -1438,8 +1467,21 @@ function generateRetailScopeOfWorkPdf(params) {
       const scopeLabels = [];
       if (hasRoofing) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
       if (hasSiding) scopeLabels.push(TRADE_SCOPE_LABEL.siding);
-      if (hasGutters) scopeLabels.push(TRADE_SCOPE_LABEL.gutters);
-      if (scopeLabels.length === 0) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
+      // [gh-3747] "Complete gutter installation" prints only when the BID shows gutter work included, never because the claim lists the
+      // trade. Signal, in order: declarations.gutters.state ('included' prints; 'not_offered' / 'extra' / 'other' never print); with no
+      // gutters declaration, an included option on the bid ('5inch_included' / '6inch_included'), or, on a gutters-only job (the only
+      // job whose form saves gutter trade fields), a bid gutter price or footage. Existing string only; no new wording.
+      if (hasGutters) {
+        const gState = declValid ? declarations.gutters?.state : undefined;
+        const gOpt = va.gutters?.option;
+        const gutterTradeFields = va.gutter_5inch_price != null || va.gutter_6inch_price != null || va.gutters?.linearFootage != null;
+        const gutterIncludedByBid = gState === "included"
+          || (gState == null && (gOpt === "5inch_included" || gOpt === "6inch_included"
+            || (!hasRoofing && !hasSiding && gutterTradeFields)));
+        if (gutterIncludedByBid) scopeLabels.push(TRADE_SCOPE_LABEL.gutters);
+      }
+      // [gh-3747] The roofing fallback is for a claim with no recognised trade; a gutters claim whose bid excludes gutters must not become "Complete roofing installation".
+      if (scopeLabels.length === 0 && !hasGutters) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
       ensure(20 + (scopeLabels.length + includedLines.length) * 11);
       addText(LEFT_X, y, 12, "F2", "Included in Your Price - $" + Number(contractPrice || 0).toLocaleString("en-US"));
       y -= 14;

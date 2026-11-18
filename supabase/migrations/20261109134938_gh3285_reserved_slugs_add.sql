@@ -1,0 +1,1 @@
+INSERT INTO public.reserved_slugs (slug) VALUES ('out-of-pocket') ON CONFLICT (slug) DO NOTHING;

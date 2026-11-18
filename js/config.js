@@ -137,6 +137,50 @@ Object.defineProperty(CONFIG, 'STRIPE_PK', {
   }
 });
 
+// gh-3704 (Sentry JAVASCRIPT-3T) -- must stay ABOVE the first createClient() on this page.
+// supabase-js@2.116.0's GoTrueClient constructor fires initialize() without a .catch. In a
+// browser where Error instances come back non-extensible (seen once: Chrome 138 / Windows, a
+// patched or locked-down Error), AuthError's `this.__isAuthError = true` throws "Cannot add
+// property __isAuthError, object is not extensible" inside _initialize's catch, and the init
+// promise rejects unhandled. That throw is in CDN vendor code, so we cannot fix it at the
+// source. Ruling (CEO RUN 152): do not swallow it -- the original init error is lost in that
+// catch, so a real auth-init failure could hide behind it. Instead: preventDefault (no longer
+// an unhandled TypeError) and report ONE handled warning per page with a stable fingerprint,
+// the message prefix, the browser UA and an occurrence count (repeats are counted, not
+// dropped; sent after a short debounce). No PII, no tokens, no `reason` object. js/config.js
+// loads before every createClient path on the 171 supabase pages (checked 2026-11-15; Sentry
+// init is inline on each page, not centralised, so a Sentry-side beforeSend is not one place).
+// The capture phase runs ahead of Sentry's bubble-phase unhandledrejection handler.
+(function () {
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+  var count = 0, timer = null;
+  function flush() {
+    timer = null;
+    try {
+      var S = window.Sentry;
+      if (S && typeof S.captureMessage === 'function') {
+        S.captureMessage('supabase-js init: Cannot add property __isAuthError (non-extensible Error)', {
+          level: 'warning',
+          fingerprint: ['gh3704-supabase-auth-init-nonextensible'],
+          tags: { gh: '3704', handled: 'yes', occurrences: String(count) },
+          contexts: { gh3704: { userAgent: (window.navigator && window.navigator.userAgent) || 'unknown', occurrences: count } },
+        });
+      }
+    } catch (_) {}
+  }
+  window.addEventListener('unhandledrejection', function (ev) {
+    var r = ev && ev.reason;
+    if (!r || r.name !== 'TypeError' || typeof r.message !== 'string') return;
+    if (r.message.indexOf('Cannot add property __isAuthError') !== 0) return;
+    // anchor on supabase-js frames (supabase.js / supabase.min.js / supabase-js@ CDN path)
+    if (!/supabase-js|\/supabase(\.min)?\.js/.test(String(r.stack || ''))) return;
+    if (typeof ev.preventDefault === 'function') ev.preventDefault();
+    if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+    count++;
+    if (!timer) timer = setTimeout(flush, 2000);
+  }, true);
+})();
+
 // ── Initialize Supabase Client ──
 var sb; // var (not let) — allows safe early-load in <head> of gated pages alongside redirect guard
 

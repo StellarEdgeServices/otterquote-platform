@@ -64,6 +64,7 @@ const GOLDEN_HTML = `<!DOCTYPE html>
     <p style="margin:0 0 16px;">We're writing to let you know that the homeowner on the following project has chosen to switch contractors through Otter Quotes.</p>
     <p style="margin:0 0 16px;">This is a platform feature available to homeowners up to 3 days before their scheduled installation date.</p>
     <p style="margin:0 0 16px;">Your platform fee has been refunded in full.</p>
+    <p style="margin:0 0 16px;">Under Section 6.4 of your Contractor Partner Agreement, if the homeowner signs with a replacement Otter Quotes contractor before you begin work, you release the homeowner from your contract on that signing and will return any deposit the homeowner paid, and the refund is your sole remedy. Until that signing, your contract with the homeowner remains in place.</p>
     <p style="margin:0 0 16px;">The project has been re-opened to the Otter Quotes contractor network. You are welcome to bid again when it reappears in your Opportunities dashboard.</p>
     <p style="margin:0 0 16px;">We appreciate your participation on Otter Quotes and look forward to connecting you with future projects.</p>
     <p style="margin:0;">Best regards,<br>The Otter Quotes Team</p>
@@ -92,6 +93,8 @@ We're writing to let you know that the homeowner on the following project has ch
 This is a platform feature available to homeowners up to 3 days before their scheduled installation date.
 
 Your platform fee has been refunded in full.
+
+Under Section 6.4 of your Contractor Partner Agreement, if the homeowner signs with a replacement Otter Quotes contractor before you begin work, you release the homeowner from your contract on that signing and will return any deposit the homeowner paid, and the refund is your sole remedy. Until that signing, your contract with the homeowner remains in place.
 
 The project has been re-opened to the Otter Quotes contractor network. You are welcome to bid again when it reappears in your Opportunities dashboard.
 
@@ -170,4 +173,19 @@ Deno.test("gh-1824 switch-contractor: switchSupportEmailText(...) exact-matches 
     switchSupportEmailText("claim-456", "456 Oak Ave", "Beta Gutters", false, "quality", "notes here"),
     GOLDEN_SUPPORT_TEXT_PENDING,
   );
+});
+
+// gh-3401 (Dustin "Approved", 6742187393): the switch email carries the Section 6.4 release notice
+// after the refund line, and does NOT carry the begin-work sentence (cut per the recorded approval).
+const RELEASE_NOTICE =
+  "Under Section 6.4 of your Contractor Partner Agreement, if the homeowner signs with a replacement Otter Quotes contractor before you begin work, you release the homeowner from your contract on that signing and will return any deposit the homeowner paid, and the refund is your sole remedy. Until that signing, your contract with the homeowner remains in place.";
+const CUT_SENTENCE = "If you begin work before any such signing";
+
+Deno.test("gh-3401 switch-contractor: email carries the 6.4 release notice right after the refund line, without the begin-work sentence", () => {
+  for (const out of [contractorSwitchEmailHtml("Acme Roofing", REFUND_LINE), contractorSwitchEmailText("Acme Roofing", REFUND_LINE)]) {
+    const r = out.indexOf(REFUND_LINE);
+    const n = out.indexOf(RELEASE_NOTICE);
+    if (r < 0 || n < 0 || n < r) throw new Error("release notice missing or before the refund line");
+    if (out.includes(CUT_SENTENCE)) throw new Error("begin-work sentence must not be in the email");
+  }
 });

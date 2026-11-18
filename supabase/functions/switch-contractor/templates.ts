@@ -71,6 +71,7 @@ export function contractorSwitchEmailHtml(contractorName: string, refundLine: st
     <p style="margin:0 0 16px;">We're writing to let you know that the homeowner on the following project has chosen to switch contractors through Otter Quotes.</p>
     <p style="margin:0 0 16px;">This is a platform feature available to homeowners up to 3 days before their scheduled installation date.</p>
     <p style="margin:0 0 16px;">${escapeHtml(refundLine)}</p>
+    <p style="margin:0 0 16px;">Under Section 6.4 of your Contractor Partner Agreement, if the homeowner signs with a replacement Otter Quotes contractor before you begin work, you release the homeowner from your contract on that signing and will return any deposit the homeowner paid, and the refund is your sole remedy. Until that signing, your contract with the homeowner remains in place.</p>
     <p style="margin:0 0 16px;">The project has been re-opened to the Otter Quotes contractor network. You are welcome to bid again when it reappears in your Opportunities dashboard.</p>
     <p style="margin:0 0 16px;">We appreciate your participation on Otter Quotes and look forward to connecting you with future projects.</p>
     <p style="margin:0;">Best regards,<br>The Otter Quotes Team</p>
@@ -79,7 +80,7 @@ export function contractorSwitchEmailHtml(contractorName: string, refundLine: st
 }
 
 export function contractorSwitchEmailText(contractorName: string, refundLine: string): string {
-  return `Hi ${contractorName},\n\nWe're writing to let you know that the homeowner on the following project has chosen to switch contractors through Otter Quotes.\n\nThis is a platform feature available to homeowners up to 3 days before their scheduled installation date.\n\n${refundLine}\n\nThe project has been re-opened to the Otter Quotes contractor network. You are welcome to bid again when it reappears in your Opportunities dashboard.\n\nWe appreciate your participation on Otter Quotes and look forward to connecting you with future projects.\n\nBest regards,\nThe Otter Quotes Team\nsupport@otterquote.com | (844) 875-3412\n\n${footerPostalAddressText()}`;
+  return `Hi ${contractorName},\n\nWe're writing to let you know that the homeowner on the following project has chosen to switch contractors through Otter Quotes.\n\nThis is a platform feature available to homeowners up to 3 days before their scheduled installation date.\n\n${refundLine}\n\nUnder Section 6.4 of your Contractor Partner Agreement, if the homeowner signs with a replacement Otter Quotes contractor before you begin work, you release the homeowner from your contract on that signing and will return any deposit the homeowner paid, and the refund is your sole remedy. Until that signing, your contract with the homeowner remains in place.\n\nThe project has been re-opened to the Otter Quotes contractor network. You are welcome to bid again when it reappears in your Opportunities dashboard.\n\nWe appreciate your participation on Otter Quotes and look forward to connecting you with future projects.\n\nBest regards,\nThe Otter Quotes Team\nsupport@otterquote.com | (844) 875-3412\n\n${footerPostalAddressText()}`;
 }
 
 export function switchSupportEmailText(

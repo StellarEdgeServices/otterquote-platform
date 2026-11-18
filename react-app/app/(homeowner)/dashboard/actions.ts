@@ -74,6 +74,7 @@ export async function submitForBids(claimId: string): Promise<ActionResult> {
   // #482: static-stack parity (PR #473) — stamp {trade}_bid_released_at for
   // releasable trades at submit. Siding releases via the D-164 design gate.
   const update: Record<string, unknown> = { status: 'active', ready_for_bids: true };
+  let claimTrades: string[] = [];
   try {
     const { data: claimRow } = await supabase
       .from('claims')
@@ -82,13 +83,19 @@ export async function submitForBids(claimId: string): Promise<ActionResult> {
       .maybeSingle();
     const row = (claimRow ?? {}) as Record<string, unknown>;
     const trades = Array.isArray(row.trades) ? (row.trades as string[]) : [];
+    claimTrades = trades.map((t) => String(t).toLowerCase());
     const now = new Date().toISOString();
-    for (const trade of ['roofing', 'gutters', 'windows']) {
+    // gh-3783 (D-375): windows is never released to contractors until Dustin says the window bid section is live.
+    for (const trade of ['roofing', 'gutters']) {
       if (trades.includes(trade) && !row[`${trade}_bid_released_at`]) {
         update[`${trade}_bid_released_at`] = now;
       }
     }
   } catch { /* non-fatal — submit still proceeds */ }
+  // gh-3783 (D-375): a claim that includes windows is refused before any write. No new wording: the existing "Coming Soon" text.
+  if (claimTrades.includes('windows')) {
+    return { ok: false, error: 'Coming Soon' };
+  }
   // gh-2105 batch 4 (decision a): `.update()` without `.select()` resolves
   // `{ error: null }` even on a zero-row RLS/filter match — the homeowner
   // could see "submitted for bids" while claims.status/ready_for_bids never
@@ -104,6 +111,8 @@ export async function submitForBids(claimId: string): Promise<ActionResult> {
     // The unread-estimate refusal returns Ben's sentence (Q4), never its database text. Any other guard refusal (the identity
     // check) keeps `error` undefined so Checklist.tsx falls back to its existing generic line.
     if (refused) return { ok: false, error: BID_OPEN_REFUSAL_TEXT };
+    // gh-3783: the windows trigger's own text is internal; the homeowner sees the existing "Coming Soon" text.
+    if (typeof updErr.message === 'string' && updErr.message.includes('gh-3783')) return { ok: false, error: 'Coming Soon' };
     if (typeof updErr.message === 'string' && updErr.message.includes('[gh2559-bid-open')) return { ok: false, error: undefined };
     return { ok: false, error: updErr.message };
   }

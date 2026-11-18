@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-11-05T20:30:30Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261108221339); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh3460_held_fee_release (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: drafted 2026-11-05 under #3460. Removes only the trigger and function the forward file creates. No database was written to produce this file.
 -- REPO COPY: none. When applied, move to supabase/migrations_rollbacks/ beside the filed forward migration.

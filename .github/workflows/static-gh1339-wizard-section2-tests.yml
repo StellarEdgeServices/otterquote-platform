@@ -1,0 +1,52 @@
+name: Static gh-1339 Wizard Section 2 Declarations Tests
+
+# gh-1339 -- the static D-162 multi-trade wizard on contractor-bid-form.html must require and write the Section 2
+# declarations whenever roofing is in the wizard queue, and tag trade_type from the queue. Real Chromium against the real page
+# with a stubbed Supabase client. `pull_request` only, no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'contractor-bid-form.html'
+      - 'js/auth.js'
+      - 'js/config.js'
+      - 'js/supabase-client.js'
+      - 'tests/gh1339-wizard-section2-declarations.mjs'
+      - 'tests/gh3731-section2-retail-only.mjs'
+      - 'tests/e2e/package.json'
+      - 'tests/e2e/package-lock.json'
+      - '.github/workflows/static-gh1339-wizard-section2-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh1339-wizard-section2-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  wizard-section2-declarations-chromium:
+    name: Wizard bids require and write Section 2 declarations, real Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Install e2e dependencies
+        working-directory: tests/e2e
+        run: npm ci
+      - name: Install Chromium
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+      - name: Wizard Section 2 declarations (gh1339-wizard-section2-declarations)
+        run: node tests/gh1339-wizard-section2-declarations.mjs
+      - name: Section 2 retail/cash only, recorded wherever declared (gh3731-section2-retail-only)
+        run: node tests/gh3731-section2-retail-only.mjs

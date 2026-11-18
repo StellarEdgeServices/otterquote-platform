@@ -29,6 +29,9 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { authorizeServiceOnly, resolveTwilioSender } from "./sender-selection.ts";
 import { isSmsPaused } from "../_shared/sms-pause.ts";
+import { smsSuppressionRefusal } from "../_shared/sms-suppression.ts";
+import { quietHoursRefusal } from "../_shared/sms-quiet-hours.ts";
+import { maskPhone, maskPhoneNumbersInText } from "../_shared/sms-log-mask.ts"; // gh-3773: no full number in any log line
 
 const FUNCTION_NAME = "send-sms";
 
@@ -53,7 +56,10 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
-serve(async (req) => {
+// gh-3773: exported so a test can drive the REAL handler and capture its console output. serve() is guarded by
+// import.meta.main (same precedent as process-dunning); the Edge runtime runs this file as the entry point, so it is still
+// true in deployment.
+export async function handler(req: Request): Promise<Response> {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -118,6 +124,20 @@ serve(async (req) => {
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // ========== SUPPRESSION CHECK (gh-3768 / #3726 defence in depth) ==========
+    // A number with an open sms_suppression_list row (released_at IS NULL) is refused for EVERY send, whoever the caller is.
+    // Distinct error codes (number_suppressed 403 / suppression_lookup_failed 503); fails closed; logs the last 4 digits only.
+    const suppressionRefusal = await smsSuppressionRefusal(supabase, to, corsHeaders, FUNCTION_NAME);
+    if (suppressionRefusal) return suppressionRefusal;
+
+    // ========== QUIET HOURS (gh-3762 / #3726 item 5) ==========
+    // No text outside 08:00-20:00 (Ben's ruling on PR #3774) in the RECIPIENT'S local time (timezone + state of the contractor who owns the number;
+    // an unknown or unreadable recipient gets the all-US restrictive window). Refusal is a distinct code,
+    // outside_quiet_hours (403), carrying next_allowed_at; it never reaches Twilio and does not spend rate-limit budget.
+    // The ONLY exemption is the owner's own alert number (OWNER_ALERT_NUMBER_E164, exact match inside the helper).
+    const quietRefusal = await quietHoursRefusal(supabase, to, corsHeaders, FUNCTION_NAME);
+    if (quietRefusal) return quietRefusal;
 
     // ========== RATE LIMIT CHECK ==========
     const { data: rateLimitResult, error: rlError } = await supabase.rpc(
@@ -191,8 +211,8 @@ serve(async (req) => {
     formData.append(senderField.field, senderField.value);
     console.log(
       senderField.field === "MessagingServiceSid"
-        ? `Sending SMS via MessagingServiceSid to: ${to}`
-        : `Sending SMS via phone number to: ${to} from: ${senderField.value}`
+        ? `Sending SMS via MessagingServiceSid to: ${maskPhone(to)}`
+        : `Sending SMS via phone number to: ${maskPhone(to)} from: ${maskPhone(senderField.value)}`
     );
 
     const twilioResponse = await fetch(
@@ -209,13 +229,16 @@ serve(async (req) => {
 
     if (!twilioResponse.ok) {
       const errorData = await twilioResponse.text();
+      // gh-3773: Twilio's error body can name the To number; mask it before it is logged or thrown (the thrown text is
+      // returned to the caller and logged by the catch below).
+      const maskedError = maskPhoneNumbersInText(errorData);
       console.error(
         "Twilio SMS send failed:",
         twilioResponse.status,
-        errorData
+        maskedError
       );
       throw new Error(
-        `Twilio API error (HTTP ${twilioResponse.status}): ${errorData}`
+        `Twilio API error (HTTP ${twilioResponse.status}): ${maskedError}`
       );
     }
 
@@ -280,10 +303,15 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error("send-sms error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    const safeErr = maskPhoneNumbersInText(error instanceof Error ? error.message : String(error));
+    console.error("send-sms error:", safeErr);
+    return new Response(JSON.stringify({ error: safeErr }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-});
+}
+
+if (import.meta.main) {
+  serve(handler);
+}

@@ -138,7 +138,6 @@ RATCHET_FOOTER = {
     "process-coi-reminders",
     "process-payout-reminders",
     "refresh-warranty-manifest",
-    "resend-hover-link",
     "send-bid-confirmation",
     "send-home-profile-prompt",
     "send-incomplete-onboarding-reminders",

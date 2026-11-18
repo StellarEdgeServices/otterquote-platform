@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-19T21:30:51Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261020160337); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh2931_bidder_summary_no_filename (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: the CREATE OR REPLACE VIEW below is the statement of supabase/migrations/20261008231303_gh2559_bidder_claims_view.sql; its result is checked in-file against the live definition read 2026-10-19T21:30:51Z (md5 c8ad94c45c52b5468ddf7c4979a2607c, length 18627).
 -- REPO COPY: none (not applied). Never move into supabase/migrations/. Rollback only on a human decision, after saying so on #2931.

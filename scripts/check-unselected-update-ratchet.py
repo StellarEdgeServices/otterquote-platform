@@ -186,7 +186,6 @@ BASELINE: dict[str, int] = {
     "supabase/functions/record-warranty-upload/index.ts": 0,  # gh-2105 batch 11: fixed
     "supabase/functions/reject-warranty-drift/index.ts": 0,  # gh-2105 batch 11: fixed
     "supabase/functions/rescind-bid/index.ts": 0,
-    "supabase/functions/resend-hover-link/index.ts": 0,  # gh-2105 batch 11: fixed log-only
     "supabase/functions/send-adjuster-email/index.ts": 0,  # gh-2105 batch 11: fixed log-only
     "supabase/functions/send-home-profile-prompt/index.ts": 0,  # gh-2105 batch 11: decision b annotated
     "supabase/functions/send-incomplete-onboarding-reminders/index.ts": 0,  # gh-2105 batch 13: fixed (see PR body)

@@ -526,7 +526,7 @@ describe('React route helpers (copy.ts)', () => {
   });
   it('fee explainer is the GC-approved #547 item 1B text, verbatim', () => {
     expect(BID_COPY.fee.feeExplainer).toBe(
-      'A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission.',
+      'A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission. If you pay by card, a processing fee of 2.9% + $0.30 is added to the platform fee shown above, as stated in Section 7.7 of your Contractor Partner Agreement.',
     );
     expect('feeInfoInsurance' in BID_COPY.fee).toBe(false);
     expect('feeInfoRetail' in BID_COPY.fee).toBe(false);

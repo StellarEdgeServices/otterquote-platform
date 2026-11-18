@@ -20,10 +20,12 @@
  * of truth for who is an admin (same call as supabase/functions/_shared/admin-gate.ts
  * requireAdmin). Anything other than a literal `true` denies (fail closed).
  * REDIRECT: /get-started (React unauthenticated landing)
+ * REDIRECT (gh-3730): /contractor/bid/* -> https://otterquote.com/contractor-bid-form.html?claim_id=...
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { firstTouchSetCookie } from './app/lib/attribution-core';
+import { staticBidFormUrl } from './app/lib/bid-route-redirect';
 
 // Public values (same as js/config.js and the NEXT_PUBLIC_* build env); the
 // publishable key is not a secret. Fallbacks mirror PR #3040.
@@ -70,6 +72,15 @@ async function isAdminCaller(token: string): Promise<boolean> {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // gh-3730: the React contractor bid route is retired; send the contractor to the static bid form
+  // for the same claim (308, method-preserving). No attribution cookie is set on a redirect hop.
+  const bidForm = staticBidFormUrl(request.url);
+  if (bidForm) {
+    const res = NextResponse.redirect(bidForm, 308);
+    res.headers.set('Cache-Control', 'private, no-cache, must-revalidate');
+    return res;
+  }
 
   // gh-1983: non-admin routes in the matcher only get the first-touch ad
   // attribution cookie (oq_ft, Domain=.otterquote.com, 90 d), set server-side
@@ -142,5 +153,5 @@ export async function middleware(request: NextRequest) {
 export const config = {
   // gh-1983: '/', '/get-started' (and sub-paths) are the paid-ad landing
   // routes; every other route still gets the client-side capture fallback.
-  matcher: ['/admin/:path*', '/', '/get-started', '/get-started/:path*'],
+  matcher: ['/admin/:path*', '/', '/get-started', '/get-started/:path*', '/contractor/bid', '/contractor/bid/:path*'],
 };

@@ -112,6 +112,12 @@
   padding-bottom: var(--sp-6);
 }
 
+/* gh-3643: the 100-hour guarantee answer is ~2,250 characters, far more than the 500px cap above, which would clip the
+   claim process and the "not both" term. Scoped to that one item so every other answer keeps its 500px cap. */
+.faq-item.oq-guarantee.open .faq-answer {
+  max-height: 3200px;
+}
+
 .faq-answer p {
   font-size: 0.95rem;
   line-height: 1.7;
@@ -204,6 +210,14 @@
     },
     {
       "@type": "Question",
+      "name": "How does Otter Quotes compare with Thumbtack or Angi?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "We wrote two side-by-side guides: Otter Quotes vs Thumbtack (https://otterquote.com/guides/otter-quotes-vs-thumbtack.html) and Otter Quotes vs Angi (https://otterquote.com/guides/otter-quotes-vs-angi.html)."
+      }
+    },
+    {
+      "@type": "Question",
       "name": "What is a \"Help Me\" tool?",
       "acceptedAnswer": {
         "@type": "Answer",
@@ -223,7 +237,7 @@
       "name": "How many contractors will bid on my job?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "We don’t promise a specific number. Your project goes out to contractors serving your area, and each one decides whether to quote it. Not every contractor quotes on every job, but competition is the whole point — every bid you do receive is built from the same measurements, so you can compare them line for line."
+        "text": "Your project goes out to contractors serving your area, and each one decides whether to quote it. Not every contractor quotes on every job, but competition is the whole point — every bid you do receive is built from the same measurements, so you can compare them line for line."
       }
     },
     {
@@ -263,7 +277,7 @@
       "name": "Do I have to pick a shingle color before signing?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "No — for most roofing and gutter projects you don't need to choose a color before signing. We walk you through color selection after your professional measurements are complete. For retail siding projects, color selection happens earlier (before bids are released) because contractors need to know the exact product and profile to price accurately. Either way, we'll prompt you at the right moment and show you your options directly on your home using our 3D design tools."
+        "text": "No — for most roofing and gutter projects you don't need to choose a color before signing. We walk you through color selection after your professional measurements are complete. For retail siding projects, color selection happens earlier (before bids are released) because contractors need to know the exact product and profile to price accurately. Either way, we'll prompt you at the right moment."
       }
     },
     {
@@ -296,6 +310,14 @@
       "acceptedAnswer": {
         "@type": "Answer",
         "text": "There is no fee to use Otter Quotes. Homeowners pay as little as $22.63 for an aerial roof report, or nothing if they provide a copy of their insurance estimate. The fee is rebated in full when a job is completed through the platform; our Terms list the conditions. The report helps contractors provide more accurate bids."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What is the referral fee when a job completes?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "$200 when a homeowner you refer completes a project of $10,000 or more. $50 on the same terms for referrals from partners you recruit. It is a flat referral fee, not a percentage. The Partner Agreement (section A4.4) lists the states where no fee is earned. Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees."
       }
     }
   ]
@@ -360,6 +382,16 @@
         </div>
       </div>
 
+      <div class="faq-item">
+        <button class="faq-question">
+          How does Otter Quotes compare with Thumbtack or Angi?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>We wrote two side-by-side guides: <a href="/guides/otter-quotes-vs-thumbtack.html">Otter Quotes vs Thumbtack</a> and <a href="/guides/otter-quotes-vs-angi.html">Otter Quotes vs Angi</a>.</p>
+        </div>
+      </div>
+
       <div class="faq-category">The Process</div>
 
       <div class="faq-item">
@@ -401,7 +433,33 @@
           <span class="faq-arrow">&#x25BC;</span>
         </button>
         <div class="faq-answer">
-          <p>We don&rsquo;t promise a specific number. Your project goes out to contractors serving your area, and each one decides whether to quote it. Not every contractor quotes on every job, but competition is the whole point &mdash; every bid you do receive is built from the same measurements, so you can compare them line for line.</p>
+          <p>Your project goes out to contractors serving your area, and each one decides whether to quote it. Not every contractor quotes on every job, but competition is the whole point &mdash; every bid you do receive is built from the same measurements, so you can compare them line for line.</p>
+        </div>
+      </div>
+
+      <div class="faq-item oq-guarantee" hidden>
+        <button class="faq-question">
+          Our 100-hour guarantee
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>This is Otter Quotes' promise to you. Contractors set their own bids and prices, and your contract is with the contractor you choose, not with us.</p>
+          <p>When you buy measurements for a home that qualifies, we promise two things:</p>
+          <ol>
+              <li><strong>Three bids in 100 hours.</strong> If fewer than three different local contractors bid on your job within 100 hours of your payment, we pay you double what you paid for your measurements.</li>
+              <li><strong>A better offer, beaten.</strong> If you get a written offer for the same work from another contractor before you choose a contractor, send us a copy. Contractors bidding on your job have 48 hours from when you send it to beat it. If none does, we pay you double what you paid for your measurements.</li>
+          </ol>
+          <p><strong>The terms</strong></p>
+          <ul>
+              <li>The 100 hours start when your card is charged and run straight through, nights, weekends and holidays included.</li>
+              <li>A local contractor is any contractor who bids on your job through Otter Quotes. A bid counts when a contractor submits a price on Otter Quotes for the work in your measurement report. Bids from the same company count once.</li>
+              <li>Your job must stay open for bids for the full 100 hours. If you choose a contractor or close your job before then, the three-bid promise ends.</li>
+              <li>A better offer must be in writing, dated, name the contractor, and come from a contractor licensed where your state or city requires it, and insured. "Same work" means the same measurements, materials and warranties as your report; "better" means a lower total price for that work. We compare the offer to your report and may confirm it with the contractor.</li>
+              <li>The guarantee covers a home you own, for a job type Otter Quotes accepts, on homes the measurement page marks as covered before you pay. One guarantee payment per home, ever.</li>
+              <li>If we can't produce your measurements, we refund what you paid and the guarantee doesn't apply.</li>
+              <li>You get either a guarantee payment or the refund you would otherwise get when you complete a job on Otter Quotes, not both. If we make a guarantee payment, that completion refund does not also apply.</li>
+              <li>To make a claim, reply to the order confirmation email. Within 10 business days of a claim that meets these terms, we refund your measurement charge to the card you paid with and send you the same amount again.</li>
+          </ul>
         </div>
       </div>
 
@@ -465,7 +523,7 @@
           <span class="faq-arrow">&#x25BC;</span>
         </button>
         <div class="faq-answer">
-          <p>No &mdash; for most roofing and gutter projects you don't need to choose a color before signing. We walk you through color selection after your professional measurements are complete. For retail siding projects, color selection happens earlier (before bids are released) because contractors need to know the exact product and profile to price accurately. Either way, we'll prompt you at the right moment and show you your options directly on your home using our 3D design tools.</p>
+          <p>No &mdash; for most roofing and gutter projects you don't need to choose a color before signing. We walk you through color selection after your professional measurements are complete. For retail siding projects, color selection happens earlier (before bids are released) because contractors need to know the exact product and profile to price accurately. Either way, we'll prompt you at the right moment.</p>
         </div>
       </div>
 
@@ -498,6 +556,19 @@
         </button>
         <div class="faq-answer">
           <p>Otter Quotes's referral program is designed for transparency. Referral fees are paid for completed jobs, not for steering clients. However, we recommend reviewing the program terms with your compliance team.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          What is the referral fee when a job completes?
+          <span class="faq-arrow">&#x25BC;</span>
+        </button>
+        <div class="faq-answer">
+          <p>$200 when a homeowner you refer completes a project of $10,000 or more. $50 on the same terms for referrals from partners you recruit. It is a flat referral fee, not a percentage. The <a href="/partner-agreement.html">Partner Agreement</a> (section A4.4) lists the states where no fee is earned.</p>
+          <p class="referral-fee-disclaimer" style="color: var(--slate, #94A3B8); font-size: 0.85rem; margin-top: 0.75rem; line-height: 1.5;">
+            Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
+          </p>
         </div>
       </div>
 
@@ -550,12 +621,45 @@
 <footer id="site-footer"></footer>
 
 <script>
+  // gh-3680: an open answer's max-height is its own scrollHeight, so no answer is clipped however long it grows. An inline
+  // max-height beats any .open rule in the stylesheet (the 500px cap and the scoped .oq-guarantee one), so the CSS caps no
+  // longer apply once this runs. Transitions stay ON: the target height is measured on an off-screen clone in its final
+  // (open) layout, then set inline, so the 0.4s max-height animation still plays. Closing clears the inline value so the
+  // CSS 0 applies. Open items are re-fitted on resize, orientationchange, load and web-font load.
+  function measureFaqAnswer(item) {
+    var clone = item.cloneNode(true);
+    clone.classList.add('open');
+    clone.removeAttribute('hidden');
+    clone.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;pointer-events:none;transition:none;width:' + item.getBoundingClientRect().width + 'px';
+    var cans = clone.querySelector('.faq-answer');
+    cans.style.transition = 'none';
+    cans.style.maxHeight = 'none';
+    item.parentNode.appendChild(clone);
+    var h = cans.scrollHeight;
+    item.parentNode.removeChild(clone);
+    return h;
+  }
+  function fitFaqAnswer(item, willOpen) {
+    var ans = item.querySelector('.faq-answer');
+    if (!ans) return;
+    if (willOpen === false || (willOpen === undefined && !item.classList.contains('open'))) { ans.style.maxHeight = ''; return; }
+    ans.style.maxHeight = measureFaqAnswer(item) + 'px';
+  }
+  function fitOpenFaqAnswers() {
+    document.querySelectorAll('.faq-item.open').forEach(function(item) { fitFaqAnswer(item); });
+  }
   document.querySelectorAll('.faq-question').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var item = btn.closest('.faq-item');
+      var opening = !item.classList.contains('open');
+      fitFaqAnswer(item, opening);  // measure and set the target first, with no layout read in between, so the transition runs from 0
       item.classList.toggle('open');
     });
   });
+  window.addEventListener('resize', fitOpenFaqAnswers);
+  window.addEventListener('orientationchange', fitOpenFaqAnswers);
+  window.addEventListener('load', fitOpenFaqAnswers);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitOpenFaqAnswers);
 </script>
 <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
@@ -601,5 +705,6 @@
   });
 })();
 </script>
+    <script src="/js/guarantee-gate.js" defer></script>
 </body>
 </html>

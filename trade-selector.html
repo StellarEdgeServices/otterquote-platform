@@ -428,6 +428,13 @@
       position: relative;
     }
 
+    /* gh-3757 / D-375: Windows is not offered yet -- card is non-selectable. Badge
+       rules copied from contractor-auto-bids.html (.badge / .badge.coming-soon). */
+    .badge { display: inline-block; padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+    .badge.coming-soon { background: #E5E7EB; color: #6B7280; }
+    .trade-card[aria-disabled="true"] { opacity: 0.7; cursor: not-allowed; }
+    .trade-card[aria-disabled="true"]:hover { border-color: rgba(255,255,255,0.06); box-shadow: none; transform: none; }
+
     .trade-card:hover {
       border-color: var(--amber);
       box-shadow: 0 0 24px rgba(224, 123, 0, 0.1);
@@ -871,10 +878,11 @@
               <h3>Gutters</h3>
             </div>
 
-            <div class="trade-card" id="trade-windows">
+            <div class="trade-card" id="trade-windows" aria-disabled="true">
               <div class="trade-checkbox">✓</div>
               <div class="trade-icon">🪟</div>
               <h3>Windows</h3>
+              <span class="badge coming-soon">Coming Soon</span>
             </div>
           </div>
 
@@ -1132,11 +1140,13 @@
     TRADES.forEach(trade => {
       const card = document.getElementById(`trade-${trade}`);
       card.addEventListener('click', () => {
+        if (card.getAttribute('aria-disabled') === 'true') return; // gh-3757 / D-375: not selectable
         toggleTrade(trade, card);
       });
     });
 
     function toggleTrade(trade, card) {
+      if (card && card.getAttribute('aria-disabled') === 'true') return; // gh-3757 / D-375
       if (state.trades.includes(trade)) {
         state.trades = state.trades.filter(t => t !== trade);
         card.classList.remove('selected');
