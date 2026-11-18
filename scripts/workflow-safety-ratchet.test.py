@@ -276,6 +276,25 @@ with tempfile.TemporaryDirectory() as _tmp:
         capture_output=True, text=True)
 check("REFUTER 3: ...and says UNMEASURED out loud", "UNMEASURED" in proc_empty.stdout, True)
 
+# RULE 4 (PR #3797) -- every `uses:` must be pinned to a full commit SHA. Each bad
+# shape sits beside its negative control, inline, so deleting a fixture cannot
+# quietly un-test it.
+def pin_rules(text):
+    return [f.rule for f in wsr.unpinned_findings("inline.yml", text)]
+
+SHA = "11d5960a326750d5838078e36cf38b85af677262"
+check("rule 4: a tag ref (@v4) FAILS", pin_rules("jobs:\n  t:\n    steps:\n      - uses: actions/checkout@v4\n"), ["UNPINNED_ACTION"])
+check("rule 4: a branch ref (@main) FAILS", pin_rules("    steps:\n      - uses: owner/repo@main\n"), ["UNPINNED_ACTION"])
+check("rule 4: a 39-hex ref FAILS", pin_rules("      - uses: owner/repo@" + SHA[:-1] + "\n"), ["UNPINNED_ACTION"])
+check("rule 4: a job-level reusable workflow tag ref FAILS", pin_rules("jobs:\n  t:\n    uses: owner/repo/.github/workflows/x.yml@v1\n"), ["UNPINNED_ACTION"])
+check("rule 4: a docker tag ref FAILS", pin_rules("      - uses: docker://alpine:3.19\n"), ["UNPINNED_ACTION"])
+check("rule 4: a quoted tag ref FAILS", pin_rules("      - uses: 'actions/checkout@v4'\n"), ["UNPINNED_ACTION"])
+check("rule 4: a full 40-hex SHA with a trailing tag comment PASSES", pin_rules("      - uses: actions/checkout@" + SHA + " # v4\n"), [])
+check("rule 4: a local action PASSES", pin_rules("      - uses: ./.github/actions/x\n"), [])
+check("rule 4: a docker sha256 digest PASSES", pin_rules("      - uses: docker://alpine@sha256:" + "0" * 64 + "\n"), [])
+check("rule 4: a commented-out unpinned uses PASSES", pin_rules("      # - uses: actions/checkout@v4\n"), [])
+check("rule 4: applies to a non-PRT workflow too (plain pull_request)", pin_rules("on: pull_request\njobs:\n  t:\n    steps:\n      - uses: actions/checkout@v4\n"), ["UNPINNED_ACTION"])
+
 # The live tree must be green, or this ratchet ships red on arrival.
 findings, applicable, skipped, files = wsr.scan_root(HERE.parent)
 check("live .github/workflows scan reports no findings", [f.rule for f in findings], [])

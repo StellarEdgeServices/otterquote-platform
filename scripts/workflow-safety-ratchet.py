@@ -83,6 +83,16 @@ on the safe one -- run `--self-test`)
   3. SECRETS_IN_PRT     any `secrets.<NAME>` other than `GITHUB_TOKEN`
                         referenced by a pull_request_target workflow.
 
+  4. UNPINNED_ACTION    (PR #3797; applies to EVERY workflow, not only
+                        pull_request_target ones) a `uses: owner/repo@ref`
+                        whose ref is not a full 40-hex commit SHA. A tag or
+                        branch can be re-pointed by whoever controls the
+                        action repo; the SHA cannot. Keep the tag as a trailing
+                        `# v4` comment so Dependabot can still propose bumps.
+                        Local `uses: ./path` refs and `docker://...@sha256:<64
+                        hex>` digests are exempt. A new unpinned `uses:` fails
+                        CI here.
+
 Allowlisted as structurally non-injectable scalars: see SAFE_EVENT_EXPRS.
 `github.event.pull_request.head.sha` is deliberately NOT allowlisted -- it is
 attacker-chosen even though it is hex, and checking it out is rule 1's
@@ -149,6 +159,11 @@ EXPR_RE = re.compile(r"\$\{\{([^}]*)\}\}")
 ENV_EXPR_RE = re.compile(r"\$\{\{\s*env\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
 SECRET_RE = re.compile(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)")
 NAME_VALUE_RE = re.compile(r"^\s*(?:-\s*)?name\s*:")
+
+# Rule 4 (PR #3797): every `uses:` must name a full commit SHA.
+USES_RE = re.compile(r"^\s*(?:-\s*)?uses\s*:\s*['\"]?([^\s'\"#]+)")
+SHA_REF_RE = re.compile(r"@[0-9a-fA-F]{40}$")
+DOCKER_DIGEST_RE = re.compile(r"^docker://\S+@sha256:[0-9a-fA-F]{64}$")
 
 
 class Finding:
@@ -218,6 +233,28 @@ def secret_findings(file_rel: str, text: str):
                 f"`secrets.{m.group(1)}` referenced in a pull_request_target workflow -- "
                 "a stranger-triggered job must not hold a named repository secret",
             ))
+    return out
+
+
+def unpinned_findings(file_rel: str, text: str):
+    """Rule 4 -- UNPINNED_ACTION. Text-based on purpose: it must not depend on
+    the YAML parser, on the trigger, or on a step being well-formed."""
+    out = []
+    for n, line in enumerate(strip_comments(text).split("\n"), 1):
+        m = USES_RE.match(line)
+        if not m:
+            continue
+        ref = m.group(1)
+        if ref.startswith("./") or ref.startswith("../"):
+            continue  # local action / local reusable workflow: nothing to repoint
+        if SHA_REF_RE.search(ref) or DOCKER_DIGEST_RE.match(ref):
+            continue
+        out.append(Finding(
+            "UNPINNED_ACTION", file_rel, f"line {n}",
+            f"`uses: {ref}` is not pinned to a full 40-hex commit SHA -- resolve the tag with "
+            "`git ls-remote https://github.com/<owner>/<repo>.git <tag>` (peeled `^{}` line if annotated), "
+            "write `uses: <owner>/<repo>@<sha> # <tag>`",
+        ))
     return out
 
 
@@ -427,9 +464,11 @@ def scan_root(root: Path):
     findings, applicable, skipped = [], [], []
     for p in files:
         rel = str(p.relative_to(root))
-        f, is_prt = evaluate(rel, p.read_text(encoding="utf-8", errors="replace"))
+        txt = p.read_text(encoding="utf-8", errors="replace")
+        f, is_prt = evaluate(rel, txt)
         (applicable if is_prt else skipped).append(rel)
         findings.extend(f)
+        findings.extend(unpinned_findings(rel, txt))  # rule 4: every workflow, PRT or not
     return findings, applicable, skipped, files
 
 
@@ -473,6 +512,24 @@ def self_test(root: Path):
         if not ok:
             failures += 1
 
+    # Rule 4 (PR #3797): each bad shape beside its negative control.
+    pin_expectations = [
+        ("unpinned_action_bad.yml", True),
+        ("pinned_action_good.yml", False),
+    ]
+    for name, expect_bad in pin_expectations:
+        p = fx / name
+        if not p.exists():
+            print(f"  FAIL  MISSING FIXTURE {name}")
+            failures += 1
+            continue
+        found = unpinned_findings(name, p.read_text(encoding="utf-8"))
+        ok = bool(found) == expect_bad
+        detail = f"{len(found)} UNPINNED_ACTION finding(s)" if found else "no findings"
+        print(f"  {'PASS' if ok else 'FAIL'}  {name:44s} {detail}")
+        if not ok:
+            failures += 1
+
     # UNMEASURED must fail as loudly as a finding (gh-1419 precedent).
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
@@ -482,7 +539,7 @@ def self_test(root: Path):
     if not ok:
         failures += 1
 
-    print(f"self-test: {len(expectations) + 1 - failures} passed | {failures} failed")
+    print(f"self-test: {len(expectations) + len(pin_expectations) + 1 - failures} passed | {failures} failed")
     return EXIT_FAIL if failures else EXIT_PASS
 
 
@@ -523,7 +580,8 @@ def main(argv=None):
 
     if not findings:
         say("PASS -- no pull_request_target workflow checks out fork-controlled state, "
-            "interpolates it into a code sink, or holds a named secret.")
+            "interpolates it into a code sink, or holds a named secret, and every `uses:` "
+            "is pinned to a full commit SHA.")
         return EXIT_PASS
 
     say(f"FAIL -- {len(findings)} finding(s):")
