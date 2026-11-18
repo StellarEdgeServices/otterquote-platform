@@ -724,9 +724,22 @@ function insurerScopeRows(insurance: any) {
 }
 
 // ========== RETAIL SCOPE OF WORK PDF ==========
+// [gh-3751] Is siding part of THIS bid? Explicit declarations.siding.state wins ('included' = yes; extra / not_offered / other = no). With no siding
+// declaration, fall back to the bid's own per-trade record the bid forms already write: per_trade_breakdown.siding > 0 (only priced trades are stored),
+// or value_adds.wizard_trade_queue includes 'siding'. No signal at all = false (fail-safe: never name siding the bid did not carry).
+function sowSidingOnBid(declarations, va, perTradeBreakdown) {
+  const st = declarations && typeof declarations === "object" ? declarations.siding?.state : undefined;
+  if (st != null) return st === "included";
+  if (perTradeBreakdown && typeof perTradeBreakdown === "object" && Number(perTradeBreakdown.siding) > 0) return true;
+  const q = va?.wizard_trade_queue;
+  return Array.isArray(q) && q.some((t) => String(t).toLowerCase() === "siding");
+}
 function generateRetailScopeOfWorkPdf(params) {
-  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, declarations, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, fundingType, pitchBands, twoStoryAdder, insurance, warrantySnapshot, workmanshipWarrantyYears } = params;
+  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, declarations, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, fundingType, pitchBands, twoStoryAdder, insurance, warrantySnapshot, workmanshipWarrantyYears, perTradeBreakdown } = params;
   const va = valueAdds || {};
+  // [gh-3751] On a roofing+siding claim, siding is named (Trade(s) line, SIDING heading, scope line) only when the bid carries it. Single-trade claims unchanged.
+  const sowMultiRS = (trades || []).some((t) => t.toLowerCase().includes("roof")) && (trades || []).some((t) => t.toLowerCase().includes("siding"));
+  const sowSidingNamed = !sowMultiRS || sowSidingOnBid(declarations, va, perTradeBreakdown);
   const pc = projectConfirmation || null;
   // ---- Page geometry ----
   const PAGE_W = 612, PAGE_H = 792;
@@ -870,7 +883,7 @@ function generateRetailScopeOfWorkPdf(params) {
   y -= 16;
   addText(LEFT_X, y, 12, "F2", "CONTRACT SUMMARY");
   y -= 16;
-  const tradeLabel = (trades || []).map((t) => t.charAt(0).toUpperCase() + t.slice(1)).join(", ") || "See below";
+  const tradeLabel = (trades || []).filter((t) => sowSidingNamed || !t.toLowerCase().includes("siding")).map((t) => t.charAt(0).toUpperCase() + t.slice(1)).join(", ") || "See below";
   addText(LEFT_X, y, 10, "F2", "Trade(s):");
   addText(160, y, 10, "F1", tradeLabel);
   y -= 14;
@@ -1410,7 +1423,7 @@ function generateRetailScopeOfWorkPdf(params) {
       y -= 8;
     }
   }
-  if (hasSiding) {
+  if (hasSiding && sowSidingNamed) {
     ensure(20);
     addText(LEFT_X, y, 11, "F2", "SIDING");
     y -= 14;
@@ -1556,8 +1569,14 @@ function generateRetailScopeOfWorkPdf(params) {
     }
     if (includedLines.length > 0) {
       const scopeLabels = [];
-      if (hasRoofing) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
-      if (hasSiding) scopeLabels.push(TRADE_SCOPE_LABEL.siding);
+      // [gh-3751] On a multi-trade claim (roofing AND siding) "Complete siding installation" / "Complete roofing installation" print only from the bid,
+      // never because the claim lists the trade. Siding: sowSidingOnBid (explicit declarations.siding.state overrides; else per_trade_breakdown.siding > 0
+      // or wizard_trade_queue includes siding; no signal omits it). Roofing: the anchor trade, so it prints unless explicitly declared 'extra' /
+      // 'not_offered' / 'other'. A single-trade claim is unchanged. Existing strings only; no new wording.
+      const multiTrade = hasRoofing && hasSiding;
+      const rState = declValid ? declarations.roofing?.state : undefined;
+      if (hasRoofing && (!multiTrade || rState == null || rState === "included")) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
+      if (hasSiding && (!multiTrade || sowSidingNamed)) scopeLabels.push(TRADE_SCOPE_LABEL.siding);
       // [gh-3747] "Complete gutter installation" prints only when the BID shows gutter work included, never because the claim lists the
       // trade. Signal, in order: declarations.gutters.state ('included' prints; 'not_offered' / 'extra' / 'other' never print); with no
       // gutters declaration, an included option on the bid ('5inch_included' / '6inch_included'), or, on a gutters-only job (the only
@@ -1572,7 +1591,8 @@ function generateRetailScopeOfWorkPdf(params) {
         if (gutterIncludedByBid) scopeLabels.push(TRADE_SCOPE_LABEL.gutters);
       }
       // [gh-3747] The roofing fallback is for a claim with no recognised trade; a gutters claim whose bid excludes gutters must not become "Complete roofing installation".
-      if (scopeLabels.length === 0 && !hasGutters) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
+      // [gh-3751] Likewise for a roofing/siding claim whose bid declares neither: the fallback is only for a claim with no recognised trade.
+      if (scopeLabels.length === 0 && !hasGutters && !hasRoofing && !hasSiding) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
       ensure(20 + (scopeLabels.length + includedLines.length) * 11);
       addText(LEFT_X, y, 12, "F2", "Included in Your Price - $" + Number(contractPrice || 0).toLocaleString("en-US"));
       y -= 14;
@@ -2381,6 +2401,7 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
         contractPrice,
         estimatedStartDate,
         valueAdds: bidData?.value_adds ?? null,
+        perTradeBreakdown: bidData?.per_trade_breakdown ?? null,
         declarations: bidDeclarations,
         bidBrand,
         deckingPricePerSheet: bidData?.decking_price_per_sheet ?? null,
