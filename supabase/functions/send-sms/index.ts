@@ -30,6 +30,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { authorizeServiceOnly, resolveTwilioSender } from "./sender-selection.ts";
 import { isSmsPaused } from "../_shared/sms-pause.ts";
 import { smsSuppressionRefusal } from "../_shared/sms-suppression.ts";
+import { quietHoursRefusal } from "../_shared/sms-quiet-hours.ts";
 
 const FUNCTION_NAME = "send-sms";
 
@@ -125,6 +126,14 @@ serve(async (req) => {
     // Distinct error codes (number_suppressed 403 / suppression_lookup_failed 503); fails closed; logs the last 4 digits only.
     const suppressionRefusal = await smsSuppressionRefusal(supabase, to, corsHeaders, FUNCTION_NAME);
     if (suppressionRefusal) return suppressionRefusal;
+
+    // ========== QUIET HOURS (gh-3762 / #3726 item 5) ==========
+    // No text outside 08:00-20:00 (Ben's ruling on PR #3774) in the RECIPIENT'S local time (timezone + state of the contractor who owns the number;
+    // an unknown or unreadable recipient gets the all-US restrictive window). Refusal is a distinct code,
+    // outside_quiet_hours (403), carrying next_allowed_at; it never reaches Twilio and does not spend rate-limit budget.
+    // The ONLY exemption is the owner's own alert number (OWNER_ALERT_NUMBER_E164, exact match inside the helper).
+    const quietRefusal = await quietHoursRefusal(supabase, to, corsHeaders, FUNCTION_NAME);
+    if (quietRefusal) return quietRefusal;
 
     // ========== RATE LIMIT CHECK ==========
     const { data: rateLimitResult, error: rlError } = await supabase.rpc(
