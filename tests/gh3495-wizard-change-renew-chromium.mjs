@@ -66,7 +66,7 @@ window.supabase = { createClient: function () {
   }
   return {
     from: builder,
-    rpc: function () { return Promise.resolve({ data: null, error: null }); },
+    rpc: function (name) { if (name === 'quotes_platform_fee_for') return Promise.resolve({ data: [{ fee_pct: 5, fee_basis: 'bid_amount' }], error: null }); return Promise.resolve({ data: null, error: null }); }, // gh-3497: the rate is read through this rpc (platform_fee_config is admin-only under RLS)
     functions: { invoke: function () { return Promise.resolve({ data: null, error: null }); } },
     storage: { from: function () { return { upload: function () { return Promise.resolve({ data: null, error: null }); }, getPublicUrl: function () { return { data: { publicUrl: '' } }; }, createSignedUrl: function () { return Promise.resolve({ data: null, error: null }); } }; } },
     channel: function () { var c = { on: function () { return c; }, subscribe: function () { return c; } }; return c; },
@@ -92,7 +92,7 @@ function rows(trades, renew, breakdown, valueAdds) {
   return {
     bidder_claim_summary: { id: 'claim-1', trades, siding_bid_released_at: '2026-01-02T00:00:00Z', job_type: 'retail', funding_type: 'cash', damage_type: 'hail', location_city: 'Zionsville', location_zip: '46077', selected_contractor_id: null, is_test: true },
     contractors: { id: 'contractor-1', user_id: 'user-1', status: 'active', attestation_accepted_at: '2026-01-01T00:00:00Z', coi_file_url: 'coi.pdf', coi_expires_at: future, company_name: 'Test Roofing', phone: '8445550100', trades: ['roofing', 'gutters', 'siding'], service_area_description: 'Indiana', cpa_version: CPA_VERSION, needs_cpa_reattestation: false },
-    quotes: { id: 'quote-1', claim_id: 'claim-1', contractor_id: 'contractor-1', status: 'submitted', bid_status: renew ? 'expired' : 'active', total_price: total, fee_amount: Math.round(total * 5) / 100, expires_at: new Date(Date.now() + (renew ? -1 : 10) * 864e5).toISOString(), scope_summary: '{}', value_adds: valueAdds, notes: '', auto_renew: true, per_trade_breakdown: breakdown },
+    quotes: { id: 'quote-1', claim_id: 'claim-1', contractor_id: 'contractor-1', status: 'submitted', bid_status: renew ? 'expired' : 'active', total_price: total, platform_fee_pct: 5, fee_percentage: 5, fee_amount: Math.round(total * 5) / 100, expires_at: new Date(Date.now() + (renew ? -1 : 10) * 864e5).toISOString(), scope_summary: '{}', value_adds: valueAdds, notes: '', auto_renew: true, per_trade_breakdown: breakdown },
   };
 }
 

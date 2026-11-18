@@ -82,6 +82,8 @@ const FAKE_SUPABASE = `
   function rpc(name) {
     t.calls.push(name);
     const s = { signal: null };
+    // gh-3497: the rate is read through rpc('quotes_platform_fee_for') (platform_fee_config is admin-only under RLS).
+    if (name === 'quotes_platform_fee_for') return Promise.resolve({ data: [{ fee_pct: 5, fee_basis: 'bid_amount' }], error: null });
     if (name === 'renew_quote') {
       // Like the real RPC: it refuses a bid that is already live (55000), and a hung call can still complete server-side (t.renewLands).
       t.renewCalls = (t.renewCalls || 0) + 1;
