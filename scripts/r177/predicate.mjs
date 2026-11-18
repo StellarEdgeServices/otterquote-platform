@@ -326,7 +326,7 @@ export function detectLegalMoneyContent(diffText) {
       htmlBlock = 'text';
       if (file && PREDICATE_FILES.has(file) && !seenGate.has(file)) {
         seenGate.add(file);
-        out.push({ file, line: 0, rule: 'predicate-file', side: '+', text: `(any change to ${file} requires a signed approval under the pubkey currently on main)` });
+        out.push({ file, line: 0, rule: 'predicate-file', side: '+', text: `(any change to ${file} is legal/money content: the PR needs a LEGAL-READ: PASS comment and an R-177 SIGNED comment, both naming the head sha)` });
       }
       continue;
     }
