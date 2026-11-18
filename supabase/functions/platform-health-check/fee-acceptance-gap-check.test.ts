@@ -97,3 +97,38 @@ Deno.test("a standing gap does not re-alert every tick; new gap, daily reminder 
   assertEquals(shouldAlertOnGap({ count: 0, gaps: [] }, null, T).alert, false);
   assertEquals(shouldAlertOnGap(r, "2026-11-10T17:45:00Z", { ...T, force: true }).alert, true);
 });
+
+// ---- gh-3755: rescinded rows do not cover a live bid (follow-up to #3752) ----
+// Fixtures are fee_acceptances ROWS, run through the same partition index.ts Phase 6 uses.
+import { partitionAcceptanceRows } from "./fee-acceptance-gap-check.ts";
+const RESC = "2026-11-10T10:00:00Z";
+const run = (quotes: QuoteRow[], rows: { bid_id: string; rescinded_at?: string | null }[]) => {
+  const { accepted, rescinded } = partitionAcceptanceRows(rows);
+  return findQuotesMissingAcceptance(quotes, accepted, OPTS, rescinded);
+};
+
+Deno.test("gh-3755: a live quote whose only fee_acceptances row is rescinded is a gap", () => {
+  const r = run([q("reopened", { bid_status: "active" })], [{ bid_id: "reopened", rescinded_at: RESC }]);
+  assertEquals(r.count, 1);
+  assertEquals(r.gaps[0].id, "reopened");
+  assertEquals(run([q("n", { bid_status: null })], [{ bid_id: "n", rescinded_at: RESC }]).count, 1);
+});
+
+Deno.test("gh-3755: a rescinded row plus a fresh unrescinded row is not a gap", () => {
+  const r = run([q("reopened", { bid_status: "active" })], [
+    { bid_id: "reopened", rescinded_at: RESC },
+    { bid_id: "reopened", rescinded_at: null },
+  ]);
+  assertEquals(r.count, 0);
+});
+
+Deno.test("gh-3755: an ordinary quote is unchanged (row present silent, no row fires)", () => {
+  assertEquals(run([q("a", { bid_status: "active" })], [{ bid_id: "a", rescinded_at: null }]).count, 0);
+  assertEquals(run([q("b", { bid_status: "active" })], []).count, 1);
+  assertEquals(run([q("c")], [{ bid_id: "c" }]).count, 0);
+});
+
+Deno.test("gh-3755: a withdrawn (cancelled) bid with its rescinded row is not a gap; with no row at all it still is", () => {
+  assertEquals(run([q("w", { bid_status: "cancelled" })], [{ bid_id: "w", rescinded_at: RESC }]).count, 0);
+  assertEquals(run([q("w", { bid_status: "cancelled" })], []).count, 1);
+});

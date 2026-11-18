@@ -29,3 +29,11 @@ Deno.test("Phase 6 excludes renewed quotes in the query and throttles through sh
   assertStringIncludes(body, "shouldAlertOnGap(");
   assertStringIncludes(body, "if (alert && throttle.alert)");
 });
+
+Deno.test("gh-3755: Phase 6 reads rescinded_at and bid_status and splits rescinded rows from live ones", () => {
+  const start = src.indexOf("async function runFeeAcceptanceGapCheck");
+  const body = src.slice(start, src.indexOf("// MAIN HANDLER", start));
+  assertStringIncludes(body, '.select("bid_id, rescinded_at")');
+  assertStringIncludes(body, "bid_status");
+  assertStringIncludes(body, "findQuotesMissingAcceptance(quotes, accepted, opts, rescinded)");
+});
