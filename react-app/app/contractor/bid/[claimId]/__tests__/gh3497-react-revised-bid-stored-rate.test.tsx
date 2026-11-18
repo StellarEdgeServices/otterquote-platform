@@ -123,6 +123,8 @@ for (const mode of ['change', 'renew'] as const) {
       await waitFor(() => expect(h.state.updates.length).toBe(1));
       expect(h.state.updates[0].platform_fee_pct).toBe(5);
       expect(h.state.stored[0].fee_amount).toBe(1250);
+      // gh-3490: the submit now also writes its fee_acceptances row after the UPDATE. Let it finish inside this test, or it lands in the next test's counts.
+      await waitFor(() => expect(container.textContent).toMatch(mode === 'renew' ? /Bid renewed/ : /Bid updated/));
     });
   });
 }
