@@ -1,0 +1,8 @@
+# Rule 4 (PR #3797 REVIEW: FAIL 6991245114) negative control: a quoted "uses" key hides from a line regex.
+name: unpinned action quoted key bad
+on: pull_request
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    steps:
+      - "uses": actions/checkout@v4

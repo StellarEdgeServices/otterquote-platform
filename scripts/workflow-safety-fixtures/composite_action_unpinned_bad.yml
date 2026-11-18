@@ -1,0 +1,16 @@
+# Fixture for rule 4 (PR #3797 REVIEW: FAIL 6992571275). Stands in for
+# .github/actions/<x>/action.yml (named differently so the tree scan, which reads
+# every action.yml, does not trip on this deliberately bad file).
+# A workflow calls this through `uses: ./.github/actions/x`, which rule 4 exempts at
+# the call site -- so the unpinned `uses:` INSIDE it must itself FAIL.
+name: bad composite
+description: unpinned third-party actions inside a composite action
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+    - "uses": actions/setup-python@v5
+    - { name: flow, uses: actions/cache@v4 }
+    - uses: docker://alpine:3.19
+    - run: echo ok
+      shell: bash

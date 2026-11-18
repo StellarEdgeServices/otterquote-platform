@@ -1,0 +1,8 @@
+# Rule 4 (PR #3797) negative control: a tag-pinned action MUST be flagged.
+name: unpinned action bad
+on: pull_request
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
