@@ -1,9 +1,9 @@
 -- gh-3374: move the server-held contractor AGREEMENT version label from 'v2-2026-10' to 'v3-2026-11' (D-366 / D-138 Amendment 2).
--- STATUS (gh-1438, as of 2026-11-04): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-19): APPLIED (ledger version 20261105180745, name gh3374_agreement_version_bump; applied 2026-11-05T18:07:45Z from PR #3405 head 3b0ab9de, recorded on #3374 comment 6665505964; the lines below are the pre-apply drafting record)
 -- EVIDENCE: drafted on main 33f7c8ae. No production read was made by the author (no database connection, by instruction). The target table
 -- public.agreement_version_current and its seed 'v2-2026-10' come from supabase/migrations_drafts/gh3073_agreement_version_stamp.sql, which the #3073
 -- thread records as APPLIED 2026-10-29 (ledger 20261029190222, comment 6505803035); the applier re-reads that first (pre-flight).
--- REPO COPY: none
+-- REPO COPY: this file, supabase/migrations/20261105180745_gh3374_agreement_version_bump.sql (filed under its ledger version; header lines differ from the applied bytes, SQL body unchanged)
 -- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3B path (migration-author, R-177 pair, R-097 24-hour notice, a recorded apply).
 -- Rollback: supabase/migrations_rollbacks/gh3374_agreement_version_bump_rollback.sql
 -- Pre-flight: supabase/migrations_rollbacks/gh3374_agreement_version_bump_pre-flight.md  Proof (BEGIN ... ROLLBACK, throwaway Postgres): supabase/tests/gh3374_agreement_version_bump_proof.sql
