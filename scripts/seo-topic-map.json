@@ -66,6 +66,9 @@
         "guides/competitive-roof-bids-vs-single-referral",
         "guides/online-roof-bids-no-salesperson",
         "guides/drip-edge-roof-replacement-bid",
+        "guides/roof-ventilation-in-your-replacement-bid",
+        "guides/roof-valleys-open-closed-woven-in-your-bid",
+        "guides/roofing-nails-vs-staples-in-your-bid",
         "blog/aerial-roof-measurement-reports",
         "guides/roof-replacement-cost-breakdown",
         "guides/otter-quotes-vs-thumbtack",
@@ -87,7 +90,10 @@
         "guides/hail-damaged-windows-gutters-bids",
         "guides/window-replacement-bid-comparison",
         "guides/window-replacement-cost-factors",
-        "guides/exterior-projects-one-contractor-or-separate-bids"
+        "guides/exterior-projects-one-contractor-or-separate-bids",
+        "guides/window-replacement-in-winter-what-your-bid-should-say",
+        "guides/siding-installation-in-cold-weather-what-to-ask",
+        "guides/gutter-installation-in-winter-what-to-ask"
       ]
     },
     {
@@ -385,6 +391,48 @@
       "/guides/manufacturer-backed-roof-warranties.html",
       "/guides/roof-change-orders-hidden-damage.html"
     ],
+    "guides/roofing-nails-vs-staples-in-your-bid": [
+      "/guides/roof-wind-ratings-explained.html",
+      "/guides/manufacturer-backed-roof-warranties.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/roof-replacement-cost-breakdown.html"
+    ],
+    "guides/roof-valleys-open-closed-woven-in-your-bid": [
+      "/guides/roof-flashing-replacement-bid.html",
+      "/guides/roof-underlayment-ice-barrier-bid.html",
+      "/guides/manufacturer-backed-roof-warranties.html",
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roof-replacement-cost-breakdown.html"
+    ],
+    "guides/roof-ventilation-in-your-replacement-bid": [
+      "/guides/roof-bid-comparison-worksheet.html",
+      "/guides/roofing-contract-checklist-before-you-sign.html",
+      "/guides/roof-replacement-cost-breakdown.html",
+      "/guides/manufacturer-backed-roof-warranties.html",
+      "/guides/roof-change-orders-hidden-damage.html"
+    ],
+    "guides/window-replacement-in-winter-what-your-bid-should-say": [
+      "/guides/window-replacement-bid-comparison.html",
+      "/guides/window-replacement-cost-factors.html",
+      "/guides/roof-replacement-in-cold-weather.html",
+      "/guides/exterior-projects-one-contractor-or-separate-bids.html",
+      "/guides/hail-damaged-windows-gutters-bids.html"
+    ],
+    "guides/siding-installation-in-cold-weather-what-to-ask": [
+      "/guides/siding-bid-comparison.html",
+      "/guides/siding-replacement-cost-factors.html",
+      "/guides/exterior-projects-one-contractor-or-separate-bids.html",
+      "/guides/roof-replacement-in-cold-weather.html",
+      "/guides/hail-damaged-siding-matching-bids.html"
+    ],
+    "guides/gutter-installation-in-winter-what-to-ask": [
+      "/guides/gutter-bid-comparison.html",
+      "/guides/gutter-replacement-cost-factors.html",
+      "/guides/roof-ventilation-in-your-replacement-bid.html",
+      "/guides/roof-underlayment-ice-barrier-bid.html",
+      "/guides/hail-damaged-windows-gutters-bids.html"
+    ],
     "guides/roof-bid-much-lower-than-the-others": [
       "/guides/roof-bid-comparison-worksheet.html",
       "/blog/why-roofers-quote-different-prices.html",
@@ -454,6 +502,20 @@
       "/blog/roof-shingle-warranty-tiers-explained.html",
       "/guides/how-to-read-contractor-estimate.html",
       "/guides/roof-bid-much-lower-than-the-others.html"
+    ],
+    "guides/otter-quotes-vs-thumbtack": [
+      "/guides/online-roof-bids-no-salesperson.html",
+      "/guides/competitive-roof-bids-vs-single-referral.html",
+      "/guides/otter-quotes-vs-angi.html",
+      "/guides/how-to-choose-contractor.html",
+      "/guides/roof-bid-comparison-worksheet.html"
+    ],
+    "guides/otter-quotes-vs-angi": [
+      "/guides/online-roof-bids-no-salesperson.html",
+      "/guides/competitive-roof-bids-vs-single-referral.html",
+      "/guides/otter-quotes-vs-thumbtack.html",
+      "/guides/how-to-choose-contractor.html",
+      "/guides/roof-bid-comparison-worksheet.html"
     ],
     "guides/siding-bid-comparison": [
       "/guides/how-to-choose-contractor.html",

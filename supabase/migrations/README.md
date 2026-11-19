@@ -18,6 +18,8 @@ branch is created. That means:
 
 Applied files whose guard only passes against production (a body md5, a row-count) are the exception: they are filed in `supabase/migrations_applied_manually/` under their real applied timestamp even when a ledger row exists (gh1763 ruling, PR #2233 comment 5850353019; gh3239, gh3229 and gh3245_customer_fee, PR #3479), so a fresh replay is not blocked.
 
+A version filed under `supabase/migrations_applied_manually/` must also be listed in `applied_no_repo_file_versions` in `supabase/migrations-reconciliation-baseline.json` (and counted in `counts.applied_no_repo_file`): the reconciliation ratchet scans only `supabase/migrations/`, so a version in `applied_versions` alone reads as "applied and filed, now missing" and fails the check.
+
 Sibling directories (added 2026-08-07, issue #385):
 
 - `supabase/migrations_rollbacks/` — rollback scripts and pre-flight

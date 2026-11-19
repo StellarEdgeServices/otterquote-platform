@@ -1,4 +1,4 @@
-<!-- STATUS (gh-1438, as of 2026-10-19): NOT APPLIED -->
+<!-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261020164812, name gh2864_quotes_signature_stamps_platform_only; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record) -->
 <!-- FILE ROLE: pre-flight of set gh2864_quotes_signature_stamps_platform_only (the STATUS is the set's; it describes the forward migration) -->
 <!-- EVIDENCE: drafted with read-only database access (trigger list, guard definition, signed-stamp census, 2026-10-19); the writer search below was run on main b5579ee -->
 <!-- REPO COPY: none -->

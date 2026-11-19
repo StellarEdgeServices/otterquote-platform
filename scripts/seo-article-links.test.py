@@ -120,6 +120,11 @@ try:
     d, _, _ = fresh(mapping(bad)); dirs.append(d)
     code, out = run(d, "check")
     check("REJECTED: map entry with four links instead of five exits 1", code == 1 and "five distinct links" in out)
+    # regression: a topic member with no 'related' entry must be REPORTED, never crash with a KeyError
+    d, _, _ = fresh(); dirs.append(d)
+    mp = d / "scripts" / "seo-topic-map.json"; mj = json.loads(mp.read_text()); del mj["related"]["guides/a1"]; mp.write_text(json.dumps(mj))
+    code, out = run(d, "check")
+    check("REJECTED: topic member with no 'related' entry exits 1 without a traceback", code == 1 and "no 'related' entry" in out and "Traceback" not in out)
 finally:
     for d in dirs: shutil.rmtree(d, ignore_errors=True)
 

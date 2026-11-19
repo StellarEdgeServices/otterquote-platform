@@ -211,10 +211,6 @@ verify_jwt = false
 # Auth enforced in-handler (homeowner ownership). Pin false (matches deployed v44).
 verify_jwt = false
 
-[functions.resend-hover-link]
-# Auth gated in-handler. Pin false (matches deployed v41).
-verify_jwt = false
-
 [functions.send-adjuster-email]
 # Auth gated in-handler. Pin false (matches deployed v57).
 verify_jwt = false
@@ -539,6 +535,12 @@ verify_jwt = true
 # verifies X-Twilio-Signature (HMAC-SHA1 of the exact webhook URL + params with TWILIO_AUTH_TOKEN) and fails closed.
 # Pinned at creation. NOT DEPLOYED.
 [functions.twilio-sms-optout]
+verify_jwt = false
+
+# #3761 (child of #3726): staff action recording a contractor SMS opt-out / opt-in reversal in the twilio-sms-optout store.
+# verify_jwt=false at the gateway; the caller's JWT is verified IN the handler by requireAdmin (is_admin_email) before any
+# read or write. Sends nothing. Pinned at creation. NOT DEPLOYED.
+[functions.admin-sms-optout]
 verify_jwt = false
 
 # gh-3051: ga4-mp-conversion is called only by the notify_ga4_mp_conversion() pg_net triggers (leads / claims AFTER INSERT; there is no

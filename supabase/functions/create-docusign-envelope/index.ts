@@ -303,9 +303,100 @@ function pitchRangeLabel(pitches) {
   return `${nums[0]}/12-${nums[nums.length - 1]}/12`;
 }
 
+// [gh-1315 hardening] contractors.pitch_bands is contractor-supplied JSON that
+// renders on a signed contract exhibit. Treat it as hostile until it proves its
+// shape. Anything malformed in ANY part returns null, and the callers then use
+// XACTIMATE_FALLBACK_BANDS (the documented fallback), never a repaired guess.
+// Self-contained (no module-level constants) so the tests can lift each function.
+function isPlainPitchObject(v) {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+}
+
+function isValidPitchLabel(label) {
+  // Printable ASCII letters, digits and a small punctuation set; no markup
+  // characters, no control characters, 1-60 chars, not blank.
+  return typeof label === "string" && label.length >= 1 && label.length <= 60
+    && label.trim().length > 0 && /^[A-Za-z0-9 .,()\/%&'+-]+$/.test(label);
+}
+
+function isValidPitchRate(rate) {
+  return rate === null || rate === undefined
+    || (typeof rate === "number" && Number.isFinite(rate) && rate >= 0 && rate <= 10000);
+}
+
+function sanitizeBands(bands) {
+  if (!Array.isArray(bands) || bands.length < 1 || bands.length > 12) return null;
+  const out = [];
+  for (const b of bands) {
+    if (!isPlainPitchObject(b)) return null;
+    for (const k of Object.keys(b)) {
+      if (k !== "label" && k !== "min_over_12" && k !== "max_over_12" && k !== "rate_per_square") return null;
+    }
+    if (!isValidPitchLabel(b.label)) return null;
+    const lo = b.min_over_12 === undefined ? null : b.min_over_12;
+    const hi = b.max_over_12 === undefined ? null : b.max_over_12;
+    for (const e of [lo, hi]) {
+      if (e !== null && !(typeof e === "number" && Number.isInteger(e) && e >= 0 && e <= 24)) return null;
+    }
+    if (lo !== null && hi !== null && lo > hi) return null;
+    if (!isValidPitchRate(b.rate_per_square)) return null;
+    out.push({
+      label: b.label,
+      min_over_12: lo,
+      max_over_12: hi,
+      rate_per_square: b.rate_per_square === undefined ? null : b.rate_per_square,
+    });
+  }
+  // No two bands may overlap (first-match-wins would otherwise decide the price
+  // silently). An open end is -Infinity / +Infinity.
+  for (let i = 0; i < out.length; i++) {
+    for (let j = i + 1; j < out.length; j++) {
+      const aLo = out[i].min_over_12 === null ? -Infinity : out[i].min_over_12;
+      const aHi = out[i].max_over_12 === null ? Infinity : out[i].max_over_12;
+      const bLo = out[j].min_over_12 === null ? -Infinity : out[j].min_over_12;
+      const bHi = out[j].max_over_12 === null ? Infinity : out[j].max_over_12;
+      if (aLo <= bHi && bLo <= aHi) return null;
+    }
+  }
+  return out;
+}
+
+function sanitizeTwoStoryAdder(adder) {
+  if (adder === null || adder === undefined) return null;
+  if (!isPlainPitchObject(adder)) return false;
+  for (const k of Object.keys(adder)) {
+    if (k !== "label" && k !== "rate_per_square") return false;
+  }
+  if (adder.label !== undefined && !isValidPitchLabel(adder.label)) return false;
+  if (!isValidPitchRate(adder.rate_per_square)) return false;
+  return { label: adder.label === undefined ? null : adder.label, rate_per_square: adder.rate_per_square === undefined ? null : adder.rate_per_square };
+}
+
+// Whole-object validation of the contractors.pitch_bands column value. Returns
+// { bands, twoStoryAdder } or null (null => no rate card => documented fallback).
+// A rate card whose bands are fine but whose two_story_adder is malformed is
+// rejected as a whole: a partly-valid card is not trusted.
+function sanitizePitchBands(raw) {
+  if (raw === null || raw === undefined) return null;
+  if (!isPlainPitchObject(raw)) return null;
+  for (const k of Object.keys(raw)) {
+    if (k !== "source" && k !== "bands" && k !== "two_story_adder") return null;
+  }
+  if (raw.source !== "contractor_rate_card") return null;
+  const bands = sanitizeBands(raw.bands);
+  if (bands === null) return null;
+  const adder = sanitizeTwoStoryAdder(raw.two_story_adder);
+  if (adder === false) return null;
+  return { bands, twoStoryAdder: adder };
+}
+
 function bucketByBands(areasByPitch, bands) {
   const list = Array.isArray(areasByPitch) ? areasByPitch : [];
-  const useBands = (Array.isArray(bands) && bands.length > 0) ? bands : XACTIMATE_FALLBACK_BANDS;
+  // [gh-1315] Validate here too, so no caller can feed unvalidated bands in.
+  const checkedBands = sanitizeBands(bands);
+  const useBands = checkedBands !== null ? checkedBands : XACTIMATE_FALLBACK_BANDS;
   const buckets = useBands.map((b) => ({ band: b, squares: 0, pitches: [] }));
   let unbandedSquares = 0;
   const unbandedPitches = [];
@@ -334,7 +425,7 @@ function bucketByBands(areasByPitch, bands) {
     unbandedSquares: round2(unbandedSquares),
     unbandedPitches,
     unparsedSquares: round2(unparsedSquares),
-    usedFallback: !(Array.isArray(bands) && bands.length > 0),
+    usedFallback: checkedBands === null,
   };
 }
 
@@ -569,6 +660,28 @@ function mergeSowSelections(pc: any, claim: any, bidBrand?: string | null) {
   if (nb && ns && !nb.includes(ns) && !ns.includes(nb)) return pc ?? null;
   return { ...(pc ?? {}), shingleColor: name, shingleManufacturer: brand || pc?.shingleManufacturer || null };
 }
+// [gh-3288 / D-407 7/8, default 1] The drip-edge line comes from the contractor's bid, never from a homeowner colour. Options are the
+// contractor-bid-form.html dripEdgeOption values; "oop" reuses the SOW's existing "see Contingencies" phrasing (the price lives there, once).
+// "na" / missing prints nothing.
+function sowDripEdgeFromBid(va: any): string | null {
+  const opt = va?.drip_edge?.option;
+  const map: Record<string, string> = {
+    included_black: "Black - Included",
+    included_white: "White - Included",
+    included_custom: "Custom color / special order - Included",
+    oop: "Homeowner out-of-pocket option - see Contingencies",
+  };
+  return typeof opt === "string" && Object.prototype.hasOwnProperty.call(map, opt) ? map[opt] : null;
+}
+// [gh-3719 / D-407, default 1] A "see Contingencies" cross-reference prints only when the document really carries the matching Contingencies row.
+// The row (see "Extra Charges If Needed" below) exists only for declarations[key] = { state: "extra", rate_cents > 0 }. Bids from before gh-1377 and
+// every React-form bid carry no declarations, so no row is built for them. Same predicate as the declExtra loop below; no wording.
+function sowContingenciesRowExists(declarations: any, key: string): boolean {
+  if (!declarations || typeof declarations !== "object") return false;
+  const decl = declarations[key];
+  if (!decl || typeof decl !== "object") return false;
+  return decl.state === "extra" && Number(decl.rate_cents) > 0;
+}
 function resolveMeasurementShape(measurements: any) {
   const m = measurements || {};
   const LINEAR = ["ridgeHipLf", "valleyLf", "rakeLf", "eaveLf", "dripEdgeLf", "stepFlashingLf", "flashingLf"];
@@ -611,9 +724,22 @@ function insurerScopeRows(insurance: any) {
 }
 
 // ========== RETAIL SCOPE OF WORK PDF ==========
+// [gh-3751] Is siding part of THIS bid? Explicit declarations.siding.state wins ('included' = yes; extra / not_offered / other = no). With no siding
+// declaration, fall back to the bid's own per-trade record the bid forms already write: per_trade_breakdown.siding > 0 (only priced trades are stored),
+// or value_adds.wizard_trade_queue includes 'siding'. No signal at all = false (fail-safe: never name siding the bid did not carry).
+function sowSidingOnBid(declarations, va, perTradeBreakdown) {
+  const st = declarations && typeof declarations === "object" ? declarations.siding?.state : undefined;
+  if (st != null) return st === "included";
+  if (perTradeBreakdown && typeof perTradeBreakdown === "object" && Number(perTradeBreakdown.siding) > 0) return true;
+  const q = va?.wizard_trade_queue;
+  return Array.isArray(q) && q.some((t) => String(t).toLowerCase() === "siding");
+}
 function generateRetailScopeOfWorkPdf(params) {
-  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, declarations, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, fundingType, pitchBands, twoStoryAdder, insurance, warrantySnapshot, workmanshipWarrantyYears } = params;
+  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, declarations, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, fundingType, pitchBands, twoStoryAdder, insurance, warrantySnapshot, workmanshipWarrantyYears, perTradeBreakdown } = params;
   const va = valueAdds || {};
+  // [gh-3751] On a roofing+siding claim, siding is named (Trade(s) line, SIDING heading, scope line) only when the bid carries it. Single-trade claims unchanged.
+  const sowMultiRS = (trades || []).some((t) => t.toLowerCase().includes("roof")) && (trades || []).some((t) => t.toLowerCase().includes("siding"));
+  const sowSidingNamed = !sowMultiRS || sowSidingOnBid(declarations, va, perTradeBreakdown);
   const pc = projectConfirmation || null;
   // ---- Page geometry ----
   const PAGE_W = 612, PAGE_H = 792;
@@ -757,7 +883,7 @@ function generateRetailScopeOfWorkPdf(params) {
   y -= 16;
   addText(LEFT_X, y, 12, "F2", "CONTRACT SUMMARY");
   y -= 16;
-  const tradeLabel = (trades || []).map((t) => t.charAt(0).toUpperCase() + t.slice(1)).join(", ") || "See below";
+  const tradeLabel = (trades || []).filter((t) => sowSidingNamed || !t.toLowerCase().includes("siding")).map((t) => t.charAt(0).toUpperCase() + t.slice(1)).join(", ") || "See below";
   addText(LEFT_X, y, 10, "F2", "Trade(s):");
   addText(160, y, 10, "F1", tradeLabel);
   y -= 14;
@@ -1109,7 +1235,9 @@ function generateRetailScopeOfWorkPdf(params) {
       { num: ++rowNum, item: "Roof/exhaust vents", qty: "field", unit: "EA", basis: "Field-verified", notes: "Reset or replace" },
       // [C3 2026-08-27] Rates removed -- decking and full re-deck are stated once,
       // in CONTINGENCIES AND CONDITIONAL PRICING, each beside its trigger.
-      { num: ++rowNum, item: "Decking replacement allowance", qty: "as req'd", unit: "SHEET", basis: "-", notes: "See Contingencies" },
+      // [gh-3743] The "See Contingencies" reference prints only when the Contingencies table carries the decking row (a bid decking price > 0).
+      // The bid form stores an entered 0 as null; with no decking price the line keeps its quantity and unit and drops the reference.
+      { num: ++rowNum, item: "Decking replacement allowance", qty: "as req'd", unit: "SHEET", basis: "-", notes: Number(deckingPricePerSheet) > 0 ? "See Contingencies" : "" },
     );
     const derivedCols = [
       { key: "num", x: colNum, chars: 4 },
@@ -1175,10 +1303,14 @@ function generateRetailScopeOfWorkPdf(params) {
       addText(160, y, 10, "F1", shingleStr);
       y -= 14;
     }
-    if (pc?.dripEdgeColor) {
+    // [gh-3288 / D-407 7/8, default 1 accepted by Dustin 2026-11-05 (issue comment 6668572026)] Drip edge is no longer a homeowner choice
+    // (nothing collects pc.dripEdgeColor): the SOW prints what the contractor's bid says (value_adds.drip_edge). No new contract wording.
+    // [gh-3719] The out-of-pocket value is a "see Contingencies" reference: with no matching Contingencies row it is omitted.
+    const dripEdgeLine = (va?.drip_edge?.option === "oop" && !sowContingenciesRowExists(declarations, "drip_edge")) ? null : sowDripEdgeFromBid(va);
+    if (dripEdgeLine) {
       ensure(14);
-      addText(60, y, 10, "F2", "Drip Edge Color:");
-      addText(160, y, 10, "F1", pc.dripEdgeColor);
+      addText(60, y, 10, "F2", "Drip Edge:");
+      addText(160, y, 10, "F1", dripEdgeLine);
       y -= 14;
     }
     if (va.underlayment?.type) {
@@ -1218,7 +1350,9 @@ function generateRetailScopeOfWorkPdf(params) {
     // Legacy shapes are still read so historical bids keep rendering.
     const chim = va.chimney ?? va.chimney_flashing ?? va.chimney_reflash ?? null;
     const chimOption = chim?.option && chim.option !== "na" ? String(chim.option) : null;
-    if (chimOption) {
+    // [gh-3719] "oop" / "replace_oop" are "see Contingencies" references: printed only when the Contingencies chimney row exists.
+    const chimIsRef = chimOption === "oop" || chimOption === "replace_oop";
+    if (chimOption && !(chimIsRef && !sowContingenciesRowExists(declarations, "chimney"))) {
       const cfMap = { reuse: "Reuse existing", replace: "Replace - Included", included: "Included", oop: "Homeowner out-of-pocket option - see Contingencies", replace_oop: "Homeowner out-of-pocket option - see Contingencies" };
       ensure(14);
       addText(60, y, 10, "F2", "Chimney Flashing:");
@@ -1231,34 +1365,18 @@ function generateRetailScopeOfWorkPdf(params) {
       addText(160, y, 10, "F1", va.skylights === "reflash" ? "Reflash" : "Replace");
       y -= 14;
     }
-    if (pc?.valleyType) {
-      ensure(14);
-      addText(60, y, 10, "F2", "Valleys:");
-      addText(160, y, 10, "F1", pc.valleyType === "closed" ? "Closed Cut" : "Open / Metal");
-      y -= 14;
-    }
-    if (pc?.gutterGuards) {
-      ensure(14);
-      addText(60, y, 10, "F2", "Gutter Guards:");
-      addText(160, y, 10, "F1", pc.gutterGuards);
-      y -= 14;
-    }
-    if (pc?.satelliteDish && pc.satelliteDish !== "NONE") {
-      const satMap = { "REMOVE-TRASH": "Remove & discard", "REMOVE-RESET": "Remove & reset after install" };
-      ensure(14);
-      addText(60, y, 10, "F2", "Satellite Dish:");
-      addText(160, y, 10, "F1", satMap[pc.satelliteDish] || String(pc.satelliteDish));
-      y -= 14;
-    }
+    // [gh-3719 / D-407, default 1 on #3288] Valleys, gutter guards and satellite dish used to print here from the retired project-confirmation
+    // data (pc.valleyType / pc.gutterGuards / pc.satelliteDish). Nothing collects them any more, and on a legacy claim they put homeowner choices
+    // the contractor never bid into the signed SOW. Removed: the SOW prints from the bid or omits. The bid's own gutter guards still print under
+    // GUTTERS (va.gutter_guards); the bid's valleys appear as the line item "Closed-cut valley".
     y -= 8;
   }
   // [C3 2026-08-27] The standalone SECOND-LAYER TEAR-OFF CONTINGENCY heading is
   // gone. It is now row 1 of CONTINGENCIES AND CONDITIONAL PRICING, which is
   // where every price-changing condition lives.
   if (hasGutters) {
-    ensure(20);
-    addText(LEFT_X, y, 11, "F2", "GUTTERS");
-    y -= 14;
+    // [gh-3743] Collect the GUTTERS lines first; the heading prints only when at least one line does.
+    const gutterLines: { label: string; value: string }[] = [];
     if (va.gutters?.option) {
       const go = va.gutters.option;
       let gutterDesc = String(go);
@@ -1268,29 +1386,44 @@ function generateRetailScopeOfWorkPdf(params) {
       else if (go.includes("5inch") && go.includes("additional")) gutterDesc = '5" Gutters - homeowner out-of-pocket, see Contingencies';
       else if (go.includes("6inch") && go.includes("additional")) gutterDesc = '6" Gutters - homeowner out-of-pocket, see Contingencies';
       else if (go === "none") gutterDesc = "No gutter work included";
-      ensure(14);
-      addText(60, y, 10, "F2", "Gutters:");
-      addText(160, y, 10, "F1", gutterDesc);
-      y -= 14;
+      // [gh-3745] "No gutter work included" is false only when 'none' is the bid form's DEFAULT, not the contractor's choice: a gutters-only bid
+      // has no gutterOption radio, so the form saves 'none' (and no declarations). On a roofing/siding+gutters bid the radio exists and "Not
+      // included / N/A" is a real declaration (declarations.gutters.state === "not_offered"); the exclusion is kept. Omit the line only when
+      // 'none' is not declared not_offered AND (the job is gutters-only OR the bid carries gutter trade fields). No replacement wording
+      // (printing the bid's gutter scope is a separate Tier C decision).
+      const gutterNoneIsDefault = go === "none"
+        && !(declarations && typeof declarations === "object" && declarations.gutters?.state === "not_offered")
+        && ((!hasRoofing && !hasSiding)
+          || va.gutter_5inch_price != null || va.gutter_6inch_price != null || va.gutters?.linearFootage != null);
+      // [gh-3719] The out-of-pocket value is a "see Contingencies" reference: with no matching Contingencies gutters row it is omitted.
+      const gutterIsRef = gutterDesc.includes("see Contingencies");
+      if (!(gutterIsRef && !sowContingenciesRowExists(declarations, "gutters")) && !gutterNoneIsDefault) {
+        gutterLines.push({ label: "Gutters:", value: gutterDesc });
+      }
     }
     if (va.gutter_guards) {
       const gg = va.gutter_guards;
       if (gg.pricing_on_request) {
-        ensure(14);
-        addText(60, y, 10, "F2", "Gutter Guards:");
-        addText(160, y, 10, "F1", "Available - pricing on request");
-        y -= 14;
+        gutterLines.push({ label: "Gutter Guards:", value: "Available - pricing on request" });
       } else if (gg.mesh_oop || gg.screw_in_oop) {
         // [C3 2026-08-27] Amounts moved to CONTINGENCIES AND CONDITIONAL PRICING.
-        ensure(14);
-        addText(60, y, 10, "F2", "Gutter Guards:");
-        addText(160, y, 10, "F1", "Available at homeowner cost - see Contingencies");
-        y -= 14;
+        gutterLines.push({ label: "Gutter Guards:", value: "Available at homeowner cost - see Contingencies" });
       }
     }
-    y -= 8;
+    if (gutterLines.length > 0) {
+      ensure(20);
+      addText(LEFT_X, y, 11, "F2", "GUTTERS");
+      y -= 14;
+      for (const gl of gutterLines) {
+        ensure(14);
+        addText(60, y, 10, "F2", gl.label);
+        addText(160, y, 10, "F1", gl.value);
+        y -= 14;
+      }
+      y -= 8;
+    }
   }
-  if (hasSiding) {
+  if (hasSiding && sowSidingNamed) {
     ensure(20);
     addText(LEFT_X, y, 11, "F2", "SIDING");
     y -= 14;
@@ -1436,10 +1569,30 @@ function generateRetailScopeOfWorkPdf(params) {
     }
     if (includedLines.length > 0) {
       const scopeLabels = [];
-      if (hasRoofing) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
-      if (hasSiding) scopeLabels.push(TRADE_SCOPE_LABEL.siding);
-      if (hasGutters) scopeLabels.push(TRADE_SCOPE_LABEL.gutters);
-      if (scopeLabels.length === 0) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
+      // [gh-3751] On a multi-trade claim (roofing AND siding) "Complete siding installation" / "Complete roofing installation" print only from the bid,
+      // never because the claim lists the trade. Siding: sowSidingOnBid (explicit declarations.siding.state overrides; else per_trade_breakdown.siding > 0
+      // or wizard_trade_queue includes siding; no signal omits it). Roofing: the anchor trade, so it prints unless explicitly declared 'extra' /
+      // 'not_offered' / 'other'. A single-trade claim is unchanged. Existing strings only; no new wording.
+      const multiTrade = hasRoofing && hasSiding;
+      const rState = declValid ? declarations.roofing?.state : undefined;
+      if (hasRoofing && (!multiTrade || rState == null || rState === "included")) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
+      if (hasSiding && (!multiTrade || sowSidingNamed)) scopeLabels.push(TRADE_SCOPE_LABEL.siding);
+      // [gh-3747] "Complete gutter installation" prints only when the BID shows gutter work included, never because the claim lists the
+      // trade. Signal, in order: declarations.gutters.state ('included' prints; 'not_offered' / 'extra' / 'other' never print); with no
+      // gutters declaration, an included option on the bid ('5inch_included' / '6inch_included'), or, on a gutters-only job (the only
+      // job whose form saves gutter trade fields), a bid gutter price or footage. Existing string only; no new wording.
+      if (hasGutters) {
+        const gState = declValid ? declarations.gutters?.state : undefined;
+        const gOpt = va.gutters?.option;
+        const gutterTradeFields = va.gutter_5inch_price != null || va.gutter_6inch_price != null || va.gutters?.linearFootage != null;
+        const gutterIncludedByBid = gState === "included"
+          || (gState == null && (gOpt === "5inch_included" || gOpt === "6inch_included"
+            || (!hasRoofing && !hasSiding && gutterTradeFields)));
+        if (gutterIncludedByBid) scopeLabels.push(TRADE_SCOPE_LABEL.gutters);
+      }
+      // [gh-3747] The roofing fallback is for a claim with no recognised trade; a gutters claim whose bid excludes gutters must not become "Complete roofing installation".
+      // [gh-3751] Likewise for a roofing/siding claim whose bid declares neither: the fallback is only for a claim with no recognised trade.
+      if (scopeLabels.length === 0 && !hasGutters && !hasRoofing && !hasSiding) scopeLabels.push(TRADE_SCOPE_LABEL.roofing);
       ensure(20 + (scopeLabels.length + includedLines.length) * 11);
       addText(LEFT_X, y, 12, "F2", "Included in Your Price - $" + Number(contractPrice || 0).toLocaleString("en-US"));
       y -= 14;
@@ -1498,12 +1651,14 @@ function generateRetailScopeOfWorkPdf(params) {
     // homeowner needs to know that part of the roof is unpriced.
     if (hasRoofing && Array.isArray(pitchBands) && pitchBands.length > 0 && m.areasByPitch) {
       const split = bucketByBands(m.areasByPitch, pitchBands);
-      for (const b of split.buckets) {
+      // [gh-1315] Malformed bands fall back to the platform default, which has no
+      // rate card behind it: render no contractor-rate rows from it.
+      for (const b of (split.usedFallback ? [] : split.buckets)) {
         if (b.band.rate_per_square != null) {
           add(`Steep-slope charge - ${b.band.label}`, `${b.squares} SQ measured in this slope band`, `${fmt$(b.band.rate_per_square)} per square`);
         }
       }
-      if (split.unbandedSquares > 0) {
+      if (!split.usedFallback && split.unbandedSquares > 0) {
         add("Slope above priced bands", `${split.unbandedSquares} SQ measured at ${split.unbandedPitches.join(", ")}, above every band on the contractor's rate card`, "Quote required before work begins");
       }
     }
@@ -2246,6 +2401,7 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
         contractPrice,
         estimatedStartDate,
         valueAdds: bidData?.value_adds ?? null,
+        perTradeBreakdown: bidData?.per_trade_breakdown ?? null,
         declarations: bidDeclarations,
         bidBrand,
         deckingPricePerSheet: bidData?.decking_price_per_sheet ?? null,
@@ -2265,8 +2421,10 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
         // lands this resolves to undefined and bucketByBands falls back to the
         // Xactimate-aligned 7/12 threshold, which is the documented behaviour,
         // not a silent default.
-        pitchBands: contractorData?.pitch_bands?.bands ?? null,
-        twoStoryAdder: contractorData?.pitch_bands?.two_story_adder ?? null,
+        // [gh-1315] The column is contractor-supplied JSON: validate the whole
+        // object once, here; null on anything malformed (documented fallback).
+        pitchBands: sanitizePitchBands(contractorData?.pitch_bands)?.bands ?? null,
+        twoStoryAdder: sanitizePitchBands(contractorData?.pitch_bands)?.twoStoryAdder ?? null,
         // [Part 2 2026-08-28] The insurer's own estimate, for the `insurance`
         // Exhibit A shape. parse-loss-sheet writes all five of these; no new
         // parser is needed. Every one is nullable and a retail claim carries

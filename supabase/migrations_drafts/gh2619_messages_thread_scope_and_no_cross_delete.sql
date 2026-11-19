@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-14): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261019192135, name gh2619_messages_thread_scope_and_no_cross_delete; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh2619_messages_thread_scope_and_no_cross_delete (second piece of #2619; round 2 after REVIEW: FAIL 6169771197)
 -- EVIDENCE: CLOSE-REVIEW: FAIL comment 6168484981 on #2619 (2026-10-14T12:36:14Z) names two gaps still visible in the live pg_policies text after gh2619_messages_selected_contractor_only (ledger 20261014112047); proof on a throwaway Postgres is supabase/tests/gh2619_messages_thread_scope_proof.sql
 -- REPO COPY: none. After a recorded apply, file this forward SQL under its real ledger version in supabase/migrations/; rollback is supabase/migrations_rollbacks/gh2619_messages_thread_scope_and_no_cross_delete_rollback.sql; pre-flight is supabase/migrations_rollbacks/gh2619_messages_thread_scope_and_no_cross_delete_pre-flight.md

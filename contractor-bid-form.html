@@ -1429,12 +1429,6 @@
           <div class="form-card-title" style="margin-bottom:4px;">📷 Home Photos</div>
           <div id="hoverPhotosAddress" style="font-size:0.82rem;color:#64748B;"></div>
         </div>
-        <div id="hoverPhotos3DBtn" style="display:none;">
-          <a id="hoverPhotos3DLink" href="#" target="_blank" rel="noopener"
-             style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:#0EA5E9;color:#fff;font-size:0.82rem;font-weight:600;border-radius:var(--radius-sm);text-decoration:none;transition:background 0.15s;">
-            Open 3D Property Design ↗
-          </a>
-        </div>
       </div>
       <!-- Loading state -->
       <div id="hoverPhotosLoading" style="text-align:center;padding:var(--sp-6) 0;color:#6B7280;font-size:0.875rem;">
@@ -2119,7 +2113,7 @@
         <!-- ── Siding Trade Section (retail siding jobs) ── -->
         <div class="form-section" id="sidingTradeSection" style="grid-column: 1 / -1; display: none;">
           <h3 style="font-size:1.1rem;margin-bottom:var(--sp-2);">🧱 Siding Project Details</h3>
-          <p style="font-size:0.85rem;color:#6B7280;margin-bottom:var(--sp-6);">This is a retail siding project. The homeowner designs their siding in our property design tool, so you can see exactly what product and color was selected before bidding.</p>
+          <p style="font-size:0.85rem;color:#6B7280;margin-bottom:var(--sp-6);">This is a retail siding project.</p>
 
           <!-- Design Summary Panel -->
           <div id="hoverDesignPanel" style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--radius-md);padding:var(--sp-5);margin-bottom:var(--sp-8);">
@@ -2129,15 +2123,6 @@
               <div>
                 <strong style="color:#0369A1;font-size:1rem;">🏠 Homeowner's Property Design</strong>
                 <div id="hoverJobAddressLine" style="font-size:0.8rem;color:#64748B;margin-top:2px;"></div>
-              </div>
-              <div style="display:flex;align-items:center;gap:var(--sp-3);">
-                <div id="hoverDesignLink" style="display:none;">
-                  <a id="hoverJobLink" href="#" target="_blank" rel="noopener"
-                     style="color:#0284C7;font-size:0.8rem;font-weight:600;text-decoration:none;border:1px solid #BAE6FD;padding:4px 10px;border-radius:var(--radius-sm);background:#fff;">
-                    View property design ↗
-                  </a>
-                </div>
-                <button type="button" id="loadHoverSidingDataBtn" class="btn-sm primary" onclick="loadHoverSidingData()" style="font-size:0.8rem;">Load Design Data</button>
               </div>
             </div>
 
@@ -2149,14 +2134,6 @@
 
             <!-- Material & labor table (populated by JS) -->
             <div id="hoverDesignContent" style="font-size:0.875rem;color:#6B7280;">
-              Click <strong>Load Design Data</strong> to fetch the homeowner's product and color selections.
-            </div>
-
-            <!-- No-data help prompt (shown when no material list exists) -->
-            <div id="hoverNoDesignHelp" style="display:none;margin-top:var(--sp-4);background:#FFF7ED;border:1px solid #FED7AA;border-radius:var(--radius-sm);padding:var(--sp-3) var(--sp-4);font-size:0.82rem;color:#92400E;">
-              <strong>No product selections on file.</strong> The homeowner's professional measurements are available but they haven't selected specific products yet.
-              To see brand, color, and exact quantities here, the homeowner needs to open their property design and create a material list with their desired products.
-              In the meantime, wall area and square count appear above.
             </div>
 
           </div>
@@ -2293,7 +2270,7 @@
       </div>
 
       <div class="fee-info">
-        <div>ℹ A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission.</div>
+        <div>ℹ A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission. If you pay by card, a processing fee of 2.9% + $0.30 is added to the platform fee shown above, as stated in Section 7.7 of your Contractor Partner Agreement.</div>
       </div>
     </div>
 
@@ -2471,6 +2448,7 @@
     let currentClaim = null;
     let currentContractor = null;
     let changeBidMode = false;
+    let _reopenAcceptanceDoneId = null; // gh-3750: the withdrawn bid whose fresh fee_acceptances row this form has already written
     let renewMode = false; // true when ?renew=true is in the URL (expired bid renewal — D-150)
     let existingQuote = null;
     let claimRcv = null; // RCV from parsed line items or rcv_amount column
@@ -2988,12 +2966,12 @@
       // gh-1873: the measurement vendor is retired; no back-end call is made.
       const btn        = document.getElementById('loadHoverSidingDataBtn');
       const content    = document.getElementById('hoverDesignContent');
-      const noDataHelp = document.getElementById('hoverNoDesignHelp');
-      if (!currentClaim || !btn || !content) return;
-      btn.disabled = true;
-      btn.textContent = 'Unavailable';
+      if (!currentClaim || !content) return;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Unavailable';
+      }
       content.innerHTML = '<span style="color:#6B7280;">Vendor siding design data is no longer available. Use the homeowner\'s uploaded measurements, or enter your own.</span>';
-      if (noDataHelp) noDataHelp.style.display = 'none';
     }
 
     // ── Job-Type Customizations ──
@@ -3418,6 +3396,10 @@
 
           if (!error && data) {
             data.carrier_profiles = data.carrier_profile_name ? { carrier_name: data.carrier_profile_name } : null;
+            // gh-3783 (D-375): windows is never shown, pre-ticked or priced for a contractor.
+            ['trades', 'selected_trades'].forEach(function (k) {
+              if (Array.isArray(data[k])) data[k] = data[k].filter(function (t) { return String(t).toLowerCase() !== 'windows'; });
+            });
             currentClaim = data;
 
             // Determine RCV for bid type selector
@@ -4421,7 +4403,7 @@
       const feeInfoEl = document.querySelector('.fee-info');
       if (feeInfoEl) {
         // #487: uniform note — the fee basis is the bid amount for every job type.
-        feeInfoEl.innerHTML = '<div>ℹ A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission.</div>';
+        feeInfoEl.innerHTML = '<div>ℹ A platform fee applies to each job won through Otter Quotes. The exact fee for your job — shown as a percentage and dollar amount — is displayed before you submit your bid. Fees may vary by job type and value. You will never be charged a fee that was not displayed to you at submission. If you pay by card, a processing fee of 2.9% + $0.30 is added to the platform fee shown above, as stated in Section 7.7 of your Contractor Partner Agreement.</div>';
       }
     }
 
@@ -4861,6 +4843,10 @@
     // Id of the filed bid whose fee_acceptances row and confirmation email this page has already sent, so a retry that finds
     // that same bid finishes on the success screen without writing them a second time.
     var _bidPostWritesDoneId = null;
+    // gh-3498 (F1): a renew_quote call went unanswered; the next attempt reads the bid status again before calling it.
+    var _renewRpcTimedOut = false;
+    // gh-3498 (F-A): id of the quote whose renew_quote call already succeeded; if the field UPDATE then times out, the retry must not call the RPC again (it refuses a live bid, 55000).
+    var _renewDoneQuoteId = null;
     // GA4 events are best-effort: a missing or failing gtag (blocked, or ga-gate not loaded) must never turn a filed bid into
     // an error (REVIEW 6743281622 finding 1; same as React's track()).
     function trackBidEvent(name, params) {
@@ -4943,7 +4929,7 @@
     var BID_ALREADY_FILED_MSG = 'Your bid was already filed on an earlier try, so no second bid was sent. The form now shows the bid on file: if it is not what you meant to send, change it and select Update Bid.';
     function showFiledBidAsChangeBid(quote) {
       existingQuote = quote;
-      _bidUnconfirmedFps = []; _bidIdemKey = null; _bidIdemFp = null; _bidPostWritesDoneId = null;
+      _bidUnconfirmedFps = []; _bidIdemKey = null; _bidIdemFp = null; _bidPostWritesDoneId = null; _renewDoneQuoteId = null;
       if (isSelectedBidLocked(quote, currentClaim, currentContractor)) { showSelectedBidLock(); return; }
       changeBidMode = true; renewMode = false;
       // Not awaited: the prefill loads warranty options over the network, and nothing between the submit lock and its finally
@@ -4953,48 +4939,56 @@
     let _feeAcceptanceCheckbox = document.getElementById('feeAcceptanceCheckbox');
     let _submitBtn = document.getElementById('submitBtn');
 
+    // gh-3497 (LEGAL-READ 6675181967): the rate is read through quotes_platform_fee_for(), the function the server
+    // trigger uses (SECURITY DEFINER; `authenticated` can execute it). platform_fee_config itself is admin-only under
+    // RLS, so a table read as a contractor returns 0 rows, which is not an error and used to fall back to 5.00.
+    // Returns the configured rate, or NULL when there is no answer (error, timeout, no row, unusable value). Callers
+    // keep showing the rate already on screen, but a NULL means the submit must not go ahead.
+    // gh-3497 (LEGAL-READ 6743062238): the rate stored on the quote that Change Bid / Renew updates. On the contractor's
+    // own UPDATE the quotes guard keeps the stored rate (gh2564, CEO ruling 6050104316:
+    // c_revised_bid_takes_current_config_rate := false) and recomputes fee_amount from
+    // COALESCE(platform_fee_pct, fee_percentage) and the new total_price. So a revised bid shows, accepts and sends that
+    // stored rate, never the configured one. NULL when the row has no usable rate: that counts as no answer, nothing is sent.
+    function storedQuoteFeePct(quote) {
+      if (!quote) return null;
+      const raw = (quote.platform_fee_pct !== null && quote.platform_fee_pct !== undefined) ? quote.platform_fee_pct : quote.fee_percentage;
+      const pct = (raw === null || raw === undefined) ? NaN : parseFloat(raw);
+      return Number.isFinite(pct) && pct > 0 ? pct : null;
+    }
+
     async function fetchPlatformFeePercentage() {
-      // Fetch fee percentage from platform_fee_config based on contractor state + trade
       try {
-        if (!currentContractor || !currentClaim) return _platformFeePct;
+        // gh-3497 (LEGAL-READ 6743062238): Change Bid and Renew UPDATE an existing quote and the guard keeps that quote's
+        // stored rate, so the disclosure, the tick and the UPDATE all use the stored rate. The configured rate is for new bids.
+        if (changeBidMode && existingQuote) return storedQuoteFeePct(existingQuote);
+        if (!currentContractor || !currentClaim) return null;
 
-        const contractorState = (currentContractor.address_state || '').toUpperCase(); // gh-3488: the column quotes_platform_fee_for reads
-        const tradeType = (currentClaim.trades?.[0] || 'roofing').toLowerCase();
-
-        // Query: SELECT fee_pct FROM platform_fee_config 
-        //        WHERE (state IS NULL OR state = ?) AND (trade IS NULL OR trade = ?) 
-        //        ORDER BY state NULLS LAST, trade NULLS LAST LIMIT 1
         // gh-3488 (REVIEW 6674889982): a lookup that never returns must not hold the form. After FEE_LOOKUP_TIMEOUT_MS it
-        // ends the same way a failed lookup does (the rate already on screen), and a late answer is ignored.
+        // counts as no answer, and a late answer is ignored.
         let timedOut = false;
-        const lookup = sb
-          .from('platform_fee_config')
-          .select('fee_pct')
-          .or(`state.is.null,state.eq.${contractorState}`)
-          .or(`trade.is.null,trade.eq.${tradeType}`)
-          .order('state', { ascending: false, nullsFirst: false })
-          .order('trade', { ascending: false, nullsFirst: false })
-          .limit(1);
+        const lookup = sb.rpc('quotes_platform_fee_for', { p_contractor_id: currentContractor.id, p_claim_id: currentClaim.id });
         const { data, error } = await Promise.race([
           lookup,
           new Promise((resolve) => setTimeout(() => { timedOut = true; resolve({ data: null, error: new Error('fee lookup timed out') }); }, FEE_LOOKUP_TIMEOUT_MS)),
         ]);
-        if (timedOut) { console.warn('[D-215] Fee lookup timed out'); return _platformFeePct; }
+        if (timedOut) { console.warn('[D-215] Fee lookup timed out'); return null; }
 
         if (error) {
           console.warn('[D-215] Fee lookup error:', error);
-          return _platformFeePct;
+          return null;
         }
 
-        if (data && data.length > 0) {
-          const feePct = parseFloat(data[0].fee_pct) || _platformFeePct;
+        // the function returns a table: [{ fee_pct, fee_basis }]
+        const row = Array.isArray(data) ? data[0] : data;
+        const feePct = row ? parseFloat(row.fee_pct) : NaN;
+        if (Number.isFinite(feePct) && feePct > 0) {
           _platformFeePct = feePct;
           return feePct;
         }
       } catch (e) {
         console.error('[D-215] Exception during fee lookup:', e);
       }
-      return _platformFeePct;
+      return null;
     }
 
     // BEGIN platform-fee shared definition (gh-3488, D-267). Byte-identical in three places (parity test:
@@ -5037,6 +5031,10 @@
     // corrects them if the configured rate differs. Only the newest lookup may write, and submit waits for it.
     let _feeDisclosureSeq = 0;
     let _feeLookupInFlight = null;
+    // gh-3497: the two fee-rate stops show this plain wording (CEO DECIDED, PR #3500 comment 6775653622), verbatim. No rate or amount is printed.
+    const FEE_RATE_UNAVAILABLE_TEXT = "We couldn't load the platform fee for this bid, so your bid was not submitted and nothing was saved. Please try again in a moment.";
+    const FEE_RATE_MISMATCH_TEXT = "The platform fee shown on this form was out of date, so your bid was not saved. The form now shows the current fee and your entries are still here. Please review the fee, accept it again, and select Submit Bid.";
+    let _feeLookupAnswered = false; // gh-3497: true only when the newest rate lookup came back with a rate
     function paintFeeDisclosure(feePct, bidAmount) {
       const feeAmount = platformFeeDollars(bidAmount, feePct); // whole cents, the figure the webhook charges
 
@@ -5075,7 +5073,9 @@
       const run = (async () => {
         const feePct = await fetchPlatformFeePercentage();
         if (seq !== _feeDisclosureSeq) return;
-        paintFeeDisclosure(feePct, currentBid());
+        // gh-3497: remember whether the newest lookup was answered; submit stops when it was not.
+        _feeLookupAnswered = feePct !== null;
+        paintFeeDisclosure(feePct !== null ? feePct : currentFeePct(), currentBid());
       })();
       _feeLookupInFlight = run;
       try { await run; } finally { if (_feeLookupInFlight === run) _feeLookupInFlight = null; }
@@ -5178,10 +5178,10 @@
     // "declared" == a radio in the row's group is checked; nothing is
     // checked on load, so an untouched row is unambiguously undeclared.
     //
-    // This gate applies ONLY where valueAddsSection actually renders today:
-    // retail (out-of-pocket) roofing bids (isRetailJob && roofing trade,
-    // wizard or non-wizard). It never renders for insurance-funded roofing,
-    // gutters-only, or siding-only bids, so those paths are unaffected.
+    // This gate applies ONLY to retail (out-of-pocket) roofing bids
+    // (isRetailJob && roofing trade, wizard or non-wizard; see _section2Required).
+    // gh-3731: insurance-funded bids never require it, even though the
+    // section is on screen for them; gutters-only and siding-only are unaffected.
     const VALUE_ADD_DECLARATION_ROWS = [
       {
         key: 'gutters',
@@ -5257,6 +5257,41 @@
       return el.style.display !== 'none' && window.getComputedStyle(el).display !== 'none';
     }
 
+    // gh-1339 (REVIEW 6898001468): are the Section 2 declarations REQUIRED on this submit? Outside the
+    // multi-trade wizard that is "the section is on screen", as before. In the wizard the section is
+    // hidden after the roofing step (_showWizardTrade), so on-screen visibility says nothing at submit:
+    // the declarations are required whenever roofing is in the wizard queue of a retail job. The radios
+    // keep their state while hidden, so the same validate/build code reads them unchanged.
+    function _section2Required() {
+      if (wizardMode) return !!isRetailJob && wizardTradeQueue.includes('roofing');
+      // gh-3731 (CTO ruling on #1339, comment 6776723904; #3711 trigger scope): retail/cash roofing only. The section is also
+      // on screen for insurance jobs (value adds), where it stays optional. isRetailJob is the same retail/cash test the form
+      // uses everywhere (job_type 'retail' or funding_type 'cash').
+      return !!isRetailJob && _valueAddsSectionVisible();
+    }
+
+    // gh-3731 (REVIEW 6898935932): "required" is not "recorded". Whatever the contractor declares in Section 2 is written to
+    // scope_summary.declarations wherever the section applies (on screen outside the wizard; roofing in a retail wizard queue),
+    // insurance included, because bids.html and create-docusign-envelope read only that key (gh-1378, D-317 cl. 3). On insurance
+    // blank rows are simply absent (readers treat absent as not declared) and are not an error.
+    function _section2Recorded() {
+      if (wizardMode) return !!isRetailJob && wizardTradeQueue.includes('roofing');
+      return _valueAddsSectionVisible();
+    }
+
+    // gh-1339 (REVIEW 6898001468): trade_type comes from the wizard queue, never from the hidden
+    // input's default of "roofing" (a gutters-only wizard bid was tagged roofing). Roofing wins when
+    // it is in the queue (the primary trade of a bundle); otherwise the first queued trade.
+    function _wizardTradeType() {
+      if (!wizardMode || wizardTradeQueue.length === 0) return null;
+      return wizardTradeQueue.includes('roofing') ? 'roofing' : wizardTradeQueue[0];
+    }
+    function _syncWizardTradeType() {
+      const t = _wizardTradeType();
+      const el = document.getElementById('selectedTradeType');
+      if (t && el) el.value = t;
+    }
+
     function _clearValueAddRowError(errorElId) {
       const el = document.getElementById(errorElId);
       if (el) { el.style.display = 'none'; el.textContent = ''; }
@@ -5272,7 +5307,8 @@
     // Shows per-row inline messages — not one banner — and scrolls to the
     // first offending row. Returns true/false.
     function validateValueAddDeclarations() {
-      if (!_valueAddsSectionVisible()) return true; // gate applies only where this section renders
+      if (!_section2Recorded()) return true; // nothing to check where Section 2 does not apply
+      const _required = _section2Required(); // gh-3731: blank rows are an error on retail/cash only
 
       let firstBadEl = null;
       let ok = true;
@@ -5281,9 +5317,11 @@
         _clearValueAddRowError(row.errorElId);
         const checkedEl = document.querySelector(`input[type="radio"][name="${row.radioName}"]:checked`);
         if (!checkedEl) {
-          _showValueAddRowError(row.errorElId, `${row.rowLabel} — say Included, Extra, or Not offered.`);
-          ok = false;
-          firstBadEl = firstBadEl || document.getElementById(row.containerId);
+          if (_required) {
+            _showValueAddRowError(row.errorElId, `${row.rowLabel} — say Included, Extra, or Not offered.`);
+            ok = false;
+            firstBadEl = firstBadEl || document.getElementById(row.containerId);
+          }
           continue;
         }
         const resolved = row.resolve(checkedEl.value);
@@ -5303,6 +5341,8 @@
       if (chimneyTypeChecked && chimneyTypeChecked.value !== 'na') {
         const chimneyOptionChecked = document.querySelector('input[type="radio"][name="chimneyOption"]:checked');
         if (!chimneyOptionChecked) {
+          // gh-3731 (Ben, RUN 152): a chimney type with no option is a half-declared row, refused on every job type
+          // (never silently dropped). Only a fully blank chimney row is optional on insurance.
           _showValueAddRowError('chimneyOptionRowError', 'Chimney work — say Included, Reuse/inspect, or Out of pocket.');
           ok = false;
           firstBadEl = firstBadEl || document.getElementById('chimneyTypeRow');
@@ -5316,6 +5356,11 @@
         }
       }
 
+      if (!ok && wizardMode && !_valueAddsSectionVisible()) {
+        // gh-1339: the contractor is on another wizard step; the per-row messages above sit inside the
+        // hidden Section 2 block, so take them back to the roofing step where they can be seen and fixed.
+        wizardGoTo(2, wizardTradeQueue.indexOf('roofing'), true);
+      }
       if (!ok && firstBadEl) {
         firstBadEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
@@ -5330,7 +5375,7 @@
     // scope_summary, and every reader (gh-1378) must treat absence as
     // "not declared", never as "not offered".
     function buildValueAddDeclarations() {
-      if (!_valueAddsSectionVisible()) return null;
+      if (!_section2Recorded()) return null;
 
       const declarations = {};
       const centsFrom = (fieldId) => {
@@ -5365,7 +5410,8 @@
         }
       }
 
-      return declarations;
+      // gh-3731: an insurance bid with every row left blank carries no declarations key (absent == not declared)
+      return Object.keys(declarations).length ? declarations : null;
     }
 
     // Clear a row's inline error the moment the contractor interacts with it,
@@ -5453,6 +5499,7 @@
       // locked until submit finishes or fails (see the finally below).
       const _snapBid = wholeCentDollars(effectiveBidAmount()); // gh-3495 (D-267): sum of trades on a multi-trade bid
       const _shownAtClick = { pct: window._feePct, amount: window._feeAmount };
+      _syncWizardTradeType(); // gh-1339: trade_type from the wizard queue, before FormData reads the hidden input
       const formData = new FormData(bidForm); // before the lock: disabled controls are left out of a FormData
       _submitInFlight = true;
       lockBidInputs();
@@ -5472,6 +5519,12 @@
           // gh-3488 (LEGAL-READ 6674806511): a fresh rate lookup at every submit; the server decides the rate it stores
           // and the webhook charges, so a rate that moved since the last lookup is caught here and re-accepted.
           await updateFeeDisclosure();
+          // gh-3497: no answer from quotes_platform_fee_for means no submit. The rate on screen is not evidence of what
+          // the server will store, so nothing is filed. The form keeps the contractor's entries (the finally below
+          // unlocks the inputs) and the alert shows the plain fee_rate_unavailable line (FEE_RATE_UNAVAILABLE_TEXT, CEO DECIDED 6775653622), with no prefix.
+          if (!_feeLookupAnswered) {
+            throw new Error('fee_rate_unavailable: the platform fee rate could not be read, so nothing was submitted');
+          }
           const _bidAmount = _snapBid;
           const _feePct = window._feePct || _platformFeePct;
           const _feeAmount = platformFeeDollars(_bidAmount, _feePct);
@@ -5738,10 +5791,24 @@
             // gh-3560: Renew Bid (expired bid, D-150) and Change Bid on a withdrawn ('cancelled') bid (gh-2564 rescind and
             // re-bid) make the bid live again through renew_quote(): the quotes guard trigger refuses bid_status, expired_at
             // and expires_at to a contractor's direct UPDATE (42501). The RPC runs FIRST, then the field UPDATE below.
-            const _renewRpcMode = renewMode ? 'renew' : (existingQuote.bid_status === 'cancelled' ? 'reopen' : null);
+            let _renewRpcMode = renewMode ? 'renew' : (existingQuote.bid_status === 'cancelled' ? 'reopen' : null);
+            const _reopenedWithdrawnBid = _renewRpcMode === 'reopen'; // gh-3750: read before a retry nulls _renewRpcMode
+            if (_renewRpcMode && _renewDoneQuoteId === existingQuote.id) _renewRpcMode = null; // gh-3498 (F-A): the RPC already succeeded for this quote; only the field UPDATE is left
+            if (_renewRpcMode && _renewRpcTimedOut) {
+              // gh-3498 (REVIEW 6809644127 F1): an earlier renew_quote timed out in the browser, but the server may have finished it. The page's copy of
+              // the bid status is stale then, and renew_quote refuses a bid that is already live (55000). Read the status again before calling it.
+              const { data: _curQuote, error: _curErr } = await callWithTimeout(BID_UPDATE_TIMEOUT_MS, (signal) => withAbortSignal(
+                sb.from('quotes').select('bid_status').eq('id', existingQuote.id).maybeSingle(), signal));
+              if (_curErr) throw _curErr; // the catch shows the message and unlocks; nothing was changed
+              if (_curQuote && _curQuote.bid_status === 'active') _renewRpcMode = null; // already renewed: go on to the UPDATE
+            }
             if (_renewRpcMode) {
-              const { error: renewRpcError } = await sb.rpc('renew_quote', { p_quote_id: existingQuote.id, p_mode: _renewRpcMode });
+              // gh-3498: bounded like the UPDATE below; a stall ends through the catch (message, form unlocked).
+              _renewRpcTimedOut = true; // cleared once the RPC answers; while set, a retry re-reads the status first
+              const { error: renewRpcError } = await callWithTimeout(BID_UPDATE_TIMEOUT_MS, (signal) => withAbortSignal(sb.rpc('renew_quote', { p_quote_id: existingQuote.id, p_mode: _renewRpcMode }), signal));
+              _renewRpcTimedOut = false;
               if (renewRpcError) throw renewRpcError;
+              _renewDoneQuoteId = existingQuote.id; // gh-3498 (F-A): a retry after a failed UPDATE skips the RPC
             }
             // gh-2105: payload hoisted to a named const so the ratchet scanner's
             // 25-line statement window can see the .select('id') chained below.
@@ -5783,12 +5850,47 @@
             } finally { clearTimeout(_updTimer); }
 
             if (updateError) throw updateError;
+            _renewDoneQuoteId = null; // gh-3498 (F-A): the UPDATE answered; the flag is spent
             // gh-2105 (decision a, money): a zero-row RLS/id-mismatch match used to
             // show the "Bid updated" success screen while total_price never changed.
             // Same throw as the React twin (bid-form.tsx); surfaces through the
             // existing 'Error submitting bid: ' alert below -- no new copy.
             if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
               throw new Error('bid_update_zero_rows: no matching quote row was updated');
+            }
+
+            // gh-3750 (D-214 / D-215 Layer 1): re-bidding a WITHDRAWN bid ('reopen') is a new act of fee acceptance. rescind-bid stamped the
+            // earlier acceptance row(s) rescinded, and stripe-webhook's dispute evidence only reads un-rescinded rows, so a reopened bid needs a
+            // fresh row, written exactly as a first submission writes it (same fields, same fee text shown). Runs AFTER the field UPDATE above:
+            // the insert guard compares the row with the bid's CURRENT fee. Non-fatal like the first-submission write; once per bid.
+            if (_reopenedWithdrawnBid && existingQuote.id !== _reopenAcceptanceDoneId) {
+              let reopenAccRows = null, reopenAccError = null;
+              try {
+              ({ data: reopenAccRows, error: reopenAccError } = await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(sb.from('fee_acceptances').insert({
+                contractor_id: currentContractor.id,
+                claim_id: currentClaim.id,
+                bid_id: existingQuote.id,
+                fee_pct: _feePct,
+                fee_basis: 'bid_amount',
+                fee_amount: _feeAmount,
+                fee_text_displayed: _exactFeeText,
+                accepted_at: _acceptedAt,
+                ip_address: (_contractorIP && _contractorIP !== 'unknown') ? _contractorIP : null,
+                user_agent: _userAgent,
+              }).select('id'), signal)));
+              } catch (reopenAccTimeoutErr) { reopenAccError = reopenAccTimeoutErr; }
+              _reopenAcceptanceDoneId = existingQuote.id;
+              if (reopenAccError || !reopenAccRows || reopenAccRows.length === 0) {
+                console.error('[D-215] Fee acceptance for the reopened bid not recorded (non-fatal, quote committed):', reopenAccError ? reopenAccError.message : 'kept for review');
+                if (typeof Sentry !== 'undefined') {
+                  try {
+                    Sentry.captureMessage('[D-215] Reopened-bid fee acceptance ' + (reopenAccError ? 'failed' : 'diverted to quarantine'), {
+                      level: reopenAccError ? 'error' : 'warning',
+                      extra: { bid_id: existingQuote.id, claim_id: currentClaim.id, contractor_id: currentContractor.id }
+                    });
+                  } catch (sentryErr) { console.warn('[gh-3750] Sentry report failed:', sentryErr); }
+                }
+              }
             }
 
             try {
@@ -6008,9 +6110,18 @@
       } catch (err) {
         console.error('Error submitting bid:', err);
         if (err && err.bidAlreadyFiled) alert(err.message); // gh-3498: the filed bid is now shown as Change Bid
+        else if (/fee_rate_unavailable/.test(String((err && err.message) || ''))) alert(FEE_RATE_UNAVAILABLE_TEXT); // gh-3497: plain wording, CEO DECIDED 6775653622
+        else if (/fee_rate_mismatch/.test(String((err && err.message) || ''))) alert(FEE_RATE_MISMATCH_TEXT); // gh-3497: plain wording, CEO DECIDED 6775653622
         else alert('Error submitting bid: ' + (err.message || 'Unknown error'));
         submitBtn.disabled = false;
         submitBtn.textContent = renewMode ? 'Renew Bid' : (changeBidMode ? 'Update Bid' : 'Submit Bid');
+        // gh-3497: the server refused the bid because the rate shown differs from the configured one (quotes trigger,
+        // fee_rate_mismatch). Nothing was saved and the entries above are still here. The acceptance was given to the
+        // old figure, so clear it and re-read the rate: the page then shows the configured figure to be accepted again.
+        if (/fee_rate_mismatch/.test(String((err && err.message) || ''))) {
+          if (_feeAcceptanceCheckbox) _feeAcceptanceCheckbox.checked = false;
+          setTimeout(() => { updateFeeDisclosure().catch(() => {}); }, 0); // after the finally below has unlocked the form
+        }
       } finally {
         _submitInFlight = false;
         unlockBidInputs(); // gh-3488: the lock lasts only while this submit is running

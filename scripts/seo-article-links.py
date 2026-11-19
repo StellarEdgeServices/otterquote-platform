@@ -352,7 +352,7 @@ def check():
             if p[1:] == f: errs.append(f"{f}: links to itself")
             if h.split("#")[0] in held_urls: errs.append(f"{f}: related block links to held page {h}")
         key = f[:-5]
-        if key in OF:
+        if key in OF and key in MAP["related"]:  # a missing entry is already reported above; do not crash on it
             want = [u for u, _ in expected_links(key)]
             if hrefs != want: errs.append(f"{f}: related block differs from the map (run apply): {hrefs} != {want}")
         if not re.search(r'<nav[^>]*class="breadcrumb', s): errs.append(f"{f}: no visible breadcrumb")

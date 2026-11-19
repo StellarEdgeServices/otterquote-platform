@@ -1,4 +1,4 @@
-<!-- STATUS (gh-1438, as of 2026-10-30T21:30:00Z): NOT APPLIED -->
+<!-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261031181138, name gh3256_default_privs_no_client_truncate; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record) -->
 <!-- FILE ROLE: pre-flight of set gh3256_default_privs_no_client_truncate (forward and rollback beside it) -->
 <!-- EVIDENCE: drafted 2026-10-30 under #3256; production read-only (SELECT) the same day, project yeszghaspzwwstvsrioa; no database was written. -->
 <!-- REPO COPY: none. DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md -->

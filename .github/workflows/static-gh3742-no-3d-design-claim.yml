@@ -1,0 +1,45 @@
+name: Static No 3D Design Claim Tests
+
+# gh-3742 -- faq.html and contractor-bid-form.html must not claim a 3D design tool. Static text check;
+# no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'faq.html'
+      - 'contractor-bid-form.html'
+      - 'tests/gh3742-no-3d-design-claim.mjs'
+      - '.github/workflows/static-gh3742-no-3d-design-claim.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'faq.html'
+      - 'contractor-bid-form.html'
+      - 'tests/gh3742-no-3d-design-claim.mjs'
+      - '.github/workflows/static-gh3742-no-3d-design-claim.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3742-no-3d-design-claim-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-gh3742-no-3d-design-claim:
+    name: No 3D design claim (gh3742)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.x'
+      - name: No 3D design claim (gh3742)
+        run: node tests/gh3742-no-3d-design-claim.mjs

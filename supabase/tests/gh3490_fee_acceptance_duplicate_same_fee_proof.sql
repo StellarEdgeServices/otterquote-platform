@@ -1,5 +1,5 @@
 -- gh-3490 proof: the fee_acceptances guard's duplicate_bid rule counts only a row with the same bid_id AND the same fee (one cent). Run by gh3490_fee_acceptance_duplicate_same_fee_proof_run.sh.
--- THROWAWAY Postgres only (schema: gh3409_throwaway_schema.sql, then the gh3409 forward file = today's production guard). Never run against production.
+-- THROWAWAY Postgres only (schema: gh3409_throwaway_schema.sql, then the gh3409 forward file, then the gh3750 forward file = today's production guard (4649287a)). Never run against production.
 -- psql -v phase=before|after|rollback -f texts.psql -f this_file. before / rollback = today's gh3409 guard; after = gh3490 forward applied.
 -- Everything is inside BEGIN ... ROLLBACK. Output: PROOF|phase|case|expected|actual|OK/FAIL ... then FAILING=n of m.
 -- An insert result reads `<ok|REFUSED:sqlstate> -> fa=<rows in fee_acceptances for that bid> q=<rows in the quarantine table for that bid>[:reasons]`.
@@ -154,8 +154,16 @@ UPDATE public.quotes SET fee_amount = NULL WHERE id = (SELECT quote_id FROM proo
 ALTER TABLE public.quotes ENABLE TRIGGER quotes_model_server_fee;
 SELECT proof.rec('D8 bid lost its fee: bid_has_no_fee AND duplicate_bid, as today', 'ok -> fa=1 q=1:bid_has_no_fee+duplicate_bid', 'ok -> fa=1 q=1:bid_has_no_fee+duplicate_bid', proof.ins('d8', :'html_750', 750.00));
 
+-- ======================= RV: a RESCINDED row is not a duplicate (gh3750's `AND d.rescinded_at IS NULL`, kept by this forward; added on REVIEW: FAIL 6989691930) =======================
+-- Same answer in every phase: the gh3750 guard already ignores a rescinded row, and the forward must keep doing so. A forward that dropped the condition fails both rows (mutant N7).
+SELECT proof.cq('d9', 15000);
+SELECT proof.ins('d9', :'html_750', 750.00);
+UPDATE public.fee_acceptances SET rescinded_at = clock_timestamp() WHERE bid_id = (SELECT quote_id FROM proof.q WHERE label = 'd9');
+SELECT proof.rec('RV1 first row rescinded, then a SAME-fee acceptance: recorded (a rescinded row is not a duplicate)', 'ok -> fa=2 q=0', 'ok -> fa=2 q=0', proof.ins('d9', :'html_750', 750.00));
+SELECT proof.rec('RV2 a further SAME-fee acceptance while a live row exists: quarantined duplicate_bid', 'ok -> fa=2 q=1:duplicate_bid', 'ok -> fa=2 q=1:duplicate_bid', proof.ins('d9', :'html_750', 750.00));
+
 -- ======================= STATE =======================
-SELECT proof.rec('S1 guard body md5 prefix', '1142fe98', '3ff983cb', (SELECT left(md5(prosrc), 8) FROM pg_proc WHERE oid = 'public.fee_acceptances_guard_client_insert()'::regprocedure));
+SELECT proof.rec('S1 guard body md5 prefix', '4649287a', 'daf3fc71', (SELECT left(md5(prosrc), 8) FROM pg_proc WHERE oid = 'public.fee_acceptances_guard_client_insert()'::regprocedure));
 SELECT proof.rec('S2 trigger enabled, BEFORE INSERT FOR EACH ROW', '1', '1', (SELECT count(*)::text FROM pg_trigger WHERE tgrelid = 'public.fee_acceptances'::regclass AND NOT tgisinternal
    AND tgname = 'fee_acceptances_guard_client_insert' AND tgenabled = 'O' AND tgtype = 7));
 SELECT proof.rec('S3 function comment, owner and search_path kept', 'gh-3409|postgres|search_path=public, pg_temp', 'gh-3409|postgres|search_path=public, pg_temp',

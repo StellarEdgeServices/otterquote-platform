@@ -43,9 +43,9 @@ jobs:
         working-directory: react-app
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22.x'
       - name: Install dependencies
@@ -60,3 +60,16 @@ jobs:
       # Lower it as warnings are cleaned up; never raise it without a tracked reason.
       - name: Run ESLint (gh-1462)
         run: npx eslint . --max-warnings=124
+      # CEO153 (Refs #3702): production build gate. tsc, vitest and eslint all passed on Dependabot
+      # #3702 (tailwindcss 3 -> 4) while `next build` fails ("use tailwindcss directly as a PostCSS
+      # plugin"). Runs last in this job so it reuses the installed dependencies and never changes the
+      # order or behaviour of the gates above. Env values are non-secret placeholders: app/lib/supabase.ts
+      # throws at module evaluation if the two NEXT_PUBLIC_SUPABASE_* vars are empty, and nothing is
+      # contacted at build time (same placeholders as static-gh3266-fold-tests.yml). Netlify builds with
+      # the same `npm run build` (react-app/netlify.toml).
+      - name: Build react-app (next build)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:9
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-not-a-real-key
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: npm run build

@@ -76,7 +76,7 @@ window.supabase = { createClient: function () {
   }
   return {
     from: builder,
-    rpc: function () { return Promise.resolve({ data: null, error: null }); },
+    rpc: function (name) { if (name === 'quotes_platform_fee_for') return Promise.resolve({ data: [{ fee_pct: 5, fee_basis: 'bid_amount' }], error: null }); return Promise.resolve({ data: null, error: null }); }, // gh-3497: the rate is read through this rpc (platform_fee_config is admin-only under RLS)
     functions: { invoke: function () { return Promise.resolve({ data: null, error: null }); } },
     storage: { from: function () { return { upload: function () { return Promise.resolve({ data: null, error: null }); }, getPublicUrl: function () { return { data: { publicUrl: '' } }; }, createSignedUrl: function () { return Promise.resolve({ data: null, error: null }); } }; } },
     channel: function () { var c = { on: function () { return c; }, subscribe: function () { return c; } }; return c; },

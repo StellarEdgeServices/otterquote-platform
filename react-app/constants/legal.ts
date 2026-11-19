@@ -42,15 +42,6 @@ export const IC_24_5_11_ATTESTATION_CONTENT = `Otter Quotes is a contractor matc
 Electronic acceptance constitutes your signature under the E-SIGN Act and UETA.`;
 
 /**
- * Homeowner Cancellation Policy Disclosure
- * Source: contractor-pre-approval.html (Step 3: Homeowner Cancellation Policy)
- * References: D-137 (cancellation guarantee), D-025 (switch-contractor mechanism)
- */
-export const HOMEOWNER_CANCELLATION_POLICY = `Homeowners may switch to a different contractor in our network up to 3 days before their scheduled installation date, no questions asked. If this occurs: Otter Quotes handles the switch entirely, your platform fee is refunded in full, and the homeowner selects another contractor.
-
-A platform fee refund is your sole remedy if a homeowner exercises this right.`;
-
-/**
  * Contractor Partner Agreement — Platform Fee Structure (Section 6.1)
  * Source: contractor-agreement.html (Section 6: Platform Fee Structure)
  * References: D-214 (flexible per-job fee framework), D-215 (fee acceptance evidence system)
@@ -226,7 +217,6 @@ export type LegalKey = keyof typeof LEGAL;
 export const LEGAL = {
   IC_24_5_11_ATTESTATION_LABEL,
   IC_24_5_11_ATTESTATION_CONTENT,
-  HOMEOWNER_CANCELLATION_POLICY,
   PLATFORM_FEE_SECTION_6_1,
   PLATFORM_FEE_DISCLOSURE_AT_BID,
   FEE_DISCLOSURE_AT_BID_FORM,

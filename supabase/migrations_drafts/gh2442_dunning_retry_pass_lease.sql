@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-19T20:58:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261020165617, name gh2442_dunning_retry_pass_lease; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh2442_dunning_retry_pass_lease
 -- EVIDENCE: table absent on production to be confirmed by the pre-flight SELECT; behaviour proved on a scratch PostgreSQL (PGlite), see the proof file
 -- REPO COPY: none

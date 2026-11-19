@@ -1,0 +1,38 @@
+name: Static Admin SMS Opt-out Control Test
+
+# gh-3769 -- admin-contractors.html control for the staff SMS opt-out/opt-in action: admin-only, sends the payload admin-sms-optout requires,
+# shows a refusal verbatim.
+# `pull_request` only, no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'admin-contractors.html'
+      - 'tests/gh3769-admin-sms-optout-control.mjs'
+      - '.github/workflows/static-gh3769-admin-sms-optout-control.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3769-admin-sms-optout-control-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  control:
+    name: Admin SMS opt-out control static assertions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.x'
+      - name: Admin SMS opt-out control assertions (gh3769-admin-sms-optout-control)
+        run: node tests/gh3769-admin-sms-optout-control.mjs

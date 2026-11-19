@@ -1,4 +1,4 @@
-<!-- STATUS (gh-1438, as of 2026-10-23): NOT APPLIED -->
+<!-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261028191242, name gh2875_sms_freeform_pause_review; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record) -->
 # Pre-flight: gh2875_sms_freeform_pause_review (#2875, D-391 free-text opt-out flagger)
 
 Tier 3B, consent path. Draft only: nothing here is applied until REVIEW: PASS, LEGAL-READ, CEO `R-177 SIGNED:`, the R-097 window and the CTO's recorded apply.

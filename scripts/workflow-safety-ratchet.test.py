@@ -276,6 +276,91 @@ with tempfile.TemporaryDirectory() as _tmp:
         capture_output=True, text=True)
 check("REFUTER 3: ...and says UNMEASURED out loud", "UNMEASURED" in proc_empty.stdout, True)
 
+# RULE 4 (PR #3797) -- every `uses:` must be pinned to a full commit SHA. Each bad
+# shape sits beside its negative control, inline, so deleting a fixture cannot
+# quietly un-test it.
+def pin_rules(text):
+    return [f.rule for f in wsr.unpinned_findings("inline.yml", text)]
+
+SHA = "11d5960a326750d5838078e36cf38b85af677262"
+check("rule 4: a tag ref (@v4) FAILS", pin_rules("jobs:\n  t:\n    steps:\n      - uses: actions/checkout@v4\n"), ["UNPINNED_ACTION"])
+check("rule 4: a branch ref (@main) FAILS", pin_rules("    steps:\n      - uses: owner/repo@main\n"), ["UNPINNED_ACTION"])
+check("rule 4: a 39-hex ref FAILS", pin_rules("      - uses: owner/repo@" + SHA[:-1] + "\n"), ["UNPINNED_ACTION"])
+check("rule 4: a job-level reusable workflow tag ref FAILS", pin_rules("jobs:\n  t:\n    uses: owner/repo/.github/workflows/x.yml@v1\n"), ["UNPINNED_ACTION"])
+check("rule 4: a docker tag ref FAILS", pin_rules("      - uses: docker://alpine:3.19\n"), ["UNPINNED_ACTION"])
+check("rule 4: a quoted tag ref FAILS", pin_rules("      - uses: 'actions/checkout@v4'\n"), ["UNPINNED_ACTION"])
+check("rule 4: a full 40-hex SHA with a trailing tag comment PASSES", pin_rules("      - uses: actions/checkout@" + SHA + " # v4\n"), [])
+check("rule 4: a local action PASSES", pin_rules("      - uses: ./.github/actions/x\n"), [])
+check("rule 4: a docker sha256 digest PASSES", pin_rules("      - uses: docker://alpine@sha256:" + "0" * 64 + "\n"), [])
+check("rule 4: a commented-out unpinned uses PASSES", pin_rules("      # - uses: actions/checkout@v4\n"), [])
+check("rule 4: applies to a non-PRT workflow too (plain pull_request)", pin_rules("on: pull_request\njobs:\n  t:\n    steps:\n      - uses: actions/checkout@v4\n"), ["UNPINNED_ACTION"])
+
+# Rule 4, parsed scan (PR #3797 REVIEW: FAIL 6991245114): shapes a line regex cannot see.
+# Each must FAIL; the matching pinned spelling beside it must PASS. These also prove the
+# bypass was real: the text-only scan returns [] for them.
+JOBS = "on: pull_request\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n"
+check("rule 4 (parsed): a quoted \"uses\" key with a tag ref FAILS", pin_rules(JOBS + '      - "uses": actions/checkout@v4\n'), ["UNPINNED_ACTION"])
+check("rule 4 (parsed): a single-quoted 'uses' key with a tag ref FAILS", pin_rules(JOBS + "      - 'uses': actions/checkout@v4\n"), ["UNPINNED_ACTION"])
+check("rule 4 (parsed): a flow-mapping step with a tag ref FAILS", pin_rules(JOBS + "      - { name: x, uses: actions/checkout@v4 }\n"), ["UNPINNED_ACTION"])
+check("rule 4 (parsed): a flow-mapping step with a quoted key and quoted tag ref FAILS", pin_rules(JOBS + '      - { "uses": "actions/checkout@v4" }\n'), ["UNPINNED_ACTION"])
+check("rule 4 (parsed): a quoted job-level \"uses\" (reusable workflow) tag ref FAILS", pin_rules('on: pull_request\njobs:\n  t:\n    "uses": owner/repo/.github/workflows/x.yml@v1\n'), ["UNPINNED_ACTION"])
+check("rule 4 (parsed): a quoted-key docker tag ref FAILS", pin_rules(JOBS + '      - "uses": docker://alpine:3.19\n'), ["UNPINNED_ACTION"])
+check("rule 4 (parsed): a flow-mapping step with a 39-hex ref FAILS", pin_rules(JOBS + "      - { uses: owner/repo@" + SHA[:-1] + " }\n"), ["UNPINNED_ACTION"])
+check("rule 4 (control): the text-only scan misses the quoted key (so the parsed scan is what catches it)", [f.rule for f in wsr._unpinned_text_findings("inline.yml", JOBS + '      - "uses": actions/checkout@v4\n')], [])
+check("rule 4 (control): the text-only scan misses the flow-mapping step", [f.rule for f in wsr._unpinned_text_findings("inline.yml", JOBS + "      - { uses: actions/checkout@v4 }\n")], [])
+check("rule 4 (parsed): a quoted key with a full SHA PASSES", pin_rules(JOBS + '      - "uses": actions/checkout@' + SHA + "\n"), [])
+check("rule 4 (parsed): a flow-mapping step with a full SHA PASSES", pin_rules(JOBS + "      - { uses: actions/checkout@" + SHA + " }\n"), [])
+check("rule 4 (parsed): a quoted-key local action PASSES", pin_rules(JOBS + '      - "uses": ./.github/actions/x\n'), [])
+check("rule 4 (parsed): a flow-mapping docker sha256 digest PASSES", pin_rules(JOBS + "      - { uses: 'docker://alpine@sha256:" + "0" * 64 + "' }\n"), [])
+check("rule 4 (parsed): a normal tag step is reported once, not twice (both scans see it)", len(pin_rules(JOBS + "      - uses: actions/checkout@v4\n")), 1)
+
+# Rule 4, composite actions (PR #3797 REVIEW: FAIL 6992571275): a workflow that calls
+# `uses: ./.github/actions/x` is exempt at the call site, so the unpinned `uses:` INSIDE
+# x/action.yml was invisible. Each bad shape FAILS; its pinned/exempt twin PASSES.
+def comp_rules(steps_yaml):
+    text = "name: c\ndescription: d\nruns:\n  using: composite\n  steps:\n" + steps_yaml
+    return [f.rule for f in wsr.action_findings("action.yml", text)]
+
+check("composite: a tag ref inside runs.steps FAILS", comp_rules("    - uses: actions/checkout@v4\n"), ["UNPINNED_ACTION"])
+check("composite: a branch ref FAILS", comp_rules("    - uses: owner/repo@main\n"), ["UNPINNED_ACTION"])
+check("composite: a 39-hex ref FAILS", comp_rules("    - uses: owner/repo@" + SHA[:-1] + "\n"), ["UNPINNED_ACTION"])
+check("composite: a docker tag ref FAILS", comp_rules("    - uses: docker://alpine:3.19\n"), ["UNPINNED_ACTION"])
+check("composite: a quoted \"uses\" key FAILS", comp_rules('    - "uses": actions/checkout@v4\n'), ["UNPINNED_ACTION"])
+check("composite: a flow-mapping step FAILS", comp_rules("    - { name: x, uses: actions/checkout@v4 }\n"), ["UNPINNED_ACTION"])
+check("composite: a full SHA PASSES", comp_rules("    - uses: actions/checkout@" + SHA + " # v4\n"), [])
+check("composite: a local ./ ref PASSES", comp_rules("    - uses: ./.github/actions/x\n"), [])
+check("composite: a docker sha256 digest PASSES", comp_rules("    - uses: docker://alpine@sha256:" + "0" * 64 + "\n"), [])
+check("composite (control): the WORKFLOW-shaped parsed scan reads nothing from an action file (so is_action=True is what catches runs.steps)",
+      [f.rule for f in wsr._unpinned_yaml_findings("action.yml", "runs:\n  using: composite\n  steps:\n    - { uses: actions/checkout@v4 }\n")], [])
+check("composite: an unparseable action file FAILS CLOSED", [f.rule for f in wsr.action_findings("action.yml", "runs: [unclosed\n")], ["UNPARSEABLE"])
+
+# End to end on a throwaway tree: workflow -> exempt `./` call -> composite with an unpinned step.
+def tree_verdict(action_rel, action_text, extra=None):
+    with tempfile.TemporaryDirectory() as t:
+        root = Path(t)
+        wf = root / ".github" / "workflows"
+        wf.mkdir(parents=True)
+        (wf / "ci.yml").write_text("on: pull_request\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n"
+                                   "      - uses: actions/checkout@" + SHA + " # v4\n"
+                                   "      - uses: ./.github/actions/x\n")
+        ap = root / action_rel
+        ap.parent.mkdir(parents=True, exist_ok=True)
+        ap.write_text(action_text)
+        fnd, _, _, _ = wsr.scan_root(root)
+        code = wsr.main(["--root", t, "--quiet", "--require-yaml"])
+        return sorted({f.rule for f in fnd}), code
+
+BAD_ACTION = "name: x\ndescription: d\nruns:\n  using: composite\n  steps:\n    - uses: actions/checkout@v4\n"
+GOOD_ACTION = BAD_ACTION.replace("actions/checkout@v4", "actions/checkout@" + SHA + " # v4")
+check("tree: workflow calls ./ composite whose step is unpinned -> FAIL, exit 1", tree_verdict(".github/actions/x/action.yml", BAD_ACTION), (["UNPINNED_ACTION"], wsr.EXIT_FAIL))
+check("tree: same shape with the composite pinned -> PASS, exit 0", tree_verdict(".github/actions/x/action.yml", GOOD_ACTION), ([], wsr.EXIT_PASS))
+check("tree: an action.yaml (other extension) is scanned too", tree_verdict(".github/actions/x/action.yaml", BAD_ACTION), (["UNPINNED_ACTION"], wsr.EXIT_FAIL))
+check("tree: an action.yml anywhere in the repo (not only .github/actions) is scanned", tree_verdict("tools/deep/nested/action.yml", BAD_ACTION), (["UNPINNED_ACTION"], wsr.EXIT_FAIL))
+check("tree: a repo-root action.yml is scanned", tree_verdict("action.yml", BAD_ACTION), (["UNPINNED_ACTION"], wsr.EXIT_FAIL))
+check("tree: an action.yml under node_modules is NOT scanned (vendored, not ours)", tree_verdict("node_modules/pkg/action.yml", BAD_ACTION), ([], wsr.EXIT_PASS))
+check("the CI job triggers on .github/actions/** and any action.yml/action.yaml",
+      all(x in (HERE.parent / ".github" / "workflows" / "workflow-safety-ratchet.yml").read_text() for x in ("'.github/actions/**'", "'**/action.yml'", "'**/action.yaml'")), True)
+
 # The live tree must be green, or this ratchet ships red on arrival.
 findings, applicable, skipped, files = wsr.scan_root(HERE.parent)
 check("live .github/workflows scan reports no findings", [f.rule for f in findings], [])

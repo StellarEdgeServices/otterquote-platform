@@ -1,5 +1,5 @@
 -- gh-3471 (#3427 D6): the covered-state result, recorded on the hover_orders row beside the 100-hour clock. One nullable boolean and one CHECK. Nothing else.
--- STATUS (gh-1438, as of 2026-11-09): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261109170416, name gh3471_guarantee_covered; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- EVIDENCE: drafted on main 00e9d0d0 by reading the repo (supabase/migrations_drafts/gh3471_guarantee_clock.sql, applied as ledger 20261108222038 per #3471 comment 6727950306;
 --   create-measurement-order/index.ts; the gh-2421 platform_settings state-list precedent). No production read was made by the author: the applier runs the pre-flight checks.
 -- REPO COPY: none

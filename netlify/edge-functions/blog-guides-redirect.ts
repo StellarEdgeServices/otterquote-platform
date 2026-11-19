@@ -171,6 +171,18 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/how-long-does-roof-replacement-take.html',
   '/guides/drip-edge-roof-replacement-bid':
     '/guides/drip-edge-roof-replacement-bid.html',
+  '/guides/roof-ventilation-in-your-replacement-bid':
+    '/guides/roof-ventilation-in-your-replacement-bid.html',
+  '/guides/roof-valleys-open-closed-woven-in-your-bid':
+    '/guides/roof-valleys-open-closed-woven-in-your-bid.html',
+  '/guides/roofing-nails-vs-staples-in-your-bid':
+    '/guides/roofing-nails-vs-staples-in-your-bid.html',
+  '/guides/window-replacement-in-winter-what-your-bid-should-say':
+    '/guides/window-replacement-in-winter-what-your-bid-should-say.html',
+  '/guides/siding-installation-in-cold-weather-what-to-ask':
+    '/guides/siding-installation-in-cold-weather-what-to-ask.html',
+  '/guides/gutter-installation-in-winter-what-to-ask':
+    '/guides/gutter-installation-in-winter-what-to-ask.html',
   '/guides/roof-change-orders-hidden-damage':
     '/guides/roof-change-orders-hidden-damage.html',
   '/guides/roofing-contract-checklist-before-you-sign':
@@ -211,12 +223,18 @@ const REDIRECT_MAP: Record<string, string> = {
   '/locations/index.html': '/locations/',
   '/locations/allen-county-in/roofing/index.html':
     '/locations/allen-county-in/roofing/',
+  '/locations/avon-city-in/roofing/index.html':
+    '/locations/avon-city-in/roofing/',
   '/locations/blount-county-tn/roofing/index.html':
     '/locations/blount-county-tn/roofing/',
   '/locations/boone-county-in/roofing/index.html':
     '/locations/boone-county-in/roofing/',
+  '/locations/brownsburg-city-in/roofing/index.html':
+    '/locations/brownsburg-city-in/roofing/',
   '/locations/butler-county-oh/roofing/index.html':
     '/locations/butler-county-oh/roofing/',
+  '/locations/carmel-city-in/roofing/index.html':
+    '/locations/carmel-city-in/roofing/',
   '/locations/cuyahoga-county-oh/roofing/index.html':
     '/locations/cuyahoga-county-oh/roofing/',
   '/locations/davidson-county-tn/roofing/index.html':
@@ -225,8 +243,12 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/delaware-county-in/roofing/',
   '/locations/delaware-county-oh/roofing/index.html':
     '/locations/delaware-county-oh/roofing/',
+  '/locations/fishers-city-in/roofing/index.html':
+    '/locations/fishers-city-in/roofing/',
   '/locations/franklin-county-oh/roofing/index.html':
     '/locations/franklin-county-oh/roofing/',
+  '/locations/greenwood-city-in/roofing/index.html':
+    '/locations/greenwood-city-in/roofing/',
   '/locations/hamilton-county-in/roofing/index.html':
     '/locations/hamilton-county-in/roofing/',
   '/locations/hamilton-county-oh/roofing/index.html':
@@ -263,6 +285,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/montgomery-county-tn/roofing/',
   '/locations/morgan-county-in/roofing/index.html':
     '/locations/morgan-county-in/roofing/',
+  '/locations/noblesville-city-in/roofing/index.html':
+    '/locations/noblesville-city-in/roofing/',
   '/locations/rutherford-county-tn/roofing/index.html':
     '/locations/rutherford-county-tn/roofing/',
   '/locations/shelby-county-in/roofing/index.html':
@@ -287,6 +311,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/warren-county-oh/roofing/',
   '/locations/washington-county-tn/roofing/index.html':
     '/locations/washington-county-tn/roofing/',
+  '/locations/westfield-city-in/roofing/index.html':
+    '/locations/westfield-city-in/roofing/',
   '/locations/williamson-county-tn/roofing/index.html':
     '/locations/williamson-county-tn/roofing/',
   '/locations/wilson-county-tn/roofing/index.html':
