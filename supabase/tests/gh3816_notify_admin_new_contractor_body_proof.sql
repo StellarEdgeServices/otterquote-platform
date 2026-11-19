@@ -44,8 +44,9 @@ CREATE TEMP TABLE snap AS SELECT now() AS t, pg_get_userbyid(proowner) AS owner,
 
 SELECT pg_temp.rec('A0a stub net.http_post has production''s signature (pg_net 0.20.0: url, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer)',
   pg_get_function_identity_arguments('net.http_post(text,jsonb,jsonb,jsonb,integer)'::regprocedure), 'url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer');
-SELECT pg_temp.rec('A0b the rollback file installs production''s exact body (md5(prosrc) = production value read 2026-11-19)', (SELECT src_md5 FROM snap), '4299011d821deb9a9981c9a729a1a721');
-SELECT pg_temp.rec('A0c ... and pg_get_functiondef matches production''s md5', md5(pg_get_functiondef('public.notify_admin_new_contractor()'::regprocedure)), '06115f96f1bcf2a44dddea259f76e7c5');
+-- Fingerprints of production's body (read 2026-11-19) are kept short on purpose (credential-sweep flags 20+ hex runs; existing proofs use left(md5(..),8) the same way): length plus the first 8 hex of md5.
+SELECT pg_temp.rec('A0b the rollback file installs production''s exact body (length 1551, md5(prosrc) starts 4299011d; production values read 2026-11-19)', (SELECT length(prosrc)::text || '/' || left(src_md5,8) FROM (SELECT prosrc, md5(prosrc) AS src_md5 FROM pg_proc WHERE oid='public.notify_admin_new_contractor()'::regprocedure) x), '1551/4299011d');
+SELECT pg_temp.rec('A0c ... and pg_get_functiondef starts 06115f96 (production value)', left(md5(pg_get_functiondef('public.notify_admin_new_contractor()'::regprocedure)),8), '06115f96');
 SELECT pg_temp.rec('A0d the before body contains the bytea cast', (SELECT (prosrc LIKE '%::text::bytea%')::text FROM pg_proc WHERE oid='public.notify_admin_new_contractor()'::regprocedure), 'true');
 
 -- ---- A: NEGATIVE CONTROL (today) ----
@@ -124,8 +125,8 @@ INSERT INTO vault.secrets VALUES ('cron_service_role_key', 'stub-key-not-a-secre
 \i supabase/migrations_drafts/gh3816_notify_admin_new_contractor_body.sql
 SELECT pg_temp.rec('D1 the forward file re-run changes nothing (same grants, same body)', (SELECT (p.proacl::text IS NOT DISTINCT FROM s.acl AND p.prosecdef=s.secdef)::text FROM pg_proc p, snap s WHERE p.oid='public.notify_admin_new_contractor()'::regprocedure), 'true');
 \i supabase/migrations_rollbacks/gh3816_notify_admin_new_contractor_body_rollback.sql
-SELECT pg_temp.rec('D2 the rollback file restores production''s exact body (md5 = production) and the same grants',
-  (SELECT (md5(p.prosrc)='4299011d821deb9a9981c9a729a1a721' AND p.proacl::text IS NOT DISTINCT FROM s.acl AND p.prosecdef=s.secdef AND p.proconfig::text=s.cfg)::text FROM pg_proc p, snap s WHERE p.oid='public.notify_admin_new_contractor()'::regprocedure), 'true');
+SELECT pg_temp.rec('D2 the rollback file restores the exact before-body (md5 equals the one captured at install in this script, which A0b ties to production) and the same grants',
+  (SELECT (md5(p.prosrc)=s.src_md5 AND p.proacl::text IS NOT DISTINCT FROM s.acl AND p.prosecdef=s.secdef AND p.proconfig::text=s.cfg)::text FROM pg_proc p, snap s WHERE p.oid='public.notify_admin_new_contractor()'::regprocedure), 'true');
 DELETE FROM net.http_request_queue;
 INSERT INTO public.contractors (id,email,status) VALUES ('dddddddd-0000-4000-8000-000000000001','rb@example.com','pending_approval');
 SELECT pg_temp.rec('D3 after rollback the old behaviour returns (insert ok, nothing queued): the rollback is real', pg_temp.q($$SELECT count(*)::text FROM net.http_request_queue$$), '0');
