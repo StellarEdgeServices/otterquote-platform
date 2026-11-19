@@ -1,4 +1,4 @@
-<!-- STATUS (gh-1438, as of 2026-10-19T20:58:00Z): NOT APPLIED -->
+<!-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261020165617, name gh2442_dunning_retry_pass_lease; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record) -->
 <!-- FILE ROLE: pre-flight of set gh2442_dunning_retry_pass_lease -->
 <!-- EVIDENCE: the SELECTs below are to be run read-only by the applying session -->
 <!-- REPO COPY: none -->

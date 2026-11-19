@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-11-09): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261110201420); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh3560_renew_quote_rpc (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: drafted 2026-11-09 under #3560 (CTO ruling, comment 6740503022). No database write was made to produce this file; see the forward file for the read-only production facts.
 -- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback to supabase/migrations_rollbacks/.

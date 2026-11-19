@@ -10,8 +10,12 @@
  * Phase 6 does the reads and calls the EXISTING fireAlert() (Mailgun + platform_alerts_log + dedup).
  *
  * What counts as a gap:
- *  - a quote with NO fee_acceptances row whose bid_id is the quote id (a rescinded row still counts as a row: the
- *    acceptance was recorded; rescission is a separate, deliberate event);
+ *  - a quote with NO unrescinded fee_acceptances row whose bid_id is the quote id. gh-3755 (follow-up to #3752): rescinded_at
+ *    is the column rescind-bid stamps on withdrawal (fee_acceptances.rescinded_at, the definition PR #3752 uses). For a LIVE
+ *    bid (bid_status 'active' or null) a rescinded row no longer counts, because a reopen that never wrote its fresh row leaves
+ *    a live bid whose only row is the withdrawn one. For a bid that is not live (cancelled, superseded, expired) a rescinded row
+ *    still counts as a row: the acceptance was recorded and the withdrawal was deliberate. A quote with no row at all is a gap
+ *    exactly as before;
  *  - created before now - graceMinutes (the acceptance insert follows the quote insert by seconds; the grace stops an
  *    in-flight bid from alerting);
  *  - created at or after `since` (fee_acceptances went live with v62 on 2026-05-07; older quotes cannot have a row);
@@ -32,6 +36,8 @@ export interface QuoteRow {
   contractor_id?: string | null;
   created_at: string;
   status?: string | null;
+  /** quotes.bid_status; live = 'active' or null (rescind-bid/status.ts). Absent on legacy callers: treated as live. */
+  bid_status?: string | null;
   is_test?: boolean | null;
   is_auto_bid?: boolean | null;
   renewed_from_quote_id?: string | null;
@@ -74,15 +80,40 @@ export function isCheckableQuote(q: QuoteRow, opts: GapOptions): boolean {
   return true;
 }
 
-/** acceptedBidIds: every fee_acceptances.bid_id that exists (any row, rescinded or not). */
+export interface AcceptanceRow {
+  bid_id: string;
+  rescinded_at?: string | null;
+}
+
+/** Splits fee_acceptances rows by the rescinded_at definition PR #3752 writes: set = rescinded, NULL = standing. */
+export function partitionAcceptanceRows(rows: AcceptanceRow[]): { accepted: Set<string>; rescinded: Set<string> } {
+  const accepted = new Set<string>();
+  const rescinded = new Set<string>();
+  for (const r of rows) (r.rescinded_at ? rescinded : accepted).add(r.bid_id);
+  return { accepted, rescinded };
+}
+
+/** A bid is live when bid_status is 'active' or null (the award paths treat only these as awardable). */
+export function isLiveBid(q: QuoteRow): boolean {
+  return q.bid_status == null || q.bid_status === "active";
+}
+
+/**
+ * acceptedBidIds: fee_acceptances.bid_id of every row with rescinded_at IS NULL.
+ * rescindedBidIds (gh-3755): fee_acceptances.bid_id of every row with rescinded_at set. A rescinded row only covers a bid
+ * that is not live; a live bid needs an unrescinded row. Omitted/empty reproduces the pre-gh-3755 behaviour for callers
+ * that pass every row in acceptedBidIds.
+ */
 export function findQuotesMissingAcceptance(
   quotes: QuoteRow[],
   acceptedBidIds: Iterable<string>,
   opts: GapOptions,
+  rescindedBidIds: Iterable<string> = [],
 ): GapResult {
   const accepted = new Set(acceptedBidIds);
+  const rescinded = new Set(rescindedBidIds);
   const gaps = quotes
-    .filter((q) => isCheckableQuote(q, opts) && !accepted.has(q.id))
+    .filter((q) => isCheckableQuote(q, opts) && !accepted.has(q.id) && !(rescinded.has(q.id) && !isLiveBid(q)))
     .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
   return { count: gaps.length, gaps };
 }

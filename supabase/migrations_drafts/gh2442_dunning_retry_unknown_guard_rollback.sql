@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-10-19T20:20:00Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261020165607); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh2442_dunning_retry_unknown_guard
 -- EVIDENCE: forward file not applied; see gh2442_dunning_retry_unknown_guard.sql
 -- REPO COPY: none

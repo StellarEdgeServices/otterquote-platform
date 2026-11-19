@@ -361,35 +361,21 @@ export function shouldShowDetailedMeasurementBadge(
  * purely the free upgrade D-317 cl. 5 promises the homeowner ("the
  * homeowner's copy is upgraded... at no charge").
  *
- * PLACEHOLDER COPY -- NOT APPROVED FOR PRODUCTION (gh-1411 PR #2236 review).
- * No existing byte-identical homeowner-facing string names this concept --
- * grepped contractor-opportunities.html (#1621), dashboard.html, and this
- * page's own copy; every hit is contractor-facing ("nothing to buy",
- * "every other contractor... will see it too") and none reads naturally as
- * first-person homeowner copy. Per the brief ("no new prices, promises or
- * copy"), the text below is a PLACEHOLDER only -- do not treat it as final,
- * and do not wire this into page.tsx until Sloane (CRO) drafts real copy and
- * it clears LEGAL-READ. This component is deliberately NOT rendered by
- * page.tsx yet for exactly that reason -- see the comment there.
+ * COPY APPROVED (gh-3018 / gh-3689): final text from Marketing/drafts/
+ * cro93-shapeb-badge-copy.md (Sloane, CRO RUN 93; COPY-READ: PASS; #3689
+ * closed 2026-11-12). Used verbatim. Still owed on the wiring PR: LEGAL-READ
+ * and R-177 (homeowner-facing copy). Do not reword without a new COPY-READ.
  */
-export const DETAILED_MEASUREMENT_BADGE_COPY_IS_PLACEHOLDER = true;
+export const DETAILED_MEASUREMENT_BADGE_COPY_IS_PLACEHOLDER = false;
 
 export function buildDetailedMeasurementBadge(): DetailedMeasurementBadgeModel {
-  // LEGAL-READ FIX (PR #2236 comment 5850580181): the prior body carried two
-  // clauses beyond the decided D-numbers -- "a contractor purchased..." (no
-  // D-number covers disclosing that a contractor paid) and "every contractor
-  // bidding on your project now has access..." (a new promise to the
-  // homeowner about every future bidder, and one that conflicts with D-317
-  // cl. 4 / provision 5's "every later upgrade on the same roof is margin"
-  // -- an unresolved Tier C question, not this PR's to answer). Reduced to
-  // ONLY the two clauses LEGAL-READ marked "covered": the receipt-text
-  // concept (D-317 prov. 5, "Detailed roof measurement report") and the free
-  // upgrade (D-317 cl. 5, "no charge"). Still a PLACEHOLDER -- Sloane owns
-  // the final wording -- but nothing beyond what D-317 already decided.
+  // LEGAL-READ FIX (PR #2236 comment 5850580181): copy is limited to the two
+  // clauses LEGAL-READ marked "covered" by D-317: the detailed report
+  // (prov. 5) and the free upgrade (cl. 5, "at no charge"). No contractor-paid
+  // disclosure, no promise about other bidders (D-317 cl. 4 is an open Tier C
+  // question), no vendor name (D-312), no "3D"/photo wording (D-385), no price.
   return {
-    header: "[PLACEHOLDER COPY -- pending Sloane draft + LEGAL-READ, gh-1411] Detailed measurement report",
-    body:
-      "[PLACEHOLDER COPY -- pending Sloane draft + LEGAL-READ, gh-1411] " +
-      "Your copy was upgraded to detailed measurements at no charge.",
+    header: "Detailed roof measurements added",
+    body: "Your roof measurement report now includes detailed measurements, at no charge.",
   };
 }

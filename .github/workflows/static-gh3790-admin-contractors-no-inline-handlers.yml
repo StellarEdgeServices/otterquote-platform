@@ -1,0 +1,38 @@
+name: Static Admin Contractors No-inline-handler Test
+
+# gh-3790 -- admin-contractors.html must not build inline handlers (or HTML) from contractor-supplied text.
+# Runs tests/gh3790-admin-contractors-no-inline-handlers.mjs (string-level assertions in a vm; the headless-Chromium part skips when Playwright is absent).
+# `pull_request` only, no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'admin-contractors.html'
+      - 'tests/gh3790-admin-contractors-no-inline-handlers.mjs'
+      - '.github/workflows/static-gh3790-admin-contractors-no-inline-handlers.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3790-admin-contractors-no-inline-handlers-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  no-inline-handlers:
+    name: Admin contractors no-inline-handler static assertions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.x'
+      - name: No-inline-handler assertions (gh3790-admin-contractors-no-inline-handlers)
+        run: node tests/gh3790-admin-contractors-no-inline-handlers.mjs

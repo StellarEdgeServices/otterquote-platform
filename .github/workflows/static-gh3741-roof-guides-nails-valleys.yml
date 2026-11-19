@@ -1,0 +1,43 @@
+name: Static Roof Guides Nails Valleys Test
+
+# gh-3741 -- the nails-vs-staples and roof-valleys guides are built, listed in the sitemap and wired into the guides index.
+# Runs tests/gh3741-roof-guides-nails-valleys.mjs (no browser, no secrets). `pull_request` only, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'guides/roofing-nails-vs-staples-in-your-bid.html'
+      - 'guides/roof-valleys-open-closed-woven-in-your-bid.html'
+      - 'guides/index.html'
+      - 'sitemap.xml'
+      - 'llms.txt'
+      - '_redirects'
+      - 'netlify/edge-functions/blog-guides-redirect.ts'
+      - 'tests/gh3741-roof-guides-nails-valleys.mjs'
+      - '.github/workflows/static-gh3741-roof-guides-nails-valleys.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3741-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  roof-guides-nails-valleys:
+    name: Roof guides nails and valleys (gh-3741)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.x'
+      - name: Guide exists, FAQPage JSON-LD, listed (gh3741)
+        run: node tests/gh3741-roof-guides-nails-valleys.mjs

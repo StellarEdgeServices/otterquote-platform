@@ -1,4 +1,4 @@
--- STATUS (gh-1438, as of 2026-09-30T12:32Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20260927183251, name gh1961_profiles_is_test_at_creation; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 -- FILE ROLE: test file of set gh1961_profiles_is_test_at_creation (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: triggers profiles_set_is_test_for_internal_domain / contractors_zz_inherit_profile_is_test: 0 rows in pg_trigger: MIGRATIONS-RECONCILIATION-1438.md addendum '2026-09-26' (read-only pg queries); comment 5850997376 (CLOSE-REVIEW 2026-09-26). PR #2002 is closed. Not re-measured since; re-query the live ledger before relying on it. Last measured 2026-09-26.
 -- REPO COPY: none in supabase/migrations/ or supabase/migrations_rollbacks/ for this file

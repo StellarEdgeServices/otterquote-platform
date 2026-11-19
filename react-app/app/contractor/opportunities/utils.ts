@@ -319,7 +319,8 @@ export function mapClaimToOpportunity(
   const zip = claim.location_zip || '';
 
   const rawTrades = claim.selected_trades || claim.trades || ['roofing'];
-  const trades = Array.isArray(rawTrades) ? rawTrades : [rawTrades];
+  // gh-3783 (D-375): windows is never shown to a contractor.
+  const trades = (Array.isArray(rawTrades) ? rawTrades : [rawTrades]).filter((t) => String(t).toLowerCase() !== 'windows');
 
   const releasedTrades: ReleasedTrades = {
     roofing: !!claim.roofing_bid_released_at,

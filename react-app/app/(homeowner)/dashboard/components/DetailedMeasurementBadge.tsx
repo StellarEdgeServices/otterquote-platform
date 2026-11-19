@@ -10,10 +10,10 @@
  * same write that flips the shape, per D-317 cl. 5. Mirrors RebateCard's
  * layout/pattern (D-181) for a consistent homeowner-dashboard card style.
  *
- * NOT YET WIRED INTO page.tsx (gh-1411 PR #2236 review): its copy
- * (utils.ts's buildDetailedMeasurementBadge) is a PLACEHOLDER, not approved
- * production text. Do not import/render this component from page.tsx until
- * Sloane (CRO) has drafted real copy and it has cleared LEGAL-READ.
+ * WIRED INTO page.tsx (gh-3018). Copy is the approved text from
+ * Marketing/drafts/cro93-shapeb-badge-copy.md (COPY-READ: PASS, #3689 closed);
+ * LEGAL-READ + R-177 are owed on the wiring PR. The component renders nothing
+ * unless claims.measurement_shape === 'full' (shouldShowDetailedMeasurementBadge).
  */
 
 import { shouldShowDetailedMeasurementBadge, buildDetailedMeasurementBadge } from '../utils';

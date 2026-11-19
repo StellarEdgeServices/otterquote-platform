@@ -83,7 +83,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # netlify-ignore.test.py replays the production ignore rule over real
           # historical commit pairs; a depth-1 clone reports all 13 as MISSING.

@@ -110,7 +110,9 @@ async function measure(browser, size, c) {
         const cs = getComputedStyle(el);
         const g = document.createElement('canvas').getContext('2d');
         g.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-        const avail = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+        // Box-model width, not el.clientWidth: Chromium 156 reports clientWidth of an <input> as border-box minus borders (padding
+        // included) but Chromium 158 reports the content width (padding already removed), so subtracting padding again double-counts it.
+        const avail = el.getBoundingClientRect().width - ['borderLeftWidth', 'borderRightWidth', 'paddingLeft', 'paddingRight'].reduce((s, k) => s + parseFloat(cs[k]), 0);
         return { text: el.placeholder, need: Math.ceil(g.measureText(el.placeholder).width), avail: Math.floor(avail) };
       })(),
     };

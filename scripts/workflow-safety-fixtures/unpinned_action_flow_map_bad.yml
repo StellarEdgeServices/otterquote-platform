@@ -1,0 +1,8 @@
+# Rule 4 (PR #3797 REVIEW: FAIL 6991245114) negative control: a flow-mapping step hides from a line regex.
+name: unpinned action flow map bad
+on: pull_request
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    steps:
+      - { name: checkout, uses: actions/checkout@v4 }

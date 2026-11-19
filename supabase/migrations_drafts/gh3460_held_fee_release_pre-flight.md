@@ -1,5 +1,5 @@
 <!--
-STATUS (gh-1438, as of 2026-11-05T20:30:30Z): NOT APPLIED
+STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (ledger version 20261108221339, name gh3460_held_fee_release; read-only ledger query, CTO RUN 104, #3324; the lines below are the pre-apply drafting record)
 FILE ROLE: pre-flight file of set gh3460_held_fee_release (the STATUS is the set's; it describes the forward migration)
 EVIDENCE: drafted 2026-11-05 under #3460 from the repo; check 2 was read on production (read-only, section below). The queries below are for the CTO to run read-only before the apply.
 REPO COPY: none. When applied, move to supabase/migrations_rollbacks/.

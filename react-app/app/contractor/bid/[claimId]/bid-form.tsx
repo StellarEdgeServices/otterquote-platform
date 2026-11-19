@@ -29,7 +29,7 @@ import {
   type BidClaim, type BidMode, type TradeFlags, type WarrantySelectionInput,
   type ValueAddsFormState, type ValueAddsContext, type WizardState,
   buildValueAdds, serializeWarrantySelection, applyCustomWarrantyReview,
-  feeConfigLookupParams, resolveFeePct, computeDisclosureFee, computeQuoteFeeBase,
+  parseConfiguredFeePct, storedQuoteFeePct, computeDisclosureFee, computeQuoteFeeBase,
   bidGateRpcParams, interpretBidGate, BID_GATE_ROUTES, DEFAULT_PLATFORM_FEE_PCT,
   buildScopeSummary, buildQuoteInsert, buildQuoteUpdate, renewQuoteRpcMode,
   buildFeeAcceptanceInsert, ipForInet, feeAcceptanceOutcome, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
@@ -195,6 +195,9 @@ function initialState(claim: BidClaim, flags: TradeFlags, claimRcv: number | nul
   };
 }
 
+// gh-3497: plain wording for the two fee-rate stops, verbatim from the CEO's DECIDED (PR #3500 comment 6775653622). No rate or amount is printed.
+const FEE_RATE_UNAVAILABLE_TEXT = "We couldn't load the platform fee for this bid, so your bid was not submitted and nothing was saved. Please try again in a moment.";
+const FEE_RATE_MISMATCH_TEXT = "The platform fee shown on this form was out of date, so your bid was not saved. The form now shows the current fee and your entries are still here. Please review the fee, accept it again, and select Submit Bid.";
 // gh-3488 (REVIEW 6674889982): both outside calls are bounded, so a hung one cannot hold the form.
 const IP_LOOKUP_TIMEOUT_MS = 3000;
 const FEE_LOOKUP_TIMEOUT_MS = 5000;
@@ -213,25 +216,39 @@ async function getContractorIP(): Promise<string | null> {
 }
 
 /**
- * The configured platform fee rate for this contractor and claim, or null when the lookup fails or does not answer
- * within FEE_LOOKUP_TIMEOUT_MS (the caller then keeps the rate already on screen, as it does for any failed lookup).
- * State is `address_state`, the column quotes_platform_fee_for reads on the server (gh-3488, LEGAL-READ 6674806511).
+ * The configured platform fee rate for this contractor and claim, or null when there is no answer: the lookup failed,
+ * did not answer within FEE_LOOKUP_TIMEOUT_MS, or returned no usable rate.
+ * gh-3497 (LEGAL-READ 6675181967): read through quotes_platform_fee_for(), the function the server trigger uses
+ * (SECURITY DEFINER, executable by `authenticated`). platform_fee_config itself is admin-only under RLS, so a table
+ * read as a contractor returned 0 rows, which is not an error and used to fall back to 5.00. The server resolves the
+ * contractor's address_state and the claim's first trade itself. Submit stops on null; the page keeps showing the
+ * rate it already has.
  */
 async function fetchConfiguredFeePct(contractor: ContractorRecord, claim: Record<string, unknown>): Promise<number | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const { state, trade } = feeConfigLookupParams({ state: (contractor.address_state as string | null) ?? null }, claim as BidClaim);
-    const lookup = Promise.resolve(supabase
-      .from('platform_fee_config')
-      .select('fee_pct')
-      .or(`state.is.null,state.eq.${state}`)
-      .or(`trade.is.null,trade.eq.${trade}`)
-      .order('state', { ascending: false, nullsFirst: false })
-      .order('trade', { ascending: false, nullsFirst: false })
-      .limit(1)).then(({ data }) => resolveFeePct(data));
+    const lookup = Promise.resolve(supabase.rpc('quotes_platform_fee_for', {
+      p_contractor_id: contractor.id,
+      p_claim_id: String(claim.id),
+    })).then(({ data, error }) => (error ? null : parseConfiguredFeePct(data)));
     const timeout = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), FEE_LOOKUP_TIMEOUT_MS); });
     return await Promise.race([lookup, timeout]);
   } catch { return null; } finally { if (timer) clearTimeout(timer); }
+}
+
+/**
+ * gh-3497 (LEGAL-READ 6743062238): the rate this form shows, accepts and sends. A new bid uses the configured rate. Change
+ * Bid and Renew UPDATE the existing quote, and the quotes guard keeps that quote's stored rate on the contractor's UPDATE
+ * (ruling 6050104316), so they use the stored rate; showing the configured one would show one fee and charge another.
+ */
+async function resolveBidFeePct(
+  mode: BidMode,
+  existingQuote: Record<string, unknown> | null,
+  contractor: ContractorRecord,
+  claim: Record<string, unknown>,
+): Promise<number | null> {
+  if ((mode === 'change' || mode === 'renew') && existingQuote) return storedQuoteFeePct(existingQuote);
+  return fetchConfiguredFeePct(contractor, claim);
 }
 
 // gh-3498 (REVIEW 6675274132): the bid_can_submit gate and the quote insert are bounded, so a stalled connection ends in
@@ -336,6 +353,9 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
   const mode: BidMode = filedQuote ? 'change' : modeProp;
   const existingQuote = filedQuote ?? existingQuoteProp;
   const router = useRouter();
+  const renewDoneQuoteIdRef = useRef<string | null>(null); // gh-3498 (F-A): the quote whose renew_quote call already succeeded; a retry after a failed field UPDATE skips the RPC (it refuses a live bid, 55000)
+  const reopenAcceptanceDoneRef = useRef<string | null>(null); // gh-3750: the withdrawn bid whose fresh fee_acceptances row this form has already written
+  const renewTimedOutRef = useRef(false); // gh-3498 (F1): a renew_quote call went unanswered; the next attempt reads the bid status again first
   const claimTrades = useMemo(() => (Array.isArray(claim.trades) ? (claim.trades as string[]) : []), [claim.trades]);
   const hasRoofing = claimTrades.includes('roofing');
   const showRoofing = !flags.gutterTradeActive && !(flags.sidingTradeActive && !hasRoofing);
@@ -372,13 +392,13 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
     let active = true;
     setFeeLookupDone(false);
     (async () => {
-      const pct = await fetchConfiguredFeePct(contractor, claim);
+      const pct = await resolveBidFeePct(mode, existingQuote, contractor, claim);
       if (!active) return;
       if (pct !== null) setFeePct(pct);
       setFeeLookupDone(true);
     })();
     return () => { active = false; };
-  }, [contractor, claim]);
+  }, [mode, existingQuote, contractor, claim]);
 
   // gh-3495 (D-267): a multi-trade bid is the SUM of its trades (whole cents); fee, total_price and fee_amount all follow.
   // gh-3488: shown, stored and charged bid is whole cents.
@@ -419,8 +439,15 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
     try {
       // gh-3488 (LEGAL-READ 6674806511): a fresh rate lookup at every submit. If the server's rate differs from the one
       // on screen, show it and require acceptance again (the effect on feePct clears the tick); nothing is filed.
-      const freshPct = await fetchConfiguredFeePct(contractor, claim);
-      if (freshPct !== null && freshPct !== feePct) {
+      // gh-3497 (LEGAL-READ 6743062238): for Change Bid / Renew this is the quote's stored rate (see resolveBidFeePct).
+      const freshPct = await resolveBidFeePct(mode, existingQuote, contractor, claim);
+      // gh-3497: no answer from quotes_platform_fee_for means no submit. The rate on screen is not evidence of what the
+      // server will store. The form keeps the contractor's entries and the error line shows the plain
+      // fee_rate_unavailable text (FEE_RATE_UNAVAILABLE_TEXT, CEO DECIDED 6775653622), with no prefix.
+      if (freshPct === null) {
+        throw new Error('fee_rate_unavailable: the platform fee rate could not be read, so nothing was submitted');
+      }
+      if (freshPct !== feePct) {
         setFeePct(freshPct);
         setSubmitState('idle');
         return;
@@ -472,10 +499,24 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
         });
         // gh-3560: renew / reopen set bid_status, expired_at and expires_at server-side (the quotes guard trigger refuses
         // them to a direct UPDATE, 42501). RPC first, then the field UPDATE below.
-        const renewRpcMode = renewQuoteRpcMode(mode === 'renew', (existingQuote?.bid_status as string | null) ?? null);
+        let renewRpcMode = renewQuoteRpcMode(mode === 'renew', (existingQuote?.bid_status as string | null) ?? null);
+        const reopenedWithdrawnBid = renewRpcMode === 'reopen'; // gh-3750: read before a retry nulls renewRpcMode
+        if (renewRpcMode && renewDoneQuoteIdRef.current === existingQuote!.id) renewRpcMode = null; // gh-3498 (F-A): the RPC already succeeded for this quote; only the field UPDATE is left
+        if (renewRpcMode && renewTimedOutRef.current) {
+          // gh-3498 (REVIEW 6809644127 F1): an earlier renew_quote timed out in the browser, but the server may have finished it. The page's copy of
+          // the bid status is stale then, and renew_quote refuses a bid that is already live (55000). Read the status again before calling it.
+          const { data: cur, error: curErr } = await callWithTimeout(BID_UPDATE_TIMEOUT_MS, (signal) => withAbortSignal(
+            supabase.from('quotes').select('bid_status').eq('id', existingQuote!.id).maybeSingle(), signal));
+          if (curErr) throw curErr; // the catch shows the message and unlocks; nothing was changed
+          if (cur && (cur as { bid_status?: string }).bid_status === 'active') renewRpcMode = null; // already renewed: go on to the UPDATE
+        }
         if (renewRpcMode) {
-          const { error: renewErr } = await supabase.rpc('renew_quote', { p_quote_id: existingQuote!.id, p_mode: renewRpcMode });
+          // gh-3498: bounded like the UPDATE below; a stall ends through the catch (message, form unlocked).
+          renewTimedOutRef.current = true; // cleared once the RPC answers; while set, a retry re-reads the status first
+          const { error: renewErr } = await callWithTimeout(BID_UPDATE_TIMEOUT_MS, (signal) => withAbortSignal(supabase.rpc('renew_quote', { p_quote_id: existingQuote!.id, p_mode: renewRpcMode }), signal));
+          renewTimedOutRef.current = false;
           if (renewErr) throw renewErr;
+          renewDoneQuoteIdRef.current = existingQuote!.id; // gh-3498 (F-A): a retry after a failed UPDATE skips the RPC
         }
         // gh-3491: an UPDATE that never answers ends through the catch below (message, form unlocked). Abort the request and stop waiting.
         const updCtl = new AbortController();
@@ -488,6 +529,7 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
           ]));
         } finally { if (updTimer) clearTimeout(updTimer); }
         if (upErr) throw upErr;
+        renewDoneQuoteIdRef.current = null; // gh-3498 (F-A): the UPDATE answered; the flag is spent
         // gh-2105 (decision a, money — HIGH PRIORITY): `.update()` without
         // `.select()` reports success even on a zero-row RLS/id-mismatch
         // match. This write is the bid's own price/terms change or renewal
@@ -496,6 +538,33 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
         // and what any later award pays out on) never changed.
         if (!wroteRow(upRows)) {
           throw new Error('bid_update_zero_rows: no matching quote row was updated');
+        }
+        // gh-3750 (D-214 / D-215 Layer 1): re-bidding a WITHDRAWN bid ('reopen') is a new act of fee acceptance. rescind-bid stamped the earlier
+        // acceptance row(s) rescinded and stripe-webhook's dispute evidence reads only un-rescinded rows, so the reopened bid needs a fresh row,
+        // written as a first submission writes it. After the field UPDATE (the insert guard compares with the bid's current fee). Non-fatal; once per bid.
+        if (reopenedWithdrawnBid && existingQuote && reopenAcceptanceDoneRef.current !== existingQuote.id) {
+          const reopenBidId = existingQuote.id as string;
+          try {
+            const ip = await getContractorIP();
+            // gh-3409: .select('id') and NEVER .single() (a diverted row returns zero rows).
+            const reopenIns = supabase.from('fee_acceptances').insert(buildFeeAcceptanceInsert({
+              contractorId: contractor.id, claimId: String(claim.id), bidId: reopenBidId, feePct, feeAmount,
+              feeTextDisplayed: exactFeeText, acceptedAtIso: nowIso, ipAddress: ip,
+              userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+            })).select('id');
+            const reopenRes = await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(reopenIns, signal));
+            const reopenOutcome = feeAcceptanceOutcome(reopenRes);
+            if (reopenOutcome !== 'recorded') {
+              console.error('[D-215] Fee acceptance for the reopened bid not recorded (non-fatal):', reopenRes.error?.message);
+              try { Sentry.captureMessage('[D-215] Reopened-bid fee acceptance ' + (reopenOutcome === 'failed' ? 'failed' : 'diverted to quarantine'), { level: reopenOutcome === 'failed' ? 'error' : 'warning', extra: { bid_id: reopenBidId, claim_id: String(claim.id), contractor_id: contractor.id, code: reopenRes.error?.code } }); }
+              catch (se) { console.warn('[gh-3750] Sentry report failed:', se); }
+            }
+          } catch (e) {
+            console.error('[D-215] reopened-bid fee acceptance failed (non-fatal):', e);
+            try { Sentry.captureException(e, { extra: { bid_id: reopenBidId, claim_id: String(claim.id), contractor_id: contractor.id } }); }
+            catch (se) { console.warn('[gh-3750] Sentry report failed:', se); }
+          }
+          reopenAcceptanceDoneRef.current = reopenBidId;
         }
         // Homeowner "bid updated" notification + activity log + GA + contractor email (all non-fatal).
         try {
@@ -609,12 +678,26 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
       // Clear wizard localStorage state on success (parity with clearWizardState).
       try { localStorage.removeItem(`oq_wizard_${claim.id}`); } catch { /* ignore */ }
       idemRef.current = null; // gh-3498: this bid is filed; its key is spent
-      unconfirmedRef.current = []; postWritesDoneRef.current = null;
+      unconfirmedRef.current = []; postWritesDoneRef.current = null; reopenAcceptanceDoneRef.current = null;
       setSubmitState('done');
     } catch (err) {
       console.error('Error submitting bid:', err);
-      setErrorMsg('Error submitting bid: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      // gh-3497: a refused insert arrives from supabase-js as a PostgrestError, which is not always an Error instance;
+      // its message (e.g. fee_rate_mismatch) must reach the contractor rather than "Unknown error".
+      const errMsg = err instanceof Error ? err.message
+        : (err && typeof (err as { message?: unknown }).message === 'string' ? (err as { message: string }).message : 'Unknown error');
+      // gh-3497: the two fee-rate stops show plain wording (CEO DECIDED, PR #3500 comment 6775653622), matched on the code.
+      setErrorMsg(/fee_rate_unavailable/.test(errMsg) ? FEE_RATE_UNAVAILABLE_TEXT
+        : /fee_rate_mismatch/.test(errMsg) ? FEE_RATE_MISMATCH_TEXT
+        : 'Error submitting bid: ' + errMsg);
       setSubmitState('error');
+      // gh-3497: the server refused the bid because the rate shown differs from the configured one (quotes trigger,
+      // fee_rate_mismatch). Nothing was saved and the entries are still here. The acceptance was given to the old
+      // figure, so clear it and re-read the rate: the page then shows the configured figure to be accepted again.
+      if (/fee_rate_mismatch/.test(errMsg)) {
+        setFeeAccepted(false);
+        void resolveBidFeePct(mode, existingQuote, contractor, claim).then((p) => { if (p !== null) setFeePct(p); });
+      }
     } finally {
       submitInFlight.current = false;
     }

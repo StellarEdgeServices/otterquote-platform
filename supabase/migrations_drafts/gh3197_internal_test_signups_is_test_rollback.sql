@@ -1,4 +1,4 @@
--- STATUS (as of 2026-10-30): NOT APPLIED -- DRAFT
+-- STATUS (gh-1438, as of 2026-11-12T20:17:22Z): APPLIED (forward, ledger version 20261031181105); this rollback is NOT run
 -- FILE ROLE: rollback file of set gh3197_internal_test_signups_is_test
 -- EVIDENCE: bodies below are the live definitions read from production 2026-10-30 (pg_get_functiondef, project yeszghaspzwwstvsrioa).
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md

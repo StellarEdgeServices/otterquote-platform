@@ -38,7 +38,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
-import { attemptContractorSms } from "./consent-gate.ts";
+import { attemptContractorSms, resolveNudgeRecipients } from "./consent-gate.ts";
 
 const ALLOWED_ORIGINS = [
   "https://stellaredgeservices.com",
@@ -131,14 +131,11 @@ serve(async (req: Request) => {
     return json({ error: "Forbidden" }, 403, corsHeaders);
   }
 
-  // Service-role read — this is the ONLY place phone/consent fields are read
-  // for this flow, and they never leave this function. sms_consent_text_version
-  // is read alongside sms_opt_in per RETURNED 5856782745's full condition
-  // ("opted in, current text version contractor-v2-2026-09-15") — see
-  // consent-gate.ts's isSmsConsented.
+  // Service-role read — no phone or consent field is read from contractors any more (D-391 / #2875 layer 4): the
+  // recipients come from contractor_textable_numbers() via resolveNudgeRecipients(), and nothing leaves this function.
   const { data: contractor, error: contractorErr } = await sb
     .from("contractors")
-    .select("company_name, phone, notification_phones, sms_opt_in, sms_consent_text_version, is_test")
+    .select("company_name, is_test")
     .eq("id", contractor_id)
     .single();
 
@@ -181,19 +178,11 @@ serve(async (req: Request) => {
   const dustinMsg =
     `Otter Quotes Alert: ${homeownerName} (claim ${claim_id}) says they haven't heard from ${contractorName} since signing on ${signedDate}. Heads up.`;
 
-  const phones: string[] = [];
-  if (Array.isArray(contractor.notification_phones)) {
-    for (const p of contractor.notification_phones) {
-      if (p && !phones.includes(p)) phones.push(p);
-    }
-  }
-  if (contractor.phone && !phones.includes(contractor.phone)) {
-    phones.push(contractor.phone);
-  }
+  // D-391 / #2875 layer 4: recipients come ONLY from contractor_textable_numbers() (one-time-code-verified numbers),
+  // behind the is_test / TCR release gate. contractors.phone, notification_phones and sms_opt_in are not read. A
+  // contractor with no verified number is not texted and the skip is logged (reason unverified_number).
+  const phones = await resolveNudgeRecipients(sb, contractor_id, contractor.is_test);
 
-  // D-328 / gh-1916 R-134 gate: attemptContractorSms refuses (+logs) before
-  // ever calling Twilio unless contractor.sms_opt_in is strictly true AND
-  // sms_consent_text_version equals CURRENT_CONTRACTOR_SMS_CONSENT_VERSION.
   let contractorNotified = false;
   for (const phone of phones) {
     const result = await attemptContractorSms(
@@ -203,8 +192,6 @@ serve(async (req: Request) => {
       phone,
       contractorMsg,
       contractor_id,
-      contractor.sms_opt_in,
-      contractor.sms_consent_text_version,
       contractor.is_test, // D-391 / #2875 TCR release gate (fails closed when unreadable)
     );
     if (result.ok) contractorNotified = true;
