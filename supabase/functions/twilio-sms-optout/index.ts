@@ -2,11 +2,14 @@
  * twilio-sms-optout -- D-391 layer 2 (#2875). Wiring only; logic and safe defaults are in handler.ts.
  * Secrets read by name (never logged): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, TWILIO_AUTH_TOKEN,
  * TWILIO_INBOUND_WEBHOOK_URL (the exact public URL Twilio is configured to post to).
+ * #3770: when a STOP leaves a contractor with no textable number, index.ts e-mails the contractor and Dustin
+ * (_shared/sms-last-number-notice.ts; dark unless SMS_LAST_NUMBER_EMAIL_ENABLED is "true"; needs MAILGUN_API_KEY, MAILGUN_DOMAIN).
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { type Deps, handle } from "./handler.ts";
 import { hasOpenStopRow } from "./open-stop.ts";
+import { noticeAfterOptOut, wireNoticeDeps } from "../_shared/sms-last-number-notice.ts";
 
 const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 
@@ -27,11 +30,18 @@ const deps: Deps = {
     return !error || error.code === "23505";
   },
   markOptedOut: async (phone, keyword, at) => {
-    const { error } = await sb.from("contractor_sms_numbers")
-      // update-no-select-ok: zero rows is legitimate (a STOP from a number never verified for any contractor); the suppression row is the write that matters.
+    const { data, error } = await sb.from("contractor_sms_numbers")
+      // zero rows is legitimate (a STOP from a number never verified for any contractor); the suppression row is the write that matters.
       .update({ status: "opted_out", opted_out_at: at, opt_out_keyword: keyword, opt_out_channel: "sms_keyword" })
-      .eq("phone_e164", phone).eq("status", "verified");
-    return !error;
+      .eq("phone_e164", phone).eq("status", "verified").select("contractor_id");
+    if (error) return false;
+    // #3770: the suppression row is already written, so a contractor left with no textable number is detectable now. Only
+    // contractors whose rows THIS call flipped are considered (a Twilio retry flips none), and nothing here can fail the STOP.
+    try {
+      const ids = (data ?? []).map((r: { contractor_id: string }) => r.contractor_id).filter(Boolean);
+      if (ids.length) await noticeAfterOptOut(wireNoticeDeps(sb, (n) => Deno.env.get(n)), ids, "sms STOP");
+    } catch (e) { console.error(`${"twilio-sms-optout"}: last-number notice failed (STOP unaffected):`, e instanceof Error ? e.message : String(e)); }
+    return true;
   },
   recordStopOverStaff: async (phone, keyword, _at) => {
     // #3761: a contractor's own STOP over a staff-recorded opt-out must stay on record as the contractor's STOP.
