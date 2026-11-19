@@ -781,28 +781,26 @@
 
         /* gh-3635-covered-mark:begin */
         // gh-3635 (P23): the page-side covered mark for the 100-hour guarantee block (data-guarantee-needs-covered).
-        // window.OQ_GUARANTEE_COVERED is true ONLY when the signed-in buyer's own hover_orders row for this claim carries
-        // guarantee_covered = true (#3471's mark). The excluded-state list itself is service-role-only config (#3471) and is
-        // never read here, and this page ships no copy of it. The read is the buyer's own row through the anon key + their session
-        // (RLS hover_user_read). false = not covered, unknown (NULL), no row yet, or any error: the block stays hidden (fail closed).
-        // js/guarantee-gate.js is the ONE switch and it reveals once, so the gate script is loaded by oqLoadGuaranteeGate() AFTER
-        // the mark is set. GUARANTEE_LIVE stays false in that file: until it is flipped (R-177) nothing here shows anything.
-        async function oqReadGuaranteeCovered(client, claim, user) {
+        // window.OQ_GUARANTEE_COVERED is true ONLY when the database function get_guarantee_covered(p_claim_id) answers exactly true for
+        // THIS buyer's own claim (the function returns NULL for anyone else's claim; EXECUTE is granted to signed-in users only). That is
+        // #3471's coverage rule evaluated BEFORE payment, so a first-time buyer with no order row yet still gets an answer. The excluded-state
+        // list is service-role-only config: it is never read here and this page ships no copy of it. false = excluded (false), unknown (null),
+        // no session, timeout after 5 s, or any error: the block stays hidden (fail closed).
+        // js/guarantee-gate.js is the ONE switch and it reveals once, so the gate script is loaded by oqLoadGuaranteeGate() AFTER the mark
+        // is set. GUARANTEE_LIVE stays false in that file: until it is flipped (R-177) nothing here shows anything.
+        async function oqReadGuaranteeCovered(client, claim, user, timeoutMs) {
+            let timer = null;
             try {
                 if (!client || !claim || !claim.id || !user || !user.id) return false;
-                const { data, error } = await client
-                    .from('hover_orders')
-                    .select('guarantee_covered')
-                    .eq('claim_id', claim.id)
-                    .eq('user_id', user.id)
-                    .not('guarantee_covered', 'is', null)
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-                if (error || !data) return false;
-                return data.guarantee_covered === true;
+                const ms = typeof timeoutMs === 'number' ? timeoutMs : 5000;
+                const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve({ data: null, error: { message: 'timeout' } }), ms); });
+                const { data, error } = await Promise.race([client.rpc('get_guarantee_covered', { p_claim_id: claim.id }), timeout]);
+                if (error) return false;
+                return data === true;
             } catch (e) {
                 return false;
+            } finally {
+                if (timer) clearTimeout(timer);
             }
         }
         function oqLoadGuaranteeGate() {
