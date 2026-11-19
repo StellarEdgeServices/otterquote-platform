@@ -1,0 +1,56 @@
+name: Static Switch-Contractor Caller Guard
+
+# gh-3493 -- any caller of the switch-contractor Edge Function must carry the GH3493-INFLIGHT-GUARD marker.
+# Source scan only; no secrets, read-only token. Path filter is every file kind the scan reads, because a caller
+# can be added in any of them.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - '**.html'
+      - '**.js'
+      - '**.mjs'
+      - '**.cjs'
+      - '**.jsx'
+      - '**.ts'
+      - '**.tsx'
+      - 'tests/gh3493-switch-contractor-caller-guard.mjs'
+      - '.github/workflows/static-gh3493-switch-contractor-caller-guard.yml'
+  push:
+    branches: [main]
+    paths:
+      - '**.html'
+      - '**.js'
+      - '**.mjs'
+      - '**.cjs'
+      - '**.jsx'
+      - '**.ts'
+      - '**.tsx'
+      - 'tests/gh3493-switch-contractor-caller-guard.mjs'
+      - '.github/workflows/static-gh3493-switch-contractor-caller-guard.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3493-switch-contractor-caller-guard-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-gh3493-switch-contractor-caller-guard:
+    name: Switch-contractor caller guard (gh3493)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.x'
+      - name: Switch-contractor caller guard (gh3493)
+        run: node tests/gh3493-switch-contractor-caller-guard.mjs
