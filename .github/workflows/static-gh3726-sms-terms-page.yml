@@ -1,0 +1,37 @@
+name: Static gh-3726 SMS Terms Page Tests
+
+# gh-3726 item 6 -- /sms-terms carries the approved contractor SMS wording (#3065) verbatim.
+# `pull_request` only, no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'sms-terms.html'
+      - 'tests/gh3726-sms-terms-page.mjs'
+      - '.github/workflows/static-gh3726-sms-terms-page.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3726-sms-terms-page-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-gh3726-sms-terms-page:
+    name: /sms-terms carries the approved wording verbatim
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.x'
+      - name: SMS terms page wording (gh3726)
+        run: node tests/gh3726-sms-terms-page.mjs
