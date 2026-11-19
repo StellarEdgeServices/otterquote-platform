@@ -73,8 +73,10 @@ Deno.test("NEGATIVE CONTROL Twilio error: Twilio's error body names the To numbe
   assert(r.logs.some((l) => l.startsWith("Twilio SMS send failed:") && l.includes("400") && l.includes("21211")), "the failure is still logged with status and Twilio's error code");
   assert(r.logs.some((l) => l.startsWith("send-sms error:")), "the catch still logs");
   assertEquals(leaks(r.logs), [], `full number in a log line: ${JSON.stringify(leaks(r.logs))}`);
-  assertFalse(r.body.includes("5551234") && r.body.includes("317"), "the number is not echoed to the caller either");
-  assert(r.body.includes("***1234"));
+  // alert #95: the 500 body is a fixed string; no Twilio text, no number (masked or not) and no error message reaches the caller.
+  assertEquals(JSON.parse(r.body), { error: "SMS send failed" });
+  assertFalse(r.body.includes("5551234"), "the number is not echoed to the caller");
+  assertFalse(r.body.includes("21211") || r.body.includes("valid phone number"), "Twilio's error text is not echoed to the caller");
 });
 
 Deno.test("maskPhoneNumbersInText: E.164, dashed, parenthesised and bare 10/11-digit forms are masked; 5-digit error codes, dates and SIDs are not", () => {
