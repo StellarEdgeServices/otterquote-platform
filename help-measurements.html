@@ -779,6 +779,41 @@
         let currentProfile = null;
         let currentClaim = null;
 
+        /* gh-3635-covered-mark:begin */
+        // gh-3635 (P23): the page-side covered mark for the 100-hour guarantee block (data-guarantee-needs-covered).
+        // window.OQ_GUARANTEE_COVERED is true ONLY when the signed-in buyer's own hover_orders row for this claim carries
+        // guarantee_covered = true (#3471's mark). The excluded-state list itself is service-role-only config (#3471) and is
+        // never read here, and this page ships no copy of it. The read is the buyer's own row through the anon key + their session
+        // (RLS hover_user_read). false = not covered, unknown (NULL), no row yet, or any error: the block stays hidden (fail closed).
+        // js/guarantee-gate.js is the ONE switch and it reveals once, so the gate script is loaded by oqLoadGuaranteeGate() AFTER
+        // the mark is set. GUARANTEE_LIVE stays false in that file: until it is flipped (R-177) nothing here shows anything.
+        async function oqReadGuaranteeCovered(client, claim, user) {
+            try {
+                if (!client || !claim || !claim.id || !user || !user.id) return false;
+                const { data, error } = await client
+                    .from('hover_orders')
+                    .select('guarantee_covered')
+                    .eq('claim_id', claim.id)
+                    .eq('user_id', user.id)
+                    .not('guarantee_covered', 'is', null)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (error || !data) return false;
+                return data.guarantee_covered === true;
+            } catch (e) {
+                return false;
+            }
+        }
+        function oqLoadGuaranteeGate() {
+            if (window.__oqGuaranteeGateRequested) return;
+            window.__oqGuaranteeGateRequested = true;
+            const el = document.createElement('script');
+            el.src = '/js/guarantee-gate.js';
+            document.body.appendChild(el);
+        }
+        /* gh-3635-covered-mark:end */
+
         // ── Init ──
         document.addEventListener('DOMContentLoaded', async () => {
             try {
@@ -809,6 +844,7 @@
 
                 currentProfile = await Auth.getProfile();
                 await loadClaimData();
+                window.OQ_GUARANTEE_COVERED = await oqReadGuaranteeCovered(sb, currentClaim, currentUser); // gh-3635
                 prefillAdjusterInfo();
                 setupListeners();
                 checkExistingEstimateRequest();
@@ -820,6 +856,8 @@
             } catch (err) {
                 console.error('Init error:', err);
                 showMessage('Failed to load page. Please refresh.', 'error');
+            } finally {
+                oqLoadGuaranteeGate(); // gh-3635: the gate runs once, after the covered mark is set (or left unset = hidden)
             }
         });
 
@@ -1300,6 +1338,6 @@
         }
 
     </script>
-    <script src="/js/guarantee-gate.js" defer></script>
+    <!-- gh-3635: js/guarantee-gate.js is loaded by oqLoadGuaranteeGate() after the covered mark is set -->
 </body>
 </html>
