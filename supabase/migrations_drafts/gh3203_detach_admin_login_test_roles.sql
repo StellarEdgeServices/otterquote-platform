@@ -16,6 +16,7 @@
 --   c) profiles 3ea4d929: role 'contractor' -> 'homeowner' (CHECK allows homeowner/contractor only; admin power = is_admin_email()).
 -- Pre-state (read 2026-10-29, comment 6508428206): re-read before applying; the guards below abort if it has drifted.
 BEGIN;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
 
 DO $$
 DECLARE n int;

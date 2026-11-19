@@ -2,6 +2,7 @@
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 -- Restores the pre-state read in #3203 comment 6508428206 (contractor pending_approval, agent active, profile role contractor).
 BEGIN;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
 UPDATE public.contractors SET status = 'pending_approval', user_id = '3ea4d929-b916-4cc9-a285-d052df397992'
  WHERE id = 'ee452a12-c16e-4d30-9d2c-df8128fbce52' AND user_id IS NULL;
 UPDATE public.referral_agents SET status = 'active'
