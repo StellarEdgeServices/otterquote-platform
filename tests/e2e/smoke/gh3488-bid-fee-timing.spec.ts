@@ -576,7 +576,13 @@ test.describe('gh-3497 contractor-bid-form.html: Change Bid and Renew use the st
       expect(guardFeeCents).toBe(125000);
       const shownCents = await page.evaluate((tp) => (window as any).platformFeeCents(tp, (window as any)._feePct), u.payload.total_price);
       expect(shownCents).toBe(guardFeeCents);
-      expect((await inserted(page, 'fee_acceptances')).length).toBe(0);    // a revised bid writes no new acceptance row
+      // gh-3490 (Ben ruling 6740655614, option A): a changed or renewed bid writes exactly ONE fee_acceptances row, for this bid, at the stored 5.00
+      await expect.poll(async () => (await inserted(page, 'fee_acceptances')).length, { timeout: 15000 }).toBe(1);
+      const fa = (await inserted(page, 'fee_acceptances'))[0];
+      expect(fa.op).toBe('insert');
+      expect(fa.payload.bid_id).toBe('q-1');                           // the bid just updated
+      expect(fa.payload.fee_pct).toBe(5);                              // the stored rate, not the configured 4.00
+      expect(fa.payload.fee_amount).toBe(1250);                        // 5.00 percent of 25,000
     });
   }
 

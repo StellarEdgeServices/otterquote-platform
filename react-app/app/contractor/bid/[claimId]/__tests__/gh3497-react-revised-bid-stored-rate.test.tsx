@@ -101,8 +101,11 @@ for (const mode of ['change', 'renew'] as const) {
       expect(h.state.updates[0].total_price).toBe(25000);
       // ...and the fee shown and accepted equals the fee the guard leaves on the row (what docusign-webhook charges)
       expect(h.state.stored[0].fee_amount).toBe(1250);
-      // Change Bid / Renew write no fee_acceptances row (the original acceptance stays; the table is append-only)
-      expect(h.state.inserts.filter((i) => i.table === 'fee_acceptances').length).toBe(0);
+      // gh-3490 (Ben, ruling 6740655614, option A): Change Bid / Renew write their own fee_acceptances row (one, for the updated bid; the table is
+      // append-only). This line used to expect none; the stored-rate checks above are unchanged.
+      const faRows = h.state.inserts.filter((i) => i.table === 'fee_acceptances');
+      expect(faRows.length).toBe(1);
+      expect(faRows[0].row).toMatchObject({ bid_id: 'q-1', fee_pct: 5, fee_amount: 1250 });
     });
 
     it('a stored row with platform_fee_pct NULL uses fee_percentage, as the guard does', async () => {
@@ -120,6 +123,8 @@ for (const mode of ['change', 'renew'] as const) {
       await waitFor(() => expect(h.state.updates.length).toBe(1));
       expect(h.state.updates[0].platform_fee_pct).toBe(5);
       expect(h.state.stored[0].fee_amount).toBe(1250);
+      // gh-3490: the submit now also writes its fee_acceptances row after the UPDATE. Let it finish inside this test, or it lands in the next test's counts.
+      await waitFor(() => expect(container.textContent).toMatch(mode === 'renew' ? /Bid renewed/ : /Bid updated/));
     });
   });
 }

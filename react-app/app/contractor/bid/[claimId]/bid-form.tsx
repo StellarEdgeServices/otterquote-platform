@@ -539,32 +539,50 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
         if (!wroteRow(upRows)) {
           throw new Error('bid_update_zero_rows: no matching quote row was updated');
         }
-        // gh-3750 (D-214 / D-215 Layer 1): re-bidding a WITHDRAWN bid ('reopen') is a new act of fee acceptance. rescind-bid stamped the earlier
-        // acceptance row(s) rescinded and stripe-webhook's dispute evidence reads only un-rescinded rows, so the reopened bid needs a fresh row,
-        // written as a first submission writes it. After the field UPDATE (the insert guard compares with the bid's current fee). Non-fatal; once per bid.
-        if (reopenedWithdrawnBid && existingQuote && reopenAcceptanceDoneRef.current !== existingQuote.id) {
-          const reopenBidId = existingQuote.id as string;
+        // gh-3750 + gh-3490 (D-214 / D-215 Layer 1), one block: every Change Bid, Renew and re-bid of a WITHDRAWN bid ('reopen') is an act of fee
+        // acceptance, and the fee text on this form says submitting "constitutes your acceptance", so each submission writes ONE fee_acceptances row
+        // for the bid just updated, written as a first submission writes it. A reopen (gh-3750): rescind-bid stamped the earlier acceptance row(s)
+        // rescinded and stripe-webhook's dispute evidence reads only un-rescinded rows, so the reopened bid needs a fresh row; it is written once per
+        // bid (reopenAcceptanceDoneRef). A change or renewal (gh-3490, Ben ruling 6740655614, option A) has no such ref. After the field UPDATE
+        // (the insert guard compares with the bid's current fee). Insert-only and non-fatal (the quote is committed). Needs the gh3490 guard
+        // (same bid AND same fee = duplicate) applied first.
+        if (!reopenedWithdrawnBid || (existingQuote && reopenAcceptanceDoneRef.current !== existingQuote.id)) {
+          const feeBidId = existingQuote!.id as string;
           try {
             const ip = await getContractorIP();
-            // gh-3409: .select('id') and NEVER .single() (a diverted row returns zero rows).
-            const reopenIns = supabase.from('fee_acceptances').insert(buildFeeAcceptanceInsert({
-              contractorId: contractor.id, claimId: String(claim.id), bidId: reopenBidId, feePct, feeAmount,
+            // gh-3409: .select('id') and NEVER .single() (a diverted row returns zero rows; .single() would make PostgREST roll the quarantine row back).
+            const feeIns = supabase.from('fee_acceptances').insert(buildFeeAcceptanceInsert({
+              contractorId: contractor.id, claimId: String(claim.id), bidId: feeBidId, feePct, feeAmount,
               feeTextDisplayed: exactFeeText, acceptedAtIso: nowIso, ipAddress: ip,
               userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
             })).select('id');
-            const reopenRes = await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(reopenIns, signal));
-            const reopenOutcome = feeAcceptanceOutcome(reopenRes);
-            if (reopenOutcome !== 'recorded') {
-              console.error('[D-215] Fee acceptance for the reopened bid not recorded (non-fatal):', reopenRes.error?.message);
-              try { Sentry.captureMessage('[D-215] Reopened-bid fee acceptance ' + (reopenOutcome === 'failed' ? 'failed' : 'diverted to quarantine'), { level: reopenOutcome === 'failed' ? 'error' : 'warning', extra: { bid_id: reopenBidId, claim_id: String(claim.id), contractor_id: contractor.id, code: reopenRes.error?.code } }); }
-              catch (se) { console.warn('[gh-3750] Sentry report failed:', se); }
+            const feeRes = await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(feeIns, signal));
+            const feeOutcome = feeAcceptanceOutcome(feeRes);
+            if (feeOutcome !== 'recorded') {
+              if (reopenedWithdrawnBid) {
+                console.error('[D-215] Fee acceptance for the reopened bid not recorded (non-fatal):', feeRes.error?.message);
+                try { Sentry.captureMessage('[D-215] Reopened-bid fee acceptance ' + (feeOutcome === 'failed' ? 'failed' : 'diverted to quarantine'), { level: feeOutcome === 'failed' ? 'error' : 'warning', extra: { bid_id: feeBidId, claim_id: String(claim.id), contractor_id: contractor.id, code: feeRes.error?.code } }); }
+                catch (se) { console.warn('[gh-3750] Sentry report failed:', se); }
+              } else {
+                const feeMsg = feeOutcome === 'failed' ? '[D-215] Fee acceptance record failed (non-fatal, quote committed)' : '[D-215] Fee acceptance diverted to quarantine';
+                console.error(feeMsg, feeRes.error?.message);
+                try {
+                  Sentry.captureMessage(feeMsg, { level: feeOutcome === 'failed' ? 'error' : 'warning', extra: { bid_id: feeBidId, claim_id: String(claim.id), contractor_id: contractor.id, code: feeRes.error?.code, message: feeRes.error?.message } });
+                } catch (se) { console.warn('[gh-3490] Sentry report failed:', se); }
+              }
             }
           } catch (e) {
-            console.error('[D-215] reopened-bid fee acceptance failed (non-fatal):', e);
-            try { Sentry.captureException(e, { extra: { bid_id: reopenBidId, claim_id: String(claim.id), contractor_id: contractor.id } }); }
-            catch (se) { console.warn('[gh-3750] Sentry report failed:', se); }
+            if (reopenedWithdrawnBid) {
+              console.error('[D-215] reopened-bid fee acceptance failed (non-fatal):', e);
+              try { Sentry.captureException(e, { extra: { bid_id: feeBidId, claim_id: String(claim.id), contractor_id: contractor.id } }); }
+              catch (se) { console.warn('[gh-3750] Sentry report failed:', se); }
+            } else {
+              console.error('[D-215] fee acceptance failed (non-fatal):', e);
+              try { Sentry.captureException(e, { extra: { bid_id: feeBidId, claim_id: String(claim.id), contractor_id: contractor.id } }); }
+              catch (se) { console.warn('[gh-3490] Sentry report failed:', se); }
+            }
           }
-          reopenAcceptanceDoneRef.current = reopenBidId;
+          if (reopenedWithdrawnBid) reopenAcceptanceDoneRef.current = feeBidId; // gh-3750: once per bid
         }
         // Homeowner "bid updated" notification + activity log + GA + contractor email (all non-fatal).
         try {
