@@ -305,7 +305,8 @@ export async function handler(req: Request): Promise<Response> {
   } catch (error) {
     const safeErr = maskPhoneNumbersInText(error instanceof Error ? error.message : String(error));
     console.error("send-sms error:", safeErr);
-    return new Response(JSON.stringify({ error: safeErr }), {
+    // code-scanning alert #95 (js/stack-trace-exposure): the caller gets a fixed body; the masked detail stays in the log above.
+    return new Response(JSON.stringify({ error: "SMS send failed" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
