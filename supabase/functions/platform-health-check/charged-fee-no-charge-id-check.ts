@@ -31,6 +31,31 @@ export interface ChargedFeeResult {
 export const CHARGED_FEE_ALERT_TYPE = "charged_fee_no_charge_id";
 export const CHARGED_FEE_FUNCTION_NAME = "claims.platform_fee_stripe_id";
 export const CHARGED_FEE_LISTED_IDS = 20;
+export const CHARGED_FEE_REMINDER_HOURS = 24;
+
+/**
+ * Standing-condition throttle (same idea as gh-3586's shouldAlertOnGap, review 7087416804). A charged fee with no charge id
+ * stays stuck until someone fixes it, and fireAlert()'s own dedup only looks at UNACKNOWLEDGED rows in the last 15 minutes
+ * (the cron period), so without this the owner is emailed every run, and acknowledging the alert re-fires it at once.
+ * lastAlert is the newest platform_alerts_log row of this type, acknowledged or not (null = never alerted or read error).
+ * Alert when (a) never alerted, (b) a currently-offending claim id (among the ids an alert lists) is not named in the last
+ * alert's message, (c) the last alert is older than reminderHours (one reminder a day), or (d) force (planted-case proof run).
+ * New claims are detected by id, not created_at: a claim can be old and only become offending when its charge flag flips.
+ */
+export function shouldAlertOnChargedFee(
+  result: ChargedFeeResult,
+  lastAlert: { sent_at: string | null; message?: string | null } | null,
+  o: { now?: Date; reminderHours?: number; force?: boolean } = {},
+): { alert: boolean; newCount: number } {
+  if (result.count <= 0) return { alert: false, newCount: 0 };
+  const last = lastAlert?.sent_at ? Date.parse(lastAlert.sent_at) : NaN;
+  if (o.force || Number.isNaN(last)) return { alert: true, newCount: result.count };
+  const prior = lastAlert?.message ?? "";
+  const newCount = result.claims.slice(0, CHARGED_FEE_LISTED_IDS).filter((c) => !prior.includes(c.id)).length;
+  const now = (o.now ?? new Date()).getTime();
+  const reminderDue = now - last >= (o.reminderHours ?? CHARGED_FEE_REMINDER_HOURS) * 3_600_000;
+  return { alert: newCount > 0 || reminderDue, newCount };
+}
 
 /** Same predicate as the closes-on forward guard, minus is_test rows (unless includeTest, planted-case proof only). */
 export function isChargedFeeWithoutChargeId(c: ClaimFeeRow, includeTest = false): boolean {

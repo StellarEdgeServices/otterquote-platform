@@ -6,6 +6,7 @@ import {
   CHARGED_FEE_ALERT_TYPE,
   evaluateChargedFeeWithoutChargeId,
   findChargedFeesWithoutChargeId,
+  shouldAlertOnChargedFee,
   type ClaimFeeRow,
 } from "./charged-fee-no-charge-id-check.ts";
 
@@ -38,4 +39,27 @@ Deno.test("is_test rows are invisible to the real alert, visible to the includeT
   const proof = findChargedFeesWithoutChargeId([t], true);
   assertEquals(proof.count, 1);
   assertEquals(evaluateChargedFeeWithoutChargeId(proof, true)?.message.includes("test-inclusive"), true);
+});
+
+// ---- review fixes (REVIEW 7087416804): standing-condition throttle ----
+Deno.test("a standing row alerts once; second run stays silent, even after acknowledge; new row alerts; reminder after 24h", () => {
+  const NOW = new Date("2026-11-22T18:00:00Z");
+  const one = findChargedFeesWithoutChargeId([c("stuck-1", { platform_fee_stripe_id: null })]);
+  // never alerted -> alert
+  assertEquals(shouldAlertOnChargedFee(one, null, { now: NOW }).alert, true);
+  // first run's alert is logged (message names the id); the next run, 15 minutes later, is silent
+  const msg = evaluateChargedFeeWithoutChargeId(one)!.message;
+  const last = { sent_at: "2026-11-22T17:45:00Z", message: msg };
+  assertEquals(shouldAlertOnChargedFee(one, last, { now: NOW }), { alert: false, newCount: 0 });
+  // acknowledging only sets acknowledged_at on that row; the throttle reads the row regardless, so still silent
+  assertEquals(shouldAlertOnChargedFee(one, { ...last, acknowledged_at: "2026-11-22T17:50:00Z" } as typeof last, { now: NOW }).alert, false);
+  // a NEW offending claim alerts
+  const two = findChargedFeesWithoutChargeId([c("stuck-1", { platform_fee_stripe_id: null }), c("stuck-2", { platform_fee_stripe_id: "" })]);
+  assertEquals(shouldAlertOnChargedFee(two, last, { now: NOW }), { alert: true, newCount: 1 });
+  // daily reminder: 23h silent, 24h+ alerts
+  assertEquals(shouldAlertOnChargedFee(one, { ...last, sent_at: "2026-11-21T19:00:00Z" }, { now: NOW }).alert, false);
+  assertEquals(shouldAlertOnChargedFee(one, { ...last, sent_at: "2026-11-21T17:59:00Z" }, { now: NOW }).alert, true);
+  // no offending rows -> never; proof run (force) -> always
+  assertEquals(shouldAlertOnChargedFee({ count: 0, claims: [] }, null, { now: NOW }).alert, false);
+  assertEquals(shouldAlertOnChargedFee(one, last, { now: NOW, force: true }).alert, true);
 });

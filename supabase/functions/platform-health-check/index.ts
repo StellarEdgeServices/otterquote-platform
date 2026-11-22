@@ -114,6 +114,9 @@ import {
 import {
   evaluateChargedFeeWithoutChargeId,
   findChargedFeesWithoutChargeId,
+  shouldAlertOnChargedFee,
+  CHARGED_FEE_ALERT_TYPE,
+  CHARGED_FEE_FUNCTION_NAME,
   type ClaimFeeRow,
 } from "./charged-fee-no-charge-id-check.ts"; // gh-1759
 import {
@@ -1105,7 +1108,7 @@ This is an automated alert from OtterQuote platform monitoring (gh-3586).`;
  * Phase 7 (gh-1759): a charged platform fee with no stored Stripe charge id. READ-ONLY, INTERNAL ONLY.
  * Forward guard from the issue's closes-on: claims with platform_fee_charged IS TRUE AND platform_fee_stripe_id IS NULL,
  * is_test excluded, must stay 0. Pure rule in charged-fee-no-charge-id-check.ts; alerts the owner via the EXISTING fireAlert()
- * (Mailgun to ALERT_EMAIL + platform_alerts_log + its dedup). Soft-fails (never throws, never blocks another phase).
+ * (Mailgun to ALERT_EMAIL + platform_alerts_log + its dedup) behind shouldAlertOnChargedFee (new claim id or daily reminder). Soft-fails (never throws, never blocks another phase).
  */
 async function runChargedFeeChargeIdCheck(
   supabase: ReturnType<typeof createClient>,
@@ -1117,7 +1120,7 @@ async function runChargedFeeChargeIdCheck(
     .from("claims")
     .select("id, created_at, platform_fee_charged, platform_fee_stripe_id, is_test")
     .eq("platform_fee_charged", true)
-    .is("platform_fee_stripe_id", null)
+    .or("platform_fee_stripe_id.is.null,platform_fee_stripe_id.eq.") // NULL and '' (blank text is storable, no CHECK); a second .or() is ANDed with the is_test one
     .order("created_at", { ascending: true })
     .limit(1000);
   if (!includeTest) q = q.or("is_test.is.null,is_test.eq.false");
@@ -1128,8 +1131,17 @@ async function runChargedFeeChargeIdCheck(
   }
   const result = findChargedFeesWithoutChargeId(data ?? [], includeTest);
   const alert = evaluateChargedFeeWithoutChargeId(result, includeTest);
+  // Standing-condition throttle (review 7087416804): newest log row of this type, acknowledged or not. A read error counts as "never alerted".
+  const { data: lastRows } = await supabase
+    .from("platform_alerts_log")
+    .select("sent_at, message")
+    .eq("function_name", CHARGED_FEE_FUNCTION_NAME)
+    .eq("alert_type", CHARGED_FEE_ALERT_TYPE)
+    .order("sent_at", { ascending: false })
+    .limit(1) as { data: { sent_at: string; message: string | null }[] | null };
+  const throttle = shouldAlertOnChargedFee(result, lastRows?.[0] ?? null, { force: includeTest });
   let alertsFired = 0;
-  if (alert) {
+  if (alert && throttle.alert) {
     const message = `${alert.message}
 Checked at: ${formatDualTimestamp(new Date())}
 This is an automated internal alert from OtterQuote platform monitoring (gh-1759).`;
