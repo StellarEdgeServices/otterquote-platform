@@ -26,6 +26,8 @@ import {
 // instead of the pointer just vanishing into a zero-row no-op.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { redactSowTextOrRefuse, RedactionUnavailableError } from "../_shared/homeowner-text-redact.ts";
+// gh-1413: roof image on Exhibit A, dark behind ROOF_IMAGE_ENABLED (see roof-image-exhibit.ts for the access rules).
+import { loadRoofImageForExhibit, mayEmbedRoofImage, roofImageExhibitEnabled, ROOF_IMAGE_BUCKET } from "./roof-image-exhibit.ts";
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 // gh-1314: refuse a labeled sign/init/date tag BEFORE /v1/document/send (BoldSign builds it silently-broken).
 import { LabeledSignTagError, preflightTemplateTags } from "./tag-preflight.ts";
@@ -735,7 +737,7 @@ function sowSidingOnBid(declarations, va, perTradeBreakdown) {
   return Array.isArray(q) && q.some((t) => String(t).toLowerCase() === "siding");
 }
 function generateRetailScopeOfWorkPdf(params) {
-  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, declarations, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, fundingType, pitchBands, twoStoryAdder, insurance, warrantySnapshot, workmanshipWarrantyYears, perTradeBreakdown } = params;
+  const { homeownerName, contractorName, propertyAddress, claimId, trades, contractPrice, estimatedStartDate, valueAdds, declarations, bidBrand, deckingPricePerSheet, fullRedeckPrice, messageToHomeowner, homeownerNotes, projectConfirmation, measurements, contractDate, fundingType, pitchBands, twoStoryAdder, insurance, warrantySnapshot, workmanshipWarrantyYears, perTradeBreakdown , roofImage} = params;
   const va = valueAdds || {};
   // [gh-3751] On a roofing+siding claim, siding is named (Trade(s) line, SIDING heading, scope line) only when the bid carries it. Single-trade claims unchanged.
   const sowMultiRS = (trades || []).some((t) => t.toLowerCase().includes("roof")) && (trades || []).some((t) => t.toLowerCase().includes("siding"));
@@ -1801,6 +1803,19 @@ function generateRetailScopeOfWorkPdf(params) {
   // (handleContractorSign), which always sends contractor as signer 1 and
   // homeowner as signer 2 — safe to hardcode here, unlike the compliance
   // addendum which has two callers with opposite orders.
+  // [gh-1413] Roof image (only when the caller passes one: flag ON, fee collected, valid stored JPEG). Text added: the credit line only.
+  let roofImagePage = -1, roofImageObjW = 0, roofImageObjH = 0;
+  if (roofImage && roofImage.bytes && roofImage.width > 0 && roofImage.height > 0) {
+    roofImageObjW = Math.min(300, roofImage.width);
+    roofImageObjH = Math.round(roofImageObjW * roofImage.height / roofImage.width);
+    ensure(roofImageObjH + 34);
+    y -= roofImageObjH + 6;
+    contentLines.push(`q ${roofImageObjW} 0 0 ${roofImageObjH} ${LEFT_X} ${y} cm /Im1 Do Q`);
+    roofImagePage = pages.length; // index this page will have once finalized
+    y -= 12;
+    addText(LEFT_X, y, 8, "F1", roofImage.caption);
+    y -= 6;
+  }
   ensure(46);
   y -= 18;
   hLine(y + 4);
@@ -1832,6 +1847,7 @@ function generateRetailScopeOfWorkPdf(params) {
   function pdfWrite(s) { pdfLines.push(s); byteOffset += s.length + 1; }
   function pdfStartObj(n) { pdfObjects[n] = byteOffset; pdfWrite(`${n} 0 obj`); }
   pdfWrite("%PDF-1.4");
+  const roofImgObjNum = roofImagePage >= 0 ? 4 + 2 * N + 1 : 0; // [gh-1413] image XObject follows the last page's contents object
   // obj 1: Catalog, obj 2: Pages, obj 3: F1, obj 4: F2, then per page:
   // Page obj = 5 + 2*i, Contents obj = 6 + 2*i.
   pdfStartObj(1);
@@ -1853,7 +1869,7 @@ function generateRetailScopeOfWorkPdf(params) {
     const contentsNum = 6 + 2 * i;
     const stream = pages[i].join("\n");
     pdfStartObj(pageNum);
-    pdfWrite(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Contents ${contentsNum} 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>`);
+    pdfWrite(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Contents ${contentsNum} 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >>${i === roofImagePage ? ` /XObject << /Im1 ${roofImgObjNum} 0 R >>` : ""} >> >>`);
     pdfWrite("endobj");
     pdfStartObj(contentsNum);
     pdfWrite(`<< /Length ${stream.length} >>`);
@@ -1862,7 +1878,18 @@ function generateRetailScopeOfWorkPdf(params) {
     pdfWrite("endstream");
     pdfWrite("endobj");
   }
-  const totalObjects = 4 + 2 * N;
+  if (roofImgObjNum) {
+    // [gh-1413] JPEG passes through untouched (DCTDecode). Bytes are written as a latin1 string so the hand-rolled offsets stay exact.
+    pdfStartObj(roofImgObjNum);
+    pdfWrite(`<< /Type /XObject /Subtype /Image /Width ${roofImage.width} /Height ${roofImage.height} /ColorSpace ${roofImage.components === 1 ? "/DeviceGray" : "/DeviceRGB"} /BitsPerComponent 8 /Filter /DCTDecode /Length ${roofImage.bytes.length} >>`);
+    pdfWrite("stream");
+    let bin = "";
+    for (let k = 0; k < roofImage.bytes.length; k += 8192) bin += String.fromCharCode(...roofImage.bytes.subarray(k, k + 8192));
+    pdfWrite(bin);
+    pdfWrite("endstream");
+    pdfWrite("endobj");
+  }
+  const totalObjects = 4 + 2 * N + (roofImgObjNum ? 1 : 0);
   const xrefOffset = byteOffset;
   pdfWrite("xref");
   pdfWrite(`0 ${totalObjects + 1}`);
@@ -1875,6 +1902,12 @@ function generateRetailScopeOfWorkPdf(params) {
   pdfWrite("startxref");
   pdfWrite(String(xrefOffset));
   pdfWrite("%%EOF");
+  if (roofImgObjNum) {
+    const joined = pdfLines.join("\n");
+    const out = new Uint8Array(joined.length);
+    for (let k = 0; k < joined.length; k++) out[k] = joined.charCodeAt(k) & 0xff;
+    return base64EncodeBinary(out);
+  }
   return base64EncodeBinary(new TextEncoder().encode(pdfLines.join("\n")));
 }
 
@@ -2392,7 +2425,22 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
           exclusions: redactSowTextOrRefuse(claimData.project_confirmation.exclusions ?? null, d390FeeCollected)
         }
         : null;
+      // [gh-1413] Dark: null unless ROOF_IMAGE_ENABLED === "true" AND the fee is collected AND one valid stored image exists. Any failure = no image.
+      const roofImageForPdf = mayEmbedRoofImage({ enabled: roofImageExhibitEnabled(Deno.env.get("ROOF_IMAGE_ENABLED")), feeCollected: d390FeeCollected })
+        ? await loadRoofImageForExhibit(claim_id, {
+          list: async (cid) => {
+            const { data, error } = await supabase.storage.from(ROOF_IMAGE_BUCKET).list(cid);
+            if (error) throw new Error(error.message);
+            return (data ?? []).map((o) => o.name);
+          },
+          download: async (path) => {
+            const { data, error } = await supabase.storage.from(ROOF_IMAGE_BUCKET).download(path);
+            return error || !data ? null : new Uint8Array(await data.arrayBuffer());
+          },
+        })
+        : null;
       scopeOfWorkBase64 = generateRetailScopeOfWorkPdf({
+        roofImage: roofImageForPdf,
         homeownerName,
         contractorName,
         propertyAddress: claimData?.property_address || autoFields.customer_address || "",
