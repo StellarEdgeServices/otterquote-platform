@@ -1806,8 +1806,9 @@ function generateRetailScopeOfWorkPdf(params) {
   // [gh-1413] Roof image (only when the caller passes one: flag ON, fee collected, valid stored JPEG). Text added: the credit line only.
   let roofImagePage = -1, roofImageObjW = 0, roofImageObjH = 0;
   if (roofImage && roofImage.bytes && roofImage.width > 0 && roofImage.height > 0) {
-    roofImageObjW = Math.min(300, roofImage.width);
-    roofImageObjH = Math.round(roofImageObjW * roofImage.height / roofImage.width);
+    const roofImageScale = Math.min(300 / roofImage.width, 300 / roofImage.height, 1); // capped at 300 x 300 pt so a tall image cannot leave the page
+    roofImageObjW = Math.round(roofImage.width * roofImageScale);
+    roofImageObjH = Math.round(roofImage.height * roofImageScale);
     ensure(roofImageObjH + 34);
     y -= roofImageObjH + 6;
     contentLines.push(`q ${roofImageObjW} 0 0 ${roofImageObjH} ${LEFT_X} ${y} cm /Im1 Do Q`);
@@ -2425,9 +2426,15 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
           exclusions: redactSowTextOrRefuse(claimData.project_confirmation.exclusions ?? null, d390FeeCollected)
         }
         : null;
-      // [gh-1413] Dark: null unless ROOF_IMAGE_ENABLED === "true" AND the fee is collected AND one valid stored image exists. Any failure = no image.
-      const roofImageForPdf = mayEmbedRoofImage({ enabled: roofImageExhibitEnabled(Deno.env.get("ROOF_IMAGE_ENABLED")), feeCollected: d390FeeCollected })
-        ? await loadRoofImageForExhibit(claim_id, {
+      // [gh-1413] Dark: null unless ROOF_IMAGE_ENABLED === "true" AND ROOF_IMAGE_IN_CONTRACT_ENABLED === "true" (its own flag: contractor exposure is undecided under D-386)
+      // AND the fee is collected AND the caller is the selected contractor AND the stored image matches the claim's current address. Any failure or stall = no image.
+      const roofImageForPdf = mayEmbedRoofImage({
+        enabled: roofImageExhibitEnabled(Deno.env.get("ROOF_IMAGE_ENABLED")),
+        inContractEnabled: roofImageExhibitEnabled(Deno.env.get("ROOF_IMAGE_IN_CONTRACT_ENABLED")),
+        feeCollected: d390FeeCollected,
+        callerIsSelectedContractor: !!claimData?.selected_contractor_id && claimData.selected_contractor_id === contractor_id,
+      })
+        ? await loadRoofImageForExhibit(claimData, {
           list: async (cid) => {
             const { data, error } = await supabase.storage.from(ROOF_IMAGE_BUCKET).list(cid);
             if (error) throw new Error(error.message);
