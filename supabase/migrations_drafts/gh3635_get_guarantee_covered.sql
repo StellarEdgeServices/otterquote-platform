@@ -1,8 +1,8 @@
 -- gh-3635 (P23): get_guarantee_covered(p_claim_id) -- the covered-state answer BEFORE the homeowner pays.
--- STATUS (gh-1438, as of 2026-11-19): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-22): APPLIED (ledger version 20261122220235, name gh3635_get_guarantee_covered; applied 2026-11-22T22:02:35Z; record #3635 comment 7086621960; the lines below are the pre-apply drafting record)
 -- EVIDENCE: written from the repo (create-measurement-order/guarantee-coverage.ts, gh3471_guarantee_covered.sql, gh-2421 get_homeowner_blocked_states). Executed only in a throwaway PGlite
 --   (stub auth.uid / claims / platform_settings) against the TS rules: 286 list-x-state cases, 0 mismatches; see guarantee-covered-sql-parity.test.ts. No production read or write was made.
--- REPO COPY: none
+-- REPO COPY: supabase/migrations/20261122220235_gh3635_get_guarantee_covered.sql (byte-identical to this file's pre-edit content, which equals the applied ledger statement)
 -- DO NOT RUN FROM THIS DIRECTORY: apply only through the Tier 3A path (REVIEW, LEGAL-READ, R-177, a recorded apply); once applied, copy to supabase/migrations/ under the ledger version.
 -- WHY: hover_orders.guarantee_covered (gh-3471) is written in the same INSERT as the paid order, so a first-time buyer has no row before paying, and the
 --   excluded-state list (platform_settings key guarantee_excluded_states) is service-role-only. The purchase-step page needs one boolean, for its own claim, without
