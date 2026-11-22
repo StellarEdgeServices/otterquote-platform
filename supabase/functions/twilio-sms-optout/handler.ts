@@ -20,8 +20,8 @@
  * Fails closed: no TWILIO_AUTH_TOKEN, no TWILIO_INBOUND_WEBHOOK_URL (the exact URL Twilio signs), or a bad
  * X-Twilio-Signature -> 403 and nothing is written. Writes are idempotent, so a Twilio retry after a 500 is safe.
  *
- * NOT in this layer (owed, needs wording or a decision): the e-mail to the contractor, the notice to Dustin,
- * the on-screen banner, and the review screen that clears or confirms a flagged number.
+ * Wired in index.ts, not here (#3770, dark by default): the e-mail to the contractor and the notice to Dustin when a STOP leaves no
+ * textable number. NOT in this layer (owed): the on-screen banner, and the review screen that clears or confirms a flagged number.
  */
 
 export const FUNCTION_NAME = "twilio-sms-optout";
