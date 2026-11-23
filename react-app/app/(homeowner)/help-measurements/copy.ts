@@ -36,6 +36,21 @@
  *   Operational status / button labels .............. 801-1088
  */
 
+/**
+ * gh-3858 (P23): PLACEHOLDER strings for the charge step that NEXT_PUBLIC_MEASUREMENT_CHARGE_ENABLED turns on.
+ *
+ * NOT WORDING. The charge-step words are an open question to Dustin (#3865) and nobody has approved any. Every value here is an
+ * obvious marker that must never ship. The approved strings REPLACE these values (same keys) in a later change that carries
+ * LEGAL-READ and R-177. These render ONLY with the flag ON; with the flag OFF none of them may reach the page
+ * (pinned by __tests__/help-measurements-page.test.tsx).
+ */
+export const CHARGE_STEP_COPY_PENDING_GH3865 = {
+  heading: '[PENDING #3865: heading]',
+  body: '[PENDING #3865: body]',
+  startButton: '[PENDING #3865: start button]',
+  orderRecorded: '[PENDING #3865: order recorded]',
+} as const;
+
 export const MEASUREMENTS_COPY = {
   // ── Page header (help-measurements.html:553-556) ──
   pageTitle: 'Measurements',

@@ -13,6 +13,8 @@
  *   • Data + EF-backed mutations:  ./use-help-measurements-data (reads + the three
  *     Services.* calls against the UNCHANGED Edge Functions).
  *   • (gh-1873) The Stripe card form ./HoverPaymentForm is no longer mounted by this page.
+ *     (gh-3858) ...unless NEXT_PUBLIC_MEASUREMENT_CHARGE_ENABLED is exactly 'true' (OFF by default, set nowhere in the repo):
+ *     then ChargeStep below mounts it again, in place of the paused notice. Flag OFF = the paused notice, form unmounted.
  *
  * gh-1873 (Hover retirement): the paid vendor-report path (Path A: create a PaymentIntent, charge the card,
  * then call create-hover-order) was REMOVED with the measurement vendor. This page no longer creates a
@@ -40,14 +42,20 @@
 import { useCallback, useEffect, useState } from 'react';
 import { HomeownerShell } from '../_shell/HomeownerShell';
 import { useAuthReady } from '@/hooks/use-auth-ready';
-import { MEASUREMENTS_COPY as M } from './copy';
+import { MEASUREMENTS_COPY as M, CHARGE_STEP_COPY_PENDING_GH3865 as CHARGE_COPY } from './copy';
 import { isAdjusterFormValid, paymentIntentIdFromClientSecret, type MeasurementsUser } from './utils';
 import {
   useHelpMeasurementsData,
   sendMeasurementRequest,
+  requestMeasurementPaymentIntent,
+  recordMeasurementOrder,
   type HelpMeasurementsData,
+  type HelpMeasurementsClaimRow,
 } from './use-help-measurements-data';
-import { readHoverChargeRecord, clearHoverChargeRecord } from './hover-charge-storage';
+import { HoverPaymentForm, isStripeConfigured } from './HoverPaymentForm';
+import { readHoverChargeRecord, saveHoverChargeRecord, clearHoverChargeRecord } from './hover-charge-storage';
+import { getVariant } from '@/lib/variant';
+import { measurementChargeEnabled } from '@/lib/measurement-charge-flag';
 import { track } from '@/lib/track';
 import { supabase } from '@/lib/supabase';
 import { linkPendingLeadOnce } from '@/lib/lead-capture';
@@ -126,6 +134,8 @@ function PageBody({
   user: MeasurementsUser | null;
 }) {
   const { claim, profile, alreadySentBoth } = data;
+  // gh-3858: the measurement charge is dark unless the flag is exactly 'true'. Read at render time.
+  const chargeEnabled = measurementChargeEnabled();
 
   const [view, setView] = useState<View>('select');
   const [status, setStatus] = useState<Status>(() => {
@@ -225,9 +235,13 @@ function PageBody({
             <p>{M.pathIntroText}</p>
           </div>
 
-          <div className="hm-info" role="status" data-testid="hover-retired-notice">
-            <strong>{HOVER_RETIRED_COPY.title}.</strong> {HOVER_RETIRED_COPY.text}
-          </div>
+          {chargeEnabled ? (
+            <ChargeStep claim={claim} onError={(text) => setStatus({ text, type: 'error' })} />
+          ) : (
+            <div className="hm-info" role="status" data-testid="hover-retired-notice">
+              <strong>{HOVER_RETIRED_COPY.title}.</strong> {HOVER_RETIRED_COPY.text}
+            </div>
+          )}
 
           <div className="hm-path-cards">
             <PathCard
@@ -354,6 +368,96 @@ function PathCard({
       <button type="button" className="hm-select-btn" onClick={onSelect}>
         {M.cardSelectButton}
       </button>
+    </div>
+  );
+}
+
+/**
+ * gh-3858: the measurement charge, mounted ONLY when the flag is ON (see PageBody). Every string it adds comes from
+ * CHARGE_STEP_COPY_PENDING_GH3865 (placeholders until #3865 is approved). Order of operations is the money rule the form
+ * already enforces: create the PaymentIntent, the form confirms the card, and the order is recorded ONLY after Stripe reports
+ * 'succeeded'. A failed order step parks the form in its retry state (it never charges twice).
+ */
+type ChargeStage = 'intro' | 'card' | 'recorded';
+
+function ChargeStep({
+  claim,
+  onError,
+}: {
+  claim: HelpMeasurementsClaimRow | null;
+  onError: (text: string) => void;
+}) {
+  const [stage, setStage] = useState<ChargeStage>('intro');
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const start = useCallback(async () => {
+    if (!claim?.id || !isStripeConfigured()) {
+      onError(M.statusPaymentInitError);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await requestMeasurementPaymentIntent(claim, getVariant());
+      if (!res?.client_secret) {
+        onError(M.statusPaymentInitError);
+        return;
+      }
+      setClientSecret(res.client_secret);
+      setStage('card');
+      // gh-951: a reload between the charge and the order leaves this pointer; the page clears it on the next mount
+      // and tells the homeowner to contact support (RESUME_COPY.unresolved). Best-effort.
+      const piId = paymentIntentIdFromClientSecret(res.client_secret);
+      if (piId) saveHoverChargeRecord({ claimId: claim.id, paymentIntentId: piId, ts: Date.now() });
+    } catch {
+      onError(M.statusPaymentInitError);
+    } finally {
+      setLoading(false);
+    }
+  }, [claim, onError]);
+
+  // Throwing propagates to HoverPaymentForm's order step (retry state, same PaymentIntent id, no second charge).
+  const handlePaid = useCallback(
+    async (paymentIntentId: string) => {
+      if (!claim) throw new Error('Missing claim. Please refresh and try again.');
+      await recordMeasurementOrder({ claim, paymentIntentId });
+      clearHoverChargeRecord();
+      setStage('recorded');
+    },
+    [claim],
+  );
+
+  const cancel = useCallback(() => {
+    // Cancel is only reachable before a charge succeeds (the form retires it afterwards), so the intent was never confirmed.
+    clearHoverChargeRecord();
+    setClientSecret(null);
+    setStage('intro');
+  }, []);
+
+  return (
+    <div className="hm-section-card" data-testid="charge-step">
+      {stage === 'recorded' ? (
+        <p role="status" data-testid="charge-step-recorded">
+          {CHARGE_COPY.orderRecorded}
+        </p>
+      ) : (
+        <>
+          <h3 className="hm-section-title">{CHARGE_COPY.heading}</h3>
+          <p className="hm-section-intro">{CHARGE_COPY.body}</p>
+          {stage === 'intro' && (
+            <div className="hm-btn-row">
+              <button type="button" className="hm-btn hm-btn-green" disabled={loading} onClick={() => void start()}>
+                {CHARGE_COPY.startButton}
+              </button>
+            </div>
+          )}
+          {stage === 'card' && clientSecret && (
+            <div data-testid="hover-payment-form">
+              <HoverPaymentForm clientSecret={clientSecret} onPaid={handlePaid} onCancel={cancel} />
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

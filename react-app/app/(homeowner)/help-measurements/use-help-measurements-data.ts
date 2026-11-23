@@ -26,9 +26,11 @@ import * as Sentry from '@sentry/nextjs';
 import { supabase } from '@/lib/supabase';
 import {
   sendAdjusterEmail,
+  createHoverPaymentIntent,
 } from '@/lib/services';
 import {
   buildAdjusterEmailParams,
+  buildHoverPaymentIntentParams,
   buildAdjusterClaimWriteback,
   type HomeownerProfile,
   type MeasurementsClaim,
@@ -142,9 +144,55 @@ export function useHelpMeasurementsData(
   return data;
 }
 
-// ── Path A: Hover (paid) -- REMOVED (gh-1873) ───────────────────────────────────────────
-// requestHoverPaymentIntent() and placeHoverOrder() were removed with the measurement vendor (Hover): the page no
-// longer creates a PaymentIntent for the vendor report or calls create-hover-order.
+// ── Path A: measurement charge (gh-3858, behind NEXT_PUBLIC_MEASUREMENT_CHARGE_ENABLED) ──────────────────────────────
+// The vendor path (requestHoverPaymentIntent / placeHoverOrder -> create-hover-order) was removed with the measurement vendor
+// (gh-1873) and is NOT restored. These two helpers are the replacement and are called only when the flag is ON:
+//   1. requestMeasurementPaymentIntent: create-payment-intent for 2263 cents (the Edge Function enforces the real amount server-side).
+//   2. recordMeasurementOrder: create-measurement-order with the SUCCEEDED PaymentIntent id; it re-reads the PaymentIntent from Stripe,
+//      writes the hover_orders row in status 'awaiting_fulfillment' and contacts no vendor (a person fulfils it from the admin queue).
+
+/** The SKU the homeowner buys: the condensed roof report (help-measurements.html MEASUREMENT_PRODUCT_CODE). Price lives server-side. */
+export const MEASUREMENT_PRODUCT_CODE = 'roof_basic' as const;
+
+/** Create the PaymentIntent for the measurement charge. Resolves with `client_secret: null` when it could not be created. */
+export async function requestMeasurementPaymentIntent(
+  claim: MeasurementsClaim,
+  variant: string = 'unknown',
+) {
+  return createHoverPaymentIntent(buildHoverPaymentIntentParams(claim, variant));
+}
+
+/**
+ * Record the order for a charge Stripe confirmed. Throws on failure: HoverPaymentForm then parks in its post-charge
+ * "retry order" state and re-runs ONLY this step with the same id (it never charges the card again). The thrown error carries
+ * `paymentCaptured` when the server says the money moved but the row did not write.
+ */
+export async function recordMeasurementOrder(args: {
+  claim: MeasurementsClaim;
+  paymentIntentId: string;
+}): Promise<{ order_id?: string; status?: string }> {
+  const { data, error } = await supabase.functions.invoke('create-measurement-order', {
+    body: {
+      claim_id: args.claim.id,
+      product_code: MEASUREMENT_PRODUCT_CODE,
+      payment_intent_id: args.paymentIntentId, // D-181: verified server-side against the catalog price
+      buyer_role: 'homeowner',
+    },
+  });
+  if (error) {
+    let payload: { error?: string; payment_captured?: boolean } = {};
+    try {
+      const ctx = (error as { context?: { json?: () => Promise<unknown> } }).context;
+      if (ctx && typeof ctx.json === 'function') payload = ((await ctx.json()) as typeof payload) ?? {};
+    } catch {
+      /* not a JSON body: fall through to the generic message */
+    }
+    const err = new Error(payload.error || 'Could not record your measurement order.') as Error & { paymentCaptured?: boolean };
+    err.paymentCaptured = payload.payment_captured === true;
+    throw err;
+  }
+  return (data ?? {}) as { order_id?: string; status?: string };
+}
 
 // ── Path B: Ask Adjuster (free) ──────────────────────────────────────────────────────
 
