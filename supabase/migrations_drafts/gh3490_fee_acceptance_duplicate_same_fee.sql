@@ -1,10 +1,10 @@
--- STATUS (gh-1438, as of 2026-11-18T18:55:05Z): NOT APPLIED -- RE-RENDERED 2026-11-18 (#3766) against the post-gh3750 guard body (prosrc md5 4649287a, applied 2026-11-16, ledger 20261116152010); the 2026-11-09 render pinned 1142fe98 and would refuse to run
+-- STATUS (gh-1438, as of 2026-11-22): APPLIED (ledger version 20261119210012, name gh3490_fee_acceptance_duplicate_same_fee; applied 2026-11-19T21:00:12Z; record #3490 comment 7022485296; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3490_fee_acceptance_duplicate_same_fee (the rollback is a sibling in this directory; the proof is supabase/tests/gh3490_fee_acceptance_duplicate_same_fee_proof.sql and its runner)
 -- EVIDENCE: drafted 2026-11-09 under #3490 (CTO RUN 100, claim cto-2026-11-09T12:23:59Z) on Ben's ruling 6740655614 (option A). Production read-only SELECTs 2026-11-09 (project yeszghaspzwwstvsrioa, nothing written):
 --   public.fee_acceptances_guard_client_insert() WAS the gh3409 body on 2026-11-09 (ledger 20261106215945, prosrc md5 prefix 1142fe98); since 2026-11-16 it is the gh3750 body (ledger 20261116152010, prosrc md5 4649287a, length 2666, read by #3750 comment 6920580867 and by SELECT 2026-11-18T18:44:18Z: prefix 4649287a), owner postgres, SET search_path=public, pg_temp,
 --   EXECUTE for PUBLIC, anon, authenticated, service_role; trigger fee_acceptances_guard_client_insert BEFORE INSERT FOR EACH ROW, enabled 'O'. The live prosrc is the gh3750 body: the gh3409 guard
 --   (supabase/migrations_drafts/gh3409_fee_acceptances_client_insert_guard.sql) with gh3750's rescinded_at condition (supabase/migrations_drafts/gh3750_fee_acceptance_duplicate_ignores_rescinded.sql). The body below is the gh3750 body with ONE line changed (the duplicate_bid rule gains the fee condition). No database was written to produce this file.
--- REPO COPY: none. When applied, file this forward under its real ledger version in supabase/migrations/ and move the rollback to supabase/migrations_rollbacks/.
+-- REPO COPY: supabase/migrations/20261119210012_gh3490_fee_acceptance_duplicate_same_fee.sql (byte-identical to this file's pre-edit content, which equals the applied ledger statement)
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- Migration: gh3490_fee_acceptance_duplicate_same_fee. GitHub: #3490. Tier 3B (money path, consent record, D-214 / D-215): REVIEW, R-177 pair naming D-215, R-097 24-hour notice, a recorded apply.

@@ -1,7 +1,7 @@
--- STATUS (gh-1438, as of 2026-11-16T14:15:14Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-22): APPLIED (ledger version 20261119210401, name gh3783_claims_refuse_windows_trade; applied 2026-11-19T21:04:01Z; record #3783 comment 7022312112; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh3783_claims_refuse_windows_trade (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: drafted under #3783 (D-375, #2536 comment 6039706944); read-only production SELECT on project yeszghaspzwwstvsrioa in this session (before 2026-11-16T14:15:14Z) (CEO RUN 153, b3783): claims total 43, rows with a windows trade 0, rows with windows_bid_released_at 0; claims.trades is text[]
--- REPO COPY: none in supabase/migrations/ yet
+-- REPO COPY: supabase/migrations/20261119210401_gh3783_claims_refuse_windows_trade.sql (byte-identical to this file's pre-edit content, which equals the applied ledger statement)
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- NOT APPLIED. Tier: 3B (new trigger on public.claims). R-097 24-hour notice before apply. Protective only (R-134).

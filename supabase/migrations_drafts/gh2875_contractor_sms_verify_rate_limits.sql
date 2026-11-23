@@ -1,10 +1,10 @@
--- STATUS (gh-1438, as of 2026-10-23): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-22): APPLIED (ledger version 20261122220309, name gh2875_contractor_sms_verify_rate_limits; applied 2026-11-22T22:03:09Z; record #3726 comment 7086622230; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh2875_contractor_sms_verify_rate_limits (rollback and pre-flight are siblings in this directory)
 -- EVIDENCE: drafted 2026-10-23 under #2875. Production read-only (Supabase MCP execute_sql, SELECT only) 2026-10-23T22:1xZ:
 --   public.rate_limit_config has NO contractor-sms-verify-start / contractor-sms-verify-check row (0 rows LIKE 'contractor-sms-verify%');
 --   public.rate_limits has 0 rows for those names; check_rate_limit(text,uuid) md5(pg_get_functiondef) = 905e1e5378a90834 (first 16 hex).
 --   No database was written to produce this file.
--- REPO COPY: none. When applied, file the forward under its real ledger version in supabase/migrations/.
+-- REPO COPY: supabase/migrations/20261122220309_gh2875_contractor_sms_verify_rate_limits.sql (byte-identical to this file's pre-edit content, which equals the applied ledger statement)
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- Migration: gh2875_contractor_sms_verify_rate_limits
