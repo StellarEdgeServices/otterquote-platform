@@ -119,6 +119,17 @@ from html.parser import HTMLParser
 # ---------------------------------------------------------------------------
 
 SITE_BASE = "https://otterquote.com"
+# gh-3380 (P22 S-7): the Organization logo and sameAs profiles other site pages carry
+# (scripts/seo-topic-map.json "organization"). Without them every generated page fails the audit's
+# "required properties on Organization nodes" check. The LinkedIn company URL is left out on purpose:
+# the D-345 compliance lint (R2 affiliation/ownership) rejects it in a generated page's JSON-LD, and
+# the lint is not changed here.
+ORG_LOGO = f"{SITE_BASE}/img/brand-assets/otter-quotes-icon-512.png"
+ORG_SAME_AS = [
+    "https://www.youtube.com/channel/UCXK1_AC_QdE97McPKZEwUKQ",
+    "https://www.facebook.com/OtterQuote",
+    "https://www.instagram.com/otterquote/",
+]
 REPO_ROOT = pathlib.Path(__file__).parent.parent
 LOCATIONS_DIR = REPO_ROOT / "locations"
 SITEMAP_PATH = REPO_ROOT / "sitemap.xml"
@@ -1695,6 +1706,8 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
         "@id": f"{SITE_BASE}/#organization",
         "name": "Otter Quotes",
         "url": f"{SITE_BASE}/",
+        "logo": ORG_LOGO,
+        "sameAs": ORG_SAME_AS,
         "description": "We create a scope of work and send it to local contractors. Homeowners can compare any written bids they receive.",
     }
     service = {
@@ -1995,6 +2008,8 @@ def build_hub_page(entries: list, state_names: dict) -> str:
         "@id": f"{SITE_BASE}/#organization",
         "name": "Otter Quotes",
         "url": f"{SITE_BASE}/",
+        "logo": ORG_LOGO,
+        "sameAs": ORG_SAME_AS,
         "description": "We create a scope of work and send it to local contractors. Homeowners can compare any written bids they receive.",
     }
     breadcrumb = {

@@ -1,7 +1,7 @@
 /**
  * gh-3377 -- Dustin's byline on the 32 guides he cleared (comment 6743612757, D-414), in the format 5217adbd put on the first ten.
  * PASS = the byline string is on each of the 32 guides, the Article JSON-LD author is Dustin (Person) where the page has an Article,
- * and no html file outside the 32 + the ten earlier guides carries the byline string.
+ * and no html file outside the 32 + the nine earlier guides still live carries the byline string.
  * Run: node tests/gh3377-guide-bylines.mjs     Exit 0 = all PASS.
  */
 import fs from 'node:fs';
@@ -44,7 +44,8 @@ const NEW32 = [
   'window-replacement-bid-comparison',
   'window-replacement-cost-factors',
 ];
-const TEN = ['competitive-roof-bids-vs-single-referral','contractor-bid-higher-than-insurance-estimate','contractor-offers-to-waive-deductible','hail-damage-found-months-later','hail-damaged-siding-matching-bids','how-to-file-property-damage-claim','how-to-negotiate-with-insurer','otter-quotes-vs-thumbtack-angi','roof-insurance-check-mortgage-contractor-payment','roofing-contract-checklist-before-you-sign'];
+const TEN = ['competitive-roof-bids-vs-single-referral','contractor-bid-higher-than-insurance-estimate','contractor-offers-to-waive-deductible','hail-damage-found-months-later','hail-damaged-siding-matching-bids','how-to-file-property-damage-claim','how-to-negotiate-with-insurer','roof-insurance-check-mortgage-contractor-payment','roofing-contract-checklist-before-you-sign'];
+// otter-quotes-vs-thumbtack-angi was one of the earlier ten; gh-3629 (6a49feb2) retired it with a 301, so the expected carrier count is 41.
 // roof-bid-comparison-tool is an interactive tool page with no Article JSON-LD, so it gets the visible byline only.
 const NO_ARTICLE_LD = new Set(['roof-bid-comparison-tool']);
 let fail = 0;
@@ -61,6 +62,6 @@ const walk = (d, o = []) => { for (const e of fs.readdirSync(d, { withFileTypes:
 const carriers = walk(ROOT).map((p) => path.relative(ROOT, p)).filter((r) => read(path.join(ROOT, r)).includes(BY));
 const extra = carriers.filter((r) => !allowed.has(r));
 ok(extra.length === 0, 'no page outside the 32 + earlier ten carries the byline' + (extra.length ? ': ' + extra.join(', ') : ''));
-ok(carriers.length === 42, 'exactly 42 pages carry the byline (got ' + carriers.length + ')');
+ok(carriers.length === 41, 'exactly 41 pages carry the byline (got ' + carriers.length + ')');
 console.log(fail ? 'RESULT: FAIL (' + fail + ')' : 'RESULT: ALL PASS');
 process.exit(fail ? 1 : 0);

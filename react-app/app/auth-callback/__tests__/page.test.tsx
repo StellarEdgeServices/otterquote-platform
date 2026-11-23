@@ -28,7 +28,7 @@ vi.mock('@/lib/supabase', () => {
   return {
     supabase: {
       auth: { onAuthStateChange: vi.fn() },
-      rpc: vi.fn(() => Promise.resolve({ data: true, error: null, status: 200 })),
+      rpc: vi.fn((fn: string) => Promise.resolve({ data: fn === 'is_admin_email' ? false : true, error: null, status: 200 })),
       from: vi.fn((table: string) => {
         if (table === 'resolved_user_role') {
           return chain({ data: { derived_role: 'homeowner' }, error: null });
@@ -275,8 +275,8 @@ describe('auth-callback page — gh-2121/M3: slow link call is not cancelled by 
     // the fast default here so later describe blocks in this file (which
     // also exercise supabase.rpc via recordFirstTouch) are not left waiting
     // on this test's 1.5s delay.
-    (supabase.rpc as unknown as Fn).mockImplementation(() =>
-      Promise.resolve({ data: true, error: null, status: 200 }),
+    (supabase.rpc as unknown as Fn).mockImplementation((fn: string) =>
+      Promise.resolve({ data: fn === 'is_admin_email' ? false : true, error: null, status: 200 }),
     );
   });
 

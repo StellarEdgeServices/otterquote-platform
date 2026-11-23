@@ -112,6 +112,14 @@ import {
   type QuoteRow,
 } from "./fee-acceptance-gap-check.ts"; // gh-3586
 import {
+  evaluateChargedFeeWithoutChargeId,
+  findChargedFeesWithoutChargeId,
+  shouldAlertOnChargedFee,
+  CHARGED_FEE_ALERT_TYPE,
+  CHARGED_FEE_FUNCTION_NAME,
+  type ClaimFeeRow,
+} from "./charged-fee-no-charge-id-check.ts"; // gh-1759
+import {
   alertEmailText,
   cronErrorAlert,
   cronStalenessAlert,
@@ -1096,6 +1104,53 @@ This is an automated alert from OtterQuote platform monitoring (gh-3586).`;
   return { checked: true, alertsFired, count: result.count };
 }
 
+/**
+ * Phase 7 (gh-1759): a charged platform fee with no stored Stripe charge id. READ-ONLY, INTERNAL ONLY.
+ * Forward guard from the issue's closes-on: claims with platform_fee_charged IS TRUE AND platform_fee_stripe_id IS NULL,
+ * is_test excluded, must stay 0. Pure rule in charged-fee-no-charge-id-check.ts; alerts the owner via the EXISTING fireAlert()
+ * (Mailgun to ALERT_EMAIL + platform_alerts_log + its dedup) behind shouldAlertOnChargedFee (new claim id or daily reminder). Soft-fails (never throws, never blocks another phase).
+ */
+async function runChargedFeeChargeIdCheck(
+  supabase: ReturnType<typeof createClient>,
+  mailgunApiKey: string,
+  mailgunDomain: string,
+  includeTest: boolean,
+): Promise<{ checked: boolean; alertsFired: number; count: number; skipped?: string }> {
+  let q = supabase
+    .from("claims")
+    .select("id, created_at, platform_fee_charged, platform_fee_stripe_id, is_test")
+    .eq("platform_fee_charged", true)
+    .or("platform_fee_stripe_id.is.null,platform_fee_stripe_id.eq.") // NULL and '' (blank text is storable, no CHECK); a second .or() is ANDed with the is_test one
+    .order("created_at", { ascending: true })
+    .limit(1000);
+  if (!includeTest) q = q.or("is_test.is.null,is_test.eq.false");
+  const { data, error } = await q as { data: ClaimFeeRow[] | null; error: { message: string } | null };
+  if (error) {
+    console.error("[platform-health-check] Phase 7 (charged fee, no charge id): claims read failed:", error.message);
+    return { checked: false, alertsFired: 0, count: 0, skipped: "claims-read-error" };
+  }
+  const result = findChargedFeesWithoutChargeId(data ?? [], includeTest);
+  const alert = evaluateChargedFeeWithoutChargeId(result, includeTest);
+  // Standing-condition throttle (review 7087416804): newest log row of this type, acknowledged or not. A read error counts as "never alerted".
+  const { data: lastRows } = await supabase
+    .from("platform_alerts_log")
+    .select("sent_at, message")
+    .eq("function_name", CHARGED_FEE_FUNCTION_NAME)
+    .eq("alert_type", CHARGED_FEE_ALERT_TYPE)
+    .order("sent_at", { ascending: false })
+    .limit(1) as { data: { sent_at: string; message: string | null }[] | null };
+  const throttle = shouldAlertOnChargedFee(result, lastRows?.[0] ?? null, { force: includeTest });
+  let alertsFired = 0;
+  if (alert && throttle.alert) {
+    const message = `${alert.message}
+Checked at: ${formatDualTimestamp(new Date())}
+This is an automated internal alert from OtterQuote platform monitoring (gh-1759).`;
+    const { alerted } = await fireAlert(supabase, mailgunApiKey, mailgunDomain, alert.alertType, alert.functionName, alert.subject, message);
+    if (alerted) alertsFired++;
+  }
+  return { checked: true, alertsFired, count: result.count };
+}
+
 // =============================================================================
 // MAIN HANDLER
 // =============================================================================
@@ -1169,6 +1224,10 @@ serve(async (req) => {
   } catch { /* no/invalid body: the cron sends none */ }
   const phase6 = await runFeeAcceptanceGapCheck(supabase, mailgunApiKey, mailgunDomain, feeGapIncludeTest);
 
+  // ── Phase 7: charged platform fee with no stored charge id (gh-1759) ───────
+  // Read-only, internal-only, own soft-fail path. Reuses the Phase 6 proof flag so a planted test claim can exercise it.
+  const phase7 = await runChargedFeeChargeIdCheck(supabase, mailgunApiKey, mailgunDomain, feeGapIncludeTest);
+
   const elapsed = Date.now() - startedAt;
 
   const result = {
@@ -1194,7 +1253,11 @@ serve(async (req) => {
     feeAcceptanceGapAlertsCount: phase6.alertsFired,
     feeAcceptanceGapCount: phase6.count,
     feeAcceptanceGapSkipped: phase6.skipped ?? null,
-    totalAlerts:        phase1.alertsFired + phase2.alertsFired + phase3.alertsFired + phase4.alertsFired + phase5.alertsFired + phase6.alertsFired,
+    chargedFeeNoChargeIdChecked: phase7.checked,
+    chargedFeeNoChargeIdAlertsCount: phase7.alertsFired,
+    chargedFeeNoChargeIdCount: phase7.count,
+    chargedFeeNoChargeIdSkipped: phase7.skipped ?? null,
+    totalAlerts:        phase1.alertsFired + phase2.alertsFired + phase3.alertsFired + phase4.alertsFired + phase5.alertsFired + phase6.alertsFired + phase7.alertsFired,
     elapsedMs:          elapsed,
     ranAt:              new Date().toISOString(),
   };

@@ -1,12 +1,14 @@
 /**
  * admin-sms-optout -- #3761. Wiring only; logic is in handler.ts (see its header for the store and the rules).
  * Secrets read by name (never logged): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (+ SUPABASE_ANON_KEY for the admin gate).
- * Sends nothing: no Twilio, no e-mail. Tier 3A (new Edge Function, no external side effects). NOT DEPLOYED by this PR.
+ * Sends no text. #3770: after a staff opt-out leaves the contractor with no textable number it e-mails the contractor and Dustin
+ * (_shared/sms-last-number-notice.ts; dark unless SMS_LAST_NUMBER_EMAIL_ENABLED is "true").
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { requireAdmin } from "../_shared/admin-gate.ts";
 import { type Deps, handle } from "./handler.ts";
+import { noticeAfterOptOut, wireNoticeDeps } from "../_shared/sms-last-number-notice.ts";
 
 const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 
@@ -35,7 +37,14 @@ const deps: Deps = {
     const { data, error } = await sb.from("contractor_sms_numbers")
       .update({ status: "opted_out", opted_out_at: at, opt_out_keyword: keyword, opt_out_channel: channel })
       .eq("contractor_id", contractorId).eq("status", "verified").select("id");
-    return error ? null : (data ?? []).map((r: { id: string }) => r.id);
+    if (error) return null;
+    const ids = (data ?? []).map((r: { id: string }) => r.id);
+    // #3770: suppression rows are written before this runs; only a call that flipped rows can trigger the notice, and a
+    // failure here never changes the opt-out result.
+    try {
+      if (ids.length) await noticeAfterOptOut(wireNoticeDeps(sb, (n) => Deno.env.get(n)), [contractorId], `staff ${channel}`);
+    } catch (e) { console.error("admin-sms-optout: last-number notice failed (opt-out unaffected):", e instanceof Error ? e.message : String(e)); }
+    return ids;
   },
   openSuppressions: async (phones) => {
     const { data, error } = await sb.from("sms_suppression_list").select("id, phone_e164, channel")

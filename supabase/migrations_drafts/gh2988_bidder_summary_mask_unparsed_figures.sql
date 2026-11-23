@@ -1,10 +1,10 @@
--- STATUS (gh-1438, as of 2026-11-15T22:30:00Z): NOT APPLIED (new draft, Tier 3B; applies only after the R-097 24-hour notice, then a recorded apply)
+-- STATUS (gh-1438, as of 2026-11-19): APPLIED (ledger version 20261116154933, name gh2988_bidder_summary_mask_unparsed_figures; applied 2026-11-16 on #2988 comment 6921338710; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set gh2988_bidder_summary_mask_unparsed_figures
 -- EVIDENCE: production read-only (Supabase MCP SELECT, project yeszghaspzwwstvsrioa) 2026-11-15 by the CEO RUN 152 builder: pg_get_viewdef('public.bidder_claim_summary', true)
 --   has md5 2e2eef13fe2bce2f68b0970c5e7f7c67, length 18861; owner postgres; reloptions {security_barrier=true}; relacl {postgres=arwdDxtm/postgres,authenticated=rm/postgres,service_role=arwdDxtm/postgres};
 --   40 columns; view comment md5 75061e6608dd39df4c16fbbd764d0e3c; no dependent view, no column-level grants, no column comments, no triggers or rules on the view; Postgres 17.6.
 --   That text is byte-identical to the view statement in supabase/migrations/20261020162602_gh2559_d390_redact_contact_until_fee.sql (re-created on a throwaway Postgres 16: same md5 and length).
--- REPO COPY: none (not applied).
+-- REPO COPY: supabase/migrations_applied_manually/20261116154933_gh2988_bidder_summary_mask_unparsed_figures.sql (byte-identical to this file's pre-edit content, which is the applied statement)
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md (Tier 3B path: review, R-097 notice, recorded apply).
 --
 -- Migration: gh2988_bidder_summary_mask_unparsed_figures
