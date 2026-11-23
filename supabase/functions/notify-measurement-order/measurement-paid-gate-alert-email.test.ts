@@ -92,3 +92,10 @@ Deno.test("paid-gate email: cancelled_replay names a stuck homeowner, asks a per
   assert(e.text.includes("dashboard.stripe.com/payments/pi_"), "links the cancelled PaymentIntent");
   assert(/At most one of these emails is sent per claim per hour/.test(e.text));
 });
+
+Deno.test("gh-3857: the paid_without_order email does not say a second purchase attempt was refused when the check was the Stripe webhook reconcile", () => {
+  const e = buildPaidGateAlertEmail(body({ kind: "paid_without_order", stage: "stripe webhook reconcile" }))!;
+  assert(e.text.includes("where it was found: stripe webhook reconcile"));
+  assert(!e.text.includes("for the claim when a second purchase attempt on it was refused"), "must not state a refused second attempt as the fact of this alert");
+  assert(/which check found it/.test(e.text));
+});

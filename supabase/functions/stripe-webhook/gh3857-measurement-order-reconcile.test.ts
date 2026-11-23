@@ -5,7 +5,9 @@ import {
   PAID_GATE_ALERT_TOKEN,
   RECONCILE_STAGE,
   RECONCILE_WAIT_MS,
+  measurementChargeEnabled,
   reconcileMeasurementPaymentOrder,
+  scheduleOffResponsePath,
   type ReconcileDeps,
 } from "./measurement-order-reconcile.ts";
 import { buildPaidGateAlertEmail, PAID_GATE_ALERT_TOKEN as NOTIFY_TOKEN } from "../notify-measurement-order/measurement-paid-gate-alert-email.ts";
@@ -80,4 +82,38 @@ Deno.test("parity: the token, kind and stage are the ones notify-measurement-ord
   const email = buildPaidGateAlertEmail({ alert: PAID_GATE_ALERT_TOKEN, kind: "paid_without_order", claim_id: CLAIM, payment_intent_id: PI, stage: RECONCILE_STAGE });
   assert(email !== null);
   assert(email!.text.includes(PI) && email!.text.includes(RECONCILE_STAGE));
+});
+
+Deno.test("flag: MEASUREMENT_CHARGE_ENABLED is on only when exactly \"true\"", () => {
+  const on = (v: string | undefined) => measurementChargeEnabled((k) => (k === "MEASUREMENT_CHARGE_ENABLED" ? v : undefined));
+  assertEquals(on("true"), true);
+  for (const v of [undefined, "", "false", "TRUE", "1", "yes", " true"]) assertEquals(on(v), false, String(v));
+});
+
+Deno.test("scheduleOffResponsePath: with waitUntil it returns before the task finishes and hands the task to waitUntil", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  let finished = false;
+  const registered: Promise<unknown>[] = [];
+  const mode = await scheduleOffResponsePath(async () => { await gate; finished = true; }, { waitUntil: (p) => { registered.push(p); } }, () => {});
+  assertEquals(mode, "background");
+  assertEquals(finished, false, "the caller must not wait for the task");
+  assertEquals(registered.length, 1);
+  release();
+  await registered[0];
+  assertEquals(finished, true);
+});
+
+Deno.test("scheduleOffResponsePath: without waitUntil the task is awaited; a throwing task is logged and never rejects", async () => {
+  let ran = false;
+  assertEquals(await scheduleOffResponsePath(async () => { ran = true; }, undefined, () => {}), "inline");
+  assertEquals(ran, true);
+  const logs: string[] = [];
+  assertEquals(await scheduleOffResponsePath(async () => { throw new Error("boom"); }, undefined, (m) => logs.push(m)), "inline");
+  assert(logs.length === 1 && logs[0].includes("gh-3857"));
+  const bgLogs: string[] = [];
+  let reg!: Promise<unknown>;
+  await scheduleOffResponsePath(async () => { throw new Error("boom"); }, { waitUntil: (p) => { reg = p; } }, (m) => bgLogs.push(m));
+  await reg; // resolves, does not reject
+  assertEquals(bgLogs.length, 1);
 });

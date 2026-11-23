@@ -16,8 +16,17 @@
 // customer-visible text.
 //
 // BOUNDED. One alert per PaymentIntent per 24 h (a Stripe redelivery cannot flood the inbox; the event ledger in index.ts also
-// dedupes by event id). The wait is capped (RECONCILE_WAIT_MS, about 9 s). Alert-row insert failing AND the email failing returns
-// "error" so index.ts frees the ledger row and answers 500: Stripe redelivers and the check runs again (as gh-3510 does).
+// dedupes by event id). The wait is capped (RECONCILE_WAIT_MS, about 9 s).
+//
+// OFF THE RESPONSE PATH (review 7102099914, findings 1 and 2). The wait above is NOT spent before Stripe gets its 2xx: index.ts calls
+// scheduleOffResponsePath(), which hands the whole reconcile to EdgeRuntime.waitUntil and answers 200 at once. Where waitUntil does not
+// exist (deno test, a non-Edge runtime) the task is awaited, which is safe there. An alert-channel failure (row insert AND email both
+// fail, outcome "error") is logged loudly and NEVER becomes a non-2xx: the ledger row stays and Stripe is not asked to redeliver.
+// Residual risk, stated plainly: if the Edge isolate is killed before the background task finishes, that one alert is lost; there is
+// no sweep of succeeded measurement PaymentIntents in platform-health-check today (a follow-up, not built here).
+//
+// DARK BEHIND A FLAG (#3857 rail). Nothing runs unless the env var MEASUREMENT_CHARGE_ENABLED is exactly "true" (the P23 flag, same
+// name as hand-off-after-fulfilment). Default off: no hover_orders read, no alert, no wait.
 //
 // WHAT IT CARRIES. A PaymentIntent id and a claim id (validated shapes), a fixed stage. No buyer email, name, address or Stripe text.
 // The email body is the one notify-measurement-order already accepts (token "measurement_paid_gate", kind "paid_without_order");
@@ -32,6 +41,29 @@ export const RECONCILE_ALERT_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** Pauses before each re-read of hover_orders after the first read (about 9 s in all, well inside the function's limit). */
 export const RECONCILE_WAIT_MS: readonly number[] = [2500, 3000, 3500];
 export const RECONCILE_EMAIL_TIMEOUT_MS = 5000;
+
+export const MEASUREMENT_CHARGE_FLAG_ENV = "MEASUREMENT_CHARGE_ENABLED";
+/** The P23 flag: on only when the env var is exactly "true". */
+export function measurementChargeEnabled(getEnv: (k: string) => string | undefined): boolean {
+  return getEnv(MEASUREMENT_CHARGE_FLAG_ENV) === "true";
+}
+
+export interface WaitUntilHost { waitUntil?: (p: Promise<unknown>) => void }
+
+/**
+ * Runs `task` so the HTTP response does not wait for it. With a host that has waitUntil (Supabase's EdgeRuntime) it is registered and
+ * this returns at once; without one the task is awaited (tests, non-Edge runtimes). Never throws: a failed task is logged.
+ */
+export async function scheduleOffResponsePath(task: () => Promise<unknown>, host: WaitUntilHost | undefined, log: (m: string) => void): Promise<"background" | "inline"> {
+  const safe = (async () => {
+    try { await task(); } catch (e) { log(`OPS: gh-3857 reconcile task threw (${e instanceof Error ? e.name : "unknown"}); no alert was written by it`); }
+  })();
+  if (host && typeof host.waitUntil === "function") {
+    try { host.waitUntil(safe); return "background"; } catch { /* fall through to inline */ }
+  }
+  await safe;
+  return "inline";
+}
 
 const PI_ID_RE = /^pi_[A-Za-z0-9_]{1,80}$/;
 const CLAIM_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
@@ -64,7 +96,7 @@ export function buildReconcileAlertMessage(claimId: string, paymentIntentId: str
 
 /**
  * Never throws. Scope: a payment_intent.succeeded for a measurement-order PaymentIntent (metadata.type in MEASUREMENT_ORDER_PI_TYPES).
- * "error" means neither the alert row nor the email could be written: the caller must let Stripe redeliver.
+ * "error" means neither the alert row nor the email could be written: the caller logs it (it must never turn the webhook response into a non-2xx).
  */
 export async function reconcileMeasurementPaymentOrder(
   pi: ReconcilePaymentIntent,

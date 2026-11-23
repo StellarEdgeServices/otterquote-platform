@@ -13,6 +13,7 @@ const TEST_ENV: Record<string, string> = {
   STRIPE_WEBHOOK_SIGNING_SECRET: TEST_SECRET,
   SUPABASE_URL: SB_URL,
   SUPABASE_SERVICE_ROLE_KEY: "fake-service-role-key-gh3857",
+  MEASUREMENT_CHARGE_ENABLED: "true", // the P23 flag; individual tests switch it off
 };
 const PI = "pi_3Gh3857Reconcile";
 const CLAIM = "11111111-2222-3333-4444-555555555555";
@@ -43,8 +44,9 @@ interface Db {
   emailStatus: number;
   alertInsertFails: boolean;
   otherWrites: string[];
+  reads: string[];
 }
-const newDb = (): Db => ({ ledger: [], alerts: [], orders: [], emails: [], emailStatus: 200, alertInsertFails: false, otherWrites: [] });
+const newDb = (): Db => ({ ledger: [], alerts: [], orders: [], emails: [], emailStatus: 200, alertInsertFails: false, otherWrites: [], reads: [] });
 function json(body: unknown, status = 200) {
   return new Response(body === null ? null : JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
@@ -87,6 +89,7 @@ function installFakeFetch(db: Db) {
       if (req.method === "GET") {
         if (table === "hover_orders") {
           const pi = (url.searchParams.get("homeowner_stripe_payment_intent_id") ?? "").replace(/^eq\./, "");
+          db.reads.push(pi);
           return json(db.orders.filter((o) => o.homeowner_stripe_payment_intent_id === pi).map((o) => ({ id: o.id })));
         }
         if (table === "platform_alerts_log") {
@@ -114,18 +117,28 @@ function piEvent(eventId: string, type = "hover_measurement", id = PI) {
     data: { object: { id, object: "payment_intent", status: "succeeded", amount: 2263, amount_received: 2263, currency: "usd", livemode: false, metadata: { type, claim_id: CLAIM } } },
   });
 }
-async function run(db: Db, body: string) {
+async function run(db: Db, body: string, opts: { gates?: (() => void)[]; onError?: (m: string) => void; cleanup?: { fn?: () => void } } = {}) {
   const restore = installFakeFetch(db);
   const log = console.log, err = console.error, warn = console.warn;
-  console.log = console.error = console.warn = () => {};
+  console.log = console.warn = () => {};
+  console.error = (...a: unknown[]) => opts.onError?.(a.map(String).join(" "));
   // The reconcile pauses 2.5-3.5 s between reads; make exactly those pauses instant (other timers, e.g. fetch abort guards, run normally).
+  // With opts.gates the pauses are instead parked in gates until the test releases them (the timers stay patched until the test ends).
   const realSet = globalThis.setTimeout;
   // deno-lint-ignore no-explicit-any
-  (globalThis as any).setTimeout = (fn: () => void, ms?: number) => (ms !== undefined && ms >= 2500 && ms <= 3500 ? realSet(fn, 0) : realSet(fn, ms));
+  (globalThis as any).setTimeout = (fn: () => void, ms?: number) => {
+    if (ms !== undefined && ms >= 2500 && ms <= 3500) {
+      if (opts.gates) { opts.gates.push(fn); return 0; }
+      return realSet(fn, 0);
+    }
+    return realSet(fn, ms);
+  };
   try {
     return await handle(new Request(`${SB_URL}/functions/v1/stripe-webhook`, { method: "POST", body, headers: { "stripe-signature": await sign(body), "content-type": "application/json" } }));
   } finally {
-    globalThis.setTimeout = realSet; console.log = log; console.error = err; console.warn = warn; restore();
+    const undo = () => { globalThis.setTimeout = realSet; console.log = log; console.warn = warn; console.error = err; restore(); };
+    if (opts.gates && opts.cleanup) opts.cleanup.fn = undo; // the background task still needs the patched timers and the fake fetch
+    else undo();
   }
 }
 
@@ -178,12 +191,60 @@ Deno.test("gh-3857: the alert email failing still leaves the named alert row and
   assertEquals(db.alerts.length, 1);
 });
 
-Deno.test("gh-3857: neither alert channel took it: 500 and the ledger row is freed so the redelivery re-runs the check", async () => {
+Deno.test("gh-3857: neither alert channel took it: still 200 (an alert-path failure never makes a good event non-2xx), the ledger row is kept, the double failure is logged", async () => {
   const db = newDb();
   db.emailStatus = 500;
   db.alertInsertFails = true;
-  const res = await run(db, piEvent("evt_3857_f"));
-  assertEquals(res.status, 500);
-  assertEquals(db.ledger, []);
+  const errors: string[] = [];
+  const res = await run(db, piEvent("evt_3857_f"), { onError: (m) => errors.push(m) });
+  assertEquals(res.status, 200);
+  assertEquals(db.ledger.length, 1, "no ledger delete: Stripe is not asked to redeliver");
   assertEquals(db.alerts, []);
+  assert(errors.some((m) => m.includes("NEITHER alert channel") && m.includes(PI)), "the double failure must be logged naming the PaymentIntent");
+});
+
+Deno.test("gh-3857: flag off (unset, or anything but exactly \"true\"): no order read, no alert, no email, no wait, 200", async () => {
+  for (const v of [undefined, "false", "TRUE"]) {
+    const db = newDb();
+    const saved = TEST_ENV.MEASUREMENT_CHARGE_ENABLED;
+    if (v === undefined) delete TEST_ENV.MEASUREMENT_CHARGE_ENABLED; else TEST_ENV.MEASUREMENT_CHARGE_ENABLED = v;
+    try {
+      const res = await run(db, piEvent(`evt_3857_off_${v}`));
+      assertEquals(res.status, 200);
+      assertEquals(db.alerts, [], `flag ${v}: no alert`);
+      assertEquals(db.emails, []);
+      assertEquals(db.reads, [], "flag off: hover_orders is not even read");
+    } finally {
+      TEST_ENV.MEASUREMENT_CHARGE_ENABLED = saved;
+    }
+  }
+});
+
+Deno.test("gh-3857: on Edge (EdgeRuntime.waitUntil present) Stripe gets its 200 BEFORE the multi-second wait; the alert is written by the background task", async () => {
+  const db = newDb();
+  const gates: (() => void)[] = []; // the 2.5-3.5 s pauses are held until the test releases them
+  const registered: Promise<unknown>[] = [];
+  const cleanup: { fn?: () => void } = {};
+  // deno-lint-ignore no-explicit-any
+  (globalThis as any).EdgeRuntime = { waitUntil: (p: Promise<unknown>) => { registered.push(p); } };
+  try {
+    const res = await run(db, piEvent("evt_3857_bg"), { gates, cleanup });
+    assertEquals(res.status, 200, "the response came back while the reconcile was still waiting");
+    assertEquals(registered.length, 1, "the reconcile was handed to waitUntil");
+    assertEquals(db.alerts.length, 0, "no alert yet: the task is still inside its first pause");
+    // release the pauses one by one until the background task settles
+    let settled = false;
+    registered[0].then(() => (settled = true));
+    for (let i = 0; i < 200 && !settled; i++) {
+      await new Promise((r) => setTimeout(r, 1));
+      gates.splice(0).forEach((g) => g());
+    }
+    assert(settled, "background task finished");
+    assertEquals(db.alerts.length, 1);
+    assert(String(db.alerts[0].message).includes(PI));
+  } finally {
+    cleanup.fn?.();
+    // deno-lint-ignore no-explicit-any
+    delete (globalThis as any).EdgeRuntime;
+  }
 });
