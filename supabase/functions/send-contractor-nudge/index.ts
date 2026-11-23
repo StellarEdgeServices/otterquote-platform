@@ -39,6 +39,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { attemptContractorSms, resolveNudgeRecipients } from "./consent-gate.ts";
+import { sendOwnerAlertSms } from "./owner-alert.ts";
 
 const ALLOWED_ORIGINS = [
   "https://stellaredgeservices.com",
@@ -199,27 +200,21 @@ serve(async (req: Request) => {
 
   // Always attempt to alert Dustin — independent of the contractor's consent
   // state; this is not a contractor SMS send and D-328 does not gate it.
-  let dustinNotified = false;
-  try {
-    const dustinResp = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${serviceRoleKey}`,
-      },
-      body: JSON.stringify({ to: DUSTIN_ALERT_PHONE, message: dustinMsg }),
-    });
-    dustinNotified = dustinResp.ok;
-    if (!dustinResp.ok) {
-      console.error(
-        "[send-contractor-nudge] Dustin alert send-sms failed:",
-        dustinResp.status,
-        await dustinResp.text(),
-      );
-    }
-  } catch (err) {
-    console.error("[send-contractor-nudge] Dustin alert threw:", err);
-  }
+  // gh-3849: if this SMS fails (non-2xx or throw), owner-alert.ts sends one internal e-mail to the owner-alert
+  // address; a failure of that e-mail is caught there and does not change this function's response.
+  const dustinResult = await sendOwnerAlertSms(
+    fetch,
+    {
+      supabaseUrl,
+      serviceRoleKey,
+      mailgunKey: Deno.env.get("MAILGUN_API_KEY") || "",
+      mailgunDomain: Deno.env.get("MAILGUN_DOMAIN") || "",
+    },
+    DUSTIN_ALERT_PHONE,
+    dustinMsg,
+    { claimId: claim_id, contractorId: contractor_id },
+  );
+  const dustinNotified = dustinResult.smsOk;
 
   // Observability only — never returned to the caller (see below).
   console.log(
