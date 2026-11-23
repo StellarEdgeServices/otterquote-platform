@@ -166,7 +166,10 @@ describe('flag ON: the charge step mounts the card form and records the order on
     expect((sbMock.functions.invoke as unknown as Fn).mock.calls[0][1]).toEqual({
       body: { claim_id: 'c1', product_code: 'roof_basic', payment_intent_id: 'pi_gh3858_1', buyer_role: 'homeowner' },
     });
-    expect(await screen.findByTestId('charge-step-recorded')).toBeTruthy();
+    // gh-3859: the confirmation state, its strings from copy.ts (CHARGE_STEP_COPY_PENDING_GH3865).
+    const confirmation = await screen.findByTestId('charge-confirmation');
+    expect(confirmation.textContent).toContain(PENDING.confirmationHeading);
+    expect(confirmation.textContent).toContain(PENDING.confirmationBody);
     expect(confirmCardPayment).toHaveBeenCalledTimes(1);
   });
 
@@ -181,7 +184,7 @@ describe('flag ON: the charge step mounts the card form and records the order on
 
     expect(await screen.findByText('Your card was declined.')).toBeTruthy();
     expect(sbMock.functions.invoke as unknown as Fn).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('charge-step-recorded')).toBeNull();
+    expect(screen.queryByTestId('charge-confirmation')).toBeNull();
   });
 
   it('no PaymentIntent (placeholder / refusal) shows the existing init error and mounts no form', async () => {
@@ -217,7 +220,7 @@ describe('flag ON: reload resume, path switching, refusals, revisit, order-write
 
     render(<HelpMeasurementsPage />);
 
-    expect(await screen.findByTestId('charge-step-recorded')).toBeTruthy();
+    expect(await screen.findByTestId('charge-confirmation')).toBeTruthy();
     expect(invoke()).toHaveBeenCalledTimes(1);
     expect(invoke().mock.calls[0][0]).toBe('create-measurement-order');
     expect(invoke().mock.calls[0][1].body).toMatchObject({ claim_id: 'c1', payment_intent_id: 'pi_saved_1' });
@@ -234,7 +237,7 @@ describe('flag ON: reload resume, path switching, refusals, revisit, order-write
     render(<HelpMeasurementsPage />);
 
     expect(await screen.findByText(RESUME_COPY.unresolved)).toBeTruthy();
-    expect(screen.queryByTestId('charge-step-recorded')).toBeNull();
+    expect(screen.queryByTestId('charge-confirmation')).toBeNull();
     expect(readHoverChargeRecord()).toBeNull();
   });
 
@@ -261,7 +264,7 @@ describe('flag ON: reload resume, path switching, refusals, revisit, order-write
     expect(await screen.findByText(ORDER_RETRY_COPY.retryButton, {}, { timeout: 5000 })).toBeTruthy();
     expect(screen.queryAllByText(M.cardSelectButton)).toHaveLength(0);
     expect(screen.queryByText(PENDING.startButton)).toBeNull();
-    expect(screen.queryByTestId('charge-step-recorded')).toBeNull();
+    expect(screen.queryByTestId('charge-confirmation')).toBeNull();
   });
 
   it.each([
@@ -283,7 +286,7 @@ describe('flag ON: reload resume, path switching, refusals, revisit, order-write
     (useHelpMeasurementsData as unknown as Fn).mockReturnValue(readyWith({ existingOrder: true }));
     saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_old', ts: Date.now() });
     render(<HelpMeasurementsPage />);
-    expect(await screen.findByTestId('charge-step-recorded')).toBeTruthy();
+    expect(await screen.findByTestId('charge-confirmation')).toBeTruthy();
     expect(screen.queryByText(PENDING.startButton)).toBeNull();
     expect(invoke()).not.toHaveBeenCalled();
     expect(createHoverPaymentIntent as unknown as Fn).not.toHaveBeenCalled();
@@ -311,13 +314,13 @@ describe('flag ON, round 2: recorded state survives path switches; resume keeps 
     fireEvent.click(await screen.findByText(PENDING.startButton));
     await waitFor(() => expect(cardElement.mount).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByText(M.hoverPayButton));
-    expect(await screen.findByTestId('charge-step-recorded')).toBeTruthy();
+    expect(await screen.findByTestId('charge-confirmation')).toBeTruthy();
 
     // After recording the path cards are back: choose the adjuster path, then come back.
     fireEvent.click(screen.getAllByText(M.cardSelectButton)[0]);
     fireEvent.click(await screen.findByText(M.chooseDifferentButton));
 
-    expect(await screen.findByTestId('charge-step-recorded')).toBeTruthy();
+    expect(await screen.findByTestId('charge-confirmation')).toBeTruthy();
     expect(screen.queryByText(PENDING.startButton)).toBeNull();
   });
 
@@ -334,7 +337,7 @@ describe('flag ON, round 2: recorded state survives path switches; resume keeps 
 
     invoke().mockResolvedValueOnce({ data: { order_id: 'o1' }, error: null });
     fireEvent.click(screen.getByText(ORDER_RETRY_COPY.retryButton));
-    expect(await screen.findByTestId('charge-step-recorded')).toBeTruthy();
+    expect(await screen.findByTestId('charge-confirmation')).toBeTruthy();
     expect(invoke().mock.calls[1][1].body.payment_intent_id).toBe('pi_cap_1');
     expect(readHoverChargeRecord()).toBeNull();
   });

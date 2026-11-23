@@ -48,7 +48,9 @@ export const CHARGE_STEP_COPY_PENDING_GH3865 = {
   heading: '[PENDING #3865: heading]',
   body: '[PENDING #3865: body]',
   startButton: '[PENDING #3865: start button]',
-  orderRecorded: '[PENDING #3865: order recorded]',
+  // gh-3859: the confirmation state shown after a successful payment (page.tsx ChargeConfirmation).
+  confirmationHeading: '[PENDING #3865: confirmation heading]',
+  confirmationBody: '[PENDING #3865: confirmation]',
 } as const;
 
 /**
