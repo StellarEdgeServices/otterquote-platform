@@ -118,6 +118,11 @@ var CONFIG = {
   // ── Launch Gate ──
   // Set to true to open homeowner and partner pages. False keeps coming-soon.html active.
   HOMEOWNER_LAUNCH_ENABLED: true,
+
+  // ── Measurement charge as last checklist step (gh-3860, P23 piece C) ──
+  // Default OFF. Only Dustin switches this on, and only after the charge-step
+  // wording is approved (#3865). While false, dashboard.html is unchanged.
+  MEASUREMENT_CHARGE_ENABLED: false,
 };
 
 // ── Stripe publishable key, mode-matched to the Edge Functions ──

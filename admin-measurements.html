@@ -765,6 +765,30 @@ async function saveFulfillment() {
       }
     }
 
+    // [gh-3861 / P23 piece E, Q5] After the ready email, hand the job to contractors: hand-off-after-fulfilment
+    // checks the caller is an admin, opens the claim for bids (what the homeowner's Submit does) and fires the
+    // existing notify-contractors new_opportunity once. DARK: CONFIG.MEASUREMENT_CHARGE_ENABLED is false by default and
+    // the function has its own MEASUREMENT_CHARGE_ENABLED env flag; with either off nothing here changes. Server side
+    // it is idempotent per order, so a re-save retries a failed hand-off and never sends twice. A failure here must
+    // not un-deliver the order (the save above stands): admin-facing warning only.
+    if (CONFIG.MEASUREMENT_CHARGE_ENABLED === true && notifyReady) {
+      try {
+        var hsess = await sb.auth.getSession();
+        var htoken = hsess && hsess.data && hsess.data.session ? hsess.data.session.access_token : null;
+        var hres = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/hand-off-after-fulfilment', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + htoken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: row.id })
+        });
+        var hjson = await hres.json().catch(function () { return {}; });
+        if (!hres.ok) {
+          alert('Order delivered, but handing the job to contractors failed (' + (hjson.error || hres.status) + '). Re-open the order and Save again to retry.');
+        }
+      } catch (handOffErr) {
+        alert('Order delivered, but handing the job to contractors failed: ' + (handOffErr.message || handOffErr));
+      }
+    }
+
     closeDrawer();
     await loadOrders();
   } catch (e) {
