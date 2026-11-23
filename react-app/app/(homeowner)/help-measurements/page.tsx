@@ -13,6 +13,8 @@
  *   • Data + EF-backed mutations:  ./use-help-measurements-data (reads + the three
  *     Services.* calls against the UNCHANGED Edge Functions).
  *   • (gh-1873) The Stripe card form ./HoverPaymentForm is no longer mounted by this page.
+ *     (gh-3858) ...unless NEXT_PUBLIC_MEASUREMENT_CHARGE_ENABLED is exactly 'true' (OFF by default, set nowhere in the repo):
+ *     then ChargeStep below mounts it again, in place of the paused notice. Flag OFF = the paused notice, form unmounted.
  *
  * gh-1873 (Hover retirement): the paid vendor-report path (Path A: create a PaymentIntent, charge the card,
  * then call create-hover-order) was REMOVED with the measurement vendor. This page no longer creates a
@@ -37,17 +39,24 @@
  *     fabricate a "sent" success (the static silently showed success with no DB write).
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { HomeownerShell } from '../_shell/HomeownerShell';
 import { useAuthReady } from '@/hooks/use-auth-ready';
-import { MEASUREMENTS_COPY as M } from './copy';
+import { MEASUREMENTS_COPY as M, CHARGE_STEP_COPY_PENDING_GH3865 as CHARGE_COPY, MEASUREMENT_REFUSAL_COPY } from './copy';
 import { isAdjusterFormValid, paymentIntentIdFromClientSecret, type MeasurementsUser } from './utils';
 import {
   useHelpMeasurementsData,
   sendMeasurementRequest,
+  requestMeasurementPaymentIntent,
+  recordMeasurementOrder,
+  isDefiniteNotCharged,
   type HelpMeasurementsData,
+  type HelpMeasurementsClaimRow,
 } from './use-help-measurements-data';
-import { readHoverChargeRecord, clearHoverChargeRecord } from './hover-charge-storage';
+import { HoverPaymentForm, isStripeConfigured, ORDER_RETRY_COPY } from './HoverPaymentForm';
+import { readHoverChargeRecord, saveHoverChargeRecord, clearHoverChargeRecord, type PendingHoverCharge } from './hover-charge-storage';
+import { getVariant } from '@/lib/variant';
+import { measurementChargeEnabled } from '@/lib/measurement-charge-flag';
 import { track } from '@/lib/track';
 import { supabase } from '@/lib/supabase';
 import { linkPendingLeadOnce } from '@/lib/lead-capture';
@@ -125,10 +134,29 @@ function PageBody({
   data: HelpMeasurementsData;
   user: MeasurementsUser | null;
 }) {
-  const { claim, profile, alreadySentBoth } = data;
+  const { claim, profile, alreadySentBoth, existingOrder } = data;
+  // gh-3858: the measurement charge is dark unless the flag is exactly 'true'. Read at render time.
+  const chargeEnabled = measurementChargeEnabled();
+  // gh-3858: true while the charge step holds a card form or a resumed order (a PaymentIntent that may be charged). The path cards
+  // are hidden meanwhile, as the pre-pause flow did with its own view, so switching paths cannot discard the retry-safe state.
+  // gh-3858: the charge stage is held here, above the select/adjuster view switch, so a recorded order (or a charge in progress)
+  // cannot be lost by choosing another path and coming back. Initial stage: a paid order exists -> recorded; a saved
+  // PaymentIntent for this claim -> resuming; else intro. Flag OFF: unused ('intro'), no storage read.
+  const [chargePending] = useState<PendingHoverCharge | null>(() => {
+    if (!chargeEnabled) return null;
+    const rec = readHoverChargeRecord();
+    return rec && claim?.id && rec.claimId === claim.id ? rec : null;
+  });
+  const [chargeStage, setChargeStage] = useState<ChargeStage>(() =>
+    !chargeEnabled ? 'intro' : existingOrder ? 'recorded' : chargePending ? 'resuming' : 'intro',
+  );
+  // Derived during render (no effect): the lock and the card form appear in the same commit.
+  const chargeLocked = chargeEnabled && CHARGE_LOCKED_STAGES.includes(chargeStage);
 
   const [view, setView] = useState<View>('select');
   const [status, setStatus] = useState<Status>(() => {
+    // gh-3858: with the flag ON the charge step itself resumes a saved PaymentIntent (see ChargeStep), so no "contact support" yet.
+    if (chargeEnabled) return null;
     const pending = readHoverChargeRecord();
     return pending && claim?.id && pending.claimId === claim.id ? { text: RESUME_COPY.unresolved, type: 'error' } : null;
   });
@@ -145,8 +173,9 @@ function PageBody({
   // loaded claim, the homeowner is told once to contact support (who verify any payment); either way it is cleared. No
   // Edge Function is called. The message is the initial status (read once, in the lazy initializer), so no effect sets state.
   useEffect(() => {
-    clearHoverChargeRecord();
-  }, []);
+    // gh-3858: flag ON: the pointer is kept for ChargeStep to resume from; it clears it itself once resolved.
+    if (!chargeEnabled) clearHoverChargeRecord();
+  }, [chargeEnabled]);
 
   const scrollTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -225,10 +254,21 @@ function PageBody({
             <p>{M.pathIntroText}</p>
           </div>
 
-          <div className="hm-info" role="status" data-testid="hover-retired-notice">
-            <strong>{HOVER_RETIRED_COPY.title}.</strong> {HOVER_RETIRED_COPY.text}
-          </div>
+          {chargeEnabled ? (
+            <ChargeStep
+              claim={claim}
+              stage={chargeStage}
+              setStage={setChargeStage}
+              pending={chargePending}
+              onError={(text) => setStatus({ text, type: 'error' })}
+            />
+          ) : (
+            <div className="hm-info" role="status" data-testid="hover-retired-notice">
+              <strong>{HOVER_RETIRED_COPY.title}.</strong> {HOVER_RETIRED_COPY.text}
+            </div>
+          )}
 
+          {!chargeLocked && (
           <div className="hm-path-cards">
             <PathCard
               badge={M.adjusterBadge}
@@ -240,6 +280,7 @@ function PageBody({
               onSelect={selectAdjuster}
             />
           </div>
+          )}
         </div>
       )}
 
@@ -354,6 +395,181 @@ function PathCard({
       <button type="button" className="hm-select-btn" onClick={onSelect}>
         {M.cardSelectButton}
       </button>
+    </div>
+  );
+}
+
+/**
+ * gh-3858: the measurement charge, mounted ONLY when the flag is ON (see PageBody). Every string it adds comes from
+ * CHARGE_STEP_COPY_PENDING_GH3865 (placeholders until #3865 is approved). Order of operations is the money rule the form
+ * already enforces: create the PaymentIntent, the form confirms the card, and the order is recorded ONLY after Stripe reports
+ * 'succeeded'. A failed order step parks the form in its retry state (it never charges twice).
+ */
+// 'starting' = the PaymentIntent request is in flight; 'card' = the card form is up (a PaymentIntent exists and may be charged);
+// 'resuming' = finishing the order write for a saved PaymentIntent; 'resumeFailed' = that write did not finish and the id is KEPT.
+// The stage lives in PageBody (not here) so it survives the select/adjuster view switch and so the path-card lock is derived
+// in the same render as the form (no effect, no frame with both visible).
+export type ChargeStage = 'intro' | 'starting' | 'resuming' | 'resumeFailed' | 'card' | 'recorded';
+
+/** Stages in which a PaymentIntent is in flight or may be charged: the path cards are hidden, so the state cannot be switched away from. */
+export const CHARGE_LOCKED_STAGES: readonly ChargeStage[] = ['starting', 'resuming', 'resumeFailed', 'card'];
+
+function ChargeStep({
+  claim,
+  stage,
+  setStage,
+  pending,
+  onError,
+}: {
+  claim: HelpMeasurementsClaimRow | null;
+  stage: ChargeStage;
+  setStage: (s: ChargeStage) => void;
+  /** gh-951: the pointer saved when an earlier PaymentIntent was created for THIS claim (read once by PageBody), or null. */
+  pending: PendingHoverCharge | null;
+  onError: (text: string) => void;
+}) {
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [alreadyPaid, setAlreadyPaid] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const resumeStarted = useRef(false);
+  const onErrorRef = useRef(onError);
+  useEffect(() => {
+    onErrorRef.current = onError;
+  });
+
+  // Finish the order write for a saved PaymentIntent. The id is cleared ONLY on a definite "not charged / not valid" answer from
+  // create-measurement-order (see isDefiniteNotCharged); a captured payment or a transient failure KEEPS it and offers Retry Order.
+  const finishSavedOrder = useCallback(async () => {
+    if (!pending || !claim) return;
+    try {
+      await recordMeasurementOrder({ claim, paymentIntentId: pending.paymentIntentId });
+      clearHoverChargeRecord();
+      setStage('recorded');
+    } catch (err) {
+      if (isDefiniteNotCharged(err)) {
+        clearHoverChargeRecord();
+        onErrorRef.current(RESUME_COPY.unresolved);
+        setStage('intro');
+      } else {
+        setStage('resumeFailed');
+      }
+    }
+  }, [pending, claim, setStage]);
+
+  useEffect(() => {
+    if (stage !== 'resuming' || resumeStarted.current) return;
+    resumeStarted.current = true;
+    void finishSavedOrder();
+  }, [stage, finishSavedOrder]);
+
+  // A saved pointer for a claim that already has an order is stale.
+  useEffect(() => {
+    if (stage === 'recorded') clearHoverChargeRecord();
+  }, [stage]);
+
+  const start = useCallback(async () => {
+    if (!claim?.id || !isStripeConfigured()) {
+      onError(M.statusPaymentInitError);
+      return;
+    }
+    setStage('starting');
+    try {
+      const res = await requestMeasurementPaymentIntent(claim, getVariant());
+      if (res?.refused) {
+        // gh-3356: the server declined to start a payment; say why with the existing static-page sentence for that code.
+        if (res.code === 'MEASUREMENT_ALREADY_PAID') {
+          setAlreadyPaid(true);
+          onError(MEASUREMENT_REFUSAL_COPY.alreadyPaid);
+        } else if (res.code === 'MEASUREMENT_PAYMENT_CANNOT_START') {
+          onError(MEASUREMENT_REFUSAL_COPY.cannotStart);
+        } else {
+          onError(MEASUREMENT_REFUSAL_COPY.checkUnavailable);
+        }
+        setStage('intro');
+        return;
+      }
+      if (!res?.client_secret) {
+        onError(M.statusPaymentInitError);
+        setStage('intro');
+        return;
+      }
+      setClientSecret(res.client_secret);
+      setStage('card');
+      // gh-951: a reload between the charge and the order leaves this pointer; the next mount resumes from it.
+      const piId = paymentIntentIdFromClientSecret(res.client_secret);
+      if (piId) saveHoverChargeRecord({ claimId: claim.id, paymentIntentId: piId, ts: Date.now() });
+    } catch {
+      onError(M.statusPaymentInitError);
+      setStage('intro');
+    }
+  }, [claim, onError, setStage]);
+
+  // Throwing propagates to HoverPaymentForm's order step (retry state, same PaymentIntent id, no second charge).
+  const handlePaid = useCallback(
+    async (paymentIntentId: string) => {
+      if (!claim) throw new Error('Missing claim. Please refresh and try again.');
+      await recordMeasurementOrder({ claim, paymentIntentId });
+      clearHoverChargeRecord();
+      setStage('recorded');
+    },
+    [claim, setStage],
+  );
+
+  const cancel = useCallback(() => {
+    // Cancel is only reachable before a charge succeeds (the form retires it afterwards), so the intent was never confirmed.
+    clearHoverChargeRecord();
+    setClientSecret(null);
+    setStage('intro');
+  }, [setStage]);
+
+  const retryResume = useCallback(async () => {
+    setRetrying(true);
+    await finishSavedOrder();
+    setRetrying(false);
+  }, [finishSavedOrder]);
+
+  return (
+    <div className="hm-section-card" data-testid="charge-step">
+      {stage === 'recorded' ? (
+        <p role="status" data-testid="charge-step-recorded">
+          {CHARGE_COPY.orderRecorded}
+        </p>
+      ) : (
+        <>
+          <h3 className="hm-section-title">{CHARGE_COPY.heading}</h3>
+          <p className="hm-section-intro">{CHARGE_COPY.body}</p>
+          {stage === 'resuming' && (
+            <p className="hm-payform-lead" role="status" data-testid="charge-resuming">
+              <span className="hm-spinner" aria-hidden="true" /> {M.payOrderingButton}
+            </p>
+          )}
+          {stage === 'resumeFailed' && (
+            <div className="hm-payform" data-testid="charge-resume-failed">
+              <div className="hm-status error" role="alert">
+                {RESUME_COPY.unresolved}
+              </div>
+              <div className="hm-btn-row">
+                <button type="button" className="hm-btn hm-btn-green" disabled={retrying} onClick={() => void retryResume()}>
+                  {ORDER_RETRY_COPY.retryButton}
+                </button>
+              </div>
+              <p className="hm-stripe-note">{ORDER_RETRY_COPY.supportNote}</p>
+            </div>
+          )}
+          {(stage === 'intro' || stage === 'starting') && !alreadyPaid && (
+            <div className="hm-btn-row">
+              <button type="button" className="hm-btn hm-btn-green" disabled={stage === 'starting'} onClick={() => void start()}>
+                {CHARGE_COPY.startButton}
+              </button>
+            </div>
+          )}
+          {stage === 'card' && clientSecret && (
+            <div data-testid="hover-payment-form">
+              <HoverPaymentForm clientSecret={clientSecret} onPaid={handlePaid} onCancel={cancel} />
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
