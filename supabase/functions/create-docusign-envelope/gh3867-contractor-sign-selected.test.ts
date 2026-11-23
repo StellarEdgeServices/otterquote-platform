@@ -69,7 +69,8 @@ function fakeSupabase(w: World) {
     rpc: () => { w.rateLimitSpends++; return Promise.resolve({ data: { allowed: true }, error: null }); },
     from(table: string) {
       const f: Record<string, unknown> = {};
-      const chain: Record<string, unknown> = {
+      // deno-lint-ignore no-explicit-any
+      const chain: any = {
         select: () => chain,
         eq: (c: string, v: unknown) => { f[c] = v; return chain; },
         maybeSingle: () => {
