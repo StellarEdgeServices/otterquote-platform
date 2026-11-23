@@ -1,7 +1,7 @@
--- STATUS (gh-1438, as of 2026-09-30T12:32Z): NOT APPLIED
+-- STATUS (gh-1438, as of 2026-11-22): APPLIED (ledger version 20261119122245, name c4_contractor_pitch_bands; applied 2026-11-19T12:22:45Z; record #1315 comment 7009008396; the lines below are the pre-apply drafting record)
 -- FILE ROLE: forward file of set c4_contractor_pitch_bands (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: contractors.pitch_bands absent: comment 5494221280 (RW-DONE, PR #1471, supabase/migrations/MIGRATIONS-RECONCILIATION-1438.md Part 1, read-only queries 2026-09-01); comment 5850997376 (CLOSE-REVIEW 2026-09-26). Not re-measured since; re-query the live ledger before relying on it.
--- REPO COPY: none in supabase/migrations/ or supabase/migrations_rollbacks/ for this file
+-- REPO COPY: supabase/migrations/20261119122245_c4_contractor_pitch_bands.sql (byte-identical to this file's pre-edit content, which equals the applied ledger statement)
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 --
 -- C4 — per-contractor priced slope bands

@@ -1,4 +1,5 @@
--- STATUS (gh-3203, 2026-11-11): NOT APPLIED. tier:3b. DRAFT ONLY. Never applied by an agent.
+-- STATUS (gh-1438, as of 2026-11-22): APPLIED (ledger version 20261122220904, name gh3203_detach_admin_login_test_roles; applied 2026-11-22T22:09:04Z; record #3203 comment 7086622512; the lines below are the pre-apply drafting record)
+-- REPO COPY: supabase/migrations/20261122220904_gh3203_detach_admin_login_test_roles.sql (byte-identical to this file's pre-edit content, which equals the applied ledger statement)
 -- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
 -- Refs #3203. Pair: gh3203_detach_admin_login_test_roles_rollback.sql
 -- APPLY GATE (all required): (1) gh2479 proof passed on production against partner 56c1319a (#3203 comment 6687879598 says
