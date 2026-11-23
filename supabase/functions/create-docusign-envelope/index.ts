@@ -3427,6 +3427,34 @@ serve(async (req)=>{
           }
         });
       }
+      // gh-3867: only the claim's SELECTED contractor may create the contract envelope. This runs
+      // before the envelope lookup, the rate-limit spend and any BoldSign call, so a refused caller
+      // creates and sends nothing. A lookup failure fails closed.
+      const { data: selRow, error: selErr } = await supabase.from("claims").select("selected_contractor_id").eq("id", claim_id).maybeSingle();
+      if (selErr) {
+        console.error(`[${FN_NAME}] contractor_sign selected-contractor lookup failed:`, selErr);
+        return new Response(JSON.stringify({
+          error: "Could not verify the selected contractor for this claim"
+        }), {
+          status: 503,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json"
+          }
+        });
+      }
+      if (!selRow?.selected_contractor_id || selRow.selected_contractor_id !== contractor_id) {
+        console.error(`[${FN_NAME}] contractor_sign refused: contractor ${contractor_id} is not the selected contractor for claim ${claim_id} (gh-3867)`);
+        return new Response(JSON.stringify({
+          error: "Forbidden: contractor is not the selected contractor for this claim"
+        }), {
+          status: 403,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json"
+          }
+        });
+      }
       verifiedSigner = {
         email: contractorRow.email || "",
         name: contractorRow.company_name || contractorRow.contact_name || "Contractor"
