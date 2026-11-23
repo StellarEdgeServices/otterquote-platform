@@ -1,0 +1,48 @@
+name: Static gh-3861 Hand-off Page Tests
+
+# gh-3861 (P23 piece E): admin-measurements.html calls hand-off-after-fulfilment only with
+# CONFIG.MEASUREMENT_CHARGE_ENABLED true, shows the admin a plain warning when the notify failed, and
+# main behaviour is unchanged with the flag off. Runs the real saveFulfillment() in vm, no network.
+#
+# `pull_request` (never `pull_request_target`), no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'admin-measurements.html'
+      - 'js/config.js'
+      - 'tests/gh3861-handoff-after-fulfilment.mjs'
+      - '.github/workflows/static-gh3861-handoff-page-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'admin-measurements.html'
+      - 'js/config.js'
+      - 'tests/gh3861-handoff-after-fulfilment.mjs'
+      - '.github/workflows/static-gh3861-handoff-page-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gh3861-handoff-page-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-gh3861-handoff-page-tests:
+    name: Hand-off page test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.x'
+      - name: Hand-off page test (gh3861)
+        run: node tests/gh3861-handoff-after-fulfilment.mjs

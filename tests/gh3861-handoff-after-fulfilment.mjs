@@ -31,7 +31,7 @@ const fnSrc = html.slice(start, end + 3);
 
 ok(/MEASUREMENT_CHARGE_ENABLED:\s*false/.test(cfgSrc), 'js/config.js ships MEASUREMENT_CHARGE_ENABLED: false (dark by default)');
 
-async function save({ flag, handOffStatus = 200, status = 'awaiting_fulfillment' }) {
+async function save({ flag, handOffStatus = 200, handOffBody = {}, status = 'awaiting_fulfillment' }) {
   const fnCalls = [];
   const alerts = [];
   const writes = [];
@@ -65,7 +65,7 @@ async function save({ flag, handOffStatus = 200, status = 'awaiting_fulfillment'
     fetch: async (url, init) => {
       const name = String(url).split('/functions/v1/')[1];
       fnCalls.push({ name, body: JSON.parse(init.body), auth: init.headers.Authorization });
-      return { ok: name === 'hand-off-after-fulfilment' ? handOffStatus < 400 : true, status: name === 'hand-off-after-fulfilment' ? handOffStatus : 200, json: async () => ({}) };
+      return { ok: name === 'hand-off-after-fulfilment' ? handOffStatus < 400 : true, status: name === 'hand-off-after-fulfilment' ? handOffStatus : 200, json: async () => (name === 'hand-off-after-fulfilment' ? handOffBody : {}) };
     },
     Date, JSON, Math, parseFloat, isNaN, Promise,
   });
@@ -106,6 +106,18 @@ async function save({ flag, handOffStatus = 200, status = 'awaiting_fulfillment'
   const r = await save({ flag: true, status: 'completed' });
   ok(r.fnCalls.map((c) => c.name).includes('hand-off-after-fulfilment'), 're-save of a completed order re-calls the hand-off (server is idempotent per order)');
 }
+// 5. notify failed (502 notify_failed, 429 behind it): the admin is told plainly that contractors are NOT notified yet and to Save again.
+{
+  const r = await save({ flag: true, handOffStatus: 502, handOffBody: { error: 'notify_failed', released: true, notified: false, notify_status: 429 } });
+  ok(r.alerts.length === 1 && /contractors have NOT been notified yet/.test(r.alerts[0]) && /429/.test(r.alerts[0]) && /Save again to retry the notification/.test(r.alerts[0]), 'notify_failed (429): admin warned that contractors are not yet notified, with the status, and told to Save again');
+}
+// 6. the done record failed after a successful notify: the admin is told NOT to save again (a re-save would notify twice).
+{
+  const r = await save({ flag: true, handOffStatus: 502, handOffBody: { error: 'handoff_record_failed', released: true, notified: true } });
+  ok(r.alerts.length === 1 && /Do NOT Save again/.test(r.alerts[0]), 'handoff_record_failed: admin told not to Save again');
+}
+// 7. the page's own wiring: it never says a re-save retries unless the function can (the string and the function agree).
+ok(/notify_failed/.test(html) && /handoff_record_failed/.test(html), 'page handles both failure codes the function returns');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -6,6 +6,14 @@
 
 export const FLAG_ENV = "MEASUREMENT_CHARGE_ENABLED";
 export const HANDOFF_EVENT = "measurement_handoff_to_contractors";
+/** Written right after the claim is opened and BEFORE notify-contractors is called: "released, contractors not yet told".
+ *  The HANDOFF_EVENT row is the "told" marker. A pending row with no done row for the order means a notify is owed. */
+export const PENDING_EVENT = "measurement_handoff_release_pending";
+
+export interface HandOffMarkers {
+  pending: boolean;
+  done: boolean;
+}
 
 /** Same list as dashboard.html submitForBids(): siding waits for the D-164 design webhook, windows for D-375. */
 export const RELEASABLE_TRADES = ["roofing", "gutters"] as const;
@@ -31,7 +39,8 @@ export interface HandOffClaim {
 
 export type HandOffPlan =
   | { action: "refuse"; status: 404 | 409 | 422; reason: string }
-  | { action: "already_open"; reason: "already_released" }
+  | { action: "already_open"; reason: "already_released" | "already_handed_off" }
+  | { action: "renotify" }
   | { action: "release"; patch: Record<string, unknown>; releasedTrades: string[] };
 
 /** Flag: exactly the string "true" is ON. Unset, "false", "1", "TRUE" are all OFF (fails closed). */
@@ -43,6 +52,7 @@ export function planHandOff(
   order: HandOffOrder | null,
   claim: HandOffClaim | null,
   nowIso: string,
+  markers: HandOffMarkers = { pending: false, done: false },
 ): HandOffPlan {
   if (!order) return { action: "refuse", status: 404, reason: "order_not_found" };
   // The report must actually be fulfilled: same test send-measurement-ready applies before it emails.
@@ -57,8 +67,19 @@ export function planHandOff(
   // gh-3783 (D-375): a claim that includes windows is refused, before anything is written.
   if (trades.includes("windows")) return { action: "refuse", status: 422, reason: "windows_not_releasable" };
 
-  // Already open (the homeowner clicked Submit, or an earlier hand-off ran): contractors were already told once.
-  if (claim.ready_for_bids === true) return { action: "already_open", reason: "already_released" };
+  // Contractors were already told for this order (one hand-off per order).
+  if (markers.done) return { action: "already_open", reason: "already_handed_off" };
+
+  if (claim.ready_for_bids === true) {
+    // An earlier hand-off opened this claim but its notify-contractors call did not succeed (pending row, no done row):
+    // the claim is open and contractors have NOT been told, so the retry must notify, once. Only while the claim is still
+    // in a pre-bidding status; one that has moved on (bidding, contract_signed ...) is left alone.
+    if (markers.pending && (RELEASABLE_STATUSES as readonly string[]).includes(String(claim.status ?? ""))) {
+      return { action: "renotify" };
+    }
+    // Opened by the homeowner's Submit (contractors told by Submit) or no hand-off of ours pending: nothing to do.
+    return { action: "already_open", reason: "already_released" };
+  }
 
   if (!(RELEASABLE_STATUSES as readonly string[]).includes(String(claim.status ?? ""))) {
     return { action: "refuse", status: 409, reason: "claim_status_not_releasable" };

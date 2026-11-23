@@ -41,34 +41,51 @@ function baseTables(over: Partial<Tables> = {}): Tables {
   };
 }
 
-// Recording fake client. Reads resolve to tables[table][0] (or []) ; update/insert are recorded in `writes`.
-function fakeClient(tables: Tables, opts: { updateError?: { message: string } | null; updateRows?: Row[] | null } = {}) {
+// Recording STATEFUL fake client: update() applies its patch to tables.claims[0], insert() appends to tables[table], and
+// reads honour .eq / .in / .contains filters, so a second run() against the same `tables` sees what the first one wrote
+// (the retry tests depend on that). failInsert(table, payload) makes an insert return an error and not append.
+function fakeClient(tables: Tables, opts: { updateError?: { message: string } | null; updateRows?: Row[] | null; failInsert?: (table: string, p: Row) => boolean } = {}) {
   const calls: string[] = [];
   const writes: { table: string; op: "update" | "insert"; payload: Row }[] = [];
+  const matches = (r: Row, f: { eq: [string, unknown][]; inn: [string, unknown[]][]; cont: [string, Row][] }) =>
+    f.eq.every(([c, v]) => r[c] === v) &&
+    f.inn.every(([c, vs]) => vs.includes(r[c])) &&
+    f.cont.every(([c, o]) => Object.entries(o).every(([k, v]) => ((r[c] ?? {}) as Row)[k] === v));
   // deno-lint-ignore no-explicit-any
   const make = ((_u: string, _k: string) => {
     calls.push("createClient");
     return {
       from: (table: string) => {
         calls.push(`from:${table}`);
-        let op: "select" | "update" | "insert" = "select";
+        let op: "select" | "update" = "select";
+        let patch: Row = {};
+        const f = { eq: [] as [string, unknown][], inn: [] as [string, unknown[]][], cont: [] as [string, Row][] };
         // deno-lint-ignore no-explicit-any
         const b: any = {
           select: () => b,
-          eq: () => b,
-          contains: () => b,
+          eq: (c: string, v: unknown) => { f.eq.push([c, v]); return b; },
+          in: (c: string, vs: unknown[]) => { f.inn.push([c, vs]); return b; },
+          contains: (c: string, o: Row) => { f.cont.push([c, o]); return b; },
           limit: () => b,
-          update: (p: Row) => { op = "update"; EVENTS.push(`update:${table}`); writes.push({ table, op: "update", payload: p }); return b; },
-          insert: (p: Row) => { EVENTS.push(`insert:${table}`); writes.push({ table, op: "insert", payload: p }); return Promise.resolve({ data: null, error: null }); },
-          maybeSingle: () => Promise.resolve({ data: (tables[table] ?? [])[0] ?? null, error: null }),
+          update: (p: Row) => { op = "update"; patch = p; EVENTS.push(`update:${table}`); writes.push({ table, op: "update", payload: p }); return b; },
+          insert: (p: Row) => {
+            EVENTS.push(`insert:${table}`);
+            writes.push({ table, op: "insert", payload: p });
+            if (opts.failInsert?.(table, p)) return Promise.resolve({ data: null, error: { message: "insert failed" } });
+            (tables[table] ??= []).push(p);
+            return Promise.resolve({ data: null, error: null });
+          },
+          maybeSingle: () => Promise.resolve({ data: (tables[table] ?? []).find((r) => matches(r, f)) ?? null, error: null }),
           then: (res: (v: unknown) => unknown) => {
             if (op === "update") {
+              const fails = !!opts.updateError || opts.updateRows === null || (opts.updateRows !== undefined && opts.updateRows.length === 0);
+              if (!fails) for (const r of (tables[table] ?? []).filter((x) => matches(x, f))) Object.assign(r, patch);
               return Promise.resolve({
                 data: opts.updateRows === undefined ? [{ id: CLAIM }] : opts.updateRows,
                 error: opts.updateError ?? null,
               }).then(res);
             }
-            return Promise.resolve({ data: tables[table] ?? [], error: null }).then(res);
+            return Promise.resolve({ data: (tables[table] ?? []).filter((r) => matches(r, f)), error: null }).then(res);
           },
         };
         return b;
@@ -147,18 +164,17 @@ Deno.test("admin + fulfilled report + flag on: claim released and notify-contrac
   assert(typeof upd[0].payload.roofing_bid_released_at === "string");
   assertEquals("gutters_bid_released_at" in upd[0].payload, false); // only the claim's own trades
   const log = t.writes.filter((w) => w.table === "activity_log" && w.op === "insert");
-  assertEquals(log.length, 1);
-  assertEquals(log[0].payload.event_type, "measurement_handoff_to_contractors");
-  assertEquals((log[0].payload.metadata as Row).order_id, ORDER);
+  assertEquals(log.map((l) => l.payload.event_type), ["measurement_handoff_release_pending", "measurement_handoff_to_contractors"]);
+  assertEquals((log[1].payload.metadata as Row).order_id, ORDER);
 });
 
-Deno.test("ordering: claim released, THEN notify-contractors, THEN the hand-off row", async () => {
+Deno.test("ordering: claim released, THEN pending row, THEN notify-contractors, THEN the hand-off (done) row", async () => {
   await run();
-  assertEquals(EVENTS, ["update:claims", "fetch:notify-contractors", "insert:activity_log"]);
+  assertEquals(EVENTS, ["update:claims", "insert:activity_log", "fetch:notify-contractors", "insert:activity_log"]);
 });
 
 Deno.test("re-save after a completed hand-off: skipped, notify-contractors NOT invoked again", async () => {
-  const t = await run({ tables: baseTables({ activity_log: [{ id: "prior" }] }) });
+  const t = await run({ tables: baseTables({ activity_log: [{ id: "prior", event_type: "measurement_handoff_to_contractors", metadata: { order_id: ORDER } }] }) });
   assertEquals(t.res.status, 200);
   assertEquals(t.json.reason, "already_handed_off");
   assertEquals(t.fetchCalls.length, 0);
@@ -256,13 +272,121 @@ Deno.test("zero rows updated is not success: nothing sent", async () => {
   assertEquals(t.fetchCalls.length, 0);
 });
 
-Deno.test("notify-contractors failing: 502, alert logged, NO hand-off row (so a re-save retries)", async () => {
-  const t = await run({ notifyStatus: 500 });
+const PENDING_ROWS = (t: Tables) => (t.activity_log ?? []).filter((r) => r.event_type === "measurement_handoff_release_pending");
+const DONE_ROWS = (t: Tables) => (t.activity_log ?? []).filter((r) => r.event_type === "measurement_handoff_to_contractors");
+
+Deno.test("notify-contractors failing: 502, alert logged, a PENDING row (not a done row) is left for the retry", async () => {
+  const tables = baseTables();
+  const t = await run({ tables, notifyStatus: 500 });
   assertEquals(t.res.status, 502);
   assertEquals(t.json.released, true);
+  assertEquals(t.json.notified, false);
   assertEquals(notifyCalls(t.fetchCalls).length, 1);
-  assertEquals(t.writes.filter((w) => w.table === "activity_log").length, 0);
+  assertEquals(PENDING_ROWS(tables).length, 1);
+  assertEquals(DONE_ROWS(tables).length, 0);
   assertEquals(t.writes.filter((w) => w.table === "platform_alerts_log").length, 1);
+  assertEquals(EVENTS, ["update:claims", "insert:activity_log", "fetch:notify-contractors", "insert:platform_alerts_log"]);
+});
+
+Deno.test("RETRY (blocking finding of review 7102446666): fail, then re-save: notify-contractors called once and succeeds, claim not re-written", async () => {
+  const tables = baseTables();
+  const first = await run({ tables, notifyStatus: 500 });
+  assertEquals(first.res.status, 502);
+  assertEquals(tables.claims[0].ready_for_bids, true); // post-state of the failed run: claim open, contractors not told
+  const second = await run({ tables, notifyStatus: 200 });
+  assertEquals(second.res.status, 200);
+  assertEquals(second.json.success, true);
+  assertEquals(second.json.notified, true);
+  assertEquals(second.json.retried, true);
+  assertEquals(notifyCalls(second.fetchCalls).length, 1);
+  assertEquals(second.writes.filter((w) => w.table === "claims").length, 0); // no second release
+  assertEquals(DONE_ROWS(tables).length, 1);
+  assertEquals(PENDING_ROWS(tables).length, 1); // not duplicated
+});
+
+Deno.test("SUCCESS then re-save: notify-contractors NOT called again (once per success)", async () => {
+  const tables = baseTables();
+  const first = await run({ tables });
+  assertEquals(notifyCalls(first.fetchCalls).length, 1);
+  const second = await run({ tables });
+  assertEquals(second.res.status, 200);
+  assertEquals(second.json.reason, "already_handed_off");
+  assertEquals(second.fetchCalls.length, 0);
+  assertEquals(second.writes.length, 0);
+  const third = await run({ tables });
+  assertEquals(third.fetchCalls.length, 0);
+});
+
+Deno.test("RETRY after a retry that succeeded: a third save does not notify (exactly once per success)", async () => {
+  const tables = baseTables();
+  await run({ tables, notifyStatus: 500 });
+  const ok = await run({ tables });
+  assertEquals(notifyCalls(ok.fetchCalls).length, 1);
+  const again = await run({ tables });
+  assertEquals(again.fetchCalls.length, 0);
+  assertEquals(again.json.reason, "already_handed_off");
+});
+
+Deno.test("429 from notify-contractors: 502 with notify_status 429, pending kept, alert names the status; retry then succeeds once", async () => {
+  const tables = baseTables();
+  const first = await run({ tables, notifyStatus: 429 });
+  assertEquals(first.res.status, 502);
+  assertEquals(first.json.error, "notify_failed");
+  assertEquals(first.json.notify_status, 429);
+  assertEquals(PENDING_ROWS(tables).length, 1);
+  assertEquals(DONE_ROWS(tables).length, 0);
+  const alert = first.writes.find((w) => w.table === "platform_alerts_log");
+  assert(String(alert?.payload.message).includes("429"));
+  const stillLimited = await run({ tables, notifyStatus: 429 }); // second try also limited: still owed, still no done row
+  assertEquals(stillLimited.res.status, 502);
+  assertEquals(notifyCalls(stillLimited.fetchCalls).length, 1);
+  assertEquals(PENDING_ROWS(tables).length, 1); // pending not duplicated across failures
+  const third = await run({ tables, notifyStatus: 200 });
+  assertEquals(third.res.status, 200);
+  assertEquals(notifyCalls(third.fetchCalls).length, 1);
+  assertEquals(DONE_ROWS(tables).length, 1);
+});
+
+Deno.test("claim opened by the homeowner's Submit (no pending row): a re-save does not notify", async () => {
+  const tables = baseTables({ claims: [{ id: CLAIM, status: "active", ready_for_bids: true, trades: ["roofing"], is_test: false }] });
+  const t = await run({ tables });
+  assertEquals(t.json.reason, "already_released");
+  assertEquals(t.fetchCalls.length, 0);
+});
+
+Deno.test("pending row but the claim has moved on (bidding): not re-notified", async () => {
+  const tables = baseTables({
+    claims: [{ id: CLAIM, status: "bidding", ready_for_bids: true, trades: ["roofing"], is_test: false }],
+    activity_log: [{ event_type: "measurement_handoff_release_pending", metadata: { order_id: ORDER } }],
+  });
+  const t = await run({ tables });
+  assertEquals(t.json.reason, "already_released");
+  assertEquals(t.fetchCalls.length, 0);
+});
+
+Deno.test("pending row for a claim the guard has since closed again (ready_for_bids false): normal release path, one pending row", async () => {
+  const tables = baseTables({ activity_log: [{ event_type: "measurement_handoff_release_pending", metadata: { order_id: ORDER } }] });
+  const t = await run({ tables });
+  assertEquals(t.res.status, 200);
+  assertEquals(notifyCalls(t.fetchCalls).length, 1);
+  assertEquals(t.writes.filter((w) => w.table === "claims").length, 1);
+});
+
+Deno.test("done marker cannot be written after a successful notify: 502 handoff_record_failed, admin alert says do NOT re-save", async () => {
+  const tables = baseTables();
+  const t = await run({ tables, client: { failInsert: (table, p) => table === "activity_log" && p.event_type === "measurement_handoff_to_contractors" } });
+  assertEquals(t.res.status, 502);
+  assertEquals(t.json.error, "handoff_record_failed");
+  assertEquals(t.json.notified, true);
+  const alert = t.writes.find((w) => w.table === "platform_alerts_log");
+  assert(String(alert?.payload.message).includes("Do NOT re-save"));
+});
+
+Deno.test("pending marker insert failing does not stop the notify (contractors are still told)", async () => {
+  const tables = baseTables();
+  const t = await run({ tables, client: { failInsert: (table, p) => table === "activity_log" && p.event_type === "measurement_handoff_release_pending" } });
+  assertEquals(t.res.status, 200);
+  assertEquals(notifyCalls(t.fetchCalls).length, 1);
 });
 
 Deno.test("planHandOff: pure decisions", () => {
