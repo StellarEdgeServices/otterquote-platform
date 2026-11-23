@@ -32,12 +32,16 @@ export const SEND_SITES: Record<string, Site> = {
   "process-dunning/index.ts": { kind: "contractor", sites: 1, minGates: 1, minLookups: 1, order: "upstream", callers: /(?<!function\s)\bsendSMSToAll\s*\(/ },
   // attemptContractorSms (release gate before the send) and resolveNudgeRecipients (the lookup) live here.
   "send-contractor-nudge/consent-gate.ts": { kind: "contractor", sites: 1, minGates: 1, minLookups: 1, order: "gate-before-send" },
-  // Alert to the owner's own number, not a contractor send (see the comment above it in index.ts). It builds the
-  // contractor recipient list, so it must not read a legacy phone source either.
-  "send-contractor-nudge/index.ts": { kind: "admin-alert", sites: 1, minGates: 0, noLegacy: true },
+  // Alert to the owner's own number, not a contractor send. gh-3849 moved this send-sms call out of index.ts into
+  // owner-alert.ts (so the e-mail fallback is unit-testable); the class is unchanged: admin-alert, ungated.
+  "send-contractor-nudge/owner-alert.ts": { kind: "admin-alert", sites: 1, minGates: 0, noLegacy: true },
   // The Twilio relay itself; its callers are the sites above.
   "send-sms/index.ts": { kind: "relay", sites: 1, minGates: 0 },
 };
+
+// gh-3849: index.ts no longer holds a send site (it calls owner-alert.ts), so it is not in SEND_SITES (that list must equal
+// the files that contain a send). It still builds the contractor recipient list, so it keeps the no-legacy-phone-source guard.
+const NUDGE_INDEX: Site = { kind: "admin-alert", sites: 0, minGates: 0, noLegacy: true };
 
 const SEND_RE = /functions\/v1\/send-sms|api\.twilio\.com\/2010-04-01\/Accounts\/\$\{[^}]+\}\/Messages\.json(?!\?)/g;
 // D-391 / #2875 layer 4: the lookup of the verified-number list, and every legacy phone / consent source that must no
@@ -269,7 +273,7 @@ Deno.test("real files (mutation): reverting the recipient source to a legacy pho
     ["send-contractor-nudge/index.ts", /\.select\("company_name, is_test"\)/, '.select("company_name, phone, notification_phones, sms_opt_in, is_test")'],
   ];
   for (const [p, from, to] of cases) {
-    const v = checkFile(p, mutate(await real(p), from, to), SEND_SITES[p]);
+    const v = checkFile(p, mutate(await real(p), from, to), SEND_SITES[p] ?? NUDGE_INDEX);
     assert(v.some((s) => s.includes("legacy phone/consent source")), `${p}: reverting to a legacy source was not caught: ${JSON.stringify(v)}`);
   }
 });
@@ -312,6 +316,9 @@ Deno.test("real files: removing the TCR release gate from each contractor send s
   const nc = mutate(await real("notify-contractors/index.ts"), /!contractorSmsReleaseGate\(contractor, /, "false && contractorSmsReleaseGate(contractor, ");
   assert(checkFile("notify-contractors/index.ts", nc, SEND_SITES["notify-contractors/index.ts"]).length > 0);
 });
+Deno.test("real files: send-contractor-nudge/index.ts has no send site of its own and no legacy phone source", async () => {
+  assertEquals(checkFile("send-contractor-nudge/index.ts", await real("send-contractor-nudge/index.ts"), NUDGE_INDEX), []);
+});
 Deno.test("real files: the nudge's Dustin alert stays an ungated admin-alert (internal, not a contractor send)", () => {
-  assertEquals(SEND_SITES["send-contractor-nudge/index.ts"].kind, "admin-alert");
+  assertEquals(SEND_SITES["send-contractor-nudge/owner-alert.ts"].kind, "admin-alert");
 });
