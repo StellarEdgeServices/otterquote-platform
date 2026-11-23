@@ -337,7 +337,8 @@ function contractSigningHref(claimId: string, contractorId: string, quoteId: str
 
 /**
  * Resolve the per-bid action button. Mirrors bids.html:1184-1199 exactly:
- *   contract_signed         → "✓ Contract Signed" (→ contract-signing)
+ *   contract_signed + winner → "✓ Contract Signed" (→ contract-signing)
+ *   contract_signed + other  → "Not Selected" (disabled; gh-3863)
  *   awarded + this winner   → "View Contract Status →" (→ contract-signing)
  *   awarded + another bid   → "Not Selected" (disabled)
  *   withdrawn (cancelled)   → "Bid Withdrawn" (disabled; gh-2564 -- no Accept)
@@ -348,6 +349,11 @@ export function deriveBidAction(claim: BidsClaim | null | undefined, bid: BidRow
   const cs = claim?.status ?? null;
   const isExpired = bid.bid_status === 'expired';
 
+  // gh-3863: on a signed claim only the selected contractor's quote shows Contract Signed; every other quote
+  // (withdrawn, expired, not chosen) reuses the existing 'Not Selected' state, as on an awarded claim.
+  if (cs === 'contract_signed' && claim?.selected_contractor_id !== bid.contractor_id) {
+    return { kind: 'not_selected', label: 'Not Selected', disabled: true };
+  }
   if (cs === 'contract_signed') {
     return {
       kind: 'contract_signed',

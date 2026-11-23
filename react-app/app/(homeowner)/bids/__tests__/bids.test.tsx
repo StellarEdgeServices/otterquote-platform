@@ -221,7 +221,7 @@ describe('action button state machine', () => {
     expect(a.disabled).toBe(true);
   });
   it('shows contract-signed state', () => {
-    const a = deriveBidAction({ id: 'c1', user_id: 'u1', status: 'contract_signed' }, bid());
+    const a = deriveBidAction({ id: 'c1', user_id: 'u1', status: 'contract_signed', selected_contractor_id: 'k1' }, bid());
     expect(a.kind).toBe('contract_signed');
     expect(a.label).toBe('✓ Contract Signed');
   });

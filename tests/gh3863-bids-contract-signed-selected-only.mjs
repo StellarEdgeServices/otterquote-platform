@@ -1,9 +1,9 @@
 /**
  * gh-3863 -- bids.html shows "Contract Signed" only on the selected contractor's card. On a contract_signed claim a
- * declined/other quote's card shows "Not Selected" (it showed "Contract Signed" before; found on is_test claim 8dcf76f1).
+ * withdrawn ('cancelled') or other quote's card shows "Not Selected" (it showed "Contract Signed" before; found on is_test claim 8dcf76f1).
  *
  * HOW: extracts the real `const actionBtn = (function() {...})();` from bids.html and runs it for a selected and a
- * declined bid on a contract_signed claim, plus an awarded claim (control that must not change).
+ * withdrawn ('cancelled') bid on a contract_signed claim, plus an awarded claim (control that must not change).
  * Negative control: ROOT=<checkout of main before this change> node tests/gh3863-bids-contract-signed-selected-only.mjs  (expected exit 1)
  */
 import fs from 'node:fs';
@@ -23,10 +23,10 @@ if (m) {
     new Function('currentClaim', 'bid', 'isWithdrawn', 'isExpired', 'return ' + m[1] + ';')(currentClaim, bid, isWithdrawn, isExpired);
   const signed = { id: 'c1', status: 'contract_signed', selected_contractor_id: 'K2' };
   const sel = run(signed, { id: 'q2', contractor_id: 'K2', bid_status: 'active' });
-  const dec = run(signed, { id: 'q1', contractor_id: 'K1', bid_status: 'declined' });
+  const wd = run(signed, { id: 'q1', contractor_id: 'K1', bid_status: 'cancelled' });
   check('selected contractor card shows Contract Signed', sel.includes('Contract Signed'));
-  check('declined contractor card does NOT show Contract Signed', !dec.includes('Contract Signed'));
-  check('declined contractor card shows Not Selected', dec.includes('Not Selected'));
+  check('withdrawn contractor card does NOT show Contract Signed', !wd.includes('Contract Signed'));
+  check('withdrawn contractor card shows Not Selected', wd.includes('Not Selected'));
   const aw = { id: 'c1', status: 'awarded', selected_contractor_id: 'K2' };
   check('awarded claim: selected card unchanged (View Contract Status)', run(aw, { id: 'q2', contractor_id: 'K2' }).includes('View Contract Status'));
   check('awarded claim: other card unchanged (Not Selected)', run(aw, { id: 'q1', contractor_id: 'K1' }).includes('Not Selected'));
