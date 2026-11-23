@@ -203,3 +203,9 @@ Replay path (review of PR #3479, comment 6670233265): `gh3239_partner_agreement_
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh3783_claims_refuse_windows_trade` | forward, rollback, pre-flight | APPLIED (ledger `20261119210401`; #3783 comment 7022312112) | drafted under #3783 (CEO RUN 153, b3783); read-only production SELECT the same day: 43 claims, 0 with a windows trade, 0 with `windows_bid_released_at`. Trigger refusing a windows trade or release stamp (23514). Tier 3B, R-097 24-hour notice before apply; publish PR #3781 and deploy PR #3784 code first; proof `supabase/tests/gh3783_claims_refuse_windows_trade_proof_run.sh` | `supabase/migrations/20261119210401_gh3783_claims_refuse_windows_trade.sql` |
+
+## Added 2026-11-19 (gh-3374, second bump, version label v3-2026-11 to v4-2026-11): 1 forward file here (rollback and pre-flight in `supabase/migrations_rollbacks/`, proof and runner in `supabase/tests/`)
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh3374_agreement_version_bump_v4` | forward (rollback and pre-flight in `supabase/migrations_rollbacks/`, proof and runner in `supabase/tests/`) | NOT APPLIED | new draft 2026-11-19 under #3374 (Ben's ruling, comment 6993956936): one row, `agreement_version_current` v3-2026-11 to v4-2026-11, batching Terms 15.5 (#3713), Terms 8.5 (#3794) and Privacy 14 (#3718). Production read 2026-11-19 (SELECT): label v3-2026-11, 0 non-test acceptances. Tier 3B; applies only after an R-097 notice and Dustin's GO. Label manifest: `v4-2026-11 = Agreement eff. Nov 5 2026 + Terms eff. Nov 19 2026 + Privacy eff. Nov 19 2026`. | none |
