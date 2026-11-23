@@ -42,13 +42,30 @@
  * NOT WORDING. The charge-step words are an open question to Dustin (#3865) and nobody has approved any. Every value here is an
  * obvious marker that must never ship. The approved strings REPLACE these values (same keys) in a later change that carries
  * LEGAL-READ and R-177. These render ONLY with the flag ON; with the flag OFF none of them may reach the page
- * (pinned by __tests__/help-measurements-page.test.tsx).
+ * (pinned by __tests__/charge-flag.test.tsx).
  */
 export const CHARGE_STEP_COPY_PENDING_GH3865 = {
   heading: '[PENDING #3865: heading]',
   body: '[PENDING #3865: body]',
   startButton: '[PENDING #3865: start button]',
   orderRecorded: '[PENDING #3865: order recorded]',
+} as const;
+
+/**
+ * gh-3858: what the homeowner is told when create-payment-intent refuses to start a measurement payment (gh-3356). These three
+ * sentences are COPIED VERBATIM from the existing live static page, not written here:
+ *   alreadyPaid       help-measurements.html:977 (showMeasurementRefusal, MEASUREMENT_ALREADY_PAID)
+ *   cannotStart       help-measurements.html:973 (MEASUREMENT_CANNOT_START_MESSAGE, MEASUREMENT_PAYMENT_CANNOT_START)
+ *   checkUnavailable  help-measurements.html:986 (showMeasurementRefusal fall-through, MEASUREMENT_PAYMENT_CHECK_UNAVAILABLE)
+ * They render only with the flag ON. They name "Aerial Roof Report", so they follow whatever #3865 decides about the name.
+ */
+export const MEASUREMENT_REFUSAL_COPY = {
+  alreadyPaid:
+    'Our records show a payment for the Aerial Roof Report on this project, so we did not start another one. This attempt did not charge your card. If you have a question about your report or a charge, contact support.',
+  cannotStart:
+    'We could not start a payment for the Aerial Roof Report just now. Please try again later. If this keeps happening, contact support.',
+  checkUnavailable:
+    'We could not check your payment history just now, so we did not start a payment. This attempt did not charge your card. Please try again in a few minutes.',
 } as const;
 
 export const MEASUREMENTS_COPY = {

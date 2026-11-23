@@ -43,10 +43,11 @@ import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase as sbMock } from '@/lib/supabase';
 import { createHoverPaymentIntent } from '@/lib/services';
 import { useHelpMeasurementsData } from '../use-help-measurements-data';
-import { MEASUREMENTS_COPY as M, CHARGE_STEP_COPY_PENDING_GH3865 as PENDING } from '../copy';
-import HelpMeasurementsPage, { HOVER_RETIRED_COPY } from '../page';
+import { MEASUREMENTS_COPY as M, CHARGE_STEP_COPY_PENDING_GH3865 as PENDING, MEASUREMENT_REFUSAL_COPY } from '../copy';
+import HelpMeasurementsPage, { HOVER_RETIRED_COPY, RESUME_COPY } from '../page';
 import { isMeasurementChargeEnabled } from '@/lib/measurement-charge-flag';
-import { clearHoverChargeRecord } from '../hover-charge-storage';
+import { clearHoverChargeRecord, saveHoverChargeRecord, readHoverChargeRecord } from '../hover-charge-storage';
+import { ORDER_RETRY_COPY } from '../HoverPaymentForm';
 
 type Fn = ReturnType<typeof vi.fn>;
 
@@ -191,5 +192,101 @@ describe('flag ON: the charge step mounts the card form and records the order on
 
     expect(await screen.findByText(M.statusPaymentInitError)).toBeTruthy();
     expect(screen.queryByTestId('hover-payment-form')).toBeNull();
+  });
+});
+
+// ── RETURNED / FIX (review of #3872 / #3873): flag-ON defects ─────────────────────────────────────────────────────────────
+describe('flag ON: reload resume, path switching, refusals, revisit, order-write failure', () => {
+  const invoke = () => sbMock.functions.invoke as unknown as Fn;
+  const readyWith = (over: Record<string, unknown> = {}) => ({
+    claim: { id: 'c1', property_address: '123 Oak St', claim_number: 'CLM-1', adjuster_name: null, adjuster_email: null, adjuster_phone: null },
+    profile: { full_name: 'Jane Roof', phone: '(317) 555-1234' },
+    alreadySentBoth: false,
+    existingOrder: false,
+    loading: false,
+    error: null,
+    ...over,
+  });
+  beforeEach(() => {
+    vi.stubEnv('NEXT_PUBLIC_MEASUREMENT_CHARGE_ENABLED', 'true');
+  });
+
+  it('1. a reload with a saved PaymentIntent finishes the order write instead of offering a fresh charge', async () => {
+    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_saved_1', ts: Date.now() });
+    invoke().mockResolvedValue({ data: { order_id: 'o1' }, error: null });
+
+    render(<HelpMeasurementsPage />);
+
+    expect(await screen.findByTestId('charge-step-recorded')).toBeTruthy();
+    expect(invoke()).toHaveBeenCalledTimes(1);
+    expect(invoke().mock.calls[0][0]).toBe('create-measurement-order');
+    expect(invoke().mock.calls[0][1].body).toMatchObject({ claim_id: 'c1', payment_intent_id: 'pi_saved_1' });
+    expect(screen.queryByText(PENDING.startButton)).toBeNull();
+    expect(screen.queryByText(RESUME_COPY.unresolved)).toBeNull();
+    expect(createHoverPaymentIntent as unknown as Fn).not.toHaveBeenCalled();
+    expect(readHoverChargeRecord()).toBeNull();
+  });
+
+  it('1b. a saved id the server will not record (never charged) shows the existing contact-support text and clears the pointer', async () => {
+    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_unpaid', ts: Date.now() });
+    invoke().mockResolvedValue({ data: null, error: { context: { json: async () => ({ error: 'not paid' }) } } });
+
+    render(<HelpMeasurementsPage />);
+
+    expect(await screen.findByText(RESUME_COPY.unresolved)).toBeTruthy();
+    expect(screen.queryByTestId('charge-step-recorded')).toBeNull();
+    expect(readHoverChargeRecord()).toBeNull();
+  });
+
+  it('1c. a pointer for a different claim is not resumed', async () => {
+    saveHoverChargeRecord({ claimId: 'other', paymentIntentId: 'pi_other', ts: Date.now() });
+    render(<HelpMeasurementsPage />);
+    expect(await screen.findByText(PENDING.startButton)).toBeTruthy();
+    expect(invoke()).not.toHaveBeenCalled();
+  });
+
+  it('2 and 5. while the card form is up the path cards are gone; a charged state with a failed order write shows Retry Order, no confirmation, no way to click away', async () => {
+    (createHoverPaymentIntent as unknown as Fn).mockResolvedValue({ client_secret: 'pi_gh3858_3_secret_abc' });
+    confirmCardPayment.mockResolvedValue({ paymentIntent: { id: 'pi_gh3858_3', status: 'succeeded' } });
+    invoke().mockResolvedValue({ data: null, error: { context: { json: async () => ({ error: 'order write failed' }) } } });
+
+    render(<HelpMeasurementsPage />);
+    expect((await screen.findAllByText(M.cardSelectButton)).length).toBe(1); // before the charge starts the adjuster card is offered
+    fireEvent.click(await screen.findByText(PENDING.startButton));
+    await screen.findByTestId('hover-payment-form', {}, { timeout: 5000 });
+    expect(screen.queryAllByText(M.cardSelectButton)).toHaveLength(0);
+
+    await waitFor(() => expect(cardElement.mount).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByText(M.hoverPayButton));
+    expect(await screen.findByText(ORDER_RETRY_COPY.retryButton, {}, { timeout: 5000 })).toBeTruthy();
+    expect(screen.queryAllByText(M.cardSelectButton)).toHaveLength(0);
+    expect(screen.queryByText(PENDING.startButton)).toBeNull();
+    expect(screen.queryByTestId('charge-step-recorded')).toBeNull();
+  });
+
+  it.each([
+    ['MEASUREMENT_ALREADY_PAID', MEASUREMENT_REFUSAL_COPY.alreadyPaid],
+    ['MEASUREMENT_PAYMENT_CANNOT_START', MEASUREMENT_REFUSAL_COPY.cannotStart],
+    ['MEASUREMENT_PAYMENT_CHECK_UNAVAILABLE', MEASUREMENT_REFUSAL_COPY.checkUnavailable],
+  ])('3. refusal %s shows its own sentence, not the generic init error, and mounts no form', async (code, text) => {
+    (createHoverPaymentIntent as unknown as Fn).mockResolvedValue({ client_secret: null, refused: true, code });
+    render(<HelpMeasurementsPage />);
+    fireEvent.click(await screen.findByText(PENDING.startButton));
+    expect(await screen.findByText(text)).toBeTruthy();
+    expect(screen.queryByText(M.statusPaymentInitError)).toBeNull();
+    expect(screen.queryByTestId('hover-payment-form')).toBeNull();
+    // ALREADY_PAID retires the start button (static page parity); the other two keep it for a retry.
+    expect(!!screen.queryByText(PENDING.startButton)).toBe(code !== 'MEASUREMENT_ALREADY_PAID');
+  });
+
+  it('4. a claim that already has a paid order shows the confirmation and no start button', async () => {
+    (useHelpMeasurementsData as unknown as Fn).mockReturnValue(readyWith({ existingOrder: true }));
+    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_old', ts: Date.now() });
+    render(<HelpMeasurementsPage />);
+    expect(await screen.findByTestId('charge-step-recorded')).toBeTruthy();
+    expect(screen.queryByText(PENDING.startButton)).toBeNull();
+    expect(invoke()).not.toHaveBeenCalled();
+    expect(createHoverPaymentIntent as unknown as Fn).not.toHaveBeenCalled();
+    expect(readHoverChargeRecord()).toBeNull();
   });
 });

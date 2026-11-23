@@ -37,6 +37,7 @@ import {
   type MeasurementsUser,
 } from './utils';
 import { CLAIM_PUBLIC_COLUMNS } from '@/lib/claim-columns';
+import { measurementChargeEnabled } from '@/lib/measurement-charge-flag';
 
 // ── Row shapes (supersets of the utils input shapes the page reads) ────────────────
 
@@ -57,6 +58,8 @@ export interface HelpMeasurementsData {
   profile: HelpMeasurementsProfileRow | null;
   /** True when help-estimate already sent a combined ('both') request for this claim. */
   alreadySentBoth: boolean;
+  /** gh-3858: the claim already has a paid measurement order. Read ONLY when the charge flag is on; always false otherwise. */
+  existingOrder: boolean;
   loading: boolean;
   error: string | null;
 }
@@ -65,6 +68,7 @@ const EMPTY: HelpMeasurementsData = {
   claim: null,
   profile: null,
   alreadySentBoth: false,
+  existingOrder: false,
   loading: true,
   error: null,
 };
@@ -118,11 +122,31 @@ export function useHelpMeasurementsData(
           alreadySentBoth = !!existing;
         }
 
+        // gh-3858: with the charge flag ON, a claim that already has a paid order shows the confirmation, not a second start button.
+        // The flag-OFF path runs no extra query. Homeowner RLS (hover_user_read) scopes this to the buyer's own rows. Non-fatal.
+        let existingOrder = false;
+        if (measurementChargeEnabled() && claim?.id) {
+          try {
+            const { data: order } = await supabase
+              .from('hover_orders')
+              .select('id')
+              .eq('claim_id', claim.id)
+              .not('homeowner_stripe_payment_intent_id', 'is', null)
+              .neq('status', 'cancelled')
+              .limit(1)
+              .maybeSingle();
+            existingOrder = !!order;
+          } catch {
+            /* non-fatal: the server still refuses a second payment (gh-3356) */
+          }
+        }
+
         if (!active) return;
         setData({
           claim: (claim as HelpMeasurementsClaimRow) ?? null,
           profile: (profile as HelpMeasurementsProfileRow) ?? null,
           alreadySentBoth,
+          existingOrder,
           loading: false,
           error: null,
         });

@@ -92,6 +92,9 @@ export interface CreateDeductiblePaymentIntentParams {
 export interface PaymentIntentResult {
   client_secret: string | null;
   placeholder?: boolean;
+  /** gh-3356: create-payment-intent refused to start a measurement payment; `code` is its refusal code (see createHoverPaymentIntent). */
+  refused?: boolean;
+  code?: string;
 }
 
 export interface CreateContractEnvelopeParams {
@@ -355,6 +358,22 @@ async function createHoverPaymentIntent(
     if (error) throw error;
     return data as PaymentIntentResult; // { client_secret }
   } catch (err) {
+    // gh-3356 (ported from js/services.js createHoverPaymentIntent): a refusal is a non-2xx whose `context` is the Response; pass its
+    // code through so the page can say why, instead of reporting it as "not deployed". Any other failure is unchanged.
+    try {
+      const ctx = (err as { context?: { json?: () => Promise<unknown> } } | null)?.context;
+      const body = ctx && typeof ctx.json === 'function' ? ((await ctx.json()) as { code?: string } | null) : null;
+      if (
+        body &&
+        (body.code === 'MEASUREMENT_ALREADY_PAID' ||
+          body.code === 'MEASUREMENT_PAYMENT_CHECK_UNAVAILABLE' ||
+          body.code === 'MEASUREMENT_PAYMENT_CANNOT_START')
+      ) {
+        return { client_secret: null, refused: true, code: body.code };
+      }
+    } catch {
+      /* not a JSON refusal: fall through to the placeholder */
+    }
     console.warn('Stripe Edge function not deployed:', err);
     return { client_secret: null, placeholder: true };
   }

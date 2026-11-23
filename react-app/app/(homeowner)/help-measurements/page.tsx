@@ -39,10 +39,10 @@
  *     fabricate a "sent" success (the static silently showed success with no DB write).
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { HomeownerShell } from '../_shell/HomeownerShell';
 import { useAuthReady } from '@/hooks/use-auth-ready';
-import { MEASUREMENTS_COPY as M, CHARGE_STEP_COPY_PENDING_GH3865 as CHARGE_COPY } from './copy';
+import { MEASUREMENTS_COPY as M, CHARGE_STEP_COPY_PENDING_GH3865 as CHARGE_COPY, MEASUREMENT_REFUSAL_COPY } from './copy';
 import { isAdjusterFormValid, paymentIntentIdFromClientSecret, type MeasurementsUser } from './utils';
 import {
   useHelpMeasurementsData,
@@ -133,12 +133,17 @@ function PageBody({
   data: HelpMeasurementsData;
   user: MeasurementsUser | null;
 }) {
-  const { claim, profile, alreadySentBoth } = data;
+  const { claim, profile, alreadySentBoth, existingOrder } = data;
   // gh-3858: the measurement charge is dark unless the flag is exactly 'true'. Read at render time.
   const chargeEnabled = measurementChargeEnabled();
+  // gh-3858: true while the charge step holds a card form or a resumed order (a PaymentIntent that may be charged). The path cards
+  // are hidden meanwhile, as the pre-pause flow did with its own view, so switching paths cannot discard the retry-safe state.
+  const [chargeLocked, setChargeLocked] = useState(false);
 
   const [view, setView] = useState<View>('select');
   const [status, setStatus] = useState<Status>(() => {
+    // gh-3858: with the flag ON the charge step itself resumes a saved PaymentIntent (see ChargeStep), so no "contact support" yet.
+    if (chargeEnabled) return null;
     const pending = readHoverChargeRecord();
     return pending && claim?.id && pending.claimId === claim.id ? { text: RESUME_COPY.unresolved, type: 'error' } : null;
   });
@@ -155,8 +160,9 @@ function PageBody({
   // loaded claim, the homeowner is told once to contact support (who verify any payment); either way it is cleared. No
   // Edge Function is called. The message is the initial status (read once, in the lazy initializer), so no effect sets state.
   useEffect(() => {
-    clearHoverChargeRecord();
-  }, []);
+    // gh-3858: flag ON: the pointer is kept for ChargeStep to resume from; it clears it itself once resolved.
+    if (!chargeEnabled) clearHoverChargeRecord();
+  }, [chargeEnabled]);
 
   const scrollTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -236,13 +242,19 @@ function PageBody({
           </div>
 
           {chargeEnabled ? (
-            <ChargeStep claim={claim} onError={(text) => setStatus({ text, type: 'error' })} />
+            <ChargeStep
+              claim={claim}
+              existingOrder={!!existingOrder}
+              onError={(text) => setStatus({ text, type: 'error' })}
+              onLockChange={setChargeLocked}
+            />
           ) : (
             <div className="hm-info" role="status" data-testid="hover-retired-notice">
               <strong>{HOVER_RETIRED_COPY.title}.</strong> {HOVER_RETIRED_COPY.text}
             </div>
           )}
 
+          {!chargeLocked && (
           <div className="hm-path-cards">
             <PathCard
               badge={M.adjusterBadge}
@@ -254,6 +266,7 @@ function PageBody({
               onSelect={selectAdjuster}
             />
           </div>
+          )}
         </div>
       )}
 
@@ -378,18 +391,59 @@ function PathCard({
  * already enforces: create the PaymentIntent, the form confirms the card, and the order is recorded ONLY after Stripe reports
  * 'succeeded'. A failed order step parks the form in its retry state (it never charges twice).
  */
-type ChargeStage = 'intro' | 'card' | 'recorded';
+type ChargeStage = 'intro' | 'resuming' | 'card' | 'recorded';
 
 function ChargeStep({
   claim,
+  existingOrder,
   onError,
+  onLockChange,
 }: {
   claim: HelpMeasurementsClaimRow | null;
+  existingOrder: boolean;
   onError: (text: string) => void;
+  onLockChange: (locked: boolean) => void;
 }) {
-  const [stage, setStage] = useState<ChargeStage>('intro');
+  // gh-951 resume (ported from the pre-pause page): a pointer saved when the PaymentIntent was created, for THIS claim, means an
+  // earlier visit may have been charged without the order being written. Finish the order write instead of offering a new charge.
+  const [pending] = useState(() => {
+    const rec = readHoverChargeRecord();
+    return rec && claim?.id && rec.claimId === claim.id ? rec : null;
+  });
+  const [stage, setStage] = useState<ChargeStage>(existingOrder ? 'recorded' : pending ? 'resuming' : 'intro');
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [alreadyPaid, setAlreadyPaid] = useState(false);
+  const resumeStarted = useRef(false);
+  const onErrorRef = useRef(onError);
+  useEffect(() => {
+    onErrorRef.current = onError;
+  });
+
+  useEffect(() => {
+    onLockChange(stage === 'card' || stage === 'resuming');
+  }, [stage, onLockChange]);
+
+  useEffect(() => {
+    if (existingOrder) {
+      clearHoverChargeRecord();
+      return;
+    }
+    if (stage !== 'resuming' || !pending || !claim || resumeStarted.current) return;
+    resumeStarted.current = true;
+    (async () => {
+      try {
+        // create-measurement-order re-reads the PaymentIntent from Stripe: an uncharged or unknown id is refused, never recorded.
+        await recordMeasurementOrder({ claim, paymentIntentId: pending.paymentIntentId });
+        clearHoverChargeRecord();
+        setStage('recorded');
+      } catch {
+        clearHoverChargeRecord();
+        onErrorRef.current(RESUME_COPY.unresolved);
+        setStage('intro');
+      }
+    })();
+  }, [existingOrder, stage, pending, claim]);
 
   const start = useCallback(async () => {
     if (!claim?.id || !isStripeConfigured()) {
@@ -399,6 +453,18 @@ function ChargeStep({
     setLoading(true);
     try {
       const res = await requestMeasurementPaymentIntent(claim, getVariant());
+      if (res?.refused) {
+        // gh-3356: the server declined to start a payment; say why with the existing static-page sentence for that code.
+        if (res.code === 'MEASUREMENT_ALREADY_PAID') {
+          setAlreadyPaid(true);
+          onError(MEASUREMENT_REFUSAL_COPY.alreadyPaid);
+        } else if (res.code === 'MEASUREMENT_PAYMENT_CANNOT_START') {
+          onError(MEASUREMENT_REFUSAL_COPY.cannotStart);
+        } else {
+          onError(MEASUREMENT_REFUSAL_COPY.checkUnavailable);
+        }
+        return;
+      }
       if (!res?.client_secret) {
         onError(M.statusPaymentInitError);
         return;
@@ -444,7 +510,12 @@ function ChargeStep({
         <>
           <h3 className="hm-section-title">{CHARGE_COPY.heading}</h3>
           <p className="hm-section-intro">{CHARGE_COPY.body}</p>
-          {stage === 'intro' && (
+          {stage === 'resuming' && (
+            <p className="hm-payform-lead" role="status" data-testid="charge-resuming">
+              <span className="hm-spinner" aria-hidden="true" /> {M.payOrderingButton}
+            </p>
+          )}
+          {stage === 'intro' && !alreadyPaid && (
             <div className="hm-btn-row">
               <button type="button" className="hm-btn hm-btn-green" disabled={loading} onClick={() => void start()}>
                 {CHARGE_COPY.startButton}
