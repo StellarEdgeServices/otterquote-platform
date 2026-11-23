@@ -49,6 +49,7 @@ import {
 } from "./dispute-routing.ts";
 import { assembleDisputeFeeEvidence, type FeeAcceptanceRow } from "./dispute-fee-evidence.ts";
 import { handleSwitchRefundFailed, REFUND_EVENT_TYPES, type StripeRefundObject } from "./refund-failed.ts";
+import { makeReconcileDeps, reconcileMeasurementPaymentOrder } from "./measurement-order-reconcile.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 import {
@@ -1348,6 +1349,18 @@ Deno.serve(async (req: Request) => {
       // gh-2078b / D-330 -- independent of the platform_fee handler above
       // (scoped by metadata.type, never throws -- see the function's own doc).
       await handleMeasurementOrderCapiPurchase(piEvent.data.object, supabase);
+      // gh-3857: a succeeded measurement PaymentIntent must end with a recorded order or an alert that names it (the order is written by a
+      // second browser request that can fail). Reads hover_orders; alerts if no row. Never writes an order, never throws.
+      const reconcile = await reconcileMeasurementPaymentOrder(
+        piEvent.data.object,
+        makeReconcileDeps(supabase, Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!),
+        FN_NAME,
+      );
+      if (reconcile === "error") {
+        // Neither alert channel took it: free the ledger row so Stripe's redelivery is not skipped as a duplicate and the check runs again.
+        if (event.id) await supabase.from("stripe_webhook_events").delete().eq("event_id", event.id);
+        return new Response(JSON.stringify({ error: "Measurement order reconcile failed" }), { status: 500, headers: { "Content-Type": "application/json" } });
+      }
     } else if (event.type === "payment_intent.payment_failed") {
       const piEvent = event as unknown as StripePaymentIntentEvent;
       await handlePlatformFeePaymentFailed(piEvent.data.object, supabase);
