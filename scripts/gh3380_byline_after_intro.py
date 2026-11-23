@@ -35,6 +35,31 @@ def cut_line_block(s, start, end):
     le = end + 1 if s[end:end + 1] == '\n' else end
     return s[:ls] + s[le:], s[start:end], s[ls:start]
 
+def reindent(blk, old_ind, new_ind):
+    """shift the continuation lines of a moved block by the change in indentation (cosmetic only; whitespace between tags)"""
+    d = len(new_ind) - len(old_ind)
+    if d == 0: return blk
+    out = blk.split('\n')
+    for i in range(1, len(out)):
+        if out[i].strip(): out[i] = (' ' * d + out[i]) if d > 0 else out[i][min(-d, len(out[i]) - len(out[i].lstrip())):]
+    return '\n'.join(out)
+
+CSS_SEL_OLD = '.page-hero .meta {'
+CSS_SEL_NEW = '.page-hero .meta,\n.article-body > .meta {'
+CSS_SPACE = '.article-body > .meta { margin-bottom: var(--sp-6); }'
+CSS_LEFT = '.article-body > .meta .author-line { justify-content: flex-start; }'
+
+def css_topup(t):
+    """extend the hero meta rule to the moved line, give it bottom spacing, and (div.meta pages) left-align the author line"""
+    if CSS_SEL_NEW not in t:
+        if t.count(CSS_SEL_OLD) != 1: raise ValueError('expected one .page-hero .meta rule, found %d' % t.count(CSS_SEL_OLD))
+        t = t.replace(CSS_SEL_OLD, CSS_SEL_NEW)
+    add = [r for r in (CSS_SPACE, CSS_LEFT if 'class="author-line"' in t else None) if r and r not in t]
+    if add:
+        i = t.index(CSS_SEL_NEW); j = t.index('}', i) + 1
+        t = t[:j] + '\n' + '\n'.join(add) + t[j:]
+    return t
+
 def move(s):
     if BY not in s: return s, None
     # ---- shape D: tool page (byline is the first <p class="sub">, the tool's own opening is the next one)
@@ -60,16 +85,14 @@ def move(s):
     # ---- shapes A and C: meta in the hero
     h = re.search(r'<section class="page-hero">.*?</section>', s, re.S)
     m = re.compile(r'<(p|div) class="meta">').search(s, h.start(), h.end())
-    if not m: return s, None   # byline no longer in the hero: already moved
+    if not m: return (css_topup(s) if '.article-body > .meta' in s else s), None   # byline no longer in the hero: already moved
     tag = m.group(1)
     end = block_end(s, m.start(), tag)
     t, blk, ind = cut_line_block(s, m.start(), end)
     i = t.index('<div class="article-intro">'); k = block_end(t, i, 'div')
     ind2 = t[t.rfind('\n', 0, i) + 1:i]
-    t = t[:k] + '\n\n' + ind2 + blk + t[k:]
-    old = '.page-hero .meta {'
-    if t.count(old) != 1: raise ValueError('expected one .page-hero .meta rule, found %d' % t.count(old))
-    t = t.replace(old, '.page-hero .meta,\n.article-body > .meta {')
+    t = t[:k] + '\n\n' + ind2 + reindent(blk, ind, ind2) + t[k:]
+    t = css_topup(t)
     return t, 'A' if tag == 'p' else 'C'
 
 def main():
@@ -81,7 +104,7 @@ def main():
         # already moved? the byline then sits after the opening block: not inside the hero / not before the first article-intro
         t, shape = move(s)
         if t == s: continue
-        todo.append((os.path.relpath(f, ROOT), shape))
+        todo.append((os.path.relpath(f, ROOT), shape or 'css'))
         if not check: open(f, 'w', encoding='utf8', newline='').write(t)
     for r, sh in todo: print(('NEEDS MOVE ' if check else 'MOVED ') + sh + ' ' + r)
     print('%d page(s) %s' % (len(todo), 'need the move' if check else 'moved'))
