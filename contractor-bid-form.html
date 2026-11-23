@@ -4863,6 +4863,11 @@
     function isIdemViolation(err) {
       return !!err && err.code === '23505' && /quotes_idempotency_key_uidx/.test((err.message || '') + ' ' + (err.details || ''));
     }
+    // gh-3848: the database refuses a second live manual bid for the same claim, contractor and trade (a retry after a page reload
+    // carries a new idempotency key, so the key index cannot catch it). Same meaning as the key collision: the bid is already in.
+    function isManualBidViolation(err) {
+      return !!err && err.code === '23505' && /quotes_manual_bid_uidx/.test((err.message || '') + ' ' + (err.details || ''));
+    }
     function isIdemColumnMissing(err) { // migration not applied yet: the column is unknown to PostgREST
       return !!err && /idempotency_key/.test(err.message || '') && (err.code === 'PGRST204' || err.code === '42703');
     }
@@ -5982,6 +5987,19 @@
                 const { data: existingByKey, error: readBackErr } = await callWithTimeout(INSERT_TIMEOUT_MS, (signal) => withAbortSignal(
                   sb.from('quotes').select('*').eq('idempotency_key', _bidIdemKey).maybeSingle(), signal));
                 if (!readBackErr && existingByKey && existingByKey.id) { _filedBid = existingByKey; error = null; }
+              }
+              if (error && isManualBidViolation(error)) {
+                // gh-3848: a bid for this claim and trade is already on file (filed before a reload). Show it as Change Bid with the
+                // existing message; never finish it as this attempt's bid (the acceptance record and email were not sent by this page).
+                const { data: onFile, error: onFileErr } = await callWithTimeout(INSERT_TIMEOUT_MS, (signal) => withAbortSignal(
+                  sb.from('quotes').select('*').eq('claim_id', currentClaim.id).eq('contractor_id', currentContractor.id)
+                    .eq('trade_type', quoteData.trade_type).in('bid_status', ['active', 'expired']).maybeSingle(), signal));
+                if (!onFileErr && onFile && onFile.id) {
+                  showFiledBidAsChangeBid(onFile);
+                  const _onFileErr = new Error(BID_ALREADY_FILED_MSG);
+                  _onFileErr.bidAlreadyFiled = true;
+                  throw _onFileErr;
+                }
               }
             }
 
