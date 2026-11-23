@@ -2581,9 +2581,12 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   // first became unreachable. That is exactly how 32e83466 was stranded.
   // Recording first makes the resume lookup authoritative even on a partial
   // failure: the signer retries and lands back on the same document.
+  // gh-3867: a request-supplied quote_id must belong to THIS claim and THIS contractor, otherwise the
+  // update matches zero rows (and takes the existing zero-row alert path) instead of overwriting another
+  // claim's quote pointer.
   const quoteUpdateFilter = quote_id ? supabase.from("quotes").update({
     docusign_envelope_id: envelopeId
-  }).eq("id", quote_id).select("id") : supabase.from("quotes").update({
+  }).eq("id", quote_id).eq("claim_id", claim_id).eq("contractor_id", contractor_id).select("id") : supabase.from("quotes").update({
     docusign_envelope_id: envelopeId
   }).eq("claim_id", claim_id).eq("contractor_id", contractor_id).select("id");
   const { error: quoteUpdateError, data: quoteUpdateRows } = await quoteUpdateFilter;
@@ -2860,6 +2863,8 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   // unreachable for a retired type even if a future caller reaches handleLegacyFlow directly.
   const retiredLegacy = retiredEnvelopeRefusal(document_type, corsHeaders);
   if (retiredLegacy) return retiredLegacy;
+  // gh-3867: defence in depth for the `contract` refusal in serve().
+  if (document_type === "contract") return colorRefusal(410, "contract_envelope_retired", corsHeaders);
   // gh-2105 (review 6325420063 item 2): the colour addendum is signed by the contractor the
   // homeowner SELECTED, never one the caller names. With one document per claim a wrong
   // counter-signer would stay on that claim for good, so the check runs before the resume and
@@ -3396,6 +3401,14 @@ serve(async (req)=>{
     if (retiredResponse) {
       console.warn(`[${FN_NAME}] refused retired document_type=${document_type} (D-407, 410)`);
       return retiredResponse;
+    }
+    // gh-3867: the legacy `contract` action has no caller in the repo (verified by repo-wide search) and
+    // never checked the contractor against the claim's selected contractor. Refused like a retired
+    // action: before any claim lookup, rate-limit spend or BoldSign call. contractor_sign and
+    // homeowner_sign are unaffected.
+    if (document_type === "contract") {
+      console.warn(`[${FN_NAME}] refused document_type=contract (gh-3867, 410)`);
+      return colorRefusal(410, "contract_envelope_retired", corsHeaders);
     }
     // ===== CALLER AUTHORIZATION + SERVER-SIDE SIGNER IDENTITY (86e1v6nnh) =====
     // Derive signer name/email from authenticated identity — never trust the request body.
