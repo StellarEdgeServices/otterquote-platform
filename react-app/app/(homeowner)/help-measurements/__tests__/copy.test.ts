@@ -14,7 +14,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { MEASUREMENTS_COPY, CHARGE_STEP_COPY_PENDING_GH3865 } from '../copy';
+import { readFileSync } from 'fs';
+import path from 'path';
+import { MEASUREMENTS_COPY, MEASUREMENT_REFUSAL_COPY, CHARGE_STEP_COPY_PENDING_GH3865 } from '../copy';
 
 // ── Verbatim source strings — help-measurements.html (entities decoded; em-dash = U+2014) ──
 const STATIC = {
@@ -334,5 +336,23 @@ describe('CHARGE_STEP_COPY_PENDING_GH3865 — charge step and confirmation state
   it('has the confirmation strings the page renders after a successful payment', () => {
     expect(CHARGE_STEP_COPY_PENDING_GH3865.confirmationHeading).toBe(CHARGE_STEP_PINNED.confirmationHeading);
     expect(CHARGE_STEP_COPY_PENDING_GH3865.confirmationBody).toBe(CHARGE_STEP_PINNED.confirmationBody);
+  });
+});
+
+// ── gh-3858: refusal sentences are copied from the live static page, byte-for-byte ──
+describe('MEASUREMENT_REFUSAL_COPY — verbatim from help-measurements.html (gh-3356 sentences)', () => {
+  const html = readFileSync(path.resolve(__dirname, '../../../../../help-measurements.html'), 'utf-8');
+  it.each(Object.entries(MEASUREMENT_REFUSAL_COPY))('%s appears verbatim in the static page', (_k, text) => {
+    expect(html).toContain(text);
+  });
+  it('pins the three sentences', () => {
+    expect(MEASUREMENT_REFUSAL_COPY).toEqual({
+      alreadyPaid:
+        'Our records show a payment for the Aerial Roof Report on this project, so we did not start another one. This attempt did not charge your card. If you have a question about your report or a charge, contact support.',
+      cannotStart:
+        'We could not start a payment for the Aerial Roof Report just now. Please try again later. If this keeps happening, contact support.',
+      checkUnavailable:
+        'We could not check your payment history just now, so we did not start a payment. This attempt did not charge your card. Please try again in a few minutes.',
+    });
   });
 });
