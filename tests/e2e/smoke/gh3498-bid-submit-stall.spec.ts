@@ -681,7 +681,7 @@ test.describe('gh-3498 contractor-bid-form.html stalled submit (real page, Chrom
     expect(t.inserts.filter((i: any) => i.table === 'quotes' && i.op === 'update').length).toBe(1);
   });
 
-  for (const call of ['notifications:insert', 'activity_log:insert', 'fn:notify-contractors']) {
+  for (const call of ['rpc:notify_homeowner_bid_updated', 'activity_log:insert', 'fn:notify-contractors']) {
     test('change bid: ' + call + ' that never answers ends on the success screen (the update is already saved)', async ({ page }) => {
       const dialogs: string[] = [];
       page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss(); });

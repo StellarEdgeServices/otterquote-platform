@@ -90,7 +90,7 @@ const h = vi.hoisted(() => {
             state.quoteStatus = 'active';
             return Promise.resolve({ data: null, error: null }).then(res, rej);
           }
-          return (state.gate === 'hang' || (name && state.hang.includes(`rpc:${name}`)) ? hang(signal) : Promise.resolve({ data: { can_submit: true }, error: null })).then(res, rej);
+          return (state.gate === 'hang' || (name && state.hang.includes(`rpc:${name}`)) ? (state.hung++, hang(signal)) : Promise.resolve({ data: { can_submit: true }, error: null })).then(res, rej);
         },
       };
       return p;
@@ -440,7 +440,7 @@ describe('gh-3498 React bid form: stalled submit', () => {
     expect(h.state.updates).toBe(1);
   });
 
-  for (const call of ['notifications:insert', 'activity_log:insert', 'fn:notify-contractors']) {
+  for (const call of ['rpc:notify_homeowner_bid_updated', 'activity_log:insert', 'fn:notify-contractors']) {
     it(`change bid: ${call} that never answers ends on the success screen (the update is already saved)`, async () => {
       const { container } = mountChange();
       await ready(container);

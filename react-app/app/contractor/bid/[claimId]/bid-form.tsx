@@ -32,7 +32,7 @@ import {
   parseConfiguredFeePct, storedQuoteFeePct, computeDisclosureFee, computeQuoteFeeBase,
   bidGateRpcParams, interpretBidGate, BID_GATE_ROUTES, DEFAULT_PLATFORM_FEE_PCT,
   buildScopeSummary, buildQuoteInsert, buildQuoteUpdate, renewQuoteRpcMode,
-  buildFeeAcceptanceInsert, ipForInet, feeAcceptanceOutcome, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
+  buildFeeAcceptanceInsert, ipForInet, feeAcceptanceOutcome, buildBidConfirmationBody, buildNotifyContractorsBody,
   computeWizardEligibility, wizardReducer, wroteRow, claimLocationLabel,
 } from './utils';
 
@@ -585,12 +585,13 @@ export function BidForm({ mode: modeProp, claim, contractor, existingQuote: exis
           if (reopenedWithdrawnBid) reopenAcceptanceDoneRef.current = feeBidId; // gh-3750: once per bid
         }
         // Homeowner "bid updated" notification + activity log + GA + contractor email (all non-fatal).
+        // gh-3880: written server side (a contractor session cannot insert a notifications row for the homeowner: RLS 42501).
+        // supabase-js returns the refusal as {error} and does not throw, so the returned error is checked.
         try {
-          await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(supabase.from('notifications').insert(buildBidUpdatedNotification({
-            claimUserId: (claim.user_id as string) || null, claimId: String(claim.id),
-            previewText: BID_COPY.bidUpdatedPreview(contractor.company_name), createdAtIso: nowIso,
-          })), signal));
-        } catch (e) { console.warn('Notification insert failed (non-fatal):', e); }
+          const { data: notifOk, error: notifErr } = await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(
+            supabase.rpc('notify_homeowner_bid_updated', { p_quote_id: existingQuote!.id }), signal));
+          if (notifErr || notifOk === false) console.warn('Notification delivery failed (non-fatal):', notifErr || 'refused');
+        } catch (e) { console.warn('Notification delivery failed (non-fatal):', e); }
         try {
           await callWithTimeout(POST_WRITE_TIMEOUT_MS, (signal) => withAbortSignal(supabase.from('activity_log').insert({
             user_id: userId, event_type: 'bid_updated',
