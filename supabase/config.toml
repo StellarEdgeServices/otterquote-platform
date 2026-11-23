@@ -402,6 +402,10 @@ verify_jwt = false
 [functions.send-measurement-ready]
 verify_jwt = false
 
+# gh-3861: admin JWT checked in-handler (requireAdmin); flag MEASUREMENT_CHARGE_ENABLED (env) off by default.
+[functions.hand-off-after-fulfilment]
+verify_jwt = false
+
 # gh-1513, R-174: mints a Supabase magic link for is_test-only fixtures so
 # the Code lane (no service-role key, no auth-admin MCP tool in its own env)
 # can obtain a signed-in session for E2E verification. Auth is enforced BOTH
