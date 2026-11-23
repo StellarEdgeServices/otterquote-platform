@@ -314,13 +314,13 @@ describe('flag ON, round 2: recorded state survives path switches; resume keeps 
     fireEvent.click(await screen.findByText(PENDING.startButton));
     await waitFor(() => expect(cardElement.mount).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByText(M.hoverPayButton));
-    expect(await screen.findByTestId('charge-step-recorded')).toBeTruthy();
+    expect(await screen.findByTestId('charge-confirmation')).toBeTruthy();
 
     // After recording the path cards are back: choose the adjuster path, then come back.
     fireEvent.click(screen.getAllByText(M.cardSelectButton)[0]);
     fireEvent.click(await screen.findByText(M.chooseDifferentButton));
 
-    expect(await screen.findByTestId('charge-step-recorded')).toBeTruthy();
+    expect(await screen.findByTestId('charge-confirmation')).toBeTruthy();
     expect(screen.queryByText(PENDING.startButton)).toBeNull();
   });
 
@@ -337,7 +337,7 @@ describe('flag ON, round 2: recorded state survives path switches; resume keeps 
 
     invoke().mockResolvedValueOnce({ data: { order_id: 'o1' }, error: null });
     fireEvent.click(screen.getByText(ORDER_RETRY_COPY.retryButton));
-    expect(await screen.findByTestId('charge-step-recorded')).toBeTruthy();
+    expect(await screen.findByTestId('charge-confirmation')).toBeTruthy();
     expect(invoke().mock.calls[1][1].body.payment_intent_id).toBe('pi_cap_1');
     expect(readHoverChargeRecord()).toBeNull();
   });
