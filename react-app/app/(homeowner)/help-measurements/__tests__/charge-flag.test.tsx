@@ -232,7 +232,7 @@ describe('flag ON: reload resume, path switching, refusals, revisit, order-write
 
   it('1b. a saved id the server will not record (never charged) shows the existing contact-support text and clears the pointer', async () => {
     saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_unpaid', ts: Date.now() });
-    invoke().mockResolvedValue({ data: null, error: { context: { json: async () => ({ error: 'not paid' }) } } });
+    invoke().mockResolvedValue({ data: null, error: { context: { status: 402, json: async () => ({ error: 'not paid' }) } } });
 
     render(<HelpMeasurementsPage />);
 
@@ -291,5 +291,108 @@ describe('flag ON: reload resume, path switching, refusals, revisit, order-write
     expect(invoke()).not.toHaveBeenCalled();
     expect(createHoverPaymentIntent as unknown as Fn).not.toHaveBeenCalled();
     expect(readHoverChargeRecord()).toBeNull();
+  });
+});
+
+// ── RETURNED / FIX 2 (second review round) ────────────────────────────────────────────────────────────────────────────────
+describe('flag ON, round 2: recorded state survives path switches; resume keeps the id unless the server is definite; lock is same-render', () => {
+  const invoke = () => sbMock.functions.invoke as unknown as Fn;
+  const failure = (status: number, body: Record<string, unknown>) => ({
+    data: null,
+    error: { context: { status, json: async () => body } },
+  });
+  beforeEach(() => {
+    vi.stubEnv('NEXT_PUBLIC_MEASUREMENT_CHARGE_ENABLED', 'true');
+  });
+
+  it('R2-1. pay, record, choose the adjuster path, come back: no enabled start button, the recorded state is still shown', async () => {
+    (createHoverPaymentIntent as unknown as Fn).mockResolvedValue({ client_secret: 'pi_r2_1_secret_abc' });
+    confirmCardPayment.mockResolvedValue({ paymentIntent: { id: 'pi_r2_1', status: 'succeeded' } });
+    invoke().mockResolvedValue({ data: { order_id: 'o1' }, error: null });
+
+    render(<HelpMeasurementsPage />);
+    fireEvent.click(await screen.findByText(PENDING.startButton));
+    await waitFor(() => expect(cardElement.mount).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByText(M.hoverPayButton));
+    expect(await screen.findByTestId('charge-step-recorded')).toBeTruthy();
+
+    // After recording the path cards are back: choose the adjuster path, then come back.
+    fireEvent.click(screen.getAllByText(M.cardSelectButton)[0]);
+    fireEvent.click(await screen.findByText(M.chooseDifferentButton));
+
+    expect(await screen.findByTestId('charge-step-recorded')).toBeTruthy();
+    expect(screen.queryByText(PENDING.startButton)).toBeNull();
+  });
+
+  it('R2-2a. resume where the order write says payment_captured: the id is KEPT, Retry Order is shown, no start button; Retry then records', async () => {
+    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_cap_1', ts: Date.now() });
+    invoke().mockResolvedValueOnce(failure(500, { error: 'Your payment went through, but we could not record the order.', payment_captured: true }));
+
+    render(<HelpMeasurementsPage />);
+
+    expect(await screen.findByText(ORDER_RETRY_COPY.retryButton)).toBeTruthy();
+    expect(readHoverChargeRecord()?.paymentIntentId).toBe('pi_cap_1');
+    expect(screen.queryByText(PENDING.startButton)).toBeNull();
+    expect(screen.queryAllByText(M.cardSelectButton)).toHaveLength(0);
+
+    invoke().mockResolvedValueOnce({ data: { order_id: 'o1' }, error: null });
+    fireEvent.click(screen.getByText(ORDER_RETRY_COPY.retryButton));
+    expect(await screen.findByTestId('charge-step-recorded')).toBeTruthy();
+    expect(invoke().mock.calls[1][1].body.payment_intent_id).toBe('pi_cap_1');
+    expect(readHoverChargeRecord()).toBeNull();
+  });
+
+  it('R2-2b. resume where the call throws (network): the id is KEPT, Retry Order is shown, no start button', async () => {
+    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_net_1', ts: Date.now() });
+    invoke().mockRejectedValue(new Error('Failed to fetch'));
+
+    render(<HelpMeasurementsPage />);
+
+    expect(await screen.findByText(ORDER_RETRY_COPY.retryButton)).toBeTruthy();
+    expect(readHoverChargeRecord()?.paymentIntentId).toBe('pi_net_1');
+    expect(screen.queryByText(PENDING.startButton)).toBeNull();
+  });
+
+  it('R2-2c. a transient 402 ("could not verify your payment") keeps the id; a definite 402 clears it and offers a fresh start as before', async () => {
+    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_t_1', ts: Date.now() });
+    invoke().mockResolvedValueOnce(failure(402, { error: 'We could not verify your payment. Please try again or contact support.' }));
+    const first = render(<HelpMeasurementsPage />);
+    expect(await screen.findByText(ORDER_RETRY_COPY.retryButton)).toBeTruthy();
+    expect(readHoverChargeRecord()?.paymentIntentId).toBe('pi_t_1');
+    first.unmount();
+
+    invoke().mockResolvedValueOnce(failure(402, { error: 'Payment must complete before we can order your report. Current payment status: requires_payment_method.' }));
+    render(<HelpMeasurementsPage />);
+    expect(await screen.findByText(RESUME_COPY.unresolved)).toBeTruthy();
+    expect(readHoverChargeRecord()).toBeNull();
+    expect(await screen.findByText(PENDING.startButton)).toBeTruthy();
+  });
+
+  it('R2-3. the path-card lock and the card form appear in the same commit (never both on screen)', async () => {
+    (createHoverPaymentIntent as unknown as Fn).mockResolvedValue({ client_secret: 'pi_r2_3_secret_abc' });
+    const { container } = render(<HelpMeasurementsPage />);
+    const both: string[] = [];
+    const observer = new MutationObserver(() => {
+      if (container.querySelector('[data-testid="hover-payment-form"]') && container.querySelector('.hm-path-cards')) both.push('both visible');
+    });
+    observer.observe(container, { childList: true, subtree: true });
+    fireEvent.click(await screen.findByText(PENDING.startButton));
+    await screen.findByTestId('hover-payment-form', {}, { timeout: 5000 });
+    // Synchronous, right after the form appeared: the path cards are already gone.
+    expect(container.querySelector('.hm-path-cards')).toBeNull();
+    observer.disconnect();
+    expect(both).toEqual([]);
+  });
+
+  it('R2-4. while the PaymentIntent request is in flight the path cards are hidden, so no unpaid pointer is left by switching away', async () => {
+    let release: (v: unknown) => void = () => {};
+    (createHoverPaymentIntent as unknown as Fn).mockReturnValue(new Promise((r) => { release = r; }));
+    render(<HelpMeasurementsPage />);
+    fireEvent.click(await screen.findByText(PENDING.startButton));
+    await waitFor(() => expect(createHoverPaymentIntent as unknown as Fn).toHaveBeenCalledTimes(1));
+    expect(screen.queryAllByText(M.cardSelectButton)).toHaveLength(0);
+    expect((screen.getByText(PENDING.startButton) as HTMLButtonElement).disabled).toBe(true);
+    release({ client_secret: 'pi_r2_4_secret_abc' });
+    await screen.findByTestId('hover-payment-form');
   });
 });

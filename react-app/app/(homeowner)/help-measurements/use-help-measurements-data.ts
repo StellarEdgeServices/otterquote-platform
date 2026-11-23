@@ -186,6 +186,24 @@ export async function requestMeasurementPaymentIntent(
   return createHoverPaymentIntent(buildHoverPaymentIntentParams(claim, variant));
 }
 
+export type MeasurementOrderError = Error & { paymentCaptured?: boolean; httpStatus?: number };
+
+/**
+ * Is this create-measurement-order failure a DEFINITE "this PaymentIntent was not charged / is not valid for this claim"?
+ * Only then may a saved PaymentIntent id be cleared. Everything else (a captured payment whose row did not write, a 5xx, a network
+ * error, a missing status) is NOT definite: the id is kept and the homeowner can retry the order write.
+ * Definite = HTTP 402 and not payment_captured and not the "could not verify" outage message. Those 402s come from
+ * supabase/functions/create-measurement-order/payment-intent-checks.ts:70-75 and :102-105 (PaymentIntent status is not 'succeeded'),
+ * :82 (amount mismatch), :86 and :112 (not this claim), :90 and :116 (not a measurement charge), :60 (non-USD). The same 402 status
+ * is also used at index.ts:245-250 when Stripe could not be reached to verify ("We could not verify your payment..."), which is
+ * transient, so that message is excluded. payment_captured:true is sent by index.ts:545 (upgrade) and :587-590 / :829-832 (order insert failed).
+ */
+export function isDefiniteNotCharged(err: unknown): boolean {
+  const e = err as MeasurementOrderError | null;
+  if (!e || e.paymentCaptured === true || e.httpStatus !== 402) return false;
+  return !/^We could not verify your payment/.test(e.message || '');
+}
+
 /**
  * Record the order for a charge Stripe confirmed. Throws on failure: HoverPaymentForm then parks in its post-charge
  * "retry order" state and re-runs ONLY this step with the same id (it never charges the card again). The thrown error carries
@@ -211,8 +229,9 @@ export async function recordMeasurementOrder(args: {
     } catch {
       /* not a JSON body: fall through to the generic message */
     }
-    const err = new Error(payload.error || 'Could not record your measurement order.') as Error & { paymentCaptured?: boolean };
+    const err = new Error(payload.error || 'Could not record your measurement order.') as MeasurementOrderError;
     err.paymentCaptured = payload.payment_captured === true;
+    err.httpStatus = (error as { context?: { status?: number } }).context?.status;
     throw err;
   }
   return (data ?? {}) as { order_id?: string; status?: string };
