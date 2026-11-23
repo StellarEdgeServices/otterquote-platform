@@ -58,8 +58,9 @@ describe('contract-signing.html makes no signature-stamp write (gh-2864, superse
 describe('contractor-bid-form.html change/renew bid update (gh-2105 batch 11)', () => {
   const src = read('contractor-bid-form.html');
   const start = src.indexOf('if (changeBidMode && existingQuote) {');
-  // gh-3498: the notifications insert is now wrapped in callWithTimeout(..., withAbortSignal(...)), so match the call itself
-  const end = src.indexOf("sb.from('notifications').insert({", start);
+  // gh-3880: the homeowner notice is no longer a client-side notifications insert (RLS 42501 for a contractor session); it is the
+  // notify_homeowner_bid_updated RPC, wrapped in callWithTimeout(..., withAbortSignal(...)), so match the call itself
+  const end = src.indexOf("sb.rpc('notify_homeowner_bid_updated'", start);
   const block = src.slice(start, end);
 
   it('locates the change-bid block', () => {
@@ -78,6 +79,19 @@ describe('contractor-bid-form.html change/renew bid update (gh-2105 batch 11)', 
     expect(errIdx).toBeGreaterThan(-1);
     expect(zeroIdx).toBeGreaterThan(errIdx);
     expect(block).toMatch(/throw new Error\('bid_update_zero_rows/);
+  });
+
+  it('sends the homeowner notice through the notify_homeowner_bid_updated RPC, not a client notifications insert', () => {
+    expect(end).toBeGreaterThan(start);
+    expect(src).toContain("sb.rpc('notify_homeowner_bid_updated', { p_quote_id: existingQuote.id })");
+    expect(src).not.toMatch(/sb\.from\(['"]notifications['"]\)\.insert\(\{\s*user_id:\s*currentClaim\.user_id/);
+  });
+
+  it('reads the RPC result: supabase-js returns {error} and does not throw, and false means refused', () => {
+    const tail = src.slice(end - 300, end + 700);
+    expect(tail).toMatch(/const \{ data: _notifOk, error: _notifErr \} = await/);
+    expect(tail).toMatch(/_notifErr \|\| _notifOk === false/);
+    expect(tail).toContain('non-fatal');
   });
 
   it("surfaces through the page's existing 'Error submitting bid: ' alert (no new copy)", () => {
