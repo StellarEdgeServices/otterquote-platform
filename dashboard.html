@@ -2492,6 +2492,10 @@
           }
         ];
 
+        // gh-3860: charge step is always LAST; null (nothing added) unless the flag is on.
+        const chargeItem = buildChargeChecklistItem(currentClaim);
+        if (chargeItem) items.push(chargeItem);
+
         container.innerHTML = items.map(item => {
           const isDone    = item.status === 'uploaded' || item.status === 'selected';
           return `
@@ -2863,6 +2867,59 @@
 
       function isAcvClaim(claim) {
         return !!claim && claim.funding_type !== 'cash' && claim.policy_type === 'acv';
+      }
+
+      // gh-3860 (P23 piece C): the measurement charge as the LAST checklist step.
+      // Dark behind CONFIG.MEASUREMENT_CHARGE_ENABLED (default false). WORDING IS NOT
+      // APPROVED (#3865): these values are placeholders and are never rendered while
+      // the flag is off. Do not ship them.
+      const CHARGE_STEP_COPY_PENDING_GH3865 = {
+        label:       '[PENDING #3865: checklist step label]',
+        description: '[PENDING #3865: checklist step helper line]',
+        locked:      '[PENDING #3865: checklist step not-yet-available line]',
+        button:      '[PENDING #3865: checklist step button label]'
+      };
+      const CHARGE_STEP_ROUTE = '/help-measurements';
+
+      // Eligible = flag on, no insurance estimate (Q2; estimate claims stay free,
+      // D-201/D-313), and no measurements on file yet (an upload or an earlier
+      // purchase already satisfies the step; D-407 counts a purchased measurement).
+      function isChargeStepEligible(claim) {
+        if (typeof CONFIG === 'undefined' || CONFIG.MEASUREMENT_CHARGE_ENABLED !== true) return false;
+        return !!claim && !claim.has_estimate && !claim.has_measurements;
+      }
+
+      // Every OTHER checklist item is done: material selected, and the estimate where
+      // main requires one (insurance, non-ACV). Measurements are the charge/upload
+      // alternative itself, so they are not an "other" item.
+      function areOtherChecklistItemsDone(claim) {
+        if (!claim) return false;
+        const needsEstimate = claim.funding_type !== 'cash' && !isAcvClaim(claim);
+        return !!claim.has_material_selection && (!needsEstimate || !!claim.has_estimate);
+      }
+
+      // Returns null (no charge step) or the checklist item to append LAST.
+      // Not actionable until every other item is done. Declining keeps the free
+      // path (Q8): isChecklistComplete() is untouched, and the Upload alternative
+      // on the Measurements item stays (Q4).
+      function buildChargeChecklistItem(claim) {
+        if (!isChargeStepEligible(claim)) return null;
+        const actionable = areOtherChecklistItemsDone(claim);
+        return {
+          id: 'measurement-charge',
+          title: CHARGE_STEP_COPY_PENDING_GH3865.label,
+          required: false,
+          status: 'pending',
+          filename: null,
+          description: CHARGE_STEP_COPY_PENDING_GH3865.description,
+          note: CHARGE_STEP_COPY_PENDING_GH3865.locked,
+          disabled: !actionable,
+          actionable: actionable,
+          buttons: actionable
+            ? [{ label: CHARGE_STEP_COPY_PENDING_GH3865.button, action: 'navigate', data: CHARGE_STEP_ROUTE }]
+            : [],
+          icon: '📐'
+        };
       }
 
       function updateSubmitButton() {
