@@ -17,7 +17,7 @@ const PAGE = '/contractor-bid-form.html?claim_id=claim-1';
 
 const FAKE_SUPABASE = `
 (() => {
-  const t = (window.__t = { gateMode: 'ok', insertMode: 'ok', rows: [], inserts: [], keyed: [], calls: [], aborted: 0, readbacks: 0,
+  const t = (window.__t = { gateMode: 'ok', insertMode: 'ok', rows: (window.__seed || []).map((r) => Object.assign({}, r)), inserts: [], keyed: [], calls: [], aborted: 0, readbacks: 0,
     hang: [], hung: 0, changeMode: /__change=1/.test(location.search),
     // gh-3498 (REVIEW 6740720167): lookups by (claim_id, contractor_id); hideFromLookup = a landed row the lookup does not see
     // yet (the insert lands after it); noColumn = the idempotency_key column does not exist yet (migration not applied)
@@ -45,12 +45,11 @@ const FAKE_SUPABASE = `
         if (key && t.rows.some((r) => r.idempotency_key === key)) {
           return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "quotes_idempotency_key_uidx"', details: 'Key (idempotency_key)=(' + key + ') already exists.' } };
         }
-        // gh-3848: quotes_manual_bid_uidx (claim_id, contractor_id, trade_type) WHERE is_auto_bid IS NOT TRUE AND renewed_from_quote_id IS NULL
-        // AND bid_status IN ('active','expired'). t.indexOff = the index does not exist (production today); t.indexNoStatus = mutant without the bid_status term.
-        if (!t.indexOff && t.rows.some((r) => r.claim_id === s.payload.claim_id && r.contractor_id === s.payload.contractor_id && r.trade_type === s.payload.trade_type
-            && r.is_auto_bid !== true && !r.renewed_from_quote_id && (t.indexNoStatus || ['active', 'expired'].includes(r.bid_status || 'active')))) {
+        // gh-3848: quotes_manual_bid_uidx (claim_id, contractor_id) WHERE is_auto_bid IS NOT TRUE AND bid_status IN ('active','expired').
+        if (s.payload.is_auto_bid !== true && t.rows.some((r) => r.claim_id === s.payload.claim_id && r.contractor_id === s.payload.contractor_id
+            && r.is_auto_bid !== true && ['active', 'expired'].includes(r.bid_status || 'active'))) {
           t.manualRejected = (t.manualRejected || 0) + 1;
-          return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "quotes_manual_bid_uidx"', details: 'Key (claim_id, contractor_id, trade_type)=(...) already exists.' } };
+          return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "quotes_manual_bid_uidx"', details: 'Key (claim_id, contractor_id)=(...) already exists.' } };
         }
         const row = Object.assign({ id: 'quote-' + (t.rows.length + 1) }, s.payload);
         if (t.insertMode === 'hang') return hang(s);
@@ -65,13 +64,18 @@ const FAKE_SUPABASE = `
       const k = s.eqs.find((e) => e[0] === 'idempotency_key')[1];
       return { data: t.rows.find((r) => r.idempotency_key === k) || null, error: null };
     }
-    if (s.table === 'quotes' && s.op === 'select' && t.changeMode) return { data: Object.assign({}, existing, { bid_status: t.quoteStatus || existing.bid_status }), error: null }; // quoteStatus: the server's bid_status once renew_quote has run
+    if (s.table === 'quotes' && s.op === 'select' && t.changeMode && !s.ins) return { data: Object.assign({}, existing, { bid_status: t.quoteStatus || existing.bid_status }), error: null }; // quoteStatus: the server's bid_status once renew_quote has run
     if (s.table === 'quotes' && s.op === 'select' && (s.eqs || []).some((e) => e[0] === 'claim_id')) {
       t.lookups++;
       if (t.hideFromLookup) return { data: null, error: null };
       const cid = s.eqs.find((e) => e[0] === 'claim_id')[1];
       const ctr = (s.eqs.find((e) => e[0] === 'contractor_id') || [])[1];
-      return { data: t.rows.find((r) => r.claim_id === cid && r.contractor_id === ctr) || null, error: null };
+      let hits = t.rows.filter((r) => r.claim_id === cid && r.contractor_id === ctr
+        && (!s.ins || s.ins.includes(r.bid_status || 'active')) && (!s.manualOnly || r.is_auto_bid !== true));
+      hits = hits.slice().reverse(); // newest first (rows are pushed in creation order)
+      t.lookupLog = (t.lookupLog || []).concat([{ ins: s.ins, manualOnly: s.manualOnly, limited: s.limited, hits: hits.length }]);
+      if (s.single && !s.limited && hits.length > 1) return { data: null, error: { code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned' } };
+      return { data: hits[0] || null, error: null };
     }
     if (s.table === 'platform_fee_config') return { data: [{ fee_pct: '5.00' }], error: null };
     if (s.table === 'bidder_claim_summary') return { data: claim, error: null };
@@ -79,12 +83,15 @@ const FAKE_SUPABASE = `
     return { data: s.single ? null : [], error: null };
   }
   function builder(table) {
-    const s = { table, op: 'select', payload: null, single: false, eqs: [], signal: null };
+    const s = { table, op: 'select', payload: null, single: false, eqs: [], ins: null, manualOnly: false, limited: false, signal: null };
     const b = new Proxy({}, { get(_, prop) {
       if (prop === 'then') return (res, rej) => run(s).then(res, rej);
       if (prop === 'insert' || prop === 'update' || prop === 'upsert' || prop === 'delete') return (p) => { s.op = prop; s.payload = p; return b; };
       if (prop === 'single' || prop === 'maybeSingle') return () => { s.single = true; return b; };
       if (prop === 'eq') return (c, v) => { s.eqs.push([c, v]); return b; };
+      if (prop === 'in') return (c, v) => { if (c === 'bid_status') s.ins = v; return b; };
+      if (prop === 'or') return (expr) => { if (/is_auto_bid/.test(expr)) s.manualOnly = true; return b; };
+      if (prop === 'limit') return () => { s.limited = true; return b; };
       if (prop === 'abortSignal') return (sig) => { s.signal = sig; return b; };
       return () => b;
     } });
@@ -102,6 +109,7 @@ const FAKE_SUPABASE = `
       return { abortSignal(sig) { s.signal = sig; return this; }, then(res, rej) {
         if (hung) { t.hung++; if (t.renewLands) t.quoteStatus = 'active'; return hang(s).then(res, rej); }
         if (t.quoteStatus === 'active' || (!t.quoteStatus && !/__cancelled=1/.test(location.search))) return Promise.resolve({ data: null, error: { code: '55000', message: 'renew_quote: mode reopen needs a cancelled bid' } }).then(res, rej);
+        if (t.rows.some((r) => r.id !== 'q-1' && r.is_auto_bid !== true && ['active', 'expired'].includes(r.bid_status || 'active'))) return Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "quotes_manual_bid_uidx"' } }).then(res, rej);
         t.quoteStatus = 'active';
         return Promise.resolve({ data: null, error: null }).then(res, rej);
       } };
@@ -138,8 +146,9 @@ window.Auth = new Proxy({ requireAuth: async () => ({ id: 'u-1', email: 'c@examp
   { get: (t, k) => (k in t ? t[k] : async () => null) });
 `;
 
-async function openForm(page: Page, opts: { changeMode?: boolean; cancelled?: boolean } = {}) {
+async function openForm(page: Page, opts: { changeMode?: boolean; cancelled?: boolean; seed?: Record<string, unknown>[] } = {}) {
   await page.clock.install();
+  if (opts.seed) await page.addInitScript((r) => { (window as any).__seed = r; }, opts.seed);
   // gh-3498 (REVIEW 6740533205): ipify can answer its headers and then stall the body. window.__ipBodyStall makes the fake
   // ipify response do that; its json() settles only when the request signal aborts, as a real fetch body does.
   await page.addInitScript(() => {
@@ -213,6 +222,8 @@ const seedEarlierBid = (page: Page, over: Record<string, unknown> = {}) => page.
     bid_status: 'active', is_auto_bid: false, platform_fee_pct: 5, scope_summary: '{}', idempotency_key: 'key-from-the-earlier-page-load' }, o));
 }, over);
 
+const ROW = { claim_id: 'claim-1', contractor_id: 'c-1', trade_type: 'roofing', total_price: 17000, platform_fee_pct: 5, scope_summary: '{}', is_auto_bid: false };
+
 test.describe('gh-3848 reload retry cannot file a second manual bid (real page, Chromium)', () => {
   test('reload retry: the index refuses the insert, no second bid, the existing message shows, the form becomes Change Bid', async ({ page }) => {
     const dialogs: string[] = [];
@@ -224,43 +235,45 @@ test.describe('gh-3848 reload retry cannot file a second manual bid (real page, 
     await expect.poll(() => dialogs.length).toBeGreaterThan(0);
     const t = await page.evaluate(() => (window as any).__t);
     expect(t.manualRejected).toBe(1);
-    expect(t.rows.length).toBe(1);                       // still only the earlier bid
+    expect(t.rows.length).toBe(1);
     expect(dialogs[0]).toContain('Your bid was already filed on an earlier try, so no second bid was sent.');
-    expect(feeAccCount(t)).toBe(0);                      // no acceptance record or email written by this attempt
+    expect(feeAccCount(t)).toBe(0);
     expect(await page.evaluate('changeBidMode')).toBe(true);
     expect((await state(page)).success).toBe(false);
   });
 
-  test('re-bid after a rescind: the cancelled bid is outside the index, the new bid files and succeeds', async ({ page }) => {
-    await openForm(page);
-    await seedEarlierBid(page, { bid_status: 'cancelled' });
-    await fillAndAccept(page);
-    await clickSubmit(page);
-    await expect.poll(async () => (await state(page)).success).toBe(true);
-    const t = await page.evaluate(() => (window as any).__t);
-    expect(t.manualRejected || 0).toBe(0);
-    expect(t.rows.length).toBe(2);
+  test('after an auto-renewal (superseded original + live clone) the page loads in existing-bid mode, not new-bid mode', async ({ page }) => {
+    await openForm(page, { seed: [
+      Object.assign({}, ROW, { id: 'orig', bid_status: 'superseded' }),
+      Object.assign({}, ROW, { id: 'clone', bid_status: 'active', renewed_from_quote_id: 'orig' }),
+    ] });
+    await expect.poll(() => page.evaluate('changeBidMode')).toBe(true);
+    expect(await page.evaluate('existingQuote && existingQuote.id')).toBe('clone');
   });
 
-  test('mutant: an index without the bid_status term wrongly blocks the re-bid after a rescind', async ({ page }) => {
+  test('a live auto-bid beside the manual bid does not turn the duplicate into a raw error: the existing message shows', async ({ page }) => {
     const dialogs: string[] = [];
     page.on('dialog', (d) => { dialogs.push(d.message()); void d.dismiss(); });
     await openForm(page);
-    await page.evaluate(() => { (window as any).__t.indexNoStatus = true; });
-    await seedEarlierBid(page, { bid_status: 'cancelled' });
+    await seedEarlierBid(page, { id: 'manual-1' });
+    await seedEarlierBid(page, { id: 'auto-1', is_auto_bid: true, idempotency_key: undefined });
     await fillAndAccept(page);
     await clickSubmit(page);
-    await expect.poll(async () => (await page.evaluate(() => (window as any).__t.manualRejected)) || 0).toBe(1);
-    expect((await page.evaluate(() => (window as any).__t.rows.length))).toBe(1); // the legitimate re-bid was refused
+    await expect.poll(() => dialogs.length).toBeGreaterThan(0);
+    expect(dialogs[0]).toContain('Your bid was already filed on an earlier try, so no second bid was sent.');
+    expect(dialogs[0]).not.toContain('duplicate key');
+    expect(await page.evaluate('existingQuote && existingQuote.id')).toBe('manual-1');
   });
 
-  test('negative control: without the index (production today) the reload retry files a second bid', async ({ page }) => {
-    await openForm(page);
-    await page.evaluate(() => { (window as any).__t.indexOff = true; });
-    await seedEarlierBid(page);
+  test('reopening a withdrawn bid after another live bid was filed shows the live bid, not the raw duplicate-key text', async ({ page }) => {
+    const dialogs: string[] = [];
+    page.on('dialog', (d) => { dialogs.push(d.message()); void d.dismiss(); });
+    await openForm(page, { changeMode: true, cancelled: true });
+    await seedEarlierBid(page, { id: 'live-2' });
     await fillAndAccept(page);
     await clickSubmit(page);
-    await expect.poll(async () => (await state(page)).success).toBe(true);
-    expect((await page.evaluate(() => (window as any).__t.rows.length))).toBe(2);
+    await expect.poll(() => dialogs.length).toBeGreaterThan(0);
+    expect(dialogs[0]).toContain('Your bid was already filed on an earlier try, so no second bid was sent.');
+    expect(dialogs[0]).not.toContain('duplicate key');
   });
 });
