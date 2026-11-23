@@ -66,6 +66,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.114.0"; // gh-3104: type-only
 import { type GetEnv, serviceGate } from "./caller-gate.ts"; // gh-3104
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { swapInRenewalClone } from "./renewal-swap.ts"; // gh-3848: supersede the original BEFORE inserting the renewal clone
 import {
   buildBidExpiredEmail,
   buildAutoRenewedEmail,
@@ -339,45 +340,17 @@ async function expireBids(
     if (canAutoRenew) {
       // ── AUTO-RENEW PATH ─────────────────────────────────────────────────────
 
-      // 1. Create renewal quote (clone with fresh window)
+      // gh-3848: the manual-bid unique index allows one live bid per claim and contractor, so the ORIGINAL is superseded
+      // first and the clone inserted second (renewal-swap.ts; the original is put back if the clone cannot be inserted).
       const newExpiresAt = new Date(Date.now() + BID_EXPIRY_DAYS * 86400 * 1000).toISOString();
-      const { data: newQuote, error: insertError } = await supabase
-        .from("quotes")
-        .insert({
-          claim_id:                 quote.claim_id,
-          contractor_id:            quote.contractor_id,
-          total_price:              quote.total_price,
-          auto_renew:               quote.auto_renew,
-          renewed_from_quote_id:    quote.id,
-          expires_at:               newExpiresAt,
-          bid_status:               "active",
-          trade_type:               quote.trade_type,
-          // value_adds and other JSON fields are intentionally not cloned here
-          // to keep the renewal lightweight. A full clone can be added later if
-          // needed — the contract template and pricing are the operative data.
-        })
-        .select("id")
-        .single();
+      const swap = await swapInRenewalClone(supabase, quote, newExpiresAt, now);
+      errors.push(...swap.errors);
+      if (swap.outcome === "skipped") continue; // the original changed since it was read: leave it for the next run
+      const newQuote = swap.newQuoteId ? { id: swap.newQuoteId } : null;
 
-      if (insertError || !newQuote) {
-        console.error(`[process-bid-expirations] Auto-renew insert failed for quote ${quote.id}:`, insertError?.message);
-        errors.push(`Auto-renew insert failed for ${quote.id}: ${insertError?.message}`);
-        // Fall through to mark original expired without renewal
+      if (!newQuote) {
+        // Clone failed and the original was restored: fall through to mark the original expired without renewal.
       } else {
-        // 2. Mark original as superseded
-        const { error: supersedeErr, data: supersedeRows } = await supabase
-          .from("quotes")
-          .update({ bid_status: "superseded", expired_at: now })
-          .eq("id", quote.id)
-          .select("id");
-        // gh-2105 (decision a, fire-and-forget): the renewal quote already
-        // exists, so no throw -- but a silent miss leaves the original live
-        // next to its renewal (two live bids for one contractor/claim).
-        if (supersedeErr || !checkRowsWritten(supersedeRows).wroteRows) {
-          console.error(zeroRowWriteMessage("process-bid-expirations", `quotes.bid_status=superseded for quote ${quote.id}`), supersedeErr?.message ?? "");
-          errors.push(`Supersede update failed for ${quote.id}: ${supersedeErr?.message ?? "zero rows matched (gh-2105)"}`);
-        }
-
         // 3. Contractor dashboard notification (auto-renewed)
         try {
           await supabase.from("notifications").insert({

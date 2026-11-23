@@ -12,9 +12,11 @@
 import { assert, assertStringIncludes } from "https://deno.land/std@0.208.0/assert/mod.ts";
 
 const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+// gh-3848: the superseded write moved to renewal-swap.ts (supersede first, then insert the clone).
+const swapSrc = await Deno.readTextFile(new URL("./renewal-swap.ts", import.meta.url));
 
-function mustFind(needle: string, from = 0): number {
-  const i = src.indexOf(needle, from);
+function mustFind(needle: string, from = 0, text = src): number {
+  const i = text.indexOf(needle, from);
   if (i === -1) {
     throw new Error(`Expected to find ${JSON.stringify(needle)} in index.ts -- source has moved; update this test's anchors.`);
   }
@@ -26,11 +28,12 @@ Deno.test("wiring: the shared zero-row guard is imported", () => {
   assertStringIncludes(src, "checkRowsWritten(");
 });
 
-const SITES: Array<{ name: string; start: string; end: string; must: string[] }> = [
+const SITES: Array<{ name: string; file?: "swap"; start: string; end: string; must: string[] }> = [
   {
     "name": "superseded update",
+    "file": "swap",
     "start": "const { error: supersedeErr, data: supersedeRows }",
-    "end": "// 3. Contractor dashboard notification (auto-renewed)",
+    "end": "// 2. Insert the renewal clone.",
     "must": [
       "supersedeRows",
       "errors.push("
@@ -67,9 +70,10 @@ const SITES: Array<{ name: string; start: string; end: string; must: string[] }>
 
 for (const site of SITES) {
   Deno.test(`wiring: ${site.name} selects and checks rows`, () => {
-    const i = mustFind(site.start);
-    const j = mustFind(site.end, i);
-    const block = src.slice(i, j);
+    const text = site.file === "swap" ? swapSrc : src;
+    const i = mustFind(site.start, 0, text);
+    const j = mustFind(site.end, i, text);
+    const block = text.slice(i, j);
     assertStringIncludes(block, '.select("id")', `${site.name}: the update must chain .select("id")`);
     assertStringIncludes(block, "checkRowsWritten(", `${site.name}: must check the returned rows, not just \`error\``);
     assertStringIncludes(block, "zeroRowWriteMessage(", `${site.name}: the zero-row branch must use the shared gh-2105 message`);
@@ -77,9 +81,10 @@ for (const site of SITES) {
   });
 
   Deno.test(`mutation control: removing .select("id") from ${site.name} breaks the wiring`, () => {
-    const i = mustFind(site.start);
-    const j = mustFind(site.end, i);
-    const block = src.slice(i, j);
+    const text = site.file === "swap" ? swapSrc : src;
+    const i = mustFind(site.start, 0, text);
+    const j = mustFind(site.end, i, text);
+    const block = text.slice(i, j);
     const mutated = block.replaceAll('.select("id")', "");
     assert(block.includes('.select("id")') && !mutated.includes('.select("id")'),
       "removing .select(\"id\") turns this site back into the ratchet-failing shape (scripts/check-unselected-update-ratchet.py)");

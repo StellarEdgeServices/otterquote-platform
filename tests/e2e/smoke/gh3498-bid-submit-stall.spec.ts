@@ -273,7 +273,7 @@ test.describe('gh-3498 contractor-bid-form.html stalled submit (real page, Chrom
     expect(s.quotesFiled).toBe(1); // still one bid
     const t = await page.evaluate(() => (window as any).__t);
     // gh-3498 (REVIEW 6740720167): the retry finds the landed bid by (claim, contractor) before inserting; no second insert is sent
-    expect(t.lookups).toBe(2); // one at page load (no bid yet), one before the retry
+    expect(t.lookups).toBe(3); // gh-3848: page load asks for a live bid then, finding none, for any bid (2 queries); one query before the retry (a live bid is found)
     expect(t.keyed.length).toBe(1);
     expect(t.inserts.filter((i: any) => i.table === 'fee_acceptances').length).toBe(1);
     expect(dialogs.length).toBe(1);
