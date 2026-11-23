@@ -1,4 +1,5 @@
 -- STATUS (gh-1438, as of 2026-10-14T06:58:34Z): NOT APPLIED
+-- RE-VERIFIED 2026-11-23T13:10:43Z (stamp.py, cto108-b2710, issue #2710 reopened): production still has NO claims_guard_fee_stripe_columns trigger or function and no ledger row; this file still matches the live schema (the live claims_guard_platform_fee_charged has the same shape; public.is_admin_email() and auth.role() exist). Body below is UNCHANGED from PR #2755. Local PostgreSQL proof: supabase/tests/gh2710_local_pg_proof_20261123.sh. STATUS stays NOT APPLIED.
 -- FILE ROLE: forward file of set gh2710_claims_fee_stripe_columns_guard (the STATUS is the set's; it describes the forward migration)
 -- EVIDENCE: issue #2710 (CEO RUN 104 triage; R-177 SIGNED condition (4) on PR #2704, comment 6155920082); rolled-back proof in supabase/tests/gh2710_claims_fee_stripe_columns_guard_proof.sql
 -- REPO COPY: none in supabase/migrations/ yet
