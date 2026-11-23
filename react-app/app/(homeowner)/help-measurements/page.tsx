@@ -437,9 +437,7 @@ function ChargeStep({
   return (
     <div className="hm-section-card" data-testid="charge-step">
       {stage === 'recorded' ? (
-        <p role="status" data-testid="charge-step-recorded">
-          {CHARGE_COPY.orderRecorded}
-        </p>
+        <ChargeConfirmation />
       ) : (
         <>
           <h3 className="hm-section-title">{CHARGE_COPY.heading}</h3>
@@ -458,6 +456,20 @@ function ChargeStep({
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * gh-3859: the confirmation state after a successful payment. Reached only from ChargeStep (flag ON) once the order is recorded.
+ * Its strings are CHARGE_STEP_COPY_PENDING_GH3865 placeholders, pinned by __tests__/copy.test.ts; the approved wording
+ * (#3865) replaces the values there, and nothing is written here.
+ */
+function ChargeConfirmation() {
+  return (
+    <div className="hm-success-state" role="status" data-testid="charge-confirmation">
+      <h2>{CHARGE_COPY.confirmationHeading}</h2>
+      <p>{CHARGE_COPY.confirmationBody}</p>
     </div>
   );
 }

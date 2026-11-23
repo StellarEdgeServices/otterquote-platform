@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { MEASUREMENTS_COPY } from '../copy';
+import { MEASUREMENTS_COPY, CHARGE_STEP_COPY_PENDING_GH3865 } from '../copy';
 
 // ── Verbatim source strings — help-measurements.html (entities decoded; em-dash = U+2014) ──
 const STATIC = {
@@ -311,5 +311,28 @@ describe('MEASUREMENTS_COPY — operational status & button labels', () => {
     expect(MEASUREMENTS_COPY.sendingButton).toBe(STATIC.sendingButton);
     expect(MEASUREMENTS_COPY.sendingButton).toContain('…');
     expect(MEASUREMENTS_COPY.emailSentButton).toBe(STATIC.emailSentButton);
+  });
+});
+
+// ── gh-3858 / gh-3859: the charge-step + confirmation strings (placeholders until #3865 is approved) ──
+// Hand-typed here, NOT imported from copy.ts, so an alteration of copy.ts trips this lock. When Dustin approves the wording,
+// the approved strings replace BOTH the values in copy.ts and the literals below in the same change (which carries LEGAL-READ
+// and R-177); until then this pins the placeholders, and none of them is wording.
+const CHARGE_STEP_PINNED = {
+  heading: '[PENDING #3865: heading]',
+  body: '[PENDING #3865: body]',
+  startButton: '[PENDING #3865: start button]',
+  confirmationHeading: '[PENDING #3865: confirmation heading]',
+  confirmationBody: '[PENDING #3865: confirmation]',
+} as const;
+
+describe('CHARGE_STEP_COPY_PENDING_GH3865 — charge step and confirmation state (gh-3858 / gh-3859)', () => {
+  it('pins every string byte-for-byte; altering any value fails this lock', () => {
+    expect({ ...CHARGE_STEP_COPY_PENDING_GH3865 }).toEqual(CHARGE_STEP_PINNED);
+  });
+
+  it('has the confirmation strings the page renders after a successful payment', () => {
+    expect(CHARGE_STEP_COPY_PENDING_GH3865.confirmationHeading).toBe(CHARGE_STEP_PINNED.confirmationHeading);
+    expect(CHARGE_STEP_COPY_PENDING_GH3865.confirmationBody).toBe(CHARGE_STEP_PINNED.confirmationBody);
   });
 });

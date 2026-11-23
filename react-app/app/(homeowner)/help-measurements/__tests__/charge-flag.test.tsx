@@ -165,7 +165,10 @@ describe('flag ON: the charge step mounts the card form and records the order on
     expect((sbMock.functions.invoke as unknown as Fn).mock.calls[0][1]).toEqual({
       body: { claim_id: 'c1', product_code: 'roof_basic', payment_intent_id: 'pi_gh3858_1', buyer_role: 'homeowner' },
     });
-    expect(await screen.findByTestId('charge-step-recorded')).toBeTruthy();
+    // gh-3859: the confirmation state, its strings from copy.ts (CHARGE_STEP_COPY_PENDING_GH3865).
+    const confirmation = await screen.findByTestId('charge-confirmation');
+    expect(confirmation.textContent).toContain(PENDING.confirmationHeading);
+    expect(confirmation.textContent).toContain(PENDING.confirmationBody);
     expect(confirmCardPayment).toHaveBeenCalledTimes(1);
   });
 
@@ -180,7 +183,7 @@ describe('flag ON: the charge step mounts the card form and records the order on
 
     expect(await screen.findByText('Your card was declined.')).toBeTruthy();
     expect(sbMock.functions.invoke as unknown as Fn).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('charge-step-recorded')).toBeNull();
+    expect(screen.queryByTestId('charge-confirmation')).toBeNull();
   });
 
   it('no PaymentIntent (placeholder / refusal) shows the existing init error and mounts no form', async () => {
