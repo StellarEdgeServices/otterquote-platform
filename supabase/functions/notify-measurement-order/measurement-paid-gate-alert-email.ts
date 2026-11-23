@@ -65,7 +65,7 @@ export function buildPaidGateAlertEmail(body: unknown): PaidGateAlertEmail | nul
   if (kind === "paid_without_order") {
     subject = "ACTION NEEDED: a homeowner paid for a report and no order row was found (check the order row first)";
     lines = [
-      "A homeowner's measurement payment succeeded in Stripe, and no order row was found for the claim when a second purchase attempt on it was refused.",
+      "A homeowner's measurement payment succeeded in Stripe, and no order row was found for the claim. The \"where it was found\" line below says which check found it (the purchase gate, when a second purchase attempt on a paid claim was refused, or the Stripe webhook, which sees a succeeded payment with no order).",
       "If the charge is only minutes old, the order may still be in progress (the browser records the order right after the card payment): check the order row for this claim first.",
       "",
       `claim: ${claimText}`,

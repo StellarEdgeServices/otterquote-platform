@@ -49,6 +49,7 @@ import {
 } from "./dispute-routing.ts";
 import { assembleDisputeFeeEvidence, type FeeAcceptanceRow } from "./dispute-fee-evidence.ts";
 import { handleSwitchRefundFailed, REFUND_EVENT_TYPES, type StripeRefundObject } from "./refund-failed.ts";
+import { makeReconcileDeps, measurementChargeEnabled, reconcileMeasurementPaymentOrder, scheduleOffResponsePath } from "./measurement-order-reconcile.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 import {
@@ -1348,6 +1349,25 @@ Deno.serve(async (req: Request) => {
       // gh-2078b / D-330 -- independent of the platform_fee handler above
       // (scoped by metadata.type, never throws -- see the function's own doc).
       await handleMeasurementOrderCapiPurchase(piEvent.data.object, supabase);
+      // gh-3857: a succeeded measurement PaymentIntent must end with a recorded order or an alert that names it (the order is written by a
+      // second browser request that can fail). Reads hover_orders; alerts if no row. Never writes an order, never throws.
+      // Dark behind MEASUREMENT_CHARGE_ENABLED (exactly "true"). Runs OFF the response path: Stripe gets its 2xx first (review 7102099914),
+      // and an alert-channel failure is logged, never a non-2xx.
+      if (measurementChargeEnabled((k) => Deno.env.get(k))) {
+        const reconcileTask = async () => {
+          const outcome = await reconcileMeasurementPaymentOrder(
+            piEvent.data.object,
+            makeReconcileDeps(supabase, Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!),
+            FN_NAME,
+          );
+          if (outcome === "error") {
+            console.error(`[${FN_NAME}] OPS: gh-3857 measurement PaymentIntent ${piEvent.data.object?.id} has no order row and NEITHER alert channel took the alert; check hover_orders and Stripe by hand`);
+          }
+        };
+        // deno-lint-ignore no-explicit-any
+        const host = typeof (globalThis as any).EdgeRuntime !== "undefined" ? (globalThis as any).EdgeRuntime : undefined;
+        await scheduleOffResponsePath(reconcileTask, host, (m) => console.error(`[${FN_NAME}] ${m}`));
+      }
     } else if (event.type === "payment_intent.payment_failed") {
       const piEvent = event as unknown as StripePaymentIntentEvent;
       await handlePlatformFeePaymentFailed(piEvent.data.object, supabase);
