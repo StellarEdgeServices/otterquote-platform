@@ -1175,6 +1175,10 @@
         // Action buttons
         const actionBtn = (function() {
           const cs = currentClaim ? currentClaim.status : null;
+          // gh-3863: only the selected contractor's card carries "Contract Signed"; every other card on a signed claim is "Not Selected".
+          if (cs === 'contract_signed' && currentClaim.selected_contractor_id !== bid.contractor_id) {
+            return `<button class="btn btn-sm btn-ghost" disabled style="opacity:0.4;cursor:not-allowed;">Not Selected</button>`;
+          }
           if (cs === 'contract_signed') {
             return `<a href="contract-signing.html?claim_id=${currentClaim.id}&contractor_id=${bid.contractor_id}&quote_id=${bid.id}&role=homeowner" class="btn btn-sm btn-ghost" style="border:1px solid var(--green);color:var(--green);">✓ Contract Signed</a>`;
           }
