@@ -201,3 +201,9 @@ Replay path (review of PR #3479, comment 6670233265): `gh3239_partner_agreement_
 | set | files | status | evidence | repo copy |
 |---|---|---|---|---|
 | `gh3783_claims_refuse_windows_trade` | forward, rollback, pre-flight | NOT APPLIED | drafted under #3783 (CEO RUN 153, b3783); read-only production SELECT the same day: 43 claims, 0 with a windows trade, 0 with `windows_bid_released_at`. Trigger refusing a windows trade or release stamp (23514). Tier 3B, R-097 24-hour notice before apply; publish PR #3781 and deploy PR #3784 code first; proof `supabase/tests/gh3783_claims_refuse_windows_trade_proof_run.sh` | none |
+
+## Added 2026-11-19 (gh-3816): 1 forward file here (rollback and pre-flight in `supabase/migrations_rollbacks/`, proof and runner in `supabase/tests/`)
+
+| set | files | status | evidence | repo copy |
+|---|---|---|---|---|
+| `gh3816_notify_admin_new_contractor_body` | forward (rollback and pre-flight in `supabase/migrations_rollbacks/`, proof and runner in `supabase/tests/`) | NOT APPLIED | drafted 2026-11-19 under #3816 (CEO RUN 155, worker fx3816); read-only production SELECT the same day: `notify_admin_new_contractor()` passes a `::text::bytea` body to `net.http_post`, pg_net 0.20.0 has only a jsonb overload, so the call has failed on every signup since 2026-06-02 (swallowed). Fix: jsonb body; handler additionally writes a `platform_alerts_log` row (behaviour addition, flagged in the file). Tier 3B (replaces a function that causes an email), R-097 24-hour notice before apply; proof `supabase/tests/gh3816_notify_admin_new_contractor_body_proof_run.sh` (33 assertions) | none |
