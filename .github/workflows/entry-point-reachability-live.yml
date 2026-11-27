@@ -111,7 +111,7 @@ jobs:
       changed: ${{ steps.poll.outputs.changed }}
       commit_ref: ${{ steps.poll.outputs.commit_ref }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
@@ -217,7 +217,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -302,7 +302,7 @@ jobs:
 
     steps:
       - name: Checkout current tree (spec + Playwright config)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The known-dead pre-#1696 tree, checked into its own subdirectory
       # rather than checked out over the current tree, so the spec file and
@@ -311,7 +311,7 @@ jobs:
       # local fixture checkout of the pre-#1696 tree"). Only the served HTML
       # is old; the test harness is not.
       - name: Checkout known-broken pre-#1696 tree (commit 0aa1d61) into a separate path
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: 0aa1d61b24e84bbd35b000e2cda616d4ec270de5
           path: known-broken-fixture
